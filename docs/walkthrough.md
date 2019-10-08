@@ -1,8 +1,8 @@
-## `trax`: Train Neural Nets with JAX
+## `Trax`: Train Neural Nets with JAX
 
 ![train tracks](https://images.pexels.com/photos/461772/pexels-photo-461772.jpeg?dl&fit=crop&crop=entropy&w=640&h=426)
 
-### `trax`: T2T Radically Simpler with JAX
+### `Trax`: T2T Radically Simpler with JAX
 
 *Why?* Because T2T has gotten too complex. We are simplifying the main code too,
 but we wanted to try a more radical step. So you can write code as in pure
@@ -50,10 +50,10 @@ python -m trax.trainer \
 
 ```
 python -m trax.trainer \
-  --config_file=$PWD/trax/configs/transformer_lm1b_8gb.gin
+  --config_file=transformer_lm1b_8gb.gin
 ```
 
-### How `trax` differs from T2T
+### How `Trax` differs from T2T
 
 * Configuration is done with [`gin`](https://github.com/google/gin-config).
   `trainer.py` takes `--config_file` as well as `--config` for file overrides.

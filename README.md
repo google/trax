@@ -50,7 +50,7 @@ python -m trax.trainer \
 
 ```
 python -m trax.trainer \
-  --config_file=$PWD/trax/configs/transformer_lm1b_8gb.gin
+  --config_file=transformer_lm1b_8gb.gin
 ```
 
 ### How `Trax` differs from T2T
