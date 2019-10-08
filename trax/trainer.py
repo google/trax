@@ -34,40 +34,40 @@ from trax import trainer_lib
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string("dataset", None, "Which dataset to use.")
-flags.DEFINE_string("model", None, "Which model to train.")
-flags.DEFINE_string("data_dir", None, "Path to the directory with data.")
-flags.DEFINE_string("output_dir", None,
-                    "Path to the directory to save logs and checkpoints.")
-flags.DEFINE_multi_string("config_file", None,
-                          "Configuration file with parameters (.gin).")
-flags.DEFINE_multi_string("config", None,
-                          "Configuration parameters (gin string).")
-flags.DEFINE_integer("log_level", logging.INFO, "Log level.")
-flags.DEFINE_bool("use_tpu", False, "Whether we're running on TPU.")
-flags.DEFINE_bool("enable_eager_execution", True,
+flags.DEFINE_string('dataset', None, 'Which dataset to use.')
+flags.DEFINE_string('model', None, 'Which model to train.')
+flags.DEFINE_string('data_dir', None, 'Path to the directory with data.')
+flags.DEFINE_string('output_dir', None,
+                    'Path to the directory to save logs and checkpoints.')
+flags.DEFINE_multi_string('config_file', None,
+                          'Configuration file with parameters (.gin).')
+flags.DEFINE_multi_string('config', None,
+                          'Configuration parameters (gin string).')
+flags.DEFINE_integer('log_level', logging.INFO, 'Log level.')
+flags.DEFINE_bool('use_tpu', False, "Whether we're running on TPU.")
+flags.DEFINE_bool('enable_eager_execution', True,
                   "Whether we're running TF in eager mode.")
-flags.DEFINE_bool("tf_xla", True, "Whether to turn on XLA for TF.")
-flags.DEFINE_bool("tf_opt_pin_to_host", False, "Whether to turn on TF "
-                  "pin-to-host optimization.")
-flags.DEFINE_bool("tf_opt_layout", False, "Whether to turn on TF layout "
-                  "optimization.")
+flags.DEFINE_bool('tf_xla', True, 'Whether to turn on XLA for TF.')
+flags.DEFINE_bool('tf_opt_pin_to_host', False, 'Whether to turn on TF '
+                  'pin-to-host optimization.')
+flags.DEFINE_bool('tf_opt_layout', False, 'Whether to turn on TF layout '
+                  'optimization.')
 
 
 def _default_output_dir():
   """Default output directory."""
   try:
-    dataset_name = gin.query_parameter("inputs.dataset_name")
+    dataset_name = gin.query_parameter('inputs.dataset_name')
   except ValueError:
-    dataset_name = "random"
-  dir_name = "{model_name}_{dataset_name}_{timestamp}".format(
-      model_name=gin.query_parameter("train.model").configurable.name,
+    dataset_name = 'random'
+  dir_name = '{model_name}_{dataset_name}_{timestamp}'.format(
+      model_name=gin.query_parameter('train.model').configurable.name,
       dataset_name=dataset_name,
-      timestamp=datetime.datetime.now().strftime("%Y%m%d_%H%M"),
+      timestamp=datetime.datetime.now().strftime('%Y%m%d_%H%M'),
   )
-  dir_path = os.path.join("~", "trax", dir_name)
+  dir_path = os.path.join('~', 'trax', dir_name)
   print()
-  trainer_lib.log("No --output_dir specified")
+  trainer_lib.log('No --output_dir specified')
   return dir_path
 
 
@@ -86,7 +86,7 @@ def _setup_gin():
     if FLAGS.data_dir:
       configs.append("inputs.data_dir='%s'" % FLAGS.data_dir)
   if FLAGS.model:
-    configs.append("train.model=@trax.models.%s" % FLAGS.model)
+    configs.append('train.model=@trax.models.%s' % FLAGS.model)
   gin.parse_config_files_and_bindings(FLAGS.config_file, configs)
 
 
@@ -103,33 +103,33 @@ def main(_):
     tf.config.optimizer.set_jit(True)
 
   tf.config.optimizer.set_experimental_options(
-      {"pin_to_host_optimization": FLAGS.tf_opt_pin_to_host}
+      {'pin_to_host_optimization': FLAGS.tf_opt_pin_to_host}
   )
 
   tf.config.optimizer.set_experimental_options(
-      {"layout_optimizer": FLAGS.tf_opt_layout}
+      {'layout_optimizer': FLAGS.tf_opt_layout}
   )
 
 
   _setup_gin()
 
-  if FLAGS.enable_eager_execution and backend.get_name() in ("numpy", "jax"):
+  if FLAGS.enable_eager_execution and backend.get_name() in ('numpy', 'jax'):
     # Numpy backend doesn't benefit from having the input pipeline run on GPU,
     # and jax backend has GPU memory contention if TF uses the GPU. Gin must be
     # set up first before determining the backend.
-    tf.config.experimental.set_visible_devices([], "GPU")
+    tf.config.experimental.set_visible_devices([], 'GPU')
 
   # Setup output directory
   output_dir = FLAGS.output_dir or _default_output_dir()
-  trainer_lib.log("Using --output_dir %s" % output_dir)
+  trainer_lib.log('Using --output_dir %s' % output_dir)
   output_dir = os.path.expanduser(output_dir)
 
   # If on TPU, let JAX know.
   if FLAGS.use_tpu:
-    jax.config.update("jax_platform_name", "tpu")
+    jax.config.update('jax_platform_name', 'tpu')
 
   trainer_lib.train(output_dir=output_dir)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   app.run(main)
