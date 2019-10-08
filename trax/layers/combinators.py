@@ -106,10 +106,10 @@ class Serial(base.Layer):
   sublayer k, following sublayer j, gets called with the data stack in the
   state left after layer j has applied. The Serial combinator then:
 
-    - takes N_in items off the top of the stack (N_in = k.n_inputs) and calls
+    - takes n_in items off the top of the stack (n_in = k.n_inputs) and calls
       layer k, passing those items as arguments; and
 
-    - takes layer k's N_out return values (N_out = k.n_outputs) and pushes
+    - takes layer k's n_out return values (n_out = k.n_outputs) and pushes
       them onto the data stack.
 
   A Serial instance with no sublayers acts as a special-case (but useful)
@@ -530,7 +530,7 @@ class Parallel(base.Layer):
 
 
 def Residual(*layers, **kwargs):
-  """Constructs a residual version of layers, summing input to layers output."""
+  """Adds a residual connection in parallel to a series of layers."""
   shortcut = kwargs.get('shortcut')  # default None signals no-op
   return [
       Dup(),  # pylint: disable=no-value-for-parameter
