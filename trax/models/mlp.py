@@ -26,7 +26,7 @@ def MLP(n_hidden_layers=2,
         d_hidden=512,
         activation_fn=tl.Relu,
         n_output_classes=10,
-        mode="train"):
+        mode='train'):
   """A multi-layer feedforward (perceptron) network."""
   del mode
 

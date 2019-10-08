@@ -79,7 +79,7 @@ class Optimizer(object):
       learning_rate: The initial learning rate.
       **init_opt_params: Initial values of any additional optimizer parameters.
     """
-    init_opt_params["learning_rate"] = learning_rate
+    init_opt_params['learning_rate'] = learning_rate
     self._init_opt_params = {
         name: np.array(value) for (name, value) in init_opt_params.items()
     }
@@ -117,11 +117,11 @@ class Optimizer(object):
         step, grads, params, slots, opt_params)
     if isinstance(params, np.ndarray):
       assert isinstance(new_params, np.ndarray), (
-          "The type of the new parameter values should be np.ndarray; got %s" %
+          'The type of the new parameter values should be np.ndarray; got %s' %
           type(new_params))
       assert new_params.dtype == params.dtype, (
-          "The dtype of the new parameter values (%s) is not the same as the "
-          "old one (%s)" % (new_params.dtype, params.dtype))
+          'The dtype of the new parameter values (%s) is not the same as the '
+          'old one (%s)' % (new_params.dtype, params.dtype))
     return new_params, new_slots
 
   def tree_update(self, step, grad_tree, param_tree, slots, opt_params):
@@ -164,7 +164,7 @@ class SGD(Optimizer):
   def update(self, step, grads, params, slots, opt_params):
     del step
     del slots
-    learning_rate = opt_params["learning_rate"]
+    learning_rate = opt_params['learning_rate']
     return params - (learning_rate * grads).astype(params.dtype), None
 
 
@@ -183,9 +183,9 @@ class Momentum(Optimizer):
 
   def update(self, step, grads, params, velocity, opt_params):
     del step
-    learning_rate = opt_params["learning_rate"]
-    mass = opt_params["mass"]
-    weight_decay_rate = opt_params["weight_decay_rate"]
+    learning_rate = opt_params['learning_rate']
+    mass = opt_params['mass']
+    weight_decay_rate = opt_params['weight_decay_rate']
     new_velocity = mass * velocity + grads
     new_params = (1 - weight_decay_rate) * params - (
         learning_rate * (mass * new_velocity + grads)).astype(params.dtype)
@@ -207,9 +207,9 @@ class RMSProp(Optimizer):
 
   def update(self, step, grads, params, avg_sq_grad, opt_params):
     del step
-    learning_rate = opt_params["learning_rate"]
-    gamma = opt_params["gamma"]
-    eps = opt_params["eps"]
+    learning_rate = opt_params['learning_rate']
+    gamma = opt_params['gamma']
+    eps = opt_params['eps']
     avg_sq_grad = avg_sq_grad * gamma + grads**2 * (1. - gamma)
     params = params - (learning_rate * grads /
                        (np.sqrt(avg_sq_grad) + eps)).astype(params.dtype)
@@ -248,11 +248,11 @@ class Adam(Optimizer):
 
   def update(self, step, grads, params, slots, opt_params):
     m, v = slots
-    learning_rate = opt_params["learning_rate"]
-    weight_decay_rate = opt_params["weight_decay_rate"]
-    b1 = opt_params["b1"]
-    b2 = opt_params["b2"]
-    eps = opt_params["eps"]
+    learning_rate = opt_params['learning_rate']
+    weight_decay_rate = opt_params['weight_decay_rate']
+    b1 = opt_params['b1']
+    b2 = opt_params['b2']
+    eps = opt_params['eps']
     m = (1 - b1) * grads + b1 * m  # First  moment estimate.
     v = (1 - b2) * (grads ** 2) + b2 * v  # Second moment estimate.
     mhat = m / (1 - b1 ** (step + 1))  # Bias correction.
@@ -337,13 +337,13 @@ class Adafactor(Optimizer):
 
   def update(self, step, grads, params, slots, opt_params):
     updates = []
-    learning_rate = opt_params["learning_rate"]
-    beta1 = opt_params["beta1"]
-    decay_rate = opt_params["decay_rate"]
-    clipping_threshold = opt_params["clipping_threshold"]
-    weight_decay_rate = opt_params["weight_decay_rate"]
-    epsilon1 = opt_params["epsilon1"]
-    epsilon2 = opt_params["epsilon2"]
+    learning_rate = opt_params['learning_rate']
+    beta1 = opt_params['beta1']
+    decay_rate = opt_params['decay_rate']
+    clipping_threshold = opt_params['clipping_threshold']
+    weight_decay_rate = opt_params['weight_decay_rate']
+    epsilon1 = opt_params['epsilon1']
+    epsilon2 = opt_params['epsilon2']
     decay_rate = self._decay_rate_pow(step, exponent=decay_rate)
     update_scale = learning_rate
     if self._multiply_by_parameter_scale:
@@ -410,8 +410,8 @@ class SM3(Optimizer):
     return (np.zeros_like(params), vs)
 
   def _update_diagonal(self, grads, params, m, v, opt_params):
-    learning_rate = opt_params["learning_rate"]
-    momentum = opt_params["momentum"]
+    learning_rate = opt_params['learning_rate']
+    momentum = opt_params['momentum']
     v[0] += grads * grads
     preconditioner = np.where(v[0] > 0, 1.0 / np.sqrt(v[0]),
                               np.zeros_like(v[0]))
@@ -434,8 +434,8 @@ class SM3(Optimizer):
 
   def _update_sketched(self, grads, params, m, v, opt_params):
     """Update for higher-rank parameters."""
-    learning_rate = opt_params["learning_rate"]
-    momentum = opt_params["momentum"]
+    learning_rate = opt_params['learning_rate']
+    momentum = opt_params['momentum']
     shape = params.shape
     rank = len(shape)
     reshaped_accumulators = [np.reshape(v[i], self._expanded_shape(shape, i))

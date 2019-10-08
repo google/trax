@@ -31,7 +31,7 @@ from trax.models.research import reformer
 
 # Ginify
 def model_configure(*args, **kwargs):
-  kwargs["module"] = "trax.models"
+  kwargs['module'] = 'trax.models'
   return gin.external_configurable(*args, **kwargs)
 
 

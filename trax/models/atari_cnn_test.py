@@ -61,5 +61,5 @@ class FrameStackMLPTest(test.TestCase):
     self.assertEqual((B, T + 1, output_size), y.shape)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   test.main()

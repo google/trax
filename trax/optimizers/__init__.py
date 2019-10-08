@@ -24,7 +24,7 @@ from trax.optimizers import base
 
 
 def opt_configure(*args, **kwargs):
-  kwargs["module"] = "trax.optimizers"
+  kwargs['module'] = 'trax.optimizers'
   return gin.external_configurable(*args, **kwargs)
 
 # Optimizers (using upper-case names).
