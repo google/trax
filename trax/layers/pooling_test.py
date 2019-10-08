@@ -32,5 +32,5 @@ class PoolingLayerTest(absltest.TestCase):
     self.assertEqual(result_shape, (29, 2, 2, 20))
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   absltest.main()

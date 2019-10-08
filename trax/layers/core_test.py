@@ -95,10 +95,10 @@ class CoreLayerTest(absltest.TestCase):
     input_shape = (8, 7, 9)
     output_shape = (8, 7, 9)
     final_shape = base.check_shape_agreement(
-        core.Dropout(rate=0.1, mode="train"), input_shape)
+        core.Dropout(rate=0.1, mode='train'), input_shape)
     self.assertEqual(final_shape, output_shape)
     final_shape = base.check_shape_agreement(
-        core.Dropout(rate=0.1, mode="eval"), input_shape)
+        core.Dropout(rate=0.1, mode='eval'), input_shape)
     self.assertEqual(final_shape, output_shape)
 
   def test_log_gaussian_pdf(self):
@@ -121,5 +121,5 @@ class CoreLayerTest(absltest.TestCase):
     self.assertEqual(int(prob[0]), -4)
     self.assertEqual(int(prob[1]), -6)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   absltest.main()

@@ -37,7 +37,7 @@ from trax.layers.rnn import *
 
 # Ginify
 def layer_configure(*args, **kwargs):
-  kwargs["module"] = "trax.layers"
+  kwargs['module'] = 'trax.layers'
   return gin.external_configurable(*args, **kwargs)
 
 # pylint: disable=used-before-assignment
@@ -53,10 +53,10 @@ Softmax = layer_configure(Softmax)
 Softplus = layer_configure(Softplus)
 
 DotProductCausalAttention = layer_configure(
-    DotProductCausalAttention, blacklist=["mode"])
+    DotProductCausalAttention, blacklist=['mode'])
 MemoryEfficientCausalAttention = layer_configure(
-    MemoryEfficientCausalAttention, blacklist=["mode"])
+    MemoryEfficientCausalAttention, blacklist=['mode'])
 TimeBinCausalAttention = layer_configure(
-    TimeBinCausalAttention, blacklist=["mode"])
+    TimeBinCausalAttention, blacklist=['mode'])
 LSHCausalAttention = layer_configure(
-    LSHCausalAttention, blacklist=["mode"])
+    LSHCausalAttention, blacklist=['mode'])

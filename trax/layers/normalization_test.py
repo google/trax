@@ -65,5 +65,5 @@ class NormalizationLayerTest(absltest.TestCase):
     self.assertEqual(result_shape, input_shape)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   absltest.main()

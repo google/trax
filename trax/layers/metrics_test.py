@@ -86,5 +86,5 @@ class MetricsLayerTest(absltest.TestCase):
     self.assertEqual(result_shape, ())
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   absltest.main()

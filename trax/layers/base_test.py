@@ -86,5 +86,5 @@ class BaseLayerTest(absltest.TestCase):
     self.assertEqual(grad.shape, input_shape)  # Gradient for each input.
     self.assertEqual(sum(sum(grad)), sum(sum(random_input)))  # Same as input.
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   absltest.main()

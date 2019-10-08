@@ -49,5 +49,5 @@ class CausalConvolutionTest(absltest.TestCase):
     # TODO(ddohan): How to test for causality? Gradient check between positions?
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   absltest.main()
