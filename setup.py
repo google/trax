@@ -19,7 +19,7 @@ from setuptools import setup
 
 setup(
     name='trax',
-    version='1.0.0',
+    version='1.0.1',
     description='Trax',
     author='Google Inc.',
     author_email='no-reply@google.com',
@@ -34,6 +34,7 @@ setup(
         'six',
         'jax',
         'jaxlib',
+        'tensor2tensor',
         'tensorflow-datasets',
         'absl-py',
     ],
