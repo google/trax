@@ -97,7 +97,7 @@ def policy_and_value_net(
     # In discrete policies every element of the output sequence corresponds to
     # a symbol in the discrete representation, and each control takes 1 symbol.
     n_preds_per_input = 1
-    kwargs = {"vocab_size": vocab_size}
+    kwargs = {'vocab_size': vocab_size}
 
   if two_towers:
     layers = [
@@ -451,7 +451,7 @@ def value_loss_given_predictions(value_prediction,
   value_loss = np.sum(loss) / np.sum(reward_mask)
 
   summaries = {
-      "value_loss": value_loss,
+      'value_loss': value_loss,
   }
 
   return (value_loss, summaries)
@@ -638,9 +638,9 @@ def ppo_loss_given_predictions(log_probab_actions_new,
   ppo_loss = -average_objective
 
   summaries = {
-      "ppo_loss": ppo_loss,
-      "advantage_mean": advantage_mean,
-      "advantage_std": advantage_std,
+      'ppo_loss': ppo_loss,
+      'advantage_mean': advantage_mean,
+      'advantage_std': advantage_std,
   }
 
   return (ppo_loss, summaries)
@@ -694,8 +694,8 @@ def combined_loss_given_predictions(log_probab_actions_new,
   combined_loss_ = ppo_loss + (c1 * value_loss) - (c2 * entropy_bonus)
 
   summaries = {
-      "combined_loss": combined_loss_,
-      "entropy_bonus": entropy_bonus,
+      'combined_loss': combined_loss_,
+      'entropy_bonus': entropy_bonus,
   }
   for loss_summaries in (value_summaries, ppo_summaries):
     summaries.update(loss_summaries)
@@ -837,16 +837,16 @@ def masked_entropy(log_probs, mask):
 def get_policy_model_files(output_dir):
   return list(
       reversed(
-          sorted(gfile.glob(os.path.join(output_dir, "model-??????.pkl")))))
+          sorted(gfile.glob(os.path.join(output_dir, 'model-??????.pkl')))))
 
 
 def get_epoch_from_policy_model_file(policy_model_file):
   base_name = os.path.basename(policy_model_file)
-  return int(re.match(r"model-(\d+).pkl", base_name).groups()[0])
+  return int(re.match(r'model-(\d+).pkl', base_name).groups()[0])
 
 
 def get_policy_model_file_from_epoch(output_dir, epoch):
-  return os.path.join(output_dir, "model-%06d.pkl" % epoch)
+  return os.path.join(output_dir, 'model-%06d.pkl' % epoch)
 
 
 def maybe_restore_opt_state(output_dir,
@@ -872,15 +872,15 @@ def maybe_restore_opt_state(output_dir,
   epoch = 0
   total_opt_step = 0
   for model_file in get_policy_model_files(output_dir):
-    logging.info("Trying to restore model from %s", model_file)
+    logging.info('Trying to restore model from %s', model_file)
     try:
-      with gfile.GFile(model_file, "rb") as f:
+      with gfile.GFile(model_file, 'rb') as f:
         policy_and_value_opt_state, policy_and_value_state, total_opt_step = (
             pkl_module.load(f))
       epoch = get_epoch_from_policy_model_file(model_file)
       break
     except EOFError as e:
-      logging.error("Unable to load model from: %s with %s", model_file, e)
+      logging.error('Unable to load model from: %s with %s', model_file, e)
       # Try an older version.
       continue
   return (
@@ -902,8 +902,8 @@ def save_opt_state(output_dir,
   """Saves the policy and value network optimization state etc."""
   pkl_module = utils.get_pickle_module()
   old_model_files = get_policy_model_files(output_dir)
-  params_file = os.path.join(output_dir, "model-%06d.pkl" % epoch)
-  with gfile.GFile(params_file, "wb") as f:
+  params_file = os.path.join(output_dir, 'model-%06d.pkl' % epoch)
+  with gfile.GFile(params_file, 'wb') as f:
     pkl_module.dump(
         (policy_and_value_opt_state, policy_and_value_state, total_opt_step), f)
   # Keep the last k model files lying around (note k > 1 because the latest
@@ -916,9 +916,9 @@ def save_opt_state(output_dir,
 def init_policy_from_world_model_checkpoint(policy_params, model_output_dir):
   """Initializes policy parameters from world model parameters."""
   pkl_module = utils.get_pickle_module()
-  params_file = os.path.join(model_output_dir, "model.pkl")
+  params_file = os.path.join(model_output_dir, 'model.pkl')
   # Don't use trax.restore_state to avoid a circular import.
-  with gfile.GFile(params_file, "rb") as f:
+  with gfile.GFile(params_file, 'rb') as f:
     model_params = pkl_module.load(f)[0][0]
   # TODO(pkozakowski): The following, brittle line of code is hardcoded for
   # transplanting parameters from TransformerLM to TransformerDecoder-based
@@ -932,12 +932,12 @@ def write_eval_reward_summaries(reward_stats_by_mode, summary_writer, epoch):
 
   Args:
     reward_stats_by_mode: Nested dict of structure: {
-          "raw": {
+          'raw': {
               <temperature 1>: {
-                  "mean": <reward mean>,
-                  "std": <reward std>, },
+                  'mean': <reward mean>,
+                  'std': <reward std>, },
               <temperature 2>: ... },
-          "processed": ... }
+          'processed': ... }
     summary_writer: jaxboard.SummaryWriter.
     epoch: Current epoch number.
   """
@@ -945,17 +945,17 @@ def write_eval_reward_summaries(reward_stats_by_mode, summary_writer, epoch):
     for (temperature, reward_stats) in reward_stats_by_temp.items():
       for (stat_name, stat) in reward_stats.items():
         summary_writer.scalar(
-            "eval/{reward_mode}_reward_{stat_name}/"
-            "temperature_{temperature}".format(
+            'eval/{reward_mode}_reward_{stat_name}/'
+            'temperature_{temperature}'.format(
                 reward_mode=reward_mode,
                 stat_name=stat_name,
                 temperature=temperature),
             stat,
             step=epoch)
       logging.info(
-          "Epoch [% 6d] Policy Evaluation (%s reward) "
-          "[temperature %.2f] = %10.2f (+/- %.2f)", epoch, reward_mode,
-          temperature, reward_stats["mean"], reward_stats["std"])
+          'Epoch [% 6d] Policy Evaluation (%s reward) '
+          '[temperature %.2f] = %10.2f (+/- %.2f)', epoch, reward_mode,
+          temperature, reward_stats['mean'], reward_stats['std'])
 
 
 def shuffled_index_batches(dataset_size, batch_size):

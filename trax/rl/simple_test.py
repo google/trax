@@ -49,16 +49,16 @@ class SimpleTest(test.TestCase):
   def _dump_trajectory_pickle(self, observations, path):
     pkl_module = utils.get_pickle_module()
     trajectories = list(map(self._make_singleton_trajectory, observations))
-    with gfile.GFile(path, "wb") as f:
+    with gfile.GFile(path, 'wb') as f:
       pkl_module.dump(trajectories, f)
 
   def test_loads_trajectories(self):
     temp_dir = self.get_temp_dir()
     # Dump two trajectory pickles with given observations.
     self._dump_trajectory_pickle(
-        observations=[0, 1, 2, 3], path=os.path.join(temp_dir, "0.pkl"))
+        observations=[0, 1, 2, 3], path=os.path.join(temp_dir, '0.pkl'))
     self._dump_trajectory_pickle(
-        observations=[4, 5, 6, 7], path=os.path.join(temp_dir, "1.pkl"))
+        observations=[4, 5, 6, 7], path=os.path.join(temp_dir, '1.pkl'))
     (train_trajs, eval_trajs) = simple.load_trajectories(
         temp_dir, eval_frac=0.25)
     extract_obs = lambda t: t.last_time_step.observation
@@ -236,7 +236,7 @@ class SimpleTest(test.TestCase):
     self.assertEqual(error.shape, (1,))
 
   @staticmethod
-  @mock.patch.object(trainer_lib, "restore_state", autospec=True)
+  @mock.patch.object(trainer_lib, 'restore_state', autospec=True)
   def _make_env(
       mock_restore_state, observation_space, action_space,
       max_trajectory_length, batch_size,
@@ -244,7 +244,7 @@ class SimpleTest(test.TestCase):
     # (model_params, opt_state)
     mock_restore_state.return_value.params = (None, None)
 
-    gin.bind_parameter("BoxSpaceSerializer.precision", 1)
+    gin.bind_parameter('BoxSpaceSerializer.precision', 1)
 
     predict_output = (np.array([[[0.0]]] * batch_size))
     mock_model_fn = mock.MagicMock()
@@ -267,7 +267,7 @@ class SimpleTest(test.TestCase):
     )
 
   def test_evaluates_model_with_vector_observation_space(self):
-    with backend.use_backend("numpy"):
+    with backend.use_backend('numpy'):
       env = self._make_env(  # pylint: disable=no-value-for-parameter
           observation_space=gym.spaces.Box(shape=(2,), low=0, high=1),
           action_space=gym.spaces.Discrete(n=1),
@@ -287,7 +287,7 @@ class SimpleTest(test.TestCase):
       self.assertEqual(len(metrics), 2)
 
   def test_fails_to_evaluate_model_with_matrix_observation_space(self):
-    with backend.use_backend("numpy"):
+    with backend.use_backend('numpy'):
       env = self._make_env(  # pylint: disable=no-value-for-parameter
           observation_space=gym.spaces.Box(shape=(2, 2), low=0, high=1),
           action_space=gym.spaces.Discrete(n=1),
@@ -300,5 +300,5 @@ class SimpleTest(test.TestCase):
       self.assertIsNone(metrics)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   test.main()

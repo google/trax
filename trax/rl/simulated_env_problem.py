@@ -65,7 +65,7 @@ class SimulatedEnvProblem(env_problem.EnvProblem):
     self._model = model
     if model_predict_kwargs is None:
       model_predict_kwargs = {}
-    model_predict = self._model(mode="predict", **model_predict_kwargs)
+    model_predict = self._model(mode='predict', **model_predict_kwargs)
     def predict_with_state(*args, **kwargs):
       output = model_predict(*args, **kwargs)
       return (output, model_predict.state)
@@ -319,7 +319,7 @@ class SerializedSequenceSimulatedEnvProblem(SimulatedEnvProblem):
     Args:
       model: trax model to use for simulation. It's assumed to take keyword
         arguments vocab_size and mode, where vocab_size is the number of symbols
-        in the vocabulary and mode is either "train" or "eval".
+        in the vocabulary and mode is either 'train' or 'eval'.
 
       reward_fn: Function (previous_observation, current_observation) -> reward.
       done_fn: Function (previous_observation, current_observation) -> done.
@@ -397,7 +397,7 @@ class SerializedSequenceSimulatedEnvProblem(SimulatedEnvProblem):
     indices = np.array(indices)
     assert indices.shape[0] in (0, self._steps.shape[0]), (
         # TODO(pkozakowski): Lift this requirement.
-        "Only resetting all envs at once is supported."
+        'Only resetting all envs at once is supported.'
     )
 
     self._model_state = self._init_model_state

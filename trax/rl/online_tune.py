@@ -56,7 +56,7 @@ def control_to_observation(control_values, control_config, observation_range):
 
 def control_metric(name):
   """Returns the (mode, metric) pair in History for the given control."""
-  return ("train", "training/{}".format(name))
+  return ('train', 'training/{}'.format(name))
 
 
 def maybe_flip(value, flip):
@@ -102,7 +102,7 @@ def update_control(control_config, action, history, action_multipliers):
   metric = control_metric(name)
   control_values = historical_metric_values(history, metric)
   assert control_values.shape[0] > 0, (
-      "No last control {} found in history.".format(name))
+      'No last control {} found in history.'.format(name))
   current_control = control_values[-1]
   (current_control, low, high) = maybe_flip(
       np.array([current_control, low, high]), flip

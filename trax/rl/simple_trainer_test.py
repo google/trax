@@ -38,12 +38,12 @@ class SimpleTrainerTest(test.TestCase):
     wrapper_fn = functools.partial(
         gym_utils.gym_env_wrapper,
         **{
-            "rl_env_max_episode_steps": max_episode_steps,
-            "maxskip_env": False,
-            "rendered_env": False,
-            "rendered_env_resize_to": None,  # Do not resize frames
-            "sticky_actions": False,
-            "output_dtype": None,
+            'rl_env_max_episode_steps': max_episode_steps,
+            'maxskip_env': False,
+            'rendered_env': False,
+            'rendered_env_resize_to': None,  # Do not resize frames
+            'sticky_actions': False,
+            'output_dtype': None,
         })
 
     return gym_env_problem.GymEnvProblem(base_env_name=name,
@@ -52,11 +52,11 @@ class SimpleTrainerTest(test.TestCase):
                                          discrete_rewards=False)
 
   def test_training_loop_acrobot(self):
-    gin.bind_parameter("BoxSpaceSerializer.precision", 2)
-    gin.bind_parameter("trainer_lib.train.eval_steps", 1)
+    gin.bind_parameter('BoxSpaceSerializer.precision', 2)
+    gin.bind_parameter('trainer_lib.train.eval_steps', 1)
     trainer = trainers.SimPLe(
-        train_env=self._make_wrapped_env("Acrobot-v1"),
-        eval_env=self._make_wrapped_env("Acrobot-v1"),
+        train_env=self._make_wrapped_env('Acrobot-v1'),
+        eval_env=self._make_wrapped_env('Acrobot-v1'),
         output_dir=self.get_temp_dir(),
         policy_trainer_class=functools.partial(
             trainers.PPO,
@@ -92,5 +92,5 @@ class SimpleTrainerTest(test.TestCase):
     trainer.training_loop(n_epochs=1)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   test.main()

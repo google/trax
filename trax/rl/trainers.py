@@ -27,8 +27,8 @@ from trax.rl import simple_trainer
 
 # Ginify
 def trainer_configure(*args, **kwargs):
-  kwargs["module"] = "trax.rl.trainers"
-  kwargs["blacklist"] = ["train_env", "eval_env", "output_dir"]
+  kwargs['module'] = 'trax.rl.trainers'
+  kwargs['blacklist'] = ['train_env', 'eval_env', 'output_dir']
   return gin.external_configurable(*args, **kwargs)
 
 

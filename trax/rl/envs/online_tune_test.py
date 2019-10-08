@@ -33,25 +33,25 @@ class OnlineTuneTest(test.TestCase):
 
   def test_retrieves_historical_metric_values(self):
     history = trax_history.History()
-    self._append_metrics(history, ("train", "accuracy"), [0.1, 0.73])
+    self._append_metrics(history, ('train', 'accuracy'), [0.1, 0.73])
     metric_values = online_tune.historical_metric_values(
-        history, metric=("train", "accuracy"), observation_range=(0, 5))
+        history, metric=('train', 'accuracy'), observation_range=(0, 5))
     np.testing.assert_array_equal(metric_values, [0.1, 0.73])
 
   def test_clips_historical_metric_values(self):
     history = trax_history.History()
-    self._append_metrics(history, ("train", "loss"), [-10, 10])
+    self._append_metrics(history, ('train', 'loss'), [-10, 10])
     metric_values = online_tune.historical_metric_values(
-        history, metric=("train", "loss"), observation_range=(-1, 1))
+        history, metric=('train', 'loss'), observation_range=(-1, 1))
     np.testing.assert_array_equal(metric_values, [-1, 1])
 
   def test_converts_history_to_observations_without_learning_rate(self):
     history = trax_history.History()
-    self._append_metrics(history, ("train", "loss"), [3.0, 1.07])
-    self._append_metrics(history, ("eval", "accuracy"), [0.12, 0.68])
+    self._append_metrics(history, ('train', 'loss'), [3.0, 1.07])
+    self._append_metrics(history, ('eval', 'accuracy'), [0.12, 0.68])
     observations = online_tune.history_to_observations(
         history,
-        metrics=(("eval", "accuracy"), ("train", "loss")),
+        metrics=(('eval', 'accuracy'), ('train', 'loss')),
         observation_range=(0, 5),
         include_lr=False,
     )
@@ -60,7 +60,7 @@ class OnlineTuneTest(test.TestCase):
   def test_converts_history_to_observations_with_learning_rate(self):
     history = trax_history.History()
     self._append_metrics(
-        history, ("train", "training/learning_rate"), [1e-3, 1e-4])
+        history, ('train', 'training/learning_rate'), [1e-3, 1e-4])
     observations = online_tune.history_to_observations(
         history,
         metrics=(),
@@ -73,10 +73,10 @@ class OnlineTuneTest(test.TestCase):
 
   def test_clips_observations(self):
     history = trax_history.History()
-    self._append_metrics(history, ("eval", "loss"), [-10, 10])
+    self._append_metrics(history, ('eval', 'loss'), [-10, 10])
     observations = online_tune.history_to_observations(
         history,
-        metrics=(("eval", "loss"),),
+        metrics=(('eval', 'loss'),),
         observation_range=(-2, 2),
         include_lr=False,
     )
@@ -106,5 +106,5 @@ class OnlineTuneTest(test.TestCase):
     np.testing.assert_almost_equal(new_lr, 3e-3)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   test.main()

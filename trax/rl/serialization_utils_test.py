@@ -36,9 +36,9 @@ class SerializationTest(test.TestCase):
     )
     self._repr_length = 100
     self._serialization_utils_kwargs = {
-        "observation_serializer": self._serializer,
-        "action_serializer": self._serializer,
-        "representation_length": self._repr_length,
+        'observation_serializer': self._serializer,
+        'action_serializer': self._serializer,
+        'representation_length': self._repr_length,
     }
 
   def test_serializes_observations_and_actions(self):
@@ -128,7 +128,7 @@ class SerializationTest(test.TestCase):
     self.assertFalse(np.array_equal(reprs[0] * act_mask, reprs[1] * act_mask))
 
   def test_significance_map(self):
-    gin.bind_parameter("BoxSpaceSerializer.precision", 3)
+    gin.bind_parameter('BoxSpaceSerializer.precision', 3)
     significance_map = serialization_utils.significance_map(
         observation_serializer=space_serializer.create(
             gym.spaces.Box(low=0, high=1, shape=(2,)), vocab_size=2
@@ -164,5 +164,5 @@ class SerializationTest(test.TestCase):
     )
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   test.main()

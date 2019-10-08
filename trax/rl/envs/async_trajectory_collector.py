@@ -35,35 +35,35 @@ from trax.rl.envs import async_trajectory_collector_lib as async_lib
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_multi_string("config_file", None,
-                          "Configuration file with parameters (.gin).")
-flags.DEFINE_multi_string("config", None,
-                          "Configuration parameters (gin string).")
-flags.DEFINE_bool("use_tpu", False, "Whether we're running on TPU.")
-flags.DEFINE_bool("xm", False, "Copy atari roms?")
+flags.DEFINE_multi_string('config_file', None,
+                          'Configuration file with parameters (.gin).')
+flags.DEFINE_multi_string('config', None,
+                          'Configuration parameters (gin string).')
+flags.DEFINE_bool('use_tpu', False, "Whether we're running on TPU.")
+flags.DEFINE_bool('xm', False, 'Copy atari roms?')
 
 flags.DEFINE_bool(
-    "try_abort", True,
-    "Should we try to abort a trajectory collection if a newer "
-    "policy is available.")
+    'try_abort', True,
+    'Should we try to abort a trajectory collection if a newer '
+    'policy is available.')
 
-flags.DEFINE_string("output_dir", "", "Output dir.")
-flags.DEFINE_string("envs_output_dir", "", "Output dir for the envs.")
+flags.DEFINE_string('output_dir', '', 'Output dir.')
+flags.DEFINE_string('envs_output_dir', '', 'Output dir for the envs.')
 
 flags.DEFINE_boolean(
-    "jax_debug_nans", False,
-    "Setting to true will help to debug nans and disable jit.")
-flags.DEFINE_boolean("disable_jit", False, "Setting to true will disable jit.")
+    'jax_debug_nans', False,
+    'Setting to true will help to debug nans and disable jit.')
+flags.DEFINE_boolean('disable_jit', False, 'Setting to true will disable jit.')
 
-flags.DEFINE_boolean("parallelize_envs", False,
-                     "If true, sets parallelism to number of cpu cores.")
+flags.DEFINE_boolean('parallelize_envs', False,
+                     'If true, sets parallelism to number of cpu cores.')
 
-flags.DEFINE_integer("replica", 0, "Basically to append to trajectory name.")
-flags.DEFINE_bool("enable_eager_execution", False, "")
+flags.DEFINE_integer('replica', 0, 'Basically to append to trajectory name.')
+flags.DEFINE_bool('enable_eager_execution', False, '')
 
 flags.DEFINE_integer(
-    "max_trajectories_to_collect", -1,
-    "-1 for infinite, otherwise whatever number was specified.")
+    'max_trajectories_to_collect', -1,
+    '-1 for infinite, otherwise whatever number was specified.')
 
 
 # TODO(afrozm): This code snippet is strewn across many places, unify it.
@@ -82,20 +82,20 @@ def update_jax_config():
   """Update JAX config based on flags."""
 
   if FLAGS.jax_debug_nans:
-    config.update("jax_debug_nans", True)
+    config.update('jax_debug_nans', True)
 
   if FLAGS.use_tpu:
-    config.update("jax_platform_name", "tpu")
+    config.update('jax_platform_name', 'tpu')
   else:
-    config.update("jax_platform_name", "gpu")
+    config.update('jax_platform_name', 'gpu')
 
 
 @gin.configurable(blacklist=[
-    "output_dir",
+    'output_dir',
 ])
 def create_envs_and_collect_trajectories(
     output_dir,
-    env_name="OnlineTuneEnv-v0",
+    env_name='OnlineTuneEnv-v0',
     max_timestep=None,
     clip_rewards=False,
     rendered_env=False,
@@ -110,20 +110,20 @@ def create_envs_and_collect_trajectories(
   # TODO(pkozakowski): Find a better way to determine this.
   train_env_kwargs = {}
   eval_env_kwargs = {}
-  if "OnlineTuneEnv" in env_name:
-    envs_output_dir = FLAGS.envs_output_dir or os.path.join(output_dir, "envs")
-    train_env_output_dir = os.path.join(envs_output_dir, "train")
-    eval_env_output_dir = os.path.join(envs_output_dir, "eval")
-    train_env_kwargs = {"output_dir": train_env_output_dir}
-    eval_env_kwargs = {"output_dir": eval_env_output_dir}
+  if 'OnlineTuneEnv' in env_name:
+    envs_output_dir = FLAGS.envs_output_dir or os.path.join(output_dir, 'envs')
+    train_env_output_dir = os.path.join(envs_output_dir, 'train')
+    eval_env_output_dir = os.path.join(envs_output_dir, 'eval')
+    train_env_kwargs = {'output_dir': train_env_output_dir}
+    eval_env_kwargs = {'output_dir': eval_env_output_dir}
 
-  if "ClientEnv" in env_name:
-    train_env_kwargs["per_env_kwargs"] = [{
-        "remote_env_address": os.path.join(FLAGS.train_server_bns, str(replica))
+  if 'ClientEnv' in env_name:
+    train_env_kwargs['per_env_kwargs'] = [{
+        'remote_env_address': os.path.join(FLAGS.train_server_bns, str(replica))
     } for replica in range(train_batch_size)]
 
-    eval_env_kwargs["per_env_kwargs"] = [{
-        "remote_env_address": os.path.join(FLAGS.eval_server_bns, str(replica))
+    eval_env_kwargs['per_env_kwargs'] = [{
+        'remote_env_address': os.path.join(FLAGS.eval_server_bns, str(replica))
     } for replica in range(eval_batch_size)]
 
   parallelism = multiprocessing.cpu_count() if FLAGS.parallelize_envs else 1
@@ -179,19 +179,19 @@ def main(argv):
   if FLAGS.enable_eager_execution:
     tf.enable_eager_execution()
 
-  logging.info("Initializing Gin.")
+  logging.info('Initializing Gin.')
   initialize_gin()
 
-  logging.info("Update JAX config.")
+  logging.info('Update JAX config.')
   update_jax_config()
 
-  logging.info("Getting output_dir")
+  logging.info('Getting output_dir')
   output_dir = get_output_dir()
-  logging.info("Got output_dir = %s", output_dir)
+  logging.info('Got output_dir = %s', output_dir)
 
-  logging.info("Starting Trajectory collection.")
+  logging.info('Starting Trajectory collection.')
   create_envs_and_collect_trajectories(output_dir)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   app.run(main)

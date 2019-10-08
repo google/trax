@@ -52,7 +52,7 @@ def get_newer_policy_model_file(output_dir,
 
     # No policy files at all.
     if not policy_files:
-      logging.info("There are no policy files in [%s], waiting for %s secs.",
+      logging.info('There are no policy files in [%s], waiting for %s secs.',
                    output_dir, sleep_time_secs)
       sleep_time_secs = do_wait(sleep_time_secs)
       continue
@@ -63,7 +63,7 @@ def get_newer_policy_model_file(output_dir,
 
     # We don't - wait.
     if epoch <= min_epoch:
-      logging.info("epoch [%s] <= min_epoch [%s], waiting for %s secs.", epoch,
+      logging.info('epoch [%s] <= min_epoch [%s], waiting for %s secs.', epoch,
                    min_epoch, sleep_time_secs)
       sleep_time_secs = do_wait(sleep_time_secs)
       continue
@@ -71,7 +71,7 @@ def get_newer_policy_model_file(output_dir,
     # We do have a new file, return it.
     policy_file = policy_files[0]
     epoch = ppo.get_epoch_from_policy_model_file(policy_file)
-    logging.info("Found epoch [%s] and policy file [%s]", epoch, policy_file)
+    logging.info('Found epoch [%s] and policy file [%s]', epoch, policy_file)
     return policy_file, epoch
 
   # Exhausted our waiting limit.
@@ -88,7 +88,7 @@ def dump_trajectory(output_dir, epoch, env_id, temperature, random_string,
   trajectory_file_name = trajectory.TRAJECTORY_FILE_FORMAT.format(
       epoch=epoch, env_id=env_id, temperature=temperature, r=random_string)
 
-  with gfile.GFile(os.path.join(output_dir, trajectory_file_name), "w") as f:
+  with gfile.GFile(os.path.join(output_dir, trajectory_file_name), 'w') as f:
     trajectory.get_pickle_module().dump(traj, f)
 
 
@@ -118,7 +118,7 @@ def continuously_collect_trajectories(output_dir,
   policy_and_epoch = get_newer_policy_model_file(output_dir, wait_forever=True)
   assert policy_and_epoch
   policy_file, epoch = policy_and_epoch
-  logging.info("Read initial policy for epoch [%s] -> [%s]", epoch, policy_file)
+  logging.info('Read initial policy for epoch [%s] -> [%s]', epoch, policy_file)
 
   # Returns immediately if there is a newer epoch available.
   def is_newer_policy_file_available(epoch_, sleep_time_secs_=0.1):
@@ -132,15 +132,15 @@ def continuously_collect_trajectories(output_dir,
 
   trajectories_collected = 0
 
-  train_env_trajectory_dump_dir = os.path.join(output_dir, "trajectories/train")
-  eval_env_trajectory_dump_dir = os.path.join(output_dir, "trajectories/eval")
+  train_env_trajectory_dump_dir = os.path.join(output_dir, 'trajectories/train')
+  eval_env_trajectory_dump_dir = os.path.join(output_dir, 'trajectories/eval')
 
   gfile.makedirs(train_env_trajectory_dump_dir)
   gfile.makedirs(eval_env_trajectory_dump_dir)
 
   while max_trajectories_to_collect is None or trajectories_collected < int(
       max_trajectories_to_collect):
-    logging.info("Collecting a trajectory, trajectories_collected = %s",
+    logging.info('Collecting a trajectory, trajectories_collected = %s',
                  trajectories_collected)
 
     # Abort function -- if something newever is available, then abort the
@@ -166,12 +166,12 @@ def continuously_collect_trajectories(output_dir,
 
       # Write the trajectory down.
       logging.info(
-          "Dumping the collected trajectory, trajectories_collected = %s",
+          'Dumping the collected trajectory, trajectories_collected = %s',
           trajectories_collected)
       dump_trajectory(train_env_trajectory_dump_dir, epoch, env_id, temperature,
                       str(random.randint(0, 2**31 - 1)), trajs)
     else:
-      logging.info("Computation was aborted, a new policy is available.")
+      logging.info('Computation was aborted, a new policy is available.')
 
     # This maybe useless, since `abort_fn` will take care of it. We might want
     # to have this here if abort_fn is False always.
@@ -185,11 +185,11 @@ def continuously_collect_trajectories(output_dir,
     # We have a newer policy, read it and update the parameters.
     policy_file, epoch = policy_file_and_epoch
     logging.info(
-        "We have a newer policy epoch [%s], file [%s], updating parameters.",
+        'We have a newer policy epoch [%s], file [%s], updating parameters.',
         epoch, policy_file)
     ppo_trainer.update_optimization_state(
         output_dir, policy_and_value_opt_state=None)
-    logging.info("Parameters of PPOTrainer updated.")
+    logging.info('Parameters of PPOTrainer updated.')
 
     # Check that the epochs match.
     assert epoch == ppo_trainer.epoch

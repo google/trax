@@ -31,8 +31,8 @@ from trax import trainer_lib
 from trax.rl import online_tune
 from trax.rl.envs import online_tune_env
 
-HISTORY_MODE = "eval"
-METRIC = "metrics/accuracy"
+HISTORY_MODE = 'eval'
+METRIC = 'metrics/accuracy'
 
 
 class MockTrainer(trainer_lib.Trainer):
@@ -87,8 +87,8 @@ class OnlineTuneTest(test.TestCase):
             output_dtype=np.float32),
         optimizer=optimizers.Momentum,
         control_configs=(
-            ("learning_rate", 1e-3, (1e-9, 10.0), False),
-            ("weight_decay_rate", 1e-5, (1e-9, 0.1), False),
+            ('learning_rate', 1e-3, (1e-9, 10.0), False),
+            ('weight_decay_rate', 1e-5, (1e-9, 0.1), False),
         ),
         include_controls_in_observation=False,
         output_dir=output_dir,
@@ -108,9 +108,9 @@ class OnlineTuneTest(test.TestCase):
     expected_rewards = [0.4, 0.3, 0.1]
     expected_dones = [False, False, True]
     expected_controls = [
-        {"learning_rate": 0.0008, "weight_decay_rate": 1e-5},
-        {"learning_rate": 0.0008, "weight_decay_rate": 1.25e-5},
-        {"learning_rate": 0.001, "weight_decay_rate": 1e-5},
+        {'learning_rate': 0.0008, 'weight_decay_rate': 1e-5},
+        {'learning_rate': 0.0008, 'weight_decay_rate': 1.25e-5},
+        {'learning_rate': 0.001, 'weight_decay_rate': 1e-5},
     ]
 
     env = self._create_env(
@@ -131,7 +131,7 @@ class OnlineTuneTest(test.TestCase):
     self.assertEqual(actual_dones, expected_dones)
     def get_control(name, controls):
       return [control[name] for control in controls]
-    for name in ("learning_rate", "weight_decay_rate"):
+    for name in ('learning_rate', 'weight_decay_rate'):
       np.testing.assert_allclose(
           get_control(name, env.trainer.controls),
           get_control(name, expected_controls),
@@ -142,10 +142,10 @@ class OnlineTuneTest(test.TestCase):
     env = self._create_env(output_dir=output_dir)
     self.assertEqual(set(gfile.listdir(output_dir)), set())
     env.reset()
-    self.assertEqual(set(gfile.listdir(output_dir)), {"0"})
+    self.assertEqual(set(gfile.listdir(output_dir)), {'0'})
     env.reset()
-    self.assertEqual(set(gfile.listdir(output_dir)), {"0", "1"})
+    self.assertEqual(set(gfile.listdir(output_dir)), {'0', '1'})
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   test.main()

@@ -164,7 +164,7 @@ class PPO(base_trainer.BaseTrainer):
       (n_controls,) = action_space.nvec.shape
       assert n_controls > 0
       assert onp.min(action_space.nvec) == onp.max(action_space.nvec), (
-          "Every control must have the same number of actions.")
+          'Every control must have the same number of actions.')
       n_actions = action_space.nvec[0]
     self._n_actions = n_actions
     self._n_controls = n_controls
@@ -211,17 +211,17 @@ class PPO(base_trainer.BaseTrainer):
 
     # Create summary writers and history.
     self._train_sw = jaxboard.SummaryWriter(
-        os.path.join(self._output_dir, "train"))
+        os.path.join(self._output_dir, 'train'))
     self._timing_sw = jaxboard.SummaryWriter(
-        os.path.join(self._output_dir, "timing"))
+        os.path.join(self._output_dir, 'timing'))
     self._eval_sw = jaxboard.SummaryWriter(
-        os.path.join(self._output_dir, "eval"))
+        os.path.join(self._output_dir, 'eval'))
 
     self._n_trajectories_done = 0
 
     self._last_saved_at = 0
     if self._async_mode:
-      logging.info("Saving model on startup to have a model policy file.")
+      logging.info('Saving model on startup to have a model policy file.')
       self.save()
 
     self._rewards_to_actions = self._init_rewards_to_actions()
@@ -238,9 +238,9 @@ class PPO(base_trainer.BaseTrainer):
         act_serializer.representation_length
     ) * (self._max_timestep + 1)
     return {
-        "observation_serializer": obs_serializer,
-        "action_serializer": act_serializer,
-        "representation_length": repr_length,
+        'observation_serializer': obs_serializer,
+        'action_serializer': act_serializer,
+        'representation_length': repr_length,
     }
 
   def _init_rewards_to_actions(self):
@@ -282,7 +282,7 @@ class PPO(base_trainer.BaseTrainer):
          output_dir, policy_and_value_opt_state, self._model_state)
 
     if self._epoch > 0:
-      logging.info("Restored parameters from epoch [%d]", self._epoch)
+      logging.info('Restored parameters from epoch [%d]', self._epoch)
 
   @property
   def train_env(self):
@@ -319,13 +319,13 @@ class PPO(base_trainer.BaseTrainer):
     assert self._async_mode
 
     # trajectories/train and trajectories/eval are the two subdirectories.
-    trajectory_dir = os.path.join(self._output_dir, "trajectories",
-                                  "train" if train else "eval")
+    trajectory_dir = os.path.join(self._output_dir, 'trajectories',
+                                  'train' if train else 'eval')
     epoch = self.epoch
 
     logging.info(
-        "Loading [%s] trajectories from dir [%s] for epoch [%s] and temperature"
-        " [%s]", n_trajectories, trajectory_dir, epoch, temperature)
+        'Loading [%s] trajectories from dir [%s] for epoch [%s] and temperature'
+        ' [%s]', n_trajectories, trajectory_dir, epoch, temperature)
 
     bt = trajectory.BatchTrajectory.load_from_directory(
         trajectory_dir,
@@ -337,7 +337,7 @@ class PPO(base_trainer.BaseTrainer):
     if bt is None:
       logging.error(
           "Couldn't load [%s] trajectories from dir [%s] for epoch [%s] and "
-          "temperature [%s]", n_trajectories, trajectory_dir, epoch,
+          'temperature [%s]', n_trajectories, trajectory_dir, epoch,
           temperature)
       assert bt
 
@@ -409,7 +409,7 @@ class PPO(base_trainer.BaseTrainer):
     policy_eval_time = ppo.get_time(policy_eval_start_time)
 
     trajectory_collection_start_time = time.time()
-    logging.vlog(1, "PPO epoch [% 6d]: collecting trajectories.", self._epoch)
+    logging.vlog(1, 'PPO epoch [% 6d]: collecting trajectories.', self._epoch)
     self._rng, key = jax_random.split(self._rng)
     trajs, _, timing_info, self._model_state = self.collect_trajectories(
         train=True, temperature=1.0)
@@ -417,7 +417,7 @@ class PPO(base_trainer.BaseTrainer):
     self._should_reset = False
     trajectory_collection_time = ppo.get_time(trajectory_collection_start_time)
 
-    logging.vlog(1, "Collecting trajectories took %0.2f msec.",
+    logging.vlog(1, 'Collecting trajectories took %0.2f msec.',
                  trajectory_collection_time)
 
     rewards = np.array([np.sum(traj[2]) for traj in trajs])
@@ -427,28 +427,28 @@ class PPO(base_trainer.BaseTrainer):
     min_reward = np.min(rewards)
 
     self._train_sw.scalar(
-        "train/reward_mean_truncated", avg_reward, step=self._epoch)
+        'train/reward_mean_truncated', avg_reward, step=self._epoch)
     if evaluate and not self._separate_eval:
-      metrics = {"raw": {1.0: {"mean": avg_reward, "std": std_reward}}}
+      metrics = {'raw': {1.0: {'mean': avg_reward, 'std': std_reward}}}
       ppo.write_eval_reward_summaries(metrics, self._eval_sw, self._epoch)
 
-    logging.vlog(1, "Rewards avg=[%0.2f], max=[%0.2f], min=[%0.2f], all=%s",
+    logging.vlog(1, 'Rewards avg=[%0.2f], max=[%0.2f], min=[%0.2f], all=%s',
                  avg_reward, max_reward, min_reward,
                  [float(np.sum(traj[2])) for traj in trajs])
 
     logging.vlog(1,
-                 "Trajectory Length average=[%0.2f], max=[%0.2f], min=[%0.2f]",
+                 'Trajectory Length average=[%0.2f], max=[%0.2f], min=[%0.2f]',
                  float(sum(len(traj[0]) for traj in trajs)) / len(trajs),
                  max(len(traj[0]) for traj in trajs),
                  min(len(traj[0]) for traj in trajs))
-    logging.vlog(2, "Trajectory Lengths: %s", [len(traj[0]) for traj in trajs])
+    logging.vlog(2, 'Trajectory Lengths: %s', [len(traj[0]) for traj in trajs])
 
     preprocessing_start_time = time.time()
     (padded_observations, padded_actions, padded_rewards, reward_mask,
      padded_infos) = self._preprocess_trajectories(trajs)
     preprocessing_time = ppo.get_time(preprocessing_start_time)
 
-    logging.vlog(1, "Preprocessing trajectories took %0.2f msec.",
+    logging.vlog(1, 'Preprocessing trajectories took %0.2f msec.',
                  ppo.get_time(preprocessing_start_time))
     logging.vlog(1, "Padded Observations' shape [%s]",
                  str(padded_observations.shape))
@@ -469,12 +469,12 @@ class PPO(base_trainer.BaseTrainer):
     # recompute all network predictions. Let's figure out a solution that will
     # work with both serialized sequences and non-deterministic networks.
 
-    # assert ("log_prob_actions" in padded_infos and
-    #         "value_predictions" in padded_infos)
+    # assert ('log_prob_actions' in padded_infos and
+    #         'value_predictions' in padded_infos)
     # These are the actual log-probabs and value predictions seen while picking
     # the actions.
-    # actual_log_probabs_traj = padded_infos["log_prob_actions"]
-    # actual_value_predictions_traj = padded_infos["value_predictions"]
+    # actual_log_probabs_traj = padded_infos['log_prob_actions']
+    # actual_value_predictions_traj = padded_infos['value_predictions']
 
     # assert (B, T, C) == actual_log_probabs_traj.shape[:3]
     # A = actual_log_probabs_traj.shape[3]  # pylint: disable=invalid-name
@@ -510,7 +510,7 @@ class PPO(base_trainer.BaseTrainer):
 
     # Compute value and ppo losses.
     self._rng, key1 = jax_random.split(self._rng, num=2)
-    logging.vlog(2, "Starting to compute P&V loss.")
+    logging.vlog(2, 'Starting to compute P&V loss.')
     loss_compute_start_time = time.time()
     (cur_combined_loss, component_losses, summaries, self._model_state) = (
         ppo.combined_loss(
@@ -533,12 +533,12 @@ class PPO(base_trainer.BaseTrainer):
     (cur_ppo_loss, cur_value_loss, cur_entropy_bonus) = component_losses
     logging.vlog(
         1,
-        "Calculating P&V loss [%10.2f(%10.2f, %10.2f, %10.2f)] took %0.2f msec.",
+        'Calculating P&V loss [%10.2f(%10.2f, %10.2f, %10.2f)] took %0.2f msec.',
         cur_combined_loss, cur_ppo_loss, cur_value_loss, cur_entropy_bonus,
         ppo.get_time(loss_compute_start_time))
 
     self._rng, key1 = jax_random.split(self._rng, num=2)
-    logging.vlog(1, "Policy and Value Optimization")
+    logging.vlog(1, 'Policy and Value Optimization')
     optimization_start_time = time.time()
     keys = jax_random.split(key1, num=self._n_optimizer_steps)
     opt_step = 0
@@ -599,8 +599,8 @@ class PPO(base_trainer.BaseTrainer):
       early_stopping = approx_kl > 1.5 * self._target_kl
       if early_stopping:
         logging.vlog(
-            1, "Early stopping policy and value optimization after %d steps, "
-            "with approx_kl: %0.2f", opt_step, approx_kl)
+            1, 'Early stopping policy and value optimization after %d steps, '
+            'with approx_kl: %0.2f', opt_step, approx_kl)
         # We don't return right-away, we want the below to execute on the last
         # iteration.
 
@@ -625,12 +625,12 @@ class PPO(base_trainer.BaseTrainer):
                 c2=self._c2,
                 state=self._model_state,
                 rng=k3))
-        logging.vlog(1, "One Policy and Value grad desc took: %0.2f msec",
+        logging.vlog(1, 'One Policy and Value grad desc took: %0.2f msec',
                      ppo.get_time(t, t2))
         (ppo_loss, value_loss, entropy_bonus) = component_losses
         logging.vlog(
-            1, "Combined Loss(value, ppo, entropy_bonus) [%10.2f] ->"
-            " [%10.2f(%10.2f,%10.2f,%10.2f)]", cur_combined_loss, combined_loss,
+            1, 'Combined Loss(value, ppo, entropy_bonus) [%10.2f] ->'
+            ' [%10.2f(%10.2f,%10.2f,%10.2f)]', cur_combined_loss, combined_loss,
             ppo_loss, value_loss, entropy_bonus)
 
       if early_stopping:
@@ -639,19 +639,19 @@ class PPO(base_trainer.BaseTrainer):
     optimization_time = ppo.get_time(optimization_start_time)
 
     logging.vlog(
-        1, "Total Combined Loss reduction [%0.2f]%%",
+        1, 'Total Combined Loss reduction [%0.2f]%%',
         (100 * (cur_combined_loss - combined_loss) / np.abs(cur_combined_loss)))
 
     summaries.update({
-        "n_optimizer_steps": opt_step,
-        "approx_kl": approx_kl,
+        'n_optimizer_steps': opt_step,
+        'approx_kl': approx_kl,
     })
     for (name, value) in summaries.items():
-      self._train_sw.scalar("train/{}".format(name), value, step=self._epoch)
+      self._train_sw.scalar('train/{}'.format(name), value, step=self._epoch)
 
     logging.info(
-        "PPO epoch [% 6d], Reward[min, max, avg] [%5.2f,%5.2f,%5.2f], Combined"
-        " Loss(ppo, value, entropy) [%2.5f(%2.5f,%2.5f,%2.5f)]", self._epoch,
+        'PPO epoch [% 6d], Reward[min, max, avg] [%5.2f,%5.2f,%5.2f], Combined'
+        ' Loss(ppo, value, entropy) [%2.5f(%2.5f,%2.5f,%2.5f)]', self._epoch,
         min_reward, max_reward, avg_reward, combined_loss, ppo_loss, value_loss,
         entropy_bonus)
 
@@ -676,28 +676,28 @@ class PPO(base_trainer.BaseTrainer):
     epoch_time = ppo.get_time(epoch_start_time)
 
     timing_dict = {
-        "epoch": epoch_time,
-        "policy_eval": policy_eval_time,
-        "trajectory_collection": trajectory_collection_time,
-        "preprocessing": preprocessing_time,
-        "log_prob_recompute": log_prob_recompute_time,
-        "loss_compute": loss_compute_time,
-        "optimization": optimization_time,
-        "policy_save": policy_save_time,
+        'epoch': epoch_time,
+        'policy_eval': policy_eval_time,
+        'trajectory_collection': trajectory_collection_time,
+        'preprocessing': preprocessing_time,
+        'log_prob_recompute': log_prob_recompute_time,
+        'loss_compute': loss_compute_time,
+        'optimization': optimization_time,
+        'policy_save': policy_save_time,
     }
 
     timing_dict.update(timing_info)
 
     for k, v in timing_dict.items():
-      self._timing_sw.scalar("timing/%s" % k, v, step=last_epoch)
+      self._timing_sw.scalar('timing/%s' % k, v, step=last_epoch)
 
     max_key_len = max(len(k) for k in timing_dict)
     timing_info_list = [
-        "%s : % 10.2f" % (k.rjust(max_key_len + 1), v)
+        '%s : % 10.2f' % (k.rjust(max_key_len + 1), v)
         for k, v in sorted(timing_dict.items())
     ]
-    logging.info("PPO epoch [% 6d], Timings: \n%s", last_epoch,
-                 "\n".join(timing_info_list))
+    logging.info('PPO epoch [% 6d], Timings: \n%s', last_epoch,
+                 '\n'.join(timing_info_list))
 
     # Flush summary writers once in a while.
     if self._epoch % 1000 == 0:
@@ -707,7 +707,7 @@ class PPO(base_trainer.BaseTrainer):
     """Evaluate the agent."""
     if not self._separate_eval:
       return
-    logging.vlog(1, "PPO epoch [% 6d]: evaluating policy.", self._epoch)
+    logging.vlog(1, 'PPO epoch [% 6d]: evaluating policy.', self._epoch)
 
     processed_reward_sums = collections.defaultdict(list)
     raw_reward_sums = collections.defaultdict(list)
@@ -724,14 +724,14 @@ class PPO(base_trainer.BaseTrainer):
     def compute_stats(reward_dict):
       return {
           temperature: {  # pylint: disable=g-complex-comprehension
-              "mean": onp.mean(rewards),
-              "std": onp.std(rewards)
+              'mean': onp.mean(rewards),
+              'std': onp.std(rewards)
           } for (temperature, rewards) in reward_dict.items()
       }
 
     reward_stats = {
-        "processed": compute_stats(processed_reward_sums),
-        "raw": compute_stats(raw_reward_sums),
+        'processed': compute_stats(processed_reward_sums),
+        'raw': compute_stats(raw_reward_sums),
     }
 
     ppo.write_eval_reward_summaries(
@@ -739,7 +739,7 @@ class PPO(base_trainer.BaseTrainer):
 
   def save(self):
     """Save the agent parameters."""
-    logging.vlog(1, "PPO epoch [% 6d]: saving model.", self._epoch)
+    logging.vlog(1, 'PPO epoch [% 6d]: saving model.', self._epoch)
     ppo.save_opt_state(
         self._output_dir,
         self._policy_and_value_opt_state,

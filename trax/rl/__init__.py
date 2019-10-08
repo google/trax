@@ -25,14 +25,14 @@ from trax.rl import simulated_env_problem
 
 
 def configure_rl(*args, **kwargs):
-  kwargs["module"] = "trax.rl"
+  kwargs['module'] = 'trax.rl'
   return gin.external_configurable(*args, **kwargs)
 
 
 def configure_simulated_env_problem(*args, **kwargs):
-  kwargs["blacklist"] = [
-      "batch_size", "observation_space", "action_space", "reward_range",
-      "discrete_rewards", "history_stream", "output_dir"]
+  kwargs['blacklist'] = [
+      'batch_size', 'observation_space', 'action_space', 'reward_range',
+      'discrete_rewards', 'history_stream', 'output_dir']
   return configure_rl(*args, **kwargs)
 
 

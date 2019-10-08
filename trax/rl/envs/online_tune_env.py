@@ -56,13 +56,13 @@ class OnlineTuneEnv(gym.Env):
                inputs=trax_inputs.inputs,
                action_multipliers=None,
                observation_metrics=(
-                   ("train", "metrics/accuracy"),
-                   ("train", "metrics/loss"),
-                   ("eval", "metrics/accuracy"),
-                   ("eval", "metrics/loss"),
+                   ('train', 'metrics/accuracy'),
+                   ('train', 'metrics/loss'),
+                   ('eval', 'metrics/accuracy'),
+                   ('eval', 'metrics/loss'),
                ),
                include_controls_in_observation=False,
-               reward_metric=("eval", "metrics/accuracy"),
+               reward_metric=('eval', 'metrics/accuracy'),
                train_steps=100,
                eval_steps=10,
                env_steps=100,
@@ -70,7 +70,7 @@ class OnlineTuneEnv(gym.Env):
                # ordered in the action space.
                control_configs=(
                    # (name, start, (low, high), flip)
-                   ("learning_rate", 1e-3, (1e-9, 10.0), False),
+                   ('learning_rate', 1e-3, (1e-9, 10.0), False),
                ),
                nontrainable_param_map=None,
                observation_range=(0.0, 10.0),
@@ -163,7 +163,7 @@ class OnlineTuneEnv(gym.Env):
         self._reward_metric,
     )
     assert metric_values.shape[0] > 0, (
-        "No values in history for metric {}.".format(self._reward_metric))
+        'No values in history for metric {}.'.format(self._reward_metric))
     return metric_values[-1]
 
   @property
@@ -175,13 +175,13 @@ class OnlineTuneEnv(gym.Env):
         self._control_configs if self._include_controls_in_observation
         else None,
     )
-    assert observations.shape[0] > 0, "No values in history for any metric."
+    assert observations.shape[0] > 0, 'No values in history for any metric.'
     return observations[-1, :]
 
   @property
   def trainer(self):
     if self._trainer is None:
-      raise ValueError("The environment has to be reset first.")
+      raise ValueError('The environment has to be reset first.')
     return self._trainer
 
   def reset(self):

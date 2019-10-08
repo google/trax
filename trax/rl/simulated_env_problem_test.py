@@ -36,7 +36,7 @@ from trax.rl import simulated_env_problem
 class RawSimulatedEnvProblemTest(test.TestCase):
 
   @staticmethod
-  @mock.patch.object(trainer_lib, "restore_state", autospec=True)
+  @mock.patch.object(trainer_lib, 'restore_state', autospec=True)
   def _create_env(mock_restore_state, model, histories,
                   trajectory_length):
     # (model_params, opt_state)
@@ -78,7 +78,7 @@ class RawSimulatedEnvProblemTest(test.TestCase):
     expected_histories = np.array([[[0, 1, 2, 3]], [[1, 2, 3, 4]]])
     expected_actions = actions_to_take
 
-    with backend.use_backend("numpy"):
+    with backend.use_backend('numpy'):
       env = self._create_env(  # pylint: disable=no-value-for-parameter
           model=mock_model_fn,
           histories=histories,
@@ -109,7 +109,7 @@ class RawSimulatedEnvProblemTest(test.TestCase):
   def test_takes_new_history(self):
     histories = np.array([[[0, 1, 2]], [[3, 4, 5]]])
 
-    with backend.use_backend("numpy"):
+    with backend.use_backend('numpy'):
       env = self._create_env(  # pylint: disable=no-value-for-parameter
           model=mock.MagicMock(),
           histories=histories,
@@ -154,9 +154,9 @@ class SerializedSequenceSimulatedEnvProblemTest(test.TestCase):
     t.add_time_step(observation=observations[-1], done=True)
     return t
 
-  @mock.patch.object(trainer_lib, "restore_state", autospec=True)
+  @mock.patch.object(trainer_lib, 'restore_state', autospec=True)
   def test_communicates_with_model(self, mock_restore_state):
-    gin.bind_parameter("BoxSpaceSerializer.precision", 1)
+    gin.bind_parameter('BoxSpaceSerializer.precision', 1)
     vocab_size = 16
     # Mock model predicting a fixed sequence of symbols. It is made such that
     # the first two observations are different and the last one is equal to the
@@ -175,7 +175,7 @@ class SerializedSequenceSimulatedEnvProblemTest(test.TestCase):
     mock_predict_fn = mock.MagicMock()
     mock_predict_fn.side_effect = map(make_prediction, symbols)
 
-    with backend.use_backend("numpy"):
+    with backend.use_backend('numpy'):
       # (model_params, opt_state)
       mock_restore_state.return_value.params = (None, None)
       env = self._make_env(
@@ -288,5 +288,5 @@ class SerializedSequenceSimulatedEnvProblemTest(test.TestCase):
     np.testing.assert_array_equal(x1 * w1, x2 * w2)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   test.main()

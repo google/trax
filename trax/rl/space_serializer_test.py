@@ -35,7 +35,7 @@ class BoxSpaceSerializerTest(test.TestCase):
       # Enough precision to represent float32s accurately.
       precision=4,
   ):
-    gin.bind_parameter("BoxSpaceSerializer.precision", precision)
+    gin.bind_parameter('BoxSpaceSerializer.precision', precision)
     space = gym.spaces.Box(low=low, high=high, shape=shape)
     serializer = space_serializer.create(space, vocab_size=vocab_size)
     return (space, serializer)
@@ -65,7 +65,7 @@ class BoxSpaceSerializerTest(test.TestCase):
     self.assertFalse(np.array_equal(repr1, repr2))
 
   def test_bounds_space(self):
-    gin.bind_parameter("BoxSpaceSerializer.max_range", (-10.0, 10.0))
+    gin.bind_parameter('BoxSpaceSerializer.max_range', (-10.0, 10.0))
     (_, serializer) = self._make_space_and_serializer(
         # Too wide range to represent, need to clip.
         low=-1e18, high=1e18,
@@ -157,5 +157,5 @@ class MultiDiscreteSpaceSerializerTest(test.TestCase):
     np.testing.assert_array_equal(self._serializer.significance_map, [0, 0])
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   test.main()

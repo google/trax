@@ -61,8 +61,8 @@ class SimPLe(base_trainer.BaseTrainer):
                init_policy_from_world_model=False,
                **kwargs):
     super(SimPLe, self).__init__(train_env, eval_env, output_dir, **kwargs)
-    self._policy_dir = os.path.join(output_dir, "policy")
-    self._model_dir = os.path.join(output_dir, "model")
+    self._policy_dir = os.path.join(output_dir, 'policy')
+    self._model_dir = os.path.join(output_dir, 'model')
     # Initialize the policy trainer lazily, so in case of initializing the
     # policy from world model checkpoint, the trainer will try to load the
     # checkpoint _after_ it's been created in train_model().
@@ -87,7 +87,7 @@ class SimPLe(base_trainer.BaseTrainer):
     if initial_model is not None:
       gfile.copy(
           initial_model,
-          os.path.join(self._model_dir, "model.pkl"),
+          os.path.join(self._model_dir, 'model.pkl'),
           overwrite=True,
       )
     self._initial_model = initial_model
@@ -108,7 +108,7 @@ class SimPLe(base_trainer.BaseTrainer):
     # If trajectory_dump_dir is not provided explicitly, save the trajectories
     # in output_dir.
     if trajectory_dump_dir is None:
-      trajectory_dump_dir = os.path.join(output_dir, "trajectories")
+      trajectory_dump_dir = os.path.join(output_dir, 'trajectories')
     self._trajectory_dump_root_dir = trajectory_dump_dir
 
     self._initial_trajectory_dir = initial_trajectory_dir
@@ -133,17 +133,17 @@ class SimPLe(base_trainer.BaseTrainer):
   def train_epoch(self, evaluate=True):
     if self._simple_epoch > 0 or not self._has_initial_data:
       logging.info(
-          "Collect trajectories by running the policy in the real environment.")
+          'Collect trajectories by running the policy in the real environment.')
       self.collect_trajectories(evaluate=evaluate)
     if self._simple_epoch > 0 or not self._initial_model:
       logging.info(
-          "Train the model of the environment on the collected trajectories.")
+          'Train the model of the environment on the collected trajectories.')
       skipped = self.train_model()
       if evaluate and not skipped:
-        logging.info("Evaluate the trained model.")
+        logging.info('Evaluate the trained model.')
         self.evaluate_model()
-    logging.info("Train the policy inside the simulated environment generated "
-                 "by the model.")
+    logging.info('Train the policy inside the simulated environment generated '
+                 'by the model.')
     self.train_policy()
 
     self._simple_epoch += 1
@@ -159,7 +159,7 @@ class SimPLe(base_trainer.BaseTrainer):
     self._summary_writer.flush()
 
   def collect_trajectories(self, evaluate):
-    logging.info("SimPLe epoch [% 6d]: collecting data.", self._simple_epoch)
+    logging.info('SimPLe epoch [% 6d]: collecting data.', self._simple_epoch)
     start_time = time.time()
 
     self.policy_trainer.train_env = self.train_env
@@ -169,7 +169,7 @@ class SimPLe(base_trainer.BaseTrainer):
     self.policy_trainer.training_loop(self._policy_epoch, evaluate=evaluate)
 
     logging.vlog(
-        1, "Collecting trajectories took %0.2f sec.", time.time() - start_time)
+        1, 'Collecting trajectories took %0.2f sec.', time.time() - start_time)
 
   def train_model(self):
     """Train the model.
@@ -177,7 +177,7 @@ class SimPLe(base_trainer.BaseTrainer):
     Returns:
       whether the training was skipped due to a restart.
     """
-    logging.info("SimPLe epoch [% 6d]: training model.", self._simple_epoch)
+    logging.info('SimPLe epoch [% 6d]: training model.', self._simple_epoch)
     start_time = time.time()
 
     (train_stream, eval_stream) = self._make_input_streams()
@@ -197,7 +197,7 @@ class SimPLe(base_trainer.BaseTrainer):
     else:
       train_steps = self._n_model_train_steps_per_epoch
     self._model_train_step += train_steps
-    with gin.config_scope("world_model"):
+    with gin.config_scope('world_model'):
       state = trainer_lib.train(
           model=self._sim_env.model,
           inputs=inputs,
@@ -207,11 +207,11 @@ class SimPLe(base_trainer.BaseTrainer):
       )
 
     logging.vlog(
-        1, "Training model took %0.2f sec.", time.time() - start_time)
+        1, 'Training model took %0.2f sec.', time.time() - start_time)
     return state.step > self._model_train_step
 
   def train_policy(self):
-    logging.info("SimPLe epoch [% 6d]: training policy.", self._simple_epoch)
+    logging.info('SimPLe epoch [% 6d]: training policy.', self._simple_epoch)
     start_time = time.time()
 
     self._sim_env.initialize(
@@ -230,7 +230,7 @@ class SimPLe(base_trainer.BaseTrainer):
     self.policy_trainer.async_mode = original_async_mode
 
     logging.vlog(
-        1, "Training policy took %0.2f sec.", time.time() - start_time)
+        1, 'Training policy took %0.2f sec.', time.time() - start_time)
 
   @property
   def _has_own_data(self):
@@ -278,7 +278,7 @@ class SimPLe(base_trainer.BaseTrainer):
       # Load the initial, precollected data.
       (init_train_stream, init_eval_stream) = make_example_streams(initial=True)
       logging.vlog(
-          1, "Loading initial trajectories took %0.2f sec.",
+          1, 'Loading initial trajectories took %0.2f sec.',
           time.time() - start_time
       )
     else:
@@ -290,7 +290,7 @@ class SimPLe(base_trainer.BaseTrainer):
       # Load trajectories collected in all epochs so far.
       (own_train_stream, own_eval_stream) = make_example_streams(initial=False)
       logging.vlog(
-          1, "Loading own trajectories took %0.2f sec.",
+          1, 'Loading own trajectories took %0.2f sec.',
           time.time() - start_time
       )
     else:
@@ -311,7 +311,7 @@ class SimPLe(base_trainer.BaseTrainer):
         )))
 
   def evaluate_model(self):
-    logging.info("SimPLe epoch [% 6d]: evaluating model.", self._simple_epoch)
+    logging.info('SimPLe epoch [% 6d]: evaluating model.', self._simple_epoch)
     start_time = time.time()
 
     self._sim_env.initialize(
@@ -332,10 +332,10 @@ class SimPLe(base_trainer.BaseTrainer):
     if summaries is not None:
       for (name, value) in summaries.items():
         self._summary_writer.scalar(
-            "simple/{}".format(name), value, step=self._simple_epoch)
+            'simple/{}'.format(name), value, step=self._simple_epoch)
       self._summary_writer.plot(
-          "simple/model_eval_plot", plt, step=self._simple_epoch)
+          'simple/model_eval_plot', plt, step=self._simple_epoch)
       self.flush_summaries()
 
     logging.vlog(
-        1, "Evaluating model took %0.2f sec.", time.time() - start_time)
+        1, 'Evaluating model took %0.2f sec.', time.time() - start_time)

@@ -75,9 +75,9 @@ class BaseTrainerTest(test.TestCase):
 
   def _make_trainer(self, min_count_per_shard):
     train_env = gym_env_problem.GymEnvProblem(
-        base_env_name="Acrobot-v1", batch_size=2)
+        base_env_name='Acrobot-v1', batch_size=2)
     eval_env = gym_env_problem.GymEnvProblem(
-        base_env_name="Acrobot-v1", batch_size=1)
+        base_env_name='Acrobot-v1', batch_size=1)
     temp_dir = self.get_temp_dir()
     return FakeTrainer(
         train_env, eval_env,
@@ -94,7 +94,7 @@ class BaseTrainerTest(test.TestCase):
     shard_filenames = os.listdir(trajectory_dir)
     self.assertEqual(len(shard_filenames), 1)
     shard_path = os.path.join(trajectory_dir, shard_filenames[0])
-    with open(shard_path, "rb") as f:
+    with open(shard_path, 'rb') as f:
       trajectories = pickle.load(f)
     actual_trajectory_lengths = [
         len(trajectory.time_steps) for trajectory in trajectories]
@@ -140,5 +140,5 @@ class BaseTrainerTest(test.TestCase):
         trajectory_dir, [2, 2])
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   test.main()

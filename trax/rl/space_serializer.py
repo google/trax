@@ -95,7 +95,7 @@ def create(space, vocab_size):
   }[type(space)](space, vocab_size)
 
 
-@gin.configurable(blacklist=["space", "vocab_size"])
+@gin.configurable(blacklist=['space', 'vocab_size'])
 class BoxSpaceSerializer(SpaceSerializer):
   """Serializer for gym.spaces.Box.
 
@@ -117,7 +117,7 @@ class BoxSpaceSerializer(SpaceSerializer):
     if (not np.allclose(bounded_space.low, space.low) or
         not np.allclose(bounded_space.high, space.high)):
       logging.warning(
-          "Space limits %s, %s out of bounds %s. Clipping to %s, %s.",
+          'Space limits %s, %s out of bounds %s. Clipping to %s, %s.',
           str(space.low), str(space.high), str(max_range),
           str(bounded_space.low), str(bounded_space.high)
       )
@@ -172,7 +172,7 @@ class DiscreteSpaceSerializer(SpaceSerializer):
   def __init__(self, space, vocab_size):
     super(DiscreteSpaceSerializer, self).__init__(space, vocab_size)
     assert space.n <= vocab_size, (
-        "Discrete space size should fit in the number of symbols.")
+        'Discrete space size should fit in the number of symbols.')
 
   def serialize(self, data):
     return np.reshape(data, (-1, 1)).astype(np.int32)
@@ -197,8 +197,8 @@ class MultiDiscreteSpaceSerializer(SpaceSerializer):
   def __init__(self, space, vocab_size):
     super(MultiDiscreteSpaceSerializer, self).__init__(space, vocab_size)
     assert np.max(space.nvec) <= vocab_size, (
-        "MultiDiscrete maximum number of categories should fit in the number "
-        "of symbols."
+        'MultiDiscrete maximum number of categories should fit in the number '
+        'of symbols.'
     )
 
   def serialize(self, data):

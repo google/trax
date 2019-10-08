@@ -64,7 +64,7 @@ class BaseTrainer(object):
 
   @async_mode.setter
   def async_mode(self, async_mode):
-    logging.vlog(1, "Changing async mode from %s to: %s",
+    logging.vlog(1, 'Changing async mode from %s to: %s',
                  self._async_mode, async_mode)
     self._async_mode = async_mode
 
@@ -118,19 +118,19 @@ class BaseTrainer(object):
     )
     if ready or force:
       shard_path = os.path.join(
-          self.trajectory_dump_dir, "{}.pkl".format(self.epoch))
+          self.trajectory_dump_dir, '{}.pkl'.format(self.epoch))
       if gfile.exists(shard_path):
         # Since we do an extra dump at the end of the training loop, we
         # sometimes dump 2 times in the same epoch. When this happens, merge the
         # two sets of trajectories.
-        with gfile.GFile(shard_path, "rb") as f:
+        with gfile.GFile(shard_path, 'rb') as f:
           self._trajectory_buffer = pkl_module.load(f) + self._trajectory_buffer
-      with gfile.GFile(shard_path, "wb") as f:
+      with gfile.GFile(shard_path, 'wb') as f:
         pkl_module.dump(self._trajectory_buffer, f)
       self._trajectory_buffer = []
 
   def training_loop(self, n_epochs, evaluate=True):
-    logging.info("Starting the RL training loop.")
+    logging.info('Starting the RL training loop.')
     for _ in range(self.epoch, n_epochs):
       self.train_epoch(evaluate=evaluate)
       self.dump_trajectories()

@@ -47,17 +47,17 @@ from trax.rl import simulated_env_problem
 class PpoTrainerTest(test.TestCase):
 
   def get_wrapped_env(
-      self, name="CartPole-v0", max_episode_steps=2, batch_size=1
+      self, name='CartPole-v0', max_episode_steps=2, batch_size=1
   ):
     wrapper_fn = functools.partial(
         gym_utils.gym_env_wrapper,
         **{
-            "rl_env_max_episode_steps": max_episode_steps,
-            "maxskip_env": False,
-            "rendered_env": False,
-            "rendered_env_resize_to": None,  # Do not resize frames
-            "sticky_actions": False,
-            "output_dtype": None,
+            'rl_env_max_episode_steps': max_episode_steps,
+            'maxskip_env': False,
+            'rendered_env': False,
+            'rendered_env_resize_to': None,  # Do not resize frames
+            'sticky_actions': False,
+            'output_dtype': None,
         })
 
     return gym_env_problem.GymEnvProblem(base_env_name=name,
@@ -92,8 +92,8 @@ class PpoTrainerTest(test.TestCase):
   def test_training_loop_cartpole(self):
     with self.tmp_dir() as output_dir:
       trainer = self._make_trainer(
-          train_env=self.get_wrapped_env("CartPole-v0", 2),
-          eval_env=self.get_wrapped_env("CartPole-v0", 2),
+          train_env=self.get_wrapped_env('CartPole-v0', 2),
+          eval_env=self.get_wrapped_env('CartPole-v0', 2),
           output_dir=output_dir,
       )
       trainer.training_loop(n_epochs=2)
@@ -101,8 +101,8 @@ class PpoTrainerTest(test.TestCase):
   def test_training_loop_cartpole_transformer(self):
     with self.tmp_dir() as output_dir:
       trainer = self._make_trainer(
-          train_env=self.get_wrapped_env("CartPole-v0", 2),
-          eval_env=self.get_wrapped_env("CartPole-v0", 2),
+          train_env=self.get_wrapped_env('CartPole-v0', 2),
+          eval_env=self.get_wrapped_env('CartPole-v0', 2),
           output_dir=output_dir,
           model=functools.partial(
               models.TransformerDecoder,
@@ -111,32 +111,32 @@ class PpoTrainerTest(test.TestCase):
               n_layers=1,
               n_heads=1,
               max_len=128,
-              mode="train",
+              mode='train',
           ),
       )
       trainer.training_loop(n_epochs=2)
 
   def test_training_loop_onlinetune(self):
     with self.tmp_dir() as output_dir:
-      gin.bind_parameter("OnlineTuneEnv.model", functools.partial(
+      gin.bind_parameter('OnlineTuneEnv.model', functools.partial(
           models.MLP,
           n_hidden_layers=0,
           n_output_classes=1,
       ))
-      gin.bind_parameter("OnlineTuneEnv.inputs", functools.partial(
+      gin.bind_parameter('OnlineTuneEnv.inputs', functools.partial(
           trax_inputs.random_inputs,
           input_shape=(1, 1),
           input_dtype=np.float32,
           output_shape=(1, 1),
           output_dtype=np.float32,
       ))
-      gin.bind_parameter("OnlineTuneEnv.train_steps", 1)
-      gin.bind_parameter("OnlineTuneEnv.eval_steps", 1)
+      gin.bind_parameter('OnlineTuneEnv.train_steps', 1)
+      gin.bind_parameter('OnlineTuneEnv.eval_steps', 1)
       gin.bind_parameter(
-          "OnlineTuneEnv.output_dir", os.path.join(output_dir, "envs"))
+          'OnlineTuneEnv.output_dir', os.path.join(output_dir, 'envs'))
       trainer = self._make_trainer(
-          train_env=self.get_wrapped_env("OnlineTuneEnv-v0", 1),
-          eval_env=self.get_wrapped_env("OnlineTuneEnv-v0", 1),
+          train_env=self.get_wrapped_env('OnlineTuneEnv-v0', 1),
+          eval_env=self.get_wrapped_env('OnlineTuneEnv-v0', 1),
           output_dir=output_dir,
       )
       trainer.training_loop(n_epochs=1)
@@ -233,8 +233,8 @@ class PpoTrainerTest(test.TestCase):
 
   def test_restarts(self):
     with self.tmp_dir() as output_dir:
-      train_env = self.get_wrapped_env("CartPole-v0", 2)
-      eval_env = self.get_wrapped_env("CartPole-v0", 2)
+      train_env = self.get_wrapped_env('CartPole-v0', 2)
+      eval_env = self.get_wrapped_env('CartPole-v0', 2)
 
       # Train for 1 epoch and save.
       trainer = self._make_trainer(
@@ -259,24 +259,24 @@ class PpoTrainerTest(test.TestCase):
 
   def test_training_loop_multi_control(self):
     gym.register(
-        "FakeEnv-v0",
-        entry_point="trax.rl.envs.fake_env:FakeEnv",
-        kwargs={"n_actions": 3, "n_controls": 2},
+        'FakeEnv-v0',
+        entry_point='trax.rl.envs.fake_env:FakeEnv',
+        kwargs={'n_actions': 3, 'n_controls': 2},
     )
     with self.tmp_dir() as output_dir:
       trainer = self._make_trainer(
-          train_env=self.get_wrapped_env("FakeEnv-v0", 2),
-          eval_env=self.get_wrapped_env("FakeEnv-v0", 2),
+          train_env=self.get_wrapped_env('FakeEnv-v0', 2),
+          eval_env=self.get_wrapped_env('FakeEnv-v0', 2),
           output_dir=output_dir,
       )
       trainer.training_loop(n_epochs=2)
 
   def test_training_loop_cartpole_serialized(self):
-    gin.bind_parameter("BoxSpaceSerializer.precision", 1)
+    gin.bind_parameter('BoxSpaceSerializer.precision', 1)
     with self.tmp_dir() as output_dir:
       trainer = self._make_trainer(
-          train_env=self.get_wrapped_env("CartPole-v0", 2),
-          eval_env=self.get_wrapped_env("CartPole-v0", 2),
+          train_env=self.get_wrapped_env('CartPole-v0', 2),
+          eval_env=self.get_wrapped_env('CartPole-v0', 2),
           output_dir=output_dir,
           model=functools.partial(
               models.TransformerDecoder,
@@ -285,7 +285,7 @@ class PpoTrainerTest(test.TestCase):
               n_layers=1,
               n_heads=1,
               max_len=1024,
-              mode="train",
+              mode='train',
           ),
           policy_and_value_vocab_size=4,
       )
@@ -294,13 +294,13 @@ class PpoTrainerTest(test.TestCase):
   def test_training_loop_cartpole_minibatch(self):
     with self.tmp_dir() as output_dir:
       trainer = self._make_trainer(
-          train_env=self.get_wrapped_env("CartPole-v0", 2, batch_size=4),
-          eval_env=self.get_wrapped_env("CartPole-v0", 2),
+          train_env=self.get_wrapped_env('CartPole-v0', 2, batch_size=4),
+          eval_env=self.get_wrapped_env('CartPole-v0', 2),
           output_dir=output_dir,
           optimizer_batch_size=2,
       )
       trainer.training_loop(n_epochs=2)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   test.main()

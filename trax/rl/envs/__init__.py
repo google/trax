@@ -24,10 +24,10 @@ from trax.rl.envs import online_tune_env
 # Ginify and register in gym.
 def configure_and_register_env(env_class):
   register(
-      id="{}-v0".format(env_class.__name__),
-      entry_point="trax.rl.envs:{}".format(env_class.__name__),
+      id='{}-v0'.format(env_class.__name__),
+      entry_point='trax.rl.envs:{}'.format(env_class.__name__),
   )
-  return gin.external_configurable(env_class, module="trax.rl.envs")
+  return gin.external_configurable(env_class, module='trax.rl.envs')
 
 
 # pylint: disable=invalid-name

@@ -45,16 +45,16 @@ class PpoTest(test.TestCase):
 
     def write_policy_model_file(epoch):
       with gfile.GFile(
-          ppo.get_policy_model_file_from_epoch(output_dir, epoch), "w") as f:
-        f.write("some data")
+          ppo.get_policy_model_file_from_epoch(output_dir, epoch), 'w') as f:
+        f.write('some data')
 
     epochs = [200, 100, 300]
 
     # 300, 200, 100
     expected_policy_model_files = [
-        output_dir + "/model-000300.pkl",
-        output_dir + "/model-000200.pkl",
-        output_dir + "/model-000100.pkl",
+        output_dir + '/model-000300.pkl',
+        output_dir + '/model-000200.pkl',
+        output_dir + '/model-000100.pkl',
     ]
 
     for epoch in epochs:
@@ -68,15 +68,15 @@ class PpoTest(test.TestCase):
 
   def test_get_epoch_from_policy_model_file(self):
     self.assertEqual(0,
-                     ppo.get_epoch_from_policy_model_file("model-000000.pkl"))
+                     ppo.get_epoch_from_policy_model_file('model-000000.pkl'))
     self.assertEqual(123456,
-                     ppo.get_epoch_from_policy_model_file("model-123456.pkl"))
+                     ppo.get_epoch_from_policy_model_file('model-123456.pkl'))
 
   def test_get_policy_model_file_from_epoch(self):
-    self.assertEqual("/tmp/model-000000.pkl",
-                     ppo.get_policy_model_file_from_epoch("/tmp", 0))
-    self.assertEqual("/tmp/model-123456.pkl",
-                     ppo.get_policy_model_file_from_epoch("/tmp", 123456))
+    self.assertEqual('/tmp/model-000000.pkl',
+                     ppo.get_policy_model_file_from_epoch('/tmp', 0))
+    self.assertEqual('/tmp/model-123456.pkl',
+                     ppo.get_policy_model_file_from_epoch('/tmp', 123456))
 
   def test_policy_and_value_net(self):
     observation_shape = (3, 4, 5)
@@ -133,8 +133,8 @@ class PpoTest(test.TestCase):
       actions = np.random.randint(
           0, n_actions, size=(time_steps,)).astype(np.int32)
       infos = {
-          "a": np.random.uniform(size=(time_steps,)).astype(np.float32),
-          "b": np.random.uniform(size=(time_steps,)).astype(np.float32)
+          'a': np.random.uniform(size=(time_steps,)).astype(np.float32),
+          'b': np.random.uniform(size=(time_steps,)).astype(np.float32)
       }
       trajectories.append((observations, rewards, actions, infos))
 
@@ -161,9 +161,9 @@ class PpoTest(test.TestCase):
     self.assertEqual(padded_rewards.shape, (n_trajectories, expected_padding))
     self.assertEqual(reward_mask.shape, (n_trajectories, expected_padding))
 
-    self.assertEqual(padded_infos["a"].shape,
+    self.assertEqual(padded_infos['a'].shape,
                      (n_trajectories, expected_padding))
-    self.assertEqual(padded_infos["b"].shape,
+    self.assertEqual(padded_infos['b'].shape,
                      (n_trajectories, expected_padding))
 
     # Assert that the padding lengths and reward mask are consistent.
@@ -566,18 +566,18 @@ class PpoTest(test.TestCase):
 
   def test_inits_policy_by_world_model_checkpoint(self):
     transformer_kwargs = {
-        "d_model": 1,
-        "d_ff": 1,
-        "n_layers": 1,
-        "n_heads": 1,
-        "max_len": 128,
-        "mode": "train",
+        'd_model': 1,
+        'd_ff': 1,
+        'n_layers': 1,
+        'n_heads': 1,
+        'max_len': 128,
+        'mode': 'train',
     }
     rng = jax_random.PRNGKey(123)
     init_kwargs = {
-        "input_shapes": (1, 1),
-        "input_dtype": np.int32,
-        "rng": rng,
+        'input_shapes': (1, 1),
+        'input_dtype': np.int32,
+        'rng': rng,
     }
     model_fn = functools.partial(
         models.TransformerLM, vocab_size=4, **transformer_kwargs
@@ -639,5 +639,5 @@ class PpoTest(test.TestCase):
     self.assertFalse(np.array_equal(next(stream1), next(stream2)))
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   test.main()

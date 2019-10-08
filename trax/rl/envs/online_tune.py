@@ -22,7 +22,7 @@ from __future__ import print_function
 import numpy as np
 
 
-LEARNING_RATE_METRIC = ("train", "training/learning_rate")
+LEARNING_RATE_METRIC = ('train', 'training/learning_rate')
 
 
 def historical_metric_values(
@@ -52,6 +52,6 @@ def history_to_observations(history, metrics, observation_range, include_lr):
 def new_learning_rate(action, history, action_multipliers, max_lr):
   """Calculates a new learning rate based on an action."""
   learning_rates = historical_metric_values(history, LEARNING_RATE_METRIC)
-  assert learning_rates.shape[0] > 0, "No last learning rate found in history."
+  assert learning_rates.shape[0] > 0, 'No last learning rate found in history.'
   current_lr = learning_rates[-1]
   return min(current_lr * action_multipliers[action], max_lr)

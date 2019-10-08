@@ -29,8 +29,8 @@ class AsyncTrajectoryCollectorLibTest(test.TestCase):
 
     def write_policy_model_file(epoch):
       fname = ppo.get_policy_model_file_from_epoch(output_dir, epoch)
-      with gfile.GFile(fname, "w") as f:
-        f.write("some data")
+      with gfile.GFile(fname, 'w') as f:
+        f.write('some data')
       return fname
 
     # No file exists currently.
@@ -60,5 +60,5 @@ class AsyncTrajectoryCollectorLibTest(test.TestCase):
     self.assertEqual(actual_epoch, epoch)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   test.main()

@@ -41,14 +41,14 @@ def load_trajectories(trajectory_dir, eval_frac):
     for filename in filenames:
       shard_path = os.path.join(subdir, filename)
       try:
-        with gfile.GFile(shard_path, "rb") as f:
+        with gfile.GFile(shard_path, 'rb') as f:
           trajectories = pkl_module.load(f)
         pivot = int(len(trajectories) * (1 - eval_frac))
         train_trajectories.extend(trajectories[:pivot])
         eval_trajectories.extend(trajectories[pivot:])
       except EOFError:
         logging.warning(
-            "Could not load trajectories from a corrupted shard %s.",
+            'Could not load trajectories from a corrupted shard %s.',
             shard_path,
         )
   assert train_trajectories, "Can't find training data in %s" % trajectory_dir
@@ -140,7 +140,7 @@ def calculate_observation_error(real_trajectories, sim_trajectories):
       return np.pad(
           observations,
           pad_width=((0, desired_length - current_length), (0, 0)),
-          mode="edge",
+          mode='edge',
       )
     else:
       return observations[:desired_length, :]
@@ -162,7 +162,7 @@ def plot_observation_error(real_trajectories, sim_trajectories, mpl_plt):
   assert len(real_trajectories) == len(sim_trajectories)
   assert real_trajectories
   obs_dim = real_trajectories[0].last_time_step.observation.shape[0]
-  (w, h) = mpl_plt.rcParams["figure.figsize"]
+  (w, h) = mpl_plt.rcParams['figure.figsize']
   ncols = len(real_trajectories)
   nrows = obs_dim
   (_, axes) = mpl_plt.subplots(
@@ -171,10 +171,10 @@ def plot_observation_error(real_trajectories, sim_trajectories, mpl_plt):
       zip(real_trajectories, sim_trajectories)
   ):
     for dim_index in range(obs_dim):
-      for (traj, label) in ((real_traj, "real"), (sim_traj, "simulated")):
+      for (traj, label) in ((real_traj, 'real'), (sim_traj, 'simulated')):
         obs = traj.observations_np
         ax = axes[dim_index, traj_index]
-        ax.set_title("trajectory {}, observation dimension {}".format(
+        ax.set_title('trajectory {}, observation dimension {}'.format(
             traj_index, dim_index))
         ax.plot(np.arange(obs.shape[0]), obs[:, dim_index], label=label)
         ax.legend()
@@ -212,8 +212,8 @@ def evaluate_model(sim_env, real_trajectories, mpl_plt, n_to_plot=3):
   """Reports the observation error metric and the corresponding plot."""
   if len(sim_env.observation_space.shape) != 1:
     logging.warning(
-        "Could not evaluate the model - only environments with vector "
-        "observation spaces are supported."
+        'Could not evaluate the model - only environments with vector '
+        'observation spaces are supported.'
     )
     return
 
@@ -231,6 +231,6 @@ def evaluate_model(sim_env, real_trajectories, mpl_plt, n_to_plot=3):
   plot_observation_error(
       real_trajectories[:n_to_plot], sim_trajectories[:n_to_plot], mpl_plt)
   return {
-      "observation_error/{}".format(i): obs_error
+      'observation_error/{}'.format(i): obs_error
       for (i, obs_error) in enumerate(obs_errors)
   }

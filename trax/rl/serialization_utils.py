@@ -61,7 +61,7 @@ def serialize_observations_and_actions(
   reprs = np.pad(
       reprs,
       pad_width=((0, 0), (0, representation_length - reprs.shape[1])),
-      mode="constant",
+      mode='constant',
   )
 
   obs_repr_length = observation_serializer.representation_length
