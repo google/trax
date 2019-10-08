@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""trax history."""
+"""Trax history."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -58,7 +58,7 @@ class History(object):
   def get(self, mode, metric):
     """Get the history for the given metric and mode."""
     if mode not in self._values:
-      logging.info("Metric %s not found for mode %s", metric, mode)
+      logging.info('Metric %s not found for mode %s', metric, mode)
       return []
     return list(self._values[mode][metric])
 
@@ -70,7 +70,7 @@ class History(object):
   def metrics_for_mode(self, mode):
     """Metrics available for a given mode."""
     if mode not in self._values:
-      logging.info("Mode %s not found", mode)
+      logging.info('Mode %s not found', mode)
       return []
     return sorted(list(self._values[mode].keys()))
 
