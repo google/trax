@@ -25,7 +25,7 @@ from trax.layers import combinators as cb
 from trax.layers import core
 
 
-@base.layer(n_inputs=2, n_outputs=1)
+@base.layer(n_in=2, n_out=1)
 def CrossEntropy(x, axis=-1, **kw):
   del kw
   prediction, target = x
@@ -33,14 +33,14 @@ def CrossEntropy(x, axis=-1, **kw):
                 axis=axis)
 
 
-@base.layer(n_inputs=2, n_outputs=1)
+@base.layer(n_in=2, n_out=1)
 def L2(x, axis=-1, **kw):
   del kw
   prediction, target = x
   return np.sum((prediction - target)**2, axis=axis)
 
 
-@base.layer(n_inputs=2, n_outputs=1)
+@base.layer(n_in=2, n_out=1)
 def Accuracy(x, axis=-1, **kw):
   del kw
   prediction, target = x
@@ -56,7 +56,7 @@ def WeightMask(target, mask_id=0, **kw):
   return 1.0 - np.equal(target, mask_id).astype(np.float32)
 
 
-@base.layer(n_inputs=2, n_outputs=1)
+@base.layer(n_in=2, n_out=1)
 def WeightedMean(x, **kw):
   del kw
   metric, weights = x

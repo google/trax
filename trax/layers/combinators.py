@@ -106,10 +106,10 @@ class Serial(base.Layer):
   sublayer k, following sublayer j, gets called with the data stack in the
   state left after layer j has applied. The Serial combinator then:
 
-    - takes n_in items off the top of the stack (n_in = k.n_inputs) and calls
+    - takes n_in items off the top of the stack (n_in = k.n_in) and calls
       layer k, passing those items as arguments; and
 
-    - takes layer k's n_out return values (n_out = k.n_outputs) and pushes
+    - takes layer k's n_out return values (n_out = k.n_out) and pushes
       them onto the data stack.
 
   A Serial instance with no sublayers acts as a special-case (but useful)
@@ -124,7 +124,7 @@ class Serial(base.Layer):
     self._n_layers = len(layers)
 
     if layers:
-      self._n_inputs, self._n_outputs = self._n_inputs_n_outputs(layers)
+      self._n_in, self._n_out = self._n_inputs_n_outputs(layers)
 
   def _ensure_flat(self, layers):
     """Ensures that layers is a single flat list of Layer instances."""
@@ -144,20 +144,20 @@ class Serial(base.Layer):
     running_max = 0
     running_total = 0
     for layer in layers:
-      running_total += layer.n_inputs
+      running_total += layer.n_in
       running_max = max(running_max, running_total)
-      running_total -= layer.n_outputs
+      running_total -= layer.n_out
     return running_max, (running_max - running_total)
 
   def _validate_forward_inputs(self, xs):
-    if not isinstance(xs, tuple) and self._n_inputs != 1:
+    if not isinstance(xs, tuple) and self._n_in != 1:
       raise TypeError(
           'Serial.forward input must be a tuple; instead got {}'.format(xs))
     len_xs = 1 if isinstance(xs, np.ndarray) else len(xs)
-    if len_xs < self.n_inputs:
+    if len_xs < self.n_in:
       raise ValueError(
-          'number of inputs ({}) to Serial.forward less than n_inputs'
-          ' ({})'.format(len(xs), self.n_inputs))
+          'number of inputs ({}) to Serial.forward less than n_in'
+          ' ({})'.format(len(xs), self.n_in))
 
   @base.Layer.params.setter
   def params(self, params):
@@ -194,7 +194,7 @@ class Serial(base.Layer):
       is_stack_just_one_item = (_count_items(stack) == 1)
 
       # Give layer its args from the stack; treat 1-arg layer specially.
-      n_in = layer.n_inputs
+      n_in = layer.n_in
       if n_in == 1 and is_stack_just_one_item:
         inputs = stack
       elif n_in == 1:
@@ -207,7 +207,7 @@ class Serial(base.Layer):
 
       # Push outputs onto remaining stack (if any).
       if n_in < _count_items(stack):
-        if layer.n_outputs == 1:
+        if layer.n_out == 1:
           outputs = (outputs,)
         stack = outputs + stack[n_in:]
       else:
@@ -229,7 +229,7 @@ class Serial(base.Layer):
 
       # Give layer its args from pseudo_xs; treat 1-arg layer specially.
       is_stack_just_one_item = (_count_items(pseudo_xs) == 1)
-      n_in = layer.n_inputs
+      n_in = layer.n_in
       if n_in == 1 and is_stack_just_one_item:
         inputs = pseudo_xs
       elif n_in == 1:
@@ -246,7 +246,7 @@ class Serial(base.Layer):
 
       # Push outputs onto remaining pseudo_xs (if any).
       if n_in < _count_items(pseudo_xs):
-        if layer.n_outputs == 1:
+        if layer.n_out == 1:
           outputs = (outputs,)
         pseudo_xs = outputs + pseudo_xs[n_in:]
       else:
@@ -257,13 +257,13 @@ class Serial(base.Layer):
     return params, states
 
 
-@base.layer(n_outputs=2)
+@base.layer(n_out=2)
 def Dup(x, **unused_kwargs):
   """Duplicates (copies) an element."""
   return (x, x)
 
 
-@base.layer(n_inputs=2, n_outputs=2)
+@base.layer(n_in=2, n_out=2)
 def Swap(xs, **unused_kwargs):
   """Swaps two elements."""
   return (xs[1], xs[0])
@@ -293,14 +293,14 @@ def Dup3():
   ])
 
 
-@base.layer(n_outputs=0)
+@base.layer(n_out=0)
 def Drop(x, **unused_kwargs):
   """Drops one element."""
   del x  # Just for the compiler.
   return ()
 
 
-@base.layer(n_inputs=0)
+@base.layer(n_in=0)
 def FlattenList(xs, **unused_kwargs):
   """Flatten lists."""
   # TODO(jonni): Consider renaming layer to DeepFlatten.
@@ -324,25 +324,25 @@ def _nested_op(inputs, op):  # pylint: disable=invalid-name
   return tuple(result_list)
 
 
-@base.layer(n_inputs=2)
+@base.layer(n_in=2)
 def Add(xs, **unused_kwargs):
   """Adds two tensors."""
   return xs[0] + xs[1]
 
 
-@base.layer(n_inputs=2)
+@base.layer(n_in=2)
 def SubtractTop(xs, **unused_kwargs):
   """Subtracts the first tensor from the second."""
   return xs[1] - xs[0]
 
 
-@base.layer(n_inputs=2)
+@base.layer(n_in=2)
 def Multiply(xs, **unused_kwargs):
   """Multiplies two tensors."""
   return xs[0] * xs[1]
 
 
-@base.layer(n_inputs=3)
+@base.layer(n_in=3)
 def Gate(xs, **unused_kwargs):
   """Implements a gating function on a (memory, gate, candidate) tuple.
 
@@ -365,7 +365,7 @@ class Concatenate(base.Layer):
   """Concatenates n tensors into a single tensor."""
 
   def __init__(self, n_items=2, axis=-1):
-    super(Concatenate, self).__init__(n_inputs=n_items)
+    super(Concatenate, self).__init__(n_in=n_items)
     self._n_items = n_items
     self._axis = axis
 
@@ -378,7 +378,7 @@ class Split(base.Layer):
   """Splits the input into sections along an axis."""
 
   def __init__(self, n_sections=2, axis=-1):
-    super(Split, self).__init__(n_outputs=n_sections)
+    super(Split, self).__init__(n_out=n_sections)
     self._n_sections = n_sections
     self._axis = axis
 
@@ -430,8 +430,8 @@ class Parallel(base.Layer):
     layers = self._validate(layers)
     self._n_layers = len(layers)
     self._sublayers = layers
-    self._n_inputs = sum(x.n_inputs for x in layers)
-    self._n_outputs = sum(x.n_outputs for x in layers)
+    self._n_in = sum(x.n_in for x in layers)
+    self._n_out = sum(x.n_out for x in layers)
 
   def _validate(self, layers):
     if not layers or len(layers) < 2:
@@ -449,9 +449,9 @@ class Parallel(base.Layer):
           raise ValueError(
               'Found nonlayer object ({}) in layers list: [{}].'.format(
                   obj, layers))
-      if layers[i].n_inputs == 0:
+      if layers[i].n_in == 0:
         raise ValueError(
-            'Sublayer with n_inputs = 0 not allowed in Parallel:'
+            'Sublayer with n_in = 0 not allowed in Parallel:'
             ' {}'.format(layers[i]))
     return layers
 
@@ -469,7 +469,7 @@ class Parallel(base.Layer):
     start, end = 0, 0
     sub_inputs = []
     for layer in self.sublayers:
-      n_in = layer.n_inputs
+      n_in = layer.n_in
       end = start + n_in
       if n_in == 1:
         sub_inputs.append(inputs[start])
@@ -508,12 +508,12 @@ class Parallel(base.Layer):
       # Note that zip silently truncates its result if lengths don't match.
       sub_outputs, sub_state = layer.apply_forward(x, params=p, state=s, rng=r,
                                                    **kwargs)
-      if layer.n_outputs == 1:
+      if layer.n_out == 1:
         outputs.append(sub_outputs)
       else:
         outputs.extend(sub_outputs)
       new_state.append(sub_state)
-    output = outputs[0] if self.n_outputs == 1 else tuple(outputs)
+    output = outputs[0] if self.n_out == 1 else tuple(outputs)
     return output, new_state
 
   def new_params_and_state(self, input_shapes, input_dtypes, rng):

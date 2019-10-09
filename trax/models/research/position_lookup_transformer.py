@@ -51,7 +51,7 @@ def NewPositionalEncoding(x, positions=None, **kwargs):
   return res
 
 
-@tl.layer(n_inputs=1, n_outputs=2)
+@tl.layer(n_in=1, n_out=2)
 def CutAtPosition(x, **unused_kwargs):
   """Splits x into a pair (x[:position], position)."""
   return tuple([x[:, :, :-POS_VECTOR_SIZE], x[:, :, -POS_VECTOR_SIZE:]])
@@ -173,7 +173,7 @@ def LearnedQP(keys=None, values=None, binary=False):
   )
 
 
-@tl.layer(n_inputs=10, n_outputs=1)
+@tl.layer(n_in=10, n_out=1)
 def Softmax5Branches(x_list, n_branches=2, **unused_kwargs):
   """Softmax xs.
 

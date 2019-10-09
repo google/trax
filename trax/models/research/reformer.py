@@ -43,7 +43,7 @@ class Map(tl.Layer):
     Returns:
       A new layer representing mapping layer to all elements of the input.
     """
-    super(Map, self).__init__(n_inputs=n_sections, n_outputs=n_sections)
+    super(Map, self).__init__(n_in=n_sections, n_out=n_sections)
     if layer is None or isinstance(layer, (list, tuple)):
       layer = tl.Serial(layer)
     self._layer = layer
@@ -133,7 +133,7 @@ class SplitForOutput(tl.ReversibleLayer):
   """
 
   def __init__(self, n_sections=2, axis=-2):
-    super(SplitForOutput, self).__init__(n_inputs=2, n_outputs=n_sections)
+    super(SplitForOutput, self).__init__(n_in=2, n_out=n_sections)
     self._n_sections = n_sections
     self._axis = axis
 

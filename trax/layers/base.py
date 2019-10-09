@@ -53,26 +53,26 @@ class Layer(object):
   All layers have the following properties, with default values implemented
   in the base `Layer` class:
 
-    - n_inputs: int (default 1)
-    - n_outputs: int (default 1)
+    - n_in: int (default 1)
+    - n_out: int (default 1)
     - params: tuple (default empty -- the layer has no parameters)
     - state: tuple (default empty -- the layer has no non-parameter state)
     - sublayers: tuple (default empty -- the layer has no sublayers)
 
   The inputs to a layer are tensors, packaged according to how many there are:
 
-    - n_inputs = 0: an empty tuple ()
-    - n_inputs = 1: one tensor (NOT wrapped in a tuple)
-    - n_inputs > 1: a tuple of tensors
+    - n_in = 0: an empty tuple ()
+    - n_in = 1: one tensor (NOT wrapped in a tuple)
+    - n_in > 1: a tuple of tensors
 
   (The special treatment of the single-input case is meant to simplify the
   work of layer writers; this design choice may be revisited in the future.)
 
   The outputs from a layer are also tensors, packaged the same as layer inputs:
 
-    - n_outputs = 0: an empty tuple ()
-    - n_outputs = 1: the tensor (NOT wrapped in a tuple)
-    - n_outputs > 1: a tuple of tensors
+    - n_out = 0: an empty tuple ()
+    - n_out = 1: the tensor (NOT wrapped in a tuple)
+    - n_out > 1: a tuple of tensors
 
   The Trax runtime maintains a data stack with which layer calls are composed.
   For more complex data network architectures, possibly involving multiple data
@@ -81,15 +81,15 @@ class Layer(object):
   outputs are spliced back into the stack.
   """
 
-  def __init__(self, n_inputs=1, n_outputs=1):
+  def __init__(self, n_in=1, n_out=1):
     """Creates a partially initialized, unconnected layer instance.
 
     Args:
-      n_inputs: Number of inputs expected by this layer.
-      n_outputs: Number of outputs promised by this layer.
+      n_in: Number of inputs expected by this layer.
+      n_out: Number of outputs promised by this layer.
     """
-    self._n_inputs = n_inputs
-    self._n_outputs = n_outputs
+    self._n_in = n_in
+    self._n_out = n_out
     self._sublayers = ()  # Default is no sublayers.
     self._params = ()  # cached parameters
     self._state = ()
@@ -98,7 +98,7 @@ class Layer(object):
 
   def __repr__(self):
     class_str = self.__class__.__name__
-    fields_str = 'in={},out={}'.format(self.n_inputs, self.n_outputs)
+    fields_str = 'in={},out={}'.format(self.n_in, self.n_out)
     objs = self.sublayers
     if objs:
       objs_str = ', '.join(str(x) for x in objs)
@@ -113,11 +113,11 @@ class Layer(object):
     forward computation that their layer performs.
 
     Args:
-      inputs: Input tensors, matching the number (n_inputs) expected by this
+      inputs: Input tensors, matching the number (n_in) expected by this
           layer. Specifically:
-            - n_inputs = 0: an empty tuple ()
-            - n_inputs = 1: a tensor (NOT wrapped in a tuple)
-            - n_inputs > 1: a tuple of tensors, with n_inputs items
+            - n_in = 0: an empty tuple ()
+            - n_in = 1: a tensor (NOT wrapped in a tuple)
+            - n_in > 1: a tuple of tensors, with n_in items
       params: A tuple of trainable parameters, with one element for this layer
           if this layer has no sublayers, or one for each sublayer if this
           layer has sublayers. If a layer (or sublayer) has no trainable
@@ -127,11 +127,11 @@ class Layer(object):
           number generation, using the keyword 'rng'.
 
     Returns:
-      Tensors, matching the number (n_outputs) promised by this layer.
+      Tensors, matching the number (n_out) promised by this layer.
       Specifically:
-        - n_outputs = 0: an empty tuple
-        - n_outputs = 1: one tensor (NOT wrapped in a tuple)
-        - n_outputs > 1: a tuple of tensors, with n_outputs items
+        - n_out = 0: an empty tuple
+        - n_out = 1: one tensor (NOT wrapped in a tuple)
+        - n_out > 1: a tuple of tensors, with n_out items
     """
     raise NotImplementedError
 
@@ -154,14 +154,14 @@ class Layer(object):
     return (), ()
 
   @property
-  def n_inputs(self):
+  def n_in(self):
     """Returns how many tensors this layer expects as input."""
-    return self._n_inputs
+    return self._n_in
 
   @property
-  def n_outputs(self):
+  def n_out(self):
     """Returns how many tensors this layer promises as output."""
-    return self._n_outputs
+    return self._n_out
 
   @property
   def sublayers(self):
@@ -543,18 +543,18 @@ def _short_traceback(skip=3):
   return '\n'.join(res)
 
 
-def _validate_forward_input(x, n_inputs):
-  if n_inputs != 1:
+def _validate_forward_input(x, n_in):
+  if n_in != 1:
     if not isinstance(x, tuple):
       raise TypeError(
           'expected input to be a tuple; instead received {}'.format(type(x)))
-    if len(x) != n_inputs:
+    if len(x) != n_in:
       raise ValueError(
           'input tuple length ({}) does not equal required number of inputs'
-          ' ({})'.format(len(x), n_inputs))
+          ' ({})'.format(len(x), n_in))
 
 
-def layer(n_inputs=1, n_outputs=1, new_params_and_state_fn=None):
+def layer(n_in=1, n_out=1, new_params_and_state_fn=None):
   """Returns a decorator that converts a function into a Layer class builder."""
 
   def _build_layer_class(raw_fn):
@@ -562,7 +562,7 @@ def layer(n_inputs=1, n_outputs=1, new_params_and_state_fn=None):
 
     def _init(self, **kwargs):
       self._kwargs = kwargs  # pylint: disable=protected-access
-      Layer.__init__(self, n_inputs=n_inputs, n_outputs=n_outputs)
+      Layer.__init__(self, n_in=n_in, n_out=n_out)
 
     def _new_params_and_state(self, input_shapes, input_dtype, rng):
       if new_params_and_state_fn is None:
@@ -579,7 +579,7 @@ def layer(n_inputs=1, n_outputs=1, new_params_and_state_fn=None):
       merged_kwargs = kwargs.copy()
       merged_kwargs.update(self._kwargs)  # pylint: disable=protected-access
 
-      _validate_forward_input(x, n_inputs)
+      _validate_forward_input(x, n_in)
       raw_output = raw_fn(x, params=params, **merged_kwargs)
       output = () if _is_empty(raw_output) else raw_output
       return (output, state)

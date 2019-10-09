@@ -63,7 +63,7 @@ def PaddingMask(x, params, pad=0, **kwargs):
   return np.reshape(x != pad, (x.shape[0], 1, 1, x.shape[-1]))
 
 
-@base.layer(n_inputs=2)
+@base.layer(n_in=2)
 def EncoderDecoderMask(x, **unused_kwargs):
   """Makes encoder-decoder mask from decoder input and a padding mask."""
   decoder_input, padding_mask = x
@@ -143,7 +143,7 @@ def DotProductAttention(query, key, value, mask, dropout, mode, rng):
   return out
 
 
-@base.layer(n_inputs=4, n_outputs=2)
+@base.layer(n_in=4, n_out=2)
 def PureAttention(x, params, n_heads=1, dropout=0.0, mode='train', **kwargs):
   """Pure transformer-style multi-headed attention.
 
@@ -346,7 +346,7 @@ class BaseCausalAttention(base.Layer):
 
   def __init__(self, mode='train'):
     del mode
-    super(BaseCausalAttention, self).__init__(n_inputs=3)
+    super(BaseCausalAttention, self).__init__(n_in=3)
 
   def forward(self, inputs, params=(), state=(), rng=None, **kwargs):
     """Forward pass for the attention layer."""
