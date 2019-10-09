@@ -52,42 +52,42 @@ from trax.rl import trainers as rl_trainers
 FLAGS = flags.FLAGS
 
 flags.DEFINE_boolean(
-    "jax_debug_nans", False,
-    "Setting to true will help to debug nans and disable jit.")
-flags.DEFINE_boolean("disable_jit", False, "Setting to true will disable jit.")
+    'jax_debug_nans', False,
+    'Setting to true will help to debug nans and disable jit.')
+flags.DEFINE_boolean('disable_jit', False, 'Setting to true will disable jit.')
 
-flags.DEFINE_string("output_dir", "", "Output dir.")
-flags.DEFINE_string("envs_output_dir", "", "Output dir for the envs.")
-flags.DEFINE_multi_string("config_file", None,
-                          "Configuration file with parameters (.gin).")
-flags.DEFINE_multi_string("config", None,
-                          "Configuration parameters (gin string).")
-flags.DEFINE_bool("use_tpu", False, "Whether we're running on TPU.")
-flags.DEFINE_bool("xm", False, "Copy atari roms?")
-flags.DEFINE_integer("train_batch_size", 32,
-                     "Number of parallel environments during training.")
-flags.DEFINE_integer("eval_batch_size", 4, "Batch size for evaluation.")
-flags.DEFINE_boolean("parallelize_envs", False,
-                     "If true, sets parallelism to number of cpu cores.")
-flags.DEFINE_string("trajectory_dump_dir", "",
-                    "Directory to dump trajectories to.")
+flags.DEFINE_string('output_dir', '', 'Output dir.')
+flags.DEFINE_string('envs_output_dir', '', 'Output dir for the envs.')
+flags.DEFINE_multi_string('config_file', None,
+                          'Configuration file with parameters (.gin).')
+flags.DEFINE_multi_string('config', None,
+                          'Configuration parameters (gin string).')
+flags.DEFINE_bool('use_tpu', False, "Whether we're running on TPU.")
+flags.DEFINE_bool('xm', False, 'Copy atari roms?')
+flags.DEFINE_integer('train_batch_size', 32,
+                     'Number of parallel environments during training.')
+flags.DEFINE_integer('eval_batch_size', 4, 'Batch size for evaluation.')
+flags.DEFINE_boolean('parallelize_envs', False,
+                     'If true, sets parallelism to number of cpu cores.')
+flags.DEFINE_string('trajectory_dump_dir', '',
+                    'Directory to dump trajectories to.')
 
 # TODO(afrozm): Find a better way to do these configurations.
-flags.DEFINE_string("train_server_bns", "", "Train Server's BNS.")
-flags.DEFINE_string("eval_server_bns", "", "Eval Server's BNS.")
+flags.DEFINE_string('train_server_bns', '', "Train Server's BNS.")
+flags.DEFINE_string('eval_server_bns', '', "Eval Server's BNS.")
 
-flags.DEFINE_bool("async_mode", False, "Async mode.")
+flags.DEFINE_bool('async_mode', False, 'Async mode.')
 
 
-# Not just "train" to avoid a conflict with trax.train in GIN files.
+# Not just 'train' to avoid a conflict with trax.train in GIN files.
 @gin.configurable(blacklist=[
-    "output_dir", "train_batch_size", "eval_batch_size", "trajectory_dump_dir"
+    'output_dir', 'train_batch_size', 'eval_batch_size', 'trajectory_dump_dir'
 ])
 def train_rl(
     output_dir,
     train_batch_size,
     eval_batch_size,
-    env_name="ClientEnv-v0",
+    env_name='ClientEnv-v0',
     max_timestep=None,
     clip_rewards=False,
     rendered_env=False,
@@ -116,31 +116,31 @@ def train_rl(
   """
 
   if FLAGS.jax_debug_nans:
-    config.update("jax_debug_nans", True)
+    config.update('jax_debug_nans', True)
 
   if FLAGS.use_tpu:
-    config.update("jax_platform_name", "tpu")
+    config.update('jax_platform_name', 'tpu')
   else:
-    config.update("jax_platform_name", "gpu")
+    config.update('jax_platform_name', 'gpu')
 
 
   # TODO(pkozakowski): Find a better way to determine this.
   train_env_kwargs = {}
   eval_env_kwargs = {}
-  if "OnlineTuneEnv" in env_name:
-    envs_output_dir = FLAGS.envs_output_dir or os.path.join(output_dir, "envs")
-    train_env_output_dir = os.path.join(envs_output_dir, "train")
-    eval_env_output_dir = os.path.join(envs_output_dir, "eval")
-    train_env_kwargs = {"output_dir": train_env_output_dir}
-    eval_env_kwargs = {"output_dir": eval_env_output_dir}
+  if 'OnlineTuneEnv' in env_name:
+    envs_output_dir = FLAGS.envs_output_dir or os.path.join(output_dir, 'envs')
+    train_env_output_dir = os.path.join(envs_output_dir, 'train')
+    eval_env_output_dir = os.path.join(envs_output_dir, 'eval')
+    train_env_kwargs = {'output_dir': train_env_output_dir}
+    eval_env_kwargs = {'output_dir': eval_env_output_dir}
 
-  if "ClientEnv" in env_name:
-    train_env_kwargs["per_env_kwargs"] = [{
-        "remote_env_address": os.path.join(FLAGS.train_server_bns, str(replica))
+  if 'ClientEnv' in env_name:
+    train_env_kwargs['per_env_kwargs'] = [{
+        'remote_env_address': os.path.join(FLAGS.train_server_bns, str(replica))
     } for replica in range(train_batch_size)]
 
-    eval_env_kwargs["per_env_kwargs"] = [{
-        "remote_env_address": os.path.join(FLAGS.eval_server_bns, str(replica))
+    eval_env_kwargs['per_env_kwargs'] = [{
+        'remote_env_address': os.path.join(FLAGS.eval_server_bns, str(replica))
     } for replica in range(eval_batch_size)]
 
   # TODO(afrozm): Should we leave out some cores?
@@ -172,7 +172,7 @@ def train_rl(
 
   def run_training_loop():
     """Runs the training loop."""
-    logging.info("Starting the training loop.")
+    logging.info('Starting the training loop.')
 
     trainer = trainer_class(
         output_dir=output_dir,
@@ -192,7 +192,7 @@ def train_rl(
 
 def main(argv):
   del argv
-  logging.info("Starting RL training.")
+  logging.info('Starting RL training.')
 
   gin_configs = FLAGS.config or []
   gin.parse_config_files_and_bindings(FLAGS.config_file, gin_configs)
@@ -205,5 +205,5 @@ def main(argv):
   )
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   app.run(main)

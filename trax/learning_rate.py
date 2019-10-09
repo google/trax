@@ -16,10 +16,10 @@
 """trax learning rate schedules.
 
 The learning rate schedules here all have the signature:
-  lr: history -> (step -> {"learning_rate": lr})
+  lr: history -> (step -> {'learning_rate': lr})
 
 That is, they are functions that take a trax.history.History and return a
-function that takes a step and returns a dict with entry "learning_rate".
+function that takes a step and returns a dict with entry 'learning_rate'.
 """
 
 # TODO(pkozakowski): Revisit the decision to control nontrainable parameters
@@ -43,9 +43,9 @@ from trax.rl import online_tune
 from trax.rl import ppo
 
 
-@gin.configurable(blacklist=["history"])
+@gin.configurable(blacklist=['history'])
 def MultifactorSchedule(history=None,
-                        factors="constant * linear_warmup * rsqrt_decay",
+                        factors='constant * linear_warmup * rsqrt_decay',
                         constant=0.1,
                         warmup_steps=400,
                         decay_factor=0.5,
@@ -60,48 +60,48 @@ def MultifactorSchedule(history=None,
 
   Args:
     history: the history of training and evaluation (History object).
-    factors: a string with factors separated by "*" that defines the schedule.
+    factors: a string with factors separated by '*' that defines the schedule.
     constant: float, the starting constant for the learning rate schedule.
     warmup_steps: how many steps to warm up for in the warmup schedule.
     decay_factor: The amount to decay the learning rate by.
     steps_per_decay: How often to decay the learning rate.
 
   Returns:
-    a function learning_rate(step): float -> {"learning_rate": float}, the
+    a function learning_rate(step): float -> {'learning_rate': float}, the
     step-dependent lr.
   """
   del history
 
-  factors = [n.strip() for n in factors.split("*")]
+  factors = [n.strip() for n in factors.split('*')]
 
   def learning_rate(step):  # pylint: disable=invalid-name
     """Step to learning rate function."""
     ret = 1.0
     for name in factors:
-      if name == "constant":
+      if name == 'constant':
         ret *= constant
-      elif name == "linear_warmup":
+      elif name == 'linear_warmup':
         ret *= np.minimum(1.0, step / warmup_steps)
-      elif name == "rsqrt_decay":
+      elif name == 'rsqrt_decay':
         ret /= np.sqrt(np.maximum(step, warmup_steps))
-      elif name == "decay_every":
+      elif name == 'decay_every':
         ret *= (decay_factor ** (step//steps_per_decay))
       else:
-        raise ValueError("Unknown factor %s." % name)
+        raise ValueError('Unknown factor %s.' % name)
     ret = np.asarray(ret, dtype=np.float32)
-    return {"learning_rate": ret}
+    return {'learning_rate': ret}
 
   return learning_rate
 
 
-@gin.configurable(blacklist=["history"])
+@gin.configurable(blacklist=['history'])
 def EvalAdjustingSchedule(history,
                           constant=0.1,
                           steps_to_decrease=20,
                           improvement_margin=0.001,
                           decrease_rate=1.5,
-                          history_mode="eval",
-                          metric="metrics/accuracy"):
+                          history_mode='eval',
+                          metric='metrics/accuracy'):
   """Learning rate that decreases when eval metric stalls.
 
   If the chosen metric does not improve by improvement_margin for as many as
@@ -120,7 +120,7 @@ def EvalAdjustingSchedule(history,
     metric: which evaluation metric to use for adjustments.
 
   Returns:
-    a function learning_rate(step): float -> {"learning_rate": float}, the
+    a function learning_rate(step): float -> {'learning_rate': float}, the
     step-dependent lr.
   """
   metrics = history.get(history_mode, metric)
@@ -146,19 +146,19 @@ def EvalAdjustingSchedule(history,
   return MultifactorSchedule(history, constant=adjusted)
 
 
-@gin.configurable(blacklist=["history"])
+@gin.configurable(blacklist=['history'])
 def PolicySchedule(
     history,
     observation_metrics=(
-        ("train", "metrics/accuracy"),
-        ("train", "metrics/loss"),
-        ("eval", "metrics/accuracy"),
-        ("eval", "metrics/loss"),
+        ('train', 'metrics/accuracy'),
+        ('train', 'metrics/loss'),
+        ('eval', 'metrics/accuracy'),
+        ('eval', 'metrics/loss'),
     ),
     include_controls_in_observation=False,
     control_configs=(
         # (name, start, (low, high), flip)
-        ("learning_rate", 1e-3, (1e-9, 10.0), False),
+        ('learning_rate', 1e-3, (1e-9, 10.0), False),
     ),
     observation_range=(0.0, 10.0),
     action_multipliers=(1.0 / 1.5, 1.0 / 1.25, 1.0, 1.25, 1.5),
@@ -189,7 +189,7 @@ def PolicySchedule(
     temperature: temperature for sampling from the policy.
 
   Returns:
-    a function nontrainable_params(step): float -> {"name": float}, the
+    a function nontrainable_params(step): float -> {'name': float}, the
     step-dependent schedule for nontrainable parameters.
   """
 
@@ -201,7 +201,7 @@ def PolicySchedule(
       control_configs if include_controls_in_observation else None
   )
   logging.vlog(
-      1, "Building observations took %0.2f sec.", time.time() - start_time)
+      1, 'Building observations took %0.2f sec.', time.time() - start_time)
   if observations.shape[0] == 0:
     controls = {
         name: start_value
@@ -210,7 +210,7 @@ def PolicySchedule(
     return lambda _: controls
 
   assert policy_and_value_vocab_size is None, (
-      "Serialized policies are not supported yet."
+      'Serialized policies are not supported yet.'
   )
   # Build the policy network and load its parameters.
   start_time = time.time()
@@ -222,15 +222,15 @@ def PolicySchedule(
       two_towers=policy_and_value_two_towers,
   )
   logging.vlog(
-      1, "Building the policy network took %0.2f sec.", time.time() - start_time
+      1, 'Building the policy network took %0.2f sec.', time.time() - start_time
   )
   start_time = time.time()
   # (opt_state, state, epoch, opt_step)
   (opt_state, state, _, _) = ppo.maybe_restore_opt_state(policy_dir)
-  assert opt_state is not None, "Policy checkpoint not found."
+  assert opt_state is not None, 'Policy checkpoint not found.'
   (params, _) = opt_state
   logging.vlog(
-      1, "Restoring the policy parameters took %0.2f sec.",
+      1, 'Restoring the policy parameters took %0.2f sec.',
       time.time() - start_time
   )
 
@@ -243,7 +243,7 @@ def PolicySchedule(
   (log_probs, _) = (
       net(np.array([observations]), params=params, state=state, rng=rng))
   logging.vlog(
-      1, "Running the policy took %0.2f sec.", time.time() - start_time
+      1, 'Running the policy took %0.2f sec.', time.time() - start_time
   )
   # Sample from the action distribution for the last timestep.
   assert log_probs.shape == (

@@ -32,20 +32,20 @@ class History(object):
   history.get.
 
   For example:
-  history.append("train", "metrics/accuracy", 1, 0.04)
-  history.append("train", "metrics/accuracy", 1000, 0.31)
-  history.get("train", "metrics/accuracy")
+  history.append('train', 'metrics/accuracy', 1, 0.04)
+  history.append('train', 'metrics/accuracy', 1000, 0.31)
+  history.get('train', 'metrics/accuracy')
   # returns [(1, 0.04), (1000, 0.31)]
   """
 
   def __init__(self):
     # Structure is
     # values = {
-    #   "mode1": {
-    #     "metric1": [val1, val2],
+    #   'mode1': {
+    #     'metric1': [val1, val2],
     #     ...
     #   },
-    #   "mode2": ...
+    #   'mode2': ...
     # }
     self._values = {}
 

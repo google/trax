@@ -36,20 +36,20 @@ class BackendTest(test.TestCase):
 
   def test_backend_imports_correctly(self):
     backend = backend_lib.backend()
-    self.assertEqual(jnp, backend["np"])
-    self.assertNotEqual(onp, backend["np"])
+    self.assertEqual(jnp, backend['np'])
+    self.assertNotEqual(onp, backend['np'])
 
     self.override_gin("backend.name = 'numpy'")
 
     backend = backend_lib.backend()
-    self.assertNotEqual(jnp, backend["np"])
-    self.assertEqual(onp, backend["np"])
+    self.assertNotEqual(jnp, backend['np'])
+    self.assertEqual(onp, backend['np'])
 
   def test_numpy_backend_delegation(self):
     # Assert that we are getting JAX's numpy backend.
     backend = backend_lib.backend()
     numpy = backend_lib.numpy
-    self.assertEqual(jnp, backend["np"])
+    self.assertEqual(jnp, backend['np'])
 
     # Assert that `numpy` calls the appropriate gin configured functions and
     # properties.
@@ -63,7 +63,7 @@ class BackendTest(test.TestCase):
 
     backend = backend_lib.backend()
     numpy = backend_lib.numpy
-    self.assertEqual(onp, backend["np"])
+    self.assertEqual(onp, backend['np'])
 
     # Assert that `numpy` calls the appropriate gin configured functions and
     # properties.
@@ -71,5 +71,5 @@ class BackendTest(test.TestCase):
     self.assertEqual(onp.isinf, numpy.isinf)
     self.assertEqual(onp.inf, numpy.inf)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   test.main()

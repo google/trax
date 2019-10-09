@@ -36,7 +36,7 @@ class PolicyScheduleTest(test.TestCase):
       self,
       history,
       control_configs,
-      observation_metrics=(("eval", "metrics/accuracy"),),
+      observation_metrics=(('eval', 'metrics/accuracy'),),
       action_multipliers=(1.0,),
   ):
     policy_and_value_model = atari_cnn.FrameStackMLP
@@ -71,49 +71,49 @@ class PolicyScheduleTest(test.TestCase):
     start_lr = 1e-3
     schedule = self._make_schedule(
         history,
-        control_configs=(("learning_rate", start_lr, (1e-9, 1.0), False),),
+        control_configs=(('learning_rate', start_lr, (1e-9, 1.0), False),),
     )
-    self.assertEqual(schedule(0)["learning_rate"], start_lr)
+    self.assertEqual(schedule(0)['learning_rate'], start_lr)
 
   def test_changes_lr_when_there_are_some_metrics(self):
     history = trax_history.History()
-    history.append("eval", "metrics/accuracy", step=0, value=0.8)
+    history.append('eval', 'metrics/accuracy', step=0, value=0.8)
     history.append(
-        *online_tune.control_metric("learning_rate"), step=0, value=1e-4
+        *online_tune.control_metric('learning_rate'), step=0, value=1e-4
     )
     schedule = self._make_schedule(
         history,
-        control_configs=(("learning_rate", 1e-3, (1e-9, 1.0), False),),
-        observation_metrics=(("eval", "metrics/accuracy"),),
+        control_configs=(('learning_rate', 1e-3, (1e-9, 1.0), False),),
+        observation_metrics=(('eval', 'metrics/accuracy'),),
         action_multipliers=(0.5, 2.0),
     )
-    new_lr = schedule(123)["learning_rate"]
+    new_lr = schedule(123)['learning_rate']
     self.assertTrue(
         onp.allclose(new_lr, 5e-5) or onp.allclose(new_lr, 2e-4)
     )
 
   def test_works_with_multiple_controls(self):
     history = trax_history.History()
-    history.append("eval", "metrics/accuracy", step=0, value=0.8)
+    history.append('eval', 'metrics/accuracy', step=0, value=0.8)
     history.append(
-        *online_tune.control_metric("learning_rate"), step=0, value=1e-4
+        *online_tune.control_metric('learning_rate'), step=0, value=1e-4
     )
     history.append(
-        *online_tune.control_metric("weight_decay_rate"), step=0, value=1e-5
+        *online_tune.control_metric('weight_decay_rate'), step=0, value=1e-5
     )
     schedule = self._make_schedule(
         history,
-        observation_metrics=(("eval", "metrics/accuracy"),),
+        observation_metrics=(('eval', 'metrics/accuracy'),),
         control_configs=(
-            ("learning_rate", 1e-3, (1e-9, 1.0), False),
-            ("weight_decay_rate", 1e-5, (1e-9, 1.0), False),
+            ('learning_rate', 1e-3, (1e-9, 1.0), False),
+            ('weight_decay_rate', 1e-5, (1e-9, 1.0), False),
         ),
         action_multipliers=(1.0,),
     )
     new_controls = schedule(123)
-    self.assertIn("learning_rate", new_controls)
-    self.assertIn("weight_decay_rate", new_controls)
+    self.assertIn('learning_rate', new_controls)
+    self.assertIn('weight_decay_rate', new_controls)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   test.main()

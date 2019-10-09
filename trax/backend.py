@@ -42,10 +42,10 @@ def jax_conv(inp, fltr, window_strides, padding, dimension_numbers,
     inp: an (N+2)-D array. The input of the convolution.
     fltr: an (N+2)-D array. The filter (i.e. kernel) of the convolution.
     window_strides: the strides for moving the convolution window.
-    padding: a string, either "VALID" or "SAME". The padding algorithm.
+    padding: a string, either 'VALID' or 'SAME'. The padding algorithm.
     dimension_numbers: a tuple of three strings encoding the data format of
-      input, filter and output. "I" means input; "O" means output; "C" means
-      channel; other characters such as "W", "H" and "D" means spatial
+      input, filter and output. 'I' means input; 'O' means output; 'C' means
+      channel; other characters such as 'W', 'H' and 'D' means spatial
       dimensions.
     filter_dilation: the dilation rates for the filter. Dilating the filter
       means adding "holes" to the filter.
@@ -60,7 +60,7 @@ def jax_conv(inp, fltr, window_strides, padding, dimension_numbers,
 
 
 def _pooling_general(inputs, reducer, init_val, rescaler=None,
-                     pool_size=(2, 2), strides=None, padding="VALID"):
+                     pool_size=(2, 2), strides=None, padding='VALID'):
   """Helper: general pooling computation used in pooling layers later."""
   spatial_strides = strides or (1,) * len(pool_size)
   rescale = rescaler(pool_size, spatial_strides, padding) if rescaler else None
@@ -113,7 +113,7 @@ class ShapeType(object):
     self.dtype = dtype
 
   def __repr__(self):
-    return "[shape:" + str(self.shape) + ", dtype:" + str(self.dtype) + "]"
+    return '[shape:' + str(self.shape) + ', dtype:' + str(self.dtype) + ']'
 
 
 def jax_eval_on_shapes(f):
@@ -157,89 +157,89 @@ def jax_randint(key, shape, minval, maxval, dtype=onp.int32):
 
 
 _JAX_BACKEND = {
-    "name": "jax",
-    "np": jnp,
-    "logsumexp": jax_special.logsumexp,
-    "expit": jax_special.expit,
-    "erf": jax_special.erf,
-    "conv": jax_conv,
-    "avg_pool": jax_avg_pool,
-    "max_pool": jax_max_pool,
-    "sum_pool": jax_sum_pool,
-    "jit": jax.jit,
-    "grad": jax.grad,
-    "pmap": jax.pmap,
-    "eval_on_shapes": jax_eval_on_shapes,
-    "random_uniform": jax_random.uniform,
-    "random_randint": jax_randint,
-    "random_normal": jax_random.normal,
-    "random_bernoulli": jax_random.bernoulli,
-    "random_get_prng": jax.jit(jax_random.PRNGKey),
-    "random_split": jax_random.split,
-    "dataset_as_numpy": tfds.as_numpy,
+    'name': 'jax',
+    'np': jnp,
+    'logsumexp': jax_special.logsumexp,
+    'expit': jax_special.expit,
+    'erf': jax_special.erf,
+    'conv': jax_conv,
+    'avg_pool': jax_avg_pool,
+    'max_pool': jax_max_pool,
+    'sum_pool': jax_sum_pool,
+    'jit': jax.jit,
+    'grad': jax.grad,
+    'pmap': jax.pmap,
+    'eval_on_shapes': jax_eval_on_shapes,
+    'random_uniform': jax_random.uniform,
+    'random_randint': jax_randint,
+    'random_normal': jax_random.normal,
+    'random_bernoulli': jax_random.bernoulli,
+    'random_get_prng': jax.jit(jax_random.PRNGKey),
+    'random_split': jax_random.split,
+    'dataset_as_numpy': tfds.as_numpy,
 }
 
 
 _NUMPY_BACKEND = {
-    "name": "numpy",
-    "np": onp,
-    "jit": (lambda f: f),
-    "random_get_prng": lambda seed: None,
-    "random_split": lambda prng, num=2: (None,) * num,
-    "expit": (lambda x: 1. / (1. + onp.exp(-x))),
+    'name': 'numpy',
+    'np': onp,
+    'jit': (lambda f: f),
+    'random_get_prng': lambda seed: None,
+    'random_split': lambda prng, num=2: (None,) * num,
+    'expit': (lambda x: 1. / (1. + onp.exp(-x))),
 }
 
 
 def get_name():
-  return backend()["name"]
+  return backend()['name']
 
 
 def logsumexp(*args, **kwargs):
-  return backend()["logsumexp"](*args, **kwargs)
+  return backend()['logsumexp'](*args, **kwargs)
 
 
 def expit(*args, **kwargs):
-  return backend()["expit"](*args, **kwargs)
+  return backend()['expit'](*args, **kwargs)
 
 
 def erf(*args, **kwargs):
-  return backend()["erf"](*args, **kwargs)
+  return backend()['erf'](*args, **kwargs)
 
 
 def conv(*args, **kwargs):
-  return backend()["conv"](*args, **kwargs)
+  return backend()['conv'](*args, **kwargs)
 
 
 def avg_pool(*args, **kwargs):
-  return backend()["avg_pool"](*args, **kwargs)
+  return backend()['avg_pool'](*args, **kwargs)
 
 
 def max_pool(*args, **kwargs):
-  return backend()["max_pool"](*args, **kwargs)
+  return backend()['max_pool'](*args, **kwargs)
 
 
 def sum_pool(*args, **kwargs):
-  return backend()["sum_pool"](*args, **kwargs)
+  return backend()['sum_pool'](*args, **kwargs)
 
 
 def jit(*args, **kwargs):
-  return backend()["jit"](*args, **kwargs)
+  return backend()['jit'](*args, **kwargs)
 
 
 def grad(*args, **kwargs):
-  return backend()["grad"](*args, **kwargs)
+  return backend()['grad'](*args, **kwargs)
 
 
 def pmap(*args, **kwargs):
-  return backend()["pmap"](*args, **kwargs)
+  return backend()['pmap'](*args, **kwargs)
 
 
 def eval_on_shapes(*args, **kwargs):
-  return backend()["eval_on_shapes"](*args, **kwargs)
+  return backend()['eval_on_shapes'](*args, **kwargs)
 
 
 def dataset_as_numpy(*args, **kwargs):
-  return backend()["dataset_as_numpy"](*args, **kwargs)
+  return backend()['dataset_as_numpy'](*args, **kwargs)
 
 
 # For numpy and random modules, we need to call "backend()" lazily, only when
@@ -252,22 +252,22 @@ class RandomBackend(object):
   """Backend providing random functions."""
 
   def get_prng(self, seed):
-    return backend()["random_get_prng"](seed)
+    return backend()['random_get_prng'](seed)
 
   def split(self, prng, num=2):
-    return backend()["random_split"](prng, num)
+    return backend()['random_split'](prng, num)
 
   def uniform(self, *args, **kwargs):
-    return backend()["random_uniform"](*args, **kwargs)
+    return backend()['random_uniform'](*args, **kwargs)
 
   def randint(self, *args, **kwargs):
-    return backend()["random_randint"](*args, **kwargs)
+    return backend()['random_randint'](*args, **kwargs)
 
   def normal(self, *args, **kwargs):
-    return backend()["random_normal"](*args, **kwargs)
+    return backend()['random_normal'](*args, **kwargs)
 
   def bernoulli(self, *args, **kwargs):
-    return backend()["random_bernoulli"](*args, **kwargs)
+    return backend()['random_bernoulli'](*args, **kwargs)
 
 
 random = RandomBackend()
@@ -277,7 +277,7 @@ random = RandomBackend()
 class NumpyBackend(object):
 
   def __getattr__(self, attr):
-    return getattr(backend()["np"], attr)
+    return getattr(backend()['np'], attr)
 
 
 numpy = NumpyBackend()
@@ -289,9 +289,9 @@ override_backend_name = None
 
 
 @gin.configurable()
-def backend(name="jax"):
+def backend(name='jax'):
   name = name if not override_backend_name else override_backend_name
-  if name == "numpy":
+  if name == 'numpy':
     return _NUMPY_BACKEND
   return _JAX_BACKEND
 

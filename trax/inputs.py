@@ -65,7 +65,7 @@ def download_and_prepare(dataset_name, data_dir):
   """Downloads and prepares T2T or TFDS dataset.
 
   Args:
-    dataset_name: tfds dataset or t2t problem name prefixed by "t2t_".
+    dataset_name: tfds dataset or t2t problem name prefixed by 't2t_'.
     data_dir: location of existing dataset or None.
 
   Returns:
@@ -103,7 +103,7 @@ def inputs(n_devices, dataset_name, data_dir=None, input_name=None,
   Args:
     n_devices: how many devices to build the inputs for.
     dataset_name: a TFDS or T2T dataset name. If it's a T2T dataset name, prefix
-      with "t2t_".
+      with 't2t_'.
     data_dir: data directory.
     input_name: optional, name of the inputs from the dictionary.
     n_chunks: optional, into how many pieces should we chunk (large inputs).
@@ -278,7 +278,7 @@ def train_and_eval_dataset(dataset_name, data_dir, eval_holdout_size=0,
   """Return train and evaluation datasets, feature info and supervised keys.
 
   Args:
-    dataset_name: a string, the name of the dataset; if it starts with "t2t_"
+    dataset_name: a string, the name of the dataset; if it starts with 't2t_'
       then we'll search T2T Problem registry for it, otherwise we assume it
       is a dataset from TFDS and load it from there.
     data_dir: directory where the data is located.

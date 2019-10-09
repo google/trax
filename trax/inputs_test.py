@@ -68,5 +68,5 @@ class InputsTest(tf.test.TestCase):
     self.assertEqual(count, 1)  # Just one batch here.
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   tf.test.main()

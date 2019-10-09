@@ -72,7 +72,7 @@ def test_inputs(n_classes, with_weights=False, input_shape=(6, 6, 3)):
 
 
 
-BACKENDS = ["jax"]
+BACKENDS = ['jax']
 
 
 class TraxTest(test.TestCase, parameterized.TestCase):
@@ -87,7 +87,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(BACKENDS)
   def test_train_eval_predict(self, backend_name):
-    if xla_bridge.device_count() > 1 and backend_name == "tf":
+    if xla_bridge.device_count() > 1 and backend_name == 'tf':
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
     with backend.use_backend(backend_name), self.tmp_dir() as output_dir:
       # Prepare model and inputs
@@ -96,7 +96,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       eval_steps = 2
 
       # Adds Dropout and BatchNorm to test state handling.
-      def model_fn(mode="train"):
+      def model_fn(mode='train'):
         return layers.Model(
             layers.Dropout(mode=mode, rate=0.1), layers.BatchNorm(mode=mode),
             models.MLP(d_hidden=16, n_output_classes=n_classes, mode=mode))
@@ -115,8 +115,8 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(train_steps, state.step)
 
       # Assert 2 evaluations ran
-      train_acc = state.history.get("train", "metrics/accuracy")
-      eval_acc = state.history.get("eval", "metrics/accuracy")
+      train_acc = state.history.get('train', 'metrics/accuracy')
+      eval_acc = state.history.get('eval', 'metrics/accuracy')
       self.assertEqual(len(train_acc), len(eval_acc))
       self.assertLen(eval_acc, 2)
 
@@ -127,7 +127,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(BACKENDS)
   def test_train_eval_predict_sm3(self, backend_name):
-    if xla_bridge.device_count() > 1 and backend_name == "tf":
+    if xla_bridge.device_count() > 1 and backend_name == 'tf':
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
     with backend.use_backend(backend_name), self.tmp_dir() as output_dir:
       # Prepare model and inputs
@@ -151,8 +151,8 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(train_steps, state.step)
 
       # Assert 2 evaluations ran
-      train_acc = state.history.get("train", "metrics/accuracy")
-      eval_acc = state.history.get("eval", "metrics/accuracy")
+      train_acc = state.history.get('train', 'metrics/accuracy')
+      eval_acc = state.history.get('eval', 'metrics/accuracy')
       self.assertEqual(len(train_acc), len(eval_acc))
       self.assertLen(eval_acc, 2)
 
@@ -163,7 +163,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(BACKENDS)
   def test_train_restart(self, backend_name):
-    if xla_bridge.device_count() > 1 and backend_name == "tf":
+    if xla_bridge.device_count() > 1 and backend_name == 'tf':
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
     with backend.use_backend(backend_name), self.tmp_dir() as output_dir:
       # Prepare model and inputs
@@ -195,7 +195,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(BACKENDS)
   def test_train_with_weights(self, backend_name):
-    if xla_bridge.device_count() > 1 and backend_name == "tf":
+    if xla_bridge.device_count() > 1 and backend_name == 'tf':
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
     with backend.use_backend(backend_name), self.tmp_dir() as output_dir:
       # Prepare model and inputs
@@ -220,7 +220,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(BACKENDS)
   def test_reset_twice(self, backend_name):
-    if xla_bridge.device_count() > 1 and backend_name == "tf":
+    if xla_bridge.device_count() > 1 and backend_name == 'tf':
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
     with backend.use_backend(backend_name), self.tmp_dir() as output_dir1, \
           self.tmp_dir() as output_dir2:
@@ -262,6 +262,6 @@ class EpochsTest(test.TestCase):
     self.assertEqual(list(epoch_steps), [1, 2])
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   config.config_with_absl()
   test.main()
