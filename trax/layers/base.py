@@ -25,6 +25,8 @@ import traceback
 import jax
 
 import numpy as onp
+import six
+
 from trax import backend
 from trax.backend import nested_map
 from trax.backend import ShapeType
@@ -520,8 +522,14 @@ def _short_traceback(skip=3):
   """Cleaned-up form of traceback."""
   counter, res = 0, []
   # Skipping 3 lines by default: the top (useless) and self-call.
-  lines = traceback.format_exc().splitlines()[skip:]
+  # In python 3, we need to set chain to False (it doesn't exist in python 2).
+  if six.PY2:
+    lines = traceback.format_exc().splitlines()[skip:]
+  else:
+    lines = traceback.format_exc(chain=False).splitlines()[skip:]  # pylint: disable=unexpected-keyword-arg
   for l in lines:
+    if l.startswith('trax.layers.base.LayerError'):
+      l = l[len('trax.layers.base.'):]  # Remove the trax.layers.base prefix.
     res.append(_shorten_file_path(l))
     if counter % 2 == 1:
       res.append('')
