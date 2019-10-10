@@ -76,18 +76,39 @@ def EncoderDecoderMask(x, **unused_kwargs):
 class PositionalEncoding(base.Layer):
   """Implements bare positional encoding."""
 
-  def __init__(self, max_len=2048, mode='train'):
+  def __init__(self, max_len=2048, dropout=0.0, dropout_broadcast_dims=(-2,),
+               mode='train'):
     super(PositionalEncoding, self).__init__()
     self._max_len = max_len
+    if dropout >= 1.0:
+      raise ValueError('Dropout rates must be lower than 1.')
+    if mode == 'train':
+      self._dropout = dropout
+    else:
+      self._dropout = 0.0
+    self._dropout_broadcast_dims = dropout_broadcast_dims
     self._mode = mode
 
-  def forward(self, inputs, params=(), state=(), **kwargs):
+  def forward(self, inputs, params=(), state=(), rng=None, **kwargs):
     if self._mode in ('train', 'eval'):
       x = inputs
       symbol_size = np.shape(x)[1]
-      return (x + params[:, :symbol_size, :], state)
+      px = params[:, :symbol_size, :]
+      if self._dropout == 0:
+        return (x + px, state)
+      else:
+        noise_shape = list(px.shape)
+        for dim in self._dropout_broadcast_dims:
+          noise_shape[dim] = 1
+        keep_prob = 1.0 - self._dropout
+        if backend.get_name() == 'jax':
+          keep_prob = jax.lax.tie_in(x, np.full((), keep_prob, dtype=x.dtype))
+        keep = backend.random.bernoulli(rng, keep_prob, tuple(noise_shape))
+        multiplier = keep.astype(x.dtype) / keep_prob
+        return (x + px * multiplier, state)
     else:
       assert self._mode == 'predict'
+      assert self._dropout == 0
       # Fast inference: return consectutive elements of the encoding sequence,
       # storing the index in state.
       return (inputs + np.expand_dims(params[:, state, :], 1), state + 1)
@@ -777,6 +798,9 @@ class TimeBinCausalAttention(BaseCausalAttention):
       self_mask = jax.lax.tie_in(dots, self_mask)
       dots = dots - 1e5 * self_mask
 
+    # Softmax.
+    dots = np.exp(dots - backend.logsumexp(dots, axis=-1, keepdims=True))
+
     if self.dropout > 0.0:
       # Dropout is broadcast across the batch+head dimension
       dropout_shape = (1, dots.shape[-3], dots.shape[-2], dots.shape[-1])
@@ -785,8 +809,6 @@ class TimeBinCausalAttention(BaseCausalAttention):
       multiplier = keep.astype(dots.dtype) / jax.lax.tie_in(keep, keep_prob)
       dots = dots * multiplier
 
-    # Softmax.
-    dots = np.exp(dots - backend.logsumexp(dots, axis=-1, keepdims=True))
     bo = np.matmul(dots, bv)
 
     output = np.reshape(bo, (bo.shape[0], -1, bo.shape[-1]))

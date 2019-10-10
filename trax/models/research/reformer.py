@@ -502,7 +502,7 @@ def ReformerLM(vocab_size,
   positional_embedder = [
       tl.Embedding(d_model, vocab_size),
       BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
-      tl.PositionalEncoding(max_len=max_len),
+      tl.PositionalEncoding(max_len=max_len, dropout=dropout),
   ]
   return tl.Model(
       concatenate_input_chunks,
