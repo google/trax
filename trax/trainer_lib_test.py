@@ -85,10 +85,9 @@ class TraxTest(test.TestCase, parameterized.TestCase):
 
   # TODO(wangpeng): Remove `skipTest`'s when tf-numpy's `pmap` is in place
 
-  @parameterized.parameters(BACKENDS)
-  def test_train_eval_predict(self, backend_name):
+  def _test_train_eval_predict(self, backend_name):
     if xla_bridge.device_count() > 1 and backend_name == 'tf':
-      self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
+      self.skipTest("tf-numpy backend does't support multi-devices yet.")
     with backend.use_backend(backend_name), self.tmp_dir() as output_dir:
       # Prepare model and inputs
       n_classes = 4
@@ -124,6 +123,10 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       inputs = inputs(1).train_stream()
       model = layers.Serial(model_fn())
       model(next(inputs)[0], params=state.opt_state.params)
+
+  @parameterized.parameters(BACKENDS)
+  def test_train_eval_predict(self, backend_name):
+    self._test_train_eval_predict(backend_name)
 
   @parameterized.parameters(BACKENDS)
   def test_train_eval_predict_sm3(self, backend_name):
