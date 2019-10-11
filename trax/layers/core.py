@@ -140,7 +140,7 @@ class Embedding(base.Layer):
   def __init__(self,
                d_feature,
                vocab_size,
-               kernel_initializer=init.GlorotUniformInitializer()):
+               kernel_initializer=init.RandomNormalInitializer(1.0)):
     super(Embedding, self).__init__()
     self._d_feature = d_feature  # feature dimensionality
     self._vocab_size = vocab_size
