@@ -101,7 +101,7 @@ def TransformerEncoder(vocab_size,
       tl.Dropout(rate=dropout, name='emb_dropout', mode=mode),
       tl.PositionalEncoding(max_len=max_len),
   ]
-  return tl.Serial([                             #      tokens
+  return tl.Serial(                             #      tokens
       tl.Dup(),                                 # toks toks
       tl.Parallel(embedder, tl.PaddingMask()),  # vecs mask
       [EncoderBlock(d_model, d_ff, n_heads, dropout, i, mode)
@@ -111,7 +111,7 @@ def TransformerEncoder(vocab_size,
       tl.Mean(axis=1),  # Average on length.    # vecs
       tl.Dense(n_classes),                      # vecs
       tl.LogSoftmax(),                          # vecs
-  ])
+  )
 
 
 def DecoderBlock(d_model, d_ff, n_heads, d_attention_key, d_attention_value,
@@ -291,28 +291,31 @@ def EncoderDecoder(d_model, d_ff, n_heads, dropout, layer_idx, mode):
   Returns:
     the layer, returning a triple (decoder_activations, mask, encoder).
   """
-  decoder_self_attention = [                    #        vecs_d   pmask vecs_e
-      tl.LayerNorm(),                           #        vecs_d   ..... ......
-      tl.BasicCausalAttention(
-          d_model, n_heads=n_heads, dropout=dropout, mode=mode),
-      tl.Dropout(rate=dropout, mode=mode),      # vecs_d          ..... ......
-  ]
-  decoder_to_encoder_attention = [        # vecs_d        masks         vecs_e
-      tl.LayerNorm(),                     # vecs_d        masks         vecs_e
-      tl.Parallel([], [], tl.Dup()),      # ______        _____  vecs_e vecs_e
-      tl.Parallel([], tl.Swap()),         # ______        vecs_e masks  ......
-      tl.Parallel([], tl.Dup()),          # ______ vecs_e vecs_e .....  ......
-      tl.AttentionQKV(  # (q k v masks ... --> vecs_d masks ...)
-          d_model, n_heads=n_heads, dropout=dropout, mode=mode),
-      tl.Dropout(rate=dropout, mode=mode),  # vecs_d mask vecs_e
-  ]
-  feed_forward = [
-      FeedForward(d_model, d_ff, dropout, layer_idx=layer_idx, mode=mode),
-  ]
-  return tl.Serial(                               # vecs_d masks vecs_e
-      tl.Residual(decoder_self_attention),        # vecs_d masks vecs_e
-      tl.Residual(decoder_to_encoder_attention),  # vecs_d masks vecs_e
-      tl.Residual(feed_forward),                  # vecs_d masks vecs_e
+  # tgt_vecs --> tgt_vecs'
+  decoder_self_attention = tl.Serial(
+      tl.LayerNorm(),
+      tl.BasicCausalAttention(d_model,
+                              n_heads=n_heads, dropout=dropout, mode=mode),
+      tl.Dropout(rate=dropout, mode=mode)
+  )
+
+  @tl.symbolic
+  def decoder_to_encoder_attention(tgt_vecs, masks, src_vecs):
+    attention = tl.AttentionQKV(d_model,
+                                n_heads=n_heads, dropout=dropout, mode=mode)
+    tgt_vecs = tl.LayerNorm() @ tgt_vecs
+    tgt_vecs, masks = attention @ (tgt_vecs, src_vecs, src_vecs, masks)
+    return tgt_vecs, masks, src_vecs
+
+  # tgt_vecs --> tgt_vecs'
+  feed_forward = FeedForward(d_model, d_ff, dropout,
+                             layer_idx=layer_idx, mode=mode)
+
+  # tgt_vecs, padmasks, src_vecs --> tgt_vecs', padmasks, src_vecs
+  return tl.Serial(
+      tl.Residual(decoder_self_attention),
+      tl.Residual(decoder_to_encoder_attention),
+      tl.Residual(feed_forward),
   )
 
 
@@ -345,51 +348,47 @@ def Transformer(input_vocab_size,
     A Transformer model as a layer that maps from a target, source pair to
     activations over a vocab set.
   """
-  in_embed = [                                    # tokens
-      tl.Embedding(d_model, input_vocab_size),  # vecs
-      tl.Dropout(rate=dropout, mode=mode),        # vecs
-      tl.PositionalEncoding(max_len=max_len),     # vecs
-  ]
-
+  # create embeddings for source and target vocabs
+  make_embedding_layer = lambda vocab_size: tl.Serial(
+      tl.Embedding(d_model, vocab_size),
+      tl.Dropout(rate=dropout, mode=mode),
+      tl.PositionalEncoding(max_len=max_len),
+  )
+  src_embedding = make_embedding_layer(input_vocab_size)
   if output_vocab_size is None:
     output_vocab_size = input_vocab_size
-    out_embed = in_embed
+    tgt_embedding = src_embedding
   else:
-    out_embed = [                                    # tokens
-        tl.Embedding(d_model, output_vocab_size),  # vecs
-        tl.Dropout(rate=dropout, mode=mode),         # vecs
-        tl.PositionalEncoding(max_len=max_len),      # vecs
-    ]
+    tgt_embedding = make_embedding_layer(output_vocab_size)
 
-  encoder_stack = (  # masks vectors --> masks vectors
-      [EncoderBlock(d_model, d_ff, n_heads, dropout, i, mode)
-       for i in range(n_layers)])
+  @tl.symbolic
+  def model(src_tokens, tgt_tokens):
+    """Takes source-tokens, target-tokens; returns logits, target-tokens."""
 
-  encoder_decoder_stack = (  # vecs_d masks vecs_e --> vecs_d masks vecs_e
-      [EncoderDecoder(d_model, d_ff, n_heads, dropout, i, mode)
-       for i in range(n_layers)])
+    # embed source and target tokens
+    src_vecs = src_embedding @ src_tokens
+    tgt_vecs = tl.Serial(tl.ShiftRight(), tgt_embedding) @ tgt_tokens
 
-  # Input: encoder_side_tokens, decoder_side_tokens
-  return tl.Serial(  # tokens_e tokens_d
-      tl.Parallel([], tl.Dup()),    # toks_e toks_d toks_d (for loss)
-      tl.Swap(),    # toks_d toks_e ....
+    # create padding mask for encoder and decoder stacks
+    enc_pad_masks = tl.PaddingMask() @ src_tokens
+    endec_pad_masks = tl.EncoderDecoderMask() @ (tgt_vecs, enc_pad_masks)
 
-      # Encode.
-      tl.Parallel(                                       # toks_d        toks_e
-          [], [tl.Dup(),                                 # ______ toks_e toks_e
-               tl.Parallel(in_embed, tl.PaddingMask()),  # ______ vecs_e masks
-               encoder_stack,                            # ______ vecs_e masks
-               tl.LayerNorm(),                           # ______ vecs_e .....
-               tl.Swap()]),                              # ______ masks  vecs_e
+    # encoder stack
+    for i in range(n_layers):
+      enc = EncoderBlock(d_model, d_ff, n_heads, dropout, i, mode)
+      src_vecs, _ = enc @ (src_vecs, enc_pad_masks)
+    src_encoding = tl.LayerNorm() @ src_vecs
 
-      # Decode.                                  #        toks_d masks vecs_e
-      tl.ShiftRight(),                           #        toks_d ..... ......
-      out_embed,                                 #        vecs_d ..... ......
-      tl.Dup(),                                  # vecs_d vecs_d ..... ......
-      tl.Parallel([], tl.EncoderDecoderMask()),  # ______    masks     ......
-      encoder_decoder_stack,                     # vecs_d    masks     vecs_e
-      tl.Parallel([], tl.Drop(), tl.Drop()),     # vecs_d
-      tl.LayerNorm(),                            # vecs_d
-      tl.Dense(output_vocab_size),               # vecs_d
-      tl.LogSoftmax(),                           # vecs_d
-  )
+    # encoder-decoder stack
+    for i in range(n_layers):
+      encdec = EncoderDecoder(d_model, d_ff, n_heads, dropout, i, mode)
+      tgt_vecs, _, _ = encdec @ (tgt_vecs, endec_pad_masks, src_encoding)
+    tgt_decoding = tl.LayerNorm() @ tgt_vecs
+
+    # map decoding to probabilities over output vocab
+    logprobs = tl.Serial(tl.Dense(output_vocab_size),
+                         tl.LogSoftmax()) @ tgt_decoding
+
+    return logprobs, tgt_tokens
+
+  return model
