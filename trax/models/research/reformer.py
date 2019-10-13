@@ -504,7 +504,7 @@ def ReformerLM(vocab_size,
       BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
       tl.PositionalEncoding(max_len=max_len, dropout=dropout),
   ]
-  return tl.Model(
+  return tl.Serial(
       concatenate_input_chunks,
       tl.ShiftRight(),
       positional_embedder,

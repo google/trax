@@ -25,14 +25,14 @@ from trax import layers as tl
 
 def FeedForward(d_model, d_ff, dropout, layer_idx, mode):
   """Feed-forward block with layer normalization at start."""
-  return [
+  return tl.Serial(
       tl.LayerNorm(),
       tl.Dense(d_ff),
       tl.Relu(),
       tl.Dropout(rate=dropout, name='ff_middle_%d' % layer_idx, mode=mode),
       tl.Dense(d_model),
       tl.Dropout(rate=dropout, name='ff_final_%d' % layer_idx, mode=mode),
-  ]
+  )
 
 
 def EncoderBlock(d_model, d_ff, n_heads, dropout, layer_idx, mode):
@@ -62,10 +62,10 @@ def EncoderBlock(d_model, d_ff, n_heads, dropout, layer_idx, mode):
   feed_forward = [
       FeedForward(d_model, d_ff, dropout, layer_idx=layer_idx, mode=mode),
   ]
-  return [
+  return tl.Serial(
       tl.Residual(attention),
       tl.Residual(feed_forward),
-  ]
+  )
 
 
 def TransformerEncoder(vocab_size,
@@ -101,7 +101,7 @@ def TransformerEncoder(vocab_size,
       tl.Dropout(rate=dropout, name='emb_dropout', mode=mode),
       tl.PositionalEncoding(max_len=max_len),
   ]
-  return tl.Model([                             #      tokens
+  return tl.Serial([                             #      tokens
       tl.Dup(),                                 # toks toks
       tl.Parallel(embedder, tl.PaddingMask()),  # vecs mask
       [EncoderBlock(d_model, d_ff, n_heads, dropout, i, mode)
@@ -146,10 +146,10 @@ def DecoderBlock(d_model, d_ff, n_heads, d_attention_key, d_attention_value,
   feed_forward = [
       FeedForward(d_model, d_ff, dropout, layer_idx=layer_idx, mode=mode),
   ]
-  return [
+  return tl.Serial(
       tl.Residual(self_attention),
       tl.Residual(feed_forward),
-  ]
+  )
 
 
 def TransformerDecoder(vocab_size=None,
@@ -195,7 +195,7 @@ def TransformerDecoder(vocab_size=None,
     input_layer = tl.Dense
   else:
     input_layer = functools.partial(tl.Embedding, vocab_size=vocab_size)
-  return tl.Model(                  # vecs
+  return tl.Serial(                  # vecs
       input_layer(d_model),         # vecs
       tl.Dropout(rate=dropout, mode=mode),
       tl.PositionalEncoding(max_len=max_len),
@@ -258,7 +258,7 @@ def TransformerLM(vocab_size,
       tl.PositionalEncoding(max_len=max_len, mode=mode),
   ]
 
-  return tl.Model(                  # tokens (or chunked tuple of tokens)
+  return tl.Serial(                  # tokens (or chunked tuple of tokens)
       concatenate_chunks,           # tokens
       tl.ShiftRight(mode=mode),     # toks
       embedder,                     # vecs
@@ -309,11 +309,11 @@ def EncoderDecoder(d_model, d_ff, n_heads, dropout, layer_idx, mode):
   feed_forward = [
       FeedForward(d_model, d_ff, dropout, layer_idx=layer_idx, mode=mode),
   ]
-  return [                                        # vecs_d masks vecs_e
+  return tl.Serial(                               # vecs_d masks vecs_e
       tl.Residual(decoder_self_attention),        # vecs_d masks vecs_e
       tl.Residual(decoder_to_encoder_attention),  # vecs_d masks vecs_e
       tl.Residual(feed_forward),                  # vecs_d masks vecs_e
-  ]
+  )
 
 
 def Transformer(input_vocab_size,
@@ -370,7 +370,7 @@ def Transformer(input_vocab_size,
        for i in range(n_layers)])
 
   # Input: encoder_side_tokens, decoder_side_tokens
-  return tl.Model(  # tokens_e tokens_d
+  return tl.Serial(  # tokens_e tokens_d
       tl.Parallel([], tl.Dup()),    # toks_e toks_d toks_d (for loss)
       tl.Swap(),    # toks_d toks_e ....
 

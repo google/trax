@@ -29,13 +29,13 @@ def FrameStack(n_frames):
   assert n_frames >= 1
   if n_frames == 1:
     return ()
-  return (
+  return tl.Serial(
       # Make n_frames copies of the input sequence.
       [tl.Dup()] * (n_frames - 1),
       # Shift copies to the right by [0, .., n_frames - 1] frames.
       tl.Parallel(*map(_shift_right, range(n_frames))),
       # Concatenate along the channel dimension.
-      tl.Concatenate(n_items=n_frames, axis=-1),
+      tl.Concatenate(n_items=n_frames, axis=-1)
   )
 
 
@@ -46,7 +46,7 @@ def AtariCnn(n_frames=4, hidden_sizes=(32, 32), output_size=128, mode='train'):
   # TODO(jonni): Include link to paper?
   # Input shape: (B, T, H, W, C)
   # Output shape: (B, T, output_size)
-  return tl.Model(
+  return tl.Serial(
       tl.ToFloat(),
       tl.Div(divisor=255.0),
 
@@ -68,7 +68,7 @@ def FrameStackMLP(n_frames=4, hidden_sizes=(64,), output_size=64,
   """MLP operating on a fixed number of last frames."""
   del mode
 
-  return tl.Model(
+  return tl.Serial(
       FrameStack(n_frames=n_frames),
       [[tl.Dense(d_hidden), tl.Relu()] for d_hidden in hidden_sizes],
       tl.Dense(output_size),

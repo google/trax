@@ -216,7 +216,7 @@ def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train'):
   Returns:
     Multi-headed self-attention result and the mask.
   """
-  return [
+  return cb.Serial(
       cb.Parallel(
           core.Dense(d_feature),
           core.Dense(d_feature),
@@ -225,7 +225,7 @@ def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train'):
       PureAttention(  # pylint: disable=no-value-for-parameter
           n_heads=n_heads, dropout=dropout, mode=mode),
       core.Dense(d_feature),
-  ]
+  )
 
 
 def Attention(d_feature, n_heads=1, dropout=0.0, mode='train'):
@@ -242,10 +242,10 @@ def Attention(d_feature, n_heads=1, dropout=0.0, mode='train'):
   Returns:
     Multi-headed self-attention result and the mask.
   """
-  return [
+  return cb.Serial(
       cb.Dup(), cb.Dup(),
       AttentionQKV(d_feature, n_heads=n_heads, dropout=dropout, mode=mode),
-  ]
+  )
 
 
 def BasicCausalAttention(d_feature, n_heads=1, dropout=0.0, mode='train'):
@@ -266,12 +266,12 @@ def BasicCausalAttention(d_feature, n_heads=1, dropout=0.0, mode='train'):
   Returns:
     Multi-headed self-attention result.
   """
-  return [
+  return cb.Serial(
       cb.Dup(),
       cb.Parallel([], CausalMask(axis=-2)),  # pylint: disable=no-value-for-parameter
       Attention(d_feature, n_heads=n_heads, dropout=dropout, mode=mode),
       cb.Parallel([], cb.Drop()),  # x
-  ]
+  )
 
 
 class ShiftRightLearned(base.Layer):
@@ -1371,7 +1371,7 @@ def CausalAttention(d_feature, n_heads=1,
         ),
     ]
 
-  return pre_attention + [
+  return cb.Serial(pre_attention + [
       attention_type(mode=mode),
       ComputeAttentionOutput(n_heads=n_heads, d_model=d_feature),
-  ]
+  ])

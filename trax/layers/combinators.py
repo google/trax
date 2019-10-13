@@ -24,21 +24,6 @@ from trax.backend import numpy as np
 from trax.layers import base
 
 
-def Model(*layers):
-  """Ensures that a layer or list of layers can be treated as a model.
-
-  Currently, any subclass of base.Layer can be treated as a model.
-
-  Args:
-    *layers: One or more layer objects. In fuller detail, the list may contain
-        nested sublists, and the top-level list can also be a tuple.
-
-  Returns:
-    A single object that treated as a model, e.g., trained or evaluated.
-  """
-  return Serial(*layers)
-
-
 def _deep_flatten(items):  # pylint: disable=invalid-name
   """Returns a list of objects, flattening sublists/subtuples along the way.
 

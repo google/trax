@@ -74,7 +74,7 @@ def NeuralGPU(d_feature=96, steps=16, vocab_size=2, mode='train'):
   del mode
 
   core = ConvDiagonalGRU(units=d_feature)
-  return tl.Model(
+  return tl.Serial(
       tl.Embedding(d_feature=d_feature, vocab_size=vocab_size),
       [core] * steps,
       tl.Dense(vocab_size),

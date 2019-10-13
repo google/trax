@@ -79,7 +79,7 @@ def Resnet50(d_hidden=64, n_output_classes=1001, mode='train'):
   Returns:
     The list of layers comprising a ResNet model with the given parameters.
   """
-  return tl.Model(
+  return tl.Serial(
       tl.ToFloat(),
       tl.Conv(d_hidden, (7, 7), (2, 2), 'SAME'),
       tl.BatchNorm(mode=mode),
@@ -151,7 +151,7 @@ def WideResnet(n_blocks=3, widen_factor=1, n_output_classes=10, bn_momentum=0.9,
   Returns:
     The list of layers comprising a WideResnet model with the given parameters.
   """
-  return tl.Model(
+  return tl.Serial(
       tl.ToFloat(),
       tl.Conv(16, (3, 3), padding='SAME'),
       WideResnetGroup(n_blocks, 16 * widen_factor, bn_momentum=bn_momentum,

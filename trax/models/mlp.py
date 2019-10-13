@@ -30,7 +30,7 @@ def MLP(n_hidden_layers=2,
   """A multi-layer feedforward (perceptron) network."""
   del mode
 
-  return tl.Model(
+  return tl.Serial(
       tl.Flatten(),
       [[tl.Dense(d_hidden), activation_fn()] for _ in range(n_hidden_layers)],
       tl.Dense(n_output_classes),

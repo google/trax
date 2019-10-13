@@ -123,7 +123,7 @@ def policy_and_value_net(
             [tl.Dense(n_preds_per_input), tl.Flatten()],
         )
     ]
-  return tl.Model(layers)
+  return tl.Serial(layers)
 
 
 def optimizer_fn(optimizer, net_params):

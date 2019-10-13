@@ -96,7 +96,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
 
       # Adds Dropout and BatchNorm to test state handling.
       def model_fn(mode='train'):
-        return layers.Model(
+        return layers.Serial(
             layers.Dropout(mode=mode, rate=0.1), layers.BatchNorm(mode=mode),
             models.MLP(d_hidden=16, n_output_classes=n_classes, mode=mode))
 
