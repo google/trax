@@ -128,6 +128,7 @@ class BoxSpaceSerializer(SpaceSerializer):
     array = data
     batch_size = array.shape[0]
     array = (array - self._space.low) / (self._space.high - self._space.low)
+    array = np.clip(array, 0, 1)
     digits = []
     for digit_index in range(-1, -self._precision - 1, -1):
       threshold = self._vocab_size ** digit_index

@@ -104,6 +104,8 @@ class BaseTrainerTest(test.TestCase):
     )
 
   def test_dumps_full_shard(self):
+    self.assertEqual(0, 1)
+
     trainer = self._make_trainer(min_count_per_shard=2)
     trajectory_dir = self.get_temp_dir()
 

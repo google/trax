@@ -26,6 +26,7 @@ import time
 
 from absl import logging
 import gym
+import jax
 from jax import jit
 from jax import numpy as np
 from jax import random as jax_random
@@ -765,6 +766,9 @@ class PPO(base_trainer.BaseTrainer):
     (_, reward_mask, observations, actions, rewards, infos) = (
         ppo.pad_trajectories(trajectories, boundary=self._max_timestep)
     )
+    (low, high) = self.train_env.reward_range
+    outside = np.logical_or(rewards < low, rewards > high)
+    rewards = jax.ops.index_update(rewards, jax.ops.index[outside], 0)
     assert self.train_env.observation_space.shape == observations.shape[2:]
     if not self._serialized_sequence_policy:
       # Add one timestep at the end, so it's compatible with

@@ -30,6 +30,7 @@ TransformerDecoder.d_ff = 128
 TransformerDecoder.dropout = 0.0
 TransformerDecoder.n_heads = 2
 TransformerDecoder.n_layers = 1
+TransformerDecoder.max_len = 4096
 
 # Parameters for PPO:
 # ==============================================================================
