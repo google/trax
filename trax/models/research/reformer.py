@@ -469,6 +469,8 @@ def ReformerLM(vocab_size,
                n_attention_chunks=1,
                attention_type=tl.DotProductCausalAttention,
                share_qk=False,
+               axial_pos_shape=(),
+               d_axial_pos_embs=None,
                mode='train'):
   """Reversible transformer language model (only uses a decoder, no encoder).
 
@@ -486,6 +488,10 @@ def ReformerLM(vocab_size,
     n_attention_chunks: int: number of chunks for attention
     attention_type: class: attention class to use, such as DotProductAttention.
     share_qk: bool, whether to share queries and keys.
+    axial_pos_shape: tuple of ints: input shape to use for the axial position
+      encoding. If unset, axial position encoding is disabled.
+    d_axial_pos_embs: tuple of ints: depth of position embedding for each axis.
+      Tuple length must match axial_pos_shape, and values must sum to d_model.
     mode: str: 'train' or 'eval'
 
   Returns:
@@ -499,11 +505,22 @@ def ReformerLM(vocab_size,
     concatenate_input_chunks = tl.Concatenate(n_items=n_chunks)
     concatenate_output_chunks = []
 
+  if not axial_pos_shape:
+    positional_encoding = tl.PositionalEncoding(
+        max_len=max_len, dropout=dropout)
+  else:
+    assert d_axial_pos_embs is not None
+    positional_encoding = tl.AxialPositionalEncoding(
+        shape=axial_pos_shape, d_embs=d_axial_pos_embs,
+        dropout_broadcast_dims=tuple(range(1, len(axial_pos_shape) + 1)),
+        dropout=dropout)
+
   positional_embedder = [
       tl.Embedding(d_model, vocab_size),
       BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
-      tl.PositionalEncoding(max_len=max_len, dropout=dropout),
+      positional_encoding,
   ]
+
   return tl.Serial(
       concatenate_input_chunks,
       tl.ShiftRight(),

@@ -128,6 +128,68 @@ class PositionalEncoding(base.Layer):
     return params, state
 
 
+class AxialPositionalEncoding(base.Layer):
+  """Axial positional encoding."""
+  # TODO(kitaev): support variable-length sequences.
+
+  def __init__(self, shape=(64, 64, 3), d_embs=(384, 384, 256),
+               kernel_initializer=init.RandomNormalInitializer(1.0),
+               dropout=0.0, dropout_broadcast_dims=(), mode='train'):
+    super(AxialPositionalEncoding, self).__init__()
+    self._kernel_initializer = kernel_initializer
+    assert len(shape) == len(d_embs)
+    self._shape = shape
+    self._d_embs = d_embs
+
+    if dropout >= 1.0:
+      raise ValueError('Dropout rates must be lower than 1.')
+    if mode == 'train':
+      self._dropout = dropout
+    else:
+      self._dropout = 0.0
+    self._dropout_broadcast_dims = dropout_broadcast_dims
+    self._mode = mode
+
+  def forward(self, inputs, params=(), state=(), rng=None, **kwargs):
+    embs = []
+    for ax_emb in params:
+      ax_emb = np.broadcast_to(
+          ax_emb, (inputs.shape[0],) + self._shape + (ax_emb.shape[-1],))
+      embs.append(ax_emb)
+    emb = np.concatenate(embs, -1)
+
+    if self._dropout == 0:
+      return inputs + np.reshape(emb, inputs.shape), state
+    else:
+      noise_shape = list(emb.shape)
+      for dim in self._dropout_broadcast_dims:
+        noise_shape[dim] = 1
+      keep_prob = 1.0 - self._dropout
+      if backend.get_name() == 'jax':
+        keep_prob = jax.lax.tie_in(
+            inputs, np.full((), keep_prob, dtype=inputs.dtype))
+      keep = backend.random.bernoulli(rng, keep_prob, tuple(noise_shape))
+      multiplier = keep.astype(inputs.dtype) / keep_prob
+
+      return inputs + np.reshape(emb * multiplier, inputs.shape), state
+
+  def new_params_and_state(self, input_shape, input_dtype, rng):
+    del input_dtype
+    d_feature = input_shape[-1]
+    assert sum(self._d_embs) == d_feature
+
+    rngs = backend.random.split(rng, len(self._d_embs))
+    params = []
+    for ax, (ax_rng, d_emb) in enumerate(zip(rngs, self._d_embs)):
+      ax_shape = [1] * len(self._shape)
+      ax_shape[ax] = self._shape[ax]
+      ax_shape = (1,) + tuple(ax_shape) + (d_emb,)
+      ax_emb = self._kernel_initializer(ax_shape, ax_rng)
+      params.append(ax_emb)
+
+    return tuple(params), ()
+
+
 def DotProductAttention(query, key, value, mask, dropout, mode, rng):
   """Core dot product self-attention.
 
