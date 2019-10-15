@@ -107,10 +107,5 @@ class CombinatorLayerTest(absltest.TestCase):
     with self.assertRaises(AttributeError):
       cb.Branch([], [])
 
-  def test_select_op_not_defined(self):
-    input_shape = ((3, 2), (4, 7))
-    with self.assertRaises(AttributeError):
-      cb.Select(1, input_shape)
-
 if __name__ == '__main__':
   absltest.main()

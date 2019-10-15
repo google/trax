@@ -254,28 +254,26 @@ def Swap(xs, **unused_kwargs):
   return (xs[1], xs[0])
 
 
+def Select(idxs, n_in=None):
+  """Permutes with copies according to provided indices."""
+  if n_in is None:
+    n_in = max(idxs) + 1
+  @base.layer(n_in=n_in, n_out=len(idxs))
+  def Selection(xs, **unused_kwargs):  # pylint: disable=invalid-name
+    if not isinstance(xs, (tuple, list)):
+      xs = (xs,)
+    return tuple(xs[i] for i in idxs)
+  return Selection()  # pylint: disable=no-value-for-parameter
+
+
 def Dup2():
   """Copy first 2 elements of the stack: (a, b, ...) -> (a, b, a, b, ...)."""
-  return Serial([
-      # Stack is (a, b, ...)
-      Parallel(Dup(), Dup()),  # pylint: disable=no-value-for-parameter
-      # Stack is (a, a, b, b, ...)
-      Parallel([], Swap()),  # pylint: disable=no-value-for-parameter
-      # Stack is (a, b, a, b, ...)
-  ])
+  return Select([0, 1, 0, 1])
 
 
 def Dup3():
   """Copy 3 elements of the stack: (a, b, c, ...) -> (a, b, c, a, b, c, ...)."""
-  return Serial([
-      # Stack is (a, b, c, ...)
-      Parallel(Dup(), Dup(), Dup()),  # pylint: disable=no-value-for-parameter
-      # Stack is (a, a, b, b, c, c, ...)
-      Parallel([], Swap(), Swap()),  # pylint: disable=no-value-for-parameter
-      # Stack is (a, b, a, c, b, c, ...)
-      Parallel([], [], Swap()),  # pylint: disable=no-value-for-parameter
-      # Stack is (a, b, c, a, b, c, ...)
-  ])
+  return Select([0, 1, 2, 0, 1, 2])
 
 
 @base.layer(n_out=0)
