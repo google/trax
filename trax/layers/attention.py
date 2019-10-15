@@ -940,9 +940,15 @@ class LSHCausalAttention(BaseCausalAttention):
                one_rng=False, allow_duplicate_attention=False,
                attend_across_buckets=False, hard_k=0, factorize_hash=False,
                rehash_each_round=True, drop_for_hash_rate=0.0):
-    del dropout
+    super(LSHCausalAttention, self).__init__(mode=mode)
     self._mode = mode
-    super(LSHCausalAttention, self).__init__()
+    if dropout >= 1.0:
+      raise ValueError('Dropout rates must be lower than 1.')
+    if mode == 'train':
+      self._dropout = dropout
+    else:
+      self._dropout = 0.0
+
     assert n_buckets >= n_bins, 'This setting is not recommended: too few bins.'
     assert rehash_each_round or allow_duplicate_attention, (
         'The setting {allow_duplicate_attention=False, rehash_each_round=False}'
@@ -1030,10 +1036,12 @@ class LSHCausalAttention(BaseCausalAttention):
       """Performs attention for a single batch element and head."""
       batch_loop_idx = vals[0]
       if self._prng is None:
-        hash_rng = jax.random.fold_in(rng, batch_loop_idx)
+        hash_slice_rng = jax.random.fold_in(rng, batch_loop_idx)
+        hash_rng, slice_rng = backend.random.split(hash_slice_rng)
       else:
         # TODO(kitaev): Maybe use the same RNG across examples (but not heads)?
         hash_rng = jax.random.fold_in(self._prng, batch_loop_idx)
+        slice_rng = jax.random.fold_in(rng, batch_loop_idx)
       qk_slice = jax.lax.dynamic_index_in_dim(
           qk, batch_loop_idx, axis=0, keepdims=False)
       v_slice = jax.lax.dynamic_index_in_dim(
@@ -1047,11 +1055,11 @@ class LSHCausalAttention(BaseCausalAttention):
 
       if ct is None:
         out_slice = self.single_call(
-            qk_slice, v_slice, buckets_slice, hash_rng=hash_rng)
+            qk_slice, v_slice, buckets_slice, rng=slice_rng)
       else:
         def _do_single_call(qk_slice, v_slice):
           return self.single_call(
-              qk_slice, v_slice, buckets_slice, hash_rng=hash_rng)
+              qk_slice, v_slice, buckets_slice, rng=slice_rng)
         ct_slice = jax.lax.dynamic_index_in_dim(
             ct, batch_loop_idx, axis=0, keepdims=False)
         out_slice, vjpfun = jax.vjp(_do_single_call, qk_slice, v_slice)
@@ -1192,7 +1200,7 @@ class LSHCausalAttention(BaseCausalAttention):
 
     return buckets
 
-  def single_call(self, qk, v, buckets, hash_rng=None):
+  def single_call(self, qk, v, buckets, rng=None):
     # We use the same vector as both a query and a key.
     seqlen = qk.shape[-2]
     assert int(buckets.shape[0]) == self.n_hashes * seqlen
@@ -1339,6 +1347,14 @@ class LSHCausalAttention(BaseCausalAttention):
     # Softmax.
     dots_logsumexp = backend.logsumexp(dots, axis=-1, keepdims=True)
     dots = np.exp(dots - dots_logsumexp)
+
+    if self._dropout > 0.0:
+      # Dropout is broadcast across the bin dimension
+      dropout_shape = (1, dots.shape[-2], dots.shape[-1])
+      keep_prob = jax.lax.tie_in(dots, 1.0 - self._dropout)
+      keep = backend.random.bernoulli(rng, keep_prob, dropout_shape)
+      multiplier = keep.astype(dots.dtype) / jax.lax.tie_in(keep, keep_prob)
+      dots = dots * multiplier
 
     bo = np.matmul(dots, bv)
     so = np.reshape(bo, (-1, bo.shape[-1]))
