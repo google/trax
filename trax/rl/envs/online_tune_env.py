@@ -47,6 +47,8 @@ class OnlineTuneEnv(gym.Env):
   # has a median of 1.
   DEFAULT_ACTION_MULTIPLIERS = [1.0 / 1.5, 1.0 / 1.25, 1.0, 1.25, 1.5]
 
+  reward_range = (-1, 1)
+
   def __init__(self,
                output_dir,
                model=trax_models.TransformerLM,

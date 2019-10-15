@@ -111,7 +111,7 @@ OnlineTuneEnv.nontrainable_param_map = {
     "dropout_ff_middle_2": "dropout_ff_middle_final",
     "dropout_ff_final_2": "dropout_ff_final_final",
 }
-OnlineTuneEnv.include_controls_in_observation = False
+OnlineTuneEnv.include_controls_in_observation = True
 OnlineTuneEnv.train_steps = 150
 OnlineTuneEnv.eval_steps = 2
 OnlineTuneEnv.env_steps = 100
