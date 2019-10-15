@@ -58,7 +58,7 @@ class PPO(base_trainer.BaseTrainer):
   def __init__(self,
                train_env,
                eval_env,
-               output_dir,
+               output_dir=None,
                policy_and_value_model=trax_models.FrameStackMLP,
                policy_and_value_optimizer=functools.partial(
                    trax_opt.Adam, learning_rate=1e-3),
@@ -74,8 +74,9 @@ class PPO(base_trainer.BaseTrainer):
                random_seed=None,
                gamma=GAMMA,
                lambda_=LAMBDA,
-               c1=1.0,
-               c2=0.01,
+               value_weight=1.0,
+               entropy_weight=0.01,
+               epsilon=0.1,
                eval_every_n=1000,
                save_every_n=1000,
                done_frac_for_policy_save=0.5,
@@ -84,6 +85,9 @@ class PPO(base_trainer.BaseTrainer):
                eval_temperatures=(1.0, 0.5),
                separate_eval=True,
                init_policy_from_world_model_output_dir=None,
+               controller=None,
+               should_save_checkpoints=True,
+               should_write_summaries=True,
                **kwargs):
     """Creates the PPO trainer.
 
@@ -113,8 +117,9 @@ class PPO(base_trainer.BaseTrainer):
       random_seed: Random seed.
       gamma: Reward discount factor.
       lambda_: N-step TD-error discount factor in GAE.
-      c1: Value loss coefficient.
-      c2: Entropy loss coefficient.
+      value_weight: Value loss coefficient.
+      entropy_weight: Entropy loss coefficient.
+      epsilon: Clipping coefficient.
       eval_every_n: How frequently to eval the policy.
       save_every_n: How frequently to save the policy.
       done_frac_for_policy_save: Fraction of the trajectories that should be
@@ -128,13 +133,15 @@ class PPO(base_trainer.BaseTrainer):
         reward with temperature 1.0.
       init_policy_from_world_model_output_dir: Model output dir for initializing
         the policy. If None, initialize randomly.
+      controller: Function history -> (step -> {'name': value}) controlling
+        nontrainable parameters.
+      should_save_checkpoints: Whether to save policy checkpoints.
+      should_write_summaries: Whether to save summaries.
       **kwargs: Additional keyword arguments passed to the base class.
     """
     # Set in base class constructor.
     self._train_env = None
     self._should_reset = None
-
-    super(PPO, self).__init__(train_env, eval_env, output_dir, **kwargs)
 
     self._n_optimizer_steps = n_optimizer_steps
     self._optimizer_batch_size = optimizer_batch_size
@@ -143,10 +150,13 @@ class PPO(base_trainer.BaseTrainer):
     self._boundary = boundary
     self._max_timestep = max_timestep
     self._max_timestep_eval = max_timestep_eval
-    self._gamma = gamma
-    self._lambda_ = lambda_
-    self._c1 = c1
-    self._c2 = c2
+    self._nontrainable_params = {
+        'gamma': np.array(gamma),
+        'lambda': np.array(lambda_),
+        'value_weight': np.array(value_weight),
+        'entropy_weight': np.array(entropy_weight),
+        'epsilon': np.array(epsilon),
+    }
     self._eval_every_n = eval_every_n
     self._save_every_n = save_every_n
     self._done_frac_for_policy_save = done_frac_for_policy_save
@@ -154,8 +164,12 @@ class PPO(base_trainer.BaseTrainer):
     self._len_history_for_policy = len_history_for_policy
     self._eval_temperatures = eval_temperatures
     self._separate_eval = separate_eval
+    self._controller = controller
+    self._should_save_checkpoints = should_save_checkpoints
+    self._should_write_summaries = should_write_summaries
+    self._history = None
 
-    action_space = self.train_env.action_space
+    action_space = train_env.action_space
     assert isinstance(
         action_space, (gym.spaces.Discrete, gym.spaces.MultiDiscrete))
     if isinstance(action_space, gym.spaces.Discrete):
@@ -172,51 +186,77 @@ class PPO(base_trainer.BaseTrainer):
 
     self._rng = trainer_lib.get_random_number_generator_and_set_seed(
         random_seed)
-    self._rng, key1 = jax_random.split(self._rng, num=2)
 
     vocab_size = policy_and_value_vocab_size
     self._serialized_sequence_policy = vocab_size is not None
     if self._serialized_sequence_policy:
-      self._serialization_kwargs = self._init_serialization(vocab_size)
+      self._serialization_kwargs = self._init_serialization(
+          vocab_size=vocab_size,
+          obs_space=train_env.observation_space,
+          act_space=train_env.action_space,
+          max_timestep=self._max_timestep,
+      )
     else:
       self._serialization_kwargs = {}
+    self._init_policy_from_world_model_output_dir = (
+        init_policy_from_world_model_output_dir
+    )
 
-    # Initialize the policy and value network.
-    policy_and_value_net = ppo.policy_and_value_net(
-        n_actions=n_actions,
-        n_controls=n_controls,
+    self._rewards_to_actions = self._init_rewards_to_actions()
+
+    self._policy_and_value_net_fn = functools.partial(
+        ppo.policy_and_value_net,
+        n_actions=self._n_actions,
+        n_controls=self._n_controls,
         vocab_size=vocab_size,
         bottom_layers_fn=policy_and_value_model,
         two_towers=policy_and_value_two_towers,
     )
-    self._policy_and_value_net_apply = jit(policy_and_value_net)
-    (batch_obs_shape, obs_dtype) = self._batch_obs_shape_and_dtype
+    self._policy_and_value_net_apply = jit(self._policy_and_value_net_fn())
+    self._policy_and_value_optimizer = policy_and_value_optimizer()
+
+    # Super ctor calls reset(), which uses fields initialized above.
+    super(PPO, self).__init__(train_env, eval_env, output_dir, **kwargs)
+
+  def reset(self, output_dir):
+    super(PPO, self).reset(output_dir)
+
+    # Initialize the policy and value network.
+    # Create the network again to avoid caching of parameters.
+    policy_and_value_net = self._policy_and_value_net_fn()
+    (batch_obs_shape, obs_dtype) = self._batch_obs_shape_and_dtype(
+        self.train_env.observation_space
+    )
+    self._rng, key1 = jax_random.split(self._rng, num=2)
     policy_and_value_net_params, self._model_state = (
         policy_and_value_net.initialize_once(batch_obs_shape, obs_dtype, key1))
-    if init_policy_from_world_model_output_dir is not None:
+    if self._init_policy_from_world_model_output_dir is not None:
       policy_and_value_net_params = ppo.init_policy_from_world_model_checkpoint(
-          policy_and_value_net_params, init_policy_from_world_model_output_dir
+          policy_and_value_net_params,
+          self._init_policy_from_world_model_output_dir,
       )
 
     # Initialize the optimizer.
-    (policy_and_value_opt_state, self._policy_and_value_opt_update,
-     self._policy_and_value_get_params) = ppo.optimizer_fn(
-         policy_and_value_optimizer, policy_and_value_net_params)
+    (init_slots, init_opt_params) = (
+        self._policy_and_value_optimizer.tree_init(policy_and_value_net_params)
+    )
+    self._policy_and_value_opt_state = (
+        policy_and_value_net_params, init_slots, init_opt_params
+    )
 
     # Restore the optimizer state.
-    self._policy_and_value_opt_state = policy_and_value_opt_state
     self._epoch = 0
     self._total_opt_step = 0
-    self.update_optimization_state(
-        output_dir, policy_and_value_opt_state=policy_and_value_opt_state)
+    self.update_optimization_state(output_dir)
 
     # Create summary writers and history.
-    self._train_sw = jaxboard.SummaryWriter(
-        os.path.join(self._output_dir, 'train'))
-    self._timing_sw = jaxboard.SummaryWriter(
-        os.path.join(self._output_dir, 'timing'))
-    self._eval_sw = jaxboard.SummaryWriter(
-        os.path.join(self._output_dir, 'eval'))
+    if self._should_write_summaries:
+      self._train_sw = jaxboard.SummaryWriter(
+          os.path.join(self._output_dir, 'train'))
+      self._timing_sw = jaxboard.SummaryWriter(
+          os.path.join(self._output_dir, 'timing'))
+      self._eval_sw = jaxboard.SummaryWriter(
+          os.path.join(self._output_dir, 'eval'))
 
     self._n_trajectories_done = 0
 
@@ -225,19 +265,13 @@ class PPO(base_trainer.BaseTrainer):
       logging.info('Saving model on startup to have a model policy file.')
       self.save()
 
-    self._rewards_to_actions = self._init_rewards_to_actions()
-
-  def _init_serialization(self, vocab_size):
-    obs_serializer = space_serializer.create(
-        self.train_env.observation_space, vocab_size=vocab_size
-    )
-    act_serializer = space_serializer.create(
-        self.train_env.action_space, vocab_size=vocab_size
-    )
+  def _init_serialization(self, vocab_size, obs_space, act_space, max_timestep):
+    obs_serializer = space_serializer.create(obs_space, vocab_size=vocab_size)
+    act_serializer = space_serializer.create(act_space, vocab_size=vocab_size)
     repr_length = (
         obs_serializer.representation_length +
         act_serializer.representation_length
-    ) * (self._max_timestep + 1)
+    ) * (max_timestep + 1)
     return {
         'observation_serializer': obs_serializer,
         'action_serializer': act_serializer,
@@ -261,26 +295,30 @@ class PPO(base_trainer.BaseTrainer):
           n_timesteps=(self._max_timestep + 1), **self._serialization_kwargs
       )
 
-  @property
-  def _batch_obs_shape_and_dtype(self):
+  def _batch_obs_shape_and_dtype(self, obs_space):
     if not self._serialized_sequence_policy:
       # Batch Observations Shape = [1, 1] + OBS, because we will eventually call
       # policy and value networks on shape [B, T] +_OBS
-      shape = (1, 1) + self.train_env.observation_space.shape
-      dtype = self.train_env.observation_space.dtype
+      shape = (1, 1) + obs_space.shape
+      dtype = obs_space.dtype
     else:
       shape = (1, 1)
       dtype = np.int32
     return (shape, dtype)
 
+  def _policy_and_value_opt_update(self, step, grads, opt_state):
+    (params, slots, opt_params) = opt_state
+    (params, slots) = self._policy_and_value_optimizer.tree_update(
+        step, grads, params, slots, opt_params
+    )
+    return (params, slots, opt_params)
+
   # Maybe restore the optimization state. If there is nothing to restore, then
   # epoch = 0 and policy_and_value_opt_state is returned as is.
-  def update_optimization_state(self,
-                                output_dir,
-                                policy_and_value_opt_state=None):
+  def update_optimization_state(self, output_dir):
     (self._policy_and_value_opt_state, self._model_state, self._epoch,
-     self._total_opt_step) = ppo.maybe_restore_opt_state(
-         output_dir, policy_and_value_opt_state, self._model_state)
+     self._total_opt_step, self._history) = ppo.maybe_restore_opt_state(
+         output_dir, self._policy_and_value_opt_state, self._model_state)
 
     if self._epoch > 0:
       logging.info('Restored parameters from epoch [%d]', self._epoch)
@@ -310,6 +348,10 @@ class PPO(base_trainer.BaseTrainer):
   def epoch(self):
     return self._epoch
 
+  @property
+  def history(self):
+    return self._history
+
   def collect_trajectories_async(self,
                                  env,
                                  train=True,
@@ -337,7 +379,7 @@ class PPO(base_trainer.BaseTrainer):
 
     if bt is None:
       logging.error(
-          "Couldn't load [%s] trajectories from dir [%s] for epoch [%s] and "
+          'Couldn\'t load [%s] trajectories from dir [%s] for epoch [%s] and '
           'temperature [%s]', n_trajectories, trajectory_dir, epoch,
           temperature)
       assert bt
@@ -427,11 +469,10 @@ class PPO(base_trainer.BaseTrainer):
     max_reward = np.max(rewards)
     min_reward = np.min(rewards)
 
-    self._train_sw.scalar(
-        'train/reward_mean_truncated', avg_reward, step=self._epoch)
+    self._log('train', 'train/reward_mean_truncated', avg_reward)
     if evaluate and not self._separate_eval:
       metrics = {'raw': {1.0: {'mean': avg_reward, 'std': std_reward}}}
-      ppo.write_eval_reward_summaries(metrics, self._eval_sw, self._epoch)
+      ppo.write_eval_reward_summaries(metrics, self._log, self._epoch)
 
     logging.vlog(1, 'Rewards avg=[%0.2f], max=[%0.2f], min=[%0.2f], all=%s',
                  avg_reward, max_reward, min_reward,
@@ -451,10 +492,10 @@ class PPO(base_trainer.BaseTrainer):
 
     logging.vlog(1, 'Preprocessing trajectories took %0.2f msec.',
                  ppo.get_time(preprocessing_start_time))
-    logging.vlog(1, "Padded Observations' shape [%s]",
+    logging.vlog(1, 'Padded Observations\' shape [%s]',
                  str(padded_observations.shape))
-    logging.vlog(1, "Padded Actions' shape [%s]", str(padded_actions.shape))
-    logging.vlog(1, "Padded Rewards' shape [%s]", str(padded_rewards.shape))
+    logging.vlog(1, 'Padded Actions\' shape [%s]', str(padded_actions.shape))
+    logging.vlog(1, 'Padded Rewards\' shape [%s]', str(padded_rewards.shape))
 
     # Some assertions.
     B, RT = padded_rewards.shape  # pylint: disable=invalid-name
@@ -524,10 +565,7 @@ class PPO(base_trainer.BaseTrainer):
             self._rewards_to_actions,
             padded_rewards,
             reward_mask,
-            gamma=self._gamma,
-            lambda_=self._lambda_,
-            c1=self._c1,
-            c2=self._c2,
+            nontrainable_params=self._nontrainable_params,
             state=self._model_state,
             rng=key1))
     loss_compute_time = ppo.get_time(loss_compute_start_time)
@@ -573,10 +611,7 @@ class PPO(base_trainer.BaseTrainer):
               self._rewards_to_actions,
               padded_rewards[index_batch],
               reward_mask[index_batch],
-              c1=self._c1,
-              c2=self._c2,
-              gamma=self._gamma,
-              lambda_=self._lambda_,
+              nontrainable_params=self._nontrainable_params,
               state=self._model_state,
               rng=k1))
       opt_step += 1
@@ -620,10 +655,7 @@ class PPO(base_trainer.BaseTrainer):
                 self._rewards_to_actions,
                 padded_rewards,
                 reward_mask,
-                gamma=self._gamma,
-                lambda_=self._lambda_,
-                c1=self._c1,
-                c2=self._c2,
+                nontrainable_params=self._nontrainable_params,
                 state=self._model_state,
                 rng=k3))
         logging.vlog(1, 'One Policy and Value grad desc took: %0.2f msec',
@@ -648,7 +680,7 @@ class PPO(base_trainer.BaseTrainer):
         'approx_kl': approx_kl,
     })
     for (name, value) in summaries.items():
-      self._train_sw.scalar('train/{}'.format(name), value, step=self._epoch)
+      self._log('train', 'train/{}'.format(name), value)
 
     logging.info(
         'PPO epoch [% 6d], Reward[min, max, avg] [%5.2f,%5.2f,%5.2f], Combined'
@@ -689,8 +721,9 @@ class PPO(base_trainer.BaseTrainer):
 
     timing_dict.update(timing_info)
 
-    for k, v in timing_dict.items():
-      self._timing_sw.scalar('timing/%s' % k, v, step=last_epoch)
+    if self._should_write_summaries:
+      for k, v in timing_dict.items():
+        self._timing_sw.scalar('timing/%s' % k, v, step=last_epoch)
 
     max_key_len = max(len(k) for k in timing_dict)
     timing_info_list = [
@@ -708,7 +741,16 @@ class PPO(base_trainer.BaseTrainer):
     """Evaluate the agent."""
     if not self._separate_eval:
       return
+
     logging.vlog(1, 'PPO epoch [% 6d]: evaluating policy.', self._epoch)
+
+    if self._controller is not None:
+      ntp_updates = self._controller(self._history)(self._epoch)
+      self._nontrainable_params.update(ntp_updates)
+      (_, _, opt_params) = self._policy_and_value_opt_state
+      opt_params.update(ntp_updates)
+      for (name, value) in self._nontrainable_params.items():
+        self._log('train', 'training/{}'.format(name), value)
 
     processed_reward_sums = collections.defaultdict(list)
     raw_reward_sums = collections.defaultdict(list)
@@ -735,11 +777,13 @@ class PPO(base_trainer.BaseTrainer):
         'raw': compute_stats(raw_reward_sums),
     }
 
-    ppo.write_eval_reward_summaries(
-        reward_stats, self._eval_sw, epoch=self._epoch)
+    ppo.write_eval_reward_summaries(reward_stats, self._log, epoch=self._epoch)
 
   def save(self):
     """Save the agent parameters."""
+    if not self._should_save_checkpoints:
+      return
+
     logging.vlog(1, 'PPO epoch [% 6d]: saving model.', self._epoch)
     ppo.save_opt_state(
         self._output_dir,
@@ -747,15 +791,31 @@ class PPO(base_trainer.BaseTrainer):
         self._model_state,
         self._epoch,
         self._total_opt_step,
+        self._history,
     )
     # Reset this number.
     self._n_trajectories_done = 0
     self._last_saved_at = self._epoch
 
   def flush_summaries(self):
-    self._train_sw.flush()
-    self._timing_sw.flush()
-    self._eval_sw.flush()
+    if self._should_write_summaries:
+      self._train_sw.flush()
+      self._timing_sw.flush()
+      self._eval_sw.flush()
+
+  def _log(self, mode, metric, value):
+    if self._should_write_summaries:
+      summary_writer = {
+          'train': self._train_sw,
+          'eval': self._eval_sw,
+      }[mode]
+      summary_writer.scalar(metric, value, step=self._epoch)
+    self._history.append(mode, metric, self._epoch, value)
+
+  def _policy_and_value_get_params(self, opt_state):
+    # (params, slots, opt_params)
+    (params, _, _) = opt_state
+    return params
 
   @property
   def _policy_and_value_net_params(self):

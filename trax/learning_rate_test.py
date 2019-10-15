@@ -54,7 +54,9 @@ class PolicyScheduleTest(test.TestCase):
     # Optimizer slots should not be used for anything.
     slots = None
     opt_state = (params, slots)
-    ppo.save_opt_state(policy_dir, opt_state, state, epoch=0, total_opt_step=0)
+    ppo.save_opt_state(
+        policy_dir, opt_state, state, epoch=0, total_opt_step=0, history=history
+    )
     return learning_rate.PolicySchedule(
         history,
         observation_metrics=observation_metrics,

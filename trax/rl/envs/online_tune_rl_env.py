@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""An environment for tuning model hyperparameters during training."""
+"""An environment for tuning RL agent hyperparameters during training."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,90 +23,88 @@ import functools
 import os
 
 import gym
+
+from tensor2tensor.envs import env_problem_utils
 from tensorflow.io import gfile
-from trax import inputs as trax_inputs
-from trax import layers
-from trax import models as trax_models
-from trax import optimizers as trax_opt
-from trax import trainer_lib
 from trax.rl import online_tune
+from trax.rl import ppo_trainer
 
 
-class OnlineTuneEnv(gym.Env):
-  """An environment for tuning model hyperparameters during training.
+class OnlineTuneRLEnv(gym.Env):
+  """An environment for tuning model hyperparameters during RL training.
 
-  A rollout is one instance of training a specific model on a specific problem.
-  Observations are the values of some evaluation metric. Actions control
-  hyperparameter changes during training. Reward is the change of the evaluation
-  metric. One environment step corresponds to a fixed number of training steps.
+  A rollout is one instance of training a specific agent on a specific
+  environment. Observations are the values of some evaluation metrics. Actions
+  control hyperparameter changes during training. Reward is the change of some
+  evaluation metric. One environment step corresponds to a fixed number of
+  training steps.
+
+  For now only works with PPO.
   """
 
   # Chosen so that the opposite actions cancel each other out, so random walk
   # has a median of 1.
   DEFAULT_ACTION_MULTIPLIERS = [1.0 / 1.5, 1.0 / 1.25, 1.0, 1.25, 1.5]
 
-  reward_range = (-1, 1)
-
-  def __init__(self,
-               output_dir,
-               model=trax_models.TransformerLM,
-               trainer_class=trainer_lib.Trainer,
-               loss_fn=layers.CrossEntropyLossScalar,
-               optimizer=trax_opt.Adafactor,
-               inputs=trax_inputs.inputs,
-               action_multipliers=None,
-               observation_metrics=(
-                   ('train', 'metrics/accuracy'),
-                   ('train', 'metrics/loss'),
-                   ('eval', 'metrics/accuracy'),
-                   ('eval', 'metrics/loss'),
-               ),
-               include_controls_in_observation=False,
-               reward_metric=('eval', 'metrics/accuracy'),
-               train_steps=100,
-               eval_steps=10,
-               env_steps=100,
-               # This is a tuple instead of a dict because the controls are
-               # ordered in the action space.
-               control_configs=(
-                   # (name, start, (low, high), flip)
-                   ('learning_rate', 1e-3, (1e-9, 10.0), False),
-               ),
-               nontrainable_param_map=None,
-               observation_range=(0.0, 10.0),
-               # Don't save checkpoints by default, as they tend to use a lot of
-               # space.
-               should_save_checkpoints=False,
-               # Same here.
-               should_write_summaries=False,
-               has_weights=False,
-               mask_id=None):
+  def __init__(
+      self,
+      output_dir,
+      env_name='PongNoFrameskip-v4',
+      env_kwargs=None,
+      train_batch_size=16,
+      eval_batch_size=16,
+      trainer_class=ppo_trainer.PPO,
+      action_multipliers=None,
+      observation_metrics=(
+          ('eval', 'eval/raw_reward_mean/temperature_1.0'),
+          ('eval', 'eval/raw_reward_std/temperature_1.0'),
+      ),
+      include_controls_in_observation=False,
+      reward_metric=('eval', 'eval/raw_reward_mean/temperature_1.0'),
+      train_epochs=100,
+      env_steps=100,
+      # This is a tuple instead of a dict because the controls are
+      # ordered in the action space.
+      control_configs=(
+          # (name, start, (low, high), flip)
+          ('learning_rate', 1e-3, (1e-9, 10.0), False),
+      ),
+      observation_range=(0.0, 10.0),
+      # Don't save checkpoints by default, as they tend to use a lot of
+      # space.
+      should_save_checkpoints=False,
+      # Same here.
+      should_write_summaries=False,
+  ):
     if action_multipliers is None:
       action_multipliers = self.DEFAULT_ACTION_MULTIPLIERS
-    self._model = model
-    # Initialize Trainer in OnlineTuneEnv lazily to prevent long startup in the
-    # async setup, where we just use the environments as containers for
+    if env_kwargs is None:
+      env_kwargs = {}
+    (train_env, eval_env) = tuple(
+        env_problem_utils.make_env(  # pylint: disable=g-complex-comprehension
+            env_problem_name=env_name,
+            batch_size=batch_size,
+            **env_kwargs
+        )
+        for batch_size in (train_batch_size, eval_batch_size)
+    )
+    # Initialize Trainer in OnlineTuneRLEnv lazily to prevent long startup in
+    # the async setup, where we just use the environments as containers for
     # trajectories.
     self._trainer_fn = functools.partial(
         trainer_class,
-        model=model,
-        loss_fn=loss_fn,
-        optimizer=optimizer,
-        lr_schedule=(lambda history: lambda step: self._current_controls),
-        inputs=inputs,
+        train_env=train_env,
+        eval_env=eval_env,
+        controller=(lambda history: lambda step: self._current_controls),
         should_save_checkpoints=should_save_checkpoints,
         should_write_summaries=should_write_summaries,
-        nontrainable_param_map=nontrainable_param_map,
-        has_weights=has_weights,
-        mask_id=mask_id,
     )
     self._trainer = None
     self._action_multipliers = action_multipliers
     self._observation_metrics = observation_metrics
     self._include_controls_in_observation = include_controls_in_observation
     self._reward_metric = reward_metric
-    self._train_steps = train_steps
-    self._eval_steps = eval_steps
+    self._train_epochs = train_epochs
     self._env_steps = env_steps
     self._control_configs = control_configs
     self._observation_range = observation_range
@@ -159,7 +157,7 @@ class OnlineTuneEnv(gym.Env):
   @property
   def _current_reward_metric(self):
     metric_values = online_tune.historical_metric_values(
-        self._trainer.state.history,
+        self._trainer.history,
         self._reward_metric,
     )
     assert metric_values.shape[0] > 0, (
@@ -169,7 +167,7 @@ class OnlineTuneEnv(gym.Env):
   @property
   def _current_observation(self):
     observations = online_tune.history_to_observations(
-        self._trainer.state.history,
+        self._trainer.history,
         self._observation_metrics,
         self._observation_range,
         self._control_configs if self._include_controls_in_observation
@@ -193,13 +191,13 @@ class OnlineTuneEnv(gym.Env):
     }
     self._step = 0
     self._trainer.reset(output_dir=self._next_trajectory_dir)
-    self._trainer.evaluate(self._eval_steps)
+    self._trainer.evaluate()
     return self._current_observation
 
   def step(self, action):
     """Step the environment.
 
-    One environment step corresponds to self.train_steps training steps.
+    One environment step corresponds to self._train_epochs training epochs.
 
     Args:
       action: (int) Action to take. An index in self.action_multipliers.
@@ -215,18 +213,18 @@ class OnlineTuneEnv(gym.Env):
         control_config[0]: online_tune.update_control(  # pylint: disable=g-complex-comprehension
             control_config,
             control_action,
-            self._trainer.state.history,
+            self._trainer.history,
             self._action_multipliers,
         )
         for (control_action, control_config) in zip(
             action, self._control_configs
         )
     }
-    last_reward_metric = self._current_reward_metric
-    self._trainer.train_epoch(self._train_steps, self._eval_steps)
+    for _ in range(self._train_epochs):
+      self._trainer.train_epoch(evaluate=False)
+    self._trainer.evaluate()
     self._step += 1
-    current_reward_metric = self._current_reward_metric
     observation = self._current_observation
-    reward = current_reward_metric - last_reward_metric
+    reward = self._current_reward_metric
     done = self._step == self._env_steps
     return (observation, reward, done, {})

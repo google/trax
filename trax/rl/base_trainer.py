@@ -30,7 +30,7 @@ class BaseTrainer(object):
   """Base class for RL trainers."""
 
   def __init__(
-      self, train_env, eval_env, output_dir,
+      self, train_env, eval_env, output_dir=None,
       trajectory_dump_dir=None, trajectory_dump_min_count_per_shard=16,
       async_mode=False,
   ):
@@ -50,13 +50,18 @@ class BaseTrainer(object):
     """
     self.train_env = train_env
     self.eval_env = eval_env
-    self._output_dir = output_dir
-    gfile.makedirs(self._output_dir)
     self.trajectory_dump_dir = trajectory_dump_dir
     self._trajectory_dump_min_count_per_shard = (
         trajectory_dump_min_count_per_shard)
     self._trajectory_buffer = []
     self._async_mode = async_mode
+
+    if output_dir is not None:
+      self.reset(output_dir)
+
+  def reset(self, output_dir):
+    self._output_dir = output_dir
+    gfile.makedirs(self._output_dir)
 
   @property
   def async_mode(self):

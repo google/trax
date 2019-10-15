@@ -68,6 +68,7 @@ import numpy as onp
 from tensor2tensor.envs import env_problem
 from tensor2tensor.envs import env_problem_utils
 from tensorflow.io import gfile
+from trax import history as trax_history
 from trax import layers as tl
 from trax import utils
 
@@ -124,38 +125,6 @@ def policy_and_value_net(
         )
     ]
   return tl.Serial(layers)
-
-
-def optimizer_fn(optimizer, net_params):
-  """Exposes a convenient interface for the optimizer.
-
-  Args:
-    optimizer: Optimizer class to use.
-    net_params: A nested structure of network parameters.
-
-  Returns:
-    A tuple (opt_state, opt_update, get_params), where:
-      opt_state: Pair (net_params, opt_slots) - initial optimization state.
-      opt_update: Function (step, grads, opt_state) -> opt_state doing one
-        optimization step.
-      get_params: Function opt_state -> net_params for extracting the network
-        parameters from the optimization state.
-  """
-  opt = optimizer()
-  (init_slots, init_nontrainable_slots) = opt.tree_init(net_params)
-  init_state = (net_params, init_slots)
-
-  def opt_update(step, grads, opt_state):
-    (params, slots) = opt_state
-    # Pass the initial nontrainable_slots as we don't tune them during training.
-    # (yet!)
-    return opt.tree_update(step, grads, params, slots, init_nontrainable_slots)
-
-  def get_params(opt_state):
-    (params, _) = opt_state
-    return params
-
-  return init_state, opt_update, get_params
 
 
 # Should this be collect 'n' trajectories, or
@@ -319,7 +288,7 @@ def pad_trajectories(trajectories, boundary=20):
     padded_rewards.append(padded_reward)
 
     # Also create the mask to use later.
-    reward_mask = onp.ones_like(r, dtype=np.int32)
+    reward_mask = onp.ones_like(r, dtype=np.int64)
     reward_masks.append(lax.pad(reward_mask, 0, padding_config))
 
     if i:
@@ -338,7 +307,7 @@ def pad_trajectories(trajectories, boundary=20):
           padded_rewards), stacked_padded_infos
 
 
-def rewards_to_go(rewards, mask, gamma=0.99):
+def rewards_to_go(rewards, mask, gamma):
   r"""Computes rewards to go.
 
   Reward to go is defined as follows, the discounted reward that we have to
@@ -409,8 +378,8 @@ def rewards_to_go(rewards, mask, gamma=0.99):
 def value_loss_given_predictions(value_prediction,
                                  rewards,
                                  reward_mask,
-                                 gamma=0.99,
-                                 epsilon=0.2,
+                                 gamma,
+                                 epsilon,
                                  value_prediction_old=None):
   """Computes the value loss given the prediction of the value function.
 
@@ -457,7 +426,7 @@ def value_loss_given_predictions(value_prediction,
   return (value_loss, summaries)
 
 
-def deltas(predicted_values, rewards, mask, gamma=0.99):
+def deltas(predicted_values, rewards, mask, gamma):
   r"""Computes TD-residuals from V(s) and rewards.
 
   Where a `delta`, i.e. a td-residual is defined as:
@@ -484,7 +453,7 @@ def deltas(predicted_values, rewards, mask, gamma=0.99):
           (gamma * predicted_values_btplus1) - predicted_values_bt) * mask
 
 
-def gae_advantages(td_deltas, mask, lambda_=0.95, gamma=0.99):
+def gae_advantages(td_deltas, mask, lambda_, gamma):
   r"""Computes the GAE advantages given the one step TD-residuals.
 
   The formula for a GAE advantage estimator is as follows:
@@ -560,11 +529,11 @@ def compute_probab_ratios(p_new, p_old, actions, action_mask):
   return probab_ratios
 
 
-def clipped_probab_ratios(probab_ratios, epsilon=0.2):
+def clipped_probab_ratios(probab_ratios, epsilon):
   return np.clip(probab_ratios, 1 - epsilon, 1 + epsilon)
 
 
-def clipped_objective(probab_ratios, advantages, action_mask, epsilon=0.2):
+def clipped_objective(probab_ratios, advantages, action_mask, epsilon):
   advantages = advantages
   return np.minimum(
       probab_ratios * advantages,
@@ -580,9 +549,9 @@ def ppo_loss_given_predictions(log_probab_actions_new,
                                rewards_to_actions,
                                padded_rewards,
                                reward_mask,
-                               gamma=0.99,
-                               lambda_=0.95,
-                               epsilon=0.2):
+                               gamma,
+                               lambda_,
+                               epsilon):
   """PPO objective, with an eventual minus sign, given predictions."""
   B, RT = padded_rewards.shape  # pylint: disable=invalid-name
   _, AT, A = log_probab_actions_old.shape  # pylint: disable=invalid-name
@@ -655,11 +624,11 @@ def combined_loss_given_predictions(log_probab_actions_new,
                                     rewards_to_actions,
                                     padded_rewards,
                                     reward_mask,
-                                    gamma=0.99,
-                                    lambda_=0.95,
-                                    epsilon=0.2,
-                                    c1=1.0,
-                                    c2=0.01):
+                                    gamma,
+                                    lambda_,
+                                    value_weight,
+                                    entropy_weight,
+                                    epsilon):
   """Computes the combined (clipped loss + value loss) given predictions."""
   # Sum values over symbols in an action's representation, because it's a simple
   # way of going from AT to RT+1 and does not decrease the expressive power.
@@ -691,7 +660,8 @@ def combined_loss_given_predictions(log_probab_actions_new,
   padded_reward_mask = np.pad(reward_mask, ((0, 0), (0, 1)))
   action_mask = np.dot(padded_reward_mask, rewards_to_actions)
   entropy_bonus = masked_entropy(log_probab_actions_new, action_mask)
-  combined_loss_ = ppo_loss + (c1 * value_loss) - (c2 * entropy_bonus)
+  combined_loss_ = ppo_loss + (value_weight * value_loss) - (
+      entropy_weight * entropy_bonus)
 
   summaries = {
       'combined_loss': combined_loss_,
@@ -713,14 +683,16 @@ def combined_loss(new_params,
                   rewards_to_actions,
                   padded_rewards,
                   reward_mask,
-                  gamma=0.99,
-                  lambda_=0.95,
-                  epsilon=0.2,
-                  c1=1.0,
-                  c2=0.01,
+                  nontrainable_params,
                   state=None,
                   rng=None):
   """Computes the combined (clipped loss + value loss) given observations."""
+  gamma = nontrainable_params['gamma']
+  lambda_ = nontrainable_params['lambda']
+  value_weight = nontrainable_params['value_weight']
+  entropy_weight = nontrainable_params['entropy_weight']
+  epsilon = nontrainable_params['epsilon']
+
   (log_probab_actions_new, value_predictions_new) = (
       policy_and_value_net_apply(
           padded_observations, params=new_params, state=state, rng=rng))
@@ -736,9 +708,9 @@ def combined_loss(new_params,
       reward_mask,
       gamma=gamma,
       lambda_=lambda_,
+      value_weight=value_weight,
+      entropy_weight=entropy_weight,
       epsilon=epsilon,
-      c1=c1,
-      c2=c2,
   )
   return (loss, component_losses, summaries, state)
 
@@ -756,11 +728,7 @@ def policy_and_value_opt_step(i,
                               rewards_to_actions,
                               padded_rewards,
                               reward_mask,
-                              c1=1.0,
-                              c2=0.01,
-                              gamma=0.99,
-                              lambda_=0.95,
-                              epsilon=0.1,
+                              nontrainable_params,
                               state=None,
                               rng=None):
   """Policy and Value optimizer step."""
@@ -778,11 +746,7 @@ def policy_and_value_opt_step(i,
         rewards_to_actions,
         padded_rewards,
         reward_mask,
-        c1=c1,
-        c2=c2,
-        gamma=gamma,
-        lambda_=lambda_,
-        epsilon=epsilon,
+        nontrainable_params,
         state=state,
         rng=rng)
     return loss, state
@@ -871,12 +835,13 @@ def maybe_restore_opt_state(output_dir,
   pkl_module = utils.get_pickle_module()
   epoch = 0
   total_opt_step = 0
+  history = trax_history.History()
   for model_file in get_policy_model_files(output_dir):
     logging.info('Trying to restore model from %s', model_file)
     try:
       with gfile.GFile(model_file, 'rb') as f:
-        policy_and_value_opt_state, policy_and_value_state, total_opt_step = (
-            pkl_module.load(f))
+        (policy_and_value_opt_state, policy_and_value_state, total_opt_step,
+         history) = pkl_module.load(f)
       epoch = get_epoch_from_policy_model_file(model_file)
       break
     except EOFError as e:
@@ -888,6 +853,7 @@ def maybe_restore_opt_state(output_dir,
       policy_and_value_state,
       epoch,
       total_opt_step,
+      history,
   )
 
 
@@ -898,14 +864,15 @@ def save_opt_state(output_dir,
                    policy_and_value_opt_state,
                    policy_and_value_state,
                    epoch,
-                   total_opt_step):
+                   total_opt_step,
+                   history):
   """Saves the policy and value network optimization state etc."""
   pkl_module = utils.get_pickle_module()
   old_model_files = get_policy_model_files(output_dir)
   params_file = os.path.join(output_dir, 'model-%06d.pkl' % epoch)
   with gfile.GFile(params_file, 'wb') as f:
-    pkl_module.dump(
-        (policy_and_value_opt_state, policy_and_value_state, total_opt_step), f)
+    pkl_module.dump((policy_and_value_opt_state, policy_and_value_state,
+                     total_opt_step, history), f)
   # Keep the last k model files lying around (note k > 1 because the latest
   # model file might be in the process of getting read async).
   for path in old_model_files[LAST_N_POLICY_MODELS_TO_KEEP:]:
@@ -927,7 +894,7 @@ def init_policy_from_world_model_checkpoint(policy_params, model_output_dir):
   return policy_params
 
 
-def write_eval_reward_summaries(reward_stats_by_mode, summary_writer, epoch):
+def write_eval_reward_summaries(reward_stats_by_mode, log_fn, epoch):
   """Writes evaluation reward statistics to summary and logs them.
 
   Args:
@@ -938,20 +905,16 @@ def write_eval_reward_summaries(reward_stats_by_mode, summary_writer, epoch):
                   'std': <reward std>, },
               <temperature 2>: ... },
           'processed': ... }
-    summary_writer: jaxboard.SummaryWriter.
+    log_fn: Function mode, metric_name, value -> None for logging the summaries.
     epoch: Current epoch number.
   """
   for (reward_mode, reward_stats_by_temp) in reward_stats_by_mode.items():
     for (temperature, reward_stats) in reward_stats_by_temp.items():
       for (stat_name, stat) in reward_stats.items():
-        summary_writer.scalar(
-            'eval/{reward_mode}_reward_{stat_name}/'
-            'temperature_{temperature}'.format(
-                reward_mode=reward_mode,
-                stat_name=stat_name,
-                temperature=temperature),
-            stat,
-            step=epoch)
+        metric_name = 'eval/{}_reward_{}/temperature_{}'.format(
+            reward_mode, stat_name, temperature
+        )
+        log_fn('eval', metric_name, stat)
       logging.info(
           'Epoch [% 6d] Policy Evaluation (%s reward) '
           '[temperature %.2f] = %10.2f (+/- %.2f)', epoch, reward_mode,

@@ -19,6 +19,7 @@ import gin
 from gym.envs.registration import register
 
 from trax.rl.envs import online_tune_env
+from trax.rl.envs import online_tune_rl_env
 
 
 # Ginify and register in gym.
@@ -32,3 +33,4 @@ def configure_and_register_env(env_class):
 
 # pylint: disable=invalid-name
 OnlineTuneEnv = configure_and_register_env(online_tune_env.OnlineTuneEnv)
+OnlineTuneRLEnv = configure_and_register_env(online_tune_rl_env.OnlineTuneRLEnv)

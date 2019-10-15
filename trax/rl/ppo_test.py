@@ -228,6 +228,7 @@ class PpoTest(test.TestCase):
     ])
 
     gamma = 0.5
+    epsilon = 0.1
 
     # Random observations and a value function that returns a constant value.
     # NOTE: Observations have an extra time-step.
@@ -251,7 +252,8 @@ class PpoTest(test.TestCase):
           value_prediction,
           rewards,
           rewards_mask,
-          gamma)
+          gamma,
+          epsilon)
 
     self.assertNear(53.3637084961, value_loss, 1e-6)
 
@@ -471,8 +473,16 @@ class PpoTest(test.TestCase):
     gamma = 0.99
     lambda_ = 0.95
     epsilon = 0.2
-    c1 = 1.0
-    c2 = 0.01
+    value_weight = 1.0
+    entropy_weight = 0.01
+
+    nontrainable_params = {
+        'gamma': gamma,
+        'lambda': lambda_,
+        'epsilon': epsilon,
+        'value_weight': value_weight,
+        'entropy_weight': entropy_weight,
+    }
 
     rewards_to_actions = np.eye(value_predictions_old.shape[1])
     (value_loss_1, _) = ppo.value_loss_given_predictions(
@@ -500,11 +510,7 @@ class PpoTest(test.TestCase):
                           rewards_to_actions,
                           rewards,
                           mask,
-                          gamma=gamma,
-                          lambda_=lambda_,
-                          epsilon=epsilon,
-                          c1=c1,
-                          c2=c2,
+                          nontrainable_params=nontrainable_params,
                           state=state)
     )
 
@@ -512,9 +518,12 @@ class PpoTest(test.TestCase):
     self.assertGreater(entropy_bonus, 0.0)
     self.assertNear(value_loss_1, value_loss_2, 1e-6)
     self.assertNear(ppo_loss_1, ppo_loss_2, 1e-6)
-    self.assertNear(combined_loss,
-                    ppo_loss_2 + (c1 * value_loss_2) - (c2 * entropy_bonus),
-                    1e-6)
+    self.assertNear(
+        combined_loss,
+        ppo_loss_2 + (value_weight * value_loss_2) -
+        (entropy_weight * entropy_bonus),
+        1e-6
+    )
 
   def test_masked_entropy(self):
     # (2, 4+1, 4)
@@ -559,10 +568,13 @@ class PpoTest(test.TestCase):
     state = 456
     epoch = 7
     opt_step = 89
+    history = 0
     output_dir = self.get_temp_dir()
-    ppo.save_opt_state(output_dir, opt_state, state, epoch, opt_step)
+    ppo.save_opt_state(output_dir, opt_state, state, epoch, opt_step, history)
     restored_data = ppo.maybe_restore_opt_state(output_dir)
-    self.assertEqual(restored_data, (opt_state, state, epoch, opt_step))
+    self.assertEqual(
+        restored_data, (opt_state, state, epoch, opt_step, history)
+    )
 
   def test_inits_policy_by_world_model_checkpoint(self):
     transformer_kwargs = {

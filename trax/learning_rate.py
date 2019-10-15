@@ -225,8 +225,8 @@ def PolicySchedule(
       1, 'Building the policy network took %0.2f sec.', time.time() - start_time
   )
   start_time = time.time()
-  # (opt_state, state, epoch, opt_step)
-  (opt_state, state, _, _) = ppo.maybe_restore_opt_state(policy_dir)
+  # (opt_state, state, epoch, opt_step, history)
+  (opt_state, state, _, _, _) = ppo.maybe_restore_opt_state(policy_dir)
   assert opt_state is not None, 'Policy checkpoint not found.'
   (params, _) = opt_state
   logging.vlog(
