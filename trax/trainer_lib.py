@@ -381,7 +381,14 @@ def reshape_by_device(x, n_devices):
 
 
 def multi_device_put(x, devices=None, reuse=True):
-  """Memory efficient multi-device replication in JAX.
+  """Memory efficient multi-device replication / broadcast in JAX.
+
+  JAX uses a ShardedDeviceArray class that holds a list of device buffers
+  on separate devices for use with pmap'd computations.  Sharded arrays
+  are explicitly used to eliminate unneccessary inter-device transfer of
+  memory buffers between use in pmap'd computations.  The JAX API currently
+  does not have a multi-device 'put' function that copies a buffer onto
+  N devices in a memory-efficient fashion, so we implement our own here.
 
   Args:
     x: jax DeviceArray or numpy ndarray to be replicated.
@@ -389,32 +396,38 @@ def multi_device_put(x, devices=None, reuse=True):
       replicate onto.  Should match the list passed to any pmaps
       ingesting the replicated array.
     reuse: bool. If x is a DeviceArray whether to reuse its backing
-      device_buffer in the resulting ShardedDeviceArray.
+      device_buffer in the resulting ShardedDeviceArray.  We do this
+      by default to minimize a 2x overhead with large arrays.
 
   Returns:
-    A ShardedDeviceArray with dtype = x.dtype and shape =
-    (n_devices,) + x.shape that's backed by replica
-    device_buffers on each device.
+    A ShardedDeviceArray with
+    dtype = x.dtype and shape = (n_devices,) + x.shape
+    that's backed by replicated device_buffers on each local device.
   """
   # Convert _FilledConstants that don't have device_buffer, etc.
   if type(x) != jax.xla.DeviceArray:  # pylint: disable=unidiomatic-typecheck
     x = np.array(x)
+  # Calculate the abstract shape of the replicated array.
   if not devices:
-    devices = jax.devices()
+    devices = jax.local_devices()
   n_devices = len(devices)
   x_aval = jax.xla.abstractify(x)
   broadcast_x_aval = jax.abstract_arrays.ShapedArray(
       (n_devices,) + x_aval.shape,
       x_aval.dtype)
+  # Create copies of the underlying device buffer for each local device.
   if reuse:
-    other_device_ordinals = [dv.id for dv in jax.devices()
-                             if dv != x.device_buffer.device()]
+    # reuse the original device buffer for its device in the sharded
+    # device array
+    other_devices = [dv for dv in devices
+                     if dv != x.device_buffer.device()]
     broadcast_buffers = ([x.device_buffer,] +
-                         [jax.xla.xc.Buffer.from_pyval(x, device=i)
-                          for i in other_device_ordinals])
+                         [jax.xla.xc.Buffer.from_pyval(x, device=dv)
+                          for dv in other_devices])
   else:
-    broadcast_buffers = [jax.xla.xc.Buffer.from_pyval(x, device=i)
-                         for i in range(n_devices)]
+    # make new copies of the buffer for every local device
+    broadcast_buffers = [jax.xla.xc.Buffer.from_pyval(x, device=dv)
+                         for dv in devices]
   return jax.pxla.ShardedDeviceArray(broadcast_x_aval, broadcast_buffers)
 
 
@@ -446,13 +459,20 @@ class Trainer(object):
     self._has_weights = has_weights
     self._mask_id = mask_id
     loss_fn = loss_fn(has_weights=has_weights, mask_id=mask_id)
-    device_count = jax.lib.xla_bridge.device_count()
+    device_count = jax.local_device_count()
     n_devices = n_devices or device_count
+    self._host_id = jax.host_id()
+    self._host_count = jax.host_count()
     # TODO(lukaszkaiser): remove this restriction when possible.
     if n_devices != device_count:
       raise ValueError('Jax cannot work yet with n_devices != all devices: '
                        '%d != %d' % (n_devices, device_count))
     self._n_devices = n_devices
+
+    # Simple differential seeding of RNG across hosts by host_id and time.
+    if random_seed is None and self._host_count > 1:
+      _, random_seed = divmod(int(time.time() * 1e6) +
+                              int(self._host_id * 1e6), 2**32)
     rng = get_random_number_generator_and_set_seed(random_seed)
     inputs = inputs(n_devices)
     self._inputs = inputs
@@ -590,8 +610,10 @@ class Trainer(object):
     gfile.makedirs(output_dir)
     # Create summary writers and history.
     if self._should_write_summaries:
-      self._train_sw = jaxboard.SummaryWriter(os.path.join(output_dir, 'train'))
-      self._eval_sw = jaxboard.SummaryWriter(os.path.join(output_dir, 'eval'))
+      self._train_sw = jaxboard.SummaryWriter(os.path.join(output_dir, 'train'),
+                                              enable=self.is_chief)
+      self._eval_sw = jaxboard.SummaryWriter(os.path.join(output_dir, 'eval'),
+                                             enable=self.is_chief)
 
     # Reset the train and eval streams.
     self._train_stream = self._inputs.train_stream()
@@ -616,7 +638,7 @@ class Trainer(object):
     self._opt_state = OptState(*layers.nested_map(
         opt_state, self._maybe_replicate))
     self._model_state = model_state
-    if not state.opt_state:
+    if not state.opt_state and self.is_chief:
       self._maybe_save_state(keep=False)
 
     self.update_nontrainable_params()
@@ -628,6 +650,10 @@ class Trainer(object):
   @property
   def n_devices(self):
     return self._n_devices
+
+  @property
+  def is_chief(self):
+    return self._host_id == 0
 
   @property
   def state(self):
@@ -734,7 +760,7 @@ class Trainer(object):
 
       self._train_step(next_train_batch)
 
-      if self._step in self._save_steps:
+      if self._step in self._save_steps and self.is_chief:
         self._maybe_save_state(keep=True)
 
       # Log nontrainable params (learning rate, dropout etc.)
@@ -754,7 +780,8 @@ class Trainer(object):
     self.evaluate(eval_steps)
 
     # Save state
-    self._maybe_save_state(keep=False)
+    if self.is_chief:
+      self._maybe_save_state(keep=False)
 
     # Flush summary writers
     if self._train_sw:

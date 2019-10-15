@@ -74,11 +74,13 @@ def _pack_images(images, rows, cols):
 class SummaryWriter(object):
   """Saves data in event and summary protos for tensorboard."""
 
-  def __init__(self, log_dir):
+  def __init__(self, log_dir, enable=True):
     """Create a new SummaryWriter.
 
     Args:
       log_dir: path to record tfevents files in.
+      enable: bool: if False don't actually write or flush data.  Used in
+        multihost training.
     """
     # If needed, create log_dir directory as well as missing parent directories.
     if not gfile.isdir(log_dir):
@@ -87,8 +89,11 @@ class SummaryWriter(object):
     self._event_writer = EventFileWriter(log_dir, 10, 120, None)
     self._step = 0
     self._closed = False
+    self._enabled = enable
 
   def add_summary(self, summary, step):
+    if not self._enabled:
+      return
     event = event_pb2.Event(summary=summary)
     event.wall_time = time.time()
     if step is not None:
@@ -106,6 +111,8 @@ class SummaryWriter(object):
     self.close()
 
   def flush(self):
+    if not self._enabled:
+      return
     self._event_writer.flush()
 
   def scalar(self, tag, value, step=None):
