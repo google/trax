@@ -32,14 +32,6 @@ _ABSOLUTE_MAX_LEN = 10000
 _POSITIONS = onp.random.uniform(size=[_ABSOLUTE_MAX_LEN, POS_VECTOR_SIZE])
 
 
-def Dup2():
-  """Copy first 2 elements of the stack: (a, b, ...) -> (a, b, a, b, ...)."""
-  return [                              # Stack is (a, b, ...)
-      tl.Parallel(tl.Dup(), tl.Dup()),  # Stack is (a, a, b, b, ...)
-      tl.Parallel([], tl.Swap())        # Stack is (a, b, a, b, ...)
-  ]
-
-
 @tl.layer()
 def NewPositionalEncoding(x, positions=None, **kwargs):
   """Implements new positional encoding."""
@@ -47,109 +39,36 @@ def NewPositionalEncoding(x, positions=None, **kwargs):
   x_length = np.shape(x)[1]
   pos = np.array(positions)[np.newaxis, :x_length, :]
   pos += np.zeros((np.shape(x)[0], 1, 1))  # Broadcast on batch.
-  res = np.concatenate([x, pos], axis=2)
-  return res
+  return pos
 
 
 @tl.layer(n_in=1, n_out=2)
-def CutAtPosition(x, **unused_kwargs):
-  """Splits x into a pair (x[:position], position)."""
-  return tuple([x[:, :, :-POS_VECTOR_SIZE], x[:, :, -POS_VECTOR_SIZE:]])
+def CombineHeadsPos(x, n_heads=1, **unused_kwargs):
+  """Mix x = (x0, p0, ..., xH, pH) into (x0, ...., xH), p_combined.
 
-
-@tl.layer()
-def MixHeadsPos(x, h=8, **unused_kwargs):
-  """Mix x = (x0, p) into x0_h1, p, x0_h2, p, ...."""
-  head_size = (x.shape[2] - POS_VECTOR_SIZE) // h
-  p = x[:, :, -POS_VECTOR_SIZE:]
-  res, idx = [], 0
-  for _ in range(h):
-    res.append(x[:, :, idx:idx+head_size])
-    res.append(p)
-    idx += head_size
-  return np.concatenate(res, axis=-1)
-
-
-@tl.layer()
-def CombineHeadsPos(x, h=8, **unused_kwargs):
-  """Mix x = (x0, p0, ..., xH, pH) into x0, ...., xH, p_combined.
-
-  The positions are added as vectors.
+  The positions are averaged as vectors.
 
   Args:
     x: input vector, concatenated (x0, p0, ..., xH, pH).
-    h: number of heads.
+    n_heads: number of heads.
 
   Returns:
-    the vector with combined positions.
+    the vector with combined xs and one with combined positions.
   """
-  head_size = int((x.shape[2] / h) - POS_VECTOR_SIZE)
+  seqlen = x.shape[1]
+  d_head = x.shape[2]
+  x = np.reshape(x, (-1, n_heads, seqlen, d_head))
+  x = np.transpose(x, (0, 2, 1, 3))  # -> n_batch, seqlen, n_heads, d_head
+  x = np.reshape(x, (-1, seqlen, n_heads * d_head))
+  head_size = int(d_head) - POS_VECTOR_SIZE
   res, positions, idx = [], [], 0
-  for _ in range(h):
+  for _ in range(n_heads):
     res.append(x[:, :, idx:idx+head_size])
     idx += head_size
     positions.append(x[:, :, idx:idx+POS_VECTOR_SIZE])
     idx += POS_VECTOR_SIZE
-  combined_position = sum(positions)
-  res.append(combined_position)
-  return np.concatenate(res, axis=-1)
-
-
-@tl.layer()
-def CopyHeadsPos(x, h=8, **unused_kwargs):
-  """Mix x = (x, p) into x_h1, p_h1, x_h2, p_h2, ...."""
-  head_size = (x.shape[2] - h*POS_VECTOR_SIZE) // h
-  p = x[:, :, -h*POS_VECTOR_SIZE:]
-  res, idx = [], 0
-  for i in range(h):
-    res.append(x[:, :, idx:idx+head_size])
-    res.append(p[:, :, i*POS_VECTOR_SIZE:(i+1)*POS_VECTOR_SIZE])
-    idx += head_size
-  return np.concatenate(res, axis=-1)
-
-
-def DeepFlatten(xs):
-  for x in xs:
-    if isinstance(x, (list, tuple)):
-      for y in DeepFlatten(x):
-        yield y
-    else:
-      yield x
-
-
-def PreservePosition(layer):
-  """Execute layer without position but preserve it in parallel."""
-  return tl.Serial(
-      CutAtPosition(),
-      layer,
-      tl.Concatenate(n_items=2)
-  )
-
-
-def ApplyAndQueryPositions(layer, pos):
-  """Execute layer without position and pos-layers on positions.
-
-  This takes an embedding including position x = (emb, p), and
-  outputs layer(emb).pos1(x, p).....layer(emb).posn(x, p)
-  where pos=[pos1...posn].
-
-  Args:
-    layer: layer to be executed without position information.
-    pos: list of layers to be applied to positions.
-
-  Returns:
-    the result of this application.
-  """
-  n_heads = len(pos)
-  return tl.Serial(
-      tl.Dup(),                    # (x, x)
-      CutAtPosition(),          # (x_content, x_position, x)
-      tl.Parallel([], tl.Swap()),  # (x_content, x, x_position)
-      [tl.Parallel([], Dup2()) for _ in range(n_heads - 1)],
-      # Now the stack is x_content, (x, x_position) * n_heads.
-      tl.Parallel(*([layer] + pos)),
-      tl.Concatenate(n_items=n_heads + 1)
-  )
+  combined_position = sum(positions) / float(len(positions))
+  return np.concatenate(res, axis=-1), combined_position
 
 
 @tl.layer()
@@ -162,33 +81,25 @@ def QueryPositionKV(x, keys=None, values=None, binary=False, **unused_kwargs):
   q = x
   if binary:
     q = np.concatenate([x, x], axis=-1)
-  return tl.DotProductAttention(q, k, v, None, None, None, None)
+  return tl.DotProductAttention(q, k, v, None, 0.0, None, None)
 
 
-def LearnedQP(keys=None, values=None, binary=False):
-  """Get (query, pos), make learned weight of qeury and return with pos."""
-  return tl.Parallel(
-      tl.Dense(1),
-      QueryPositionKV(keys=keys, values=values, binary=binary),
-  )
+@tl.layer(n_in=10, n_out=6)
+def Softmax5Branches(x_list, **unused_kwargs):
+  """Softmax qs.
 
-
-@tl.layer(n_in=10, n_out=1)
-def Softmax5Branches(x_list, n_branches=2, **unused_kwargs):
-  """Softmax xs.
-
-  The input xs is a list of embeddings and weights of the form
-  w_1 e_1 .... w_n e_n (followed by optional rest that is preserved).
+  The input xs is a list of weights and embedded queries of the form
+  w_1 ... w_n q_1 ... q_n. The q_1 ... q_n will be kept, result appended.
 
   Args:
     x_list: the input weights and embeddings.
-    n_branches: what part of the list to use.
 
   Returns:
-    softmax(w) * e for the joint weights w and embeddings e.
+    q_1 .... q_n q' where q' is the weighted average of q_1 ... q_n according
+    to softmax(w).
   """
-  assert n_branches == 5
-  softmax_activations = [x_list[2*i] for i in range(n_branches)]
+  n_branches = 5
+  softmax_activations = x_list[:n_branches]
   max_sa = softmax_activations[0]
   for x in softmax_activations:
     max_sa = np.maximum(max_sa, x)
@@ -196,12 +107,13 @@ def Softmax5Branches(x_list, n_branches=2, **unused_kwargs):
   softmax_activations = [np.exp(x) for x in softmax_activations]
   sum_sa = sum(softmax_activations)
   softmax_activations = [x / sum_sa for x in softmax_activations]
-  res = sum([x_list[2*i+1] * softmax_activations[i] for i in range(n_branches)])
-  return res
+  res = sum([x_list[i + n_branches] * softmax_activations[i]
+             for i in range(n_branches)])
+  return x_list[n_branches:] + (res,)
 
 
-def SumLearnedPick(positions):
-  """Get a pair (vec, pos) and pick new pos."""
+def PerformPositionOperations(positions):
+  """Get a pair (vec, pos) and return (vec, pos, q1, ..., q5)."""
   succ_keys = positions[:-1, :]
   succ_values = positions[1:, :]
   subtract_1_keys = positions[1:, :]
@@ -216,43 +128,111 @@ def SumLearnedPick(positions):
                        for j in range(l) for i in range(l)])
   sub_values = np.array([positions[max(i - j, 0), :]
                          for j in range(l) for i in range(l)])
-  return tl.Serial(
-      Dup2(), Dup2(), Dup2(), Dup2(),
+  return tl.Serial([
+      tl.Parallel([], [tl.Dup() for _ in range(5)]),
       tl.Parallel(
-          LearnedQP(),
-          LearnedQP(keys=succ_keys, values=succ_values),
-          LearnedQP(keys=subtract_1_keys, values=subtract_1_values),
-          LearnedQP(keys=add_keys, values=add_values, binary=True),
-          LearnedQP(keys=sub_keys, values=sub_values, binary=True),
-      ),
-      Softmax5Branches(n_branches=5)
-  )
+          [], [],
+          QueryPositionKV(),
+          QueryPositionKV(keys=succ_keys, values=succ_values),
+          QueryPositionKV(keys=subtract_1_keys, values=subtract_1_values),
+          QueryPositionKV(keys=add_keys, values=add_values, binary=True),
+          QueryPositionKV(keys=sub_keys, values=sub_values, binary=True),
+      )
+  ])
 
 
-def AttentionPosition(positions, d_model, n_heads=8, dropout=0.0,
-                      mode='train'):
+def AppendLearnedPosOperation():
+  """Get (vec, pos, q1, ...) and return (vec, pos, q1, ..., new_pos)."""
+  # Create 5 scalar weights (length 1 vectors) from first component of input.
+  make5scalars = tl.Serial([  # Take x and create x, s1, ..., s5.
+      [tl.Dup(), tl.Parallel([], tl.Dense(1))]
+      for _ in range(5)
+  ])
+  return tl.Serial([
+      tl.Swap(),
+      tl.Parallel([], make5scalars),  # pos, vec, w1, ..., w5, q1, ..., q5
+      tl.Parallel([], [], Softmax5Branches()),  # pos, vec, q1, ..., q5, new_pos
+      tl.Swap()
+  ])
+
+
+def LearnedPosOperations(positions, n_combinations):
+  """Perform position operations and get different learned combinations of them.
+
+  This
+  (a) applies 5 different "queries" (intuitively, operations) to the input
+    positions, and then,
+  (b) produces n different SoftMax combinations of them using different
+    learned weights (in each case the weight is a function of input 'vec')
+
+  Note that n_combinations is independent of the fact that 5 operations will
+  be applied, it's a different number.
+
+  As for input-output spec, this layer gets a pair (vec, pos) and returns
+  a n_combinations + 2 tuple (vec, pos, new-pos_1, ..., new-pos_n_combinations).
+
+  Args:
+    positions: random vectors representing positions.
+    n_combinations: int, how many combinations to produce.
+
+  Returns:
+    the tuple (vec, pos, new-pos_1, ..., new-pos_n_combinations).
+  """
+  return tl.Serial([PerformPositionOperations(positions)] + [
+      AppendLearnedPosOperation() for _ in range(n_combinations)
+  ] + [  # Drop the 5 position operations created at the beginning.
+      tl.Parallel([], [], tl.Drop(), tl.Drop(), tl.Drop(), tl.Drop(), tl.Drop())
+  ])
+
+
+class CopyPosToHeads(tl.Layer):
+  """Copy position vectors to heads, possibly tiling if specified.
+
+  Tiling meand that the same position part will be appended to each head,
+  otherwise we expect a different tensor with positions for each head.
+  """
+
+  def __init__(self, n_heads=1, tile=True):
+    n_pos = 1 if tile else n_heads
+    super(CopyPosToHeads, self).__init__(n_in=n_pos + 1)
+    self._n_heads = n_heads
+    self._n_pos = n_pos
+
+  def forward(self, inp, params=(), state=(), **kwargs):
+    """Reshape input to have heads dimension and concatenate positions there."""
+    del kwargs
+    x = inp[0]
+    n_batches, seqlen = x.shape[0], x.shape[1]
+    d_head = x.shape[-1] // self._n_heads
+    res = np.reshape(x, (n_batches, seqlen, self._n_heads, d_head))
+    res = np.transpose(res, (0, 2, 1, 3))  # (batch, heads, len, depth)
+    if self._n_pos == 1:  # Just one position given, tile into each head.
+      pos_shape = list(res.shape)[:-1] + [inp[1].shape[-1]]
+      pos = inp[1][:, None, :, :] + np.zeros(pos_shape)  # Add 0 to broadcast.
+    else:  # As many positions as heads, concatenate them in.
+      pos = [p[:, None, :, :] for p in inp[1:]]
+      pos = np.concatenate(pos, axis=1)
+    res = np.concatenate([res, pos], axis=-1)
+    # n_batch, n_heads, seqlen, d_head -> n_batch*n_heads, seqlen, d_head
+    res = np.reshape(res, (-1, seqlen, d_head + POS_VECTOR_SIZE))
+    return res, state
+
+
+def AttentionPosition(positions, d_model, n_heads=8, dropout=0.0, mode='train'):
   """Transformer-style multi-headed attention."""
-  return tl.Serial(
-      tl.Dup(),
-      tl.Dup(),
+  return tl.Serial([  # Input: (activations, positions).
+      LearnedPosOperations(positions, n_heads),  # act, pos, np*h
+      tl.Dup(), tl.Parallel([], tl.Swap()), tl.Dup(),  # a, a, pos, a, np*h
       tl.Parallel(
-          ApplyAndQueryPositions(tl.Dense(d_model),
-                                 pos=[SumLearnedPick(positions)
-                                      for _ in range(n_heads)]),
-          PreservePosition(tl.Dense(d_model)),
-          PreservePosition(tl.Dense(d_model)),
-      ),
-      tl.Parallel(
-          CopyHeadsPos(h=n_heads),
-          MixHeadsPos(h=n_heads),
-          MixHeadsPos(h=n_heads),
-      ),
-      tl.PureAttention(d_model=d_model, n_heads=n_heads, dropout=dropout,
-                       mode=mode),
-      tl.Parallel([], tl.Drop()),  # Drop the mask.
-      CombineHeadsPos(h=n_heads),
-      PreservePosition(tl.Dense(d_model)),
-  )
+          tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_model // n_heads),
+          [tl.Dense(d_model), CopyPosToHeads(n_heads, tile=True)],
+          [tl.Dense(d_model), CopyPosToHeads(n_heads, tile=False)]
+      ),  # attn_vals, attn_keys, attn_queries
+      tl.Swap(), tl.Parallel([], tl.Swap()), tl.Swap(),  # queries, keys, vals
+      tl.DotProductCausalAttention(dropout=dropout, mode=mode),
+      CombineHeadsPos(n_heads=n_heads),
+      tl.Dense(d_model)
+  ])
 
 
 def ResidualFeedForward(d_model,
@@ -260,15 +240,15 @@ def ResidualFeedForward(d_model,
                         dropout,
                         mode):
   """Residual feed-forward layer with normalization at start."""
-  stack = tl.Serial(
+  stack = tl.Serial([
       tl.LayerNorm(),
       tl.Dense(d_ff),
       tl.Relu(),
       tl.Dropout(rate=dropout, mode=mode),
       tl.Dense(d_model),
       tl.Dropout(rate=dropout, mode=mode)
-  )
-  return tl.Residual(PreservePosition(stack))
+  ])
+  return tl.Residual(stack)
 
 
 def DecoderLayer(positions,
@@ -290,18 +270,15 @@ def DecoderLayer(positions,
   Returns:
     the layer.
   """
-  return [
+  return tl.Serial([
       tl.Residual(  # Self-attention block.
-          PreservePosition(tl.LayerNorm()),
-          tl.Dup(),
-          tl.Parallel([],  # activation for (q, k, v)
-                      tl.CausalMask(axis=-2)),  # attention mask
+          tl.LayerNorm(),
           AttentionPosition(positions, d_model, n_heads=n_heads,
                             dropout=dropout, mode=mode),
-          PreservePosition(tl.Dropout(rate=dropout, mode=mode))
+          tl.Dropout(rate=dropout, mode=mode)
       ),
       ResidualFeedForward(d_model, d_ff, dropout, mode=mode)
-  ]
+  ])
 
 
 def PositionLookupTransformerLM(vocab_size=128,
@@ -332,10 +309,12 @@ def PositionLookupTransformerLM(vocab_size=128,
       tl.ShiftRight(),
       tl.Embedding(d_model, vocab_size),
       tl.Dropout(rate=dropout, mode=mode),
-      NewPositionalEncoding(positions=positions),
+      tl.Dup(),
+      tl.Parallel([], NewPositionalEncoding(positions=positions)),
       [DecoderLayer(positions, d_model, d_ff, n_heads, dropout, mode)
        for _ in range(n_layers)],
-      PreservePosition(tl.LayerNorm()),
+      tl.Parallel([], tl.Drop()),  # Drop positions.
+      tl.LayerNorm(),
       tl.Dense(vocab_size),
       tl.LogSoftmax()
   )

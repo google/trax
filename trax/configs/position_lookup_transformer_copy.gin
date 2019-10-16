@@ -26,7 +26,7 @@ inputs.dataset_name = 'position_lookup_copy'
 # ==============================================================================
 sequence_copy_inputs.vocab_size = 128
 sequence_copy_inputs.batch_size = 16
-sequence_copy_inputs.train_lengths = [20, 30, 40]
+sequence_copy_inputs.train_lengths = [12, 16, 20, 24, 28, 32, 36, 40]
 sequence_copy_inputs.eval_lengths = [60]
 sequence_copy_inputs.reverse = False
 
@@ -40,7 +40,7 @@ MultifactorSchedule.warmup_steps = 16000
 # ==============================================================================
 PositionLookupTransformerLM.d_model = 256
 PositionLookupTransformerLM.d_ff = 512
-PositionLookupTransformerLM.dropout = 0.01
+PositionLookupTransformerLM.dropout = 0.05
 PositionLookupTransformerLM.max_len = 62
 PositionLookupTransformerLM.n_heads = 4
 PositionLookupTransformerLM.n_layers = 3
@@ -60,7 +60,7 @@ TransformerLM.vocab_size = 128
 # ==============================================================================
 train.inputs = @trax.inputs.sequence_copy_inputs
 train.eval_frequency = 1000
-train.eval_steps = 10
+train.eval_steps = 40
 train.model = @trax.models.PositionLookupTransformerLM
 train.optimizer = @trax.optimizers.Adam
 train.train_steps = 100000
