@@ -149,20 +149,37 @@ class TracerTest(absltest.TestCase):
     self.assertEqual(model.sublayers[0], add_lyr)
     self.assertEqual(model.sublayers[1], tanh_lyr)
 
+  def test_split_signature_parameters1(self):
+    def fn(a, b, c=1, d=1):
+      del c, d
+      return a + b
+    result = tracer.split_signature_parameters(fn)
+    expected = (['a', 'b'], {'c': 1, 'd': 1})
+    self.assertEqual(result, expected)
+
+  def test_split_signature_parameters2(self):
+    def fn(a, b, c=1, d=1, **kw):
+      del c, d, kw
+      return a + b
+    result = tracer.split_signature_parameters(fn)
+    expected = (['a', 'b'], {'c': 1, 'd': 1})
+    self.assertEqual(result, expected)
+
   def test_symbolic_decorator1(self):
     add_lyr = cb.Add()
     @tracer.symbolic
-    def model(a, b, c):
+    def make_layer(a, b, c):
       d = add_lyr << (a, b)
       e = add_lyr << (d, c)
       return e
+    layer = make_layer()  # pylint: disable=no-value-for-parameter
     a = onp.random.randint(0, 10, size=(2, 10))
     b = onp.random.randint(0, 10, size=(2, 10))
     c = onp.random.randint(0, 10, size=(2, 10))
-    p, s = model.new_params_and_state(((2, 10), (2, 10), (2, 10)),
+    p, s = layer.new_params_and_state(((2, 10), (2, 10), (2, 10)),
                                       (onp.int32, onp.int32, onp.int32),
                                       rng=jax.random.PRNGKey(0))
-    res = model((a, b, c), params=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+    res = layer((a, b, c), params=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
     result = onp.array(res)
     expected = a + b + c
     onp.testing.assert_allclose(result, expected)
@@ -171,18 +188,19 @@ class TracerTest(absltest.TestCase):
     add_lyr = cb.Add()
     tanh_lyr = core.Tanh()
     @tracer.symbolic
-    def model(a, b, c):
+    def make_layer(a, b, c):
       a = tanh_lyr << a
       d = add_lyr << (a, b)
       e = add_lyr << (d, c)
       return e
+    layer = make_layer()  # pylint: disable=no-value-for-parameter
     a = onp.random.randint(0, 10, size=(2, 10))
     b = onp.random.randint(0, 10, size=(2, 10))
     c = onp.random.randint(0, 10, size=(2, 10))
-    p, s = model.new_params_and_state(((2, 10), (2, 10), (2, 10)),
+    p, s = layer.new_params_and_state(((2, 10), (2, 10), (2, 10)),
                                       (onp.int32, onp.int32, onp.int32),
                                       rng=jax.random.PRNGKey(0))
-    res = model((a, b, c), params=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+    res = layer((a, b, c), params=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
     result = onp.array(res)
     expected = onp.tanh(a) + b + c
     onp.testing.assert_allclose(result, expected)
@@ -191,18 +209,19 @@ class TracerTest(absltest.TestCase):
     add_lyr = cb.Add()
     tanh_lyr = cb.Parallel(core.Relu(), core.Tanh())
     @tracer.symbolic
-    def model(a, b, c):
+    def make_layer(a, b, c):
       d = add_lyr << (a, b)
       e = add_lyr << (d, c)
       f, g = tanh_lyr << (d, e)
       return f, g
+    layer = make_layer()  # pylint: disable=no-value-for-parameter
     a = onp.random.uniform(-10, 10, size=(2, 10))
     b = onp.random.uniform(-10, 10, size=(2, 10))
     c = onp.random.uniform(-10, 10, size=(2, 10))
-    p, s = model.new_params_and_state(((2, 10), (2, 10), (2, 10)),
+    p, s = layer.new_params_and_state(((2, 10), (2, 10), (2, 10)),
                                       (onp.float32, onp.float32, onp.float32),
                                       rng=jax.random.PRNGKey(0))
-    res = model((a, b, c), params=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+    res = layer((a, b, c), params=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg,no-value-for-parameter,not-callable
     result0 = onp.array(res[0])
     expected0 = onp.where(a + b > 0, a + b, 0.0)
     onp.testing.assert_allclose(result0, expected0, rtol=1e-5)
@@ -210,6 +229,32 @@ class TracerTest(absltest.TestCase):
     expected1 = onp.tanh(a + b + c)
     onp.testing.assert_allclose(result1, expected1, rtol=1e-5)
 
+  def test_symbolic_decorator4(self):
+    add_lyr = cb.Add()
+    @tracer.symbolic
+    def make_layer(a, b, n=1):
+      for _ in range(n):
+        a = add_lyr << (a, b)
+      return a
+    layer = make_layer(n=3)  # pylint: disable=no-value-for-parameter
+    a = onp.random.randint(0, 10, size=(2, 10))
+    b = onp.random.randint(0, 10, size=(2, 10))
+    p, s = layer.new_params_and_state(((2, 10), (2, 10)),
+                                      (onp.int32, onp.int32),
+                                      rng=jax.random.PRNGKey(0))
+    res = layer((a, b), params=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg,no-value-for-parameter,not-callable
+    result = onp.array(res)
+    expected = a + 3 * b
+    onp.testing.assert_allclose(result, expected)
+
+    layer = make_layer(n=5)  # pylint: disable=no-value-for-parameter
+    p, s = layer.new_params_and_state(((2, 10), (2, 10)),
+                                      (onp.int32, onp.int32),
+                                      rng=jax.random.PRNGKey(0))
+    res = layer((a, b), params=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg,no-value-for-parameter,not-callable
+    result = onp.array(res)
+    expected = a + 5 * b
+    onp.testing.assert_allclose(result, expected)
 
 if __name__ == '__main__':
   absltest.main()

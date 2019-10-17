@@ -19,14 +19,18 @@ from __future__ import division
 from __future__ import print_function
 
 import gin
+import six
 
 from trax.models import atari_cnn
 from trax.models import mlp
 from trax.models import neural_gpu
 from trax.models import resnet
 from trax.models import transformer
-from trax.models.research import position_lookup_transformer
 from trax.models.research import reformer
+
+if six.PY3:
+  # uses @ notation:
+  from trax.models.research import position_lookup_transformer  # pylint: disable=g-import-not-at-top
 
 
 # Ginify
@@ -40,8 +44,6 @@ AtariCnn = model_configure(atari_cnn.AtariCnn)
 FrameStackMLP = model_configure(atari_cnn.FrameStackMLP)
 MLP = model_configure(mlp.MLP)
 NeuralGPU = model_configure(neural_gpu.NeuralGPU)
-PositionLookupTransformerLM = model_configure(
-    position_lookup_transformer.PositionLookupTransformerLM)
 ReformerLM = model_configure(reformer.ReformerLM)
 Resnet50 = model_configure(resnet.Resnet50)
 Transformer = model_configure(transformer.Transformer)
@@ -49,3 +51,7 @@ TransformerDecoder = model_configure(transformer.TransformerDecoder)
 TransformerEncoder = model_configure(transformer.TransformerEncoder)
 TransformerLM = model_configure(transformer.TransformerLM)
 WideResnet = model_configure(resnet.WideResnet)
+
+if six.PY3:
+  PositionLookupTransformerLM = model_configure(
+      position_lookup_transformer.PositionLookupTransformerLM)

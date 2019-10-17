@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# python3
 """Deep Lookups for Transformer Positions."""
 from __future__ import absolute_import
 from __future__ import division
@@ -84,7 +85,7 @@ def QueryPositionKV(x, keys=None, values=None, binary=False, **unused_kwargs):
   return tl.DotProductAttention(q, k, v, None, 0.0, None, None)
 
 
-@tl.layer(n_in=10, n_out=6)
+@tl.layer(n_in=10, n_out=1)
 def Softmax5Branches(x_list, **unused_kwargs):
   """Softmax qs.
 
@@ -95,8 +96,7 @@ def Softmax5Branches(x_list, **unused_kwargs):
     x_list: the input weights and embeddings.
 
   Returns:
-    q_1 .... q_n q' where q' is the weighted average of q_1 ... q_n according
-    to softmax(w).
+    the weighted average of q_1 ... q_n according to softmax(w).
   """
   n_branches = 5
   softmax_activations = x_list[:n_branches]
@@ -109,11 +109,12 @@ def Softmax5Branches(x_list, **unused_kwargs):
   softmax_activations = [x / sum_sa for x in softmax_activations]
   res = sum([x_list[i + n_branches] * softmax_activations[i]
              for i in range(n_branches)])
-  return x_list[n_branches:] + (res,)
+  return res
 
 
-def PerformPositionOperations(positions):
-  """Get a pair (vec, pos) and return (vec, pos, q1, ..., q5)."""
+@tl.symbolic
+def PerformPositionOperations(pos, positions=None):
+  """Gets pos and returns (q1, ..., q5)."""
   succ_keys = positions[:-1, :]
   succ_values = positions[1:, :]
   subtract_1_keys = positions[1:, :]
@@ -128,35 +129,27 @@ def PerformPositionOperations(positions):
                        for j in range(l) for i in range(l)])
   sub_values = np.array([positions[max(i - j, 0), :]
                          for j in range(l) for i in range(l)])
-  return tl.Serial([
-      tl.Parallel([], [tl.Dup() for _ in range(5)]),
-      tl.Parallel(
-          [], [],
-          QueryPositionKV(),
-          QueryPositionKV(keys=succ_keys, values=succ_values),
-          QueryPositionKV(keys=subtract_1_keys, values=subtract_1_values),
-          QueryPositionKV(keys=add_keys, values=add_values, binary=True),
-          QueryPositionKV(keys=sub_keys, values=sub_values, binary=True),
-      )
-  ])
+  query_types = [
+      QueryPositionKV(),
+      QueryPositionKV(keys=succ_keys, values=succ_values),
+      QueryPositionKV(keys=subtract_1_keys, values=subtract_1_values),
+      QueryPositionKV(keys=add_keys, values=add_values, binary=True),
+      QueryPositionKV(keys=sub_keys, values=sub_values, binary=True)]
+  return [qt @ pos for qt in query_types]  # pylint: disable=syntax-error
 
 
-def AppendLearnedPosOperation():
-  """Get (vec, pos, q1, ...) and return (vec, pos, q1, ..., new_pos)."""
+# TODO(levskaya): consider allowing *qs when explicit n_in fed to @tl.symbolic
+@tl.symbolic
+def AppendLearnedPosOperation(vec, q1, q2, q3, q4, q5):
+  """Get (vec, q1, ...) and return new_pos."""
   # Create 5 scalar weights (length 1 vectors) from first component of input.
-  make5scalars = tl.Serial([  # Take x and create x, s1, ..., s5.
-      [tl.Dup(), tl.Parallel([], tl.Dense(1))]
-      for _ in range(5)
-  ])
-  return tl.Serial([
-      tl.Swap(),
-      tl.Parallel([], make5scalars),  # pos, vec, w1, ..., w5, q1, ..., q5
-      tl.Parallel([], [], Softmax5Branches()),  # pos, vec, q1, ..., q5, new_pos
-      tl.Swap()
-  ])
+  ws = [tl.Dense(1) @ vec for _ in range(5)]
+  new_pos = Softmax5Branches() @ (ws + [q1, q2, q3, q4, q5])
+  return new_pos
 
 
-def LearnedPosOperations(positions, n_combinations):
+@tl.symbolic
+def LearnedPosOperations(vec, pos, positions=None, n_combinations=None):
   """Perform position operations and get different learned combinations of them.
 
   This
@@ -172,23 +165,24 @@ def LearnedPosOperations(positions, n_combinations):
   a n_combinations + 2 tuple (vec, pos, new-pos_1, ..., new-pos_n_combinations).
 
   Args:
+    vec: features
+    pos: position features
     positions: random vectors representing positions.
     n_combinations: int, how many combinations to produce.
 
   Returns:
-    the tuple (vec, pos, new-pos_1, ..., new-pos_n_combinations).
+    the tuple (new-pos_1, ..., new-pos_n_combinations).
   """
-  return tl.Serial([PerformPositionOperations(positions)] + [
-      AppendLearnedPosOperation() for _ in range(n_combinations)
-  ] + [  # Drop the 5 position operations created at the beginning.
-      tl.Parallel([], [], tl.Drop(), tl.Drop(), tl.Drop(), tl.Drop(), tl.Drop())
-  ])
+  qs = list(PerformPositionOperations(positions=positions) @ pos)
+  new_posns = [AppendLearnedPosOperation() @ ([vec,] + qs)
+               for _ in range(n_combinations)]
+  return new_posns
 
 
 class CopyPosToHeads(tl.Layer):
   """Copy position vectors to heads, possibly tiling if specified.
 
-  Tiling meand that the same position part will be appended to each head,
+  Tiling means that the same position part will be appended to each head,
   otherwise we expect a different tensor with positions for each head.
   """
 
@@ -218,21 +212,28 @@ class CopyPosToHeads(tl.Layer):
     return res, state
 
 
-def AttentionPosition(positions, d_model, n_heads=8, dropout=0.0, mode='train'):
+@tl.symbolic
+def AttentionPosition(vec, pos,
+                      positions=None, d_model=None, n_heads=8,
+                      dropout=0.0, mode='train'):
   """Transformer-style multi-headed attention."""
-  return tl.Serial([  # Input: (activations, positions).
-      LearnedPosOperations(positions, n_heads),  # act, pos, np*h
-      tl.Dup(), tl.Parallel([], tl.Swap()), tl.Dup(),  # a, a, pos, a, np*h
-      tl.Parallel(
-          tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_model // n_heads),
-          [tl.Dense(d_model), CopyPosToHeads(n_heads, tile=True)],
-          [tl.Dense(d_model), CopyPosToHeads(n_heads, tile=False)]
-      ),  # attn_vals, attn_keys, attn_queries
-      tl.Swap(), tl.Parallel([], tl.Swap()), tl.Swap(),  # queries, keys, vals
+
+  new_posns = list(LearnedPosOperations(positions=positions,
+                                        n_combinations=n_heads) @ (vec, pos))
+
+  hq = tl.Serial(tl.Dense(d_model),
+                 CopyPosToHeads(n_heads, tile=False)) @ ([vec,] + new_posns)
+  hk = tl.Serial(tl.Dense(d_model),
+                 CopyPosToHeads(n_heads, tile=True)) @ (vec, pos)
+  hv = tl.ComputeAttentionHeads(
+      n_heads=n_heads, d_head=d_model // n_heads) @ vec
+
+  x, pos = tl.Serial(
       tl.DotProductCausalAttention(dropout=dropout, mode=mode),
       CombineHeadsPos(n_heads=n_heads),
-      tl.Dense(d_model)
-  ])
+      tl.Dense(d_model)) @ (hq, hk, hv)
+
+  return x, pos
 
 
 def ResidualFeedForward(d_model,
@@ -240,14 +241,14 @@ def ResidualFeedForward(d_model,
                         dropout,
                         mode):
   """Residual feed-forward layer with normalization at start."""
-  stack = tl.Serial([
+  stack = tl.Serial(
       tl.LayerNorm(),
       tl.Dense(d_ff),
       tl.Relu(),
       tl.Dropout(rate=dropout, mode=mode),
       tl.Dense(d_model),
-      tl.Dropout(rate=dropout, mode=mode)
-  ])
+      tl.Dropout(rate=dropout, mode=mode),
+  )
   return tl.Residual(stack)
 
 
@@ -258,6 +259,8 @@ def DecoderLayer(positions,
                  dropout,
                  mode):
   """Transformer decoder layer.
+
+  (acts, pos) --> (acts', pos')
 
   Args:
     positions: random vectors for positions
@@ -270,15 +273,18 @@ def DecoderLayer(positions,
   Returns:
     the layer.
   """
-  return tl.Serial([
+  return tl.Serial(
       tl.Residual(  # Self-attention block.
           tl.LayerNorm(),
-          AttentionPosition(positions, d_model, n_heads=n_heads,
-                            dropout=dropout, mode=mode),
+          AttentionPosition(positions=positions,
+                            d_model=d_model,
+                            n_heads=n_heads,
+                            dropout=dropout,
+                            mode=mode),
           tl.Dropout(rate=dropout, mode=mode)
       ),
       ResidualFeedForward(d_model, d_ff, dropout, mode=mode)
-  ])
+  )
 
 
 def PositionLookupTransformerLM(vocab_size=128,

@@ -25,21 +25,14 @@ The DSL supports:
  - applying layer objects to single variables or variable tuples
  - unpacking the result of layer object application
 
- Note: obviously any other regular python (e.g. layer object creation)
-   can be used unaffected by tracing, using variables in the closure.
-
-@tl.symbolic
-def fun(a, b, c):
-  d, e = layer_objectA @ (a, b)
-  f = layer_objectB @ c
-  g = tl.Serial(layer_objectC, layer_objectD) @ (d, e, f, g)
-  return g, f, a
+Further documentation is in the 'symbolic' docstring.
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import collections
+import functools
 import inspect
 import six
 
@@ -306,6 +299,39 @@ def recombine(eqns, inputs, outputs):
   return cb.Serial(*layers)
 
 
+def split_signature_parameters(fn):
+  """Extract a function's positional and keyword arguments, ignoring varargs.
+
+  Args:
+    fn: a function
+
+  Returns:
+    A tuple of: a list of no-default positional arguments
+     and a dict of the kwargs with provided defaults.
+  """
+  if six.PY3:
+    positional_kinds = {inspect.Parameter.POSITIONAL_ONLY,
+                        inspect.Parameter.POSITIONAL_OR_KEYWORD}
+    keyword_kinds = {inspect.Parameter.KEYWORD_ONLY,
+                     inspect.Parameter.POSITIONAL_OR_KEYWORD}
+    positionals, kwargs = [], {}
+    for pname, pvar in inspect.signature(fn).parameters.items():
+      if pvar.default == inspect._empty and pvar.kind in positional_kinds:  # pylint: disable=protected-access
+        positionals.append(pname)
+      elif pvar.default != inspect._empty and pvar.kind in keyword_kinds:  # pylint: disable=protected-access
+        kwargs[pname] = pvar.default
+    return positionals, kwargs
+  else:
+    argspec = inspect.getargspec(fn)
+    n_defaults = len(argspec.defaults) if argspec.defaults else 0
+    n_args = len(argspec.args) - n_defaults
+    positionals = argspec.args[:n_args]
+    kwargs = {}
+    if argspec.defaults:
+      kwargs = dict(zip(argspec.args[n_args:], argspec.defaults))
+    return positionals, kwargs
+
+
 # The exported, user-facing API call.
 # -----------------------------------------------------------------------------
 def symbolic(fn):
@@ -313,7 +339,11 @@ def symbolic(fn):
 
   Instead of having to figure out complicated combinator expressions, one can
   simply write symbolic applications of layer objects to variables in a simple
-  python syntax and have it traced and into simple combinators
+  python syntax and have it traced and 'compiled' into low-level combinators.
+
+  This decorator takes a simple function-based DSL description of layer
+  combinations and produces a layer construction function that can optionally
+  take keyword arguments to override configuration variables.
 
   The DSL supports:
   - applying layer objects to single variables or variable tuples
@@ -321,14 +351,29 @@ def symbolic(fn):
   - layer objects can also be created inside and used
 
   @tl.symbolic
-  def new_trax_layer(a, b, c):
+  def new_trax_layer(a, b, c, config_var=True):
     d, e = layer_objectA @ (a, b)
-    f = layer_objectB @ c
+    if config_var:
+      f = layer_objectB @ c
+    else:
+      other_layer = some_other_layer_constructor()
+      f = other_layer @ c
     g = tl.Serial(layer_objectC, layer_objectD) @ (d, e, f, g)
     return g, f, a
 
-  This will create a trax layer object that takes three array arguments
-  and returns three arrays.
+  NOTE: the functions provided can have two kinds of arguments:
+  - positional: these name variables that will flow into the layer
+  - keyword arguments: these are -configuration- variables that will
+      not be traced, but can be given as kwargs to the layer constructor
+      function that this decorator produces.
+
+  The above creates a trax layer constructor that takes a single keyword
+  argument `config_var` producing a trax layer that takes three array
+  arguments and returns three arrays, e.g. we can call it like:
+
+  layer = new_trax_layer()  # config_var = True
+  or:
+  tl.Serial(tl.Dense, new_trax_layer(config_var=False))
 
   Note: for python2 compatibility, the '<<' operator can be used in
   place of '@' as:  d, e = layer_objectA << (a, b)
@@ -341,17 +386,31 @@ def symbolic(fn):
     Trax layer object implementing the dataflow between the trax layers
     used in the provided function.
   """
-  # feed tracers to function and collect output traces.
-  if six.PY3:
-    n_args = len(inspect.signature(fn).parameters)
-  else:
-    n_args = fn.__code__.co_argcount
-  tracers = [Tracer('in{}'.format(i)) for i in range(n_args)]
-  returned_tracers = fn(*tracers)
-  # transform traces back into ordered, simplified equations
-  inputs = tuple('in{}'.format(i) for i in range(n_args))
-  eqns, outputs = traces_to_eqns(returned_tracers)
-  eqns = merge_output_tuples(eqns)
-  eqns = evaluation_order_sort(eqns, outputs)
-  # build combinator dag model routing among captured sublayers
-  return recombine(eqns, inputs, outputs)
+  fn_args, fn_kwargs = split_signature_parameters(fn)
+  n_args = len(fn_args)
+  if n_args == 0:
+    raise ValueError('Must have named positional arguments to trace.')
+
+  def traced_layer_constructor(*args, **kwargs):
+    """Constructs trax layer."""
+    # Check and handle arguments.
+    if args:
+      raise ValueError('Layer constructor takes no positional arguments.')
+    extra_kwargs = set(kwargs).difference(set(fn_kwargs))
+    if extra_kwargs:
+      raise ValueError('Unknown layer constructor parameters: '
+                       '%s' % extra_kwargs)
+    fn_kwargs.update(kwargs)
+    traced_fn = functools.partial(fn, **fn_kwargs)
+    # Trace through positional arguments.
+    tracers = [Tracer('in{}'.format(i)) for i in range(n_args)]
+    returned_tracers = traced_fn(*tracers)
+    # Transform traces back into ordered, simplified equations.
+    inputs = tuple('in{}'.format(i) for i in range(n_args))
+    eqns, outputs = traces_to_eqns(returned_tracers)
+    eqns = merge_output_tuples(eqns)
+    eqns = evaluation_order_sort(eqns, outputs)
+    # Compose the traced layer DAG with combinators.
+    return recombine(eqns, inputs, outputs)
+
+  return traced_layer_constructor
