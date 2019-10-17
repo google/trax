@@ -168,30 +168,6 @@ class SGD(Optimizer):
     return params - (learning_rate * grads).astype(params.dtype), None
 
 
-class Momentum(Optimizer):
-  """Nesterov momentum optimizer."""
-
-  def __init__(self, learning_rate, mass=0.9, weight_decay_rate=1e-5):  # pylint: disable=useless-super-delegation
-    super(Momentum, self).__init__(
-        learning_rate=learning_rate,
-        mass=mass,
-        weight_decay_rate=weight_decay_rate,
-    )
-
-  def init(self, params):
-    return np.zeros_like(params)
-
-  def update(self, step, grads, params, velocity, opt_params):
-    del step
-    learning_rate = opt_params['learning_rate']
-    mass = opt_params['mass']
-    weight_decay_rate = opt_params['weight_decay_rate']
-    new_velocity = mass * velocity + grads
-    new_params = (1 - weight_decay_rate) * params - (
-        learning_rate * (mass * new_velocity + grads)).astype(params.dtype)
-    return (new_params, new_velocity)
-
-
 class RMSProp(Optimizer):
   """RMSProp optimizer."""
 

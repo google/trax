@@ -21,6 +21,7 @@ from __future__ import print_function
 import gin
 
 from trax.optimizers import base
+from trax.optimizers import momentum
 
 
 def opt_configure(*args, **kwargs):
@@ -30,7 +31,7 @@ def opt_configure(*args, **kwargs):
 # Optimizers (using upper-case names).
 # pylint: disable=invalid-name
 SGD = opt_configure(base.SGD)
-Momentum = opt_configure(base.Momentum)
+Momentum = opt_configure(momentum.Momentum)
 RMSProp = opt_configure(base.RMSProp)
 Adam = opt_configure(base.Adam)
 Adafactor = opt_configure(base.Adafactor)
