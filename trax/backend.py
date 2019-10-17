@@ -183,10 +183,10 @@ _JAX_BACKEND = {
 _NUMPY_BACKEND = {
     'name': 'numpy',
     'np': onp,
-    'jit': (lambda f: f),
+    'jit': lambda f: f,
     'random_get_prng': lambda seed: None,
     'random_split': lambda prng, num=2: (None,) * num,
-    'expit': (lambda x: 1. / (1. + onp.exp(-x))),
+    'expit': lambda x: 1. / (1. + onp.exp(-x)),
 }
 
 
