@@ -25,7 +25,6 @@ import os
 import time
 
 from absl import logging
-import gym
 import jax
 from jax import jit
 from jax import numpy as np
@@ -40,7 +39,6 @@ from trax import trainer_lib
 from trax.rl import base_trainer
 from trax.rl import ppo
 from trax.rl import serialization_utils
-from trax.rl import space_serializer
 
 DEBUG_LOGGING = False
 GAMMA = 0.99
@@ -169,32 +167,18 @@ class PPO(base_trainer.BaseTrainer):
     self._should_write_summaries = should_write_summaries
     self._history = None
 
-    action_space = train_env.action_space
-    assert isinstance(
-        action_space, (gym.spaces.Discrete, gym.spaces.MultiDiscrete))
-    if isinstance(action_space, gym.spaces.Discrete):
-      n_actions = action_space.n
-      n_controls = 1
-    else:
-      (n_controls,) = action_space.nvec.shape
-      assert n_controls > 0
-      assert onp.min(action_space.nvec) == onp.max(action_space.nvec), (
-          'Every control must have the same number of actions.')
-      n_actions = action_space.nvec[0]
-    self._n_actions = n_actions
-    self._n_controls = n_controls
+    (n_controls, n_actions) = ppo.analyze_action_space(train_env.action_space)
 
     self._rng = trainer_lib.get_random_number_generator_and_set_seed(
         random_seed)
 
-    vocab_size = policy_and_value_vocab_size
-    self._serialized_sequence_policy = vocab_size is not None
-    if self._serialized_sequence_policy:
-      self._serialization_kwargs = self._init_serialization(
-          vocab_size=vocab_size,
-          obs_space=train_env.observation_space,
-          act_space=train_env.action_space,
-          max_timestep=self._max_timestep,
+    self._policy_and_value_vocab_size = policy_and_value_vocab_size
+    if self._policy_and_value_vocab_size is not None:
+      self._serialization_kwargs = ppo.init_serialization(
+          vocab_size=self._policy_and_value_vocab_size,
+          observation_space=train_env.observation_space,
+          action_space=train_env.action_space,
+          n_timesteps=(self._max_timestep + 1),
       )
     else:
       self._serialization_kwargs = {}
@@ -202,13 +186,18 @@ class PPO(base_trainer.BaseTrainer):
         init_policy_from_world_model_output_dir
     )
 
-    self._rewards_to_actions = self._init_rewards_to_actions()
+    self._rewards_to_actions = ppo.init_rewards_to_actions(
+        self._policy_and_value_vocab_size,
+        train_env.observation_space,
+        train_env.action_space,
+        n_timesteps=(self._max_timestep + 1),
+    )
 
     self._policy_and_value_net_fn = functools.partial(
         ppo.policy_and_value_net,
-        n_actions=self._n_actions,
-        n_controls=self._n_controls,
-        vocab_size=vocab_size,
+        n_actions=n_actions,
+        n_controls=n_controls,
+        vocab_size=self._policy_and_value_vocab_size,
         bottom_layers_fn=policy_and_value_model,
         two_towers=policy_and_value_two_towers,
     )
@@ -265,38 +254,8 @@ class PPO(base_trainer.BaseTrainer):
       logging.info('Saving model on startup to have a model policy file.')
       self.save()
 
-  def _init_serialization(self, vocab_size, obs_space, act_space, max_timestep):
-    obs_serializer = space_serializer.create(obs_space, vocab_size=vocab_size)
-    act_serializer = space_serializer.create(act_space, vocab_size=vocab_size)
-    repr_length = (
-        obs_serializer.representation_length +
-        act_serializer.representation_length
-    ) * (max_timestep + 1)
-    return {
-        'observation_serializer': obs_serializer,
-        'action_serializer': act_serializer,
-        'representation_length': repr_length,
-    }
-
-  def _init_rewards_to_actions(self):
-    # Linear map from the reward sequence to the action sequence, used for
-    # scattering advantages over action log-probs and some other things.
-    # It has one more timestep at the end, so it's compatible with the value
-    # predictions.
-    if not self._serialized_sequence_policy:
-      rewards_to_actions = np.eye(self._max_timestep + 1)[:, None, :]
-      rewards_to_actions = np.broadcast_to(
-          rewards_to_actions,
-          (self._max_timestep + 1, self._n_controls, self._max_timestep + 1),
-      )
-      return np.reshape(rewards_to_actions, (self._max_timestep + 1, -1))
-    else:
-      return serialization_utils.rewards_to_actions_map(
-          n_timesteps=(self._max_timestep + 1), **self._serialization_kwargs
-      )
-
   def _batch_obs_shape_and_dtype(self, obs_space):
-    if not self._serialized_sequence_policy:
+    if self._policy_and_value_vocab_size is None:
       # Batch Observations Shape = [1, 1] + OBS, because we will eventually call
       # policy and value networks on shape [B, T] +_OBS
       shape = (1, 1) + obs_space.shape
@@ -532,8 +491,14 @@ class PPO(base_trainer.BaseTrainer):
     # for all but the last time-step.
     self._rng, key = jax_random.split(self._rng)
 
-    log_probabs_traj, value_predictions_traj, self._model_state, _ = (
-        self._get_predictions(padded_observations, self._model_state, rng=key))
+    (log_probabs_traj, value_predictions_traj) = (
+        self._policy_and_value_net_apply(
+            padded_observations,
+            params=self._policy_and_value_net_params,
+            state=self._model_state,
+            rng=key,
+        )
+    )
 
     assert (B, AT) == log_probabs_traj.shape[:2]
     assert (B, AT) == value_predictions_traj.shape
@@ -830,7 +795,7 @@ class PPO(base_trainer.BaseTrainer):
     outside = np.logical_or(rewards < low, rewards > high)
     rewards = jax.ops.index_update(rewards, jax.ops.index[outside], 0)
     assert self.train_env.observation_space.shape == observations.shape[2:]
-    if not self._serialized_sequence_policy:
+    if self._policy_and_value_vocab_size is None:
       # Add one timestep at the end, so it's compatible with
       # self._rewards_to_actions.
       pad_width = ((0, 0), (0, 1)) + ((0, 0),) * (actions.ndim - 2)
@@ -857,52 +822,16 @@ class PPO(base_trainer.BaseTrainer):
     actions = reprs
     return (observations, actions)
 
-  # A function to get the policy and value predictions.
-  def _get_predictions(self, observations, state, rng=None):
-    """Returns log-probs, value predictions and key back."""
-    key, key1 = jax_random.split(rng, num=2)
-
-    (log_probs, value_preds) = self._policy_and_value_net_apply(
-        observations, params=self._policy_and_value_net_params, state=state,
-        rng=key1)
-
-    return log_probs, value_preds, state, key
-
   def _policy_fun(self, observations, lengths, state, rng):
-    (batch_size, n_timesteps) = observations.shape[:2]
-    if self._serialized_sequence_policy:
-      actions = np.zeros(
-          (batch_size, n_timesteps - 1) + self.train_env.action_space.shape,
-          dtype=self.train_env.action_space.dtype,
-      )
-      reward_mask = np.ones((batch_size, n_timesteps - 1), dtype=np.int32)
-      (observations, _) = self._serialize_trajectories(
-          observations, actions, reward_mask
-      )
-    (log_probs, value_preds, state, rng) = self._get_predictions(
-        observations, state=state, rng=rng
+    return ppo.run_policy(
+        self._policy_and_value_net_apply,
+        observations,
+        lengths,
+        self._policy_and_value_net_params,
+        state,
+        rng,
+        self._policy_and_value_vocab_size,
+        self.train_env.observation_space,
+        self.train_env.action_space,
+        self._rewards_to_actions,
     )
-    # We need the log_probs of those actions that correspond to the last actual
-    # time-step.
-    index = lengths - 1  # Since we want to index using lengths.
-    pred_index = self._calc_action_index(index)
-    log_probs = log_probs[
-        np.arange(batch_size)[:, None, None],
-        pred_index[:, :, None],
-        np.arange(self._n_actions),
-    ]
-    value_preds = value_preds[np.arange(batch_size)[:, None], pred_index]
-    return (log_probs, value_preds, state, rng)
-
-  def _calc_action_index(self, reward_index):
-    # Project the one-hot position in the reward sequence onto the action
-    # sequence to figure out which actions correspond to that position.
-    one_hot_index = np.eye(self._rewards_to_actions.shape[0])[reward_index]
-    action_mask = np.dot(one_hot_index, self._rewards_to_actions)
-    # Compute the number of symbols in an action. It's just the number of 1s in
-    # the mask.
-    action_length = int(np.sum(action_mask[0]))
-    # Argmax stops on the first occurrence, so we use it to find the first 1 in
-    # the mask.
-    action_start_index = np.argmax(action_mask, axis=1)
-    return action_start_index[:, None] + np.arange(action_length)[None, :]

@@ -34,6 +34,7 @@ import time
 
 from absl import logging
 import gin
+import gym
 
 from trax import models as trax_models
 from trax import utils
@@ -209,9 +210,6 @@ def PolicySchedule(
     }
     return lambda _: controls
 
-  assert policy_and_value_vocab_size is None, (
-      'Serialized policies are not supported yet.'
-  )
   # Build the policy network and load its parameters.
   start_time = time.time()
   net = ppo.policy_and_value_net(
@@ -238,20 +236,38 @@ def PolicySchedule(
   seed = random.randint(0, 2**31 - 1)
   rng = jax_random.get_prng(seed=seed)
   start_time = time.time()
-  # ((log_probs, value_preds), state). We have no way to pass state to the next
-  # step, but that should be fine.
-  (log_probs, _) = (
-      net(np.array([observations]), params=params, state=state, rng=rng))
+
+  (low, high) = observation_range
+  observation_space = gym.spaces.Box(
+      shape=observations.shape, low=low, high=high
+  )
+  action_space = gym.spaces.MultiDiscrete(
+      nvec=(len(action_multipliers),) * len(control_configs)
+  )
+  n_timesteps = observations.shape[0]
+  rewards_to_actions = ppo.init_rewards_to_actions(
+      policy_and_value_vocab_size, observation_space, action_space, n_timesteps
+  )
+  # (log_probs, value_preds, state, rng)
+  (log_probs, _, _, _) = ppo.run_policy(
+      policy_and_value_net_apply=net,
+      observations=np.array([observations]),
+      lengths=np.array([n_timesteps]),
+      params=params,
+      state=state,
+      rng=rng,
+      vocab_size=policy_and_value_vocab_size,
+      observation_space=observation_space,
+      action_space=action_space,
+      rewards_to_actions=rewards_to_actions,
+  )
+
   logging.vlog(
       1, 'Running the policy took %0.2f sec.', time.time() - start_time
   )
   # Sample from the action distribution for the last timestep.
-  assert log_probs.shape == (
-      1, len(control_configs) * observations.shape[0], len(action_multipliers)
-  )
-  action = utils.gumbel_sample(
-      log_probs[0, -len(control_configs):, :] / temperature
-  )
+  assert log_probs.shape == (1, len(control_configs), len(action_multipliers))
+  action = utils.gumbel_sample(log_probs[0] / temperature)
 
   # Get new controls.
   controls = {

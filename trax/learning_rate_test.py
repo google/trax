@@ -19,13 +19,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 import numpy as onp
 from tensorflow import test
 from trax import history as trax_history
 from trax import learning_rate
 from trax.backend import numpy as np
 from trax.backend import random as jax_random
-from trax.models import atari_cnn
+from trax.models import transformer
 from trax.rl import online_tune
 from trax.rl import ppo
 
@@ -38,8 +40,15 @@ class PolicyScheduleTest(test.TestCase):
       control_configs,
       observation_metrics=(('eval', 'metrics/accuracy'),),
       action_multipliers=(1.0,),
+      vocab_size=None,
   ):
-    policy_and_value_model = atari_cnn.FrameStackMLP
+    policy_and_value_model = functools.partial(
+        transformer.TransformerDecoder,
+        d_model=2,
+        d_ff=2,
+        n_layers=0,
+        vocab_size=vocab_size,
+    )
     net = ppo.policy_and_value_net(
         n_actions=len(action_multipliers),
         n_controls=len(control_configs),
@@ -49,7 +58,13 @@ class PolicyScheduleTest(test.TestCase):
     )
     rng = jax_random.get_prng(seed=0)
     obs_dim = len(observation_metrics)
-    (params, state) = net.initialize_once((1, 1, obs_dim), np.float32, rng)
+    if vocab_size is None:
+      shape = (1, 1, obs_dim)
+      dtype = np.float32
+    else:
+      shape = (1, 1)
+      dtype = np.int32
+    (params, state) = net.initialize_once(shape, dtype, rng)
     policy_dir = self.get_temp_dir()
     # Optimizer slots should not be used for anything.
     slots = None
@@ -65,6 +80,7 @@ class PolicyScheduleTest(test.TestCase):
         control_configs=control_configs,
         policy_and_value_model=policy_and_value_model,
         policy_and_value_two_towers=False,
+        policy_and_value_vocab_size=vocab_size,
         policy_dir=policy_dir,
     )
 
@@ -115,6 +131,24 @@ class PolicyScheduleTest(test.TestCase):
     new_controls = schedule(123)
     self.assertIn('learning_rate', new_controls)
     self.assertIn('weight_decay_rate', new_controls)
+
+  def test_works_with_serialized_policy(self):
+    history = trax_history.History()
+    history.append('eval', 'metrics/accuracy', step=0, value=0.8)
+    history.append(
+        *online_tune.control_metric('learning_rate'), step=0, value=1e-4
+    )
+    schedule = self._make_schedule(
+        history,
+        control_configs=(('learning_rate', 1e-3, (1e-9, 1.0), False),),
+        observation_metrics=(('eval', 'metrics/accuracy'),),
+        action_multipliers=(0.5, 2.0),
+        vocab_size=16,
+    )
+    new_lr = schedule(123)['learning_rate']
+    self.assertTrue(
+        onp.allclose(new_lr, 5e-5) or onp.allclose(new_lr, 2e-4)
+    )
 
 
 if __name__ == '__main__':

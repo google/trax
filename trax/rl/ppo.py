@@ -59,10 +59,12 @@ import re
 import time
 
 from absl import logging
+import gym
 from jax import grad
 from jax import jit
 from jax import lax
 from jax import numpy as np
+from jax import random as jax_random
 import numpy as onp
 
 from tensor2tensor.envs import env_problem
@@ -71,6 +73,8 @@ from tensorflow.io import gfile
 from trax import history as trax_history
 from trax import layers as tl
 from trax import utils
+from trax.rl import serialization_utils
+from trax.rl import space_serializer
 
 
 def policy_and_value_net(
@@ -932,3 +936,152 @@ def shuffled_index_batches(dataset_size, batch_size):
   indices = shuffled_indices()
   while True:
     yield onp.array(list(itertools.islice(indices, int(batch_size))))
+
+
+def analyze_action_space(action_space):
+  """Returns the number of controls and actions for an action space."""
+  assert isinstance(
+      action_space, (gym.spaces.Discrete, gym.spaces.MultiDiscrete)
+  ), 'Action space expected to be Discrete of MultiDiscrete, got {}.'.format(
+      type(action_space)
+  )
+  if isinstance(action_space, gym.spaces.Discrete):
+    n_actions = action_space.n
+    n_controls = 1
+  else:
+    (n_controls,) = action_space.nvec.shape
+    assert n_controls > 0
+    assert onp.min(action_space.nvec) == onp.max(action_space.nvec), (
+        'Every control must have the same number of actions.'
+    )
+    n_actions = action_space.nvec[0]
+  return (n_controls, n_actions)
+
+
+def init_serialization(
+    vocab_size, observation_space, action_space, n_timesteps
+):
+  """Initializes serialization keyword arguments."""
+  obs_serializer = space_serializer.create(
+      observation_space, vocab_size=vocab_size
+  )
+  act_serializer = space_serializer.create(action_space, vocab_size=vocab_size)
+  repr_length = (
+      obs_serializer.representation_length +
+      act_serializer.representation_length
+  ) * n_timesteps
+  return {
+      'observation_serializer': obs_serializer,
+      'action_serializer': act_serializer,
+      'representation_length': repr_length,
+  }
+
+
+def init_rewards_to_actions(
+    vocab_size, observation_space, action_space, n_timesteps
+):
+  """Initializes a linear map from reward sequence to action sequence."""
+  # Linear map from the reward sequence to the action sequence, used for
+  # scattering advantages over action log-probs and some other things.
+  # It has one more timestep at the end, so it's compatible with the value
+  # predictions.
+  if vocab_size is None:
+    rewards_to_actions = onp.eye(n_timesteps)[:, :, None]
+    (n_controls, _) = analyze_action_space(action_space)
+    rewards_to_actions = onp.broadcast_to(
+        rewards_to_actions, (n_timesteps, n_timesteps, n_controls)
+    )
+    return onp.reshape(rewards_to_actions, (n_timesteps, -1))
+  else:
+    serialization_kwargs = init_serialization(
+        vocab_size, observation_space, action_space, n_timesteps
+    )
+    return serialization_utils.rewards_to_actions_map(
+        n_timesteps=n_timesteps, **serialization_kwargs
+    )
+
+
+def _prepare_policy_input(
+    observations, vocab_size, observation_space, action_space
+):
+  """Prepares policy input based on a sequence of observations."""
+  if vocab_size is not None:
+    (batch_size, n_timesteps) = observations.shape[:2]
+    serialization_kwargs = init_serialization(
+        vocab_size, observation_space, action_space, n_timesteps
+    )
+    actions = np.zeros(
+        (batch_size, n_timesteps - 1) + action_space.shape,
+        dtype=action_space.dtype,
+    )
+    reward_mask = np.ones((batch_size, n_timesteps - 1), dtype=np.int32)
+    (policy_input, _) = serialization_utils.serialize_observations_and_actions(
+        observations=observations,
+        actions=actions,
+        mask=reward_mask,
+        **serialization_kwargs
+    )
+    return policy_input
+  else:
+    return observations
+
+
+def _calculate_action_index(rewards_to_actions, reward_index):
+  """Calculates action indices for given reward indices."""
+  # Project the one-hot position in the reward sequence onto the action
+  # sequence to figure out which actions correspond to that position.
+  one_hot_index = np.eye(rewards_to_actions.shape[0])[reward_index]
+  action_mask = np.dot(one_hot_index, rewards_to_actions)
+  # Compute the number of symbols in an action. It's just the number of 1s in
+  # the mask.
+  action_length = int(np.sum(action_mask[0]))
+  # Argmax stops on the first occurrence, so we use it to find the first 1 in
+  # the mask.
+  action_start_index = np.argmax(action_mask, axis=1)
+  return action_start_index[:, None] + np.arange(action_length)[None, :]
+
+
+def _extract_policy_output(log_probs, value_preds, lengths, rewards_to_actions):
+  """Extracts policy output for the last timestep."""
+  (batch_size, _, n_actions) = log_probs.shape
+  # We need the log_probs of those actions that correspond to the last actual
+  # time-step.
+  index = lengths - 1  # Since we want to index using lengths.
+  pred_index = _calculate_action_index(rewards_to_actions, index)
+  n_actions = log_probs.shape[-1]
+  log_probs = log_probs[
+      np.arange(batch_size)[:, None, None],
+      pred_index[:, :, None],
+      np.arange(n_actions),
+  ]
+  value_preds = value_preds[np.arange(batch_size)[:, None], pred_index]
+  return (log_probs, value_preds)
+
+
+# TODO(pkozakowski): Make classes for different ways of pre/postprocessing
+# policy input/output during training and inference. Possibly do the same for
+# world models.
+def run_policy(
+    policy_and_value_net_apply,
+    observations,
+    lengths,
+    params,
+    state,
+    rng,
+    vocab_size,
+    observation_space,
+    action_space,
+    rewards_to_actions,
+):
+  """Runs the policy network."""
+  policy_input = _prepare_policy_input(
+      observations, vocab_size, observation_space, action_space
+  )
+  (rng, subrng) = jax_random.split(rng)
+  (log_probs, value_preds) = policy_and_value_net_apply(
+      policy_input, params=params, state=state, rng=subrng
+  )
+  (log_probs, value_preds) = _extract_policy_output(
+      log_probs, value_preds, lengths, rewards_to_actions
+  )
+  return (log_probs, value_preds, state, rng)
