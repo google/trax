@@ -69,7 +69,7 @@ PPO.print_every_optimizer_steps = 1
 ## Parameters for TimeBinCausalAttention:
 ## ==============================================================================
 world_model/TimeBinCausalAttention.dropout = 0.1
-world_model/TimeBinCausalAttention.bin_length = 512
+world_model/TimeBinCausalAttention.bin_length = 256
 
 # Parameters for SerializedSequenceSimulatedEnvProblem:
 # ==============================================================================
@@ -84,9 +84,9 @@ SerializedSequenceSimulatedEnvProblem.significance_decay = 0.8
 # ==============================================================================
 SimPLe.policy_trainer_class = @trax.rl.trainers.PPO
 SimPLe.n_real_epochs = 1
-SimPLe.n_model_initial_train_steps = 50000
+SimPLe.n_model_initial_train_steps = 70000
 SimPLe.n_model_train_steps_per_epoch = 10000
-SimPLe.model_train_batch_size = 64
+SimPLe.model_train_batch_size = 32
 SimPLe.simulated_env_problem_class = @trax.rl.SerializedSequenceSimulatedEnvProblem
 SimPLe.simulated_batch_size = 128
 SimPLe.n_simulated_epochs = 50
