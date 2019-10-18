@@ -320,7 +320,8 @@ def Transformer(input_vocab_size,
                 output_vocab_size=None,
                 d_model=512,
                 d_ff=2048,
-                n_layers=6,
+                n_encoder_layers=6,
+                n_decoder_layers=6,
                 n_heads=8,
                 dropout=0.1,
                 max_len=2048,
@@ -335,7 +336,8 @@ def Transformer(input_vocab_size,
       source and target are assumed to have the same vocab.
     d_model: int:  depth of embedding
     d_ff: int: depth of feed-forward layer
-    n_layers: int: number of encoder/decoder layers
+    n_encoder_layers: int: number of encoder layers
+    n_decoder_layers: int: number of decoder layers
     n_heads: int: number of attention heads
     dropout: float: dropout rate (how much to drop out)
     max_len: int: maximum symbol length for positional encoding
@@ -363,11 +365,11 @@ def Transformer(input_vocab_size,
 
   encoder_stack = (  # masks vectors --> masks vectors
       [EncoderBlock(d_model, d_ff, n_heads, dropout, i, mode)
-       for i in range(n_layers)])
+       for i in range(n_encoder_layers)])
 
   encoder_decoder_stack = (  # vecs_d masks vecs_e --> vecs_d masks vecs_e
       [EncoderDecoder(d_model, d_ff, n_heads, dropout, i, mode)
-       for i in range(n_layers)])
+       for i in range(n_decoder_layers)])
 
   # Input: encoder_side_tokens, decoder_side_tokens
   return tl.Serial(  # tokens_e tokens_d

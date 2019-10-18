@@ -49,7 +49,7 @@ class TransformerTest(parameterized.TestCase):
     input_shape = (tuple(single_input_shape), tuple(single_input_shape))
     model = transformer.Transformer(
         input_vocab_size, output_vocab_size,
-        d_model=32, d_ff=64, n_layers=2, n_heads=2)
+        d_model=32, d_ff=64, n_encoder_layers=2, n_decoder_layers=2, n_heads=2)
     final_shape = tl.check_shape_agreement(
         model, input_shape, integer_inputs=True)
     expected_shape = (tuple(single_input_shape +
@@ -89,7 +89,9 @@ class TransformerTest(parameterized.TestCase):
         logits_slow = model_slow(buf, rng=rng)
         logits_fast = model_fast(next_sym, rng=rng)
         onp.testing.assert_array_almost_equal(
-            logits_slow[:, index, :], logits_fast[:, 0, :])
+            logits_slow[:, index, :], logits_fast[:, 0, :],
+            decimal=5,
+        )
         next_sym = onp.random.randint(vocab_size, size=(batch_size, 1))
         buf[:, index] = next_sym[:, 0]
 

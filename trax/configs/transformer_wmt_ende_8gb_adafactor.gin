@@ -69,5 +69,6 @@ Transformer.dropout = 0.1
 Transformer.max_len = 2048
 Transformer.mode = 'train'
 Transformer.n_heads = 8
-Transformer.n_layers = 6
+Transformer.n_encoder_layers = 6
+Transformer.n_decoder_layers = 6
 Transformer.input_vocab_size = 33300
