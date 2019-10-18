@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""trax learning rate schedules.
+"""Trax learning rate schedules.
 
 The learning rate schedules here all have the signature:
   lr: history -> (step -> {'learning_rate': lr})
@@ -84,6 +84,9 @@ def MultifactorSchedule(history=None,
       elif name == 'linear_warmup':
         ret *= np.minimum(1.0, step / warmup_steps)
       elif name == 'rsqrt_decay':
+        ret /= np.sqrt(np.maximum(step, warmup_steps))
+      elif name == 'rsqrt_normalized_decay':
+        ret *= np.sqrt(warmup_steps)
         ret /= np.sqrt(np.maximum(step, warmup_steps))
       elif name == 'decay_every':
         ret *= (decay_factor ** (step//steps_per_decay))
