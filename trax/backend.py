@@ -94,14 +94,14 @@ def jax_avg_pool(x, pool_size, strides, padding):
                           pool_size, strides=strides, padding=padding)
 
 
-def nested_map(x, f):
+def nested_map(f, x):
   """Map the function f to the nested structure x (dicts, tuples, lists)."""
   if isinstance(x, list):
-    return [nested_map(y, f) for y in x]
+    return [nested_map(f, y) for y in x]
   if isinstance(x, tuple):
-    return tuple([nested_map(y, f) for y in x])
+    return tuple([nested_map(f, y) for y in x])
   if isinstance(x, dict):
-    return {k: nested_map(v, f) for (k, v) in x.items()}
+    return {k: nested_map(f, v) for (k, v) in x.items()}
   return f(x)
 
 
@@ -132,7 +132,7 @@ def jax_eval_on_shapes(f):
   """
   def shape_fun(*args, **kwargs):
     jax_shapes = jax.eval_shape(f, *args, **kwargs)
-    return nested_map(jax_shapes, lambda x: ShapeType(x.shape, x.dtype))
+    return nested_map(lambda x: ShapeType(x.shape, x.dtype), jax_shapes)
   return shape_fun
 
 

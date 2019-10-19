@@ -149,7 +149,7 @@ def clip_grads(grad_tree, max_norm):
   """Clip gradients stored as a pytree of arrays to maximum norm `max_norm`."""
   norm = l2_norm(grad_tree)
   normalize = lambda g: np.where(norm < max_norm, g, g * (max_norm / norm))
-  return layers.nested_map(normalize, grad_tree)
+  return layers.nested_map(grad_tree, normalize)
 
 
 # Optimizers.

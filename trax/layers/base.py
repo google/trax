@@ -241,7 +241,8 @@ class Layer(object):
       def call_on_input(x, params, state, rng):
         return self.forward(x, params=params, state=state, rng=rng)
       params_shapes = nested_map(
-          params, lambda x: ShapeType(shape=x.shape, dtype=x.dtype))
+          lambda x: ShapeType(shape=x.shape, dtype=x.dtype),
+          params)
       s = backend.eval_on_shapes(call_on_input)(pseudo_inputs,
                                                 params_shapes, state, rng)
       return s
@@ -478,7 +479,7 @@ def shapes(x):
       return tuple([int(i) for i in x.shape])
     except Exception:  # pylint: disable=broad-except
       return []
-  return nested_map(x, shape)
+  return nested_map(shape, x)
 
 
 def sizes(x):
@@ -488,7 +489,7 @@ def sizes(x):
       return x.size
     except Exception:  # pylint: disable=broad-except
       return 0
-  return nested_map(x, size)
+  return nested_map(size, x)
 
 
 def _find_frame(stack, start=0):

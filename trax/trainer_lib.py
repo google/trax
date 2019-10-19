@@ -137,7 +137,7 @@ def _save_replicated(opt_state, step, history, model_state, n_devices,
   """Save state but given a possibly replicated opt_state."""
   if n_devices > 1:
     first_replica = lambda x: x[0]
-    opt_state = OptState(*layers.nested_map(opt_state, first_replica))
+    opt_state = OptState(*layers.nested_map(first_replica, opt_state))
   # This line, while optional, allows JAX to transfer arrays from the device to
   # the host in parallel, which is particularly important for cloud TPU.
   if backend.get_name() == 'jax':
@@ -151,7 +151,7 @@ def _print_n_params(opt_state, n_devices, step):
   sizes = layers.sizes(opt_state.params)
   if n_devices > 1:
     unreplicate = lambda x: x[0]
-    single_params = layers.nested_map(opt_state.params, unreplicate)
+    single_params = layers.nested_map(unreplicate, opt_state.params)
     sizes = layers.sizes(single_params)
   total_size = layers.nested_reduce(sizes, sum)
   step_log(step, 'Total trainable parameters size: %d' % total_size)
@@ -284,7 +284,7 @@ def _jit_predict_fn(model_predict, metric_fn, n_devices, jit=True):
       # TODO(lukaszkaiser): is returning averages for scalars the right choice?
       # If it is only scalar, return the average.
       return np.mean(x, axis=0)
-    return layers.nested_map(pred, combine)
+    return layers.nested_map(combine, pred)
 
   return predict
 
@@ -377,7 +377,8 @@ def _reshape_by_device_single(x, n_devices):
 def reshape_by_device(x, n_devices):
   """Reshape possibly nested x into a shape [n_devices, ...]."""
   return layers.nested_map(
-      x, lambda x: _reshape_by_device_single(x, n_devices))
+      lambda y: _reshape_by_device_single(y, n_devices),
+      x)
 
 
 def multi_device_put(x, devices=None, reuse=True):
@@ -498,10 +499,10 @@ class Trainer(object):
       model_input_shape = tuple([None] + list(inputs.input_shape))
       model_target_shape = tuple([None] + list(inputs.target_shape))
     # Change all None to 1 in input and target shape.
-    model_input_shape = layers.nested_map(
-        model_input_shape, lambda x: x if x else 1)
-    model_target_shape = layers.nested_map(
-        model_target_shape, lambda x: x if x else 1)
+    model_input_shape = layers.nested_map(lambda x: x if x else 1,
+                                          model_input_shape)
+    model_target_shape = layers.nested_map(lambda x: x if x else 1,
+                                           model_target_shape)
     def new_opt_state_and_model_state(input_shape, input_dtype, target_shape,
                                       target_dtype, rng):
       """Returns optimizer and model states suitable for training a model."""
@@ -562,10 +563,10 @@ class Trainer(object):
     metrics_layer = layers.Serial(metrics_layer)
     metrics_params, metrics_state = metrics_layer.initialize_once(
         dummy_shape, tuple(dummy_type), init_rng)
-    self._metrics_params = layers.nested_map(
-        metrics_params, self._maybe_replicate)
-    self._metrics_state = layers.nested_map(
-        metrics_state, self._maybe_replicate)
+    self._metrics_params = layers.nested_map(self._maybe_replicate,
+                                             metrics_params)
+    self._metrics_state = layers.nested_map(self._maybe_replicate,
+                                            metrics_state)
     self._jit_eval = _jit_predict_fn(
         model_predict_eval, metrics_layer, n_devices)
     self._jit_update_fn = _jit_update_fn(model_train, loss_fn, opt, n_devices)
@@ -633,10 +634,9 @@ class Trainer(object):
       model_state = state.model_state
     else:
       opt_state, model_state = self._new_opt_state_and_model_state()
-      model_state = layers.nested_map(
-          model_state, self._maybe_replicate)
-    self._opt_state = OptState(*layers.nested_map(
-        opt_state, self._maybe_replicate))
+      model_state = layers.nested_map(self._maybe_replicate, model_state)
+    self._opt_state = OptState(*layers.nested_map(self._maybe_replicate,
+                                                  opt_state))
     self._model_state = model_state
     if not state.opt_state and self.is_chief:
       self._maybe_save_state(keep=False)
@@ -692,15 +692,15 @@ class Trainer(object):
 
   def _map_to_state_dicts(self, f):
     """Map the function f to all dicts in model state."""
-    def nested_map(x, f):
+    def nested_map(f, x):
       if isinstance(x, list):
-        return [nested_map(y, f) for y in x]
+        return [nested_map(f, y) for y in x]
       if isinstance(x, tuple):
-        return tuple([nested_map(y, f) for y in x])
+        return tuple([nested_map(f, y) for y in x])
       if isinstance(x, dict) and len(x) == 1:
         return f(x)
       return x
-    return nested_map(self._model_state, f)
+    return nested_map(f, self._model_state)
 
   def _state_dicts_update(self, state_dict):
     assert len(state_dict.keys()) == 1
@@ -732,8 +732,8 @@ class Trainer(object):
     # TODO(pkozakowski): Optimizer parameters get polluted with model state,
     # which doesn't break anything but is weird. Filter it out.
     opt_param_updates = layers.nested_map(
-        self.nontrainable_params, lambda x: self._maybe_replicate(np.array(x))
-    )
+        lambda x: self._maybe_replicate(np.array(x)),
+        self.nontrainable_params)
     opt_state = self._opt_state
     opt_state.opt_params.update(opt_param_updates)
 

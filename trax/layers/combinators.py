@@ -222,8 +222,8 @@ class Serial(base.Layer):
       else:
         inputs = pseudo_xs[:n_in]
 
-      in_shape = base.nested_map(inputs, lambda x: x.shape)
-      in_dtype = base.nested_map(inputs, lambda x: x.dtype)
+      in_shape = base.nested_map(lambda x: x.shape, inputs)
+      in_dtype = base.nested_map(lambda x: x.dtype, inputs)
       param, state = layer.initialize_once(in_shape, in_dtype, layer_rng)
       pparam = layer._params   # pylint: disable=protected-access
 
