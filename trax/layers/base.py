@@ -93,7 +93,8 @@ class Layer(object):
     self._sublayers = ()  # Default is no sublayers.
     self._params = ()  # cached parameters
     self._state = ()
-    self._caller = _find_frame(inspect.stack())  # for custom error messages
+    # record root call site for custom error messages:
+    self._caller = _find_frame(inspect.currentframe())
     self._init_finished = False
 
   def __repr__(self):
@@ -435,9 +436,10 @@ class LayerError(Exception):
     """Create error message."""
     prefix = 'Exception passing through layer '
     prefix += '%s (in %s):\n' % (self._layer_name, self._function_name)
-    short_path = '[...]/' + '/'.join(self._caller.filename.split('/')[-3:])
+    short_path = '[...]/' + '/'.join(
+        self._caller.f_code.co_filename.split('/')[-3:])
     caller = '  layer created in file %s, line %d\n' % (short_path,
-                                                        self._caller.lineno)
+                                                        self._caller.f_lineno)
     shapes_str = '  layer input shapes: %s\n\n' % str(self._input_shapes)
     if self._input_types is not None:
       types_str = '  layer input types: %s\n' % str(self._input_types)
@@ -492,14 +494,13 @@ def sizes(x):
   return nested_map(size, x)
 
 
-def _find_frame(stack, start=0):
+def _find_frame(frame):
   """Find the frame with the caller on the stack."""
   # We want to find the first place where the layer was called
   # that is *not* an __init__ function of an inheriting layer.
-  frame = inspect.getframeinfo(stack[start][0])
-  # If we are in an init, move on.
-  if frame.function == '__init__':
-    return _find_frame(stack, start + 1)
+  while frame.f_code.co_name == '__init__':
+    # If we are in an init, move up.
+    frame = frame.f_back
   return frame
 
 
