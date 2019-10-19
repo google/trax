@@ -745,45 +745,34 @@ class Trainer(object):
     self._step += 1
 
   def train_epoch(self, epoch_steps, eval_steps):
-    """Train for one epoch."""
-    # Log separator
-    print()
-
-    # Timer
+    """Runs the trainer for `epoch_steps` steps."""
+    print()  # Add visual separator in logs for start of training epoch.
     start_time = time.time()
 
     for _ in range(epoch_steps):
-      # Train
       next_train_batch = next(self._train_stream)
       if self._n_devices > 1:  # TODO(lukaszkaiser): use everywhere if possible.
         next_train_batch = reshape_by_device(next_train_batch, self._n_devices)
-
       self._train_step(next_train_batch)
 
+      # Occasionally save state, and occasionally log nontrainable params
+      # (e.g., learning rate, dropout).
       if self._step in self._save_steps and self.is_chief:
         self._maybe_save_state(keep=True)
-
-      # Log nontrainable params (learning rate, dropout etc.)
       if (self._step == 1 or self._step % 10 == 0) and self._train_sw:
         for (name, value) in self.nontrainable_params.items():
           self._train_sw.scalar('training/{}'.format(name), value)
 
-    # Timer
+    # At end of epoch, do bookkeeping, run evals, and save state.
     epoch_time = time.time() - start_time
     step_log(self._step, 'Ran %d train steps in %0.2f secs' %
              (epoch_steps, epoch_time))
     if epoch_steps > 1 and self._train_sw:
       self._train_sw.scalar('training/steps per second',
                             epoch_steps / epoch_time, step=self._step)
-
-    # Evaluate in parallel
     self.evaluate(eval_steps)
-
-    # Save state
     if self.is_chief:
       self._maybe_save_state(keep=False)
-
-    # Flush summary writers
     if self._train_sw:
       self._train_sw.flush()
       self._eval_sw.flush()
