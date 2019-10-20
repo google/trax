@@ -32,7 +32,6 @@ import tensorflow_datasets as tfds
 from trax import backend
 from trax.backend import numpy as np
 
-
 # Inputs is the trax tuple defining the input streams and shapes.
 # * train_stream: training data that will be used for training
 #     may include all the augmentation or selection the training wants
