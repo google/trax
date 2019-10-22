@@ -67,17 +67,17 @@ def WeightedMean(x, **kw):
 def CountWeights(mask_id=None, has_weights=False):
   """Sum the weights assigned to all elements."""
   if has_weights:
-    return cb.Serial([
+    return cb.Serial(
         cb.Drop(),  # Drop inputs.
         WeightMask(mask_id=mask_id),  # pylint: disable=no-value-for-parameter
         cb.Multiply(),  # Multiply with provided mask.
         core.Sum(axis=None)  # Sum all weights.
-    ])
+    )
   return cb.Serial(
-      [cb.Drop(),  # Drop inputs.
-       WeightMask(mask_id=mask_id),  # pylint: disable=no-value-for-parameter
-       core.Sum(axis=None)  # Sum all weights.
-      ])
+      cb.Drop(),  # Drop inputs.
+      WeightMask(mask_id=mask_id),  # pylint: disable=no-value-for-parameter
+      core.Sum(axis=None)  # Sum all weights.
+  )
 
 
 def MaskedScalar(metric_layer, mask_id=None, has_weights=False):
@@ -95,15 +95,15 @@ def MaskedScalar(metric_layer, mask_id=None, has_weights=False):
   ]
   if not has_weights:
     # Take (metric, weight-mask) and return the weighted mean.
-    return cb.Serial([metric_and_mask, WeightedMean()])  # pylint: disable=no-value-for-parameter
-  return cb.Serial([
+    return cb.Serial(metric_and_mask, WeightedMean())  # pylint: disable=no-value-for-parameter
+  return cb.Serial(
       metric_and_mask,
       cb.Parallel(
           [],
           cb.Multiply()  # Multiply given weights by mask_id weights
       ),
       WeightedMean()  # pylint: disable=no-value-for-parameter
-  ])
+  )
 
 
 def CrossEntropyScalar(mask_id=None, has_weights=False):

@@ -191,12 +191,12 @@ class ReversibleHalfResidual(tl.ReversibleLayer, tl.Serial):
   """Half of a RevNet-style residual (only updates part of the hidden state)."""
 
   def __init__(self, residual_layers):
-    self.compute_residual = tl.Serial([
+    self.compute_residual = tl.Serial(
         # (x1_or_y1, x2) -> (x2, x1_or_y1, x2)
         tl.Parallel([], tl.Dup()),
         tl.Swap(),
         tl.Parallel(residual_layers, [], []),
-    ])
+    )
 
     layers = [
         self.compute_residual,
@@ -289,12 +289,12 @@ class ReversibleAttentionHalfResidual(tl.ReversibleLayer, tl.Serial):
   """
 
   def __init__(self, pre_attention, attention, post_attention):
-    self.pre_attention = tl.Serial([
+    self.pre_attention = tl.Serial(
         # (x1_or_y1, x2) -> (x2, x1_or_y1, x2)
         tl.Parallel([], tl.Dup()),
         tl.Swap(),
         tl.Parallel(pre_attention, [], []),
-    ])
+    )
     assert hasattr(attention, 'forward_and_backward')
     self.attention = ApplyAttentionWrapper(attention)
     self.post_attention = tl.Parallel(post_attention, [], [])

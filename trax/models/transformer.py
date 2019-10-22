@@ -101,7 +101,7 @@ def TransformerEncoder(vocab_size,
       tl.Dropout(rate=dropout, name='emb_dropout', mode=mode),
       tl.PositionalEncoding(max_len=max_len),
   ]
-  return tl.Serial([                             #      tokens
+  return tl.Serial(                             #      tokens
       tl.Dup(),                                 # toks toks
       tl.Parallel(embedder, tl.PaddingMask()),  # vecs mask
       [EncoderBlock(d_model, d_ff, n_heads, dropout, i, mode)
@@ -111,7 +111,7 @@ def TransformerEncoder(vocab_size,
       tl.Mean(axis=1),  # Average on length.    # vecs
       tl.Dense(n_classes),                      # vecs
       tl.LogSoftmax(),                          # vecs
-  ])
+  )
 
 
 def DecoderBlock(d_model, d_ff, n_heads, d_attention_key, d_attention_value,

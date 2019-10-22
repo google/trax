@@ -260,7 +260,7 @@ def epochs(total_steps, steps_to_skip, epoch_steps):
 @gin.configurable
 def _jit_predict_fn(model_predict, metric_fn, n_devices, jit=True):
   """Returns a JIT-compiled predict function (unless jit=False)."""
-  model_predict = layers.Serial([model_predict, metric_fn])
+  model_predict = layers.Serial(model_predict, metric_fn)
 
   if n_devices == 1:
     return backend.jit(model_predict) if jit else model_predict
@@ -294,7 +294,7 @@ def _jit_predict_fn(model_predict, metric_fn, n_devices, jit=True):
 @gin.configurable
 def _jit_update_fn(predict_fn, loss_fn, optimizer, n_devices, jit=True):
   """Returns a (JIT-compiled) function that computes updates for one step."""
-  model_and_loss = layers.Serial([predict_fn, loss_fn])
+  model_and_loss = layers.Serial(predict_fn, loss_fn)
   # Gradients are always wrt. the first argument, so putting params first.
   def model_and_loss_call(params, batch, state, rng):
     res = model_and_loss(batch, params=params, state=state, rng=rng)
@@ -524,7 +524,7 @@ class Trainer(object):
       # We need to create a new model instance and not reuse `model_train` here,
       # because `m.initialize` puts cached parameter values in `m` and hence the
       # next call of `m.initialize` will give wrong results.
-      m = layers.Serial([model(mode='train'), loss_fn])
+      m = layers.Serial(model(mode='train'), loss_fn)
       params, state = m.initialize_once(full_shape, full_type, rng)
       (slots, opt_params) = opt.tree_init(params)
       return (OptState(params, slots, opt_params), state)
