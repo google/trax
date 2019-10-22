@@ -64,6 +64,22 @@ def WeightedMean(x, **kw):
   return np.sum(metric * weights) / weights_sum
 
 
+def CountWeights(mask_id=None, has_weights=False):
+  """Sum the weights assigned to all elements."""
+  if has_weights:
+    return cb.Serial([
+        cb.Drop(),  # Drop inputs.
+        WeightMask(mask_id=mask_id),  # pylint: disable=no-value-for-parameter
+        cb.Multiply(),  # Multiply with provided mask.
+        core.Sum(axis=None)  # Sum all weights.
+    ])
+  return cb.Serial(
+      [cb.Drop(),  # Drop inputs.
+       WeightMask(mask_id=mask_id),  # pylint: disable=no-value-for-parameter
+       core.Sum(axis=None)  # Sum all weights.
+      ])
+
+
 def MaskedScalar(metric_layer, mask_id=None, has_weights=False):
   """Metric as scalar compatible with Trax masking."""
   # Stack of (inputs, targets) --> (metric, weight-mask).

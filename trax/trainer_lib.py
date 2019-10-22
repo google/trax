@@ -163,6 +163,7 @@ _METRICS = {
     'accuracy': layers.AccuracyScalar,
     'neg_log_perplexity': layers.NegLogPerplexityScalar,
     'loss': layers.CrossEntropyLossScalar,
+    'weights_per_batch_per_core': layers.CountWeights,
 }
 
 
@@ -452,7 +453,7 @@ class Trainer(object):
                output_dir=None, random_seed=None, n_devices=None,
                save_steps=None, should_save_checkpoints=True,
                should_write_summaries=True, has_weights=False,
-               nontrainable_param_map=None, mask_id=None):
+               nontrainable_param_map=None, mask_id=None, metrics=None):
     if save_steps is None:
       save_steps = []
     self._save_steps = save_steps
@@ -460,6 +461,7 @@ class Trainer(object):
     self._should_write_summaries = should_write_summaries
     self._has_weights = has_weights
     self._mask_id = mask_id
+    self._metrics_dict = _METRICS if metrics is None else metrics
     loss_fn = loss_fn(has_weights=has_weights, mask_id=mask_id)
     device_count = jax.local_device_count()
     n_devices = n_devices or device_count
@@ -548,9 +550,10 @@ class Trainer(object):
         # Apply layer below inputs and targets.
         return layers.Parallel([], [], layer)
     metrics_layer = []
-    self._metrics = list(sorted(_METRICS.keys()))
+    self._metrics = list(sorted(self._metrics_dict.keys()))
     for i, m in enumerate(reversed(self._metrics)):
-      metric = _METRICS[m](has_weights=self._has_weights, mask_id=self._mask_id)
+      metric = self._metrics_dict[m](has_weights=self._has_weights,
+                                     mask_id=self._mask_id)
       if i != len(self._metrics) - 1:
         metrics_layer.append(dup_layer)
         metrics_layer.append(lower(metric))

@@ -499,7 +499,9 @@ def _find_frame(frame):
   """Find the frame with the caller on the stack."""
   # We want to find the first place where the layer was called
   # that is *not* an __init__ function of an inheriting layer.
-  while frame.f_code.co_name == '__init__':
+  # We also need to exclude a few decorator functions.
+  while frame.f_code.co_name in ['__init__', 'gin_wrapper', '_validate',
+                                 '_init']:
     # If we are in an init, move up.
     frame = frame.f_back
   return frame

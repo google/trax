@@ -177,6 +177,8 @@ class Serial(base.Layer):
                        '({})'.format(len(state), n_layers))
     for layer, p, s, rng in zip(self.sublayers, params, state, rngs):
       is_stack_just_one_item = (_count_items(stack) == 1)
+      if isinstance(stack, (list, tuple)) and is_stack_just_one_item:
+        stack = stack[0]
 
       # Give layer its args from the stack; treat 1-arg layer specially.
       n_in = layer.n_in
@@ -213,6 +215,9 @@ class Serial(base.Layer):
 
       # Give layer its args from pseudo_xs; treat 1-arg layer specially.
       is_stack_just_one_item = (_count_items(pseudo_xs) == 1)
+      if isinstance(pseudo_xs, (list, tuple)) and is_stack_just_one_item:
+        pseudo_xs = pseudo_xs[0]
+
       n_in = layer.n_in
       if n_in == 1 and is_stack_just_one_item:
         inputs = pseudo_xs

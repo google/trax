@@ -224,10 +224,14 @@ def one_hot(x, size, dtype=np.float32):  # pylint: disable=invalid-name
   return np.array(x[..., np.newaxis] == arange_size, dtype)
 
 
-# Mean.
 @base.layer()
 def Mean(x, axis=-1, keepdims=False, **unused_kwargs):
   return np.mean(x, axis=axis, keepdims=keepdims)
+
+
+@base.layer()
+def Sum(x, axis=-1, keepdims=False, **unused_kwargs):
+  return np.sum(x, axis=axis, keepdims=keepdims)
 
 
 def log_gaussian_pdf(x, mu, sigma):  # pylint: disable=invalid-name
