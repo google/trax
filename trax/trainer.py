@@ -128,6 +128,7 @@ def main(_):
   if FLAGS.use_tpu:
     jax.config.update('jax_platform_name', 'tpu')
 
+
   trainer_lib.train(output_dir=output_dir)
 
 

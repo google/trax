@@ -32,7 +32,6 @@ from absl import logging
 import gin
 
 import jax
-from jax import lax
 import numpy
 import six
 import tensorflow as tf
@@ -276,7 +275,7 @@ def _jit_predict_fn(model_predict, metric_fn, n_devices, jit=True):
         reshape_by_device(x, n_devices),
         params,
         state,
-        jax_random.split(rng, n_devices))
+        np.stack(jax_random.split(rng, n_devices)))
     # Need to reduce the [device, per-device-batch, ...] tensors back to
     # a [batch, ...] tensor. The tensors may be nested.
     def combine(x):
@@ -319,12 +318,12 @@ def _jit_update_fn(predict_fn, loss_fn, optimizer, n_devices, jit=True):
     grad_fn = backend.grad(model_and_loss_call, has_aux=True)
     grads, state = grad_fn(params, batch, state, rng)
     grads = jax.tree_util.tree_map(
-        lambda g: lax.psum(g, 'batch'), grads)
+        lambda g: backend.psum(g, 'batch'), grads)
     return optimizer.tree_update(
         i, grads, params, slots, opt_params), state, subrng
 
   def update(i, opt_state, batch, state, rng):
-    return mapped_update(numpy.repeat(i, n_devices), opt_state, batch, state,
+    return mapped_update(np.repeat(i, n_devices), opt_state, batch, state,
                          rng)
 
   return update
@@ -463,12 +462,16 @@ class Trainer(object):
     self._mask_id = mask_id
     self._metrics_dict = _METRICS if metrics is None else metrics
     loss_fn = loss_fn(has_weights=has_weights, mask_id=mask_id)
-    device_count = jax.local_device_count()
+    device_count = backend.device_count()
     n_devices = n_devices or device_count
-    self._host_id = jax.host_id()
-    self._host_count = jax.host_count()
+    if backend.get_name() == 'jax':
+      self._host_id = jax.host_id()
+      self._host_count = jax.host_count()
+    else:
+      self._host_id = 0
+      self._host_count = 1
     # TODO(lukaszkaiser): remove this restriction when possible.
-    if n_devices != device_count:
+    if n_devices != device_count and backend.get_name() == 'jax':
       raise ValueError('Jax cannot work yet with n_devices != all devices: '
                        '%d != %d' % (n_devices, device_count))
     self._n_devices = n_devices
@@ -490,7 +493,7 @@ class Trainer(object):
 
     # Setup state.
     rng, init_rng = jax_random.split(rng)
-    self._rngs = jax_random.split(rng, n_devices)
+    self._rngs = np.stack(jax_random.split(rng, n_devices))
     first_shape = inputs.input_shape[0]
     # If the inputs are a tuple/list, add [None] (batch) to each element.
     if isinstance(first_shape, (list, tuple)):
@@ -836,6 +839,12 @@ class Trainer(object):
         f.write(backward_computation.GetHloDotGraph())
 
 
+@gin.configurable
+def num_devices(value=None):
+  """Returns how many devices to use (if None, default, use all available)."""
+  return value
+
+
 @gin.configurable(blacklist=['output_dir'])
 def train(output_dir,
           model=gin.REQUIRED,
@@ -848,7 +857,6 @@ def train(output_dir,
           save_steps=None,
           eval_steps=10,
           eval_frequency=100,
-          n_devices=None,
           random_seed=None,
           save_graphs=True,
           save_backward_graph=False,
@@ -874,7 +882,6 @@ def train(output_dir,
     eval_steps: int, num of steps per evaluation. If None or 0, eval disabled.
     eval_frequency: int, how often to run evaluation (every eval_frequency
       steps). If None or 0, eval disabled.
-    n_devices: how many devices to use (if None, default, use all available)
     random_seed: the random seed to use; time/os dependent if None (default).
     save_graphs: bool, if True, save computation graph to file.
     save_backward_graph: bool, if True, save backward graph to file too.
@@ -886,6 +893,7 @@ def train(output_dir,
   Returns:
     trax.TrainerState
   """
+  n_devices = num_devices()
   # TODO(lukaszkaiser): remove has_weights and mask_id later (configure loss).
   trainer = trainer_class(model, loss_fn, optimizer, lr_schedule, inputs,
                           output_dir,

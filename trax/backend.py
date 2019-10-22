@@ -169,6 +169,7 @@ _JAX_BACKEND = {
     'jit': jax.jit,
     'grad': jax.grad,
     'pmap': jax.pmap,
+    'psum': lax.psum,
     'eval_on_shapes': jax_eval_on_shapes,
     'random_uniform': jax_random.uniform,
     'random_randint': jax_randint,
@@ -177,6 +178,7 @@ _JAX_BACKEND = {
     'random_get_prng': jax.jit(jax_random.PRNGKey),
     'random_split': jax_random.split,
     'dataset_as_numpy': tfds.as_numpy,
+    'device_count': jax.local_device_count,
 }
 
 
@@ -234,12 +236,20 @@ def pmap(*args, **kwargs):
   return backend()['pmap'](*args, **kwargs)
 
 
+def psum(*args, **kwargs):
+  return backend()['psum'](*args, **kwargs)
+
+
 def eval_on_shapes(*args, **kwargs):
   return backend()['eval_on_shapes'](*args, **kwargs)
 
 
 def dataset_as_numpy(*args, **kwargs):
   return backend()['dataset_as_numpy'](*args, **kwargs)
+
+
+def device_count(*args, **kwargs):
+  return backend()['device_count'](*args, **kwargs)
 
 
 # For numpy and random modules, we need to call "backend()" lazily, only when
