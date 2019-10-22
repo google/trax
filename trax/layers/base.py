@@ -321,10 +321,11 @@ class Layer(object):
     """
     params = kwargs.pop('params', self.params)
     state = kwargs.pop('state', self.state)
-    outputs, _ = self.apply_forward(x, params=params, state=state, **kwargs)
+    rng = kwargs.pop('rng', None)
+    outputs, _ = self.apply_forward(x, params, state, rng)
     return outputs
 
-  def apply_forward(self, x, params=(), state=(), **kwargs):
+  def apply_forward(self, x, params, state, rng):
     """Applies this layer as part of a forward pass; an internal system method.
 
     This method is reserved for handling plumbing and other internal affairs
@@ -335,7 +336,7 @@ class Layer(object):
       x: See Layer.forward inputs.
       params: See Layer.forward.
       state: See Layer.forward.
-      **kwargs: See Layer.forward.
+      rng: See Layer.forward.
 
     Returns:
       See Layer.forward.
@@ -352,9 +353,9 @@ class Layer(object):
         self._params = params
 
       if not self.has_backward or Layer._STASH_IN is not None:
-        outputs, s = self.forward(x, params=params, state=state, **kwargs)
+        outputs, s = self.forward(x, params=params, state=state, rng=rng)
       else:
-        outputs, s = self._do_custom_gradients(x, params, state, **kwargs)
+        outputs, s = self._do_custom_gradients(x, params, state, rng=rng)
       self._state = s
       return outputs, s
 
