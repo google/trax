@@ -888,7 +888,7 @@ def init_policy_from_world_model_checkpoint(policy_params, model_output_dir):
   """Initializes policy parameters from world model parameters."""
   pkl_module = utils.get_pickle_module()
   params_file = os.path.join(model_output_dir, 'model.pkl')
-  # Don't use trax.restore_state to avoid a circular import.
+  # Don't use trax.load_trainer_state to avoid a circular import.
   with gfile.GFile(params_file, 'rb') as f:
     model_params = pkl_module.load(f)[0][0]
   # TODO(pkozakowski): The following, brittle line of code is hardcoded for

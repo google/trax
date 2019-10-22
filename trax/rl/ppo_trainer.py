@@ -664,7 +664,7 @@ class PPO(base_trainer.BaseTrainer):
     # truncated and done).
     # Also don't save too frequently, enforce a minimum gap.
     policy_save_start_time = time.time()
-    # TODO(afrozm): Refactor to trax.save_state.
+    # TODO(afrozm): Refactor to trax.save_trainer_state.
     if (self._n_trajectories_done >=
         self._done_frac_for_policy_save * self.train_env.batch_size and
         self._epoch % self._save_every_n == 0) or self._async_mode:

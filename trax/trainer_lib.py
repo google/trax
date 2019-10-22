@@ -76,7 +76,7 @@ def step_log(step, s):
   log('Step % 6d: %s' % (step, s))
 
 
-State = collections.namedtuple('_State', [
+TrainerState = collections.namedtuple('_TrainerState', [
     'step',       # Current training step number.
     'opt_state',  # OptState.
     'history',    # trax.history.History.
@@ -91,20 +91,20 @@ OptState = collections.namedtuple('_OptState', [
 ])
 
 
-def restore_state(output_dir):
-  """Restore State."""
+def load_trainer_state(output_dir):
+  """Returns a TrainerState instance loaded from the given `output_dir`."""
   params_file = os.path.join(output_dir, 'model.pkl')
   if not gfile.exists(params_file):
-    return State(step=None, opt_state=None, history=trax_history.History(),
-                 model_state=None)
+    return TrainerState(step=None, opt_state=None,
+                        history=trax_history.History(), model_state=None)
 
   pkl_module = utils.get_pickle_module()
   with gfile.GFile(params_file, 'rb') as f:
     (opt_state, step, history, model_state) = pkl_module.load(f)
   log('Model loaded from %s at step %d' % (params_file, step))
   logging.debug('From loaded model : history = %s', history)
-  return State(step=step, opt_state=OptState(*opt_state), history=history,
-               model_state=model_state)
+  return TrainerState(step=step, opt_state=OptState(*opt_state),
+                      history=history, model_state=model_state)
 
 
 def _save_gin(output_dir, sw=None):
@@ -117,8 +117,8 @@ def _save_gin(output_dir, sw=None):
             jaxboard.markdownify_operative_config_str(config_str))
 
 
-def save_state(state, output_dir, keep=False):
-  """Save State and optionally gin config."""
+def save_trainer_state(state, output_dir, keep=False):
+  """Saves a TrainerState instance to the given `output_dir`."""
   pkl_module = utils.get_pickle_module()
   params_file = os.path.join(output_dir, 'model.pkl')
   with gfile.GFile(params_file, 'wb') as f:
@@ -134,7 +134,7 @@ def save_state(state, output_dir, keep=False):
 
 def _save_replicated(opt_state, step, history, model_state, n_devices,
                      output_dir, keep):
-  """Save state but given a possibly replicated opt_state."""
+  """Saves trainer state but given a possibly replicated opt_state."""
   if n_devices > 1:
     first_replica = lambda x: x[0]
     opt_state = OptState(*layers.nested_map(first_replica, opt_state))
@@ -142,7 +142,8 @@ def _save_replicated(opt_state, step, history, model_state, n_devices,
   # the host in parallel, which is particularly important for cloud TPU.
   if backend.get_name() == 'jax':
     opt_state = jax.device_get(opt_state)
-  save_state(State(opt_state=opt_state, step=step, history=history,
+  save_trainer_state(
+      TrainerState(opt_state=opt_state, step=step, history=history,
                    model_state=model_state), output_dir, keep=keep)
 
 
@@ -624,7 +625,7 @@ class Trainer(object):
     self._train_eval_stream = _repeat_stream(self._inputs.train_eval_stream)
 
     # Restore the training state.
-    state = restore_state(output_dir)
+    state = load_trainer_state(output_dir)
     self._step = state.step or 0
     history = state.history
     self._lr_fn = self._lr_schedule(history)
@@ -657,7 +658,7 @@ class Trainer(object):
 
   @property
   def state(self):
-    return State(
+    return TrainerState(
         opt_state=self._opt_state, step=self._step, history=self._history,
         model_state=self._model_state)
 
@@ -880,7 +881,7 @@ def train(output_dir,
     mask_id: id to mask out (None by default).
 
   Returns:
-    trax.State
+    trax.TrainerState
   """
   # TODO(lukaszkaiser): remove has_weights and mask_id later (configure loss).
   trainer = trainer_class(model, loss_fn, optimizer, lr_schedule, inputs,

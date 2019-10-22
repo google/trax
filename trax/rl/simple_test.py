@@ -236,7 +236,7 @@ class SimpleTest(test.TestCase):
     self.assertEqual(error.shape, (1,))
 
   @staticmethod
-  @mock.patch.object(trainer_lib, 'restore_state', autospec=True)
+  @mock.patch.object(trainer_lib, 'load_trainer_state', autospec=True)
   def _make_env(
       mock_restore_state, observation_space, action_space,
       max_trajectory_length, batch_size,

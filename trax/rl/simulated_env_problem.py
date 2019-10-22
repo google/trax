@@ -106,7 +106,7 @@ class SimulatedEnvProblem(env_problem.EnvProblem):
     """
     del parallelism
 
-    trax_state = trainer_lib.restore_state(self._output_dir)
+    trax_state = trainer_lib.load_trainer_state(self._output_dir)
     # TODO(lukaszkaiser): both model state and parameters by default include
     # the loss layer. Currently, we access the pure-model parameters by just
     # indexing, [0] here. But we should make it more explicit in a better API.

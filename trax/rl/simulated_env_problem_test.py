@@ -36,7 +36,7 @@ from trax.rl import simulated_env_problem
 class RawSimulatedEnvProblemTest(test.TestCase):
 
   @staticmethod
-  @mock.patch.object(trainer_lib, 'restore_state', autospec=True)
+  @mock.patch.object(trainer_lib, 'load_trainer_state', autospec=True)
   def _create_env(mock_restore_state, model, histories,
                   trajectory_length):
     # (model_params, opt_state)
@@ -154,7 +154,7 @@ class SerializedSequenceSimulatedEnvProblemTest(test.TestCase):
     t.add_time_step(observation=observations[-1], done=True)
     return t
 
-  @mock.patch.object(trainer_lib, 'restore_state', autospec=True)
+  @mock.patch.object(trainer_lib, 'load_trainer_state', autospec=True)
   def test_communicates_with_model(self, mock_restore_state):
     gin.bind_parameter('BoxSpaceSerializer.precision', 1)
     vocab_size = 16
