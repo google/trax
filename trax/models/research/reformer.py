@@ -68,7 +68,8 @@ class Map(tl.Layer):
       for shape in input_shape:
         if shape != first_shape:
           raise ValueError('Map layer can only be applied to list of elements '
-                           'with the same shapes. Shapes: %s' % str(shape))
+                           'with the same shapes. This shape %s vs first shape '
+                           '%s.' % (str(shape), str(first_shape)))
     return self._layer.initialize_once(first_shape, input_dtype[0], rng)
 
   @tl.Layer.params.setter
