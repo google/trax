@@ -939,7 +939,8 @@ class LSHCausalAttention(BaseCausalAttention):
   def __init__(self, dropout, mode, n_bins=64, n_hashes=1, n_buckets=64,
                one_rng=False, allow_duplicate_attention=False,
                attend_across_buckets=False, hard_k=0, factorize_hash=False,
-               rehash_each_round=True, drop_for_hash_rate=0.0):
+               rehash_each_round=True, drop_for_hash_rate=0.0,
+               data_rotation=False):
     super(LSHCausalAttention, self).__init__(mode=mode)
     self._mode = mode
     if dropout >= 1.0:
@@ -968,6 +969,9 @@ class LSHCausalAttention(BaseCausalAttention):
     self._attend_across_buckets = attend_across_buckets
     self._hard_k = hard_k
     self._rehash_each_round = rehash_each_round
+    # If True, the rotation matrices for hashing are derived from data, instead
+    # of being completely random.
+    self._data_rotation = data_rotation
 
   def forward(self, inputs, params=(), state=(), rng=None, **kwargs):
     del params, kwargs
@@ -1115,6 +1119,28 @@ class LSHCausalAttention(BaseCausalAttention):
       return np.where(keep, x / (1.0 - rate), np.zeros_like(x))
     return x
 
+  def _sample_rotation(self, shape, vecs, rng):
+    """Samples a rotation matrix, either randomly or based on `vecs`."""
+
+    if not self._data_rotation:
+      return jax.random.normal(rng, shape).astype('float32')
+
+    assert len(shape) == 3
+    n_dim, n_hashes, r_div_2 = shape
+
+    rng, subrng1, subrng2 = backend.random.split(rng, num=3)
+
+    # shape = (n_hashes, r_div_2)
+    random_idxs_1 = jax.random.randint(subrng1, (n_hashes, r_div_2), 0, n_dim)
+    random_idxs_2 = jax.random.randint(subrng2, (n_hashes, r_div_2), 0, n_dim)
+
+    # shape = (n_hashes, r_div_2, n_dim)
+    random_vecs_1 = vecs[random_idxs_1]
+    random_vecs_2 = vecs[random_idxs_2]
+
+    # shape = (n_dim, n_hashes, r_div_2)
+    return np.transpose(random_vecs_2 - random_vecs_1, axes=[2, 0, 1])
+
   def hash_vectors(self, vecs, rng):
     # See https://arxiv.org/pdf/1509.02897.pdf
     # We sample a different random rotation for each round of hashing to
@@ -1148,15 +1174,15 @@ class LSHCausalAttention(BaseCausalAttention):
           rot_size = factor + (self.n_buckets // factor)
           factor_list = [factor, self.n_buckets // factor]
 
-    random_rotations_shape = (
+    rotations_shape = (
         vecs.shape[-1],
         self.n_hashes if self._rehash_each_round else 1,
         rot_size // 2)
 
     rng = jax.lax.tie_in(vecs, rng)
     rng, subrng = backend.random.split(rng)
-    random_rotations = jax.random.normal(
-        rng, random_rotations_shape).astype('float32')
+    random_rotations = self._sample_rotation(rotations_shape, vecs, rng)
+
     # TODO(lukaszkaiser): the dropout mask will be used for all rounds of
     # hashing, so it's shared between them. Check if that's what we want.
     dropped_vecs = self.drop_for_hash(vecs, subrng)
