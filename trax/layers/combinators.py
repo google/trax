@@ -22,6 +22,7 @@ from __future__ import print_function
 from trax import backend
 from trax.backend import numpy as np
 from trax.layers import base
+from trax.shapes import ShapeDtype
 
 
 def _deep_flatten(items):  # pylint: disable=invalid-name
@@ -205,7 +206,7 @@ class Serial(base.Layer):
     def MakeShapeType(shape, dtype):
       if isinstance(dtype, (list, tuple)):
         return tuple(MakeShapeType(s, t) for s, t in zip(shape, dtype))
-      return base.ShapeType(shape=shape, dtype=dtype)
+      return ShapeDtype(shape, dtype)
 
     params = []
     states = []

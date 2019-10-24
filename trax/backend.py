@@ -20,8 +20,8 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
-import gin
 
+import gin
 import jax
 from jax import lax
 from jax import random as jax_random
@@ -29,6 +29,9 @@ import jax.numpy as jnp
 import jax.scipy.special as jax_special
 import numpy as onp
 import tensorflow_datasets as tfds
+
+from trax.shapes import shape_dtype_for
+from trax.shapes import ShapeDtype
 
 
 
@@ -105,17 +108,6 @@ def nested_map(f, x):
   return f(x)
 
 
-class ShapeType(object):
-  """Store shape and type."""
-
-  def __init__(self, shape, dtype):
-    self.shape = shape
-    self.dtype = dtype
-
-  def __repr__(self):
-    return '[shape:' + str(self.shape) + ', dtype:' + str(self.dtype) + ']'
-
-
 def jax_eval_on_shapes(f):
   """Returns a function that evaluates `f` given input shapes and dtypes.
 
@@ -127,12 +119,12 @@ def jax_eval_on_shapes(f):
 
   Returns:
     A function whose input arguments can be either the same as `f`'s or only
-    their shapes/dtypes represented by `ShapeType`, and whose return values are
-    `ShapeType`s with the same nested structure as `f`'s return values.
+    their shapes/dtypes represented by `ShapeDtype`, and whose return values are
+    `ShapeDtype`s with the same nested structure as `f`'s return values.
   """
   def shape_fun(*args, **kwargs):
     jax_shapes = jax.eval_shape(f, *args, **kwargs)
-    return nested_map(lambda x: ShapeType(x.shape, x.dtype), jax_shapes)
+    return nested_map(shape_dtype_for, jax_shapes)
   return shape_fun
 
 

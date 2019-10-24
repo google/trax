@@ -29,7 +29,8 @@ import six
 
 from trax import backend
 from trax.backend import nested_map
-from trax.backend import ShapeType
+from trax.shapes import shape_dtype_for
+from trax.shapes import ShapeDtype
 
 
 class Layer(object):
@@ -221,8 +222,8 @@ class Layer(object):
     """Computes shapes and types this layer would produce for the given inputs.
 
     Args:
-      pseudo_inputs: A ShapeType instance (input data minus the actual values)
-          or a tuple of ShapeType instances, following the same conventions as
+      pseudo_inputs: A ShapeDtype instance (input data minus the actual values)
+          or a tuple of ShapeDtype instances, following the same conventions as
           Layer.forward's input arg.
       params: Parameters for this layer.
       state: start state.
@@ -230,20 +231,18 @@ class Layer(object):
     Returns:
       A tuple of (output, state).
 
-      The output part of the tuple is a ShapeType instance representing the
+      The output part of the tuple is a ShapeDtype instance representing the
       shape and type of the output (if this layer has one output) or a tuple
-      of ShapeType instances (if this layer has more than one output).
+      of ShapeDtype instances (if this layer has more than one output).
     """
     try:
-      # Beware: using an actual RNG (as opposed to this ShapeType stub) would
+      # Beware: using an actual RNG (as opposed to this ShapeDtype stub) would
       # cause a large number of dropout masks to be computed and permanently
       # stored in global memory.
-      rng = ShapeType(shape=(2,), dtype=onp.uint32)
+      rng = ShapeDtype((2,), onp.uint32)
       def call_on_input(x, params, state, rng):
         return self.forward(x, params=params, state=state, rng=rng)
-      params_shapes = nested_map(
-          lambda x: ShapeType(shape=x.shape, dtype=x.dtype),
-          params)
+      params_shapes = nested_map(shape_dtype_for, params)
       s = backend.eval_on_shapes(call_on_input)(pseudo_inputs,
                                                 params_shapes, state, rng)
       return s
@@ -656,10 +655,10 @@ def check_shape_agreement(layer_obj, input_shapes, integer_inputs=False):
   rng1, rng2, rng3 = backend.random.split(backend.random.get_prng(0), 3)
   input_dtype = onp.int32 if integer_inputs else onp.float32
   if _is_tuple_of_shapes(input_shapes):
-    pseudo_data = tuple(ShapeType(x, input_dtype) for x in input_shapes)
+    pseudo_data = tuple(ShapeDtype(x, input_dtype) for x in input_shapes)
     input_dtype = tuple(input_dtype for _ in input_shapes)
   else:
-    pseudo_data = ShapeType(input_shapes, input_dtype)
+    pseudo_data = ShapeDtype(input_shapes, input_dtype)
   params, state = layer_obj.initialize_once(input_shapes, input_dtype, rng1)
   pseudo_output, _ = layer_obj.pseudo_forward(pseudo_data, params, state)
   if isinstance(pseudo_output, tuple):
