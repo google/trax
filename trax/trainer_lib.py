@@ -440,7 +440,6 @@ def _repeat_stream(stream):
       yield example
 
 
-@gin.configurable(whitelist=[])
 class Trainer(object):
   """Trax trainer.
 
