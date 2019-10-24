@@ -1126,13 +1126,16 @@ class LSHCausalAttention(BaseCausalAttention):
       return jax.random.normal(rng, shape).astype('float32')
 
     assert len(shape) == 3
-    n_dim, n_hashes, r_div_2 = shape
+    unused_n_dim, n_hashes, r_div_2 = shape
+
+    assert len(vecs.shape) == 2
+    n_vecs = vecs.shape[0]
 
     rng, subrng1, subrng2 = backend.random.split(rng, num=3)
 
     # shape = (n_hashes, r_div_2)
-    random_idxs_1 = jax.random.randint(subrng1, (n_hashes, r_div_2), 0, n_dim)
-    random_idxs_2 = jax.random.randint(subrng2, (n_hashes, r_div_2), 0, n_dim)
+    random_idxs_1 = jax.random.randint(subrng1, (n_hashes, r_div_2), 0, n_vecs)
+    random_idxs_2 = jax.random.randint(subrng2, (n_hashes, r_div_2), 0, n_vecs)
 
     # shape = (n_hashes, r_div_2, n_dim)
     random_vecs_1 = vecs[random_idxs_1]
