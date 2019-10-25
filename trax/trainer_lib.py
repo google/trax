@@ -166,7 +166,7 @@ _METRICS = {
 }
 
 
-def evaluation_round(inputs_stream, metric_names, eval_fn, params, state, rng):
+def evaluation_round(inputs_stream, metric_names, eval_fn, params, state):
   """Evaluate.
 
   Args:
@@ -176,7 +176,6 @@ def evaluation_round(inputs_stream, metric_names, eval_fn, params, state, rng):
       params, state, rng) and returns a tuple of scalar metric values.
     params: params for each f in eval_fns.
     state: state for each f in eval_fns.
-    rng: random number generator.
 
   Returns:
     metrics: dict from metric name to metric value averaged over the number of
@@ -187,8 +186,7 @@ def evaluation_round(inputs_stream, metric_names, eval_fn, params, state, rng):
   count = 0
   for inp in inputs_stream:
     count += 1
-    rng, subrng = jax_random.split(rng)
-    metric_values, _ = eval_fn(inp, params, state, subrng)
+    metric_values, _ = eval_fn(inp, params, state)
     try:
       metric_values = list(metric_values)
     except TypeError:
@@ -267,13 +265,10 @@ def _jit_predict_fn(model_predict, metric_fn, n_devices, jit=True):
   if n_devices == 1:
     return model_predict
 
-  def predict(x, params, state, rng):
+  def predict(x, params, state):
     """Predict function jited and parallelized as requested."""
     res, state = backend.combine_devices(model_predict(
-        backend.reshape_by_device(x, n_devices),
-        params,
-        state,
-        np.stack(jax_random.split(rng, n_devices))))
+        backend.reshape_by_device(x, n_devices), params, state))
     return layers.nested_map(lambda y: np.mean(y, axis=0), res), state
 
   return predict
@@ -670,14 +665,14 @@ class Trainer(object):
         return [nested_map(f, y) for y in x]
       if isinstance(x, tuple):
         return tuple([nested_map(f, y) for y in x])
-      if isinstance(x, dict) and len(x) == 1:
+      if isinstance(x, dict) and len(x) == 2:
         return f(x)
       return x
     return nested_map(f, self._model_state)
 
   def _state_dicts_update(self, state_dict):
-    assert len(state_dict.keys()) == 1
-    key = list(state_dict.keys())[0]
+    assert len(state_dict.keys()) == 2
+    key = [k for k in state_dict.keys() if k != 'rng'][0]
     value = np.array(state_dict[key])
     return {key: np.array(self.update_model_state(key, value))}
 
@@ -714,6 +709,7 @@ class Trainer(object):
     (params, slots), self._model_state, self._rngs = self._jit_update_fn(
         self._step, opt_state, next_train_batch, self._model_state, self._rngs)
     self._model_state = self._map_to_state_dicts(self._state_dicts_update)
+    self._model_state = backend.advance_rng(self._model_state)
     self._opt_state = opt_state._replace(params=params, slots=slots)
     self._step += 1
 
@@ -753,7 +749,6 @@ class Trainer(object):
 
   def evaluate(self, eval_steps):
     """Evaluate the model and log metrics."""
-    _, rng = jax_random.split(self._rngs[0])
     # TODO(lukaszkaiser): both model state and parameters by default include
     # the loss layer. Currently, we access the pure-model parameters by just
     # indexing, [0] here. But we should make it more explicit in a better API.
@@ -762,12 +757,12 @@ class Trainer(object):
     step_log(self._step, 'Evaluation')
     train_eval_slice = itertools.islice(self._train_eval_stream, eval_steps)
     train_metrics, _ = evaluation_round(
-        train_eval_slice, self._metrics, self._jit_eval, params, state, rng)
+        train_eval_slice, self._metrics, self._jit_eval, params, state)
     log_metrics(train_metrics, self._train_sw, 'train',
                 self._step, history=self._history)
     eval_slice = itertools.islice(self._eval_stream, eval_steps)
     eval_metrics, _ = evaluation_round(
-        eval_slice, self._metrics, self._jit_eval, params, state, rng)
+        eval_slice, self._metrics, self._jit_eval, params, state)
     log_metrics(eval_metrics, self._eval_sw, 'eval',
                 self._step, history=self._history)
     step_log(self._step, 'Finished evaluation')

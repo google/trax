@@ -163,7 +163,6 @@ class Serial(base.Layer):
 
   def forward(self, xs, params=(), state=(), **kwargs):
     self._validate_forward_inputs(xs)
-    rngs = _pop_rng_and_split(kwargs, self._n_layers)
     if not self.sublayers:  # No-op: leave args unchanged.
       return (xs, state)
 
@@ -176,7 +175,7 @@ class Serial(base.Layer):
     if n_layers != 1 and len(state) != n_layers:
       raise ValueError('length of state ({}) not equal to number of layers '
                        '({})'.format(len(state), n_layers))
-    for layer, p, s, rng in zip(self.sublayers, params, state, rngs):
+    for layer, p, s in zip(self.sublayers, params, state):
       is_stack_just_one_item = (_count_items(stack) == 1)
       if isinstance(stack, (list, tuple)) and is_stack_just_one_item:
         stack = stack[0]
@@ -189,7 +188,7 @@ class Serial(base.Layer):
         inputs = stack[0]
       else:
         inputs = stack[:n_in]
-      outputs, s = layer.apply_forward(inputs, p, s, rng)
+      outputs, s = layer.apply_forward(inputs, p, s)
       new_state.append(s)
 
       # Push outputs onto remaining stack (if any).
@@ -485,16 +484,14 @@ class Parallel(base.Layer):
   def forward(self, inputs, params=(), state=(), **kwargs):
     n_layers, layers = self._n_layers, self.sublayers
     sublayer_inputs = self._allot_to_sublayers(inputs)
-    rngs = _pop_rng_and_split(kwargs, n_layers)
     assert len(sublayer_inputs) == n_layers
     assert len(params) == n_layers
     assert len(state) == n_layers
-    assert len(rngs) == n_layers
     outputs = []
     new_state = []
-    for layer, x, p, s, r in zip(layers, sublayer_inputs, params, state, rngs):
+    for layer, x, p, s in zip(layers, sublayer_inputs, params, state):
       # Note that zip silently truncates its result if lengths don't match.
-      sub_outputs, sub_state = layer.apply_forward(x, p, s, r)
+      sub_outputs, sub_state = layer.apply_forward(x, p, s)
       if layer.n_out == 1:
         outputs.append(sub_outputs)
       else:

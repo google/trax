@@ -327,6 +327,22 @@ def accelerate(f, n_devices):
   return pmap(f, axis_name='batch')
 
 
+def advance_rng(state):
+  """For every 'rng' field in the dict structure state, advance the rng."""
+  if isinstance(state, list):
+    return [advance_rng(s) for s in state]
+  if isinstance(state, tuple):
+    return tuple([advance_rng(s) for s in state])
+  if not isinstance(state, dict):
+    return state
+  new_state = {k: nested_map(advance_rng, v)
+               for (k, v) in state.items() if k != 'rng'}
+  if 'rng' in state:
+    _, new_rng = random.split(state['rng'], 2)
+    new_state['rng'] = new_rng
+  return state
+
+
 
 
 override_backend_name = None

@@ -89,7 +89,7 @@ class Conv(base.Layer):
     bias_shape = tuple(itertools.dropwhile(lambda x: x == 1, bias_shape))
     w = self._kernel_initializer(kernel_shape, rng)
     b = self._bias_initializer(bias_shape, rng)
-    return (w, b), ()
+    return (w, b), {}
 
 
 class CausalConv(Conv):

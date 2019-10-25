@@ -111,7 +111,9 @@ class PositionalEncoding(base.Layer):
       assert self._dropout == 0
       # Fast inference: return consectutive elements of the encoding sequence,
       # storing the index in state.
-      return (inputs + np.expand_dims(params[:, state, :], 1), state + 1)
+      cur_index = state['index']
+      state['index'] = cur_index + 1
+      return (inputs + np.expand_dims(params[:, cur_index, :], 1), state)
 
   def new_params_and_state(self, input_shape, input_dtype, rng):
     del input_dtype, rng
@@ -124,7 +126,9 @@ class PositionalEncoding(base.Layer):
     pe[:, 1::2] = onp.cos(position * div_term)
     pe = pe[onp.newaxis, :, :]  # [1, self._max_len, d_feature]
     params = np.array(pe)  # These are trainable parameters, initialized above.
-    state = 0 if self._mode == 'predict' else ()
+    state = {'rng': rng}
+    if self._mode == 'predict':
+      state['index'] = 0
     return params, state
 
 
@@ -187,7 +191,7 @@ class AxialPositionalEncoding(base.Layer):
       ax_emb = self._kernel_initializer(ax_shape, ax_rng)
       params.append(ax_emb)
 
-    return tuple(params), ()
+    return tuple(params), {'rng': rng}
 
 
 def DotProductAttention(query, key, value, mask, dropout, mode, rng):
@@ -352,7 +356,7 @@ class ShiftRightLearned(base.Layer):
   def new_params_and_state(self, input_shape, input_dtype, rng):
     del input_dtype
     b = self._initializer((input_shape[-1],), rng)
-    return b, ()
+    return b, {'rng': rng}
 
 
 class ComputeAttentionHeads(base.Layer):
@@ -390,7 +394,7 @@ class ComputeAttentionHeads(base.Layer):
     del input_dtype
     w = self._kernel_initializer(
         (input_shape[-1], self._n_heads * self._d_head), rng)
-    return w, ()
+    return w, {'rng': rng}
 
 
 class ComputeAttentionOutput(base.Layer):
@@ -421,7 +425,7 @@ class ComputeAttentionOutput(base.Layer):
     del input_dtype
     w = self._kernel_initializer(
         (input_shape[-1] * self._n_heads, self._d_model), rng)
-    return w, ()
+    return w, {'rng': rng}
 
 
 class BaseCausalAttention(base.Layer):
@@ -516,8 +520,10 @@ class DotProductCausalAttention(BaseCausalAttention):
             onp.ones((1, mask_size, mask_size), dtype=onp.bool_), k=0)
     else:
       assert self._mode == 'predict'
-      state = _fast_inference_update_state(inputs, state)
-      (k, v, mask, _) = state
+      infer_state = state['infer']
+      infer_state = _fast_inference_update_state(inputs, infer_state)
+      (k, v, mask, _) = infer_state
+      state['infer'] = infer_state
 
     res = DotProductAttention(
         q, k, v, mask, dropout=self._dropout, mode=self._mode, rng=rng)
@@ -535,7 +541,7 @@ class DotProductCausalAttention(BaseCausalAttention):
 
   def new_params_and_state(self, input_shapes, input_dtype, rng):
     if self._mode in ('train', 'eval'):
-      return (), ()
+      return (), {'rng': rng}
 
     assert self._mode == 'predict'
     params = ()
@@ -543,7 +549,7 @@ class DotProductCausalAttention(BaseCausalAttention):
     # model.
     max_len = 2048
     state = _fast_inference_init_state(input_shapes, input_dtype, max_len)
-    return params, state
+    return params, {'infer': state, 'rng': rng}
 
 
 class MemoryEfficientCausalAttention(BaseCausalAttention):
@@ -877,7 +883,8 @@ class TimeBinCausalAttention(BaseCausalAttention):
     assert output.shape == v.shape
     return output[..., :original_len, :]
 
-  def _forward_predict(self, inputs, state, rng):
+  def _forward_predict(self, inputs, full_state, rng):
+    state = full_state['infer']
     state = _fast_inference_update_state(inputs, state)
 
     (q, _, _) = inputs
@@ -915,7 +922,8 @@ class TimeBinCausalAttention(BaseCausalAttention):
         false_operand=state,
         false_fun=(lambda x: x),
     )
-    return (output, state)
+    full_state['infer'] = state
+    return (output, full_state)
 
   def new_params_and_state(self, input_shapes, input_dtype, rng):
     if self._mode in ('train', 'eval'):
@@ -930,7 +938,7 @@ class TimeBinCausalAttention(BaseCausalAttention):
     state = _fast_inference_init_state(
         input_shapes, input_dtype, 2 * self.bin_length
     )
-    return params, state
+    return params, {'infer': state, 'rng': rng}
 
 
 class LSHCausalAttention(BaseCausalAttention):

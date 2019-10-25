@@ -55,7 +55,7 @@ class BatchNorm(base.Layer):
     n_batches = np.zeros((), dtype=np.int64)
     params = (beta, gamma)
     state = (running_mean, running_var, n_batches)
-    return params, state
+    return params, {'stats': state}
 
   def _fast_mean_and_variance(self, x):
     mean = np.mean(x, self._axis, keepdims=True)
@@ -86,14 +86,14 @@ class BatchNorm(base.Layer):
 
   def forward(self, x, params, state, **unused_kwargs):
     """Computes batch normalization as part of a forward pass in the model."""
-
-    running_mean, running_var, n_batches = state
+    stats = state['stats']
+    running_mean, running_var, n_batches = stats
     if self._mode == 'train':
       n_batches += 1
       mean, var = self._fast_mean_and_variance(x)
       running_mean = self._exponential_smoothing(mean, running_mean)
       running_var = self._exponential_smoothing(var, running_var)
-      state = (running_mean, running_var, n_batches)
+      stats = (running_mean, running_var, n_batches)
     else:
       mean = running_mean
       var = running_var
@@ -114,6 +114,7 @@ class BatchNorm(base.Layer):
                                      'norm is not the same as the input (%s). '
                                      'Batch norm should not change the dtype' %
                                      (output.dtype, x.dtype))
+    state['stats'] = stats
     return output, state
 
 

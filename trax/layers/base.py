@@ -153,7 +153,7 @@ class Layer(object):
       rng: A PRNG key for random number generation.
     """
     del input_shape, input_dtype, rng
-    return (), ()
+    return (), {'rng': rng}
 
   @property
   def n_in(self):
@@ -320,11 +320,10 @@ class Layer(object):
     """
     params = kwargs.pop('params', self.params)
     state = kwargs.pop('state', self.state)
-    rng = kwargs.pop('rng', None)
-    outputs, _ = self.apply_forward(x, params, state, rng)
+    outputs, _ = self.apply_forward(x, params, state)
     return outputs
 
-  def apply_forward(self, x, params, state, rng):
+  def apply_forward(self, x, params, state):
     """Applies this layer as part of a forward pass; an internal system method.
 
     This method is reserved for handling plumbing and other internal affairs
@@ -335,7 +334,6 @@ class Layer(object):
       x: See Layer.forward inputs.
       params: See Layer.forward.
       state: See Layer.forward.
-      rng: See Layer.forward.
 
     Returns:
       See Layer.forward.
@@ -351,6 +349,7 @@ class Layer(object):
         # In this case, we're called for the first time: cache parameters.
         self._params = params
 
+      rng = state.get('rng', None) if isinstance(state, dict) else None
       if not self.has_backward or Layer._STASH_IN is not None:
         outputs, s = self.forward(x, params=params, state=state, rng=rng)
       else:
@@ -570,7 +569,7 @@ def layer(n_in=1, n_out=1, new_params_and_state_fn=None):
 
     def _new_params_and_state(self, input_shapes, input_dtype, rng):
       if new_params_and_state_fn is None:
-        return (), ()
+        return (), {'rng': rng}
       kwargs = self._kwargs  # pylint: disable=protected-access
       return new_params_and_state_fn(input_shapes, input_dtype, rng, **kwargs)
 

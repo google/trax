@@ -131,7 +131,7 @@ class Dense(base.Layer):
     rng1, rng2 = backend.random.split(rng, 2)
     w = self._kernel_initializer((input_shape[-1], self._n_units), rng1)
     b = self._bias_initializer((self._n_units,), rng2)
-    return (w, b), ()
+    return (w, b), {}
 
 
 class Embedding(base.Layer):
@@ -154,7 +154,7 @@ class Embedding(base.Layer):
     del input_shape, input_dtype
     out_dim = (self._vocab_size, self._d_feature)
     params = self._kernel_initializer(out_dim, rng)
-    return params, ()
+    return params, {}
 
 
 # Flatten.
@@ -180,7 +180,7 @@ class Dropout(base.Layer):
   def new_params_and_state(self, input_shape, input_dtype, rng):
     del input_shape, input_dtype, rng
     params = ()
-    state = {self._name: np.array(self._initial_rate)}
+    state = {self._name: np.array(self._initial_rate), 'rng': rng}
     return params, state
 
   def forward(self, x, params=(), state=(), rng=None, **kwargs):
