@@ -285,6 +285,48 @@ class NumpyBackend(object):
 numpy = NumpyBackend()
 
 
+# Helpers and the accelerate function.
+
+
+def _reshape_by_device_single(x, n_devices):
+  """Reshape x into a shape [n_devices, ...]."""
+  x_shape = list(x.shape)
+  batch_size = x_shape[0]
+  batch_size_per_device = batch_size // n_devices
+  # We require that n_devices divides batch_size evenly.
+  if batch_size_per_device * n_devices != batch_size:
+    raise ValueError(
+        'We require that n_devices[%d] divides batch_size[%d] evenly.' %
+        (n_devices, batch_size))
+  # New shape.
+  new_shape_prefix = [n_devices, batch_size_per_device]
+  return numpy.reshape(x, new_shape_prefix + x_shape[1:])
+
+
+def reshape_by_device(x, n_devices):
+  """Reshape possibly nested x into a shape [n_devices, ...]."""
+  return nested_map(
+      lambda y: _reshape_by_device_single(y, n_devices), x)
+
+
+def combine_devices(x_tuple):
+  """Combine multi-device tensors into a single batch."""
+  def combine_single(x):
+    if len(x.shape) < 2:
+      return x  # No extra batch dimension: use devices as batch, so return.
+    batch_size = x.shape[0] * x.shape[1]
+    return numpy.reshape(x, [batch_size] + list(x.shape[2:]))
+  return nested_map(combine_single, x_tuple)
+
+
+def accelerate(f, n_devices):
+  """JITed version of f running on n_devices."""
+  if n_devices == 1:
+    return jit(f)
+
+  return pmap(f, axis_name='batch')
+
+
 
 
 override_backend_name = None

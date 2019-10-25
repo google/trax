@@ -188,7 +188,7 @@ def evaluation_round(inputs_stream, metric_names, eval_fn, params, state, rng):
   for inp in inputs_stream:
     count += 1
     rng, subrng = jax_random.split(rng)
-    metric_values = eval_fn(inp, params=params, state=state, rng=subrng)
+    metric_values, _ = eval_fn(inp, params, state, subrng)
     try:
       metric_values = list(metric_values)
     except TypeError:
@@ -259,33 +259,22 @@ def epochs(total_steps, steps_to_skip, epoch_steps):
 @gin.configurable
 def _jit_predict_fn(model_predict, metric_fn, n_devices, jit=True):
   """Returns a JIT-compiled predict function (unless jit=False)."""
-  model_predict = layers.Serial(model_predict, metric_fn)
+  model_predict = layers.Serial(model_predict, metric_fn).apply_forward
+  if not jit:
+    return model_predict
 
+  model_predict = backend.accelerate(model_predict, n_devices)
   if n_devices == 1:
-    return backend.jit(model_predict) if jit else model_predict
+    return model_predict
 
-  # Multi-devices, pmap and run.
-  @functools.partial(backend.pmap, axis_name='batch')
-  def mapped_predict(x, params, state, rng):
-    return model_predict(x, params=params, state=state, rng=rng)
-
-  def predict(x, params=(), state=(), rng=None):
+  def predict(x, params, state, rng):
     """Predict function jited and parallelized as requested."""
-    pred = mapped_predict(
-        reshape_by_device(x, n_devices),
+    res, state = backend.combine_devices(model_predict(
+        backend.reshape_by_device(x, n_devices),
         params,
         state,
-        np.stack(jax_random.split(rng, n_devices)))
-    # Need to reduce the [device, per-device-batch, ...] tensors back to
-    # a [batch, ...] tensor. The tensors may be nested.
-    def combine(x):
-      if len(x.shape) > 1:
-        batch_size = x.shape[0] * x.shape[1]
-        return np.reshape(x, [batch_size] + list(x.shape[2:]))
-      # TODO(lukaszkaiser): is returning averages for scalars the right choice?
-      # If it is only scalar, return the average.
-      return np.mean(x, axis=0)
-    return layers.nested_map(combine, pred)
+        np.stack(jax_random.split(rng, n_devices))))
+    return layers.nested_map(lambda y: np.mean(y, axis=0), res), state
 
   return predict
 
@@ -350,7 +339,7 @@ def _jit_compute_loss_fn(predict_fn, loss_fn, n_devices, jit=True):
 
   def compute_loss(opt_state, batch, state, rng):
     return mapped_compute_loss(
-        opt_state, reshape_by_device(batch, n_devices), state, rng)
+        opt_state, backend.reshape_by_device(batch, n_devices), state, rng)
 
   return compute_loss
 
@@ -358,28 +347,6 @@ def _jit_compute_loss_fn(predict_fn, loss_fn, n_devices, jit=True):
 @gin.configurable
 def _is_jit_init(value=True):
   return value
-
-
-def _reshape_by_device_single(x, n_devices):
-  """Reshape x into a shape [n_devices, ...]."""
-  x_shape = list(x.shape)
-  batch_size = x_shape[0]
-  batch_size_per_device = batch_size // n_devices
-  # We require that n_devices divides batch_size evenly.
-  if batch_size_per_device * n_devices != batch_size:
-    logging.fatal(
-        'We require that n_devices[%d] divides batch_size[%d] evenly.',
-        n_devices, batch_size)
-  # New shape.
-  new_shape_prefix = [n_devices, batch_size_per_device]
-  return np.reshape(x, new_shape_prefix + x_shape[1:])
-
-
-def reshape_by_device(x, n_devices):
-  """Reshape possibly nested x into a shape [n_devices, ...]."""
-  return layers.nested_map(
-      lambda y: _reshape_by_device_single(y, n_devices),
-      x)
 
 
 def multi_device_put(x, devices=None, reuse=True):
@@ -758,7 +725,8 @@ class Trainer(object):
     for _ in range(epoch_steps):
       next_train_batch = next(self._train_stream)
       if self._n_devices > 1:  # TODO(lukaszkaiser): use everywhere if possible.
-        next_train_batch = reshape_by_device(next_train_batch, self._n_devices)
+        next_train_batch = backend.reshape_by_device(
+            next_train_batch, self._n_devices)
       self._train_step(next_train_batch)
 
       # Occasionally save state, and occasionally log nontrainable params
@@ -819,7 +787,8 @@ class Trainer(object):
     next_train_batch = next(self._train_stream)
     output_dir = self._output_dir
     if self._n_devices > 1:
-      next_train_batch = reshape_by_device(next_train_batch, self._n_devices)
+      next_train_batch = backend.reshape_by_device(
+          next_train_batch, self._n_devices)
     params = self._opt_state[0][0]
     forward_computation = jax.xla_computation(self._model_predict_eval)(
         next_train_batch, params=params, state=self._model_state[0],
