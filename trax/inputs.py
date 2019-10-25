@@ -32,7 +32,10 @@ import tensorflow_datasets as tfds
 from trax import backend
 from trax.backend import numpy as np
 
-# Inputs is the trax tuple defining the input streams and shapes.
+# Inputs is a named tuple holding input streams and shapes for a training run.
+# Each named stream in the tuple is a function that returns a generator
+# of (input_batch, target_batch) tuples.
+#
 # * train_stream: training data that will be used for training
 #     may include all the augmentation or selection the training wants
 #     the shape of examples is [batch_fn.batch_size, ...]
