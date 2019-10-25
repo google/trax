@@ -56,13 +56,19 @@ class Map(tl.Layer):
     self._n_sections = n_sections
 
   def forward(self, inputs, params=(), state=(), **kwargs):
-    rngs = _pop_rng_and_split(kwargs, len(inputs))
-    results = [self._layer(x, params=params, state=state, rng=r, **kwargs)
-               for x, r in zip(inputs, rngs)]
+    if self._n_sections == 1:
+      results = self._layer(inputs, params=params, state=state, **kwargs)
+    else:
+      rngs = _pop_rng_and_split(kwargs, len(inputs))
+      results = [self._layer(x, params=params, state=state, rng=r, **kwargs)
+                 for x, r in zip(inputs, rngs)]
+      results = tuple(results)
     # TODO(kitaev): think about how to merge state across copies in the map.
-    return tuple(results), self._layer.state
+    return results, self._layer.state
 
   def new_params_and_state(self, input_shape, input_dtype, rng):
+    if self._n_sections == 1:
+      return self._layer.initialize_once(input_shape, input_dtype, rng)
     first_shape = input_shape[0]
     if self._check_shapes:
       for shape in input_shape:
@@ -74,15 +80,11 @@ class Map(tl.Layer):
 
   @tl.Layer.params.setter
   def params(self, params):
-    self._params = params
-    assert len(params) == 1
-    self._layer.params = params[0]
+    self._params = self._layer.params = params
 
   @tl.Layer.state.setter
   def state(self, state):
-    self._state = state
-    assert len(state) == 1
-    self._layer.state = state[0]
+    self._state = self._layer.state = state
 
 
 @tl.layer()
@@ -501,10 +503,8 @@ def ReformerLM(vocab_size,
   if n_chunks == 0:
     n_chunks = 1
     concatenate_input_chunks = []
-    concatenate_output_chunks = tl.Concatenate(n_items=n_chunks, axis=-2)
   else:
     concatenate_input_chunks = tl.Concatenate(n_items=n_chunks)
-    concatenate_output_chunks = []
 
   if not axial_pos_shape:
     positional_encoding = tl.PositionalEncoding(
@@ -545,5 +545,4 @@ def ReformerLM(vocab_size,
           tl.Dense(vocab_size),
           tl.LogSoftmax(),
       ], n_sections=n_chunks),
-      concatenate_output_chunks,
   )
