@@ -20,10 +20,16 @@ import trax.trainer_lib
 # Parameters that will vary between experiments:
 # ==============================================================================
 train.model = @trax.models.ReformerLM
-attn_type = @TimeBinCausalAttention
-share_qk = True  # Required when using LSHCausalAttention
-attn_kv = 64
-n_layers = 3
+# attn_type = @TimeBinCausalAttention
+attn_type = [
+    @TimeBinCausalAttention,
+    @TimeBinCausalAttention,
+    @LSHCausalAttention,
+    @TimeBinCausalAttention,
+]
+share_qk = False  # LSHCausalAttention ignores this flag and always shares q & k
+attn_kv = 128
+n_layers = 12
 dropout = 0.2
 
 # MemoryEfficientCausalAttention: full attention
@@ -33,8 +39,8 @@ dropout = 0.2
 TimeBinCausalAttention.n_bins = 512
 
 # LSHCausalAttention: locality-sensitive hashing (LSH) attention
-LSHCausalAttention.n_bins = 512
-LSHCausalAttention.n_buckets = 1024  # Always 2 * n_bins
+LSHCausalAttention.n_bins = 256
+LSHCausalAttention.n_buckets = 512  # Always 2 * n_bins
 LSHCausalAttention.n_hashes = 2
 LSHCausalAttention.drop_for_hash_rate = 0.0
 
@@ -99,7 +105,7 @@ LSHCausalAttention.rehash_each_round = True
 # LSHCausalAttention.n_hashes: see top
 LSHCausalAttention.one_rng = False
 LSHCausalAttention.hard_k = 0
-LSHCausalAttention.dropout = 0.0
+LSHCausalAttention.dropout = 0.2
 # LSHCausalAttention.drop_for_hash_rate: see top
 
 # Parameters for TransformerLM:

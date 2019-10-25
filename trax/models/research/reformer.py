@@ -522,19 +522,30 @@ def ReformerLM(vocab_size,
       positional_encoding,
   ]
 
+  decoder_blocks = []
+
+  if isinstance(attention_type, (tuple, list)):
+    assert n_layers % len(attention_type) == 0
+  else:
+    attention_type = [attention_type]
+  for layer_idx in range(n_layers):
+    layer_attention_type = attention_type[layer_idx % len(attention_type)]
+    decoder_block = DecoderBlock(
+        d_model, d_ff, d_attention_key, d_attention_value, n_heads,
+        n_attention_chunks,
+        attention_type=layer_attention_type,
+        dropout=dropout,
+        share_qk=(share_qk or issubclass(layer_attention_type,
+                                         tl.LSHCausalAttention)),
+        mode=mode)
+    decoder_blocks.append(decoder_block)
+
   return tl.Serial(
       concatenate_input_chunks,
       tl.ShiftRight(),
       positional_embedder,
       tl.Dup(),
-      tl.ReversibleSerial([
-          # pylint: disable=g-complex-comprehension
-          DecoderBlock(d_model, d_ff,
-                       d_attention_key, d_attention_value, n_heads,
-                       n_attention_chunks, attention_type,
-                       dropout, share_qk, mode)
-          for _ in range(n_layers)
-      ] + [
+      tl.ReversibleSerial(decoder_blocks + [
           SplitForOutput(n_sections=n_chunks, axis=-2),  # pylint: disable=no-value-for-parameter
       ]),
       Map([
