@@ -375,21 +375,15 @@ class ComputeAttentionHeads(base.Layer):
   def forward(self, x, params=(), state=(), **kwargs):
     del kwargs
     seqlen = x.shape[1]
-    res = np.dot(x, params)
-
-    # n_batch, seqlen, n_heads*d_head -> n_batch, seqlen, n_heads, d_head
-    res = np.reshape(res, (x.shape[0], seqlen, self._n_heads, self._d_head))
-    # n_batch, seqlen, n_heads, d_head -> n_batch, n_heads, seqlen, d_head
-    res = np.transpose(res, (0, 2, 1, 3))
-    # n_batch, n_heads, seqlen, d_head -> n_batch*n_heads, seqlen, d_head
+    res = np.einsum('btm,mhf->bhtf', x, params)
     res = np.reshape(res, (-1, seqlen, self._d_head))
-
     return res, state
 
   def new_params_and_state(self, input_shape, input_dtype, rng):
     del input_dtype
     w = self._kernel_initializer(
         (input_shape[-1], self._n_heads * self._d_head), rng)
+    w = np.reshape(w, (input_shape[-1], self._n_heads, self._d_head))
     return w, ()
 
 
@@ -412,15 +406,14 @@ class ComputeAttentionOutput(base.Layer):
     d_head = x.shape[2]
 
     x = np.reshape(x, (-1, self._n_heads, seqlen, d_head))
-    x = np.transpose(x, (0, 2, 1, 3))  # -> n_batch, seqlen, n_heads, d_head
-    x = np.reshape(x, (-1, seqlen, self._n_heads * d_head))
-
-    return np.dot(x, params), state
+    res = np.einsum('bhtf,hfm->btm', x, params)
+    return res, state
 
   def new_params_and_state(self, input_shape, input_dtype, rng):
     del input_dtype
     w = self._kernel_initializer(
         (input_shape[-1] * self._n_heads, self._d_model), rng)
+    w = np.reshape(w, (self._n_heads, input_shape[-1], self._d_model))
     return w, ()
 
 
