@@ -99,8 +99,7 @@ def download_and_prepare(dataset_name, data_dir):
 
 
 @gin.configurable(blacklist=['n_devices'])
-def inputs(n_devices, dataset_name, data_dir=None, input_name=None,
-           n_chunks=0):
+def inputs(n_devices, dataset_name, data_dir=None, input_name=None):
   """Make Inputs for built-in datasets.
 
   Args:
@@ -109,7 +108,6 @@ def inputs(n_devices, dataset_name, data_dir=None, input_name=None,
       with 't2t_'.
     data_dir: data directory.
     input_name: optional, name of the inputs from the dictionary.
-    n_chunks: optional, into how many pieces should we chunk (large inputs).
 
   Returns:
     trax.inputs.Inputs
@@ -132,16 +130,7 @@ def inputs(n_devices, dataset_name, data_dir=None, input_name=None,
     target_dtype = np.int32
 
   def numpy_stream(dataset):
-    return dataset_to_stream(dataset, input_name, n_chunks=n_chunks)
-
-  if n_chunks > 0:
-    length = input_shape[0]
-    input_shape = tuple(
-        [tuple([length // n_chunks] + list(input_shape)[1:])] * n_chunks)
-    input_dtype = tuple([input_dtype] * n_chunks)
-    target_shape = tuple(
-        [tuple([length // n_chunks] + list(target_shape)[1:])] * n_chunks)
-    target_dtype = tuple([target_dtype] * n_chunks)
+    return dataset_to_stream(dataset, input_name)
 
   return Inputs(train_stream=lambda: numpy_stream(train_batches),
                 train_eval_stream=lambda: numpy_stream(train_eval_batches),
@@ -253,7 +242,7 @@ def sequence_copy_inputs(
       target_dtype=onp.int32)
 
 
-def dataset_to_stream(dataset, input_name, n_chunks=0):
+def dataset_to_stream(dataset, input_name):
   """Takes a tf.Dataset and creates a numpy stream of ready batches."""
   for example in backend.dataset_as_numpy(dataset):
     features = example[0]
@@ -268,9 +257,6 @@ def dataset_to_stream(dataset, input_name, n_chunks=0):
         out = out.astype(np.int32)
       if len(out.shape) > 1 and out.shape[-1] == 1:
         out = np.squeeze(out, axis=-1)
-      if n_chunks > 0:
-        inp = tuple(np.split(inp, n_chunks, axis=1))
-        out = tuple(np.split(out, n_chunks, axis=1))
     yield (inp, out) if mask is None else (inp, out, mask)
 
 
