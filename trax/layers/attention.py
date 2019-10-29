@@ -1131,11 +1131,23 @@ class LSHCausalAttention(BaseCausalAttention):
     assert len(vecs.shape) == 2
     n_vecs = vecs.shape[0]
 
-    rng, subrng1, subrng2 = backend.random.split(rng, num=3)
+    rng1, rng2 = backend.random.split(rng, num=2)
 
-    # shape = (n_hashes, r_div_2)
-    random_idxs_1 = jax.random.randint(subrng1, (n_hashes, r_div_2), 0, n_vecs)
-    random_idxs_2 = jax.random.randint(subrng2, (n_hashes, r_div_2), 0, n_vecs)
+    # We need to sample 2 * n_hashes * r_div_2 vectors from `vecs` at random.
+    num_needed = 2 * n_hashes * r_div_2
+    if n_vecs < num_needed:
+      # shape = (n_hashes, r_div_2)
+      random_idxs_1 = jax.random.randint(
+          rng1, (n_hashes, r_div_2), 0, n_vecs)
+      random_idxs_2 = jax.random.randint(
+          rng2, (n_hashes, r_div_2), 0, n_vecs)
+    else:
+      # Sample without replacement.
+      shuffled_indices = jax.random.shuffle(rng1, np.arange(n_vecs))
+      random_idxs = np.reshape(shuffled_indices[:num_needed],
+                               (2, n_hashes, r_div_2))
+      random_idxs_1 = random_idxs[0]
+      random_idxs_2 = random_idxs[1]
 
     # shape = (n_hashes, r_div_2, n_dim)
     random_vecs_1 = vecs[random_idxs_1]
