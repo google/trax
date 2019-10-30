@@ -15,7 +15,7 @@
 
 """Random functions."""
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import utils
 
@@ -38,7 +38,7 @@ def randn(*args):
   if utils.isscalar(args):
     args = (args,)
   return utils.tensor_to_ndarray(
-      tf.random_normal(args, dtype=DEFAULT_RANDN_DTYPE))
+      tf.random.normal(args, dtype=DEFAULT_RANDN_DTYPE))
 
 
 def seed(s):
@@ -50,4 +50,4 @@ def seed(s):
     s: an integer.
   """
   # TODO(wangpeng): make the signature the same as numpy
-  tf.set_random_seed(s)
+  tf.random.set_seed(s)

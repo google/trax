@@ -34,7 +34,7 @@ import gin
 import jax
 import numpy
 import six
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 from tensorflow.io import gfile
 from trax import backend
 from trax import history as trax_history
@@ -219,7 +219,7 @@ def get_random_number_generator_and_set_seed(seed=None):
   # some other functions expect integers so we create one here.
   if seed is None:
     seed = random.randint(0, 2**31 - 1)
-  tf.set_random_seed(seed)
+  tf.random.set_seed(seed)
   numpy.random.seed(seed)
   return jax_random.get_prng(seed)
 

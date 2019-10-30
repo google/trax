@@ -14,7 +14,7 @@
 # limitations under the License.
 
 """Logical functions."""
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import array_creation
 from trax.tf_numpy.numpy import arrays

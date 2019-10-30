@@ -18,9 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl import logging
+
 import numpy as np
 
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import array_creation
 from trax.tf_numpy.numpy import dtypes
@@ -61,12 +63,12 @@ def dot(a, b):
   # TODO(srbs): Figure out why MatMul does not support larger types.
   output_type = None
   if a.dtype == np.int64:
-    tf.logging.warning('Unsafe cast to int32.')
+    logging.warning('Unsafe cast to int32.')
     a = utils.tensor_to_ndarray(tf.cast(a.data, tf.int32))
     b = utils.tensor_to_ndarray(tf.cast(b.data, tf.int32))
     output_type = tf.int64
   elif a.dtype == np.float64:
-    tf.logging.warning('Unsafe cast to float32.')
+    logging.warning('Unsafe cast to float32.')
     a = utils.tensor_to_ndarray(tf.cast(a.data, tf.float32))
     b = utils.tensor_to_ndarray(tf.cast(b.data, tf.float32))
     output_type = tf.float64
@@ -120,7 +122,7 @@ def _scalar(x, tf_fn):
 
 # TODO(agarwal): programmatically add documentation to functions below..
 def log(x):
-  return _scalar(x, tf.log)
+  return _scalar(x, tf.math.log)
 
 
 def exp(x):
@@ -160,7 +162,8 @@ def sum(a, axis=None, dtype=None, keepdims=None):  # pylint: disable=redefined-b
     if output_type != a.dtype:
       a = array_creation.asarray(a, dtype=output_type)
 
-  return utils.tensor_to_ndarray(tf.reduce_sum(a.data, axis, keepdims))
+  return utils.tensor_to_ndarray(tf.reduce_sum(input_tensor=a.data, axis=axis,
+                                               keepdims=keepdims))
 
 
 def max(a, axis=None, keepdims=None):  # pylint: disable=redefined-builtin
@@ -179,4 +182,5 @@ def max(a, axis=None, keepdims=None):  # pylint: disable=redefined-builtin
   # TODO(wangpeng): check that we fully match numpy behavior.
   a = array_creation.asarray(a)
 
-  return utils.tensor_to_ndarray(tf.reduce_max(a.data, axis, keepdims))
+  return utils.tensor_to_ndarray(tf.reduce_max(input_tensor=a.data, axis=axis,
+                                               keepdims=keepdims))

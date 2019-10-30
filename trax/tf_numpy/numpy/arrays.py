@@ -25,7 +25,7 @@ from numpy import dtype as np_dtype
 from numpy import ndarray as np_ndarray
 from numpy import prod as np_prod
 
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import dtypes
 
@@ -78,7 +78,7 @@ class ndarray(object):  # pylint: disable=invalid-name
       elif isinstance(buffer, np_ndarray):
         # If `buffer` is a np.ndarray, the Tensor will share the underlying
         # storage of the array.
-        buffer = tf.convert_to_tensor(buffer, dtype)
+        buffer = tf.convert_to_tensor(value=buffer, dtype=dtype)
       elif not isinstance(buffer, tf.Tensor):
         raise ValueError('Unexpected type for `buffer` {}. Must be an ndarray,'
                          ' Tensor or np.ndarray.'.format(type(buffer)))
@@ -161,11 +161,11 @@ class ndarray(object):  # pylint: disable=invalid-name
     if isinstance(a, ndarray):
       a = a.data
     else:
-      a = tf.convert_to_tensor(a)
+      a = tf.convert_to_tensor(value=a)
     if isinstance(b, ndarray):
       b = b.data
     else:
-      b = tf.convert_to_tensor(b)
+      b = tf.convert_to_tensor(value=b)
     a_type = a.dtype.as_numpy_dtype
     b_type = b.dtype.as_numpy_dtype
     output_type = dtypes.get_result_type(a_type, b_type)

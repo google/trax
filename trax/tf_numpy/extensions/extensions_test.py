@@ -23,7 +23,7 @@ import functools
 from absl import flags
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy import extensions
 from trax.tf_numpy.numpy import array_creation
@@ -46,8 +46,8 @@ def generate_params_inputs_targets(num_examples=1000):
   params_true = (arrays.tensor_to_ndarray(tf.constant(3.)),
                  arrays.tensor_to_ndarray(tf.constant(2.)))
 
-  inputs = arrays.tensor_to_ndarray(tf.random_normal(shape=[num_examples]))
-  noise = arrays.tensor_to_ndarray(tf.random_normal(shape=[num_examples]))
+  inputs = arrays.tensor_to_ndarray(tf.random.normal(shape=[num_examples]))
+  noise = arrays.tensor_to_ndarray(tf.random.normal(shape=[num_examples]))
   targets = inputs * params_true[0] + params_true[1] + noise
 
   return params, params_true, inputs, targets
@@ -55,7 +55,7 @@ def generate_params_inputs_targets(num_examples=1000):
 
 def loss_fn(params, inputs, targets):
   predicted = params[0] * inputs + params[1]
-  loss = tf.reduce_mean(tf.square(predicted - targets))
+  loss = tf.reduce_mean(input_tensor=tf.square(predicted - targets))
   return arrays.tensor_to_ndarray(loss)
 
 
@@ -151,7 +151,8 @@ class ExtensionsTest(tf.test.TestCase):
     check_trace_only_once(1, 2)
     check_trace_only_once(1.1, 2.1)
     check_trace_only_once(asarray(1), asarray(2))
-    check_trace_only_once(tf.convert_to_tensor(1), tf.convert_to_tensor(2))
+    check_trace_only_once(tf.convert_to_tensor(value=1),
+                          tf.convert_to_tensor(value=2))
 
   def _testEvalOnShapes(self, transformer):
     def f(a, b):
@@ -202,7 +203,8 @@ class ExtensionsTest(tf.test.TestCase):
     check_trace_only_once(1, 2)
     check_trace_only_once(1.1, 2.1)
     check_trace_only_once(asarray(1), asarray(2))
-    check_trace_only_once(tf.convert_to_tensor(1), tf.convert_to_tensor(2))
+    check_trace_only_once(tf.convert_to_tensor(value=1),
+                          tf.convert_to_tensor(value=2))
 
   def testConv(self):
     y = extensions.conv(np.ones([5, 320, 480, 3], dtype=np.float32),
@@ -210,21 +212,22 @@ class ExtensionsTest(tf.test.TestCase):
                         "SAME", ("NHWC", "HWIO", "NHWC"))
     self.assertAllClose(y.shape, [5, 320, 480, 11])
     self.assertAllClose(
-        y, tf.nn.conv2d(tf.ones([5, 320, 480, 3], dtype=tf.float32),
-                        tf.ones([3, 4, 3, 11], dtype=tf.float32),
+        y, tf.nn.conv2d(input=tf.ones([5, 320, 480, 3], dtype=tf.float32),
+                        filters=tf.ones([3, 4, 3, 11], dtype=tf.float32),
+                        strides=1,
                         padding="SAME"))
 
   def testAvgPool(self):
     y = extensions.avg_pool(np.ones([5, 320, 480, 3]), [3, 5], [2, 3], "VALID")
     self.assertAllEqual(
-        y, tf.nn.pool(tf.ones([5, 320, 480, 3]), [3, 5], "AVG", "VALID",
-                      strides=[2, 3],))
+        y, tf.nn.pool(input=tf.ones([5, 320, 480, 3]), window_shape=[3, 5],
+                      pooling_type="AVG", padding="VALID", strides=[2, 3],))
 
   def testMaxPool(self):
     y = extensions.max_pool(np.ones([5, 320, 480, 3]), [3, 5], [2, 3], "VALID")
     self.assertAllEqual(
-        y, tf.nn.pool(tf.ones([5, 320, 480, 3]), [3, 5], "MAX", "VALID",
-                      strides=[2, 3],))
+        y, tf.nn.pool(input=tf.ones([5, 320, 480, 3]), window_shape=[3, 5],
+                      pooling_type="MAX", padding="VALID", strides=[2, 3],))
 
   def testPrng(self):
     self.assertAllEqual(0, extensions.prng(123))
@@ -320,7 +323,7 @@ class ExtensionsTest(tf.test.TestCase):
     result = return_one(tf.ones((2, 20)))
 
     # Only a single item is returned, so we can convert it directly.
-    converted = tf.convert_to_tensor(result)
+    converted = tf.convert_to_tensor(value=result)
     self.assertAllEqual(converted, 2 + tf.ones((2, 20)))
 
     @functools.partial(extensions.pmap, devices=devices)
@@ -331,7 +334,7 @@ class ExtensionsTest(tf.test.TestCase):
 
     # A singleton list is returned.
     self.assertLen(result, 1)
-    converted = tf.convert_to_tensor(result[0])
+    converted = tf.convert_to_tensor(value=result[0])
     self.assertAllEqual(converted, 2 + tf.ones((2, 20)))
 
   def testGradSimpleModel(self):
@@ -396,7 +399,7 @@ class ExtensionsTest(tf.test.TestCase):
     def reduce_sum(f):
       return extensions.psum(f)
 
-    data = array_creation.asarray(tf.convert_to_tensor([1, 3]))
+    data = array_creation.asarray(tf.convert_to_tensor(value=[1, 3]))
     pmapped = extensions.pmap(reduce_sum, devices=devices)
     result = pmapped(data)
 
@@ -411,7 +414,7 @@ class ExtensionsTest(tf.test.TestCase):
     def reduce_mean(f):
       return extensions.pmean(f)
 
-    data = array_creation.asarray(tf.convert_to_tensor([1, 3]))
+    data = array_creation.asarray(tf.convert_to_tensor(value=[1, 3]))
     pmapped = extensions.pmap(reduce_mean, devices=devices)
     result = pmapped(data)
 
@@ -424,7 +427,7 @@ class ExtensionsTest(tf.test.TestCase):
     def reduce_sum(f):
       return extensions.psum(f, axis_name="foo")
 
-    data = array_creation.asarray(tf.convert_to_tensor([1, 3]))
+    data = array_creation.asarray(tf.convert_to_tensor(value=[1, 3]))
     pmapped = extensions.pmap(reduce_sum, axis_name="foo", devices=devices)
     pmapped(data)
 
@@ -434,7 +437,7 @@ class ExtensionsTest(tf.test.TestCase):
     def reduce_sum(f):
       return extensions.psum(f, axis_name="bar")
 
-    data = array_creation.asarray(tf.convert_to_tensor([1, 3]))
+    data = array_creation.asarray(tf.convert_to_tensor(value=[1, 3]))
     with self.assertRaisesWithPredicateMatch(
         ValueError, r"axis_name (.*) is not equal to that of the surrounding"):
       pmapped = extensions.pmap(reduce_sum, axis_name="foo", devices=devices)
@@ -446,7 +449,7 @@ class ExtensionsTest(tf.test.TestCase):
     def f(x):
       return x + 1.0
 
-    data = array_creation.asarray(tf.convert_to_tensor([1, 3]))
+    data = array_creation.asarray(tf.convert_to_tensor(value=[1, 3]))
     with self.assertRaisesWithPredicateMatch(
         ValueError, r"Nested pmap is not supported"):
       f = extensions.pmap(f, devices=devices)
@@ -455,5 +458,5 @@ class ExtensionsTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.enable_eager_execution()
+  tf.compat.v1.enable_eager_execution()
   tf.test.main()

@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import array_creation
 from trax.tf_numpy.numpy.array_creation import asarray

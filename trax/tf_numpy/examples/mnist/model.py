@@ -22,7 +22,7 @@ from __future__ import print_function
 from numpy import float32
 from numpy import int32
 
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy import numpy as np
 

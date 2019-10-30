@@ -28,9 +28,10 @@ from absl import logging
 
 import gin
 import jax
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 from trax import backend
 from trax import trainer_lib
+from trax.tf_numpy import numpy as tf_np
 
 FLAGS = flags.FLAGS
 
@@ -52,6 +53,10 @@ flags.DEFINE_bool('tf_opt_pin_to_host', False, 'Whether to turn on TF '
                   'pin-to-host optimization.')
 flags.DEFINE_bool('tf_opt_layout', False, 'Whether to turn on TF layout '
                   'optimization.')
+flags.DEFINE_bool('tf_xla_forced_compile', False, 'Use forced-compilation '
+                  'instead of auto-clustering for XLA. This flag only has '
+                  'effects when --tf_xla is on.')
+flags.DEFINE_bool('tf_allow_float64', False, 'Whether to allow float64 for TF.')
 
 
 def _default_output_dir():
@@ -90,6 +95,30 @@ def _setup_gin():
   gin.parse_config_files_and_bindings(FLAGS.config_file, configs)
 
 
+def set_tf_allow_float64(b):
+  tf_np.set_allow_float64(b)
+
+
+@gin.configurable
+def tf_init_tpu(worker=''):
+  """Initializes TPU for TensorFlow.
+
+  Args:
+    worker: The BNS address of the remote TPU worker. If it's empty (the default
+      value), TF will assume the TPU devices are connected to the local host.
+
+  Returns:
+    The device name of the TPU worker's CPU.
+  """
+  is_local = (worker in ('', 'local'))
+  resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=worker)
+  if not is_local:
+    tf.config.experimental_connect_to_cluster(resolver, protocol='grpc+loas')
+  tf.tpu.experimental.initialize_tpu_system(resolver)
+  if is_local:
+    return ''
+  else:
+    return '/job:worker'
 
 
 def main(_):
@@ -97,10 +126,11 @@ def main(_):
   logging.set_verbosity(FLAGS.log_level)
 
   if FLAGS.enable_eager_execution:
-    tf.enable_eager_execution()
+    tf.compat.v1.enable_eager_execution()
 
   if FLAGS.tf_xla:
     tf.config.optimizer.set_jit(True)
+    backend.set_tf_xla_forced_compile(FLAGS.tf_xla_forced_compile)
 
   tf.config.optimizer.set_experimental_options(
       {'pin_to_host_optimization': FLAGS.tf_opt_pin_to_host}
@@ -110,6 +140,7 @@ def main(_):
       {'layout_optimizer': FLAGS.tf_opt_layout}
   )
 
+  set_tf_allow_float64(FLAGS.tf_allow_float64)
 
   _setup_gin()
 
@@ -128,8 +159,18 @@ def main(_):
   if FLAGS.use_tpu:
     jax.config.update('jax_platform_name', 'tpu')
 
-
-  trainer_lib.train(output_dir=output_dir)
+  if FLAGS.use_tpu and backend.get_name() == 'tf':
+    worker_cpu = tf_init_tpu()
+    with tf.device(worker_cpu):
+      if trainer_lib.num_devices() == 1:
+        # TF's device priority is GPU > CPU > TPU, so we need to explicitly make
+        # the TPU core the default device here.
+        with tf.device('/device:TPU:0'):
+          trainer_lib.train(output_dir=output_dir)
+      else:
+        trainer_lib.train(output_dir=output_dir)
+  else:
+    trainer_lib.train(output_dir=output_dir)
 
 
 if __name__ == '__main__':

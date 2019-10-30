@@ -20,7 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import array_creation
 from trax.tf_numpy.numpy import array_manipulation
@@ -85,5 +85,5 @@ class ArrayManipulationTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.enable_eager_execution()
+  tf.compat.v1.enable_eager_execution()
   tf.test.main()

@@ -23,7 +23,7 @@ import numpy as np
 from numpy import iinfo as np_iinfo
 from numpy import promote_types as np_promote_types
 import six
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import array_creation
 from trax.tf_numpy.numpy import array_manipulation
@@ -50,7 +50,7 @@ def all(a, axis=None, keepdims=None):  # pylint: disable=redefined-builtin
   """
   a = array_creation.asarray(a, dtype=bool)
   return utils.tensor_to_ndarray(
-      tf.reduce_all(a.data, axis=axis, keepdims=keepdims))
+      tf.reduce_all(input_tensor=a.data, axis=axis, keepdims=keepdims))
 
 
 def any(a, axis=None, keepdims=None):  # pylint: disable=redefined-builtin
@@ -72,7 +72,7 @@ def any(a, axis=None, keepdims=None):  # pylint: disable=redefined-builtin
   """
   a = array_creation.asarray(a, dtype=bool)
   return utils.tensor_to_ndarray(
-      tf.reduce_any(a.data, axis=axis, keepdims=keepdims))
+      tf.reduce_any(input_tensor=a.data, axis=axis, keepdims=keepdims))
 
 
 def argmax(a, axis=None):
@@ -93,7 +93,7 @@ def argmax(a, axis=None):
     a_t = tf.reshape(a.data, [-1])
   else:
     a_t = a.data
-  return utils.tensor_to_ndarray(tf.argmax(a_t, axis))
+  return utils.tensor_to_ndarray(tf.argmax(input=a_t, axis=axis))
 
 
 def argmin(a, axis=None):
@@ -115,7 +115,7 @@ def argmin(a, axis=None):
     a_t = tf.reshape(a.data, [-1])
   else:
     a_t = a.data
-  return utils.tensor_to_ndarray(tf.argmin(a_t, axis))
+  return utils.tensor_to_ndarray(tf.argmin(input=a_t, axis=axis))
 
 
 def clip(a, a_min=None, a_max=None):
@@ -197,7 +197,8 @@ def compress(condition, a, axis=None):
   if condition.shape[0] < a.shape[axis]:
     padding = tf.fill([a.shape[axis] - condition.shape[0]], False)
     condition_t = tf.concat([condition_t, padding], axis=0)
-  return utils.tensor_to_ndarray(tf.boolean_mask(a_t, condition_t, axis=axis))
+  return utils.tensor_to_ndarray(tf.boolean_mask(tensor=a_t, mask=condition_t,
+                                                 axis=axis))
 
 
 def copy(a):
@@ -239,7 +240,7 @@ def cumprod(a, axis=None, dtype=None):
   if axis < 0:
     axis += a.ndim
   assert axis >= 0 and axis < a.ndim
-  return utils.tensor_to_ndarray(tf.cumprod(a.data, axis))
+  return utils.tensor_to_ndarray(tf.math.cumprod(a.data, axis))
 
 
 def cumsum(a, axis=None, dtype=None):
@@ -294,7 +295,7 @@ def imag(a):
   a = array_creation.asarray(a)
   # TODO(srbs): np.imag returns a scalar if a is a scalar, whereas we always
   # return an ndarray.
-  return utils.tensor_to_ndarray(tf.imag(a.data))
+  return utils.tensor_to_ndarray(tf.math.imag(a.data))
 
 
 def amax(a, axis=None, keepdims=None):
@@ -310,7 +311,8 @@ def amax(a, axis=None, keepdims=None):
     keepdims: If true, retains reduced dimensions with length 1.
   """
   a = array_creation.asarray(a)
-  return utils.tensor_to_ndarray(tf.reduce_max(a.data, axis, keepdims))
+  return utils.tensor_to_ndarray(tf.reduce_max(input_tensor=a.data, axis=axis,
+                                               keepdims=keepdims))
 
 
 def mean(a, axis=None, dtype=None, keepdims=None):
@@ -348,7 +350,8 @@ def mean(a, axis=None, dtype=None, keepdims=None):
     if tf_dtype.is_integer or tf_dtype.is_bool:
       dtype = tf.float64
   a_t = utils.maybe_cast(a.data, dtype)
-  return utils.tensor_to_ndarray(tf.reduce_mean(a_t, axis, keepdims))
+  return utils.tensor_to_ndarray(tf.reduce_mean(input_tensor=a_t, axis=axis,
+                                                keepdims=keepdims))
 
 
 def amin(a, axis=None, keepdims=None):
@@ -364,7 +367,8 @@ def amin(a, axis=None, keepdims=None):
     keepdims: If true, retains reduced dimensions with length 1.
   """
   a = array_creation.asarray(a)
-  return utils.tensor_to_ndarray(tf.reduce_min(a.data, axis, keepdims))
+  return utils.tensor_to_ndarray(tf.reduce_min(input_tensor=a.data, axis=axis,
+                                               keepdims=keepdims))
 
 
 def prod(a, axis=None, dtype=None, keepdims=None):
@@ -393,7 +397,8 @@ def prod(a, axis=None, dtype=None, keepdims=None):
     if output_type != a.dtype:
       a = array_creation.asarray(a, dtype=output_type)
 
-  return utils.tensor_to_ndarray(tf.reduce_prod(a.data, axis, keepdims))
+  return utils.tensor_to_ndarray(tf.reduce_prod(input_tensor=a.data, axis=axis,
+                                                keepdims=keepdims))
 
 
 def ptp(a, axis=None):
@@ -448,7 +453,7 @@ def real(val):
   val = array_creation.asarray(val)
   # TODO(srbs): np.real returns a scalar if val is a scalar, whereas we always
   # return an ndarray.
-  return utils.tensor_to_ndarray(tf.real(val.data))
+  return utils.tensor_to_ndarray(tf.math.real(val.data))
 
 
 def repeat(a, repeats, axis=None):
@@ -533,7 +538,7 @@ def around(a, decimals=0):
   factor = math.pow(10, decimals)
   a_t = tf.multiply(a.data, factor)
   a_t = tf.round(a_t)
-  a_t = tf.div(a_t, factor)
+  a_t = tf.math.divide(a_t, factor)
   return utils.tensor_to_ndarray(a_t)
 
 
@@ -603,7 +608,7 @@ def transpose(a, axes=None):
   a = array_creation.asarray(a)
   if axes is not None:
     axes = array_creation.asarray(axes)
-  return utils.tensor_to_ndarray(tf.transpose(a.data, axes))
+  return utils.tensor_to_ndarray(tf.transpose(a=a.data, perm=axes))
 
 
 def swapaxes(a, axis1, axis2):
@@ -733,8 +738,9 @@ def pad(array, pad_width, mode, constant_values=0):
   mode = mode.upper()
   array = array_creation.asarray(array)
   pad_width = array_creation.asarray(pad_width, dtype=tf.int32)
-  return utils.tensor_to_ndarray(tf.pad(array.data, pad_width.data, mode,
-                                        constant_values=constant_values))
+  return utils.tensor_to_ndarray(tf.pad(
+      tensor=array.data, paddings=pad_width.data, mode=mode,
+      constant_values=constant_values))
 
 
 def take(a, indices, axis=None):
@@ -775,7 +781,7 @@ def where(condition, x, y):
   """
   condition = array_creation.asarray(condition, dtype=np.bool_)
   x, y = array_creation.promote_args_types(x, y)
-  return utils.tensor_to_ndarray(tf.where_v2(condition.data, x.data, y.data))
+  return utils.tensor_to_ndarray(tf.where(condition.data, x.data, y.data))
 
 
 def shape(a):

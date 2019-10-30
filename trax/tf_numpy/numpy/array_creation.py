@@ -21,7 +21,7 @@ from __future__ import print_function
 from numpy import nan as np_nan
 from numpy import sign as np_sign
 
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import arrays
 from trax.tf_numpy.numpy import utils
@@ -302,7 +302,7 @@ def array(val, dtype=None, copy=True, ndmin=0):
     # the NumPy type of `result_t` and create a tensor of that type instead.
     if not dtype:
       dtype = utils.array_dtype(result_t)
-    result_t = tf.convert_to_tensor(result_t)
+    result_t = tf.convert_to_tensor(value=result_t)
     result_t = tf.cast(result_t, dtype=dtype)
   elif dtype:
     result_t = utils.maybe_cast(result_t, dtype)
@@ -551,13 +551,13 @@ def diag(v, k=0):
     if v.shape[0] == 0:
       size = abs(k)
       return zeros((size, size), dtype=v.dtype)
-    result = tf.diag(v.data)
+    result = tf.linalg.tensor_diag(v.data)
     if k:
       if k < 0:
         padding = [[-k, 0], [0, -k]]
       else:
         padding = [[0, k], [k, 0]]
-      result = tf.pad(result, padding)
+      result = tf.pad(tensor=result, paddings=padding)
   else:
     n, m = v.shape
     if not n or not m:
@@ -586,7 +586,7 @@ def diag(v, k=0):
       # supports square matrices.
       min_n_m = min(n, m)
       result = tf.slice(result, [0, 0], [min_n_m, min_n_m])
-    result = tf.diag_part(result)
+    result = tf.linalg.tensor_diag_part(result)
   return utils.tensor_to_ndarray(result)
 
 

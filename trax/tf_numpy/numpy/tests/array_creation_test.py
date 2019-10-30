@@ -21,7 +21,7 @@ from __future__ import print_function
 
 import itertools
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import array_creation
 from trax.tf_numpy.numpy import arrays
@@ -255,7 +255,7 @@ class ArrayCreationTest(tf.test.TestCase):
               np.full_like(arr, fill_value, dtype=dtype))
 
   def testArray(self):
-    ndmins = [-5, 0, 1, 2, 5]
+    ndmins = [0, 1, 2, 5]
     for a, dtype, ndmin, copy in itertools.product(
         self.all_arrays, self.all_types, ndmins, [True, False]):
       self.match(
@@ -584,5 +584,5 @@ class ArrayCreationTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.enable_eager_execution()
+  tf.compat.v1.enable_eager_execution()
   tf.test.main()

@@ -23,7 +23,7 @@ import contextlib
 import threading
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import random
 from trax.tf_numpy.numpy.array_creation import array
@@ -37,7 +37,7 @@ def _canonicalize_jit_arg(x):
     return x.data
   else:
     try:
-      return tf.convert_to_tensor(x)
+      return tf.convert_to_tensor(value=x)
     except (TypeError, ValueError):
       return x
 
@@ -257,7 +257,8 @@ def logsumexp(x, axis=None, keepdims=None):
   Returns:
     The reduced tensor.
   """
-  return asarray(tf.math.reduce_logsumexp(x.data, axis=axis, keepdims=keepdims))
+  return asarray(tf.math.reduce_logsumexp(input_tensor=x.data, axis=axis,
+                                          keepdims=keepdims))
 
 
 def expit(x):
@@ -310,8 +311,8 @@ def conv(inp, fltr, window_strides, padding, dimension_numbers,
   inp = asarray(inp)
   fltr = asarray(fltr)
   return asarray(
-      tf.nn.convolution(inp.data, fltr.data, padding=padding,
-                        strides=window_strides, dilation_rate=filter_dilation,
+      tf.nn.convolution(input=inp.data, filters=fltr.data, padding=padding,
+                        strides=window_strides, dilations=filter_dilation,
                         data_format=input_spec))
 
 
@@ -337,7 +338,7 @@ def avg_pool(x, pool_size, strides, padding):
         ceil((input_spatial_shape[i] - (pool_size[i] - 1)) / strides[i]).
   """
   x = asarray(x)
-  return asarray(tf.nn.pool(x, window_shape=pool_size, pooling_type="AVG",
+  return asarray(tf.nn.pool(input=x, window_shape=pool_size, pooling_type="AVG",
                             strides=strides, padding=padding))
 
 
@@ -363,7 +364,7 @@ def max_pool(x, pool_size, strides, padding):
         ceil((input_spatial_shape[i] - (pool_size[i] - 1)) / strides[i]).
   """
   x = asarray(x)
-  return asarray(tf.nn.pool(x, window_shape=pool_size, pooling_type="MAX",
+  return asarray(tf.nn.pool(input=x, window_shape=pool_size, pooling_type="MAX",
                             strides=strides, padding=padding))
 
 
@@ -421,7 +422,7 @@ def uniform(key, shape, dtype=random.DEFAULT_RANDN_DTYPE, minval=0., maxval=1.):
   """
   del key
   return array(
-      tf.random_uniform(shape, dtype=dtype, minval=minval, maxval=maxval),
+      tf.random.uniform(shape, dtype=dtype, minval=minval, maxval=maxval),
       copy=False)
 
 
@@ -437,7 +438,7 @@ def normal(key, shape, dtype=tf.float32):
     Random values in standard-normal distribution.
   """
   del key
-  return array(tf.random_normal(shape, dtype=dtype), copy=False)
+  return array(tf.random.normal(shape, dtype=dtype), copy=False)
 
 
 def bernoulli(key, mean=np.float32(0.5), shape=()):
@@ -454,7 +455,7 @@ def bernoulli(key, mean=np.float32(0.5), shape=()):
     A random array with the specified shape and boolean dtype.
   """
   # TODO(wangpeng): convert types TF <-> numpy.
-  shape = shape or tf.convert_to_tensor(mean).shape
+  shape = shape or tf.convert_to_tensor(value=mean).shape
   return array(
       tf.less(uniform(key, shape), mean), copy=False)
 
@@ -586,7 +587,7 @@ def psum(tensor, axis_name=None):
   if tpu_devices(devices):
     # TODO(wangpeng): Supply the `group_assignment` argument to
     # tpu.cross_replica_sum, calculated from `devices`.
-    return tf.tpu.cross_replica_sum(tensor)
+    return tf.compat.v1.tpu.cross_replica_sum(tensor)
   else:
     return tf.raw_ops.CollectiveReduce(
         input=tensor.data,
@@ -657,7 +658,7 @@ def _get_pmap_impl(f, devices, has_tpu):
     def fn(inputs):
       # TODO(wangpeng): Supply the `device_assignment` argument to
       # tpu.replicate, calculated from `devices`.
-      return tf.tpu.replicate(tf_f, inputs)
+      return tf.compat.v1.tpu.replicate(tf_f, inputs)
     return fn
   else:
     # This is run in a tf.function so that the various underlying functions can

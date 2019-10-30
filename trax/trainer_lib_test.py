@@ -28,9 +28,9 @@ from jax import test_util  # pylint: disable=unused-import
 from jax.config import config
 from jax.lib import xla_bridge
 
-import tensorflow as tf
-from tensorflow import test
-from tensorflow.io import gfile
+import tensorflow.compat.v2 as tf
+from tensorflow.compat.v2 import test
+from tensorflow.compat.v2.io import gfile
 
 from trax import backend
 from trax import inputs as inputs_lib
@@ -40,6 +40,7 @@ from trax import models
 from trax import optimizers as trax_opt
 from trax import trainer_lib
 from trax.backend import numpy as np
+from trax.tf_numpy import numpy as tf_np
 
 
 
@@ -72,7 +73,7 @@ def test_inputs(n_classes, with_weights=False, input_shape=(6, 6, 3)):
 
 
 
-BACKENDS = ['jax']
+BACKENDS = ['jax', 'tf']
 
 
 class TraxTest(test.TestCase, parameterized.TestCase):
@@ -245,6 +246,46 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       trainer.reset(output_dir2)
       trainer.evaluate(1)
 
+  def test_tf_xla_forced_compile(self):
+    # TODO(wangpeng): re-enable this test
+    self.skipTest('Needs --config=cuda to pass this test')
+    old_flag = backend.tf_xla_forced_compile_enabled()
+    backend.set_tf_xla_forced_compile(True)
+    self._test_train_eval_predict('tf')
+    backend.set_tf_xla_forced_compile(old_flag)
+
+  def test_no_int32_or_uint32_returned(self):
+    """Tests that Trainer._jit_update_fn doesn't return int32 or uint32.
+
+    TF pins int32/uint32 tensors to CPU, which will cause XLA-forced-compiled
+    computation to copy int32/uint32 outputs to CPU. This test makes sure that
+    won't happen.
+    """
+    if xla_bridge.device_count() > 1:
+      self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
+    with backend.use_backend('tf'), self.tmp_dir() as output_dir:
+      n_classes = 1001
+      model_fn = functools.partial(models.Resnet50,
+                                   n_output_classes=n_classes)
+      inputs = lambda _: test_inputs(n_classes, input_shape=(224, 224, 3))
+      trainer = trainer_lib.Trainer(
+          model=model_fn,
+          loss_fn=layers.CrossEntropyLossScalar,
+          optimizer=trax_opt.SM3,
+          lr_schedule=lr.MultifactorSchedule,
+          inputs=inputs,
+      )
+      trainer.reset(output_dir)
+      trainer.train_epoch(1, 0)
+      # Those are the things returned by Trainer._jit_update_fn
+      arrays = (trainer._opt_state.params, trainer._opt_state.slots,
+                trainer._model_state, trainer._rngs)
+      arrays = tf.nest.flatten(arrays)
+      for x in arrays:
+        if isinstance(x, np.ndarray) and (x.dtype == np.int32 or
+                                          x.dtype == np.uint32):
+          raise ValueError('Found an array of int32 or uint32: %s' % x)
+
 
 
 class EpochsTest(test.TestCase):
@@ -267,4 +308,5 @@ class EpochsTest(test.TestCase):
 
 if __name__ == '__main__':
   config.config_with_absl()
+  tf.compat.v1.enable_eager_execution()
   test.main()
