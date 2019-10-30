@@ -18,7 +18,7 @@ import trax.rl.trainers
 # Parameters for PPO:
 # ==============================================================================
 PPO.n_optimizer_steps = 30
-PPO.target_kl = 0.01
+PPO.target_kl = 1000.0
 PPO.boundary = 20
 PPO.max_timestep = 128
 PPO.max_timestep_eval = 20000
@@ -27,11 +27,11 @@ PPO.gamma = 0.99
 PPO.lambda_ = 0.95
 PPO.value_weight = 1.0
 PPO.entropy_weight = 0.01
-PPO.eval_every_n = 2000
+PPO.eval_every_n = 1000
 PPO.done_frac_for_policy_save = 0.9
 PPO.n_evals = 16
 PPO.len_history_for_policy = 4
-PPO.eval_temperatures = (1.0, 0.5)
+PPO.eval_temperatures = (1.0,)
 PPO.policy_and_value_model = @trax.models.AtariCnn
 
 # Parameters for train_rl:
