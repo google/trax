@@ -11,7 +11,7 @@ methods:
 def forward(self, inputs, params=(), state=(), **kwargs):
   """Computes the layer's output as part of a forward pass through the model."""
 
-def new_params_and_state(self, input_shape, input_dtype, rng):
+def new_params_and_state(self, input_signature, rng):
   """Returns a (params, state) pair suitable for initializing this layer."""
 ```
 
@@ -22,7 +22,7 @@ and call functions to be used as follows.
 layer = MyLayer()
 x = np.zeros(10)
 rng = random.get_prng(0)
-layer.initialize_once(x.shape, x.dtype, rng)
+layer.initialize_once(signature(x), rng)
 output = layer(x)
 ```
 

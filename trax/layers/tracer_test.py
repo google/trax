@@ -28,6 +28,7 @@ import numpy as onp
 from trax.layers import combinators as cb
 from trax.layers import core
 from trax.layers import tracer
+from trax.shapes import ShapeDtype
 
 
 def shuffled(x):
@@ -176,9 +177,9 @@ class TracerTest(absltest.TestCase):
     a = onp.random.randint(0, 10, size=(2, 10))
     b = onp.random.randint(0, 10, size=(2, 10))
     c = onp.random.randint(0, 10, size=(2, 10))
-    p, s = layer.new_params_and_state(((2, 10), (2, 10), (2, 10)),
-                                      (onp.int32, onp.int32, onp.int32),
-                                      rng=jax.random.PRNGKey(0))
+    input_sd = ShapeDtype((2, 10), onp.int32)
+    input_signature = (input_sd, input_sd, input_sd)
+    p, s = layer.new_params_and_state(input_signature, jax.random.PRNGKey(0))
     res = layer((a, b, c), params=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
     result = onp.array(res)
     expected = a + b + c
@@ -197,9 +198,9 @@ class TracerTest(absltest.TestCase):
     a = onp.random.randint(0, 10, size=(2, 10))
     b = onp.random.randint(0, 10, size=(2, 10))
     c = onp.random.randint(0, 10, size=(2, 10))
-    p, s = layer.new_params_and_state(((2, 10), (2, 10), (2, 10)),
-                                      (onp.int32, onp.int32, onp.int32),
-                                      rng=jax.random.PRNGKey(0))
+    input_sd = ShapeDtype((2, 10), onp.int32)
+    input_signature = (input_sd, input_sd, input_sd)
+    p, s = layer.new_params_and_state(input_signature, jax.random.PRNGKey(0))
     res = layer((a, b, c), params=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
     result = onp.array(res)
     expected = onp.tanh(a) + b + c
@@ -218,9 +219,9 @@ class TracerTest(absltest.TestCase):
     a = onp.random.uniform(-10, 10, size=(2, 10))
     b = onp.random.uniform(-10, 10, size=(2, 10))
     c = onp.random.uniform(-10, 10, size=(2, 10))
-    p, s = layer.new_params_and_state(((2, 10), (2, 10), (2, 10)),
-                                      (onp.float32, onp.float32, onp.float32),
-                                      rng=jax.random.PRNGKey(0))
+    input_sd = ShapeDtype((2, 10), onp.int32)
+    input_signature = (input_sd, input_sd, input_sd)
+    p, s = layer.new_params_and_state(input_signature, jax.random.PRNGKey(0))
     res = layer((a, b, c), params=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg,no-value-for-parameter,not-callable
     result0 = onp.array(res[0])
     expected0 = onp.where(a + b > 0, a + b, 0.0)
@@ -239,18 +240,18 @@ class TracerTest(absltest.TestCase):
     layer = make_layer(n=3)  # pylint: disable=no-value-for-parameter
     a = onp.random.randint(0, 10, size=(2, 10))
     b = onp.random.randint(0, 10, size=(2, 10))
-    p, s = layer.new_params_and_state(((2, 10), (2, 10)),
-                                      (onp.int32, onp.int32),
-                                      rng=jax.random.PRNGKey(0))
+    input_sd = ShapeDtype((2, 10), onp.int32)
+    input_signature = (input_sd, input_sd)
+    p, s = layer.new_params_and_state(input_signature, jax.random.PRNGKey(0))
     res = layer((a, b), params=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg,no-value-for-parameter,not-callable
     result = onp.array(res)
     expected = a + 3 * b
     onp.testing.assert_allclose(result, expected)
 
     layer = make_layer(n=5)  # pylint: disable=no-value-for-parameter
-    p, s = layer.new_params_and_state(((2, 10), (2, 10)),
-                                      (onp.int32, onp.int32),
-                                      rng=jax.random.PRNGKey(0))
+    input_sd = ShapeDtype((2, 10), onp.int32)
+    input_signature = (input_sd, input_sd)
+    p, s = layer.new_params_and_state(input_signature, jax.random.PRNGKey(0))
     res = layer((a, b), params=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg,no-value-for-parameter,not-callable
     result = onp.array(res)
     expected = a + 5 * b

@@ -113,9 +113,9 @@ class PositionalEncoding(base.Layer):
       # storing the index in state.
       return (inputs + np.expand_dims(params[:, state, :], 1), state + 1)
 
-  def new_params_and_state(self, input_shape, input_dtype, rng):
-    del input_dtype, rng
-    d_feature = input_shape[-1]
+  def new_params_and_state(self, input_signature, rng):
+    del rng
+    d_feature = input_signature.shape[-1]
     pe = onp.zeros((self._max_len, d_feature), dtype=onp.float32)
     position = onp.arange(0, self._max_len)[:, onp.newaxis]
     div_term = onp.exp(
@@ -173,9 +173,8 @@ class AxialPositionalEncoding(base.Layer):
 
       return inputs + np.reshape(emb * multiplier, inputs.shape), state
 
-  def new_params_and_state(self, input_shape, input_dtype, rng):
-    del input_dtype
-    d_feature = input_shape[-1]
+  def new_params_and_state(self, input_signature, rng):
+    d_feature = input_signature.shape[-1]
     assert sum(self._d_embs) == d_feature
 
     rngs = backend.random.split(rng, len(self._d_embs))
@@ -349,9 +348,8 @@ class ShiftRightLearned(base.Layer):
     c += backend.numpy.zeros((x.shape[0], 1, x.shape[2]), dtype=x.dtype)
     return backend.numpy.concatenate([c, x], axis=1)[:, :-1, :], state
 
-  def new_params_and_state(self, input_shape, input_dtype, rng):
-    del input_dtype
-    b = self._initializer((input_shape[-1],), rng)
+  def new_params_and_state(self, input_signature, rng):
+    b = self._initializer((input_signature.shape[-1],), rng)
     return b, ()
 
 
@@ -386,10 +384,9 @@ class ComputeAttentionHeads(base.Layer):
 
     return res, state
 
-  def new_params_and_state(self, input_shape, input_dtype, rng):
-    del input_dtype
+  def new_params_and_state(self, input_signature, rng):
     w = self._kernel_initializer(
-        (input_shape[-1], self._n_heads * self._d_head), rng)
+        (input_signature.shape[-1], self._n_heads * self._d_head), rng)
     return w, ()
 
 
@@ -417,10 +414,9 @@ class ComputeAttentionOutput(base.Layer):
 
     return np.dot(x, params), state
 
-  def new_params_and_state(self, input_shape, input_dtype, rng):
-    del input_dtype
-    w = self._kernel_initializer(
-        (input_shape[-1] * self._n_heads, self._d_model), rng)
+  def new_params_and_state(self, input_signature, rng):
+    kernel_shape = (input_signature.shape[-1] * self._n_heads, self._d_model)
+    w = self._kernel_initializer(kernel_shape, rng)
     return w, ()
 
 
@@ -459,20 +455,19 @@ class BaseCausalAttention(base.Layer):
     raise NotImplementedError()
 
 
-def _fast_inference_init_state(input_shapes, input_dtypes, buffer_length):
-  """Initializes state of a causal attention layer for fast inference."""
-  ((batch_size, _, _), _, _) = input_shapes
-  def init_buffer(shape, dtype):
-    (_, _, depth) = shape
+def _fast_inference_init_state(input_signature, buffer_length):
+  """Returns an initial state for causal attention layer fast inference."""
+  def zeros_for(batch_size, shape_dtype):
+    shape, dtype = shape_dtype.as_tuple()
+    depth = shape[-1]
     return np.zeros((batch_size, buffer_length, depth), dtype=dtype)
-  (_, k, v) = tuple(
-      init_buffer(shape, dtype)
-      for (shape, dtype) in zip(input_shapes, input_dtypes)
-  )
+
+  batch_size = input_signature[0].shape[0]
+  k = zeros_for(batch_size, input_signature[1])
+  v = zeros_for(batch_size, input_signature[2])
   mask = np.zeros((batch_size, 1, buffer_length))
   index = 0
-  state = (k, v, mask, index)
-  return state
+  return (k, v, mask, index)
 
 
 def _fast_inference_update_state(inputs, state):
@@ -533,7 +528,7 @@ class DotProductCausalAttention(BaseCausalAttention):
     output, vjpfun = jax.vjp(_do_forward, inputs)
     return output, vjpfun(ct)[0]
 
-  def new_params_and_state(self, input_shapes, input_dtype, rng):
+  def new_params_and_state(self, input_signature, rng):
     if self._mode in ('train', 'eval'):
       return (), ()
 
@@ -542,7 +537,7 @@ class DotProductCausalAttention(BaseCausalAttention):
     # Buffer length is hardcoded for now. TODO(pkozakowski): Pass it from the
     # model.
     max_len = 2048
-    state = _fast_inference_init_state(input_shapes, input_dtype, max_len)
+    state = _fast_inference_init_state(input_signature, max_len)
     return params, state
 
 
@@ -917,7 +912,7 @@ class TimeBinCausalAttention(BaseCausalAttention):
     )
     return (output, state)
 
-  def new_params_and_state(self, input_shapes, input_dtype, rng):
+  def new_params_and_state(self, input_signature, rng):
     if self._mode in ('train', 'eval'):
       return (), ()
 
@@ -928,7 +923,7 @@ class TimeBinCausalAttention(BaseCausalAttention):
     )
     params = ()
     state = _fast_inference_init_state(
-        input_shapes, input_dtype, 2 * self.bin_length
+        input_signature, 2 * self.bin_length
     )
     return params, state
 

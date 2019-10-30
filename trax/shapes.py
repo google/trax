@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as onp
+import tensorflow as tf
 
 
 class ShapeDtype(object):
@@ -27,13 +28,47 @@ class ShapeDtype(object):
   __slots__ = ['shape', 'dtype']
 
   def __init__(self, shape, dtype=onp.float32):
+    """Creates a `ShapeDtype` instance, with canonicalized `shape` and `dtype`.
+
+    Args:
+      shape: A tuple or list, each element of which is an int or, less often,
+          `None`.
+      dtype: A `dtype` object, either from NumPy or TensorFlow.
+
+    Returns:
+      A `ShapeDtype` instance whose `shape` is a tuple and `dtype` is a NumPy
+      `dtype` object.
+    """
+    # Canonicalize shape and dtype.
+    if isinstance(shape, list):
+      shape = tuple(shape)
+    if not isinstance(shape, tuple):
+      raise TypeError('shape must be tuple or list; got: {}'.format(shape))
+    if isinstance(dtype, tf.DType):
+      dtype = dtype.as_numpy_dtype
+
     self.shape = shape
     self.dtype = dtype
 
   def __repr__(self):
     return 'ShapeDtype{{shape:{}, dtype:{}}}'.format(self.shape, self.dtype)
 
+  def as_tuple(self):
+    return self.shape, self.dtype
 
-def shape_dtype_for(obj):
-  """Returns a `ShapeDtype` instance with the shape and dtype of `obj`."""
-  return ShapeDtype(obj.shape, obj.dtype)
+
+def signature(obj):
+  """Returns a `ShapeDtype` signature for the given `obj`.
+
+  A signature is either a single ShapeDtype instance or a list/tuple of
+  ShapeDtype instances.
+
+  Args:
+    obj: An object that has `shape` and `dtype` attributes, or a list/tuple
+        of such objects.
+  """
+  if isinstance(obj, (list, tuple)):
+    # TODO(jonni): consider using nested_map here.
+    return tuple(signature(x) for x in obj)
+  else:
+    return ShapeDtype(obj.shape, obj.dtype)

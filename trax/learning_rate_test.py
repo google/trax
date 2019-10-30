@@ -30,6 +30,7 @@ from trax.backend import random as jax_random
 from trax.models import transformer
 from trax.rl import online_tune
 from trax.rl import ppo
+from trax.shapes import ShapeDtype
 
 
 class PolicyScheduleTest(test.TestCase):
@@ -64,7 +65,8 @@ class PolicyScheduleTest(test.TestCase):
     else:
       shape = (1, 1)
       dtype = np.int32
-    (params, state) = net.initialize_once(shape, dtype, rng)
+    input_signature = ShapeDtype(shape, dtype)
+    (params, state) = net.initialize_once(input_signature, rng)
     policy_dir = self.get_temp_dir()
     # Optimizer slots should not be used for anything.
     slots = None

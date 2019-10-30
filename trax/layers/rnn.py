@@ -122,7 +122,8 @@ def GeneralGRUCell(candidate_transform,
   ]
   memory_transform = memory_transform_fn() if memory_transform_fn else []
   return cb.Serial(
-      cb.Dup(), cb.Dup(),
+      cb.Dup(),
+      cb.Dup(),
       cb.Parallel(memory_transform, gate_block, candidate_block),
       cb.Gate(),
   )

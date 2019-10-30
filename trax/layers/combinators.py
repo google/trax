@@ -22,7 +22,6 @@ from __future__ import print_function
 from trax import backend
 from trax.backend import numpy as np
 from trax.layers import base
-from trax.shapes import ShapeDtype
 
 
 def _deep_flatten(items):  # pylint: disable=invalid-name
@@ -202,15 +201,11 @@ class Serial(base.Layer):
 
     return stack, new_state
 
-  def new_params_and_state(self, input_shape, input_dtype, rng):
-    def MakeShapeType(shape, dtype):
-      if isinstance(dtype, (list, tuple)):
-        return tuple(MakeShapeType(s, t) for s, t in zip(shape, dtype))
-      return ShapeDtype(shape, dtype)
+  def new_params_and_state(self, input_signature, rng):
 
     params = []
     states = []
-    pseudo_xs = MakeShapeType(input_shape, input_dtype)
+    pseudo_xs = input_signature
     for layer in self.sublayers:
       rng, layer_rng = backend.random.split(rng)
 
@@ -227,9 +222,7 @@ class Serial(base.Layer):
       else:
         inputs = pseudo_xs[:n_in]
 
-      in_shape = base.nested_map(lambda x: x.shape, inputs)
-      in_dtype = base.nested_map(lambda x: x.dtype, inputs)
-      param, state = layer.initialize_once(in_shape, in_dtype, layer_rng)
+      param, state = layer.initialize_once(inputs, layer_rng)
       pparam = layer._params   # pylint: disable=protected-access
 
       outputs, _ = layer.pseudo_forward(inputs, pparam, state)
@@ -447,7 +440,7 @@ class Parallel(base.Layer):
     """Divides Parallel's inputs for use by the sublayers.
 
     Args:
-      inputs: Tuple of elements.
+      inputs: Tuple of ndarrays or ShapeDtype instances.
 
     Returns:
       A tuple that partitions this layer's inputs among its sublayers.
@@ -503,13 +496,12 @@ class Parallel(base.Layer):
     output = outputs[0] if self.n_out == 1 else tuple(outputs)
     return output, new_state
 
-  def new_params_and_state(self, input_shapes, input_dtypes, rng):
-    sublayer_shapes = self._allot_to_sublayers(input_shapes)
-    sublayer_dtypes = self._allot_to_sublayers(input_dtypes)
+  def new_params_and_state(self, input_signature, rng):
+    sublayer_signatures = self._allot_to_sublayers(input_signature)
     rngs = backend.random.split(rng, self._n_layers)
-    inits = [layer.initialize_once(shape, dtype, rng)
-             for layer, shape, dtype, rng
-             in zip(self.sublayers, sublayer_shapes, sublayer_dtypes, rngs)]
+    inits = [layer.initialize_once(signature, rng)
+             for layer, signature, rng
+             in zip(self.sublayers, sublayer_signatures, rngs)]
     if not inits:
       return (), ()
     else:

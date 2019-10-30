@@ -23,6 +23,7 @@ import numpy as onp
 from tensorflow import test
 from trax.layers import attention
 from trax.layers import base
+from trax.shapes import ShapeDtype
 
 
 class AttentionTest(test.TestCase):
@@ -64,27 +65,27 @@ class AttentionTest(test.TestCase):
                         output_np)
 
   def test_merged_hashed_causal_attention(self):
-    qkv_shape = (3, 32, 8)
-    input_shape = (qkv_shape, qkv_shape, qkv_shape)
+    qkv_shape = ShapeDtype((3, 32, 8))
+    input_signature = (qkv_shape, qkv_shape, qkv_shape)
     layer = attention.MemoryEfficientCausalAttention(
         loop_stride=16, dropout=0.1, mode='train')
-    final_shape = base.check_shape_agreement(layer, input_shape)
+    final_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual((3, 32, 8), final_shape)
 
   def test_time_bin_causal_attention_bin_length(self):
-    qkv_shape = (3, 57, 8)
-    input_shape = (qkv_shape, qkv_shape, qkv_shape)
+    qkv_shape = ShapeDtype((3, 57, 8))
+    input_signature = (qkv_shape, qkv_shape, qkv_shape)
     layer = attention.TimeBinCausalAttention(
         bin_length=16, dropout=0.1, mode='train')
-    final_shape = base.check_shape_agreement(layer, input_shape)
+    final_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual((3, 57, 8), final_shape)
 
   def test_time_bin_causal_attention_n_bins(self):
-    qkv_shape = (3, 57, 8)
-    input_shape = (qkv_shape, qkv_shape, qkv_shape)
+    qkv_shape = ShapeDtype((3, 57, 8))
+    input_signature = (qkv_shape, qkv_shape, qkv_shape)
     layer = attention.TimeBinCausalAttention(
         n_bins=4, dropout=0.1, mode='train')
-    final_shape = base.check_shape_agreement(layer, input_shape)
+    final_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual((3, 57, 8), final_shape)
 
   def test_time_bin_and_dot_product_causal_attention_are_consistent(self):

@@ -126,8 +126,8 @@ class Dense(base.Layer):
     w, b = params
     return np.dot(x, w) + b, state
 
-  def new_params_and_state(self, input_shape, input_dtype, rng):
-    del input_dtype
+  def new_params_and_state(self, input_signature, rng):
+    input_shape = input_signature.shape
     rng1, rng2 = backend.random.split(rng, 2)
     w = self._kernel_initializer((input_shape[-1], self._n_units), rng1)
     b = self._bias_initializer((self._n_units,), rng2)
@@ -150,8 +150,8 @@ class Embedding(base.Layer):
     del kwargs
     return np.take(params, x, axis=0), state
 
-  def new_params_and_state(self, input_shape, input_dtype, rng):
-    del input_shape, input_dtype
+  def new_params_and_state(self, input_signature, rng):
+    del input_signature
     out_dim = (self._vocab_size, self._d_feature)
     params = self._kernel_initializer(out_dim, rng)
     return params, ()
@@ -177,8 +177,8 @@ class Dropout(base.Layer):
     self._name = 'dropout_' + name
     self._mode = mode
 
-  def new_params_and_state(self, input_shape, input_dtype, rng):
-    del input_shape, input_dtype, rng
+  def new_params_and_state(self, input_signature, rng):
+    del input_signature, rng
     params = ()
     state = {self._name: np.array(self._initial_rate)}
     return params, state

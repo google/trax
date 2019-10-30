@@ -22,23 +22,26 @@ from __future__ import print_function
 from absl.testing import absltest
 from trax.layers import base
 from trax.layers import rnn
+from trax.shapes import ShapeDtype
 
 
 class RnnLayerTest(absltest.TestCase):
 
-  def _test_cell_runs(self, layer, input_shape, output_shape):
-    final_shape = base.check_shape_agreement(layer, input_shape)
+  def _test_cell_runs(self, layer, input_signature, output_shape):
+    final_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual(output_shape, final_shape)
 
   def test_conv_gru_cell(self):
     self._test_cell_runs(
         rnn.ConvGRUCell(9, kernel_size=(3, 3)),
-        input_shape=(8, 1, 7, 9),
+        input_signature=ShapeDtype((8, 1, 7, 9)),
         output_shape=(8, 1, 7, 9))
 
   def test_gru_cell(self):
     self._test_cell_runs(
-        rnn.GRUCell(9), input_shape=(8, 7, 9), output_shape=(8, 7, 9))
+        rnn.GRUCell(9),
+        input_signature=ShapeDtype((8, 7, 9)),
+        output_shape=(8, 7, 9))
 
 
 if __name__ == '__main__':

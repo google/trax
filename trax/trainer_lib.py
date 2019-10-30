@@ -46,6 +46,7 @@ from trax import optimizers as trax_opt
 from trax import utils
 from trax.backend import numpy as np
 from trax.backend import random as jax_random
+from trax.shapes import ShapeDtype
 
 
 def _stack_inputs_targets_and_get_predictions(inputs_and_targets):
@@ -485,16 +486,18 @@ class Trainer(object):
       if not isinstance(target_dtype, (list, tuple)):
         target_dtype = [target_dtype]
         target_shape = [target_shape]
-      full_type = list(input_dtype) + list(target_dtype)
-      full_shape = list(input_shape) + list(target_shape)
+      dtypes = list(input_dtype) + list(target_dtype)
+      shapes = list(input_shape) + list(target_shape)
       if self._has_weights:
-        full_shape += list(target_shape)
-        full_type += [np.float32 for _ in target_dtype]
+        shapes += list(target_shape)
+        dtypes += [np.float32 for _ in target_dtype]
+      input_signature = tuple(ShapeDtype(s, d)
+                              for (s, d) in zip(shapes, dtypes))
       # We need to create a new model instance and not reuse `model_train` here,
       # because `m.initialize` puts cached parameter values in `m` and hence the
       # next call of `m.initialize` will give wrong results.
       m = layers.Serial(model(mode='train'), loss_fn)
-      params, state = m.initialize_once(full_shape, full_type, rng)
+      params, state = m.initialize_once(input_signature, rng)
       (slots, opt_params) = opt.tree_init(params)
       return (OptState(params, slots, opt_params), state)
     if _is_jit_init():
@@ -531,11 +534,13 @@ class Trainer(object):
     # TODO(lukaszkaiser): clean this up once layer API stabilizes.
     # For now, we need to initialize metric layers somehow, so here we go.
     # We assume that they do not have any parameters, so this is a dummy.
-    dummy_shape = ((1, 2), (1,), (1,)) if self._has_weights else ((1, 2), (1,))
-    dummy_type = [np.float32] * (3 if self._has_weights else 2)
+    dummy_shapes = ((1, 2), (1,), (1,)) if self._has_weights else ((1, 2), (1,))
+    dummy_dtypes = [np.float32] * (3 if self._has_weights else 2)
+    dummy_signature = tuple(ShapeDtype(s, d)
+                            for s, d in zip(dummy_shapes, dummy_dtypes))
     metrics_layer = layers.Serial(metrics_layer)
-    metrics_params, metrics_state = metrics_layer.initialize_once(
-        dummy_shape, tuple(dummy_type), init_rng)
+    metrics_params, metrics_state = (
+        metrics_layer.initialize_once(dummy_signature, init_rng))
     self._metrics_params = layers.nested_map(self._maybe_replicate,
                                              metrics_params)
     self._metrics_state = layers.nested_map(self._maybe_replicate,

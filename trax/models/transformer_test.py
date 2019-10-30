@@ -28,6 +28,7 @@ from trax import backend
 from trax import layers as tl
 from trax.backend import numpy as np
 from trax.models import transformer
+from trax.shapes import ShapeDtype
 
 
 class TransformerTest(parameterized.TestCase):
@@ -35,26 +36,23 @@ class TransformerTest(parameterized.TestCase):
   def test_transformer_lm_forward_shape(self):
     """Run the Transformer LM forward and check output shape."""
     vocab_size = 16
-    input_shape = [3, 5]
+    input_signature = ShapeDtype((3, 5), onp.int32)
     model = transformer.TransformerLM(
         vocab_size, d_model=32, d_ff=64, n_layers=2, n_heads=2)
-    final_shape = tl.check_shape_agreement(
-        model, tuple(input_shape), integer_inputs=True)
-    self.assertEqual(tuple(input_shape + [vocab_size]), final_shape)
+    final_shape = tl.check_shape_agreement(model, input_signature)
+    self.assertEqual((3, 5, vocab_size), final_shape)
 
   def _test_transformer_forward_shape(self, input_vocab_size,
                                       output_vocab_size):
     """Run the Transformer forward and check output shape."""
-    single_input_shape = [3, 5]
-    input_shape = (tuple(single_input_shape), tuple(single_input_shape))
+    input_sd = ShapeDtype((3, 5), onp.int32)
+    input_signature = (input_sd, input_sd)
     model = transformer.Transformer(
-        input_vocab_size, output_vocab_size,
-        d_model=32, d_ff=64, n_encoder_layers=2, n_decoder_layers=2, n_heads=2)
-    final_shape = tl.check_shape_agreement(
-        model, input_shape, integer_inputs=True)
-    expected_shape = (tuple(single_input_shape +
-                            [output_vocab_size if output_vocab_size is not None
-                             else input_vocab_size]))
+        input_vocab_size, output_vocab_size, d_model=32, d_ff=64,
+        n_encoder_layers=2, n_decoder_layers=2, n_heads=2)
+    final_shape = tl.check_shape_agreement(model, input_signature)
+    vocab_size = output_vocab_size or input_vocab_size
+    expected_shape = (3, 5, vocab_size)
     self.assertEqual(expected_shape, final_shape[0])
 
   @parameterized.named_parameters(
@@ -78,9 +76,10 @@ class TransformerTest(parameterized.TestCase):
       model_fast = model_fn(mode='predict')
       rng = backend.random.get_prng(0)
       batch_size = 2
+      input_signature = ShapeDtype((batch_size, 1), np.int32)
       # Given the same rng, both models initialize with the same parameters.
-      model_slow.initialize_once((batch_size, 1), np.int32, rng)
-      model_fast.initialize_once((batch_size, 1), np.int32, rng)
+      model_slow.initialize_once(input_signature, rng)
+      model_fast.initialize_once(input_signature, rng)
 
       buf = onp.zeros((batch_size, length), dtype=np.int32)
       next_sym = onp.zeros((batch_size, 1), dtype=onp.int32)

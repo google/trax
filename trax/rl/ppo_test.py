@@ -35,6 +35,7 @@ from trax import models
 from trax import trainer_lib
 from trax.rl import ppo
 from trax.rl import serialization_utils
+from trax.shapes import ShapeDtype
 
 
 class PpoTest(test.TestCase):
@@ -93,8 +94,8 @@ class PpoTest(test.TestCase):
         bottom_layers_fn=lambda: [layers.Flatten(n_axes_to_keep=2)],
         two_towers=True,
     )
-    _, _ = pnv_model.initialize_once(
-        batch_observation_shape, np.float32, self.rng_key)
+    input_signature = ShapeDtype(batch_observation_shape)
+    _, _ = pnv_model.initialize_once(input_signature, self.rng_key)
 
     batch = 2
     time_steps = 10
@@ -455,10 +456,9 @@ class PpoTest(test.TestCase):
         two_towers=True,
     )
 
-    old_params, _ = net.initialize_once(
-        batch_observation_shape, np.float32, key1)
-    new_params, state = net.initialize_once(
-        batch_observation_shape, np.float32, key2)
+    input_signature = ShapeDtype(batch_observation_shape)
+    old_params, _ = net.initialize_once(input_signature, key1)
+    new_params, state = net.initialize_once(input_signature, key2)
 
     # Generate a batch of observations.
 
@@ -589,11 +589,6 @@ class PpoTest(test.TestCase):
         'mode': 'train',
     }
     rng = jax_random.PRNGKey(123)
-    init_kwargs = {
-        'input_shapes': (1, 1),
-        'input_dtype': np.int32,
-        'rng': rng,
-    }
     model_fn = functools.partial(
         models.TransformerLM, vocab_size=4, **transformer_kwargs
     )
@@ -618,7 +613,8 @@ class PpoTest(test.TestCase):
         ),
         two_towers=False,
     )
-    (policy_params, policy_state) = policy.initialize_once(**init_kwargs)
+    input_signature = ShapeDtype((1, 1), np.int32)
+    (policy_params, policy_state) = policy.initialize_once(input_signature, rng)
 
     # Initialize policy parameters from world model parameters.
     new_policy_params = ppo.init_policy_from_world_model_checkpoint(

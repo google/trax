@@ -24,39 +24,42 @@ from trax import backend
 from trax.layers import base
 from trax.layers import combinators
 from trax.layers import core
+from trax.shapes import ShapeDtype
 
 
 class CoreLayerTest(absltest.TestCase):
 
   def test_flatten_n(self):
-    input_shape = (29, 87, 10, 20, 30)
+    input_signature = ShapeDtype((29, 87, 10, 20, 30))
 
     layer = core.Flatten()
     expected_shape = (29, 87 * 10 * 20 * 30)
-    actual_shape = base.check_shape_agreement(layer, input_shape)
+    actual_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual(actual_shape, expected_shape)
 
     layer = core.Flatten(n_axes_to_keep=2)
     expected_shape = (29, 87, 10 * 20 * 30)
-    actual_shape = base.check_shape_agreement(layer, input_shape)
+    actual_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual(actual_shape, expected_shape)
 
     layer = core.Flatten(n_axes_to_keep=3)
     expected_shape = (29, 87, 10, 20 * 30)
-    actual_shape = base.check_shape_agreement(layer, input_shape)
+    actual_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual(actual_shape, expected_shape)
 
     layer = core.Flatten(n_axes_to_keep=4)
     expected_shape = (29, 87, 10, 20, 30)
-    actual_shape = base.check_shape_agreement(layer, input_shape)
+    actual_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual(actual_shape, expected_shape)
 
     # Not enough dimensions.
     with self.assertRaises(base.LayerError):
-      base.check_shape_agreement(core.Flatten(n_axes_to_keep=5), input_shape)
+      base.check_shape_agreement(core.Flatten(n_axes_to_keep=5),
+                                 input_signature)
 
     with self.assertRaises(base.LayerError):
-      base.check_shape_agreement(core.Flatten(n_axes_to_keep=6), input_shape)
+      base.check_shape_agreement(core.Flatten(n_axes_to_keep=6),
+                                 input_signature)
 
   def test_div(self):
     layer = core.Div(divisor=2.0)
@@ -71,9 +74,9 @@ class CoreLayerTest(absltest.TestCase):
 
   def test_div_shapes(self):
     layer = core.Div(divisor=2.0)
-    input_shape = (3, 2)
+    input_signature = ShapeDtype((3, 2))
     expected_shape = (3, 2)
-    output_shape = base.check_shape_agreement(layer, input_shape)
+    output_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual(output_shape, expected_shape)
 
   def test_dense_param_sharing(self):
@@ -82,8 +85,9 @@ class CoreLayerTest(absltest.TestCase):
     model2 = combinators.Serial(layer, layer)
 
     rng1, rng2 = backend.random.split(backend.random.get_prng(0), 2)
-    params1, _ = model1.initialize_once((1, 32), onp.float32, rng1)
-    params2, _ = model2.initialize_once((1, 32), onp.float32, rng2)
+    input_signature = ShapeDtype((1, 32))
+    params1, _ = model1.initialize_once(input_signature, rng1)
+    params2, _ = model2.initialize_once(input_signature, rng2)
     # The first parameters have 2 kernels of size (32, 32).
     self.assertEqual((32, 32), params1[0][0].shape)
     self.assertEqual((32, 32), params1[1][0].shape)
@@ -92,13 +96,13 @@ class CoreLayerTest(absltest.TestCase):
     self.assertEqual((), params2[1])
 
   def test_dropout(self):
-    input_shape = (8, 7, 9)
+    input_signature = ShapeDtype((8, 7, 9))
     output_shape = (8, 7, 9)
     final_shape = base.check_shape_agreement(
-        core.Dropout(rate=0.1, mode='train'), input_shape)
+        core.Dropout(rate=0.1, mode='train'), input_signature)
     self.assertEqual(final_shape, output_shape)
     final_shape = base.check_shape_agreement(
-        core.Dropout(rate=0.1, mode='eval'), input_shape)
+        core.Dropout(rate=0.1, mode='eval'), input_signature)
     self.assertEqual(final_shape, output_shape)
 
   def test_log_gaussian_pdf(self):

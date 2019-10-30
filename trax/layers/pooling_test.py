@@ -21,14 +21,15 @@ from __future__ import print_function
 from absl.testing import absltest
 from trax.layers import base
 from trax.layers import pooling
+from trax.shapes import ShapeDtype
 
 
 class PoolingLayerTest(absltest.TestCase):
 
   def test_avg_pool(self):
-    input_shape = (29, 4, 4, 20)
+    input_signature = ShapeDtype((29, 4, 4, 20))
     result_shape = base.check_shape_agreement(
-        pooling.AvgPool(pool_size=(2, 2), strides=(2, 2)), input_shape)
+        pooling.AvgPool(pool_size=(2, 2), strides=(2, 2)), input_signature)
     self.assertEqual(result_shape, (29, 2, 2, 20))
 
 

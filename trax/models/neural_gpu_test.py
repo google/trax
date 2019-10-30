@@ -20,19 +20,20 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import absltest
+import numpy as onp
 from trax.layers import base
 from trax.models import neural_gpu
+from trax.shapes import ShapeDtype
 
 
 class NeuralGPUTest(absltest.TestCase):
 
   def test_ngpu(self):
     vocab_size = 2
-    input_shape = [3, 5, 7]
+    input_signature = ShapeDtype((3, 5, 7), onp.int32)
     model = neural_gpu.NeuralGPU(d_feature=30, steps=4, vocab_size=vocab_size)
-    final_shape = base.check_shape_agreement(
-        model, tuple(input_shape), integer_inputs=True)
-    self.assertEqual(tuple(input_shape + [vocab_size]), final_shape)
+    final_shape = base.check_shape_agreement(model, input_signature)
+    self.assertEqual((3, 5, 7, vocab_size), final_shape)
 
 
 if __name__ == '__main__':

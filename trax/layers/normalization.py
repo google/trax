@@ -36,11 +36,12 @@ class BatchNorm(base.Layer):
     self._momentum = momentum
     self._mode = mode
 
-  def new_params_and_state(self, input_shape, input_dtype, rng):
+  def new_params_and_state(self, input_signature, rng):
     """Helper to initialize batch norm params."""
-    del input_dtype, rng
+    del rng
     axis = self._axis
     axis = (axis,) if np.isscalar(axis) else axis
+    input_shape = input_signature.shape
     shape = tuple(d for i, d in enumerate(input_shape) if i not in axis)
     beta = np.zeros(shape, dtype='float32') if self._center else ()
     gamma = np.ones(shape, dtype='float32') if self._scale else ()
@@ -118,10 +119,10 @@ class BatchNorm(base.Layer):
 
 
 # Layer normalization.
-def _layer_norm_params_and_state(input_shape, input_dtype, rng):
+def _layer_norm_params_and_state(input_signature, rng):
   """Helper: create layer norm parameters."""
-  del input_dtype, rng
-  features = input_shape[-1]
+  del rng
+  features = input_signature.shape[-1]
   scale = np.ones(features)
   bias = np.zeros(features)
   params = (scale, bias)

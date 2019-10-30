@@ -39,6 +39,7 @@ from trax import trainer_lib
 from trax.rl import base_trainer
 from trax.rl import ppo
 from trax.rl import serialization_utils
+from trax.shapes import ShapeDtype
 
 DEBUG_LOGGING = False
 GAMMA = 0.99
@@ -217,8 +218,9 @@ class PPO(base_trainer.BaseTrainer):
         self.train_env.observation_space
     )
     self._rng, key1 = jax_random.split(self._rng, num=2)
+    input_signature = ShapeDtype(batch_obs_shape, obs_dtype)
     policy_and_value_net_params, self._model_state = (
-        policy_and_value_net.initialize_once(batch_obs_shape, obs_dtype, key1))
+        policy_and_value_net.initialize_once(input_signature, key1))
     if self._init_policy_from_world_model_output_dir is not None:
       policy_and_value_net_params = ppo.init_policy_from_world_model_checkpoint(
           policy_and_value_net_params,

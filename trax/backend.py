@@ -30,8 +30,8 @@ import jax.scipy.special as jax_special
 import numpy as onp
 import tensorflow_datasets as tfds
 
-from trax.shapes import shape_dtype_for
 from trax.shapes import ShapeDtype
+from trax.shapes import signature
 
 
 
@@ -124,7 +124,7 @@ def jax_eval_on_shapes(f):
   """
   def shape_fun(*args, **kwargs):
     jax_shapes = jax.eval_shape(f, *args, **kwargs)
-    return nested_map(shape_dtype_for, jax_shapes)
+    return nested_map(signature, jax_shapes)
   return shape_fun
 
 

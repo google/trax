@@ -29,8 +29,8 @@ import six
 
 from trax import backend
 from trax.backend import nested_map
-from trax.shapes import shape_dtype_for
 from trax.shapes import ShapeDtype
+from trax.shapes import signature
 
 
 class Layer(object):
@@ -45,7 +45,7 @@ class Layer(object):
     forward(inputs, params=(), state=(), **kwargs):
       Computes this layer's output as part of a forward pass through the model.
 
-    new_params_and_state(self, input_shape, input_dtype, rng):
+    new_params_and_state(self, input_signature, rng):
       Returns a (params, state) pair suitable for initializing this layer.
 
   A small subset of layer types are combinators -- they organize the computation
@@ -137,7 +137,7 @@ class Layer(object):
     """
     raise NotImplementedError
 
-  def new_params_and_state(self, input_shape, input_dtype, rng):
+  def new_params_and_state(self, input_signature, rng):
     """Returns a (params, state) pair suitable for initializing this layer.
 
     Authors of new Layer subclasses should override this method if their layer
@@ -146,13 +146,11 @@ class Layer(object):
     no parameters or state.
 
     Args:
-      input_shape: A tuple representing a shape (if this layer takes one input)
-          or a tuple of shapes (if this layer takes more than one input).
-          For example: (210, 160, 3) or ((210, 160, 3), (105, 80, 3)).
-      input_dtype: Numpy dtype(s) for each of the inputs.
+      input_signature: A ShapeDtype instance (if this layer takes one input)
+          or a list/tuple of ShapeDtype instances.
       rng: A PRNG key for random number generation.
     """
-    del input_shape, input_dtype, rng
+    del input_signature, rng
     return (), ()
 
   @property
@@ -223,8 +221,8 @@ class Layer(object):
 
     Args:
       pseudo_inputs: A ShapeDtype instance (input data minus the actual values)
-          or a tuple of ShapeDtype instances, following the same conventions as
-          Layer.forward's input arg.
+          or a list/tuple of ShapeDtype instances, following the same
+          conventions as Layer.forward's input arg.
       params: Parameters for this layer.
       state: start state.
 
@@ -242,16 +240,16 @@ class Layer(object):
       rng = ShapeDtype((2,), onp.uint32)
       def call_on_input(x, params, state, rng):
         return self.forward(x, params=params, state=state, rng=rng)
-      params_shapes = nested_map(shape_dtype_for, params)
+      params_shapes = nested_map(signature, params)
       s = backend.eval_on_shapes(call_on_input)(pseudo_inputs,
                                                 params_shapes, state, rng)
       return s
     except Exception:
       name, trace = self.__class__.__name__, _short_traceback(skip=3)
       raise LayerError(name, 'pseudo_forward', self._caller, pseudo_inputs,
-                       None, trace)
+                       trace)
 
-  def initialize_once(self, input_shapes, input_dtype, rng):
+  def initialize_once(self, input_signature, rng):
     """Initializes this layer and its sublayers recursively.
 
     This method is designed to initialize each layer instance once, even if the
@@ -259,10 +257,8 @@ class Layer(object):
     weight sharing to be implemented as layer sharing.
 
     Args:
-      input_shapes: A tuple representing a shape (if this layer takes one input)
-          or a tuple of shapes (if this layer takes more than one input).
-          For example: (210, 160, 3) or ((210, 160, 3), (105, 80, 3)).
-      input_dtype: Numpy dtype(s) for each of the inputs.
+      input_signature: A ShapeDtype instance (if this layer takes one input)
+          or a list/tuple of ShapeDtype instances.
       rng: A PRNG key for random number generation.
 
     Returns:
@@ -276,7 +272,7 @@ class Layer(object):
       # be able to remove unnecessary computation.
       # TODO(lukaszkaiser): Revisit this decision and see whether layers sharing
       #   params should also share states.
-      params, state = self.new_params_and_state(input_shapes, input_dtype, rng)
+      params, state = self.new_params_and_state(input_signature, rng)
       if not self._init_finished:
         self._init_finished = True
         self._params = params
@@ -286,8 +282,8 @@ class Layer(object):
       return (params, state)
     except Exception:
       name, trace = self.__class__.__name__, _short_traceback(skip=3)
-      raise LayerError(name, 'initialize_once', self._caller, input_shapes,
-                       input_dtype, trace)
+      raise LayerError(name, 'initialize_once', self._caller,
+                       input_signature, trace)
 
   # XXX(kitaev):
   _STASH_IN = None
@@ -360,8 +356,7 @@ class Layer(object):
 
     except Exception:
       name, trace = self.__class__.__name__, _short_traceback()
-      raise LayerError(name, 'apply_forward', self._caller,
-                       shapes(x), None, trace)
+      raise LayerError(name, 'apply_forward', self._caller, signature(x), trace)
 
   def _do_custom_gradients(self, x, params, state, **kwargs):
     """Calls this layer for a forward pass, but with custom gradients."""
@@ -422,13 +417,12 @@ class LayerError(Exception):
   """
 
   def __init__(self, layer_name, function_name, caller,
-               input_shapes, input_types, traceback_string):
+               input_signature, traceback_string):
     self._layer_name = layer_name
     self._function_name = function_name
     self._caller = caller  # Python inspect object with init caller info.
     self._traceback = traceback_string
-    self._input_shapes = input_shapes
-    self._input_types = input_types
+    self._input_signature = input_signature
     super(LayerError, self).__init__(self.message)
 
   @property
@@ -440,10 +434,7 @@ class LayerError(Exception):
         self._caller.f_code.co_filename.split('/')[-3:])
     caller = '  layer created in file %s, line %d\n' % (short_path,
                                                         self._caller.f_lineno)
-    shapes_str = '  layer input shapes: %s\n\n' % str(self._input_shapes)
-    if self._input_types is not None:
-      types_str = '  layer input types: %s\n' % str(self._input_types)
-      shapes_str = types_str + shapes_str
+    shapes_str = '  layer input shapes: %s\n\n' % str(self._input_signature)
     return prefix + caller + shapes_str + self._traceback
 
 
@@ -480,8 +471,8 @@ def shapes(x):
     try:
       return tuple([int(i) for i in x.shape])
     except Exception:  # pylint: disable=broad-except
-      return []
-  return nested_map(shape, x)
+      return ()
+  return tuple(nested_map(shape, x))
 
 
 def sizes(x):
@@ -568,11 +559,11 @@ def layer(n_in=1, n_out=1, new_params_and_state_fn=None):
       self._kwargs = kwargs  # pylint: disable=protected-access
       Layer.__init__(self, n_in=n_in, n_out=n_out)
 
-    def _new_params_and_state(self, input_shapes, input_dtype, rng):
+    def _new_params_and_state(self, input_signature, rng):
       if new_params_and_state_fn is None:
         return (), ()
       kwargs = self._kwargs  # pylint: disable=protected-access
-      return new_params_and_state_fn(input_shapes, input_dtype, rng, **kwargs)
+      return new_params_and_state_fn(input_signature, rng, **kwargs)
 
     def _is_empty(raw_output):
       return raw_output is None or (isinstance(raw_output, (list, tuple))
@@ -601,72 +592,53 @@ def layer(n_in=1, n_out=1, new_params_and_state_fn=None):
   return _build_layer_class
 
 
-def _random_values(input_shapes, rng, integer_inputs=False):
+def _random_values(input_signature, rng):
   """Creates random floats or ints of the given shape.
 
   Args:
-    input_shapes: A tuple representing a shape (if the layer takes one input)
-        or a tuple of shapes (if this layer takes more than one input).
-        For example: (210, 160, 3) or ((210, 160, 3), (105, 80, 3)).
+    input_signature: A `ShapeDtype` instance (if `layer_obj` takes one input)
+        or a list/tuple of ShapeDtype instances.
     rng: A random number generator.
-    integer_inputs: If True, use numpy int32 to produce the random data, else
-        use float32.
 
   Returns:
     Random values with the shape and type specified.
   """
-  if isinstance(input_shapes[0], int):
-    # Non-nested shape, create a random tuple.
-    if not integer_inputs:
-      return backend.random.uniform(rng, input_shapes, minval=-1.0, maxval=1.0)
-    return backend.random.bernoulli(rng, 0.5, input_shapes).astype(onp.int32)
-  elif isinstance(input_shapes, tuple):  # Nested shape: tuple.
-    return tuple(_random_values(x, rng, integer_inputs) for x in input_shapes)
+  if isinstance(input_signature, ShapeDtype):
+    shape, dtype = input_signature.shape, input_signature.dtype
+    if onp.issubdtype(dtype, onp.integer):
+      return backend.random.bernoulli(rng, 0.5, shape).astype(onp.int32)
+    else:
+      return backend.random.uniform(rng, shape, minval=-1.0, maxval=1.0)
+  elif isinstance(input_signature, (list, tuple)):
+    return tuple(_random_values(x, rng) for x in input_signature)
   else:
-    raise TypeError(type(input_shapes))
+    raise TypeError(type(input_signature))
 
 
-def _is_tuple_of_shapes(shape):
-  # TODO(jonni): Find better way to distinguish a shape from a tuple of shapes.
-  if not isinstance(shape, tuple):
-    raise TypeError('shape must be a tuple or tuple of tuples, instead got:'
-                    ' {}'.format(shape))
-  return isinstance(shape, tuple) and isinstance(shape[0], tuple)
-
-
-def check_shape_agreement(layer_obj, input_shapes, integer_inputs=False):
+def check_shape_agreement(layer_obj, input_signature):
   """Checks if the layer's call output agrees its pseudo_forward predictions.
 
   This function helps test layer mechanics and inter-layer connections that
   aren't dependent on specific data values.
 
   Args:
-    layer_obj: A Layer instance.
-    input_shapes: A tuple representing a shape (if the layer takes one input)
-        or a tuple of shapes (if this layer takes more than one input).
-        For example: (210, 160, 3) or ((210, 160, 3), (105, 80, 3)).
-    integer_inputs: If True, use numpy int32 as the type for the pseudo-data,
-        else use float32.
+    layer_obj: A layer object.
+    input_signature: A `ShapeDtype` instance (if `layer_obj` takes one input)
+        or a list/tuple of ShapeDtype instances.
 
   Returns:
     A tuple representing either a single shape (if the layer has one output) or
     a tuple of shape tuples (if the layer has more than one output).
   """
   rng1, rng2, rng3 = backend.random.split(backend.random.get_prng(0), 3)
-  input_dtype = onp.int32 if integer_inputs else onp.float32
-  if _is_tuple_of_shapes(input_shapes):
-    pseudo_data = tuple(ShapeDtype(x, input_dtype) for x in input_shapes)
-    input_dtype = tuple(input_dtype for _ in input_shapes)
-  else:
-    pseudo_data = ShapeDtype(input_shapes, input_dtype)
-  params, state = layer_obj.initialize_once(input_shapes, input_dtype, rng1)
-  pseudo_output, _ = layer_obj.pseudo_forward(pseudo_data, params, state)
+  params, state = layer_obj.initialize_once(input_signature, rng1)
+  pseudo_output, _ = layer_obj.pseudo_forward(input_signature, params, state)
   if isinstance(pseudo_output, tuple):
     output_shape = tuple(x.shape for x in pseudo_output)
   else:
     output_shape = pseudo_output.shape
 
-  random_input = _random_values(input_shapes, rng2, integer_inputs)
+  random_input = _random_values(input_signature, rng2)
   real_output = layer_obj(random_input, params=params, state=state, rng=rng3)
   result_shape = shapes(real_output)
 

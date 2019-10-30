@@ -23,32 +23,34 @@ import numpy as onp
 from trax import backend
 from trax.layers import base
 from trax.layers import metrics
+from trax.shapes import ShapeDtype
+from trax.shapes import signature
 
 
 class MetricsLayerTest(absltest.TestCase):
 
   def test_cross_entropy(self):
-    input_shape = ((29, 4, 4, 20), (29, 4, 4))
+    input_signature = (ShapeDtype((29, 4, 4, 20)), ShapeDtype((29, 4, 4)))
     result_shape = base.check_shape_agreement(
-        metrics.CrossEntropy(), input_shape)
+        metrics.CrossEntropy(), input_signature)
     self.assertEqual(result_shape, (29, 4, 4))
 
   def test_accuracy(self):
-    input_shape = ((29, 4, 4, 20), (29, 4, 4))
+    input_signature = (ShapeDtype((29, 4, 4, 20)), ShapeDtype((29, 4, 4)))
     result_shape = base.check_shape_agreement(
-        metrics.Accuracy(), input_shape)
+        metrics.Accuracy(), input_signature)
     self.assertEqual(result_shape, (29, 4, 4))
 
   def test_weight_mask(self):
-    input_shape = (29, 4, 4, 20)
+    input_signature = ShapeDtype((29, 4, 4, 20))
     result_shape = base.check_shape_agreement(
-        metrics.WeightMask(), input_shape)
-    self.assertEqual(result_shape, input_shape)
+        metrics.WeightMask(), input_signature)
+    self.assertEqual(result_shape, (29, 4, 4, 20))
 
   def test_weighted_mean_shape(self):
-    input_shape = ((29, 4, 4, 20), (29, 4, 4, 20))
+    input_signature = (ShapeDtype((29, 4, 4, 20)), ShapeDtype((29, 4, 4, 20)))
     result_shape = base.check_shape_agreement(
-        metrics.WeightedMean(), input_shape)
+        metrics.WeightedMean(), input_signature)
     self.assertEqual(result_shape, ())
 
   def test_weighted_mean_semantics(self):
@@ -56,8 +58,8 @@ class MetricsLayerTest(absltest.TestCase):
     weights1 = onp.array([1, 1, 1], dtype=onp.float32)
     layer = metrics.WeightedMean()
     rng = backend.random.get_prng(0)
-    layer.initialize_once((inputs.shape, weights1.shape),
-                          (inputs.dtype, weights1.dtype), rng)
+    full_signature = (signature(inputs), signature(weights1))
+    layer.initialize_once(full_signature, rng)
     mean1 = layer((inputs, weights1))
     onp.testing.assert_allclose(mean1, 2.0)
     weights2 = onp.array([0, 0, 1], dtype=onp.float32)
@@ -68,21 +70,21 @@ class MetricsLayerTest(absltest.TestCase):
     onp.testing.assert_allclose(mean3, 1.0)
 
   def test_cross_entropy_scalar(self):
-    input_shape = ((29, 4, 4, 20), (29, 4, 4))
+    input_signature = (ShapeDtype((29, 4, 4, 20)), ShapeDtype((29, 4, 4)))
     result_shape = base.check_shape_agreement(
-        metrics.CrossEntropyScalar(), input_shape)
+        metrics.CrossEntropyScalar(), input_signature)
     self.assertEqual(result_shape, ())
 
   def test_cross_entropy_loss_scalar(self):
-    input_shape = ((29, 4, 4, 20), (29, 4, 4))
+    input_signature = (ShapeDtype((29, 4, 4, 20)), ShapeDtype((29, 4, 4)))
     result_shape = base.check_shape_agreement(
-        metrics.CrossEntropyLossScalar(), input_shape)
+        metrics.CrossEntropyLossScalar(), input_signature)
     self.assertEqual(result_shape, ())
 
   def test_accuracy_scalar(self):
-    input_shape = ((29, 4, 4, 20), (29, 4, 4))
+    input_signature = (ShapeDtype((29, 4, 4, 20)), ShapeDtype((29, 4, 4)))
     result_shape = base.check_shape_agreement(
-        metrics.AccuracyScalar(), input_shape)
+        metrics.AccuracyScalar(), input_signature)
     self.assertEqual(result_shape, ())
 
 

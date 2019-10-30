@@ -23,15 +23,16 @@ from absl.testing import absltest
 from trax import backend
 from trax import layers as tl
 from trax.models import mlp
+from trax.shapes import ShapeDtype
 
 
 class MLPTest(absltest.TestCase):
 
   def test_mlp_forward_shape(self):
     """Run the MLP model forward and check output shape."""
-    input_shape = (3, 28, 28, 1)
+    input_signature = ShapeDtype((3, 28, 28, 1))
     model = mlp.MLP(d_hidden=32, n_output_classes=10)
-    final_shape = tl.check_shape_agreement(model, input_shape)
+    final_shape = tl.check_shape_agreement(model, input_signature)
     self.assertEqual((3, 10), final_shape)
 
 

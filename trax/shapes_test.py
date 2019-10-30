@@ -22,8 +22,8 @@ from __future__ import print_function
 from absl.testing import absltest
 import numpy as onp
 
-from trax.shapes import shape_dtype_for
 from trax.shapes import ShapeDtype
+from trax.shapes import signature
 
 
 class ShapesTest(absltest.TestCase):
@@ -38,11 +38,11 @@ class ShapesTest(absltest.TestCase):
     self.assertEqual(sd.shape, (2, 3))
     self.assertEqual(sd.dtype, onp.float32)
 
-  def test_shape_dtype_for_ndarray(self):
+  def test_signature_on_ndarray(self):
     array = onp.array([[2, 3, 5, 7],
                        [11, 13, 17, 19]],
                       dtype=onp.int16)
-    sd = shape_dtype_for(array)
+    sd = signature(array)
     self.assertEqual(sd.shape, (2, 4))
     self.assertEqual(sd.dtype, onp.int16)
 

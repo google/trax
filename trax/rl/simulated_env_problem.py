@@ -31,6 +31,7 @@ from trax import utils
 from trax.backend import random as jax_random
 from trax.rl import serialization_utils
 from trax.rl import space_serializer
+from trax.shapes import ShapeDtype
 
 
 class SimulatedEnvProblem(env_problem.EnvProblem):
@@ -369,9 +370,9 @@ class SerializedSequenceSimulatedEnvProblem(SimulatedEnvProblem):
     super(SerializedSequenceSimulatedEnvProblem, self).initialize_environments(
         batch_size=batch_size, **kwargs)
     (subrng, self._rng) = jax_random.split(self._rng)
-    (_, self._init_model_state) = self._model_initialize(
-        input_shapes=(batch_size, 1), input_dtype=np.int32, rng=subrng
-    )
+    input_signature = ShapeDtype((batch_size, 1), np.int32)
+    (_, self._init_model_state) = self._model_initialize(input_signature,
+                                                         subrng)
 
   def _predict_obs(self, predict_fn, rng):
     obs_repr = np.zeros(

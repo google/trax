@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import absltest
 from trax import backend
 from trax.layers import base
+from trax.shapes import ShapeDtype
 
 
 class BaseLayerTest(absltest.TestCase):
@@ -31,7 +32,7 @@ class BaseLayerTest(absltest.TestCase):
       return x + 1
 
     output_shape = base.check_shape_agreement(
-        add_one(), (12, 17))  # pylint: disable=no-value-for-parameter
+        add_one(), ShapeDtype((12, 17)))  # pylint: disable=no-value-for-parameter
     self.assertEqual(output_shape, (12, 17))
 
   def test_custom_zero_grad(self):
@@ -51,13 +52,13 @@ class BaseLayerTest(absltest.TestCase):
 
     layer = IdWithZeroGrad()
     rng = backend.random.get_prng(0)
-    input_shape = (9, 17)
-    random_input = backend.random.uniform(rng, input_shape, minval=-1.0,
-                                          maxval=1.0)
-    layer.initialize_once(input_shape, random_input.dtype, rng)
+    input_signature = ShapeDtype((9, 17))
+    random_input = backend.random.uniform(rng, input_signature.shape,
+                                          minval=-1.0, maxval=1.0)
+    layer.initialize_once(input_signature, rng)
     f = lambda x: backend.numpy.mean(layer(x))
     grad = backend.grad(f)(random_input)
-    self.assertEqual(grad.shape, input_shape)  # Gradient for each input.
+    self.assertEqual(grad.shape, (9, 17))  # Gradient for each input.
     self.assertEqual(sum(sum(grad * grad)), 0.0)  # Each one is 0.
 
   def test_custom_id_grad(self):
@@ -77,13 +78,13 @@ class BaseLayerTest(absltest.TestCase):
 
     layer = IdWithIdGrad()
     rng = backend.random.get_prng(0)
-    input_shape = (9, 17)
-    random_input = backend.random.uniform(rng, input_shape, minval=-1.0,
-                                          maxval=1.0)
-    layer.initialize_once(input_shape, random_input.dtype, rng)
+    input_signature = ShapeDtype((9, 17))
+    random_input = backend.random.uniform(rng, input_signature.shape,
+                                          minval=-1.0, maxval=1.0)
+    layer.initialize_once(input_signature, rng)
     f = lambda x: backend.numpy.mean(layer(x))
     grad = backend.grad(f)(random_input)
-    self.assertEqual(grad.shape, input_shape)  # Gradient for each input.
+    self.assertEqual(grad.shape, (9, 17))  # Gradient for each input.
     self.assertEqual(sum(sum(grad)), sum(sum(random_input)))  # Same as input.
 
 if __name__ == '__main__':

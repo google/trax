@@ -28,6 +28,7 @@ from trax import backend
 from trax import layers as tl
 from trax.backend import numpy as np
 from trax.models.research import reformer
+from trax.shapes import ShapeDtype
 
 
 class PoisonOnRNGMismatchAttention(tl.BaseCausalAttention):
@@ -63,20 +64,22 @@ class ReformerTest(parameterized.TestCase):
   def test_reformer_lm_forward_shape(self):
     """Run the ReformerLM forward and check output shape."""
     vocab_size = 16
-    input_shape = ((1, 8), (1, 8))
+    input_sd = ShapeDtype((1, 8), np.int32)
+    input_signature = (input_sd, input_sd)
     model = reformer.ReformerLM(
         vocab_size, d_model=32, d_ff=64,
         d_attention_key=16, d_attention_value=16, n_layers=1, n_heads=2,
         max_len=16, n_chunks=2, n_attention_chunks=1)
     final_shape = tl.check_shape_agreement(
-        model, tuple(input_shape), integer_inputs=True)
+        model, input_signature)
     self.assertEqual(((1, 8, 16), (1, 8, 16)), final_shape)
 
   def test_reformer_rng_consistency(self):
     with backend.use_backend('jax'):
       vocab_size = 16
       batch_size = 1
-      input_shape = ((batch_size, 8), (batch_size, 8))
+      input_sd = ShapeDtype((batch_size, 8), np.int32)
+      input_signature = (input_sd, input_sd)
       model = reformer.ReformerLM(
           vocab_size, d_model=32, d_ff=64,
           d_attention_key=16, d_attention_value=16, n_layers=1, n_heads=2,
@@ -84,11 +87,10 @@ class ReformerTest(parameterized.TestCase):
           attention_type=PoisonOnRNGMismatchAttention)
 
       rng = backend.random.get_prng(0)
-      params, state = model.initialize_once(
-          input_shape, (np.int32, np.int32), rng)
+      params, state = model.initialize_once(input_signature, rng)
 
       def dummy_loss_fn(params):
-        inputs = (np.zeros(input_shape[0], dtype=np.int32),) * 2
+        inputs = (np.zeros(input_sd.shape, dtype=np.int32),) * 2
         output = model(inputs, params=params, state=state, rng=rng)
         dummy_loss = backend.numpy.sum(output[0])
         return dummy_loss

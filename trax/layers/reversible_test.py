@@ -22,15 +22,16 @@ from __future__ import print_function
 from absl.testing import absltest
 from trax.layers import base
 from trax.layers import reversible
+from trax.shapes import ShapeDtype
 
 
 class ReversibleLayerTest(absltest.TestCase):
 
   def test_reversible_swap(self):
     layer = reversible.ReversibleSwap()
-    input_shape = ((2, 3), (3, 3))
-    final_shape = base.check_shape_agreement(layer, input_shape)
-    self.assertEqual(final_shape, input_shape[::-1])
+    input_signature = (ShapeDtype((2, 3)), ShapeDtype((3, 3)))
+    final_shape = base.check_shape_agreement(layer, input_signature)
+    self.assertEqual(final_shape, ((3, 3), (2, 3)))
 
 
 if __name__ == '__main__':
