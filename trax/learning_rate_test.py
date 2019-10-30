@@ -66,9 +66,10 @@ class PolicyScheduleTest(test.TestCase):
       dtype = np.int32
     (params, state) = net.initialize_once(shape, dtype, rng)
     policy_dir = self.get_temp_dir()
-    # Optimizer slots should not be used for anything.
+    # Optimizer slots and parameters should not be used for anything.
     slots = None
-    opt_state = (params, slots)
+    opt_params = None
+    opt_state = (params, slots, opt_params)
     ppo.save_opt_state(
         policy_dir, opt_state, state, epoch=0, total_opt_step=0, history=history
     )
