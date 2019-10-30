@@ -20,10 +20,10 @@ import trax.trainer_lib
 # Parameters that will vary between experiments:
 # ==============================================================================
 train.model = @trax.models.ReformerLM
-attn_type = @TimeBinCausalAttention
+attn_type = @LSHCausalAttention
 share_qk = True  # Required when using LSHCausalAttention
 attn_kv = 64
-n_layers = 3
+n_layers = 6
 
 # MemoryEfficientCausalAttention: full attention
 # (no hparams to vary between experiments)
