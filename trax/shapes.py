@@ -60,15 +60,17 @@ class ShapeDtype(object):
 def signature(obj):
   """Returns a `ShapeDtype` signature for the given `obj`.
 
-  A signature is either a single ShapeDtype instance or a list/tuple of
-  ShapeDtype instances.
+  A signature is either a `ShapeDtype` instance or a tuple of `ShapeDtype`
+  instances. Note that this function is permissive with respect to its inputs
+  (accepts lists or tuples, and underlying objects can be any type as long as
+  they have shape and dtype attributes), but strict with respect to its outputs
+  (only `ShapeDtype`, and only tuples).
 
   Args:
     obj: An object that has `shape` and `dtype` attributes, or a list/tuple
         of such objects.
   """
   if isinstance(obj, (list, tuple)):
-    # TODO(jonni): consider using nested_map here.
     return tuple(signature(x) for x in obj)
   else:
     return ShapeDtype(obj.shape, obj.dtype)
