@@ -1157,11 +1157,6 @@ class LSHCausalAttention(BaseCausalAttention):
     # decrease the probability of hash misses.
     assert self.n_buckets % 2 == 0
 
-    # Make vectors 0-mean before hashing.
-    assert len(vecs.shape) == 2
-    vecs_mean = np.mean(vecs, axis=0, keepdims=True)
-    vecs -= vecs_mean
-
     # If we factorize the hash, find a factor dividing n_buckets nicely.
     rot_size, factor_list = self.n_buckets, [self.n_buckets]
     if self._factorize_hash:
