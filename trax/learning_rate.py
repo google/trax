@@ -229,7 +229,7 @@ def PolicySchedule(
   # (opt_state, state, epoch, opt_step, history)
   (opt_state, state, _, _, _) = ppo.maybe_restore_opt_state(policy_dir)
   assert opt_state is not None, 'Policy checkpoint not found.'
-  (params, _) = opt_state
+  (params, _, _) = opt_state
   logging.vlog(
       1, 'Restoring the policy parameters took %0.2f sec.',
       time.time() - start_time
@@ -242,7 +242,7 @@ def PolicySchedule(
 
   (low, high) = observation_range
   observation_space = gym.spaces.Box(
-      shape=observations.shape, low=low, high=high
+      shape=observations.shape[1:], low=low, high=high
   )
   action_space = gym.spaces.MultiDiscrete(
       nvec=(len(action_multipliers),) * len(control_configs)
