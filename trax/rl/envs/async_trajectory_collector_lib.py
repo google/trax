@@ -187,8 +187,7 @@ def continuously_collect_trajectories(output_dir,
     logging.info(
         'We have a newer policy epoch [%s], file [%s], updating parameters.',
         epoch, policy_file)
-    ppo_trainer.update_optimization_state(
-        output_dir, policy_and_value_opt_state=None)
+    ppo_trainer.update_optimization_state(output_dir)
     logging.info('Parameters of PPOTrainer updated.')
 
     # Check that the epochs match.
