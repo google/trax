@@ -47,12 +47,13 @@ class PoisonOnRNGMismatchAttention(tl.BaseCausalAttention):
       inputs = (inputs[0] / is_same, inputs[1] / is_same, inputs[2] / is_same)
 
     def _do_forward(x):  # pylint: disable=invalid-name
-      res, _ = self.forward(x, rng=rng, **kwargs)
+      res, _ = self.forward_with_state(x, rng=rng, **kwargs)
       return res
     output, vjpfun = jax.vjp(_do_forward, inputs)
     return output, vjpfun(ct)[0]
 
-  def forward(self, inputs, params=(), state=(), rng=None, **kwargs):
+  def forward_with_state(self, inputs, weights=(), state=(),
+                         rng=None, **kwargs):
     if tl.Layer._STASH_IN is not None:
       tl.Layer._STASH_IN[self] = rng
     return inputs[2], state
@@ -87,16 +88,16 @@ class ReformerTest(parameterized.TestCase):
           attention_type=PoisonOnRNGMismatchAttention)
 
       rng = backend.random.get_prng(0)
-      params, state = model.initialize_once(input_signature, rng)
+      weights, state = model.initialize_once(input_signature, rng)
 
-      def dummy_loss_fn(params):
+      def dummy_loss_fn(weights):
         inputs = (np.zeros(input_sd.shape, dtype=np.int32),) * 2
-        output = model(inputs, params=params, state=state, rng=rng)
+        output = model(inputs, weights=weights, state=state, rng=rng)
         dummy_loss = backend.numpy.sum(output[0])
         return dummy_loss
 
       grad_fn = backend.grad(dummy_loss_fn)
-      grads = grad_fn(params)
+      grads = grad_fn(weights)
       # PoisonOnRNGMismatchAttention uses NaNs to signal an rng mismatch.
       for grad in jax.tree_util.tree_leaves(grads):
         assert onp.all(onp.isfinite(grad))

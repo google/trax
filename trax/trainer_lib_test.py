@@ -120,10 +120,10 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(len(train_acc), len(eval_acc))
       self.assertLen(eval_acc, 2)
 
-      # Predict with final params
+      # Predict with final weights
       inputs = inputs(1).train_stream()
       model = layers.Serial(model_fn())
-      model(next(inputs)[0], params=state.opt_state.params)
+      model(next(inputs)[0], weights=state.opt_state.weights)
 
   @parameterized.parameters(BACKENDS)
   def test_train_eval_predict(self, backend_name):
@@ -160,10 +160,10 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(len(train_acc), len(eval_acc))
       self.assertLen(eval_acc, 2)
 
-      # Predict with final params
+      # Predict with final weights
       inputs = inputs(1).train_stream()
       model = layers.Serial(model_fn())
-      model(next(inputs)[0], params=state.opt_state.params)
+      model(next(inputs)[0], weights=state.opt_state.weights)
 
   @parameterized.parameters(BACKENDS)
   def test_train_restart(self, backend_name):
@@ -278,7 +278,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       trainer.reset(output_dir)
       trainer.train_epoch(1, 0)
       # Those are the things returned by Trainer._jit_update_fn
-      arrays = (trainer._opt_state.params, trainer._opt_state.slots,
+      arrays = (trainer._opt_state.weights, trainer._opt_state.slots,
                 trainer._model_state, trainer._rngs)
       arrays = tf.nest.flatten(arrays)
       for x in arrays:

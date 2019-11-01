@@ -121,17 +121,16 @@ class Dense(base.Layer):
     self._kernel_initializer = kernel_initializer
     self._bias_initializer = bias_initializer
 
-  def forward(self, x, params=(), state=(), **kwargs):
-    del kwargs
-    w, b = params
-    return np.dot(x, w) + b, state
+  def forward(self, x, weights):
+    w, b = weights
+    return np.dot(x, w) + b
 
-  def new_params_and_state(self, input_signature, rng):
+  def new_weights(self, input_signature, rng):
     input_shape = input_signature.shape
     rng1, rng2 = backend.random.split(rng, 2)
     w = self._kernel_initializer((input_shape[-1], self._n_units), rng1)
     b = self._bias_initializer((self._n_units,), rng2)
-    return (w, b), ()
+    return (w, b)
 
 
 class Embedding(base.Layer):
@@ -146,15 +145,14 @@ class Embedding(base.Layer):
     self._vocab_size = vocab_size
     self._kernel_initializer = kernel_initializer
 
-  def forward(self, x, params=(), state=(), **kwargs):
-    del kwargs
-    return np.take(params, x, axis=0), state
+  def forward(self, x, weights):
+    return np.take(weights, x, axis=0)
 
-  def new_params_and_state(self, input_signature, rng):
+  def new_weights(self, input_signature, rng):
     del input_signature
     out_dim = (self._vocab_size, self._d_feature)
-    params = self._kernel_initializer(out_dim, rng)
-    return params, ()
+    weights = self._kernel_initializer(out_dim, rng)
+    return weights
 
 
 # Flatten.
@@ -177,13 +175,13 @@ class Dropout(base.Layer):
     self._name = 'dropout_' + name
     self._mode = mode
 
-  def new_params_and_state(self, input_signature, rng):
+  def new_weights_and_state(self, input_signature, rng):
     del input_signature, rng
-    params = ()
+    weights = ()
     state = {self._name: np.array(self._initial_rate)}
-    return params, state
+    return weights, state
 
-  def forward(self, x, params=(), state=(), rng=None, **kwargs):
+  def forward_with_state(self, x, weights=(), state=(), rng=None, **kwargs):
     """Execute dropout."""
     del kwargs
     rate = self._initial_rate
@@ -191,8 +189,8 @@ class Dropout(base.Layer):
       rate = state[self._name]
     if rng is None:
       msg = ('Dropout layer requires apply_fn to be called with a rng keyword '
-             'argument. That is, instead of `Dropout(params, inputs)`, call '
-             'it like `Dropout(params, inputs, rng=key)`.')
+             'argument. That is, instead of `Dropout(weights, inputs)`, call '
+             'it like `Dropout(weights, inputs, rng=key)`.')
       raise ValueError(msg)
     if self._mode != 'train':
       return x, state

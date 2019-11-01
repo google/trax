@@ -144,13 +144,13 @@ class Serial(base.Layer):
           'number of inputs ({}) to Serial.forward less than n_in'
           ' ({})'.format(len(xs), self.n_in))
 
-  @base.Layer.params.setter
-  def params(self, params):
-    """Recursively sets params on this layer and all sublayers."""
-    self._params = params
-    assert len(params) == self._n_layers
-    for layer, sublayer_params in zip(self.sublayers, params):
-      layer.params = sublayer_params
+  @base.Layer.weights.setter
+  def weights(self, weights):
+    """Recursively sets weights on this layer and all sublayers."""
+    self._weights = weights
+    assert len(weights) == self._n_layers
+    for layer, sublayer_weights in zip(self.sublayers, weights):
+      layer.weights = sublayer_weights
 
   @base.Layer.state.setter
   def state(self, state):
@@ -160,7 +160,7 @@ class Serial(base.Layer):
     for layer, sublayer_state in zip(self.sublayers, state):
       layer.state = sublayer_state
 
-  def forward(self, xs, params=(), state=(), **kwargs):
+  def forward_with_state(self, xs, weights=(), state=(), **kwargs):
     self._validate_forward_inputs(xs)
     rngs = _pop_rng_and_split(kwargs, self._n_layers)
     if not self.sublayers:  # No-op: leave args unchanged.
@@ -169,13 +169,13 @@ class Serial(base.Layer):
     stack = xs
     new_state = []
     n_layers = self._n_layers
-    if n_layers != 1 and len(params) != n_layers:
-      raise ValueError('number of params ({}) not equal to number of layers '
-                       '({})'.format(len(params), n_layers))
+    if n_layers != 1 and len(weights) != n_layers:
+      raise ValueError('number of weights ({}) not equal to number of layers '
+                       '({})'.format(len(weights), n_layers))
     if n_layers != 1 and len(state) != n_layers:
       raise ValueError('length of state ({}) not equal to number of layers '
                        '({})'.format(len(state), n_layers))
-    for layer, p, s, rng in zip(self.sublayers, params, state, rngs):
+    for layer, p, s, rng in zip(self.sublayers, weights, state, rngs):
       is_stack_just_one_item = (_count_items(stack) == 1)
       if isinstance(stack, (list, tuple)) and is_stack_just_one_item:
         stack = stack[0]
@@ -188,7 +188,7 @@ class Serial(base.Layer):
         inputs = stack[0]
       else:
         inputs = stack[:n_in]
-      outputs, s = layer.apply_forward(inputs, p, s, rng)
+      outputs, s = layer.apply_forward_with_state(inputs, p, s, rng)
       new_state.append(s)
 
       # Push outputs onto remaining stack (if any).
@@ -201,9 +201,9 @@ class Serial(base.Layer):
 
     return stack, new_state
 
-  def new_params_and_state(self, input_signature, rng):
+  def new_weights_and_state(self, input_signature, rng):
 
-    params = []
+    weights = []
     states = []
     pseudo_xs = input_signature
     for layer in self.sublayers:
@@ -223,9 +223,9 @@ class Serial(base.Layer):
         inputs = pseudo_xs[:n_in]
 
       param, state = layer.initialize_once(inputs, layer_rng)
-      pparam = layer._params   # pylint: disable=protected-access
+      pparam = layer._weights   # pylint: disable=protected-access
 
-      outputs, _ = layer.pseudo_forward(inputs, pparam, state)
+      outputs, _ = layer.pseudo_forward_with_state(inputs, pparam, state)
 
       # Push outputs onto remaining pseudo_xs (if any).
       if n_in < _count_items(pseudo_xs):
@@ -235,9 +235,9 @@ class Serial(base.Layer):
       else:
         pseudo_xs = outputs  # NOTE: can be single value or tuple.
 
-      params.append(param)
+      weights.append(param)
       states.append(state)
-    return params, states
+    return weights, states
 
 
 @base.layer(n_out=2)
@@ -350,9 +350,9 @@ class Concatenate(base.Layer):
     self._n_items = n_items
     self._axis = axis
 
-  def forward(self, xs, params=(), state=(), **kwargs):
-    del params, kwargs
-    return backend.numpy.concatenate(xs, self._axis), state
+  def forward(self, xs, weights):
+    del weights
+    return backend.numpy.concatenate(xs, self._axis)
 
 
 class Split(base.Layer):
@@ -363,10 +363,9 @@ class Split(base.Layer):
     self._n_sections = n_sections
     self._axis = axis
 
-  def forward(self, inputs, params=(), state=(), **kwargs):
-    del params, kwargs
-    res = tuple(backend.numpy.split(inputs, self._n_sections, self._axis))
-    return res, state
+  def forward(self, inputs, weights):
+    del weights
+    return tuple(backend.numpy.split(inputs, self._n_sections, self._axis))
 
 
 class Parallel(base.Layer):
@@ -459,13 +458,13 @@ class Parallel(base.Layer):
       start = end
     return tuple(sub_inputs)
 
-  @base.Layer.params.setter
-  def params(self, params):
-    """Recursively sets params on this layer and all sublayers."""
-    self._params = params
-    assert len(params) == self._n_layers
-    for layer, sublayer_params in zip(self.sublayers, params):
-      layer.params = sublayer_params
+  @base.Layer.weights.setter
+  def weights(self, weights):
+    """Recursively sets weights on this layer and all sublayers."""
+    self._weights = weights
+    assert len(weights) == self._n_layers
+    for layer, sublayer_weights in zip(self.sublayers, weights):
+      layer.weights = sublayer_weights
 
   @base.Layer.state.setter
   def state(self, state):
@@ -475,19 +474,19 @@ class Parallel(base.Layer):
     for layer, sublayer_state in zip(self.sublayers, state):
       layer.state = sublayer_state
 
-  def forward(self, inputs, params=(), state=(), **kwargs):
+  def forward_with_state(self, inputs, weights=(), state=(), **kwargs):
     n_layers, layers = self._n_layers, self.sublayers
     sublayer_inputs = self._allot_to_sublayers(inputs)
     rngs = _pop_rng_and_split(kwargs, n_layers)
     assert len(sublayer_inputs) == n_layers
-    assert len(params) == n_layers
+    assert len(weights) == n_layers
     assert len(state) == n_layers
     assert len(rngs) == n_layers
     outputs = []
     new_state = []
-    for layer, x, p, s, r in zip(layers, sublayer_inputs, params, state, rngs):
+    for layer, x, p, s, r in zip(layers, sublayer_inputs, weights, state, rngs):
       # Note that zip silently truncates its result if lengths don't match.
-      sub_outputs, sub_state = layer.apply_forward(x, p, s, r)
+      sub_outputs, sub_state = layer.apply_forward_with_state(x, p, s, r)
       if layer.n_out == 1:
         outputs.append(sub_outputs)
       else:
@@ -496,7 +495,7 @@ class Parallel(base.Layer):
     output = outputs[0] if self.n_out == 1 else tuple(outputs)
     return output, new_state
 
-  def new_params_and_state(self, input_signature, rng):
+  def new_weights_and_state(self, input_signature, rng):
     sublayer_signatures = self._allot_to_sublayers(input_signature)
     rngs = backend.random.split(rng, self._n_layers)
     inits = [layer.initialize_once(signature, rng)

@@ -51,15 +51,15 @@ def ShiftRight(x, mode='train', **unused_kwargs):
 
 
 @base.layer()
-def CausalMask(x, params, axis=-1, **kwargs):
-  del params, kwargs
+def CausalMask(x, weights, axis=-1, **kwargs):
+  del weights, kwargs
   size = x.shape[axis]
   return onp.tril(onp.ones((1, size, size), dtype=onp.bool_), k=0)
 
 
 @base.layer()
-def PaddingMask(x, params, pad=0, **kwargs):
-  del params, kwargs
+def PaddingMask(x, weights, pad=0, **kwargs):
+  del weights, kwargs
   return np.reshape(x != pad, (x.shape[0], 1, 1, x.shape[-1]))
 
 
@@ -89,11 +89,12 @@ class PositionalEncoding(base.Layer):
     self._dropout_broadcast_dims = dropout_broadcast_dims
     self._mode = mode
 
-  def forward(self, inputs, params=(), state=(), rng=None, **kwargs):
+  def forward_with_state(self, inputs, weights=(), state=(),
+                         rng=None, **kwargs):
     if self._mode in ('train', 'eval'):
       x = inputs
       symbol_size = np.shape(x)[1]
-      px = params[:, :symbol_size, :]
+      px = weights[:, :symbol_size, :]
       if self._dropout == 0:
         return (x + px, state)
       else:
@@ -109,11 +110,14 @@ class PositionalEncoding(base.Layer):
     else:
       assert self._mode == 'predict'
       assert self._dropout == 0
-      # Fast inference: return consectutive elements of the encoding sequence,
-      # storing the index in state.
-      return (inputs + np.expand_dims(params[:, state, :], 1), state + 1)
+      # State in this class is only used for fast inference. In that case,
+      # the model is called with consecutive elements position-by-position.
+      # This positional encoding layer needs to store the index of the current
+      # position then and increment it on each call -- that's how state is used
+      # and updated below.
+      return (inputs + np.expand_dims(weights[:, state, :], 1), state + 1)
 
-  def new_params_and_state(self, input_signature, rng):
+  def new_weights_and_state(self, input_signature, rng):
     del rng
     d_feature = input_signature.shape[-1]
     pe = onp.zeros((self._max_len, d_feature), dtype=onp.float32)
@@ -123,9 +127,9 @@ class PositionalEncoding(base.Layer):
     pe[:, 0::2] = onp.sin(position * div_term)
     pe[:, 1::2] = onp.cos(position * div_term)
     pe = pe[onp.newaxis, :, :]  # [1, self._max_len, d_feature]
-    params = np.array(pe)  # These are trainable parameters, initialized above.
+    weights = np.array(pe)  # These are trainable parameters, initialized above.
     state = 0 if self._mode == 'predict' else ()
-    return params, state
+    return weights, state
 
 
 class AxialPositionalEncoding(base.Layer):
@@ -150,9 +154,10 @@ class AxialPositionalEncoding(base.Layer):
     self._dropout_broadcast_dims = dropout_broadcast_dims
     self._mode = mode
 
-  def forward(self, inputs, params=(), state=(), rng=None, **kwargs):
+  def forward_with_state(self, inputs, weights=(), state=(),
+                         rng=None, **kwargs):
     embs = []
-    for ax_emb in params:
+    for ax_emb in weights:
       ax_emb = np.broadcast_to(
           ax_emb, (inputs.shape[0],) + self._shape + (ax_emb.shape[-1],))
       embs.append(ax_emb)
@@ -173,20 +178,20 @@ class AxialPositionalEncoding(base.Layer):
 
       return inputs + np.reshape(emb * multiplier, inputs.shape), state
 
-  def new_params_and_state(self, input_signature, rng):
+  def new_weights_and_state(self, input_signature, rng):
     d_feature = input_signature.shape[-1]
     assert sum(self._d_embs) == d_feature
 
     rngs = backend.random.split(rng, len(self._d_embs))
-    params = []
+    weights = []
     for ax, (ax_rng, d_emb) in enumerate(zip(rngs, self._d_embs)):
       ax_shape = [1] * len(self._shape)
       ax_shape[ax] = self._shape[ax]
       ax_shape = (1,) + tuple(ax_shape) + (d_emb,)
       ax_emb = self._kernel_initializer(ax_shape, ax_rng)
-      params.append(ax_emb)
+      weights.append(ax_emb)
 
-    return tuple(params), ()
+    return tuple(weights), ()
 
 
 def DotProductAttention(query, key, value, mask, dropout, mode, rng):
@@ -225,42 +230,48 @@ def DotProductAttention(query, key, value, mask, dropout, mode, rng):
   return out
 
 
-@base.layer(n_in=4, n_out=2)
-def PureAttention(x, params, n_heads=1, dropout=0.0, mode='train', **kwargs):
-  """Pure transformer-style multi-headed attention.
+class PureAttention(base.Layer):
+  """Layer constructor function for a pure attention layer."""
 
-  Args:
-    x: inputs (q, k, v, mask)
-    params: parameters (none)
-    n_heads: int: number of attention heads
-    dropout: float: dropout rate
-    mode: str: 'train' or 'eval'
-    **kwargs: other arguments including the rng
+  def __init__(self, n_heads=1, dropout=0.0, mode='train'):
+    super(PureAttention, self).__init__(n_in=4, n_out=2)
+    self._n_heads = n_heads
+    self._dropout = dropout
+    self._mode = mode
 
-  Returns:
-    Pure Multi-headed attention result, and the mask.
-  """
-  del params
-  rng = kwargs.get('rng', None)
-  q, k, v, mask = x
-  d_feature = q.shape[-1]
-  assert d_feature % n_heads == 0
-  d_head = d_feature // n_heads
-  nbatch = np.shape(q)[0]
-  # nbatch, seqlen, d_feature --> nbatch, n_heads, seqlen, d_head
-  def SplitHeads(x):
-    return np.transpose(
-        np.reshape(x, (nbatch, -1, n_heads, d_head)), (0, 2, 1, 3))
-  # nbatch, n_heads, seqlen, d_head --> nbatch, seqlen, d_feature
-  def JoinHeads(x):  # pylint: disable=invalid-name
-    return np.reshape(
-        np.transpose(x, (0, 2, 1, 3)), (nbatch, -1, n_heads * d_head))
-  # Split heads, dot-product attention, rejoin heads.
-  res = JoinHeads(
-      DotProductAttention(
-          SplitHeads(q), SplitHeads(k), SplitHeads(v), mask,
-          dropout=dropout, mode=mode, rng=rng))
-  return res, mask  # Keep the mask.
+  def forward_with_state(self, x, weights, state, rng):
+    """Pure transformer-style multi-headed attention.
+
+    Args:
+      x: inputs (q, k, v, mask)
+      weights: parameters (none)
+      state: parameters (none)
+      rng: random number generator
+
+    Returns:
+      Pure Multi-headed attention result, and the mask.
+    """
+    del weights
+    n_heads, dropout, mode = self._n_heads, self._dropout, self._mode
+    q, k, v, mask = x
+    d_feature = q.shape[-1]
+    assert d_feature % n_heads == 0
+    d_head = d_feature // n_heads
+    nbatch = np.shape(q)[0]
+    # nbatch, seqlen, d_feature --> nbatch, n_heads, seqlen, d_head
+    def SplitHeads(x):
+      return np.transpose(
+          np.reshape(x, (nbatch, -1, n_heads, d_head)), (0, 2, 1, 3))
+    # nbatch, n_heads, seqlen, d_head --> nbatch, seqlen, d_feature
+    def JoinHeads(x):  # pylint: disable=invalid-name
+      return np.reshape(
+          np.transpose(x, (0, 2, 1, 3)), (nbatch, -1, n_heads * d_head))
+    # Split heads, dot-product attention, rejoin heads.
+    res = JoinHeads(
+        DotProductAttention(
+            SplitHeads(q), SplitHeads(k), SplitHeads(v), mask,
+            dropout=dropout, mode=mode, rng=rng))
+    return (res, mask), state  # Keep the mask.
 
 
 def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train'):
@@ -342,15 +353,14 @@ class ShiftRightLearned(base.Layer):
     super(ShiftRightLearned, self).__init__()
     self._initializer = initializer
 
-  def forward(self, x, params=(), state=(), **kwargs):
-    del kwargs
-    c = backend.numpy.reshape(params, [1, 1, -1])
+  def forward(self, x, weights):
+    c = backend.numpy.reshape(weights, [1, 1, -1])
     c += backend.numpy.zeros((x.shape[0], 1, x.shape[2]), dtype=x.dtype)
-    return backend.numpy.concatenate([c, x], axis=1)[:, :-1, :], state
+    return backend.numpy.concatenate([c, x], axis=1)[:, :-1, :]
 
-  def new_params_and_state(self, input_signature, rng):
+  def new_weights(self, input_signature, rng):
     b = self._initializer((input_signature.shape[-1],), rng)
-    return b, ()
+    return b
 
 
 class ComputeAttentionHeads(base.Layer):
@@ -370,10 +380,9 @@ class ComputeAttentionHeads(base.Layer):
     # implementation, and shouldn't have an effect on modeling quality.
     # Note that AttentionQKV above is different in that it uses a bias term.
 
-  def forward(self, x, params=(), state=(), **kwargs):
-    del kwargs
+  def forward(self, x, weights):
     seqlen = x.shape[1]
-    res = np.dot(x, params)
+    res = np.dot(x, weights)
 
     # n_batch, seqlen, n_heads*d_head -> n_batch, seqlen, n_heads, d_head
     res = np.reshape(res, (x.shape[0], seqlen, self._n_heads, self._d_head))
@@ -382,12 +391,12 @@ class ComputeAttentionHeads(base.Layer):
     # n_batch, n_heads, seqlen, d_head -> n_batch*n_heads, seqlen, d_head
     res = np.reshape(res, (-1, seqlen, self._d_head))
 
-    return res, state
+    return res
 
-  def new_params_and_state(self, input_signature, rng):
+  def new_weights(self, input_signature, rng):
     w = self._kernel_initializer(
         (input_signature.shape[-1], self._n_heads * self._d_head), rng)
-    return w, ()
+    return w
 
 
 class ComputeAttentionOutput(base.Layer):
@@ -403,8 +412,7 @@ class ComputeAttentionOutput(base.Layer):
     # implementation, and shouldn't have an effect on modeling quality.
     # Note that AttentionQKV above is different in that it uses a bias term.
 
-  def forward(self, x, params=(), state=(), **kwargs):
-    del kwargs
+  def forward(self, x, weights):
     seqlen = x.shape[1]
     d_head = x.shape[2]
 
@@ -412,12 +420,12 @@ class ComputeAttentionOutput(base.Layer):
     x = np.transpose(x, (0, 2, 1, 3))  # -> n_batch, seqlen, n_heads, d_head
     x = np.reshape(x, (-1, seqlen, self._n_heads * d_head))
 
-    return np.dot(x, params), state
+    return np.dot(x, weights)
 
-  def new_params_and_state(self, input_signature, rng):
+  def new_weights(self, input_signature, rng):
     kernel_shape = (input_signature.shape[-1] * self._n_heads, self._d_model)
     w = self._kernel_initializer(kernel_shape, rng)
-    return w, ()
+    return w
 
 
 class BaseCausalAttention(base.Layer):
@@ -427,7 +435,8 @@ class BaseCausalAttention(base.Layer):
     del mode
     super(BaseCausalAttention, self).__init__(n_in=3)
 
-  def forward(self, inputs, params=(), state=(), rng=None, **kwargs):
+  def forward_with_state(self, inputs, weights=(), state=(),
+                         rng=None, **kwargs):
     """Forward pass for the attention layer."""
     raise NotImplementedError()
 
@@ -495,8 +504,9 @@ class DotProductCausalAttention(BaseCausalAttention):
     self._dropout = dropout
     self._mode = mode
 
-  def forward(self, inputs, params=(), state=(), rng=None, **kwargs):
-    del params
+  def forward_with_state(self, inputs, weights=(), state=(),
+                         rng=None, **kwargs):
+    del weights
     q, k, v = inputs
     if self._mode in ('train', 'eval'):
       mask_size = q.shape[-2]
@@ -523,22 +533,22 @@ class DotProductCausalAttention(BaseCausalAttention):
         'JAX backend is required to use forward_and_backward.')
     # Simultaneous forward pass and backprop through the attention mechanism.
     def _do_forward(x):  # pylint: disable=invalid-name
-      res, _ = self.forward(x, **kwargs)
+      res, _ = self.forward_with_state(x, **kwargs)
       return res
     output, vjpfun = jax.vjp(_do_forward, inputs)
     return output, vjpfun(ct)[0]
 
-  def new_params_and_state(self, input_signature, rng):
+  def new_weights_and_state(self, input_signature, rng):
     if self._mode in ('train', 'eval'):
       return (), ()
 
     assert self._mode == 'predict'
-    params = ()
+    weights = ()
     # Buffer length is hardcoded for now. TODO(pkozakowski): Pass it from the
     # model.
     max_len = 2048
     state = _fast_inference_init_state(input_signature, max_len)
-    return params, state
+    return weights, state
 
 
 class MemoryEfficientCausalAttention(BaseCausalAttention):
@@ -569,16 +579,16 @@ class MemoryEfficientCausalAttention(BaseCausalAttention):
     self._share_qk = share_qk
     self._hard_k = hard_k
 
-  def forward(self, inputs, params=(), state=(), **kwargs):
-    del params
+  def forward_with_state(self, inputs, weights=(), state=(), **kwargs):
+    del weights
     output, _ = self.forward_and_backward(inputs, None, **kwargs)
     return output, state
 
   def has_backward(self):
     return True
 
-  def backward(self, inputs, output, ct, params=(), state=(), **kwargs):
-    del output, params, state
+  def backward(self, inputs, output, ct, weights=(), state=(), **kwargs):
+    del output, weights, state
     _, inputs_ct = self.forward_and_backward(inputs, ct, **kwargs)
     return inputs_ct, ()
 
@@ -799,8 +809,9 @@ class TimeBinCausalAttention(BaseCausalAttention):
     padded_inputs = tuple(map(pad_input, inputs))
     return (padded_inputs, seq_len, n_bins)
 
-  def forward(self, inputs, params=(), state=(), rng=None, **kwargs):
-    del params, kwargs
+  def forward_with_state(self, inputs, weights=(), state=(),
+                         rng=None, **kwargs):
+    del weights, kwargs
     if self._mode in ('train', 'eval'):
       output = self._forward_train_eval(inputs, rng)
       return (output, state)
@@ -912,7 +923,7 @@ class TimeBinCausalAttention(BaseCausalAttention):
     )
     return (output, state)
 
-  def new_params_and_state(self, input_signature, rng):
+  def new_weights_and_state(self, input_signature, rng):
     if self._mode in ('train', 'eval'):
       return (), ()
 
@@ -921,11 +932,11 @@ class TimeBinCausalAttention(BaseCausalAttention):
         'For fast inference, TimeBinCausalAttention must be parameterized by '
         'bin_length.'
     )
-    params = ()
+    weights = ()
     state = _fast_inference_init_state(
         input_signature, 2 * self.bin_length
     )
-    return params, state
+    return weights, state
 
 
 class LSHCausalAttention(BaseCausalAttention):
@@ -968,8 +979,9 @@ class LSHCausalAttention(BaseCausalAttention):
     # of being completely random.
     self._data_rotation = data_rotation
 
-  def forward(self, inputs, params=(), state=(), rng=None, **kwargs):
-    del params, kwargs
+  def forward_with_state(self, inputs, weights=(), state=(),
+                         rng=None, **kwargs):
+    del weights, kwargs
     output, _ = self.batch_call_and_or_grad(inputs[0], inputs[2], rng=rng)
     return output, state
 
@@ -982,9 +994,9 @@ class LSHCausalAttention(BaseCausalAttention):
   def has_backward(self):
     return True
 
-  def backward(self, inputs, output, ct, params=(), state=(), rng=None,
+  def backward(self, inputs, output, ct, weights=(), state=(), rng=None,
                **kwargs):
-    del output, params, state
+    del output, weights, state
     _, (qk_ct, v_ct) = self.batch_call_and_or_grad(
         inputs[0], inputs[2], return_output=False, ct=ct, rng=rng)
     inputs_ct = (qk_ct, np.zeros_like(inputs[1]), v_ct)

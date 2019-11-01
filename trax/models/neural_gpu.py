@@ -29,9 +29,8 @@ def SaturationCost(x, limit=0.9):
 
 
 @tl.layer()
-def DiagonalGate(x, params, **kwargs):
+def DiagonalGate(x, **kwargs):
   """Split channels in 3 parts. Shifts 1st and 3rd sections to left/right."""
-  del params
   del kwargs
   # x : [batch, 1, length, depth]
   x = np.pad(

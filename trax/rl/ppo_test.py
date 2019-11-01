@@ -469,9 +469,9 @@ class PpoTest(test.TestCase):
 
     # Just test that this computes at all.
     (new_log_probabs, value_predictions_new) = (
-        net(observations, params=new_params, state=state))
+        net(observations, weights=new_params, state=state))
     (old_log_probabs, value_predictions_old) = (
-        net(observations, params=old_params, state=state))
+        net(observations, weights=old_params, state=state))
 
     gamma = 0.99
     lambda_ = 0.95
@@ -622,7 +622,7 @@ class PpoTest(test.TestCase):
     )
     # Try to run the policy with new parameters.
     observations = np.zeros((1, 100), dtype=np.int32)
-    policy(observations, params=new_policy_params, state=policy_state, rng=rng)
+    policy(observations, weights=new_policy_params, state=policy_state, rng=rng)
 
   def test_shuffled_index_batches_generates_valid_batch(self):
     dataset_size = 16
@@ -720,7 +720,7 @@ class PpoTest(test.TestCase):
         vocab_size, observation_space, action_space, n_timesteps
     )
     return {
-        'params': None,
+        'weights': None,
         'state': None,
         'rng': self.rng_key,
         'vocab_size': vocab_size,

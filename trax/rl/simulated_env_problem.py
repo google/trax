@@ -111,12 +111,12 @@ class SimulatedEnvProblem(env_problem.EnvProblem):
     # TODO(lukaszkaiser): both model state and parameters by default include
     # the loss layer. Currently, we access the pure-model parameters by just
     # indexing, [0] here. But we should make it more explicit in a better API.
-    model_params = trax_state.opt_state.params[0]
+    model_params = trax_state.opt_state.weights[0]
     self._model_state = trax_state.model_state[0]
 
     def predict_fn(inputs, rng):
       (output, self._model_state) = self._model_predict(
-          inputs, params=model_params, state=self._model_state, rng=rng
+          inputs, weights=model_params, state=self._model_state, rng=rng
       )
       return output
 

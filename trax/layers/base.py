@@ -38,15 +38,15 @@ class Layer(object):
 
   Layers are the basic building blocks for deep learning models. A Trax layer
   computes a function from zero or more inputs to zero or more outputs,
-  optionally using trainable parameters (common) and non-parameter state (not
+  optionally using trainable weights (common) and non-parameter state (not
   common). Authors of new layer subclasses typically override at most two
   methods of the base `Layer` class:
 
-    forward(inputs, params=(), state=(), **kwargs):
+    forward(inputs, weights):
       Computes this layer's output as part of a forward pass through the model.
 
-    new_params_and_state(self, input_signature, rng):
-      Returns a (params, state) pair suitable for initializing this layer.
+    new_weights(self, input_signature, rng):
+      Returns new weights suitable for inputs with the given signature.
 
   A small subset of layer types are combinators -- they organize the computation
   of their sublayers, e.g., applying their sublayers in series or in parallel.
@@ -56,7 +56,7 @@ class Layer(object):
 
     - n_in: int (default 1)
     - n_out: int (default 1)
-    - params: tuple (default empty -- the layer has no parameters)
+    - weights: tuple (default empty -- the layer has no weights)
     - state: tuple (default empty -- the layer has no non-parameter state)
     - sublayers: tuple (default empty -- the layer has no sublayers)
 
@@ -92,7 +92,7 @@ class Layer(object):
     self._n_in = n_in
     self._n_out = n_out
     self._sublayers = ()  # Default is no sublayers.
-    self._params = ()  # cached parameters
+    self._weights = ()  # cached weights
     self._state = ()
     # record root call site for custom error messages:
     self._caller = _find_frame(inspect.currentframe())
@@ -108,11 +108,13 @@ class Layer(object):
     else:
       return '{}{{{}}}'.format(class_str, fields_str)
 
-  def forward(self, inputs, params=(), state=(), **kwargs):
+  def forward(self, inputs, weights):
     """Computes this layer's output as part of a forward pass through the model.
 
     Authors of new Layer subclasses should override this method to define the
-    forward computation that their layer performs.
+    forward computation that their layer performs, unless they need to use
+    local non-trainable state or randomness, in which case they should
+    override `forward_with_state` instead.
 
     Args:
       inputs: Input tensors, matching the number (n_in) expected by this
@@ -120,10 +122,37 @@ class Layer(object):
             - n_in = 0: an empty tuple ()
             - n_in = 1: a tensor (NOT wrapped in a tuple)
             - n_in > 1: a tuple of tensors, with n_in items
-      params: A tuple of trainable parameters, with one element for this layer
+      weights: A tuple of trainable weights, with one element for this layer
           if this layer has no sublayers, or one for each sublayer if this
           layer has sublayers. If a layer (or sublayer) has no trainable
-          parameters, the corresponding params element is an empty tuple.
+          weights, the corresponding weights element is an empty tuple.
+
+    Returns:
+      Tensors, matching the number (n_out) promised by this layer.
+      Specifically:
+        - n_out = 0: an empty tuple
+        - n_out = 1: one tensor (NOT wrapped in a tuple)
+        - n_out > 1: a tuple of tensors, with n_out items
+    """
+    raise NotImplementedError
+
+  def forward_with_state(self, inputs, weights=(), state=(), **kwargs):
+    """Computes this layer's output as part of a forward pass through the model.
+
+    Authors of new Layer subclasses should override this method to define the
+    forward computation that their layer performs only if their layer uses
+    local state or randomness. Otherwise override `forward` instead.
+
+    Args:
+      inputs: Input tensors, matching the number (n_in) expected by this
+          layer. Specifically:
+            - n_in = 0: an empty tuple ()
+            - n_in = 1: a tensor (NOT wrapped in a tuple)
+            - n_in > 1: a tuple of tensors, with n_in items
+      weights: A tuple of trainable weights, with one element for this layer
+          if this layer has no sublayers, or one for each sublayer if this
+          layer has sublayers. If a layer (or sublayer) has no trainable
+          weights, the corresponding weights element is an empty tuple.
       state: Layer-specific non-parameter state that can update between batches.
       **kwargs: Often empty; main current use is to carry a PRNG key for random
           number generation, using the keyword 'rng'.
@@ -135,23 +164,39 @@ class Layer(object):
         - n_out = 1: one tensor (NOT wrapped in a tuple)
         - n_out > 1: a tuple of tensors, with n_out items
     """
-    raise NotImplementedError
+    del kwargs
+    return self.forward(inputs, weights), state
 
-  def new_params_and_state(self, input_signature, rng):
-    """Returns a (params, state) pair suitable for initializing this layer.
+  def new_weights(self, input_signature, rng):
+    """Returns new weights suitable for inputs with the given signature.
 
     Authors of new Layer subclasses should override this method if their layer
-    uses trainable parameters or has non-parameter state that gets updated
+    uses trainable weights. The default implementation works for layers that
+    have no weights. Layers that have trainable state should override the
+    `new_weights_and_state` method instead.
+
+    Args:
+      input_signature: A ShapeDtype instance (if this layer takes one input)
+          or a list/tuple of ShapeDtype instances; signatures of inputs.
+      rng: A PRNG key for random number generation.
+    """
+    del input_signature, rng
+    return ()
+
+  def new_weights_and_state(self, input_signature, rng):
+    """Returns a (weights, state) pair suitable for initializing this layer.
+
+    Authors of new Layer subclasses should override this method if their layer
+    uses trainable weights or has non-parameter state that gets updated
     between batches. The default implementation works for layers that have
-    no parameters or state.
+    no weights or state.
 
     Args:
       input_signature: A ShapeDtype instance (if this layer takes one input)
           or a list/tuple of ShapeDtype instances.
       rng: A PRNG key for random number generation.
     """
-    del input_signature, rng
-    return (), ()
+    return self.new_weights(input_signature, rng), ()
 
   @property
   def n_in(self):
@@ -169,13 +214,13 @@ class Layer(object):
     return self._sublayers
 
   @property
-  def params(self):
-    """Returns a tuple containing this layer's parameters; may be empty."""
-    return self._params
+  def weights(self):
+    """Returns a tuple containing this layer's weights; may be empty."""
+    return self._weights
 
-  @params.setter
-  def params(self, params):
-    self._params = params
+  @weights.setter
+  def weights(self, weights):
+    self._weights = weights
 
   @property
   def state(self):
@@ -195,7 +240,7 @@ class Layer(object):
     """
     return False
 
-  def backward(self, inputs, output, grad, params, state, **kwargs):
+  def backward(self, inputs, output, grad, weights, state, **kwargs):
     """Custom backward pass to propagate gradients in a custom way.
 
     Args:
@@ -203,27 +248,27 @@ class Layer(object):
       output: The result of running this layer on inputs.
       grad: gradient signal (called cotangent in jax) computed based on
         subsequent layers. The structure and shape must match output.
-      params: layer parameters
+      weights: layer weights
       state: start state.
       **kwargs: kwargs for the layer
 
     Returns:
       The custom gradient signal for the input. Note that we need to return
       a gradient for each argument of forward, so it will usually be a tuple
-      of signals: the gradient for inputs and parameters.
+      of signals: the gradient for inputs and weights.
     """
     raise NotImplementedError
 
   # End of subclassing interface, all functions below are internal.
 
-  def pseudo_forward(self, pseudo_inputs, params, state):
+  def pseudo_forward_with_state(self, pseudo_inputs, weights, state):
     """Computes shapes and types this layer would produce for the given inputs.
 
     Args:
       pseudo_inputs: A ShapeDtype instance (input data minus the actual values)
           or a list/tuple of ShapeDtype instances, following the same
-          conventions as Layer.forward's input arg.
-      params: Parameters for this layer.
+          conventions as Layer.forward_with_state's input arg.
+      weights: Weights for this layer.
       state: start state.
 
     Returns:
@@ -238,16 +283,16 @@ class Layer(object):
       # cause a large number of dropout masks to be computed and permanently
       # stored in global memory.
       rng = ShapeDtype((2,), onp.uint32)
-      def call_on_input(x, params, state, rng):
-        return self.forward(x, params=params, state=state, rng=rng)
-      params_shapes = nested_map(signature, params)
+      def call_on_input(x, weights, state, rng):
+        return self.forward_with_state(x, weights=weights, state=state, rng=rng)
+      weights_shapes = nested_map(signature, weights)
       s = backend.eval_on_shapes(call_on_input)(pseudo_inputs,
-                                                params_shapes, state, rng)
+                                                weights_shapes, state, rng)
       return s
     except Exception:
       name, trace = self.__class__.__name__, _short_traceback(skip=3)
-      raise LayerError(name, 'pseudo_forward', self._caller, pseudo_inputs,
-                       trace)
+      raise LayerError(name, 'pseudo_forward_with_state',
+                       self._caller, pseudo_inputs, trace)
 
   def initialize_once(self, input_signature, rng):
     """Initializes this layer and its sublayers recursively.
@@ -262,24 +307,24 @@ class Layer(object):
       rng: A PRNG key for random number generation.
 
     Returns:
-      A (params, state) tuple, in which params contains newly created parameters
+      A (weights, state) tuple, in which weights contains newly created weights
           on the first call and () on all subsequent calls.
     """
     try:
-      # Initialize params once; store them for use when this layer is called.
-      # Needs to call new_params_and_state regardless of _init_finished because
+      # Initialize weights once; store them for use when this layer is called.
+      # Needs to call new_weights_and_state regardless of _init_finished because
       # state also needs to be initialized. After jitting, graph pruning should
       # be able to remove unnecessary computation.
       # TODO(lukaszkaiser): Revisit this decision and see whether layers sharing
-      #   params should also share states.
-      params, state = self.new_params_and_state(input_signature, rng)
+      #   weights should also share states.
+      weights, state = self.new_weights_and_state(input_signature, rng)
       if not self._init_finished:
         self._init_finished = True
-        self._params = params
+        self._weights = weights
         self._state = state
       else:
-        params = ()
-      return (params, state)
+        weights = ()
+      return (weights, state)
     except Exception:
       name, trace = self.__class__.__name__, _short_traceback(skip=3)
       raise LayerError(name, 'initialize_once', self._caller,
@@ -295,18 +340,18 @@ class Layer(object):
     This convenience method helps library users play with, test, or otherwise
     probe the behavior of layers outside of a full training environment. It
     presents the layer as callable function from inputs to outputs, with the
-    option of manually specifying parameters and non-parameter state per
-    individual call. For convenience, parameters and non-parameter state are
+    option of manually specifying weights and non-parameter state per
+    individual call. For convenience, weights and non-parameter state are
     cached per layer instance, starting from default values of () and (), and
     acquiring non-empty values either by initialization or from values
-    explicitly provided via the params and state keyword arguments.
+    explicitly provided via the weights and state keyword arguments.
 
     Args:
       x: 0 or more input tensors, formatted the same as the inputs to
           Layer.forward.
       **kwargs: Additional keyword arguments if needed/desired for this layer.
           Three possible keyword arguments are especially relevant:
-            - params=... will override any cached params values
+            - weights=... will override any cached weights values
             - state=... will override any cached state values
             - rng=... will supply a PRNG key for use by the layer
 
@@ -314,13 +359,13 @@ class Layer(object):
       0 or more output tensors, formatted the same as the outputs from
           Layer.forward.
     """
-    params = kwargs.pop('params', self.params)
+    weights = kwargs.pop('weights', self.weights)
     state = kwargs.pop('state', self.state)
     rng = kwargs.pop('rng', None)
-    outputs, _ = self.apply_forward(x, params, state, rng)
+    outputs, _ = self.apply_forward_with_state(x, weights, state, rng)
     return outputs
 
-  def apply_forward(self, x, params, state, rng):
+  def apply_forward_with_state(self, x, weights, state, rng):
     """Applies this layer as part of a forward pass; an internal system method.
 
     This method is reserved for handling plumbing and other internal affairs
@@ -328,37 +373,39 @@ class Layer(object):
     the `forward` method instead.
 
     Args:
-      x: See Layer.forward inputs.
-      params: See Layer.forward.
-      state: See Layer.forward.
-      rng: See Layer.forward.
+      x: See Layer.forward_with_state inputs.
+      weights: See Layer.forward_with_state.
+      state: See Layer.forward_with_state.
+      rng: See Layer.forward_with_state.
 
     Returns:
-      See Layer.forward.
+      See Layer.forward_with_state.
     """
     try:
-      # If params are nothing, we may be reusing this layer.
-      # Use the cached parameters to calculate the value.
+      # If weights are nothing, we may be reusing this layer.
+      # Use the cached weights to calculate the value.
       # Note: to make sure jit tracers can decide this branch in python we
-      #   use "params is ()" instead of, e.g., "not params" or "params == ()".
-      if params is ():  # pylint: disable=literal-comparison
-        params = self._params
+      #  use "weights is ()" instead of, e.g., "not weights" or "weights == ()".
+      if weights is ():  # pylint: disable=literal-comparison
+        weights = self._weights
       else:
-        # In this case, we're called for the first time: cache parameters.
-        self._params = params
+        # In this case, we're called for the first time: cache weights.
+        self._weights = weights
 
       if not self.has_backward or Layer._STASH_IN is not None:
-        outputs, s = self.forward(x, params=params, state=state, rng=rng)
+        outputs, s = self.forward_with_state(
+            x, weights=weights, state=state, rng=rng)
       else:
-        outputs, s = self._do_custom_gradients(x, params, state, rng=rng)
+        outputs, s = self._do_custom_gradients(x, weights, state, rng=rng)
       self._state = s
       return outputs, s
 
     except Exception:
       name, trace = self.__class__.__name__, _short_traceback()
-      raise LayerError(name, 'apply_forward', self._caller, signature(x), trace)
+      raise LayerError(name, 'apply_forward_with_state',
+                       self._caller, signature(x), trace)
 
-  def _do_custom_gradients(self, x, params, state, **kwargs):
+  def _do_custom_gradients(self, x, weights, state, **kwargs):
     """Calls this layer for a forward pass, but with custom gradients."""
     assert backend.get_name() == 'jax', (
         'Custom gradients are only supported in JAX for now.')
@@ -381,32 +428,32 @@ class Layer(object):
     # https://jax.readthedocs.io/en/latest/jax.html#jax.custom_transforms
     # Note that we capture the kwargs and don't calculate gradients wrt. them.
     @jax.custom_transforms
-    def _do_forward(y, params):
-      return check_end_state(self.forward(y, params=params, state=state,
-                                          **kwargs))
+    def _do_forward(y, weights):
+      return check_end_state(self.forward_with_state(
+          y, weights=weights, state=state, **kwargs))
 
     # This is the custom gradient (vector-jacobian product in JAX) function.
     # For the exact specification of this custom transformation see this link:
     # https://jax.readthedocs.io/en/latest/jax.html#jax.defjvp_all
-    def do_forward_vjp(y, params):
+    def do_forward_vjp(y, weights):
       """Custom gradient (vjp) function."""
       stash = None
       if Layer._STASH_IN is None:
         Layer._STASH_IN = stash = {}
-      output = check_end_state(self.forward(y, params=params, state=state,
-                                            **kwargs))
+      output = check_end_state(self.forward_with_state(
+          y, weights=weights, state=state, **kwargs))
       if stash is not None:
         Layer._STASH_IN = None
       def vjpfun(grad):
         assert Layer._STASH_OUT is None
         Layer._STASH_OUT = stash
-        res = self.backward(y, output, grad, params, state, **kwargs)
+        res = self.backward(y, output, grad, weights, state, **kwargs)
         Layer._STASH_OUT = None
         return res
       return output, vjpfun
 
     jax.defvjp_all(_do_forward, do_forward_vjp)
-    return _do_forward(x, params), state
+    return _do_forward(x, weights), state
 
 
 class LayerError(Exception):
@@ -549,7 +596,7 @@ def _validate_forward_input(x, n_in):
           ' ({})'.format(len(x), n_in))
 
 
-def layer(n_in=1, n_out=1, new_params_and_state_fn=None):
+def layer(n_in=1, n_out=1, new_weights_fn=None):
   """Returns a decorator that converts a function into a Layer class builder."""
 
   def _build_layer_class(raw_fn):
@@ -559,34 +606,31 @@ def layer(n_in=1, n_out=1, new_params_and_state_fn=None):
       self._kwargs = kwargs  # pylint: disable=protected-access
       Layer.__init__(self, n_in=n_in, n_out=n_out)
 
-    def _new_params_and_state(self, input_signature, rng):
-      if new_params_and_state_fn is None:
-        return (), ()
+    def _new_weights(self, input_signature, rng):
+      if new_weights_fn is None:
+        return ()
       kwargs = self._kwargs  # pylint: disable=protected-access
-      return new_params_and_state_fn(input_signature, rng, **kwargs)
+      return new_weights_fn(input_signature, rng, **kwargs)
 
     def _is_empty(raw_output):
       return raw_output is None or (isinstance(raw_output, (list, tuple))
                                     and len(raw_output) == 0)  # pylint: disable=g-explicit-length-test
 
-    def _forward(self, x, params=(), state=(), **kwargs):
+    def _forward(self, x, weights):
       """Uses this layer as part of a forward pass through the model."""
-      merged_kwargs = kwargs.copy()
-      merged_kwargs.update(self._kwargs)  # pylint: disable=protected-access
-
       _validate_forward_input(x, n_in)
-      raw_output = raw_fn(x, params=params, **merged_kwargs)
+      raw_output = raw_fn(x, weights=weights, **self._kwargs)  # pylint: disable=protected-access
       output = () if _is_empty(raw_output) else raw_output
-      return (output, state)
+      return output
 
     # Set docstrings and create the class.
     _forward.__doc__ = raw_fn.__doc__
-    _new_params_and_state.__doc__ = new_params_and_state_fn.__doc__
+    _new_weights.__doc__ = new_weights_fn.__doc__
     # Note: None.__doc__ is None
     cls = type(raw_fn.__name__, (Layer,),
                {'__init__': _init,
                 'forward': _forward,
-                'new_params_and_state': _new_params_and_state})
+                'new_weights': _new_weights})
     return cls
 
   return _build_layer_class
@@ -631,15 +675,16 @@ def check_shape_agreement(layer_obj, input_signature):
     a tuple of shape tuples (if the layer has more than one output).
   """
   rng1, rng2, rng3 = backend.random.split(backend.random.get_prng(0), 3)
-  params, state = layer_obj.initialize_once(input_signature, rng1)
-  pseudo_output, _ = layer_obj.pseudo_forward(input_signature, params, state)
+  weights, state = layer_obj.initialize_once(input_signature, rng1)
+  pseudo_output, _ = layer_obj.pseudo_forward_with_state(
+      input_signature, weights, state)
   if isinstance(pseudo_output, tuple):
     output_shape = tuple(x.shape for x in pseudo_output)
   else:
     output_shape = pseudo_output.shape
 
   random_input = _random_values(input_signature, rng2)
-  real_output = layer_obj(random_input, params=params, state=state, rng=rng3)
+  real_output = layer_obj(random_input, weights=weights, state=state, rng=rng3)
   result_shape = shapes(real_output)
 
   msg = 'output shape %s != real result shape %s' % (output_shape, result_shape)

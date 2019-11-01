@@ -36,8 +36,8 @@ class BatchNorm(base.Layer):
     self._momentum = momentum
     self._mode = mode
 
-  def new_params_and_state(self, input_signature, rng):
-    """Helper to initialize batch norm params."""
+  def new_weights_and_state(self, input_signature, rng):
+    """Helper to initialize batch norm weights."""
     del rng
     axis = self._axis
     axis = (axis,) if np.isscalar(axis) else axis
@@ -54,9 +54,9 @@ class BatchNorm(base.Layer):
     running_mean = np.zeros(stats_shape, dtype=np.float32)
     running_var = np.ones(stats_shape, dtype=np.float32)
     n_batches = np.zeros((), dtype=np.int64)
-    params = (beta, gamma)
+    weights = (beta, gamma)
     state = (running_mean, running_var, n_batches)
-    return params, state
+    return weights, state
 
   def _fast_mean_and_variance(self, x):
     mean = np.mean(x, self._axis, keepdims=True)
@@ -74,9 +74,9 @@ class BatchNorm(base.Layer):
     sigma = np.sqrt(variance + self._epsilon).astype(x.dtype)
     return (x - mu) / sigma
 
-  def _beta_gamma_with_correct_axes(self, x, params):
+  def _beta_gamma_with_correct_axes(self, x, weights):
     # Expand the parameters to have the right axes.
-    beta, gamma = params
+    beta, gamma = weights
     # TODO(phawkins): np.expand_dims should accept an axis tuple.
     # (https://github.com/numpy/numpy/issues/12290)
     ed = tuple(None if i in self._axis else slice(None)
@@ -85,7 +85,7 @@ class BatchNorm(base.Layer):
     gamma = gamma[ed]
     return beta, gamma
 
-  def forward(self, x, params, state, **unused_kwargs):
+  def forward_with_state(self, x, weights, state, **unused_kwargs):
     """Computes batch normalization as part of a forward pass in the model."""
 
     running_mean, running_var, n_batches = state
@@ -100,7 +100,7 @@ class BatchNorm(base.Layer):
       var = running_var
 
     z = self._z_score(x, mean, var)
-    beta, gamma = self._beta_gamma_with_correct_axes(x, params)
+    beta, gamma = self._beta_gamma_with_correct_axes(x, weights)
 
     # Return the z rescaled by the parameters if requested.
     if self._center and self._scale:
@@ -119,19 +119,19 @@ class BatchNorm(base.Layer):
 
 
 # Layer normalization.
-def _layer_norm_params_and_state(input_signature, rng):
+def _layer_norm_weights(input_signature, rng):
   """Helper: create layer norm parameters."""
   del rng
   features = input_signature.shape[-1]
   scale = np.ones(features)
   bias = np.zeros(features)
-  params = (scale, bias)
-  return params, ()
+  weights = (scale, bias)
+  return weights
 
 
-@base.layer(new_params_and_state_fn=_layer_norm_params_and_state)
-def LayerNorm(x, params, epsilon=1e-6, **unused_kwargs):  # pylint: disable=invalid-name
-  (scale, bias) = params
+@base.layer(new_weights_fn=_layer_norm_weights)
+def LayerNorm(x, weights, epsilon=1e-6, **unused_kwargs):  # pylint: disable=invalid-name
+  (scale, bias) = weights
   mean = np.mean(x, axis=-1, keepdims=True)
   variance = np.mean((x - mean)**2, axis=-1, keepdims=True)
   norm_inputs = (x - mean) / np.sqrt(variance + epsilon)

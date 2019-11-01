@@ -256,7 +256,7 @@ def PolicySchedule(
       policy_and_value_net_apply=net,
       observations=np.array([observations]),
       lengths=np.array([n_timesteps]),
-      params=params,
+      weights=params,
       state=state,
       rng=rng,
       vocab_size=policy_and_value_vocab_size,

@@ -85,7 +85,7 @@ TrainerState = collections.namedtuple('_TrainerState', [
 
 
 OptState = collections.namedtuple('_OptState', [
-    'params',      # Model parameters.
+    'weights',     # Model weights.
     'slots',       # Per-parameter optimizer state, e.g. gradient moments.
     'opt_params',  # Optimizer (hyper)parameters, e.g. learning rate, momentum.
 ])
@@ -93,15 +93,15 @@ OptState = collections.namedtuple('_OptState', [
 
 def load_trainer_state(output_dir):
   """Returns a TrainerState instance loaded from the given `output_dir`."""
-  params_file = os.path.join(output_dir, 'model.pkl')
-  if not gfile.exists(params_file):
+  weights_file = os.path.join(output_dir, 'model.pkl')
+  if not gfile.exists(weights_file):
     return TrainerState(step=None, opt_state=None,
                         history=trax_history.History(), model_state=None)
 
   pkl_module = utils.get_pickle_module()
-  with gfile.GFile(params_file, 'rb') as f:
+  with gfile.GFile(weights_file, 'rb') as f:
     (opt_state, step, history, model_state) = pkl_module.load(f)
-  log('Model loaded from %s at step %d' % (params_file, step))
+  log('Model loaded from %s at step %d' % (weights_file, step))
   logging.debug('From loaded model : history = %s', history)
   return TrainerState(step=step, opt_state=OptState(*opt_state),
                       history=history, model_state=model_state)
@@ -120,16 +120,16 @@ def _save_gin(output_dir, sw=None):
 def save_trainer_state(state, output_dir, keep=False):
   """Saves a TrainerState instance to the given `output_dir`."""
   pkl_module = utils.get_pickle_module()
-  params_file = os.path.join(output_dir, 'model.pkl')
-  with gfile.GFile(params_file, 'wb') as f:
+  weights_file = os.path.join(output_dir, 'model.pkl')
+  with gfile.GFile(weights_file, 'wb') as f:
     pkl_module.dump((tuple(state.opt_state), state.step, state.history,
                      state.model_state), f)
   if keep:
-    params_file = os.path.join(output_dir, 'model_{}.pkl'.format(state.step))
-    with gfile.GFile(params_file, 'wb') as f:
+    weights_file = os.path.join(output_dir, 'model_{}.pkl'.format(state.step))
+    with gfile.GFile(weights_file, 'wb') as f:
       pkl_module.dump((tuple(state.opt_state), state.step, state.history,
                        state.model_state), f)
-  log('Model saved to %s' % params_file, stdout=False)
+  log('Model saved to %s' % weights_file, stdout=False)
 
 
 def _save_replicated(opt_state, step, history, model_state, n_devices,
@@ -147,13 +147,13 @@ def _save_replicated(opt_state, step, history, model_state, n_devices,
                    model_state=model_state), output_dir, keep=keep)
 
 
-def _print_n_params(opt_state, n_devices, step):
+def _print_n_weights(opt_state, n_devices, step):
   """Print out the number of parameters."""
-  sizes = layers.sizes(opt_state.params)
+  sizes = layers.sizes(opt_state.weights)
   if n_devices > 1:
     unreplicate = lambda x: x[0]
-    single_params = layers.nested_map(unreplicate, opt_state.params)
-    sizes = layers.sizes(single_params)
+    single_weights = layers.nested_map(unreplicate, opt_state.weights)
+    sizes = layers.sizes(single_weights)
   total_size = layers.nested_reduce(sizes, sum)
   step_log(step, 'Total trainable parameters size: %d' % total_size)
 
@@ -167,15 +167,15 @@ _METRICS = {
 }
 
 
-def evaluation_round(inputs_stream, metric_names, eval_fn, params, state, rng):
+def evaluation_round(inputs_stream, metric_names, eval_fn, weights, state, rng):
   """Evaluate.
 
   Args:
     inputs_stream: iterable of inputs to evaluate on.
     metric_names: list of strings, the order in which eval_fn returns metrics.
     eval_fn: metric function, which takes inputs and predictions (and
-      params, state, rng) and returns a tuple of scalar metric values.
-    params: params for each f in eval_fns.
+      weights, state, rng) and returns a tuple of scalar metric values.
+    weights: weights for each f in eval_fns.
     state: state for each f in eval_fns.
     rng: random number generator.
 
@@ -189,7 +189,7 @@ def evaluation_round(inputs_stream, metric_names, eval_fn, params, state, rng):
   for inp in inputs_stream:
     count += 1
     rng, subrng = jax_random.split(rng)
-    metric_values, _ = eval_fn(inp, params, state, subrng)
+    metric_values, _ = eval_fn(inp, weights, state, subrng)
     try:
       metric_values = list(metric_values)
     except TypeError:
@@ -260,7 +260,8 @@ def epochs(total_steps, steps_to_skip, epoch_steps):
 @gin.configurable
 def _jit_predict_fn(model_predict, metric_fn, n_devices, jit=True):
   """Returns a JIT-compiled predict function (unless jit=False)."""
-  model_predict = layers.Serial(model_predict, metric_fn).apply_forward
+  model = layers.Serial(model_predict, metric_fn)
+  model_predict = model.apply_forward_with_state
   if not jit:
     return model_predict
 
@@ -268,11 +269,11 @@ def _jit_predict_fn(model_predict, metric_fn, n_devices, jit=True):
   if n_devices == 1:
     return model_predict
 
-  def predict(x, params, state, rng):
+  def predict(x, weights, state, rng):
     """Predict function jited and parallelized as requested."""
     res, state = backend.combine_devices(model_predict(
         backend.reshape_by_device(x, n_devices),
-        params,
+        weights,
         state,
         np.stack(jax_random.split(rng, n_devices))))
     return layers.nested_map(lambda y: np.mean(y, axis=0), res), state
@@ -284,18 +285,18 @@ def _jit_predict_fn(model_predict, metric_fn, n_devices, jit=True):
 def _jit_update_fn(predict_fn, loss_fn, optimizer, n_devices, jit=True):
   """Returns a (JIT-compiled) function that computes updates for one step."""
   model_and_loss = layers.Serial(predict_fn, loss_fn)
-  # Gradients are always wrt. the first argument, so putting params first.
-  def model_and_loss_call(params, batch, state, rng):
-    res = model_and_loss(batch, params=params, state=state, rng=rng)
+  # Gradients are always wrt. the first argument, so putting weights first.
+  def model_and_loss_call(weights, batch, state, rng):
+    res = model_and_loss(batch, weights=weights, state=state, rng=rng)
     return res, model_and_loss.state
   if n_devices == 1:  # TODO(lukaszkaiser): remove branch when not needed.
     def single_update(i, opt_state, batch, state, rng):
-      params, slots, opt_params = opt_state
+      weights, slots, opt_params = opt_state
       rng, subrng = jax_random.split(rng[0])
       grad_fn = backend.grad(model_and_loss_call, has_aux=True)
-      grads, state = grad_fn(params, batch, state, rng)
+      grads, state = grad_fn(weights, batch, state, rng)
       return optimizer.tree_update(
-          i, grads, params, slots, opt_params), state, [subrng]
+          i, grads, weights, slots, opt_params), state, [subrng]
     return backend.jit(single_update) if jit else single_update
 
   # Else, for n_devices > 1:
@@ -303,14 +304,14 @@ def _jit_update_fn(predict_fn, loss_fn, optimizer, n_devices, jit=True):
   def mapped_update(i, opt_state, batch, state, rng):
     """This is a multi-device version of the update function above."""
     # We assume all tensors have the first dimension = n_devices.
-    params, slots, opt_params = opt_state
+    weights, slots, opt_params = opt_state
     rng, subrng = jax_random.split(rng)
     grad_fn = backend.grad(model_and_loss_call, has_aux=True)
-    grads, state = grad_fn(params, batch, state, rng)
+    grads, state = grad_fn(weights, batch, state, rng)
     grads = jax.tree_util.tree_map(
         lambda g: backend.psum(g, 'batch'), grads)
     return optimizer.tree_update(
-        i, grads, params, slots, opt_params), state, subrng
+        i, grads, weights, slots, opt_params), state, subrng
 
   def update(i, opt_state, batch, state, rng):
     return mapped_update(np.repeat(i, n_devices), opt_state, batch, state,
@@ -497,9 +498,9 @@ class Trainer(object):
       # because `m.initialize` puts cached parameter values in `m` and hence the
       # next call of `m.initialize` will give wrong results.
       m = layers.Serial(model(mode='train'), loss_fn)
-      params, state = m.initialize_once(input_signature, rng)
-      (slots, opt_params) = opt.tree_init(params)
-      return (OptState(params, slots, opt_params), state)
+      weights, state = m.initialize_once(input_signature, rng)
+      (slots, opt_params) = opt.tree_init(weights)
+      return (OptState(weights, slots, opt_params), state)
     if _is_jit_init():
       # JIT parameter initialization to avoid memory fragmentation
       new_opt_state_and_model_state = backend.jit(new_opt_state_and_model_state,
@@ -539,10 +540,10 @@ class Trainer(object):
     dummy_signature = tuple(ShapeDtype(s, d)
                             for s, d in zip(dummy_shapes, dummy_dtypes))
     metrics_layer = layers.Serial(metrics_layer)
-    metrics_params, metrics_state = (
+    metrics_weights, metrics_state = (
         metrics_layer.initialize_once(dummy_signature, init_rng))
-    self._metrics_params = layers.nested_map(self._maybe_replicate,
-                                             metrics_params)
+    self._metrics_weights = layers.nested_map(self._maybe_replicate,
+                                              metrics_weights)
     self._metrics_state = layers.nested_map(self._maybe_replicate,
                                             metrics_state)
     self._jit_eval = _jit_predict_fn(
@@ -665,8 +666,8 @@ class Trainer(object):
   def save_gin(self):
     _save_gin(self._output_dir, self._train_sw)
 
-  def print_n_params(self):
-    _print_n_params(self._opt_state, self._n_devices, self._step)
+  def print_n_weights(self):
+    _print_n_weights(self._opt_state, self._n_devices, self._step)
 
   def _map_to_state_dicts(self, f):
     """Map the function f to all dicts in model state."""
@@ -716,10 +717,10 @@ class Trainer(object):
     opt_state.opt_params.update(opt_param_updates)
 
     # Run the update.
-    (params, slots), self._model_state, self._rngs = self._jit_update_fn(
+    (weights, slots), self._model_state, self._rngs = self._jit_update_fn(
         self._step, opt_state, next_train_batch, self._model_state, self._rngs)
     self._model_state = self._map_to_state_dicts(self._state_dicts_update)
-    self._opt_state = opt_state._replace(params=params, slots=slots)
+    self._opt_state = opt_state._replace(weights=weights, slots=slots)
     self._step += 1
 
   def train_epoch(self, epoch_steps, eval_steps):
@@ -734,7 +735,7 @@ class Trainer(object):
             next_train_batch, self._n_devices)
       self._train_step(next_train_batch)
 
-      # Occasionally save state, and occasionally log nontrainable params
+      # Occasionally save state, and occasionally log nontrainable weights
       # (e.g., learning rate, dropout).
       if self._step in self._save_steps and self.is_chief:
         self._maybe_save_state(keep=True)
@@ -762,22 +763,22 @@ class Trainer(object):
     # TODO(lukaszkaiser): both model state and parameters by default include
     # the loss layer. Currently, we access the pure-model parameters by just
     # indexing, [0] here. But we should make it more explicit in a better API.
-    params = (self._opt_state[0][0], self._metrics_params)
+    weights = (self._opt_state[0][0], self._metrics_weights)
     state = (self._model_state[0], self._metrics_state)
     step_log(self._step, 'Evaluation')
     train_eval_slice = itertools.islice(self._train_eval_stream, eval_steps)
     train_metrics, _ = evaluation_round(
-        train_eval_slice, self._metrics, self._jit_eval, params, state, rng)
+        train_eval_slice, self._metrics, self._jit_eval, weights, state, rng)
     log_metrics(train_metrics, self._train_sw, 'train',
                 self._step, history=self._history)
     eval_slice = itertools.islice(self._eval_stream, eval_steps)
     eval_metrics, _ = evaluation_round(
-        eval_slice, self._metrics, self._jit_eval, params, state, rng)
+        eval_slice, self._metrics, self._jit_eval, weights, state, rng)
     log_metrics(eval_metrics, self._eval_sw, 'eval',
                 self._step, history=self._history)
     step_log(self._step, 'Finished evaluation')
 
-    # Save the optimizer params in the history
+    # Save the optimizer weights in the history
     for (name, value) in self.nontrainable_params.items():
       self._history.append('train', 'training/{}'.format(name), self._step,
                            value)
@@ -794,9 +795,9 @@ class Trainer(object):
     if self._n_devices > 1:
       next_train_batch = backend.reshape_by_device(
           next_train_batch, self._n_devices)
-    params = self._opt_state[0][0]
+    weights = self._opt_state[0][0]
     forward_computation = jax.xla_computation(self._model_predict_eval)(
-        next_train_batch, params=params, state=self._model_state[0],
+        next_train_batch, weights=weights, state=self._model_state[0],
         rng=self._rngs[0])
     with gfile.GFile(os.path.join(output_dir, 'forward.txt'), 'w') as f:
       f.write(forward_computation.GetHloText())
@@ -842,7 +843,7 @@ def train(output_dir,
     output_dir: Directory where to put the logs and checkpoints.
     model: The model to train as a callable returning 2 callables, an init_fn
       and apply_fn.
-    loss_fn: callable with signature: params, trax.inputs.Inputs, model, state,
+    loss_fn: callable with signature: weights, trax.inputs.Inputs, model, state,
       rng -> loss.
     inputs: callable returning trax.inputs.Inputs.
     optimizer: The optimizer (see optimizers/base.py for signature).
@@ -892,7 +893,7 @@ def train(output_dir,
     # Bookkeeping we do at the first step
     if trainer.step == 1:
       # Print number of parameters
-      trainer.print_n_params()
+      trainer.print_n_weights()
 
       # Save computation graph (single-device only for now)
       if (save_graphs and backend.get_name() == 'jax'):

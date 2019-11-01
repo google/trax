@@ -39,15 +39,14 @@ class BaseLayerTest(absltest.TestCase):
 
     class IdWithZeroGrad(base.Layer):
 
-      def forward(self, x, params=(), state=(), **kwargs):
-        del kwargs
-        return x, ()
+      def forward(self, x, weights):
+        return x
 
       @property
       def has_backward(self):
         return True
 
-      def backward(self, inputs, output, ct, params, state, **kwargs):
+      def backward(self, inputs, output, ct, weights, state, **kwargs):
         return (backend.numpy.zeros_like(ct), ())
 
     layer = IdWithZeroGrad()
@@ -65,15 +64,14 @@ class BaseLayerTest(absltest.TestCase):
 
     class IdWithIdGrad(base.Layer):
 
-      def forward(self, x, params=(), state=(), **kwargs):
-        del kwargs
-        return x, ()
+      def forward(self, x, weights):
+        return x
 
       @property
       def has_backward(self):
         return True
 
-      def backward(self, inputs, output, ct, params, state, **kwargs):
+      def backward(self, inputs, output, ct, weights, state, **kwargs):
         return (inputs, ())
 
     layer = IdWithIdGrad()

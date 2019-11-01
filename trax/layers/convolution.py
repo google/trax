@@ -56,9 +56,8 @@ class Conv(base.Layer):
     msg = 'Convolutions on more than 4 dimensions only supported in NHWC.'
     assert self._lhs_spec == self._out_spec == 'NHWC', msg
 
-  def forward(self, x, params=(), state=(), **kwargs):
-    del kwargs
-    w, b = params
+  def forward(self, x, weights):
+    w, b = weights
     x_shape = list(x.shape)
     if len(x_shape) > 4:
       self._check_nhwc()
@@ -69,7 +68,7 @@ class Conv(base.Layer):
         self._one) + b
     if len(x_shape) > 4:
       res = np.reshape(res, x_shape[:-3] + list(res.shape[-3:]))
-    return res, state
+    return res
 
   def _kernel_shape(self, input_shape):
     """Helper to calculate the kernel shape."""
@@ -78,7 +77,7 @@ class Conv(base.Layer):
             input_shape[self._lhs_spec.index('C')] if c == 'I' else
             next(kernel_size_iter) for c in self._rhs_spec]
 
-  def new_params_and_state(self, input_signature, rng):
+  def new_weights(self, input_signature, rng):
     input_shape = input_signature.shape
     if len(input_shape) > 4:
       self._check_nhwc()
@@ -89,7 +88,7 @@ class Conv(base.Layer):
     bias_shape = tuple(itertools.dropwhile(lambda x: x == 1, bias_shape))
     w = self._kernel_initializer(kernel_shape, rng)
     b = self._bias_initializer(bias_shape, rng)
-    return (w, b), ()
+    return (w, b)
 
 
 class CausalConv(Conv):
@@ -112,7 +111,7 @@ class CausalConv(Conv):
         kernel_initializer=kernel_initializer,
         bias_initializer=bias_initializer)
 
-  def forward(self, x, params=(), state=(), **kwargs):
+  def forward(self, x, weights):
     assert self._padding == 'VALID'
     # Left pad with 0s. Applying an unmasked valid convolution on top of this
     # yields a causal convolution.
@@ -121,6 +120,4 @@ class CausalConv(Conv):
     effective_kernel_size = int((self._kernel_size[0] - 1) * rate + 1)
     pad = effective_kernel_size - 1
     x_leftpad = np.pad(x, pad_width=[[0, 0], [pad, 0], [0, 0]], mode='constant')
-
-    res = super(CausalConv, self).forward(x_leftpad, params)
-    return res
+    return super(CausalConv, self).forward(x_leftpad, weights)

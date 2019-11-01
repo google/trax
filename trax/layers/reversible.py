@@ -28,11 +28,11 @@ from trax.layers import combinators as cb
 class ReversibleLayer(base.Layer):
   """Reversible Layer."""
 
-  def reverse(self, output, params=(), state=(), **kwargs):
+  def reverse(self, output, weights=(), state=(), **kwargs):
     """Reverse this layer: compute input given output."""
     raise NotImplementedError
 
-  def reverse_and_grad(self, output, grad, params=(), state=(), **kwargs):
+  def reverse_and_grad(self, output, grad, weights=(), state=(), **kwargs):
     """Backward pass: computes the inverse of a layer and propagates gradients.
 
     While you may choose to only implement reverse, some layers implement this
@@ -43,42 +43,43 @@ class ReversibleLayer(base.Layer):
       output: Output activations; can be a (possibly nested) tuple.
       grad: gradient signal (cotangent) computed based on subsequent layers.
         The structure and shape must match the output.
-      params: layer parameters
+      weights: layer weights
       state: start state
       **kwargs: kwargs for the layer
 
     Returns:
-      A tuple (x, (x_grad, params_grad)), where x is the reconstructed input,
-      x_grad is the gradient signal for the input, and params_grad is the
-      gradient signal for the parameters.
+      A tuple (x, (x_grad, weights_grad)), where x is the reconstructed input,
+      x_grad is the gradient signal for the input, and weights_grad is the
+      gradient signal for the weights.
     """
     # Note: jax.vjp does not allow us to use **kwargs in the signature here.
-    def _do_forward(x, params):
-      return super(ReversibleLayer, self).forward(
-          x, params=params, state=state, **kwargs)[0]
+    def _do_forward(x, weights):
+      return super(ReversibleLayer, self).forward_with_state(
+          x, weights=weights, state=state, **kwargs)[0]
 
-    reconstructed_x = self.reverse(output, params, state, **kwargs)
-    _, vjpfun = jax.vjp(_do_forward, reconstructed_x, params)
-    x_params_grad = vjpfun(grad)
-    return reconstructed_x, x_params_grad
+    reconstructed_x = self.reverse(output, weights, state, **kwargs)
+    _, vjpfun = jax.vjp(_do_forward, reconstructed_x, weights)
+    x_weights_grad = vjpfun(grad)
+    return reconstructed_x, x_weights_grad
 
   @property
   def has_backward(self):
     return True
 
-  def backward(self, inputs, output, ct, params, state, **kwargs):
+  def backward(self, inputs, output, ct, weights, state, **kwargs):
     del inputs
-    _, inputs_params_ct = self.reverse_and_grad(output, ct, params, state,
-                                                **kwargs)
-    return inputs_params_ct
+    _, inputs_weights_ct = self.reverse_and_grad(output, ct, weights, state,
+                                                 **kwargs)
+    return inputs_weights_ct
 
 
 class ReversibleSwap(ReversibleLayer, cb.Swap):
   """Swap the first two element on the stack."""
 
-  def reverse(self, output, params=(), state=(), **kwargs):
+  def reverse(self, output, weights=(), state=(), **kwargs):
     # Swap is its own inverse, except that reverse doesn't return the state.
-    return self.forward(output, params=params, state=state, **kwargs)[0]
+    return self.forward_with_state(output, weights=weights, state=state,
+                                   **kwargs)[0]
 
 
 class ReversibleSerial(ReversibleLayer, cb.Serial):
@@ -94,7 +95,7 @@ class ReversibleSerial(ReversibleLayer, cb.Serial):
             'Sub-layer {} of ReversibleSerial is not reversible: {}'.format(
                 i, layer))
 
-  def reverse(self, output, params=(), state=(), **kwargs):
+  def reverse(self, output, weights=(), state=(), **kwargs):
     rng = kwargs.pop('rng', None)
     rngs = (None,) * self._n_layers
     if rng is not None:
@@ -102,12 +103,12 @@ class ReversibleSerial(ReversibleLayer, cb.Serial):
 
     layer_val = output
     for layer, p, s, rng in reversed(list(zip(self.sublayers,
-                                              params, state, rngs))):
+                                              weights, state, rngs))):
       layer_val = layer.reverse(layer_val, p, s, rng=rng, **kwargs)
 
     return layer_val
 
-  def reverse_and_grad(self, output, ct, params=(), state=(), **kwargs):
+  def reverse_and_grad(self, output, ct, weights=(), state=(), **kwargs):
     rng = kwargs.pop('rng', None)
     rngs = (None,) * self._n_layers
     if rng is not None:
@@ -115,12 +116,12 @@ class ReversibleSerial(ReversibleLayer, cb.Serial):
 
     layer_val = output
     layer_ct = ct
-    params_ct = []
+    weights_ct = []
     for layer, p, s, rng in reversed(list(zip(self.sublayers,
-                                              params, state, rngs))):
+                                              weights, state, rngs))):
       layer_val, layer_ct = layer.reverse_and_grad(
           layer_val, layer_ct, p, s, rng=rng, **kwargs)
       layer_ct, p_ct = layer_ct
-      params_ct.insert(0, p_ct)
+      weights_ct.insert(0, p_ct)
 
-    return layer_val, (layer_ct, params_ct)
+    return layer_val, (layer_ct, weights_ct)

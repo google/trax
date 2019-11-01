@@ -192,9 +192,8 @@ class CopyPosToHeads(tl.Layer):
     self._n_heads = n_heads
     self._n_pos = n_pos
 
-  def forward(self, inp, params=(), state=(), **kwargs):
+  def forward(self, inp, weights):
     """Reshape input to have heads dimension and concatenate positions there."""
-    del kwargs
     x = inp[0]
     n_batches, seqlen = x.shape[0], x.shape[1]
     d_head = x.shape[-1] // self._n_heads
@@ -209,7 +208,7 @@ class CopyPosToHeads(tl.Layer):
     res = np.concatenate([res, pos], axis=-1)
     # n_batch, n_heads, seqlen, d_head -> n_batch*n_heads, seqlen, d_head
     res = np.reshape(res, (-1, seqlen, d_head + POS_VECTOR_SIZE))
-    return res, state
+    return res
 
 
 @tl.symbolic

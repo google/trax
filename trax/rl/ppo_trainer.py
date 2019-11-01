@@ -496,7 +496,7 @@ class PPO(base_trainer.BaseTrainer):
     (log_probabs_traj, value_predictions_traj) = (
         self._policy_and_value_net_apply(
             padded_observations,
-            params=self._policy_and_value_net_params,
+            weights=self._policy_and_value_net_weights,
             state=self._model_state,
             rng=key,
         )
@@ -523,7 +523,7 @@ class PPO(base_trainer.BaseTrainer):
     loss_compute_start_time = time.time()
     (cur_combined_loss, component_losses, summaries, self._model_state) = (
         ppo.combined_loss(
-            self._policy_and_value_net_params,
+            self._policy_and_value_net_weights,
             log_probabs_traj,
             value_predictions_traj,
             self._policy_and_value_net_apply,
@@ -589,7 +589,7 @@ class PPO(base_trainer.BaseTrainer):
       (log_probab_actions_new, _) = (
           self._policy_and_value_net_apply(
               padded_observations,
-              params=self._policy_and_value_net_params,
+              weights=self._policy_and_value_net_weights,
               state=self._model_state,
               rng=k2))
 
@@ -613,7 +613,7 @@ class PPO(base_trainer.BaseTrainer):
         # Compute and log the loss.
         (combined_loss, component_losses, _, self._model_state) = (
             ppo.combined_loss(
-                self._policy_and_value_net_params,
+                self._policy_and_value_net_weights,
                 log_probabs_traj,
                 value_predictions_traj,
                 self._policy_and_value_net_apply,
@@ -785,7 +785,7 @@ class PPO(base_trainer.BaseTrainer):
     return params
 
   @property
-  def _policy_and_value_net_params(self):
+  def _policy_and_value_net_weights(self):
     return self._policy_and_value_get_params(self._policy_and_value_opt_state)
 
   # Prepares the trajectories for policy training.
@@ -829,7 +829,7 @@ class PPO(base_trainer.BaseTrainer):
         self._policy_and_value_net_apply,
         observations,
         lengths,
-        self._policy_and_value_net_params,
+        self._policy_and_value_net_weights,
         state,
         rng,
         self._policy_and_value_vocab_size,

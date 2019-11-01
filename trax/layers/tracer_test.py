@@ -179,8 +179,8 @@ class TracerTest(absltest.TestCase):
     c = onp.random.randint(0, 10, size=(2, 10))
     input_sd = ShapeDtype((2, 10), onp.int32)
     input_signature = (input_sd, input_sd, input_sd)
-    p, s = layer.new_params_and_state(input_signature, jax.random.PRNGKey(0))
-    res = layer((a, b, c), params=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+    p, s = layer.new_weights_and_state(input_signature, jax.random.PRNGKey(0))
+    res = layer((a, b, c), weights=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
     result = onp.array(res)
     expected = a + b + c
     onp.testing.assert_allclose(result, expected)
@@ -200,8 +200,8 @@ class TracerTest(absltest.TestCase):
     c = onp.random.randint(0, 10, size=(2, 10))
     input_sd = ShapeDtype((2, 10), onp.int32)
     input_signature = (input_sd, input_sd, input_sd)
-    p, s = layer.new_params_and_state(input_signature, jax.random.PRNGKey(0))
-    res = layer((a, b, c), params=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+    p, s = layer.new_weights_and_state(input_signature, jax.random.PRNGKey(0))
+    res = layer((a, b, c), weights=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
     result = onp.array(res)
     expected = onp.tanh(a) + b + c
     onp.testing.assert_allclose(result, expected)
@@ -221,8 +221,8 @@ class TracerTest(absltest.TestCase):
     c = onp.random.uniform(-10, 10, size=(2, 10))
     input_sd = ShapeDtype((2, 10), onp.int32)
     input_signature = (input_sd, input_sd, input_sd)
-    p, s = layer.new_params_and_state(input_signature, jax.random.PRNGKey(0))
-    res = layer((a, b, c), params=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg,no-value-for-parameter,not-callable
+    p, s = layer.new_weights_and_state(input_signature, jax.random.PRNGKey(0))
+    res = layer((a, b, c), weights=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg,no-value-for-parameter,not-callable
     result0 = onp.array(res[0])
     expected0 = onp.where(a + b > 0, a + b, 0.0)
     onp.testing.assert_allclose(result0, expected0, rtol=1e-5)
@@ -242,8 +242,8 @@ class TracerTest(absltest.TestCase):
     b = onp.random.randint(0, 10, size=(2, 10))
     input_sd = ShapeDtype((2, 10), onp.int32)
     input_signature = (input_sd, input_sd)
-    p, s = layer.new_params_and_state(input_signature, jax.random.PRNGKey(0))
-    res = layer((a, b), params=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg,no-value-for-parameter,not-callable
+    p, s = layer.new_weights_and_state(input_signature, jax.random.PRNGKey(0))
+    res = layer((a, b), weights=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg,no-value-for-parameter,not-callable
     result = onp.array(res)
     expected = a + 3 * b
     onp.testing.assert_allclose(result, expected)
@@ -251,8 +251,8 @@ class TracerTest(absltest.TestCase):
     layer = make_layer(n=5)  # pylint: disable=no-value-for-parameter
     input_sd = ShapeDtype((2, 10), onp.int32)
     input_signature = (input_sd, input_sd)
-    p, s = layer.new_params_and_state(input_signature, jax.random.PRNGKey(0))
-    res = layer((a, b), params=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg,no-value-for-parameter,not-callable
+    p, s = layer.new_weights_and_state(input_signature, jax.random.PRNGKey(0))
+    res = layer((a, b), weights=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg,no-value-for-parameter,not-callable
     result = onp.array(res)
     expected = a + 5 * b
     onp.testing.assert_allclose(result, expected)

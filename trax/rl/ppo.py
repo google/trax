@@ -678,7 +678,7 @@ def combined_loss_given_predictions(log_probab_actions_new,
 
 
 @functools.partial(jit, static_argnums=(3,))
-def combined_loss(new_params,
+def combined_loss(new_weights,
                   log_probab_actions_old,
                   value_predictions_old,
                   policy_and_value_net_apply,
@@ -699,7 +699,7 @@ def combined_loss(new_params,
 
   (log_probab_actions_new, value_predictions_new) = (
       policy_and_value_net_apply(
-          padded_observations, params=new_params, state=state, rng=rng))
+          padded_observations, weights=new_weights, state=state, rng=rng))
 
   (loss, component_losses, summaries) = combined_loss_given_predictions(
       log_probab_actions_new,
@@ -755,8 +755,8 @@ def policy_and_value_opt_step(i,
         rng=rng)
     return loss, state
 
-  new_params = get_params(opt_state)
-  g, state = grad(policy_and_value_loss, has_aux=True)(new_params, state)
+  new_weights = get_params(opt_state)
+  g, state = grad(policy_and_value_loss, has_aux=True)(new_weights, state)
   # TODO(afrozm): Maybe clip gradients?
   return opt_update(i, g, opt_state), state
 
@@ -1065,7 +1065,7 @@ def run_policy(
     policy_and_value_net_apply,
     observations,
     lengths,
-    params,
+    weights,
     state,
     rng,
     vocab_size,
@@ -1079,7 +1079,7 @@ def run_policy(
   )
   (rng, subrng) = jax_random.split(rng)
   (log_probs, value_preds) = policy_and_value_net_apply(
-      policy_input, params=params, state=state, rng=subrng
+      policy_input, weights=weights, state=state, rng=subrng
   )
   (log_probs, value_preds) = _extract_policy_output(
       log_probs, value_preds, lengths, rewards_to_actions
