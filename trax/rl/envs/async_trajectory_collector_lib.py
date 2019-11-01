@@ -125,6 +125,10 @@ def continuously_collect_trajectories(output_dir,
     return get_newer_policy_model_file(
         output_dir, min_epoch=epoch_, sleep_time_secs=sleep_time_secs_)
 
+  # Does a __done__ file exist?
+  def done_file_exists():
+    return gfile.exists(os.path.join(output_dir, '__done__'))
+
   assert 1 == train_env.batch_size
   assert 1 == eval_env.batch_size
 
@@ -149,7 +153,8 @@ def continuously_collect_trajectories(output_dir,
     # Useful if env.step is long.
     def long_abort_fn():
       # We want this to be as quick as possible.
-      return is_newer_policy_file_available(epoch, 0) is not None
+      return (is_newer_policy_file_available(epoch, 0) is not None) or (
+          done_file_exists())
 
     abort_fn = long_abort_fn if try_abort else None
 
@@ -159,6 +164,10 @@ def continuously_collect_trajectories(output_dir,
                                          temperature=temperature,
                                          abort_fn=abort_fn,
                                          raw_trajectory=True))
+
+    if done_file_exists():
+      logging.info('__done__ file found in %s, we are done here.', output_dir)
+      break
 
     if trajs and n_done > 0:
       assert 1 == n_done

@@ -135,6 +135,8 @@ class BaseTrainer(object):
       self._trajectory_buffer = []
 
   def training_loop(self, n_epochs, evaluate=True):
+    """RL training loop."""
+
     logging.info('Starting the RL training loop.')
     for _ in range(self.epoch, n_epochs):
       self.train_epoch(evaluate=evaluate)
@@ -144,3 +146,11 @@ class BaseTrainer(object):
     if evaluate:
       self.evaluate()
     self.flush_summaries()
+    self.indicate_done()
+
+  def indicate_done(self):
+    """If in async mode, workers need to know we are done."""
+    if not self.async_mode:
+      return
+    with gfile.GFile(os.path.join(self._output_dir, '__done__'), 'wb') as f:
+      f.write('')
