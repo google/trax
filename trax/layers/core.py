@@ -177,11 +177,11 @@ class Dropout(base.Layer):
 
   def new_weights_and_state(self, input_signature, rng):
     del input_signature, rng
-    weights = ()
     state = {self._name: np.array(self._initial_rate)}
-    return weights, state
+    return base.EMPTY_WEIGHTS, state
 
-  def forward_with_state(self, x, weights=(), state=(), rng=None, **kwargs):
+  def forward_with_state(self, x, weights=base.EMPTY_WEIGHTS,
+                         state=base.EMPTY_STATE, rng=None, **kwargs):
     """Execute dropout."""
     del kwargs
     rate = self._initial_rate

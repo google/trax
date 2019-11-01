@@ -34,6 +34,7 @@ from tensorflow.io import gfile
 from trax import backend
 from trax import trainer_lib
 from trax import utils
+from trax.layers import base
 from trax.rl import simple
 from trax.rl import simulated_env_problem
 from trax.rl import space_serializer  # pylint: disable=unused-import
@@ -249,7 +250,8 @@ class SimpleTest(test.TestCase):
     predict_output = (np.array([[[0.0]]] * batch_size))
     mock_model_fn = mock.MagicMock()
     mock_model_fn.return_value.side_effect = itertools.repeat(predict_output)
-    mock_model_fn.return_value.initialize_once.return_value = ((), ())
+    mock_model_fn.return_value.initialize_once.return_value = (
+        base.EMPTY_WEIGHTS, base.EMPTY_STATE)
 
     return simulated_env_problem.SerializedSequenceSimulatedEnvProblem(
         model=mock_model_fn,

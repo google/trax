@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import absltest
+import numpy as onp
 from trax import backend
 from trax.layers import base
 from trax.shapes import ShapeDtype
@@ -34,6 +35,24 @@ class BaseLayerTest(absltest.TestCase):
     output_shape = base.check_shape_agreement(
         add_one(), ShapeDtype((12, 17)))  # pylint: disable=no-value-for-parameter
     self.assertEqual(output_shape, (12, 17))
+
+  def test_layer_decorator_no_weights(self):
+    # Layer with no defined new_weights_fn should give False for has_weights.
+    @base.layer()
+    def add_one(x, **unused_kwargs):
+      return x + 1
+
+    layer = add_one()  # pylint: disable=no-value-for-parameter
+    self.assertFalse(layer.has_weights)
+
+  def test_layer_decorator_has_weights(self):
+    # Layer with defined new_weights_fn should give True for has_weights.
+    @base.layer(new_weights_fn=onp.ones_like)
+    def add_one(x, **unused_kwargs):
+      return x + 1
+
+    layer = add_one()  # pylint: disable=no-value-for-parameter
+    self.assertTrue(layer.has_weights)
 
   def test_custom_zero_grad(self):
 
