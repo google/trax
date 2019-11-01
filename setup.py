@@ -20,7 +20,7 @@ from setuptools import setup
 
 setup(
     name='trax',
-    version='1.0.1',
+    version='1.1.0',
     description='Trax',
     author='Google Inc.',
     author_email='no-reply@google.com',
