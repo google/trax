@@ -20,7 +20,8 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as onp
-from trax import backend
+from trax.backend import numpy as np
+from trax.backend import random
 
 
 def _GetFans(shape, out_dim=-1, in_dim=-2):
@@ -31,7 +32,7 @@ def _GetFans(shape, out_dim=-1, in_dim=-2):
   if in_dim < 0:
     in_dim += len(shape)
 
-  receptive_field = backend.numpy.prod(onp.delete(shape, [in_dim, out_dim]))
+  receptive_field = np.prod(onp.delete(shape, [in_dim, out_dim]))
   if len(shape) >= 2:
     fan_in, fan_out = shape[in_dim], shape[out_dim]
   elif len(shape) == 1:
@@ -46,26 +47,19 @@ def _GetFans(shape, out_dim=-1, in_dim=-2):
 
 
 def RandomNormalInitializer(stddev=1e-2):
-  """An initializer function for random normal coefficients."""
-
-  def Init(shape, rng):
-    return (stddev * backend.random.normal(rng, shape)).astype('float32')
-
-  return Init
+  """Returns an initializer for random normal coefficients."""
+  return (
+      lambda shape, rng: (stddev * random.normal(rng, shape)).astype('float32')
+  )
 
 
 def RandomUniformInitializer(lim=1.0):
-  """An initializer function for random uniform coefficients."""
-
-  def Init(shape, rng):
-    return (backend.random.uniform(rng, shape, backend.numpy.float32, -lim,
-                                   lim))
-
-  return Init
+  """Returns an initializer for random uniform coefficients."""
+  return lambda shape, rng: random.uniform(rng, shape, np.float32, -lim, lim)
 
 
-def VarianceScalingInitializer(out_dim, in_dim, scale, mode, distribution):
-  """Initializer capable of adapting its scale to the shape of weights."""
+def ScaledInitializer(out_dim, in_dim, scale, mode, distribution):
+  """Returns an initializer that adjusts its scale based on weight shapes."""
   if scale <= 0.:
     raise ValueError('scale must be positive float, {} given'.format(scale))
   if mode not in {'fan_in', 'fan_out', 'fan_avg'}:
@@ -74,7 +68,7 @@ def VarianceScalingInitializer(out_dim, in_dim, scale, mode, distribution):
         .format(mode))
 
   def Init(shape, rng):
-    """The initializer function."""
+    """Returns random values for initializing weights of the given `shape`."""
     fan_in, fan_out = _GetFans(shape, out_dim, in_dim)
     gain = scale
     if mode == 'fan_in':
@@ -85,61 +79,57 @@ def VarianceScalingInitializer(out_dim, in_dim, scale, mode, distribution):
       gain /= (fan_in + fan_out) / 2
     if distribution == 'truncated_normal':
       # constant from scipy.stats.truncnorm.std(a=-2, b=2, loc=0., scale=1.)
-      stddev = backend.numpy.sqrt(gain) / .87962566103423978
-      return (backend.random.truncated_normal(rng, -2, 2, shape) *
-              stddev).astype('float32')
+      stddev = np.sqrt(gain) / .87962566103423978
+      new_weights = random.truncated_normal(rng, -2, 2, shape) * stddev
+      return new_weights.astype('float32')
     elif distribution == 'normal':
-      return (backend.random.normal(rng, shape) *
-              backend.numpy.sqrt(gain)).astype('float32')
+      new_weights = random.normal(rng, shape) * np.sqrt(gain)
+      return new_weights.astype('float32')
     elif distribution == 'uniform':
-      lim = backend.numpy.sqrt(3. * gain)
-      return (backend.random.uniform(rng, shape, backend.numpy.float32, -lim,
-                                     lim))
+      lim = np.sqrt(3. * gain)
+      return random.uniform(rng, shape, np.float32, -lim, lim)
     else:
-      raise ValueError('invalid distribution for variance scaling Initializer')
+      raise ValueError('invalid distribution for ScaleInitializer')
 
   return Init
 
 
 def GlorotNormalInitializer(out_dim=-1, in_dim=-2, scale=1.):
-  """An initializer function for random Glorot-scaled coefficients."""
-  return VarianceScalingInitializer(out_dim, in_dim, scale, 'fan_avg', 'normal')
+  """Returns an initializer for random Glorot-scaled coefficients."""
+  return ScaledInitializer(out_dim, in_dim, scale, 'fan_avg', 'normal')
 
 
 def GlorotUniformInitializer(out_dim=-1, in_dim=-2, scale=1.):
-  """An initializer function for random uniform Glorot-scaled coefficients."""
-  return VarianceScalingInitializer(out_dim, in_dim, scale, 'fan_avg',
-                                    'uniform')
+  """Returns an initializer for random uniform Glorot-scaled coefficients."""
+  return ScaledInitializer(out_dim, in_dim, scale, 'fan_avg', 'uniform')
 
 
 def LeCunNormalInitializer(out_dim=-1, in_dim=-2, scale=1.):
-  """An initializer function for random LeCun-scaled coefficients."""
-  return VarianceScalingInitializer(out_dim, in_dim, scale, 'fan_in', 'normal')
+  """Returns an initializer for random LeCun-scaled coefficients."""
+  return ScaledInitializer(out_dim, in_dim, scale, 'fan_in', 'normal')
 
 
 def LeCunUniformInitializer(out_dim=-1, in_dim=-2, scale=1.):
-  """An initializer function for random uniform LeCun-scaled coefficients."""
-  return VarianceScalingInitializer(out_dim, in_dim, scale, 'fan_in', 'uniform')
+  """Returns an initializer for random uniform LeCun-scaled coefficients."""
+  return ScaledInitializer(out_dim, in_dim, scale, 'fan_in', 'uniform')
 
 
 def KaimingNormalInitializer(out_dim=-1, in_dim=-2, param=0.):
-  """An initializer function for random Kaiming-scaled coefficients."""
-  return VarianceScalingInitializer(out_dim, in_dim,
-                                    2.0 / backend.numpy.sqrt(1 + param**2),
-                                    'fan_in', 'normal')
+  """Returns an initializer for random Kaiming-scaled coefficients."""
+  return ScaledInitializer(
+      out_dim, in_dim, 2.0 / np.sqrt(1 + param**2), 'fan_in', 'normal')
 
 
 def KaimingUniformInitializer(out_dim=-1, in_dim=-2, param=0.):
-  """An initializer function for random uniform Kaiming-scaled coefficients."""
-  return VarianceScalingInitializer(out_dim, in_dim,
-                                    2.0 / backend.numpy.sqrt(1 + param**2),
-                                    'fan_in', 'uniform')
+  """Returns an initializer for random uniform Kaiming-scaled coefficients."""
+  return ScaledInitializer(
+      out_dim, in_dim, 2.0 / np.sqrt(1 + param**2), 'fan_in', 'uniform')
 
 
 def OrthogonalInitializer(stddev=1.0):
-  """Orthogonal Initializer."""
+  """Returns an orthogonal initializer."""
   def Init(shape, rng):
-    """The orthogonal initializer function."""
+    """Returns orthogonalized random normal values with the given `shape`."""
     # Have at least 2 elements in shape.
     cur_shape = list(shape)
     while len(cur_shape) < 2:
@@ -153,19 +143,19 @@ def OrthogonalInitializer(stddev=1.0):
     flat_shape = (n_cols, n_rows) if n_rows < n_cols else (n_rows, n_cols)
 
     # Generate a random matrix
-    a = backend.random.normal(rng, flat_shape, dtype=backend.numpy.float32)
+    a = random.normal(rng, flat_shape, dtype=np.float32)
 
     # Compute the qr factorization
-    q, r = backend.numpy.linalg.qr(a)
+    q, r = np.linalg.qr(a)
 
     # Make Q uniform
-    d = backend.numpy.diag(r)
-    q *= backend.numpy.sign(d)
+    d = np.diag(r)
+    q *= np.sign(d)
 
     # Transpose and reshape back q if needed.
     if n_rows < n_cols:
-      q = backend.numpy.transpose(q)
-    q = backend.numpy.reshape(q, shape)
+      q = np.transpose(q)
+    q = np.reshape(q, shape)
 
     # Return scaled as requested.
     return stddev * q
