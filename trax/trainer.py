@@ -100,20 +100,21 @@ def set_tf_allow_float64(b):
 
 
 @gin.configurable
-def tf_init_tpu(worker=''):
+def tf_init_tpu(worker='', protocol=None):
   """Initializes TPU for TensorFlow.
 
   Args:
     worker: The BNS address of the remote TPU worker. If it's empty (the default
       value), TF will assume the TPU devices are connected to the local host.
-
+    protocol: The network protocol used to connect to the TPU worker.
   Returns:
     The device name of the TPU worker's CPU.
   """
+  protocol = protocol or 'grpc'
   is_local = (worker in ('', 'local'))
   resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu=worker)
   if not is_local:
-    tf.config.experimental_connect_to_cluster(resolver, protocol='grpc+loas')
+    tf.config.experimental_connect_to_cluster(resolver, protocol=protocol)
   tf.tpu.experimental.initialize_tpu_system(resolver)
   if is_local:
     return ''
