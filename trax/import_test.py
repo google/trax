@@ -13,16 +13,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Trax top level import."""
+# Lint as: python3
+"""Tests for importing Trax."""
 
-from trax import backend
-from trax import inputs
-from trax import layers as tl
-from trax import learning_rate as lr
-from trax import shapes
-from trax import trainer_lib
-from trax.backend import eval_on_shapes
-from trax.backend import grad
-from trax.backend import logsumexp
-from trax.backend import numpy as np
-from trax.backend import random
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+from absl.testing import absltest
+
+
+class ImportTest(absltest.TestCase):
+
+  def test_import_trax(self):
+    try:
+      # Import trax
+      import trax  # pylint: disable=g-import-not-at-top
+      # Access a few symbols.
+      dir(trax.backend)
+      dir(trax.tl)
+      dir(trax.models)
+    except ImportError as e:
+      raise e
+
+
+if __name__ == '__main__':
+  absltest.main()

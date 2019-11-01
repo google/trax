@@ -40,8 +40,6 @@ from trax import models as trax_models
 from trax import utils
 from trax.backend import numpy as np
 from trax.backend import random as jax_random
-from trax.rl import online_tune
-from trax.rl import ppo
 
 
 @gin.configurable(blacklist=['history'])
@@ -281,3 +279,11 @@ def PolicySchedule(
       for (control_action, control_config) in zip(action, control_configs)
   }
   return lambda _: controls
+
+
+# pylint: disable=g-import-not-at-top
+# These dependencies are here to break the circular dependency from this
+# module, to itself via online_tune/ppo -> trainer_lib -> learning_rate.
+from trax.rl import online_tune
+from trax.rl import ppo
+# pylint: enable=g-import-not-at-top
