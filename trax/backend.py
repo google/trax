@@ -99,6 +99,45 @@ def jax_avg_pool(x, pool_size, strides, padding):
                           pool_size, strides=strides, padding=padding)
 
 
+def _jax_scan(f, xs, init_value, axis=0):
+  """Scans the f over the given axis of xs.
+
+  In pseudo-python, the scan function would look as follows:
+
+  def scan(f, xs, init_value, axis):
+    xs  = [xs[..., i, ...] for i in range(xs.shape[axis])]
+    cur_value = init_value
+    ys = []
+    for x in xs:
+      y, cur_value = f(x, cur_value)
+      ys.append(y)
+    return np.stack(ys, axis), cur_value
+
+  Args:
+    f: function (x, carry) -> (y, new_carry)
+    xs: tensor, x will be xs slices on axis
+    init_value: tensor, initial value of the carry-over
+    axis: int, the axis on which to slice xs
+
+  Returns:
+    A pair (ys, last_value) as described above.
+  """
+  def swapaxes(x):
+    transposed_axes = list(range(len(x.shape)))
+    transposed_axes[axis] = 0
+    transposed_axes[0] = axis
+    return jnp.transpose(x, axes=transposed_axes)
+  if axis != 0:
+    xs = nested_map(swapaxes, xs)
+  def transposed_f(c, x):
+    y, d = f(x, c)
+    return d, y
+  last_value, ys = lax.scan(transposed_f, init_value, xs)
+  if axis != 0:
+    ys = nested_map(swapaxes, xs)
+  return ys, last_value
+
+
 def nested_map(f, x):
   """Map the function f to the nested structure x (dicts, tuples, lists)."""
   if isinstance(x, list):
@@ -160,6 +199,7 @@ _JAX_BACKEND = {
     'avg_pool': jax_avg_pool,
     'max_pool': jax_max_pool,
     'sum_pool': jax_sum_pool,
+    'scan': _jax_scan,
     'jit': jax.jit,
     'grad': jax.grad,
     'pmap': jax.pmap,
@@ -216,6 +256,10 @@ def max_pool(*args, **kwargs):
 
 def sum_pool(*args, **kwargs):
   return backend()['sum_pool'](*args, **kwargs)
+
+
+def scan(*args, **kwargs):
+  return backend()['scan'](*args, **kwargs)
 
 
 def jit(*args, **kwargs):

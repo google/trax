@@ -780,7 +780,7 @@ class TimeBinCausalAttention(BaseCausalAttention):
         'JAX backend is required to use forward_and_backward.')
     # Simultaneous forward pass and backprop through the attention mechanism.
     def _do_forward(x):  # pylint: disable=invalid-name
-      res, _ = self.forward(x, **kwargs)
+      res, _ = self.forward_with_state(x, **kwargs)
       return res
     output, vjpfun = jax.vjp(_do_forward, inputs)
     return output, vjpfun(ct)[0]

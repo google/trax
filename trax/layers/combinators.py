@@ -515,3 +515,44 @@ def Residual(*layers, **kwargs):
       Parallel(shortcut, layers),
       Add(),  # pylint: disable=no-value-for-parameter
   ]
+
+
+class Scan(base.Layer):
+  """Scans the given layer over the given axis of the inputs.
+
+  We assume layer takes a tuple of inputs of the following form:
+    (input1, ..., inputN, carry1, ..., carryM)
+  and returns
+    (output1, ..., outputK, new_carry1, ..., new_carryM)
+
+  The scanned version applied layer iteratively to a tensor treating values
+  at the given axis as if they were a list. For example, to calculate all
+  sums of prefixes of a tensor, we can do this:
+
+  @base.layer(n_in=2, n_out=2)
+  def add(x)
+      input, carry = x
+      res = input + carry
+      return res, res  # output and carry are the same
+
+  Scan(add)([1, 2, 3], 0) = [1, 3, 6], 6
+  """
+
+  def __init__(self, layer, axis=0, n_carry=1):
+    super(Scan, self).__init__(n_in=layer.n_in, n_out=layer.n_out)
+    self._layer = layer
+    self._sublayers = [layer]
+    self._n_carry = n_carry
+    self._axis = axis
+
+  def new_weights_and_state(self, input_signature, rng):
+    return self._layer.new_weights_and_state(input_signature, rng)
+
+  def forward(self, inputs, weights):
+    xs = inputs[:-self._n_carry]  # Split input stack into inputs and carry.
+    init = inputs[-self._n_carry:]
+    def LayerFn(x, carry):
+      res = self._layer.forward(x + carry, weights)
+      return (res[:-self._n_carry], res[-self._n_carry:])
+    ys, carry = backend.scan(LayerFn, xs, init, axis=self._axis)
+    return ys + carry  # Put outputs and carry back on stack.

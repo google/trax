@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import absltest
+from trax import backend
 from trax.layers import base
 from trax.layers import combinators as cb
 from trax.layers import core
@@ -107,6 +108,45 @@ class CombinatorLayerTest(absltest.TestCase):
   def test_branch_op_not_defined(self):
     with self.assertRaises(AttributeError):
       cb.Branch([], [])
+
+  def test_scan_basic(self):
+    @base.layer(n_in=2, n_out=2)
+    def add(x, **unused_kwargs):
+      res = x[0] + x[1]
+      return res, res
+    scan_layer = cb.Scan(add())  # pylint: disable=no-value-for-parameter
+    input_signature = (ShapeDtype((3, 2, 7)), ShapeDtype((2, 7)))
+    expected_shape = ((3, 2, 7), (2, 7))
+    output_shape = base.check_shape_agreement(scan_layer, input_signature)
+    self.assertEqual(output_shape, expected_shape)
+    inp = (backend.numpy.array([1, 2, 3]), backend.numpy.array(0))
+    o, v = scan_layer(inp)
+    self.assertEqual(int(v), 6)
+    self.assertEqual([int(x) for x in o], [1, 3, 6])
+
+  def test_scan_axis1(self):
+    @base.layer(n_in=2, n_out=2)
+    def add(x, **unused_kwargs):
+      res = x[0] + x[1]
+      return res, res
+    scan = cb.Scan(add(), axis=1)  # pylint: disable=no-value-for-parameter
+    input_signature = (ShapeDtype((3, 2, 7)), ShapeDtype((3, 7)))
+    expected_shape = ((3, 2, 7), (3, 7))
+    output_shape = base.check_shape_agreement(scan, input_signature)
+    self.assertEqual(output_shape, expected_shape)
+
+  def test_scan_multiinput(self):
+    @base.layer(n_in=3, n_out=2)
+    def foo(x, **unused_kwargs):
+      a, b, carry = x
+      return a + b, b, carry + 1
+    scan = cb.Scan(foo(), axis=1)  # pylint: disable=no-value-for-parameter
+    input_signature = (ShapeDtype((3, 2, 7)), ShapeDtype((3, 2, 7)),
+                       ShapeDtype((3, 7)))
+    expected_shape = ((3, 2, 7), (3, 2, 7), (3, 7))
+    output_shape = base.check_shape_agreement(scan, input_signature)
+    self.assertEqual(output_shape, expected_shape)
+
 
 if __name__ == '__main__':
   absltest.main()
