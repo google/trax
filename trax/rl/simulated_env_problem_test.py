@@ -30,6 +30,7 @@ from tensor2tensor.envs import trajectory
 from tensorflow import test
 from trax import backend
 from trax import trainer_lib
+from trax.layers import base
 from trax.rl import simulated_env_problem
 
 
@@ -130,7 +131,8 @@ class SerializedSequenceSimulatedEnvProblemTest(test.TestCase):
     mock_model_fn = mock.MagicMock()
     if predict_fn is not None:
       mock_model_fn.return_value = predict_fn
-      mock_model_fn.return_value.initialize_once.return_value = ((), ())
+      mock_model_fn.return_value.initialize_once.return_value = (
+          base.EMPTY_WEIGHTS, base.EMPTY_STATE)
     return simulated_env_problem.SerializedSequenceSimulatedEnvProblem(
         model=mock_model_fn,
         reward_fn=reward_fn,

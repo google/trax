@@ -33,6 +33,10 @@ from trax.shapes import ShapeDtype
 from trax.shapes import signature
 
 
+EMPTY_WEIGHTS = ()
+EMPTY_STATE = ()
+
+
 class Layer(object):
   """Base class for composable layers in a deep learning network.
 
@@ -92,8 +96,8 @@ class Layer(object):
     self._n_in = n_in
     self._n_out = n_out
     self._sublayers = ()  # Default is no sublayers.
-    self._weights = ()  # cached weights
-    self._state = ()
+    self._weights = EMPTY_WEIGHTS  # cached weights
+    self._state = EMPTY_STATE
     # record root call site for custom error messages:
     self._caller = _find_frame(inspect.currentframe())
     self._init_finished = False
@@ -136,7 +140,8 @@ class Layer(object):
     """
     raise NotImplementedError
 
-  def forward_with_state(self, inputs, weights=(), state=(), **kwargs):
+  def forward_with_state(self, inputs, weights=EMPTY_WEIGHTS, state=EMPTY_STATE,
+                         **kwargs):
     """Computes this layer's output as part of a forward pass through the model.
 
     Authors of new Layer subclasses should override this method to define the
@@ -181,7 +186,7 @@ class Layer(object):
       rng: A PRNG key for random number generation.
     """
     del input_signature, rng
-    return ()
+    return EMPTY_WEIGHTS
 
   def new_weights_and_state(self, input_signature, rng):
     """Returns a (weights, state) pair suitable for initializing this layer.
@@ -196,7 +201,7 @@ class Layer(object):
           or a list/tuple of ShapeDtype instances.
       rng: A PRNG key for random number generation.
     """
-    return self.new_weights(input_signature, rng), ()
+    return self.new_weights(input_signature, rng), EMPTY_STATE
 
   @property
   def n_in(self):
@@ -215,7 +220,14 @@ class Layer(object):
 
   @property
   def weights(self):
-    """Returns a tuple containing this layer's weights; may be empty."""
+    """Returns this layer's weights.
+
+    Depending on the layer, the weights can be in the form of:
+      - an empty tuple
+      - a tensor (ndarray)
+      - a nested structure of tuples and tensors
+    TODO(jonni): Simplify this picture (and underlying implementation).
+    """
     return self._weights
 
   @weights.setter
@@ -308,7 +320,7 @@ class Layer(object):
 
     Returns:
       A (weights, state) tuple, in which weights contains newly created weights
-          on the first call and () on all subsequent calls.
+          on the first call and `EMPTY_WEIGHTS` on all subsequent calls.
     """
     try:
       # Initialize weights once; store them for use when this layer is called.
@@ -323,7 +335,7 @@ class Layer(object):
         self._weights = weights
         self._state = state
       else:
-        weights = ()
+        weights = EMPTY_WEIGHTS
       return (weights, state)
     except Exception:
       name, trace = self.__class__.__name__, _short_traceback(skip=3)
@@ -340,10 +352,10 @@ class Layer(object):
     This convenience method helps library users play with, test, or otherwise
     probe the behavior of layers outside of a full training environment. It
     presents the layer as callable function from inputs to outputs, with the
-    option of manually specifying weights and non-parameter state per
-    individual call. For convenience, weights and non-parameter state are
-    cached per layer instance, starting from default values of () and (), and
-    acquiring non-empty values either by initialization or from values
+    option of manually specifying weights and non-parameter state per individual
+    call. For convenience, weights and non-parameter state are cached per layer
+    instance, starting from default values of `EMPTY_WEIGHTS` and `EMPTY_STATE`,
+    and acquiring non-empty values either by initialization or from values
     explicitly provided via the weights and state keyword arguments.
 
     Args:
@@ -384,9 +396,10 @@ class Layer(object):
     try:
       # If weights are nothing, we may be reusing this layer.
       # Use the cached weights to calculate the value.
-      # Note: to make sure jit tracers can decide this branch in python we
-      #  use "weights is ()" instead of, e.g., "not weights" or "weights == ()".
-      if weights is ():  # pylint: disable=literal-comparison
+      # Note: to make sure jit tracers can decide this branch in python we use
+      # `weights is EMPTY_WEIGHTS` instead of, e.g., `not weights` or
+      # `weights == EMPTY_WEIGHTS`.
+      if weights is EMPTY_WEIGHTS:  # pylint: disable=literal-comparison
         weights = self._weights
       else:
         # In this case, we're called for the first time: cache weights.
@@ -608,7 +621,7 @@ def layer(n_in=1, n_out=1, new_weights_fn=None):
 
     def _new_weights(self, input_signature, rng):
       if new_weights_fn is None:
-        return ()
+        return EMPTY_WEIGHTS
       kwargs = self._kwargs  # pylint: disable=protected-access
       return new_weights_fn(input_signature, rng, **kwargs)
 

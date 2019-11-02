@@ -101,15 +101,15 @@ class Serial(base.Layer):
   1-input 1-output no-op.
   """
 
-  def __init__(self, *layers):
+  def __init__(self, *sublayers):
     super(Serial, self).__init__()
 
-    layers = self._ensure_flat(layers)
-    self._sublayers = layers
-    self._n_layers = len(layers)
+    sublayers = self._ensure_flat(sublayers)
+    self._sublayers = sublayers
+    self._n_layers = len(sublayers)
 
-    if layers:
-      self._n_in, self._n_out = self._n_inputs_n_outputs(layers)
+    if sublayers:
+      self._n_in, self._n_out = self._n_inputs_n_outputs(sublayers)
 
   def _ensure_flat(self, layers):
     """Ensures that layers is a single flat list of Layer instances."""
@@ -160,7 +160,8 @@ class Serial(base.Layer):
     for layer, sublayer_state in zip(self.sublayers, state):
       layer.state = sublayer_state
 
-  def forward_with_state(self, xs, weights=(), state=(), **kwargs):
+  def forward_with_state(self, xs, weights=base.EMPTY_WEIGHTS,
+                         state=base.EMPTY_STATE, **kwargs):
     self._validate_forward_inputs(xs)
     rngs = _pop_rng_and_split(kwargs, self._n_layers)
     if not self.sublayers:  # No-op: leave args unchanged.
@@ -396,22 +397,22 @@ class Parallel(base.Layer):
   following input(s).
   """
 
-  def __init__(self, *layers):
+  def __init__(self, *sublayers):
     """The constructor.
 
     Args:
-      *layers: A list of layers.
+      *sublayers: A list of sublayers.
 
     Returns:
-      A new layer in which each of the given layers applies to its corresponding
-      span of elements in the dataflow stack.
+      A new layer in which each of the given sublayers applies to its
+      corresponding span of elements in the dataflow stack.
     """
     super(Parallel, self).__init__()
-    layers = self._validate(layers)
-    self._n_layers = len(layers)
-    self._sublayers = layers
-    self._n_in = sum(x.n_in for x in layers)
-    self._n_out = sum(x.n_out for x in layers)
+    sublayers = self._validate(sublayers)
+    self._n_layers = len(sublayers)
+    self._sublayers = sublayers
+    self._n_in = sum(x.n_in for x in sublayers)
+    self._n_out = sum(x.n_out for x in sublayers)
 
   def _validate(self, layers):
     if not layers or len(layers) < 2:
@@ -474,7 +475,8 @@ class Parallel(base.Layer):
     for layer, sublayer_state in zip(self.sublayers, state):
       layer.state = sublayer_state
 
-  def forward_with_state(self, inputs, weights=(), state=(), **kwargs):
+  def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
+                         state=base.EMPTY_STATE, **kwargs):
     n_layers, layers = self._n_layers, self.sublayers
     sublayer_inputs = self._allot_to_sublayers(inputs)
     rngs = _pop_rng_and_split(kwargs, n_layers)
@@ -502,7 +504,7 @@ class Parallel(base.Layer):
              for layer, signature, rng
              in zip(self.sublayers, sublayer_signatures, rngs)]
     if not inits:
-      return (), ()
+      return base.EMPTY_WEIGHTS, base.EMPTY_STATE
     else:
       return tuple(zip(*inits))
 

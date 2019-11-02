@@ -89,8 +89,8 @@ class PositionalEncoding(base.Layer):
     self._dropout_broadcast_dims = dropout_broadcast_dims
     self._mode = mode
 
-  def forward_with_state(self, inputs, weights=(), state=(),
-                         rng=None, **kwargs):
+  def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
+                         state=base.EMPTY_STATE, rng=None, **kwargs):
     if self._mode in ('train', 'eval'):
       x = inputs
       symbol_size = np.shape(x)[1]
@@ -128,7 +128,7 @@ class PositionalEncoding(base.Layer):
     pe[:, 1::2] = onp.cos(position * div_term)
     pe = pe[onp.newaxis, :, :]  # [1, self._max_len, d_feature]
     weights = np.array(pe)  # These are trainable parameters, initialized above.
-    state = 0 if self._mode == 'predict' else ()
+    state = 0 if self._mode == 'predict' else base.EMPTY_STATE
     return weights, state
 
 
@@ -154,8 +154,8 @@ class AxialPositionalEncoding(base.Layer):
     self._dropout_broadcast_dims = dropout_broadcast_dims
     self._mode = mode
 
-  def forward_with_state(self, inputs, weights=(), state=(),
-                         rng=None, **kwargs):
+  def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
+                         state=base.EMPTY_STATE, rng=None, **kwargs):
     embs = []
     for ax_emb in weights:
       ax_emb = np.broadcast_to(
@@ -191,7 +191,7 @@ class AxialPositionalEncoding(base.Layer):
       ax_emb = self._kernel_initializer(ax_shape, ax_rng)
       weights.append(ax_emb)
 
-    return tuple(weights), ()
+    return tuple(weights), base.EMPTY_STATE
 
 
 def DotProductAttention(query, key, value, mask, dropout, mode, rng):
@@ -435,8 +435,8 @@ class BaseCausalAttention(base.Layer):
     del mode
     super(BaseCausalAttention, self).__init__(n_in=3)
 
-  def forward_with_state(self, inputs, weights=(), state=(),
-                         rng=None, **kwargs):
+  def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
+                         state=base.EMPTY_STATE, rng=None, **kwargs):
     """Forward pass for the attention layer."""
     raise NotImplementedError()
 
@@ -504,8 +504,8 @@ class DotProductCausalAttention(BaseCausalAttention):
     self._dropout = dropout
     self._mode = mode
 
-  def forward_with_state(self, inputs, weights=(), state=(),
-                         rng=None, **kwargs):
+  def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
+                         state=base.EMPTY_STATE, rng=None, **kwargs):
     del weights
     q, k, v = inputs
     if self._mode in ('train', 'eval'):
@@ -540,10 +540,10 @@ class DotProductCausalAttention(BaseCausalAttention):
 
   def new_weights_and_state(self, input_signature, rng):
     if self._mode in ('train', 'eval'):
-      return (), ()
+      return base.EMPTY_WEIGHTS, base.EMPTY_STATE
 
     assert self._mode == 'predict'
-    weights = ()
+    weights = base.EMPTY_WEIGHTS
     # Buffer length is hardcoded for now. TODO(pkozakowski): Pass it from the
     # model.
     max_len = 2048
@@ -579,7 +579,8 @@ class MemoryEfficientCausalAttention(BaseCausalAttention):
     self._share_qk = share_qk
     self._hard_k = hard_k
 
-  def forward_with_state(self, inputs, weights=(), state=(), **kwargs):
+  def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
+                         state=base.EMPTY_STATE, **kwargs):
     del weights
     output, _ = self.forward_and_backward(inputs, None, **kwargs)
     return output, state
@@ -587,7 +588,8 @@ class MemoryEfficientCausalAttention(BaseCausalAttention):
   def has_backward(self):
     return True
 
-  def backward(self, inputs, output, ct, weights=(), state=(), **kwargs):
+  def backward(self, inputs, output, ct, weights=base.EMPTY_WEIGHTS,
+               state=base.EMPTY_STATE, **kwargs):
     del output, weights, state
     _, inputs_ct = self.forward_and_backward(inputs, ct, **kwargs)
     return inputs_ct, ()
@@ -809,8 +811,8 @@ class TimeBinCausalAttention(BaseCausalAttention):
     padded_inputs = tuple(map(pad_input, inputs))
     return (padded_inputs, seq_len, n_bins)
 
-  def forward_with_state(self, inputs, weights=(), state=(),
-                         rng=None, **kwargs):
+  def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
+                         state=base.EMPTY_STATE, rng=None, **kwargs):
     del weights, kwargs
     if self._mode in ('train', 'eval'):
       output = self._forward_train_eval(inputs, rng)
@@ -925,14 +927,14 @@ class TimeBinCausalAttention(BaseCausalAttention):
 
   def new_weights_and_state(self, input_signature, rng):
     if self._mode in ('train', 'eval'):
-      return (), ()
+      return base.EMPTY_WEIGHTS, base.EMPTY_STATE
 
     assert self._mode == 'predict'
     assert self.bin_length is not None, (
         'For fast inference, TimeBinCausalAttention must be parameterized by '
         'bin_length.'
     )
-    weights = ()
+    weights = base.EMPTY_WEIGHTS
     state = _fast_inference_init_state(
         input_signature, 2 * self.bin_length
     )
@@ -979,8 +981,8 @@ class LSHCausalAttention(BaseCausalAttention):
     # of being completely random.
     self._data_rotation = data_rotation
 
-  def forward_with_state(self, inputs, weights=(), state=(),
-                         rng=None, **kwargs):
+  def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
+                         state=base.EMPTY_STATE, rng=None, **kwargs):
     del weights, kwargs
     output, _ = self.batch_call_and_or_grad(inputs[0], inputs[2], rng=rng)
     return output, state
@@ -994,7 +996,8 @@ class LSHCausalAttention(BaseCausalAttention):
   def has_backward(self):
     return True
 
-  def backward(self, inputs, output, ct, weights=(), state=(), rng=None,
+  def backward(self, inputs, output, ct, weights=base.EMPTY_WEIGHTS,
+               state=base.EMPTY_STATE, rng=None,
                **kwargs):
     del output, weights, state
     _, (qk_ct, v_ct) = self.batch_call_and_or_grad(
