@@ -781,7 +781,8 @@ def pmap(f, axis_name=None, devices=None):
 
 
 def find_devices(device_type, devices=None):
-  devices = devices or tf.config.experimental_list_devices()
+  if not devices:
+    devices = [d.name for d in tf.config.experimental.list_logical_devices()]
   devices = [(d, tf.DeviceSpec.from_string(d)) for d in devices]
   results = [name for name, d in devices if d.device_type == device_type]
   return results
