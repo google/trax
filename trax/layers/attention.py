@@ -944,11 +944,22 @@ class TimeBinCausalAttention(BaseCausalAttention):
 class LSHCausalAttention(BaseCausalAttention):
   """Causal attention based on locality-sensitive hashing."""
 
-  def __init__(self, dropout, mode, n_bins=64, n_hashes=1, n_buckets=64,
-               one_rng=False, allow_duplicate_attention=False,
-               attend_across_buckets=False, hard_k=0, factorize_hash=False,
-               rehash_each_round=True, drop_for_hash_rate=0.0,
-               data_rotation=False):
+  def __init__(self,
+               dropout,
+               mode,
+               n_bins=64,
+               n_hashes=1,
+               n_buckets=64,
+               one_rng=False,
+               allow_duplicate_attention=False,
+               attend_across_buckets=False,
+               hard_k=0,
+               factorize_hash=False,
+               rehash_each_round=True,
+               drop_for_hash_rate=0.0,
+               data_rotation=False,
+               data_rotation_farthest=False,
+               data_rotation_farthest_num=8):
     super(LSHCausalAttention, self).__init__(mode=mode)
     self._mode = mode
     if dropout >= 1.0:
@@ -980,6 +991,8 @@ class LSHCausalAttention(BaseCausalAttention):
     # If True, the rotation matrices for hashing are derived from data, instead
     # of being completely random.
     self._data_rotation = data_rotation
+    self._data_rotation_farthest = data_rotation_farthest
+    self._data_rotation_farthest_num = data_rotation_farthest_num
 
   def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
                          state=base.EMPTY_STATE, rng=None, **kwargs):
@@ -1159,9 +1172,34 @@ class LSHCausalAttention(BaseCausalAttention):
       random_idxs_1 = random_idxs[0]
       random_idxs_2 = random_idxs[1]
 
-    # shape = (n_hashes, r_div_2, n_dim)
-    random_vecs_1 = vecs[random_idxs_1]
-    random_vecs_2 = vecs[random_idxs_2]
+    if self._data_rotation_farthest:
+      # shape = (n_hashes * r_div_2, )
+      random_idxs_1 = np.reshape(random_idxs_1, (-1,))
+      random_vecs_1 = vecs[random_idxs_1]
+
+      # Sample candidates for vec2s.
+      rng, subrng = backend.random.split(rng)
+      # shape = (self._data_rotation_farthest_num, n_hashes * r_div_2)
+      candidate_idxs_2 = jax.random.randint(
+          subrng, (self._data_rotation_farthest_num, n_hashes * r_div_2), 0,
+          n_vecs)
+      candidate_vecs_2 = vecs[candidate_idxs_2]
+      # shape = candidate_idxs_2.shape
+      distances = -np.abs(
+          np.einsum('hd,chd->ch', random_vecs_1, candidate_vecs_2))
+      # shape = (n_hashes * r_div_2,)
+      farthest_idxs = np.argmax(distances, axis=0)
+      # candidate_vecs_2.shape
+      random_vecs_2 = candidate_vecs_2[farthest_idxs,
+                                       np.arange(n_hashes * r_div_2)]
+
+      # reshape to (n_hashes, r_div_2, n_dim)
+      random_vecs_1 = np.reshape(random_vecs_1, (n_hashes, r_div_2, -1))
+      random_vecs_2 = np.reshape(random_vecs_2, (n_hashes, r_div_2, -1))
+    else:
+      # shape = (n_hashes, r_div_2, n_dim)
+      random_vecs_1 = vecs[random_idxs_1]
+      random_vecs_2 = vecs[random_idxs_2]
 
     # shape = (n_dim, n_hashes, r_div_2)
     return np.transpose(random_vecs_2 - random_vecs_1, axes=[2, 0, 1])
