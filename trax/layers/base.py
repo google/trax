@@ -273,6 +273,47 @@ class Layer(object):
 
   # End of subclassing interface, all functions below are internal.
 
+  def apply_forward_with_state(self, x, weights, state, rng):
+    """Applies this layer as part of a forward pass; an internal system method.
+
+    This method is reserved for handling plumbing and other internal affairs
+    as needed by the overall library. Trax library users should use or override
+    the `forward` method instead.
+
+    Args:
+      x: See Layer.forward_with_state inputs.
+      weights: See Layer.forward_with_state.
+      state: See Layer.forward_with_state.
+      rng: See Layer.forward_with_state.
+
+    Returns:
+      See Layer.forward_with_state.
+    """
+    try:
+      # If weights are nothing, we may be reusing this layer.
+      # Use the cached weights to calculate the value.
+      # Note: to make sure jit tracers can decide this branch in python we use
+      # `weights is EMPTY_WEIGHTS` instead of, e.g., `not weights` or
+      # `weights == EMPTY_WEIGHTS`.
+      if weights is EMPTY_WEIGHTS:  # pylint: disable=literal-comparison
+        weights = self._weights
+      else:
+        # In this case, we're called for the first time: cache weights.
+        self._weights = weights
+
+      if not self.has_backward or Layer._STASH_IN is not None:
+        outputs, s = self.forward_with_state(
+            x, weights=weights, state=state, rng=rng)
+      else:
+        outputs, s = self._do_custom_gradients(x, weights, state, rng=rng)
+      self._state = s
+      return outputs, s
+
+    except Exception:
+      name, trace = self.__class__.__name__, _short_traceback()
+      raise LayerError(name, 'apply_forward_with_state',
+                       self._caller, signature(x), trace)
+
   def pseudo_forward_with_state(self, pseudo_inputs, weights, state):
     """Computes shapes and types this layer would produce for the given inputs.
 
@@ -377,47 +418,6 @@ class Layer(object):
     outputs, _ = self.apply_forward_with_state(x, weights, state, rng)
     return outputs
 
-  def apply_forward_with_state(self, x, weights, state, rng):
-    """Applies this layer as part of a forward pass; an internal system method.
-
-    This method is reserved for handling plumbing and other internal affairs
-    as needed by the overall library. Trax library users should use or override
-    the `forward` method instead.
-
-    Args:
-      x: See Layer.forward_with_state inputs.
-      weights: See Layer.forward_with_state.
-      state: See Layer.forward_with_state.
-      rng: See Layer.forward_with_state.
-
-    Returns:
-      See Layer.forward_with_state.
-    """
-    try:
-      # If weights are nothing, we may be reusing this layer.
-      # Use the cached weights to calculate the value.
-      # Note: to make sure jit tracers can decide this branch in python we use
-      # `weights is EMPTY_WEIGHTS` instead of, e.g., `not weights` or
-      # `weights == EMPTY_WEIGHTS`.
-      if weights is EMPTY_WEIGHTS:  # pylint: disable=literal-comparison
-        weights = self._weights
-      else:
-        # In this case, we're called for the first time: cache weights.
-        self._weights = weights
-
-      if not self.has_backward or Layer._STASH_IN is not None:
-        outputs, s = self.forward_with_state(
-            x, weights=weights, state=state, rng=rng)
-      else:
-        outputs, s = self._do_custom_gradients(x, weights, state, rng=rng)
-      self._state = s
-      return outputs, s
-
-    except Exception:
-      name, trace = self.__class__.__name__, _short_traceback()
-      raise LayerError(name, 'apply_forward_with_state',
-                       self._caller, signature(x), trace)
-
   def _do_custom_gradients(self, x, weights, state, **kwargs):
     """Calls this layer for a forward pass, but with custom gradients."""
     assert backend.get_name() == 'jax', (
@@ -469,6 +469,46 @@ class Layer(object):
     return _do_forward(x, weights), state
 
 
+def layer(n_in=1, n_out=1, new_weights_fn=None):
+  """Returns a decorator that converts a function into a Layer class builder."""
+
+  def _build_layer_class(raw_fn):
+    """Returns a Layer class whose callable instances execute the function."""
+
+    def _init(self, **kwargs):
+      self._kwargs = kwargs  # pylint: disable=protected-access
+      Layer.__init__(self, n_in=n_in, n_out=n_out)
+
+    def _new_weights(self, input_signature, rng):
+      if new_weights_fn is None:
+        return EMPTY_WEIGHTS
+      kwargs = self._kwargs  # pylint: disable=protected-access
+      return new_weights_fn(input_signature, rng, **kwargs)
+
+    def _is_empty(raw_output):
+      return raw_output is None or (isinstance(raw_output, (list, tuple))
+                                    and len(raw_output) == 0)  # pylint: disable=g-explicit-length-test
+
+    def _forward(self, x, weights):
+      """Uses this layer as part of a forward pass through the model."""
+      _validate_forward_input(x, n_in)
+      raw_output = raw_fn(x, weights=weights, **self._kwargs)  # pylint: disable=protected-access
+      output = () if _is_empty(raw_output) else raw_output
+      return output
+
+    # Set docstrings and create the class.
+    _forward.__doc__ = raw_fn.__doc__
+    _new_weights.__doc__ = new_weights_fn.__doc__
+    # Note: None.__doc__ is None
+    cls = type(raw_fn.__name__, (Layer,),
+               {'__init__': _init,
+                'forward': _forward,
+                'new_weights': _new_weights})
+    return cls
+
+  return _build_layer_class
+
+
 class LayerError(Exception):
   """Exception raised in the layer stack.
 
@@ -498,31 +538,15 @@ class LayerError(Exception):
     return prefix + caller + shapes_str + self._traceback
 
 
-def _apply_to_first_n(f, x, n):
-  """Helper: apply f to first n elements on the stack x if n > 0."""
-  if n < 1:
-    return f(x)
-  argument, rest = x[:n], x[n:]
-  if n == 1:
-    argument = argument[0]
-  result = f(argument)
-  if not rest:
-    return result
-  if n == 1:
-    result = [result]
-  result = list(result) + list(rest)
-  if isinstance(x, tuple):
-    result = tuple(result)
-  return result
-
-
-def nested_reduce(x, f):
-  """Fold the function f to the nested structure x (dicts, tuples, lists)."""
-  if isinstance(x, list):
-    return f([nested_reduce(y, f) for y in x])
-  if isinstance(x, tuple):
-    return f([nested_reduce(y, f) for y in x])
-  return x
+def _validate_forward_input(x, n_in):
+  if n_in != 1:
+    if not isinstance(x, tuple):
+      raise TypeError(
+          'expected input to be a tuple; instead received {}'.format(type(x)))
+    if len(x) != n_in:
+      raise ValueError(
+          'input tuple length ({}) does not equal required number of inputs'
+          ' ({})'.format(len(x), n_in))
 
 
 def shapes(x):
@@ -533,16 +557,6 @@ def shapes(x):
     except Exception:  # pylint: disable=broad-except
       return ()
   return tuple(nested_map(shape, x))
-
-
-def sizes(x):
-  """Get a structure of sizes for a structure of nested arrays."""
-  def size(x):
-    try:
-      return x.size
-    except Exception:  # pylint: disable=broad-except
-      return 0
-  return nested_map(size, x)
 
 
 def _find_frame(frame):
@@ -596,57 +610,6 @@ def _short_traceback(skip=3):
       res += lines[counter:]
       break
   return '\n'.join(res)
-
-
-def _validate_forward_input(x, n_in):
-  if n_in != 1:
-    if not isinstance(x, tuple):
-      raise TypeError(
-          'expected input to be a tuple; instead received {}'.format(type(x)))
-    if len(x) != n_in:
-      raise ValueError(
-          'input tuple length ({}) does not equal required number of inputs'
-          ' ({})'.format(len(x), n_in))
-
-
-def layer(n_in=1, n_out=1, new_weights_fn=None):
-  """Returns a decorator that converts a function into a Layer class builder."""
-
-  def _build_layer_class(raw_fn):
-    """Returns a Layer class whose callable instances execute the function."""
-
-    def _init(self, **kwargs):
-      self._kwargs = kwargs  # pylint: disable=protected-access
-      Layer.__init__(self, n_in=n_in, n_out=n_out)
-
-    def _new_weights(self, input_signature, rng):
-      if new_weights_fn is None:
-        return EMPTY_WEIGHTS
-      kwargs = self._kwargs  # pylint: disable=protected-access
-      return new_weights_fn(input_signature, rng, **kwargs)
-
-    def _is_empty(raw_output):
-      return raw_output is None or (isinstance(raw_output, (list, tuple))
-                                    and len(raw_output) == 0)  # pylint: disable=g-explicit-length-test
-
-    def _forward(self, x, weights):
-      """Uses this layer as part of a forward pass through the model."""
-      _validate_forward_input(x, n_in)
-      raw_output = raw_fn(x, weights=weights, **self._kwargs)  # pylint: disable=protected-access
-      output = () if _is_empty(raw_output) else raw_output
-      return output
-
-    # Set docstrings and create the class.
-    _forward.__doc__ = raw_fn.__doc__
-    _new_weights.__doc__ = new_weights_fn.__doc__
-    # Note: None.__doc__ is None
-    cls = type(raw_fn.__name__, (Layer,),
-               {'__init__': _init,
-                'forward': _forward,
-                'new_weights': _new_weights})
-    return cls
-
-  return _build_layer_class
 
 
 def _random_values(input_signature, rng):

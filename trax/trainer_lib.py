@@ -147,14 +147,33 @@ def _save_replicated(opt_state, step, history, model_state, n_devices,
                    model_state=model_state), output_dir, keep=keep)
 
 
+def _nested_reduce(f, x):
+  """Fold the function f to the nested structure x (dicts, tuples, lists)."""
+  if isinstance(x, list):
+    return f([_nested_reduce(f, y) for y in x])
+  if isinstance(x, tuple):
+    return f([_nested_reduce(f, y) for y in x])
+  return x
+
+
+def _sizes(x):
+  """Get a structure of sizes for a structure of nested arrays."""
+  def size(x):
+    try:
+      return x.size
+    except Exception:  # pylint: disable=broad-except
+      return 0
+  return layers.nested_map(size, x)
+
+
 def _print_n_weights(opt_state, n_devices, step):
   """Print out the number of parameters."""
-  sizes = layers.sizes(opt_state.weights)
+  sizes = _sizes(opt_state.weights)
   if n_devices > 1:
     unreplicate = lambda x: x[0]
     single_weights = layers.nested_map(unreplicate, opt_state.weights)
-    sizes = layers.sizes(single_weights)
-  total_size = layers.nested_reduce(sizes, sum)
+    sizes = _sizes(single_weights)
+  total_size = _nested_reduce(sum, sizes)
   step_log(step, 'Total trainable parameters size: %d' % total_size)
 
 
