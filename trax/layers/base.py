@@ -96,6 +96,7 @@ class Layer(object):
     self._n_in = n_in
     self._n_out = n_out
     self._sublayers = ()  # Default is no sublayers.
+    self._input_signature = None
     self._weights = EMPTY_WEIGHTS  # cached weights
     self._state = EMPTY_STATE
     # record root call site for custom error messages:
@@ -204,46 +205,6 @@ class Layer(object):
     return self.new_weights(input_signature, rng), EMPTY_STATE
 
   @property
-  def n_in(self):
-    """Returns how many tensors this layer expects as input."""
-    return self._n_in
-
-  @property
-  def n_out(self):
-    """Returns how many tensors this layer promises as output."""
-    return self._n_out
-
-  @property
-  def sublayers(self):
-    """Returns a tuple containing this layer's sublayers; may be empty."""
-    return self._sublayers
-
-  @property
-  def weights(self):
-    """Returns this layer's weights.
-
-    Depending on the layer, the weights can be in the form of:
-      - an empty tuple
-      - a tensor (ndarray)
-      - a nested structure of tuples and tensors
-    TODO(jonni): Simplify this picture (and underlying implementation).
-    """
-    return self._weights
-
-  @weights.setter
-  def weights(self, weights):
-    self._weights = weights
-
-  @property
-  def state(self):
-    """Returns a tuple containing this layer's state; may be empty."""
-    return self._state
-
-  @state.setter
-  def state(self, state):
-    self._state = state
-
-  @property
   def has_backward(self):
     """Returns True if this layer provides its own (custom) backward pass code.
 
@@ -271,9 +232,68 @@ class Layer(object):
     """
     raise NotImplementedError
 
-  # End of subclassing interface, all functions below are internal.
+  # End of subclassing interface. Methods below are reserved for internal use.
 
-  def apply_forward_with_state(self, x, weights, state, rng):
+  @property
+  def n_in(self):
+    """Returns how many tensors this layer expects as input."""
+    return self._n_in
+
+  @property
+  def n_out(self):
+    """Returns how many tensors this layer promises as output."""
+    return self._n_out
+
+  @property
+  def sublayers(self):
+    """Returns a tuple containing this layer's sublayers; may be empty."""
+    return self._sublayers
+
+  @property
+  def input_signature(self):
+    """Returns this layer's input signature.
+
+    An input signature is a ShapeDtype instance (if the layer takes one input)
+    or a tuple of ShapeDtype instances.
+    """
+    return self._input_signature
+
+  @input_signature.setter
+  def input_signature(self, input_signature):
+    """Sets this layer to have the given input_signature.
+
+    Args:
+      input_signature: A ShapeDtype instance (if this layer takes one input)
+          or a list/tuple of ShapeDtype instances.
+    """
+    self._input_signature = input_signature
+
+  @property
+  def weights(self):
+    """Returns this layer's weights.
+
+    Depending on the layer, the weights can be in the form of:
+      - an empty tuple
+      - a tensor (ndarray)
+      - a nested structure of tuples and tensors
+    TODO(jonni): Simplify this picture (and underlying implementation).
+    """
+    return self._weights
+
+  @weights.setter
+  def weights(self, weights):
+    self._weights = weights
+
+  @property
+  def state(self):
+    """Returns a tuple containing this layer's state; may be empty."""
+    return self._state
+
+  @state.setter
+  def state(self, state):
+    self._state = state
+
+  def forward_internal(self, x, weights, state, rng):
     """Applies this layer as part of a forward pass; an internal system method.
 
     This method is reserved for handling plumbing and other internal affairs
@@ -311,11 +331,11 @@ class Layer(object):
 
     except Exception:
       name, trace = self.__class__.__name__, _short_traceback()
-      raise LayerError(name, 'apply_forward_with_state',
+      raise LayerError(name, 'forward_internal',
                        self._caller, signature(x), trace)
 
-  def pseudo_forward_with_state(self, pseudo_inputs, weights, state):
-    """Computes shapes and types this layer would produce for the given inputs.
+  def forward_abstract(self, pseudo_inputs, weights, state):
+    """Computes shapes and dtypes this layer would produce in a forward pass.
 
     Args:
       pseudo_inputs: A ShapeDtype instance (input data minus the actual values)
@@ -344,8 +364,8 @@ class Layer(object):
       return s
     except Exception:
       name, trace = self.__class__.__name__, _short_traceback(skip=3)
-      raise LayerError(name, 'pseudo_forward_with_state',
-                       self._caller, pseudo_inputs, trace)
+      raise LayerError(name, 'forward_abstract', self._caller, pseudo_inputs,
+                       trace)
 
   def initialize_once(self, input_signature, rng):
     """Initializes this layer and its sublayers recursively.
@@ -373,6 +393,7 @@ class Layer(object):
       weights, state = self.new_weights_and_state(input_signature, rng)
       if not self._init_finished:
         self._init_finished = True
+        self._input_signature = input_signature
         self._weights = weights
         self._state = state
       else:
@@ -415,7 +436,7 @@ class Layer(object):
     weights = kwargs.pop('weights', self.weights)
     state = kwargs.pop('state', self.state)
     rng = kwargs.pop('rng', None)
-    outputs, _ = self.apply_forward_with_state(x, weights, state, rng)
+    outputs, _ = self.forward_internal(x, weights, state, rng)
     return outputs
 
   def _do_custom_gradients(self, x, weights, state, **kwargs):
@@ -479,6 +500,13 @@ def layer(n_in=1, n_out=1, new_weights_fn=None):
       self._kwargs = kwargs  # pylint: disable=protected-access
       Layer.__init__(self, n_in=n_in, n_out=n_out)
 
+    def _forward(self, x, weights):
+      """Uses this layer as part of a forward pass through the model."""
+      _validate_forward_input(x, n_in)
+      raw_output = raw_fn(x, weights=weights, **self._kwargs)  # pylint: disable=protected-access
+      output = () if _is_empty(raw_output) else raw_output
+      return output
+
     def _new_weights(self, input_signature, rng):
       if new_weights_fn is None:
         return EMPTY_WEIGHTS
@@ -488,13 +516,6 @@ def layer(n_in=1, n_out=1, new_weights_fn=None):
     def _is_empty(raw_output):
       return raw_output is None or (isinstance(raw_output, (list, tuple))
                                     and len(raw_output) == 0)  # pylint: disable=g-explicit-length-test
-
-    def _forward(self, x, weights):
-      """Uses this layer as part of a forward pass through the model."""
-      _validate_forward_input(x, n_in)
-      raw_output = raw_fn(x, weights=weights, **self._kwargs)  # pylint: disable=protected-access
-      output = () if _is_empty(raw_output) else raw_output
-      return output
 
     # Set docstrings and create the class.
     _forward.__doc__ = raw_fn.__doc__
@@ -547,16 +568,6 @@ def _validate_forward_input(x, n_in):
       raise ValueError(
           'input tuple length ({}) does not equal required number of inputs'
           ' ({})'.format(len(x), n_in))
-
-
-def shapes(x):
-  """Get a structure of shapes for a structure of nested arrays."""
-  def shape(x):
-    try:
-      return tuple([int(i) for i in x.shape])
-    except Exception:  # pylint: disable=broad-except
-      return ()
-  return tuple(nested_map(shape, x))
 
 
 def _find_frame(frame):
@@ -612,6 +623,39 @@ def _short_traceback(skip=3):
   return '\n'.join(res)
 
 
+def check_shape_agreement(layer_obj, input_signature):
+  """Checks if the layer's call output agrees its pseudo_forward predictions.
+
+  This function helps test layer mechanics and inter-layer connections that
+  aren't dependent on specific data values.
+
+  Args:
+    layer_obj: A layer object.
+    input_signature: A `ShapeDtype` instance (if `layer_obj` takes one input)
+        or a list/tuple of ShapeDtype instances.
+
+  Returns:
+    A tuple representing either a single shape (if the layer has one output) or
+    a tuple of shape tuples (if the layer has more than one output).
+  """
+  rng1, rng2, rng3 = backend.random.split(backend.random.get_prng(0), 3)
+  weights, state = layer_obj.initialize_once(input_signature, rng1)
+  pseudo_output, _ = layer_obj.forward_abstract(input_signature, weights, state)
+  if isinstance(pseudo_output, tuple):
+    output_shape = tuple(x.shape for x in pseudo_output)
+  else:
+    output_shape = pseudo_output.shape
+
+  random_input = _random_values(input_signature, rng2)
+  real_output = layer_obj(random_input, weights=weights, state=state, rng=rng3)
+  result_shape = _shapes(real_output)
+
+  msg = 'output shape %s != real result shape %s' % (output_shape, result_shape)
+  assert output_shape == result_shape, msg
+  # TODO(jonni): Remove this assert? It makes test logs harder to read.
+  return output_shape
+
+
 def _random_values(input_signature, rng):
   """Creates random floats or ints of the given shape.
 
@@ -635,35 +679,11 @@ def _random_values(input_signature, rng):
     raise TypeError(type(input_signature))
 
 
-def check_shape_agreement(layer_obj, input_signature):
-  """Checks if the layer's call output agrees its pseudo_forward predictions.
-
-  This function helps test layer mechanics and inter-layer connections that
-  aren't dependent on specific data values.
-
-  Args:
-    layer_obj: A layer object.
-    input_signature: A `ShapeDtype` instance (if `layer_obj` takes one input)
-        or a list/tuple of ShapeDtype instances.
-
-  Returns:
-    A tuple representing either a single shape (if the layer has one output) or
-    a tuple of shape tuples (if the layer has more than one output).
-  """
-  rng1, rng2, rng3 = backend.random.split(backend.random.get_prng(0), 3)
-  weights, state = layer_obj.initialize_once(input_signature, rng1)
-  pseudo_output, _ = layer_obj.pseudo_forward_with_state(
-      input_signature, weights, state)
-  if isinstance(pseudo_output, tuple):
-    output_shape = tuple(x.shape for x in pseudo_output)
-  else:
-    output_shape = pseudo_output.shape
-
-  random_input = _random_values(input_signature, rng2)
-  real_output = layer_obj(random_input, weights=weights, state=state, rng=rng3)
-  result_shape = shapes(real_output)
-
-  msg = 'output shape %s != real result shape %s' % (output_shape, result_shape)
-  assert output_shape == result_shape, msg
-  # TODO(jonni): Remove this assert? It makes test logs harder to read.
-  return output_shape
+def _shapes(x):
+  """Get a structure of shapes for a structure of nested arrays."""
+  def shape(x):
+    try:
+      return tuple([int(i) for i in x.shape])
+    except Exception:  # pylint: disable=broad-except
+      return ()
+  return tuple(nested_map(shape, x))

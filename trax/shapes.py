@@ -50,6 +50,14 @@ class ShapeDtype(object):
     self.shape = shape
     self.dtype = dtype
 
+  def __eq__(self, other):
+    return (isinstance(other, self.__class__)
+            and self.shape == other.shape
+            and self.dtype == other.dtype)
+
+  def __ne__(self, other):
+    return not self == other
+
   def __repr__(self):
     return 'ShapeDtype{{shape:{}, dtype:{}}}'.format(self.shape, self.dtype)
 

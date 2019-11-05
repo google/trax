@@ -147,6 +147,32 @@ class CombinatorLayerTest(absltest.TestCase):
     output_shape = base.check_shape_agreement(scan, input_signature)
     self.assertEqual(output_shape, expected_shape)
 
+  def test_input_signatures_serial(self):
+    layer = cb.Serial(core.Div(divisor=2.0), core.Div(divisor=5.0))
+    input_signature = ShapeDtype((3, 2))
+    rng = backend.random.get_prng(0)
+    self.assertIsNone(layer.input_signature)
+
+    layer.initialize_once(input_signature, rng)
+    self.assertEqual(layer.input_signature, ShapeDtype((3, 2)))
+    self.assertLen(layer.sublayers, 2)
+    for sublayer in layer.sublayers:
+      self.assertEqual(sublayer.input_signature, ShapeDtype((3, 2)))
+
+  def test_input_signatures_parallel(self):
+    layer = cb.Parallel(core.Div(divisor=0.5), core.Div(divisor=3.0))
+    input_signature = (ShapeDtype((3, 2)), ShapeDtype((4, 7)))
+    rng = backend.random.get_prng(0)
+    self.assertIsNone(layer.input_signature)
+
+    layer.initialize_once(input_signature, rng)
+    self.assertEqual(layer.input_signature,
+                     (ShapeDtype((3, 2)), ShapeDtype((4, 7))))
+    self.assertLen(layer.sublayers, 2)
+    sublayer_0, sublayer_1 = layer.sublayers
+    self.assertEqual(sublayer_0.input_signature, ShapeDtype((3, 2)))
+    self.assertEqual(sublayer_1.input_signature, ShapeDtype((4, 7)))
+
 
 if __name__ == '__main__':
   absltest.main()

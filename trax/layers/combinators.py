@@ -82,7 +82,7 @@ class Serial(base.Layer):
         inputs = stack[0]
       else:
         inputs = stack[:n_in]
-      outputs, s = layer.apply_forward_with_state(inputs, p, s, rng)
+      outputs, s = layer.forward_internal(inputs, p, s, rng)
       new_state.append(s)
 
       # Push outputs onto remaining stack (if any).
@@ -119,7 +119,7 @@ class Serial(base.Layer):
       param, state = layer.initialize_once(inputs, layer_rng)
       pparam = layer._weights   # pylint: disable=protected-access
 
-      outputs, _ = layer.pseudo_forward_with_state(inputs, pparam, state)
+      outputs, _ = layer.forward_abstract(inputs, pparam, state)
 
       # Push outputs onto remaining pseudo_xs (if any).
       if n_in < _count_items(pseudo_xs):
@@ -241,7 +241,7 @@ class Parallel(base.Layer):
     new_state = []
     for layer, x, p, s, r in zip(layers, sublayer_inputs, weights, state, rngs):
       # Note that zip silently truncates its result if lengths don't match.
-      sub_outputs, sub_state = layer.apply_forward_with_state(x, p, s, r)
+      sub_outputs, sub_state = layer.forward_internal(x, p, s, r)
       if layer.n_out == 1:
         outputs.append(sub_outputs)
       else:
