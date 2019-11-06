@@ -113,6 +113,37 @@ class Layer(object):
     else:
       return '{}{{{}}}'.format(class_str, fields_str)
 
+  def __call__(self, x, **kwargs):
+    """Makes Layer instances callable; for use in tests or interactive settings.
+
+    This convenience method helps library users play with, test, or otherwise
+    probe the behavior of layers outside of a full training environment. It
+    presents the layer as callable function from inputs to outputs, with the
+    option of manually specifying weights and non-parameter state per individual
+    call. For convenience, weights and non-parameter state are cached per layer
+    instance, starting from default values of `EMPTY_WEIGHTS` and `EMPTY_STATE`,
+    and acquiring non-empty values either by initialization or from values
+    explicitly provided via the weights and state keyword arguments.
+
+    Args:
+      x: 0 or more input tensors, formatted the same as the inputs to
+          Layer.forward.
+      **kwargs: Additional keyword arguments if needed/desired for this layer.
+          Three possible keyword arguments are especially relevant:
+            - weights=... will override any cached weights values
+            - state=... will override any cached state values
+            - rng=... will supply a PRNG key for use by the layer
+
+    Returns:
+      0 or more output tensors, formatted the same as the outputs from
+          Layer.forward.
+    """
+    weights = kwargs.pop('weights', self.weights)
+    state = kwargs.pop('state', self.state)
+    rng = kwargs.pop('rng', None)
+    outputs, _ = self.forward_internal(x, weights, state, rng)
+    return outputs
+
   def forward(self, inputs, weights):
     """Computes this layer's output as part of a forward pass through the model.
 
@@ -293,6 +324,47 @@ class Layer(object):
   def state(self, state):
     self._state = state
 
+  def initialize_once(self, input_signature, rng):
+    """Initializes this layer and its sublayers recursively.
+
+    This method is designed to initialize each layer instance once, even if the
+    same layer instance occurs in multiple places in the network. This enables
+    weight sharing to be implemented as layer sharing.
+
+    Args:
+      input_signature: A ShapeDtype instance (if this layer takes one input)
+          or a list/tuple of ShapeDtype instances.
+      rng: A PRNG key for random number generation.
+
+    Returns:
+      A (weights, state) tuple, in which weights contains newly created weights
+          on the first call and `EMPTY_WEIGHTS` on all subsequent calls.
+    """
+    try:
+      # Initialize weights once; store them for use when this layer is called.
+      # Needs to call new_weights_and_state regardless of _init_finished because
+      # state also needs to be initialized. After jitting, graph pruning should
+      # be able to remove unnecessary computation.
+      # TODO(lukaszkaiser): Revisit this decision and see whether layers sharing
+      #   weights should also share states.
+      weights, state = self.new_weights_and_state(input_signature, rng)
+      if not self._init_finished:
+        self._init_finished = True
+        self._input_signature = input_signature
+        self._weights = weights
+        self._state = state
+      else:
+        weights = EMPTY_WEIGHTS
+      return (weights, state)
+    except Exception:
+      name, trace = self.__class__.__name__, _short_traceback(skip=3)
+      raise LayerError(name, 'initialize_once', self._caller,
+                       input_signature, trace)
+
+  # XXX(kitaev):
+  _STASH_IN = None
+  _STASH_OUT = None
+
   def forward_internal(self, x, weights, state, rng):
     """Applies this layer as part of a forward pass; an internal system method.
 
@@ -366,78 +438,6 @@ class Layer(object):
       name, trace = self.__class__.__name__, _short_traceback(skip=3)
       raise LayerError(name, 'forward_abstract', self._caller, pseudo_inputs,
                        trace)
-
-  def initialize_once(self, input_signature, rng):
-    """Initializes this layer and its sublayers recursively.
-
-    This method is designed to initialize each layer instance once, even if the
-    same layer instance occurs in multiple places in the network. This enables
-    weight sharing to be implemented as layer sharing.
-
-    Args:
-      input_signature: A ShapeDtype instance (if this layer takes one input)
-          or a list/tuple of ShapeDtype instances.
-      rng: A PRNG key for random number generation.
-
-    Returns:
-      A (weights, state) tuple, in which weights contains newly created weights
-          on the first call and `EMPTY_WEIGHTS` on all subsequent calls.
-    """
-    try:
-      # Initialize weights once; store them for use when this layer is called.
-      # Needs to call new_weights_and_state regardless of _init_finished because
-      # state also needs to be initialized. After jitting, graph pruning should
-      # be able to remove unnecessary computation.
-      # TODO(lukaszkaiser): Revisit this decision and see whether layers sharing
-      #   weights should also share states.
-      weights, state = self.new_weights_and_state(input_signature, rng)
-      if not self._init_finished:
-        self._init_finished = True
-        self._input_signature = input_signature
-        self._weights = weights
-        self._state = state
-      else:
-        weights = EMPTY_WEIGHTS
-      return (weights, state)
-    except Exception:
-      name, trace = self.__class__.__name__, _short_traceback(skip=3)
-      raise LayerError(name, 'initialize_once', self._caller,
-                       input_signature, trace)
-
-  # XXX(kitaev):
-  _STASH_IN = None
-  _STASH_OUT = None
-
-  def __call__(self, x, **kwargs):
-    """Makes Layer instances callable; for use in tests or interactive settings.
-
-    This convenience method helps library users play with, test, or otherwise
-    probe the behavior of layers outside of a full training environment. It
-    presents the layer as callable function from inputs to outputs, with the
-    option of manually specifying weights and non-parameter state per individual
-    call. For convenience, weights and non-parameter state are cached per layer
-    instance, starting from default values of `EMPTY_WEIGHTS` and `EMPTY_STATE`,
-    and acquiring non-empty values either by initialization or from values
-    explicitly provided via the weights and state keyword arguments.
-
-    Args:
-      x: 0 or more input tensors, formatted the same as the inputs to
-          Layer.forward.
-      **kwargs: Additional keyword arguments if needed/desired for this layer.
-          Three possible keyword arguments are especially relevant:
-            - weights=... will override any cached weights values
-            - state=... will override any cached state values
-            - rng=... will supply a PRNG key for use by the layer
-
-    Returns:
-      0 or more output tensors, formatted the same as the outputs from
-          Layer.forward.
-    """
-    weights = kwargs.pop('weights', self.weights)
-    state = kwargs.pop('state', self.state)
-    rng = kwargs.pop('rng', None)
-    outputs, _ = self.forward_internal(x, weights, state, rng)
-    return outputs
 
   def _do_custom_gradients(self, x, weights, state, **kwargs):
     """Calls this layer for a forward pass, but with custom gradients."""
