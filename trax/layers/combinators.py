@@ -133,6 +133,23 @@ class Serial(base.Layer):
       states.append(state)
     return weights, states
 
+  @base.Layer.input_signature.setter
+  def input_signature(self, input_signature):
+    """Sets input signatures for this layer and sublayers, recursively.
+
+    Args:
+      input_signature: A ShapeDtype instance (if this layer takes one input)
+          or a list/tuple of ShapeDtype instances.
+    """
+    self._input_signature = input_signature
+
+    # Infer shapes and dtypes (signatures) through the successive sublayers.
+    next_input = input_signature
+    for layer in self.sublayers:
+      layer.input_signature = next_input
+      w, s = layer.new_weights_and_state_abstract(next_input)
+      next_input, _ = layer.forward_abstract(next_input, w, s)
+
   @base.Layer.weights.setter
   def weights(self, weights):
     """Recursively sets weights on this layer and all sublayers."""
@@ -260,6 +277,21 @@ class Parallel(base.Layer):
       return base.EMPTY_WEIGHTS, base.EMPTY_STATE
     else:
       return tuple(zip(*inits))
+
+  @base.Layer.input_signature.setter
+  def input_signature(self, input_signature):
+    """Sets input signatures for this layer and sublayers, recursively.
+
+    Args:
+      input_signature: A ShapeDtype instance (if this layer takes one input)
+          or a list/tuple of ShapeDtype instances.
+    """
+    self._input_signature = input_signature
+
+    # Assign signatures to the sublayers.
+    sublayer_signatures = self._allot_to_sublayers(input_signature)
+    for layer, signature in zip(self.sublayers, sublayer_signatures):
+      layer.input_signature = signature
 
   @base.Layer.weights.setter
   def weights(self, weights):

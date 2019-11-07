@@ -78,6 +78,11 @@ class Map(tl.Layer):
                            '%s.' % (str(shape_dtype.shape), str(first_shape)))
     return self._layer.initialize_once(input_signature[0], rng)
 
+  @tl.Layer.input_signature.setter
+  def input_signature(self, input_signature):
+    self._input_signature = input_signature
+    self._layer.input_signature = input_signature
+
   @tl.Layer.weights.setter
   def weights(self, weights):
     self._weights = self._layer.weights = weights

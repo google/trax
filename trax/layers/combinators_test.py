@@ -23,6 +23,7 @@ from trax import backend
 from trax.layers import base
 from trax.layers import combinators as cb
 from trax.layers import core
+from trax.layers import normalization
 from trax.shapes import ShapeDtype
 
 
@@ -149,23 +150,31 @@ class CombinatorLayerTest(absltest.TestCase):
 
   def test_input_signatures_serial(self):
     layer = cb.Serial(core.Div(divisor=2.0), core.Div(divisor=5.0))
-    input_signature = ShapeDtype((3, 2))
-    rng = backend.random.get_prng(0)
     self.assertIsNone(layer.input_signature)
 
-    layer.initialize_once(input_signature, rng)
+    layer.input_signature = ShapeDtype((3, 2))
     self.assertEqual(layer.input_signature, ShapeDtype((3, 2)))
     self.assertLen(layer.sublayers, 2)
     for sublayer in layer.sublayers:
       self.assertEqual(sublayer.input_signature, ShapeDtype((3, 2)))
 
+  def test_input_signatures_serial_batch_norm(self):
+    # Include a layer that actively uses state.
+    batch_norm = normalization.BatchNorm()
+    relu = core.Relu()
+    batch_norm_and_relu = cb.Serial(batch_norm, relu)
+
+    # Check for correct shapes entering and exiting the batch_norm layer.
+    # And the code should run without errors.
+    batch_norm_and_relu.input_signature = ShapeDtype((3, 28, 28))
+    self.assertEqual(batch_norm.input_signature, ShapeDtype((3, 28, 28)))
+    self.assertEqual(relu.input_signature, ShapeDtype((3, 28, 28)))
+
   def test_input_signatures_parallel(self):
     layer = cb.Parallel(core.Div(divisor=0.5), core.Div(divisor=3.0))
-    input_signature = (ShapeDtype((3, 2)), ShapeDtype((4, 7)))
-    rng = backend.random.get_prng(0)
     self.assertIsNone(layer.input_signature)
 
-    layer.initialize_once(input_signature, rng)
+    layer.input_signature = (ShapeDtype((3, 2)), ShapeDtype((4, 7)))
     self.assertEqual(layer.input_signature,
                      (ShapeDtype((3, 2)), ShapeDtype((4, 7))))
     self.assertLen(layer.sublayers, 2)

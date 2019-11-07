@@ -299,6 +299,17 @@ class Layer(object):
     """
     self._input_signature = input_signature
 
+    # Handle special case of a single sublayer. More general combinators
+    # (allowing multiple sublayers) must override the `input_signature`
+    # property setter.
+    sublayers = self.sublayers
+    if sublayers and len(sublayers) == 1:
+      sublayers[0].input_signature = input_signature
+    if sublayers and len(sublayers) > 1:
+      raise ValueError('A layer class whose instances can have more than one '
+                       'sublayer must override the input_signature property '
+                       'setter.')
+
   @property
   def weights(self):
     """Returns this layer's weights.
@@ -350,7 +361,6 @@ class Layer(object):
       weights, state = self.new_weights_and_state(input_signature, rng)
       if not self._init_finished:
         self._init_finished = True
-        self._input_signature = input_signature
         self._weights = weights
         self._state = state
       else:
@@ -438,6 +448,13 @@ class Layer(object):
       name, trace = self.__class__.__name__, _short_traceback(skip=3)
       raise LayerError(name, 'forward_abstract', self._caller, pseudo_inputs,
                        trace)
+
+  def new_weights_and_state_abstract(self, input_signature):
+    """Returns shapes/dtypes of the weights and state this layer would use."""
+    rng = backend.random.get_prng(0)
+    def new_w_and_s():
+      return self.new_weights_and_state(input_signature, rng)
+    return backend.eval_on_shapes(new_w_and_s)()
 
   def _do_custom_gradients(self, x, weights, state, **kwargs):
     """Calls this layer for a forward pass, but with custom gradients."""
