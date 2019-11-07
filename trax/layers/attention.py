@@ -218,6 +218,7 @@ def DotProductAttention(query, key, value, mask, dropout, mode, rng):
     # should be computed at runtime (rather than being global constants).
     if backend.get_name() == 'jax':
       mask = jax.lax.tie_in(dots, mask)
+    # JAX's `full_like` already ties in -1e9 to dots.
     dots = np.where(mask, dots, np.full_like(dots, -1e9))
   # Softmax.
   dots = np.exp(dots - backend.logsumexp(dots, axis=-1, keepdims=True))
