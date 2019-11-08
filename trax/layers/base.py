@@ -195,8 +195,8 @@ class Layer(object):
           number generation, using the keyword 'rng'.
 
     Returns:
-      Tensors, matching the number (n_out) promised by this layer.
-      Specifically:
+      A tuple of (tensors, state). The tensors match the number (n_out) promised
+      by this layer, and are formatted according to that number, specifically:
         - n_out = 0: an empty tuple
         - n_out = 1: one tensor (NOT wrapped in a tuple)
         - n_out > 1: a tuple of tensors, with n_out items
