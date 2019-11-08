@@ -700,6 +700,8 @@ class MemoryEfficientCausalAttention(BaseCausalAttention):
     q_loop_idx = np.zeros((), dtype=np.int32)
     q_loop_max = query.shape[-2]
     q_loop_stride = self._loop_stride
+    if q_loop_max == 1:  # For abstract runs with unknown shapes.
+      q_loop_stride = 1
     assert q_loop_max % q_loop_stride == 0, (
         'Stride must evenly divide the number of query elements.')
 
