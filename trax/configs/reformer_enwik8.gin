@@ -98,7 +98,7 @@ TimeBinCausalAttention.share_qk = %share_qk
 # Parameters for LSHCausalAttention:
 # ==============================================================================
 LSHCausalAttention.allow_duplicate_attention = False
-LSHCausalAttention.attend_across_buckets = False
+LSHCausalAttention.attend_across_buckets = True
 LSHCausalAttention.rehash_each_round = True
 # LSHCausalAttention.n_bins: see top
 # LSHCausalAttention.n_buckets: see top
@@ -131,6 +131,7 @@ ReformerLM.d_attention_value = %attn_kv
 ReformerLM.d_model = 1024
 ReformerLM.d_ff = 4096
 ReformerLM.dropout = %dropout
+ReformerLM.ff_activation = @Relu
 ReformerLM.max_len = 65536
 ReformerLM.mode = 'train'
 ReformerLM.n_heads = 8

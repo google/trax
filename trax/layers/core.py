@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
 import jax
 import numpy as onp
 
@@ -57,7 +58,12 @@ def Selu(x,
 
 @base.layer()
 def Gelu(x, **unused_kwargs):
-  return x * backend.erf(x)
+  return x * 0.5 * (1.0 + backend.erf(x / math.sqrt(2.0)))
+
+
+@base.layer()
+def FastGelu(x, **unused_kwargs):
+  return 0.5 * x * (1 + np.tanh(x * 0.7978845608 * (1 + 0.044715 * x * x)))
 
 
 @base.layer()

@@ -91,8 +91,11 @@ TimeBinCausalAttention.share_qk = %share_qk
 # Parameters for LSHCausalAttention:
 # ==============================================================================
 LSHCausalAttention.allow_duplicate_attention = False
-LSHCausalAttention.attend_across_buckets = False
+LSHCausalAttention.attend_across_buckets = True
 LSHCausalAttention.rehash_each_round = True
+LSHCausalAttention.data_rotation = True
+LSHCausalAttention.data_rotation_farthest = True
+LSHCausalAttention.data_rotation_farthest_num = 8
 # LSHCausalAttention.n_bins: see top
 # LSHCausalAttention.n_buckets: see top
 # LSHCausalAttention.n_hashes: see top
