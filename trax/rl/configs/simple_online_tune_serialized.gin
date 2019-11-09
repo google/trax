@@ -53,7 +53,7 @@ TransformerDecoder.max_len = 8192
 # Parameters for PPO:
 # ==============================================================================
 PPO.n_optimizer_steps = 10
-PPO.optimizer_batch_size = 16
+PPO.optimizer_batch_size = 8  # was 16 for DF
 PPO.target_kl = 0.1
 PPO.boundary = 100
 PPO.max_timestep = 100
@@ -98,7 +98,7 @@ SimPLe.n_model_initial_train_steps = 70000
 SimPLe.n_model_train_steps_per_epoch = 10000
 SimPLe.model_train_batch_size = 32
 SimPLe.simulated_env_problem_class = @trax.rl.SerializedSequenceSimulatedEnvProblem
-SimPLe.simulated_batch_size = 128
+SimPLe.simulated_batch_size = 128  # was 128 for DF
 SimPLe.n_simulated_epochs = 50
 SimPLe.initial_trajectory_mix_prob = 0.9
 SimPLe.init_policy_from_world_model = True
