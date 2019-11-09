@@ -150,7 +150,8 @@ class BaseTrainer(object):
 
   def indicate_done(self):
     """If in async mode, workers need to know we are done."""
-    if not self.async_mode:
-      return
-    with gfile.GFile(os.path.join(self._output_dir, '__done__'), 'wb') as f:
-      f.write('')
+    return
+    # if not self.async_mode:
+    #   return
+    # with gfile.GFile(os.path.join(self._output_dir, '__done__'), 'wb') as f:
+    #   f.write('')

@@ -21,7 +21,7 @@ import trax.rl.envs
 # Parameters for batch_fn:
 # ==============================================================================
 batch_fn.batch_size_per_device = 1
-batch_fn.eval_batch_size = 16
+batch_fn.eval_batch_size = 8
 batch_fn.max_eval_length = 12288  # 64 * 64 * 3
 
 # Parameters for inputs:
