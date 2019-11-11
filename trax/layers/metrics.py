@@ -129,10 +129,7 @@ def L2Scalar(mask_id=None, has_weights=False):
 
 def L2LossScalar(mask_id=None, has_weights=False):
   """L2 loss as scalar compatible with Trax masking."""
-  return cb.Serial(
-      L2Scalar(mask_id=mask_id, has_weights=has_weights),
-      core.MulConstant(constant=-1.0)
-  )
+  return L2Scalar(mask_id=mask_id, has_weights=has_weights)
 
 
 def AccuracyScalar(mask_id=None, has_weights=False):
