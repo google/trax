@@ -174,7 +174,7 @@ def _print_n_weights(opt_state, n_devices, step):
     single_weights = layers.nested_map(unreplicate, opt_state.weights)
     sizes = _sizes(single_weights)
   total_size = _nested_reduce(sum, sizes)
-  step_log(step, 'Total trainable parameters size: %d' % total_size)
+  step_log(step, 'Total number of trainable weights: %d' % total_size)
 
 
 # Metrics to calculate and report.
@@ -855,7 +855,8 @@ def train(output_dir,
           save_backward_graph=False,
           has_weights=False,
           nontrainable_param_map=None,
-          mask_id=None):
+          mask_id=None,
+          metrics=None):
   """Train the model on the inputs.
 
   Args:
@@ -882,6 +883,7 @@ def train(output_dir,
     nontrainable_param_map: dict, mapping from model nontrainable parameter
       names to control names in PolicySchedule.
     mask_id: id to mask out (None by default).
+    metrics: optionally override the default metrics dictionary.
 
   Returns:
     trax.TrainerState
@@ -893,7 +895,7 @@ def train(output_dir,
                           random_seed=random_seed, n_devices=n_devices,
                           save_steps=save_steps, has_weights=has_weights,
                           nontrainable_param_map=nontrainable_param_map,
-                          mask_id=mask_id)
+                          metrics=metrics, mask_id=mask_id)
 
   epoch_steps = [train_steps]  # Only training if eval_frequency is 0 or None
   if eval_frequency and eval_steps > 0:
@@ -902,6 +904,8 @@ def train(output_dir,
                                   itertools.repeat(eval_frequency))
   step_log(trainer.step,
            'Starting training using %d devices' % trainer.n_devices)
+  # Print number of weights
+  trainer.print_n_weights()
 
   for epoch_steps in epochs(train_steps, trainer.step, epoch_steps):
     trainer.train_epoch(epoch_steps, eval_steps)
@@ -911,9 +915,6 @@ def train(output_dir,
 
     # Bookkeeping we do at the first step
     if trainer.step == 1:
-      # Print number of parameters
-      trainer.print_n_weights()
-
       # Save computation graph (single-device only for now)
       if (save_graphs and backend.get_name() == 'jax'):
         trainer.save_computation_graphs(save_backward_graph)
