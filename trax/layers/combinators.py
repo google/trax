@@ -70,65 +70,25 @@ class Serial(base.Layer):
     if n_layers != 1 and len(state) != n_layers:
       raise ValueError('length of state ({}) not equal to number of layers '
                        '({})'.format(len(state), n_layers))
+
     for layer, p, s, rng in zip(self.sublayers, weights, state, rngs):
-      is_stack_just_one_item = (_count_items(stack) == 1)
-      if isinstance(stack, (list, tuple)) and is_stack_just_one_item:
-        stack = stack[0]
-
-      # Give layer its args from the stack; treat 1-arg layer specially.
-      n_in = layer.n_in
-      if n_in == 1 and is_stack_just_one_item:
-        inputs = stack
-      elif n_in == 1:
-        inputs = stack[0]
-      else:
-        inputs = stack[:n_in]
+      inputs = _inputs_from_stack(layer, stack)
       outputs, s = layer.forward_internal(inputs, p, s, rng)
+      stack = _outputs_onto_stack(layer, outputs, stack)
       new_state.append(s)
-
-      # Push outputs onto remaining stack (if any).
-      if n_in < _count_items(stack):
-        if layer.n_out == 1:
-          outputs = (outputs,)
-        stack = outputs + stack[n_in:]
-      else:
-        stack = outputs  # NOTE: can be single value or tuple.
-
     return stack, new_state
 
   def new_weights_and_state(self, input_signature, rng):
-
     weights = []
     states = []
     pseudo_xs = input_signature
     for layer in self.sublayers:
       rng, layer_rng = backend.random.split(rng)
-
-      # Give layer its args from pseudo_xs; treat 1-arg layer specially.
-      is_stack_just_one_item = (_count_items(pseudo_xs) == 1)
-      if isinstance(pseudo_xs, (list, tuple)) and is_stack_just_one_item:
-        pseudo_xs = pseudo_xs[0]
-
-      n_in = layer.n_in
-      if n_in == 1 and is_stack_just_one_item:
-        inputs = pseudo_xs
-      elif n_in == 1:
-        inputs = pseudo_xs[0]
-      else:
-        inputs = pseudo_xs[:n_in]
-
+      inputs = _inputs_from_stack(layer, pseudo_xs)
       param, state = layer.initialize_once(inputs, layer_rng)
       pparam = layer._weights   # pylint: disable=protected-access
-
       outputs, _ = layer.forward_abstract(inputs, pparam, state)
-
-      # Push outputs onto remaining pseudo_xs (if any).
-      if n_in < _count_items(pseudo_xs):
-        if layer.n_out == 1:
-          outputs = (outputs,)
-        pseudo_xs = outputs + pseudo_xs[n_in:]
-      else:
-        pseudo_xs = outputs  # NOTE: can be single value or tuple.
+      pseudo_xs = _outputs_onto_stack(layer, outputs, pseudo_xs)
 
       weights.append(param)
       states.append(state)
@@ -591,7 +551,11 @@ def Residual(*layers, **kwargs):
   ]
 
 
-def _deep_flatten(items):  # pylint: disable=invalid-name
+# All module-private helper functions are below.
+# pylint: disable=invalid-name
+
+
+def _deep_flatten(items):
   """Returns a list of objects, flattening sublists/subtuples along the way.
 
   Example: _deep_flatten([1, (2, 3, (4, 5), [6, 7]), [[[8]]]]) would return
@@ -605,7 +569,7 @@ def _deep_flatten(items):  # pylint: disable=invalid-name
   Returns:
     A list of non-list, non-tuple objects.
   """
-  def _flat_gen(xs):  # pylint: disable=invalid-name
+  def _flat_gen(xs):
     for x in xs:
       if isinstance(x, (list, tuple)):
         for y in _flat_gen(x):
@@ -615,7 +579,7 @@ def _deep_flatten(items):  # pylint: disable=invalid-name
   return list(_flat_gen(items))
 
 
-def _ensure_sublayers(layers):  # pylint: disable=invalid-name
+def _ensure_sublayers(layers):
   """Ensures that elements in a layer list are layers.
 
   Args:
@@ -638,12 +602,37 @@ def _ensure_sublayers(layers):  # pylint: disable=invalid-name
     raise TypeError(type(layers))
 
 
-def _pop_rng_and_split(args_dict, n_copies):  # pylint: disable=invalid-name
+def _pop_rng_and_split(args_dict, n_copies):
   rng = args_dict.pop('rng', None)
   if rng is None:
     return (None,) * n_copies
   return backend.random.split(rng, n_copies)
 
 
-def _count_items(xs):  # pylint: disable=invalid-name
+def _inputs_from_stack(layer, stack):
+  """Returns the correct number/format of inputs for the given layer."""
+  is_stack_just_one_item = (_count_items(stack) == 1)
+  if isinstance(stack, (list, tuple)) and is_stack_just_one_item:
+    stack = stack[0]
+  n_in = layer.n_in
+  if n_in == 1 and is_stack_just_one_item:
+    return stack
+  elif n_in == 1:
+    return stack[0]
+  else:
+    return stack[:n_in]
+
+
+def _outputs_onto_stack(layer, outputs, stack):
+  """"Returns the new stack after outputs have been pushed onto it."""
+  n_in = layer.n_in
+  if n_in < _count_items(stack):
+    if layer.n_out == 1:
+      outputs = (outputs,)
+    return outputs + stack[n_in:]
+  else:
+    return outputs  # NOTE: can be single value or tuple.
+
+
+def _count_items(xs):
   return len(xs) if isinstance(xs, (list, tuple)) else 1
