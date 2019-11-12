@@ -40,8 +40,14 @@ class RnnLayerTest(absltest.TestCase):
   def test_gru_cell(self):
     self._test_cell_runs(
         rnn.GRUCell(9),
-        input_signature=ShapeDtype((8, 7, 9)),
-        output_shape=(8, 7, 9))
+        input_signature=(ShapeDtype((8, 7, 9)), ShapeDtype((8, 7, 9))),
+        output_shape=((8, 7, 9), (8, 7, 9)))
+
+  def test_lstm_cell(self):
+    self._test_cell_runs(
+        rnn.LSTMCell(9),
+        input_signature=(ShapeDtype((8, 9)), ShapeDtype((8, 18))),
+        output_shape=((8, 9), (8, 18)))
 
 
 if __name__ == '__main__':

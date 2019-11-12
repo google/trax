@@ -19,28 +19,108 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from trax import backend
+from trax.backend import numpy as np
+from trax.layers import base
 from trax.layers import combinators as cb
 from trax.layers import convolution
 from trax.layers import core
+from trax.layers import initializers
 
 
-def GRUCell(n_units):
+class LSTMCell(base.Layer):
+  """LSTM Cell.
+
+  For a nice overview of the motivation and (i, o, f) gates, see this tutorial:
+  https://colah.github.io/posts/2015-08-Understanding-LSTMs/
+
+  See this paper for a description and detailed study of all gate types:
+  https://arxiv.org/pdf/1503.04069.pdf
+  """
+
+  def __init__(self,
+               n_units,
+               forget_bias=1.0,
+               kernel_initializer=initializers.GlorotUniformInitializer(),
+               bias_initializer=initializers.RandomNormalInitializer(1e-6)):
+    super(LSTMCell, self).__init__(n_in=2, n_out=2)
+    self._n_units = n_units
+    self._forget_bias = forget_bias
+    self._kernel_initializer = kernel_initializer
+    self._bias_initializer = bias_initializer
+
+  def forward(self, inputs, weights):
+    x, lstm_state = inputs
+
+    # LSTM state consists of c and h.
+    c, h = np.split(lstm_state, 2, axis=-1)
+
+    # Dense layer on the concatenation of x and h.
+    w, b = weights
+    y = np.dot(np.concatenate([x, h], axis=-1), w) + b
+
+    # i = input_gate, j = new_input, f = forget_gate, o = output_gate
+    i, j, f, o = np.split(y, 4, axis=-1)
+
+    new_c = c * backend.sigmoid(f) + backend.sigmoid(i) * np.tanh(j)
+    new_h = np.tanh(new_c) * backend.sigmoid(o)
+    return new_h, np.concatenate([new_c, new_h], axis=-1)
+
+  def new_weights(self, input_signature, rng):
+    # LSTM state last dimension must be twice n_units.
+    assert input_signature[1].shape[-1] == 2 * self._n_units
+    # The dense layer input is the input and half of the lstm state.
+    input_shape = input_signature[0].shape[-1] + self._n_units
+    rng1, rng2 = backend.random.split(rng, 2)
+    w = self._kernel_initializer((input_shape, 4 * self._n_units), rng1)
+    b = self._bias_initializer((4 * self._n_units,), rng2) + self._forget_bias
+    return (w, b)
+
+
+class GRUCell(base.Layer):
   """Builds a traditional GRU cell with dense internal transformations.
 
   Gated Recurrent Unit paper: https://arxiv.org/abs/1412.3555
-
-
-  Args:
-    n_units: Number of hidden units.
-
-  Returns:
-    A Stax model representing a traditional GRU RNN cell.
   """
-  return GeneralGRUCell(
-      candidate_transform=lambda: core.Dense(n_units),
-      memory_transform_fn=None,
-      gate_nonlinearity=core.Sigmoid,
-      candidate_nonlinearity=core.Tanh)
+
+  def __init__(self,
+               n_units,
+               forget_bias=0.0,
+               kernel_initializer=initializers.RandomUniformInitializer(0.01),
+               bias_initializer=initializers.RandomNormalInitializer(1e-6)):
+    super(GRUCell, self).__init__(n_in=2, n_out=2)
+    self._n_units = n_units
+    self._forget_bias = forget_bias
+    self._kernel_initializer = kernel_initializer
+    self._bias_initializer = bias_initializer
+
+  def forward(self, inputs, weights):
+    x, gru_state = inputs
+
+    # Dense layer on the concatenation of x and h.
+    w1, b1, w2, b2 = weights
+    y = np.dot(np.concatenate([x, gru_state], axis=-1), w1) + b1
+
+    # Update and reset gates.
+    u, r = np.split(backend.sigmoid(y), 2, axis=-1)
+
+    # Candidate.
+    c = np.dot(np.concatenate([x, r * gru_state], axis=-1), w2) + b2
+
+    new_gru_state = u * gru_state + (1 - u) * np.tanh(c)
+    return new_gru_state, new_gru_state
+
+  def new_weights(self, input_signature, rng):
+    # State last dimension must be n_units.
+    assert input_signature[1].shape[-1] == self._n_units
+    # The dense layer input is the input and half of the GRU state.
+    input_shape = input_signature[0].shape[-1] + self._n_units
+    rng1, rng2, rng3, rng4 = backend.random.split(rng, 4)
+    w1 = self._kernel_initializer((input_shape, 2 * self._n_units), rng1)
+    b1 = self._bias_initializer((2 * self._n_units,), rng2) + self._forget_bias
+    w2 = self._kernel_initializer((input_shape, self._n_units), rng3)
+    b2 = self._bias_initializer((self._n_units,), rng4)
+    return (w1, b1, w2, b2)
 
 
 def ConvGRUCell(n_units, kernel_size=(3, 3)):

@@ -22,6 +22,7 @@ from __future__ import print_function
 from trax import backend
 from trax.backend import numpy as np
 from trax.layers import base
+from trax.shapes import ShapeDtype
 
 
 class Serial(base.Layer):
@@ -265,7 +266,7 @@ class Parallel(base.Layer):
         outputs.extend(sub_outputs)
       new_state.append(sub_state)
     output = outputs[0] if self.n_out == 1 else tuple(outputs)
-    return output, new_state
+    return output, tuple(new_state)
 
   def new_weights_and_state(self, input_signature, rng):
     sublayer_signatures = self._allot_to_sublayers(input_signature)
@@ -409,17 +410,27 @@ class Scan(base.Layer):
     self._n_carry = n_carry
     self._axis = axis
 
-  def forward(self, inputs, weights):
+  def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
+                         state=base.EMPTY_STATE, **kwargs):
     xs = inputs[:-self._n_carry]  # Split input stack into inputs and carry.
-    init = inputs[-self._n_carry:]
-    def LayerFn(x, carry):
-      res = self._layer.forward(x + carry, weights)
-      return (res[:-self._n_carry], res[-self._n_carry:])
-    ys, carry = backend.scan(LayerFn, xs, init, axis=self._axis)
-    return ys + carry  # Put outputs and carry back on stack.
+    init = (inputs[-self._n_carry:], state)
+    def LayerFn(x, carry_and_state):
+      carry, state = carry_and_state
+      res, new_state = self._layer.forward_with_state(
+          x + carry, weights=weights, state=state, **kwargs)
+      return (res[:-self._n_carry], (res[-self._n_carry:], new_state))
+    ys, (carry, new_state) = backend.scan(LayerFn, xs, init, axis=self._axis)
+    return ys + carry, new_state  # Put outputs and carry back on stack.
 
   def new_weights_and_state(self, input_signature, rng):
-    return self._layer.new_weights_and_state(input_signature, rng)
+    def ShapeWithoutAxis(x):
+      shape = x.shape
+      return shape[:self._axis] + shape[self._axis + 1:]
+    xs = input_signature[:-self._n_carry]
+    init = input_signature[-self._n_carry:]
+    xs_slices = [ShapeDtype(ShapeWithoutAxis(x), x.dtype) for x in xs]
+    layer_signature = tuple(xs_slices + list(init))
+    return self._layer.new_weights_and_state(layer_signature, rng)
 
 
 @base.layer(n_out=0)
@@ -461,6 +472,69 @@ def Select(idxs, n_in=None):
       xs = (xs,)
     return tuple(xs[i] for i in idxs)
   return Selection()  # pylint: disable=no-value-for-parameter
+
+
+def SerialWithSideOutputs(layers, n_side_outputs=1):
+  """Serial layer with side outputs.
+
+  This layer makes it easier to manage the stack when layers have side outputs.
+
+  In the simplest case of layers with n_in=1, n_out=2 and with
+  n_side_outputs=1 this layer runs the following computation on x:
+    side_outputs = []
+    for i in range(len(layers)):
+      x, side_output = layers[i](x)
+      side_outputs.append(side_output)
+    return [x] + side_outputs
+
+  In the general case of layers with variable n_in and n_out and
+  n_side_outputs being a list of N integers, it does the following:
+    side_outputs = []
+    for i in range(N):
+      res = layer[i](cur_stack)  # remove n_in from stack
+      cur_stack.append(res[:n_side_outputs[i]])  # put back some on stack
+      side_outputs.extend(res[n_side_outputs:])
+    return cur_stack + side_outputs
+
+  Args:
+    layers: a list of layers to execute
+    n_side_outputs: an int or a list of ints, how many outputs of each layer
+      to put aside
+
+  Returns:
+    a layer that performs the above computation
+  """
+  if isinstance(n_side_outputs, int):
+    n_side_outputs = [n_side_outputs] * len(layers)
+
+  # Calculate the n_in for this layer.
+  running_max = 0
+  running_total = 0
+  for layer, n_side_output in zip(layers, n_side_outputs):
+    running_total += layer.n_in
+    running_max = max(running_max, running_total)
+    running_total -= layer.n_out - n_side_output
+  n_in = running_max
+
+  # Create the list of layers to run serially.
+  cur_stack_size = n_in
+  serial_layers = []
+  for layer, n_side_output in zip(layers, n_side_outputs):
+    serial_layers.append(layer)
+    cur_stack_size += layer.n_out - layer.n_in
+    # Indices to move n_side_outputs to the back of the stack.
+    # Don't touch first n_out - n_side_outputs.
+    move_back_indices = list(range(layer.n_out - n_side_output))
+    # Then comes the rest of the stack that we're not moving.
+    move_back_indices += [i + layer.n_out
+                          for i in range(cur_stack_size - layer.n_out)]
+    # Finally the indices we move.
+    move_back_indices += [i + layer.n_out - n_side_output
+                          for i in range(n_side_output)]
+    # Swap them on stack.
+    serial_layers.append(Select(move_back_indices))
+
+  return Serial(serial_layers)
 
 
 @base.layer(n_in=0)

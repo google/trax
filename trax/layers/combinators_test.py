@@ -85,6 +85,16 @@ class CombinatorLayerTest(absltest.TestCase):
     output_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual(output_shape, expected_shape)
 
+  def test_serial_with_side_outputs_div_div(self):
+    def some_layer():
+      return cb.Parallel(core.Div(divisor=2.0), core.Div(divisor=5.0))
+    layer = cb.SerialWithSideOutputs([some_layer(), some_layer()])
+    input_signature = (ShapeDtype((3, 2)), ShapeDtype((4, 2)),
+                       ShapeDtype((5, 2)))
+    expected_shape = ((3, 2), (4, 2), (5, 2))
+    output_shape = base.check_shape_agreement(layer, input_signature)
+    self.assertEqual(output_shape, expected_shape)
+
   def test_parallel_dup_dup(self):
     layer = cb.Parallel(cb.Dup(), cb.Dup())
     input_signature = (ShapeDtype((3, 2)), ShapeDtype((4, 7)))

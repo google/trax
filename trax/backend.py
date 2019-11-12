@@ -134,7 +134,7 @@ def _jax_scan(f, xs, init_value, axis=0):
     return d, y
   last_value, ys = lax.scan(transposed_f, init_value, xs)
   if axis != 0:
-    ys = nested_map(swapaxes, xs)
+    ys = nested_map(swapaxes, ys)
   return ys, last_value
 
 
@@ -235,6 +235,10 @@ def logsumexp(*args, **kwargs):
 
 
 def expit(*args, **kwargs):
+  return backend()['expit'](*args, **kwargs)
+
+
+def sigmoid(*args, **kwargs):
   return backend()['expit'](*args, **kwargs)
 
 

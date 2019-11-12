@@ -53,6 +53,9 @@ LogSoftmax = layer_configure(LogSoftmax)
 Softmax = layer_configure(Softmax)
 Softplus = layer_configure(Softplus)
 L2LossScalar = layer_configure(L2LossScalar)
+LSTMCell = layer_configure(LSTMCell)
+GRUCell = layer_configure(GRUCell)
+
 
 DotProductCausalAttention = layer_configure(
     DotProductCausalAttention, blacklist=['mode'])
