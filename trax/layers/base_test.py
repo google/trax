@@ -26,6 +26,38 @@ from trax.shapes import ShapeDtype
 
 class BaseLayerTest(absltest.TestCase):
 
+  def test_new_rng_deterministic(self):
+    layer1 = base.Layer()
+    layer2 = base.Layer(n_in=2, n_out=2)
+    rng1 = layer1.new_rng()
+    rng2 = layer2.new_rng()
+    self.assertEqual(rng1.tolist(), rng2.tolist())
+
+  def test_new_rng_new_value_each_call(self):
+    layer = base.Layer()
+    rng1 = layer.new_rng()
+    rng2 = layer.new_rng()
+    rng3 = layer.new_rng()
+    self.assertNotEqual(rng1.tolist(), rng2.tolist())
+    self.assertNotEqual(rng2.tolist(), rng3.tolist())
+
+  def test_new_rngs_deterministic(self):
+    layer1 = base.Layer()
+    layer2 = base.Layer(n_in=2, n_out=2)
+    rng1, rng2 = layer1.new_rngs(2)
+    rng3, rng4 = layer2.new_rngs(2)
+    self.assertEqual(rng1.tolist(), rng3.tolist())
+    self.assertEqual(rng2.tolist(), rng4.tolist())
+
+  def test_new_rngs_new_values_each_call(self):
+    layer = base.Layer()
+    rng1, rng2 = layer.new_rngs(2)
+    rng3, rng4 = layer.new_rngs(2)
+    self.assertNotEqual(rng1.tolist(), rng2.tolist())
+    self.assertNotEqual(rng3.tolist(), rng4.tolist())
+    self.assertNotEqual(rng1.tolist(), rng3.tolist())
+    self.assertNotEqual(rng2.tolist(), rng4.tolist())
+
   def test_layer_decorator_and_shape_agreement(self):
     @base.layer()
     def add_one(x, **unused_kwargs):
