@@ -15,14 +15,9 @@
 
 """Trax top level import."""
 
-from trax import backend
+from trax import backend as math
 from trax import inputs
-from trax import layers as tl
+from trax import layers
 from trax import learning_rate as lr
 from trax import shapes
 from trax import trainer_lib
-from trax.backend import eval_on_shapes
-from trax.backend import grad
-from trax.backend import logsumexp
-from trax.backend import numpy as np
-from trax.backend import random

@@ -30,8 +30,8 @@ class ImportTest(absltest.TestCase):
       # Import trax
       import trax  # pylint: disable=g-import-not-at-top
       # Access a few symbols.
-      dir(trax.backend)
-      dir(trax.tl)
+      dir(trax.math)
+      dir(trax.layers)
       dir(trax.models)
     except ImportError as e:
       raise e

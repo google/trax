@@ -473,8 +473,8 @@ class Layer(object):
       def call_on_input(x, weights, state, rng):
         return self.forward_with_state(x, weights=weights, state=state, rng=rng)
       weights_shapes = nested_map(signature, weights)
-      s = backend.eval_on_shapes(call_on_input)(pseudo_inputs,
-                                                weights_shapes, state, rng)
+      s = backend.abstract_eval(call_on_input)(pseudo_inputs,
+                                               weights_shapes, state, rng)
       return s
     except Exception:
       name, trace = self.__class__.__name__, _short_traceback(skip=3)
@@ -485,7 +485,7 @@ class Layer(object):
     """Returns shapes/dtypes of the weights and state this layer would use."""
     def new_w_and_s():
       return self.new_weights_and_state(input_signature)
-    return backend.eval_on_shapes(new_w_and_s)()
+    return backend.abstract_eval(new_w_and_s)()
 
   def _do_custom_gradients(self, x, weights, state, **kwargs):
     """Calls this layer for a forward pass, but with custom gradients."""

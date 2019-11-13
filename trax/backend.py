@@ -149,7 +149,7 @@ def nested_map(f, x):
   return f(x)
 
 
-def jax_eval_on_shapes(f):
+def jax_abstract_eval(f):
   """Returns a function that evaluates `f` given input shapes and dtypes.
 
   It transforms function `f` to a function that performs the same computation as
@@ -204,7 +204,7 @@ _JAX_BACKEND = {
     'grad': jax.grad,
     'pmap': jax.pmap,
     'psum': lax.psum,
-    'eval_on_shapes': jax_eval_on_shapes,
+    'abstract_eval': jax_abstract_eval,
     'random_uniform': jax_random.uniform,
     'random_randint': jax_randint,
     'random_normal': jax_random.normal,
@@ -282,8 +282,8 @@ def psum(*args, **kwargs):
   return backend()['psum'](*args, **kwargs)
 
 
-def eval_on_shapes(*args, **kwargs):
-  return backend()['eval_on_shapes'](*args, **kwargs)
+def abstract_eval(*args, **kwargs):
+  return backend()['abstract_eval'](*args, **kwargs)
 
 
 def dataset_as_numpy(*args, **kwargs):
@@ -380,7 +380,7 @@ def accelerate(f, n_devices):
 # Backend based on TF numpy.
 
 
-def tf_eval_on_shapes(f):
+def tf_abstract_eval(f):
   """Returns a function that evaluates `f` given input shapes and dtypes.
 
   It transforms function `f` to a function that performs the same computation as
@@ -463,7 +463,7 @@ _TF_BACKEND = {
     'np': tf_np,
     'jit': _tf_jit,
     'grad': tf_np_extensions.grad,
-    'eval_on_shapes': tf_eval_on_shapes,
+    'abstract_eval': tf_abstract_eval,
     'expit': tf_np_extensions.expit,
     'erf': tf_np_extensions.erf,
     'logsumexp': tf_np_extensions.logsumexp,
