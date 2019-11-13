@@ -44,6 +44,8 @@ def layer_configure(*args, **kwargs):
 # pylint: disable=used-before-assignment
 # pylint: disable=invalid-name
 Relu = layer_configure(Relu)
+Gelu = layer_configure(Gelu)
+FastGelu = layer_configure(FastGelu)
 Sigmoid = layer_configure(Sigmoid)
 Tanh = layer_configure(Tanh)
 HardSigmoid = layer_configure(HardSigmoid)

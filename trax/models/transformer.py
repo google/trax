@@ -23,19 +23,20 @@ import functools
 from trax import layers as tl
 
 
-def FeedForward(d_model, d_ff, dropout, layer_idx, mode):
+def FeedForward(d_model, d_ff, dropout, layer_idx, mode, activation):
   """Feed-forward block with layer normalization at start."""
   return tl.Serial(
       tl.LayerNorm(),
       tl.Dense(d_ff),
-      tl.Relu(),
+      activation(),
       tl.Dropout(rate=dropout, name='ff_middle_%d' % layer_idx, mode=mode),
       tl.Dense(d_model),
       tl.Dropout(rate=dropout, name='ff_final_%d' % layer_idx, mode=mode),
   )
 
 
-def EncoderBlock(d_model, d_ff, n_heads, dropout, layer_idx, mode):
+def EncoderBlock(d_model, d_ff, n_heads, dropout, layer_idx, mode,
+                 ff_activation):
   """Returns a layer sequence that implements a Transformer encoder block.
 
   The input to the layer sequence is a pair, (activations, mask), where the
@@ -49,6 +50,7 @@ def EncoderBlock(d_model, d_ff, n_heads, dropout, layer_idx, mode):
     dropout: float: dropout rate (how much to drop out)
     layer_idx: which layer are we at (for bookkeeping)
     mode: str: 'train' or 'eval'
+    ff_activation: the non-linearity in feed-forward layer
 
   Returns:
     A sequence of layers that maps an (activations, mask) pair to an
@@ -60,7 +62,8 @@ def EncoderBlock(d_model, d_ff, n_heads, dropout, layer_idx, mode):
       tl.Dropout(rate=dropout, name='enc_attn_dropout', mode=mode),
   ]
   feed_forward = [
-      FeedForward(d_model, d_ff, dropout, layer_idx=layer_idx, mode=mode),
+      FeedForward(
+          d_model, d_ff, dropout, layer_idx, mode, ff_activation),
   ]
   return tl.Serial(
       tl.Residual(attention),
@@ -76,7 +79,8 @@ def TransformerEncoder(vocab_size,
                        n_heads=8,
                        dropout=0.1,
                        max_len=2048,
-                       mode='train'):
+                       mode='train',
+                       ff_activation=tl.Relu):
   """Returns a Transformer encoder model.
 
   The input to the model is a tensor of tokens.
@@ -91,6 +95,7 @@ def TransformerEncoder(vocab_size,
     dropout: float: dropout rate (how much to drop out)
     max_len: int: maximum symbol length for positional encoding
     mode: str: 'train' or 'eval'
+    ff_activation: the non-linearity in feed-forward layer
 
   Returns:
     A Transformer model as a layer that maps from a tensor of tokens to
@@ -104,7 +109,7 @@ def TransformerEncoder(vocab_size,
   return tl.Serial(                             #      tokens
       tl.Dup(),                                 # toks toks
       tl.Parallel(embedder, tl.PaddingMask()),  # vecs mask
-      [EncoderBlock(d_model, d_ff, n_heads, dropout, i, mode)
+      [EncoderBlock(d_model, d_ff, n_heads, dropout, i, mode, ff_activation)
        for i in range(n_layers)],               # vecs mask
       tl.Parallel([], tl.Drop()),               # ____  0
       tl.LayerNorm(),                           # vecs
@@ -115,7 +120,8 @@ def TransformerEncoder(vocab_size,
 
 
 def DecoderBlock(d_model, d_ff, n_heads, d_attention_key, d_attention_value,
-                 attention_type, dropout, share_qk, layer_idx, mode):
+                 attention_type, dropout, share_qk, layer_idx, mode,
+                 ff_activation):
   """Returns a layer sequence that implements a Transformer decoder block.
 
   The input to the layer sequence is an activation tensor.
@@ -131,6 +137,7 @@ def DecoderBlock(d_model, d_ff, n_heads, d_attention_key, d_attention_value,
     share_qk: bool, whether to share queries and keys
     layer_idx: which layer are we at (for bookkeeping)
     mode: str: 'train' or 'eval'
+    ff_activation: the non-linearity in feed-forward layer
 
   Returns:
     A sequence of layers that maps an activation tensor to an activation tensor.
@@ -144,7 +151,7 @@ def DecoderBlock(d_model, d_ff, n_heads, d_attention_key, d_attention_value,
       tl.Dropout(rate=dropout, name='attention_%d' % layer_idx, mode=mode),
   ]
   feed_forward = [
-      FeedForward(d_model, d_ff, dropout, layer_idx=layer_idx, mode=mode),
+      FeedForward(d_model, d_ff, dropout, layer_idx, mode, ff_activation),
   ]
   return tl.Serial(
       tl.Residual(self_attention),
@@ -163,7 +170,8 @@ def TransformerDecoder(vocab_size=None,
                        dropout=0.1,
                        share_qk=False,
                        max_len=2048,
-                       mode='train'):
+                       mode='train',
+                       ff_activation=tl.Relu):
   """Returns a Transformer decoder model.
 
   The input to the model is either continuous or discrete - controlled by
@@ -172,20 +180,21 @@ def TransformerDecoder(vocab_size=None,
 
   Args:
     vocab_size: int or None: vocab size if running on discrete input, None
-        otherwise.
+      otherwise.
     d_model: int:  depth of embedding
     d_ff: int: depth of feed-forward layer
     n_layers: int: number of encoder/decoder layers
     n_heads: int: number of attention heads
-    d_attention_key: int: depth of key vector for each attention head
-        (default is d_model // n_heads)
+    d_attention_key: int: depth of key vector for each attention head (default
+      is d_model // n_heads)
     d_attention_value: int: depth of value vector for each attention head
-        (default is d_model // n_heads)
+      (default is d_model // n_heads)
     attention_type: subclass of tl.BaseCausalAttention: attention class to use
     dropout: float: dropout rate (how much to drop out)
     share_qk: bool, whether to share queries and keys in decoder attention
     max_len: int: maximum symbol length for positional encoding
     mode: str: 'train' or 'eval'
+    ff_activation: the non-linearity in feed-forward layer
 
   Returns:
     A Transformer decoder as a layer that maps from a continuous or discrete
@@ -201,7 +210,7 @@ def TransformerDecoder(vocab_size=None,
       tl.PositionalEncoding(max_len=max_len),
       [DecoderBlock(  # pylint: disable=g-complex-comprehension
           d_model, d_ff, n_heads, d_attention_key, d_attention_value,
-          attention_type, dropout, share_qk, i, mode)
+          attention_type, dropout, share_qk, i, mode, ff_activation)
        for i in range(n_layers)],   # vecs
       tl.LayerNorm(),               # vecs
   )
@@ -219,7 +228,8 @@ def TransformerLM(vocab_size,
                   share_qk=False,
                   max_len=2048,
                   n_chunks=0,
-                  mode='train'):
+                  mode='train',
+                  ff_activation=tl.Relu):
   """Returns a Transformer language model.
 
   The input to the model is a tensor of tokens. (This model uses only the
@@ -231,16 +241,17 @@ def TransformerLM(vocab_size,
     d_ff: int: depth of feed-forward layer
     n_layers: int: number of encoder/decoder layers
     n_heads: int: number of attention heads
-    d_attention_key: int: depth of key vector for each attention head
-        (default is d_model // n_heads)
+    d_attention_key: int: depth of key vector for each attention head (default
+      is d_model // n_heads)
     d_attention_value: int: depth of value vector for each attention head
-        (default is d_model // n_heads)
+      (default is d_model // n_heads)
     attention_type: subclass of tl.BaseCausalAttention: attention class to use
     dropout: float: dropout rate (how much to drop out)
     share_qk: bool, whether to share queries and keys in decoder attention
     max_len: int: maximum symbol length for positional encoding
     n_chunks: int: number of chunks (must match input pipeline)
     mode: str: 'train', 'eval' or 'predict', predict mode is for fast inference
+    ff_activation: the non-linearity in feed-forward layer
 
   Returns:
     A Transformer language model as a layer that maps from a tensor of tokens
@@ -264,7 +275,7 @@ def TransformerLM(vocab_size,
       embedder,                     # vecs
       [DecoderBlock(  # pylint: disable=g-complex-comprehension
           d_model, d_ff, n_heads, d_attention_key, d_attention_value,
-          attention_type, dropout, share_qk, i, mode)
+          attention_type, dropout, share_qk, i, mode, ff_activation)
        for i in range(n_layers)],   # vecs
       tl.LayerNorm(),               # vecs
       tl.Dense(vocab_size),         # vecs
@@ -273,7 +284,8 @@ def TransformerLM(vocab_size,
   )
 
 
-def EncoderDecoder(d_model, d_ff, n_heads, dropout, layer_idx, mode):
+def EncoderDecoder(d_model, d_ff, n_heads, dropout, layer_idx, mode,
+                   ff_activation):
   """Transformer encoder-decoder layer.
 
   The input is a triple (decoder_input, mask, encoder) where the mask is
@@ -287,6 +299,7 @@ def EncoderDecoder(d_model, d_ff, n_heads, dropout, layer_idx, mode):
     dropout: float: dropout rate (how much to drop out)
     layer_idx: which layer are we at (for bookkeeping)
     mode: str: 'train' or 'eval'
+    ff_activation: the non-linearity in feed-forward layer
 
   Returns:
     the layer, returning a triple (decoder_activations, mask, encoder).
@@ -307,7 +320,7 @@ def EncoderDecoder(d_model, d_ff, n_heads, dropout, layer_idx, mode):
       tl.Dropout(rate=dropout, mode=mode),  # vecs_d mask vecs_e
   ]
   feed_forward = [
-      FeedForward(d_model, d_ff, dropout, layer_idx=layer_idx, mode=mode),
+      FeedForward(d_model, d_ff, dropout, layer_idx, mode, ff_activation),
   ]
   return tl.Serial(                               # vecs_d masks vecs_e
       tl.Residual(decoder_self_attention),        # vecs_d masks vecs_e
@@ -325,7 +338,8 @@ def Transformer(input_vocab_size,
                 n_heads=8,
                 dropout=0.1,
                 max_len=2048,
-                mode='train'):
+                mode='train',
+                ff_activation=tl.Relu):
   """Returns a Transformer model.
 
   This model expects an input pair: target, source.
@@ -342,13 +356,14 @@ def Transformer(input_vocab_size,
     dropout: float: dropout rate (how much to drop out)
     max_len: int: maximum symbol length for positional encoding
     mode: str: 'train' or 'eval'
+    ff_activation: the non-linearity in feed-forward layer
 
   Returns:
     A Transformer model as a layer that maps from a target, source pair to
     activations over a vocab set.
   """
   in_embed = [                                    # tokens
-      tl.Embedding(d_model, input_vocab_size),  # vecs
+      tl.Embedding(d_model, input_vocab_size),    # vecs
       tl.Dropout(rate=dropout, mode=mode),        # vecs
       tl.PositionalEncoding(max_len=max_len),     # vecs
   ]
@@ -358,17 +373,17 @@ def Transformer(input_vocab_size,
     out_embed = in_embed
   else:
     out_embed = [                                    # tokens
-        tl.Embedding(d_model, output_vocab_size),  # vecs
+        tl.Embedding(d_model, output_vocab_size),    # vecs
         tl.Dropout(rate=dropout, mode=mode),         # vecs
         tl.PositionalEncoding(max_len=max_len),      # vecs
     ]
 
   encoder_stack = (  # masks vectors --> masks vectors
-      [EncoderBlock(d_model, d_ff, n_heads, dropout, i, mode)
+      [EncoderBlock(d_model, d_ff, n_heads, dropout, i, mode, ff_activation)
        for i in range(n_encoder_layers)])
 
   encoder_decoder_stack = (  # vecs_d masks vecs_e --> vecs_d masks vecs_e
-      [EncoderDecoder(d_model, d_ff, n_heads, dropout, i, mode)
+      [EncoderDecoder(d_model, d_ff, n_heads, dropout, i, mode, ff_activation)
        for i in range(n_decoder_layers)])
 
   # Input: encoder_side_tokens, decoder_side_tokens
