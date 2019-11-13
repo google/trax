@@ -36,9 +36,8 @@ class BatchNorm(base.Layer):
     self._momentum = momentum
     self._mode = mode
 
-  def new_weights_and_state(self, input_signature, rng):
+  def new_weights_and_state(self, input_signature):
     """Helper to initialize batch norm weights."""
-    del rng
     axis = self._axis
     axis = (axis,) if np.isscalar(axis) else axis
     input_shape = input_signature.shape
@@ -119,9 +118,8 @@ class BatchNorm(base.Layer):
 
 
 # Layer normalization.
-def _layer_norm_weights(input_signature, rng):
+def _layer_norm_weights(input_signature):
   """Helper: create layer norm parameters."""
-  del rng
   features = input_signature.shape[-1]
   scale = np.ones(features)
   bias = np.zeros(features)

@@ -117,8 +117,7 @@ class PositionalEncoding(base.Layer):
       # and updated below.
       return (inputs + np.expand_dims(weights[:, state, :], 1), state + 1)
 
-  def new_weights_and_state(self, input_signature, rng):
-    del rng
+  def new_weights_and_state(self, input_signature):
     d_feature = input_signature.shape[-1]
     pe = onp.zeros((self._max_len, d_feature), dtype=onp.float32)
     position = onp.arange(0, self._max_len)[:, onp.newaxis]
@@ -178,11 +177,11 @@ class AxialPositionalEncoding(base.Layer):
 
       return inputs + np.reshape(emb * multiplier, inputs.shape), state
 
-  def new_weights_and_state(self, input_signature, rng):
+  def new_weights_and_state(self, input_signature):
     d_feature = input_signature.shape[-1]
     assert sum(self._d_embs) == d_feature
 
-    rngs = backend.random.split(rng, len(self._d_embs))
+    rngs = self.new_rngs(len(self._d_embs))
     weights = []
     for ax, (ax_rng, d_emb) in enumerate(zip(rngs, self._d_embs)):
       ax_shape = [1] * len(self._shape)
@@ -359,8 +358,8 @@ class ShiftRightLearned(base.Layer):
     c += backend.numpy.zeros((x.shape[0], 1, x.shape[2]), dtype=x.dtype)
     return backend.numpy.concatenate([c, x], axis=1)[:, :-1, :]
 
-  def new_weights(self, input_signature, rng):
-    b = self._initializer((input_signature.shape[-1],), rng)
+  def new_weights(self, input_signature):
+    b = self._initializer((input_signature.shape[-1],), self.new_rng())
     return b
 
 
@@ -394,9 +393,10 @@ class ComputeAttentionHeads(base.Layer):
 
     return res
 
-  def new_weights(self, input_signature, rng):
+  def new_weights(self, input_signature):
     w = self._kernel_initializer(
-        (input_signature.shape[-1], self._n_heads * self._d_head), rng)
+        (input_signature.shape[-1], self._n_heads * self._d_head),
+        self.new_rng())
     return w
 
 
@@ -423,9 +423,9 @@ class ComputeAttentionOutput(base.Layer):
 
     return np.dot(x, weights)
 
-  def new_weights(self, input_signature, rng):
+  def new_weights(self, input_signature):
     kernel_shape = (input_signature.shape[-1] * self._n_heads, self._d_model)
-    w = self._kernel_initializer(kernel_shape, rng)
+    w = self._kernel_initializer(kernel_shape, self.new_rng())
     return w
 
 
@@ -539,7 +539,7 @@ class DotProductCausalAttention(BaseCausalAttention):
     output, vjpfun = jax.vjp(_do_forward, inputs)
     return output, vjpfun(ct)[0]
 
-  def new_weights_and_state(self, input_signature, rng):
+  def new_weights_and_state(self, input_signature):
     if self._mode in ('train', 'eval'):
       return base.EMPTY_WEIGHTS, base.EMPTY_STATE
 
@@ -928,7 +928,7 @@ class TimeBinCausalAttention(BaseCausalAttention):
     )
     return (output, state)
 
-  def new_weights_and_state(self, input_signature, rng):
+  def new_weights_and_state(self, input_signature):
     if self._mode in ('train', 'eval'):
       return base.EMPTY_WEIGHTS, base.EMPTY_STATE
 

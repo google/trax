@@ -21,8 +21,7 @@ and call functions to be used as follows.
 ```python
 layer = MyLayer()
 x = np.zeros(10)
-rng = random.get_prng(0)
-layer.initialize_once(signature(x), rng)
+layer.initialize_once(signature(x))
 output = layer(x)
 ```
 

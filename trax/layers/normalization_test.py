@@ -21,7 +21,6 @@ from __future__ import print_function
 from absl.testing import absltest
 import numpy as onp
 
-from trax import backend
 from trax.backend import numpy as np
 from trax.layers import base
 from trax.layers import normalization
@@ -41,13 +40,12 @@ class NormalizationLayerTest(absltest.TestCase):
     input_dtype = np.float32
     input_signature = ShapeDtype(input_shape, input_dtype)
     eps = 1e-5
-    rng = backend.random.get_prng(0)
     inp1 = np.reshape(np.arange(np.prod(input_shape), dtype=input_dtype),
                       input_shape)
     m1 = 11.5  # Mean of this random input.
     v1 = 47.9167  # Variance of this random input.
     layer = normalization.BatchNorm(axis=(0, 1, 2))
-    _, _ = layer.initialize_once(input_signature, rng)
+    _, _ = layer.initialize_once(input_signature)
     state = layer.state
     onp.testing.assert_allclose(state[0], 0)
     onp.testing.assert_allclose(state[1], 1)

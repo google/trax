@@ -26,7 +26,6 @@ from tensorflow import test
 from trax import history as trax_history
 from trax import learning_rate
 from trax.backend import numpy as np
-from trax.backend import random as jax_random
 from trax.models import transformer
 from trax.rl import online_tune
 from trax.rl import ppo
@@ -57,7 +56,6 @@ class PolicyScheduleTest(test.TestCase):
         bottom_layers_fn=policy_and_value_model,
         two_towers=False,
     )
-    rng = jax_random.get_prng(seed=0)
     obs_dim = len(observation_metrics)
     if vocab_size is None:
       shape = (1, 1, obs_dim)
@@ -66,7 +64,7 @@ class PolicyScheduleTest(test.TestCase):
       shape = (1, 1)
       dtype = np.int32
     input_signature = ShapeDtype(shape, dtype)
-    (params, state) = net.initialize_once(input_signature, rng)
+    (params, state) = net.initialize_once(input_signature)
     policy_dir = self.get_temp_dir()
     # Optimizer slots and parameters should not be used for anything.
     slots = None

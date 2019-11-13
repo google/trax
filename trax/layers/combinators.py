@@ -78,14 +78,13 @@ class Serial(base.Layer):
       new_state.append(s)
     return stack, new_state
 
-  def new_weights_and_state(self, input_signature, rng):
+  def new_weights_and_state(self, input_signature):
     weights = []
     states = []
     pseudo_xs = input_signature
     for layer in self.sublayers:
-      rng, layer_rng = backend.random.split(rng)
       inputs = _inputs_from_stack(layer, pseudo_xs)
-      param, state = layer.initialize_once(inputs, layer_rng)
+      param, state = layer.initialize_once(inputs)
       pparam = layer._weights   # pylint: disable=protected-access
       outputs, _ = layer.forward_abstract(inputs, pparam, state)
       pseudo_xs = _outputs_onto_stack(layer, outputs, pseudo_xs)
@@ -228,12 +227,11 @@ class Parallel(base.Layer):
     output = outputs[0] if self.n_out == 1 else tuple(outputs)
     return output, tuple(new_state)
 
-  def new_weights_and_state(self, input_signature, rng):
+  def new_weights_and_state(self, input_signature):
     sublayer_signatures = self._allot_to_sublayers(input_signature)
-    rngs = backend.random.split(rng, self._n_layers)
-    inits = [layer.initialize_once(signature, rng)
-             for layer, signature, rng
-             in zip(self.sublayers, sublayer_signatures, rngs)]
+    inits = [layer.initialize_once(signature)
+             for layer, signature
+             in zip(self.sublayers, sublayer_signatures)]
     if not inits:
       return base.EMPTY_WEIGHTS, base.EMPTY_STATE
     else:
@@ -382,7 +380,7 @@ class Scan(base.Layer):
     ys, (carry, new_state) = backend.scan(LayerFn, xs, init, axis=self._axis)
     return ys + carry, new_state  # Put outputs and carry back on stack.
 
-  def new_weights_and_state(self, input_signature, rng):
+  def new_weights_and_state(self, input_signature):
     def ShapeWithoutAxis(x):
       shape = x.shape
       return shape[:self._axis] + shape[self._axis + 1:]
@@ -390,7 +388,7 @@ class Scan(base.Layer):
     init = input_signature[-self._n_carry:]
     xs_slices = [ShapeDtype(ShapeWithoutAxis(x), x.dtype) for x in xs]
     layer_signature = tuple(xs_slices + list(init))
-    return self._layer.new_weights_and_state(layer_signature, rng)
+    return self._layer.new_weights_and_state(layer_signature)
 
 
 @base.layer(n_out=0)

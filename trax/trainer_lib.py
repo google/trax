@@ -517,7 +517,8 @@ class Trainer(object):
       # because `m.initialize` puts cached parameter values in `m` and hence the
       # next call of `m.initialize` will give wrong results.
       m = layers.Serial(model(mode='train'), loss_fn)
-      weights, state = m.initialize_once(input_signature, rng)
+      m._set_rng(rng)  # pylint: disable=protected-access
+      weights, state = m.initialize_once(input_signature)
       (slots, opt_params) = opt.tree_init(weights)
       return (OptState(weights, slots, opt_params), state)
     if _is_jit_init():
@@ -559,8 +560,9 @@ class Trainer(object):
     dummy_signature = tuple(ShapeDtype(s, d)
                             for s, d in zip(dummy_shapes, dummy_dtypes))
     metrics_layer = layers.Serial(metrics_layer)
+    metrics_layer._set_rng(init_rng)  # pylint: disable=protected-access
     metrics_weights, metrics_state = (
-        metrics_layer.initialize_once(dummy_signature, init_rng))
+        metrics_layer.initialize_once(dummy_signature))
     self._metrics_weights = layers.nested_map(self._maybe_replicate,
                                               metrics_weights)
     self._metrics_state = layers.nested_map(self._maybe_replicate,

@@ -49,7 +49,7 @@ class Layer(object):
     forward(inputs, weights):
       Computes this layer's output as part of a forward pass through the model.
 
-    new_weights(self, input_signature, rng):
+    new_weights(self, input_signature):
       Returns new weights suitable for inputs with the given signature.
 
   A small subset of layer types are combinators -- they organize the computation
@@ -97,6 +97,7 @@ class Layer(object):
     self._n_out = n_out
     self._sublayers = ()  # Default is no sublayers.
     self._input_signature = None
+    self._rng = backend.random.get_prng(0)
     self._weights = EMPTY_WEIGHTS  # cached weights
     self._state = EMPTY_STATE
     # record root call site for custom error messages:
@@ -204,7 +205,7 @@ class Layer(object):
     del kwargs
     return self.forward(inputs, weights), state
 
-  def new_weights(self, input_signature, rng):
+  def new_weights(self, input_signature):
     """Returns new weights suitable for inputs with the given signature.
 
     Authors of new Layer subclasses should override this method if their layer
@@ -215,12 +216,11 @@ class Layer(object):
     Args:
       input_signature: A ShapeDtype instance (if this layer takes one input)
           or a list/tuple of ShapeDtype instances; signatures of inputs.
-      rng: A PRNG key for random number generation.
     """
-    del input_signature, rng
+    del input_signature
     return EMPTY_WEIGHTS
 
-  def new_weights_and_state(self, input_signature, rng):
+  def new_weights_and_state(self, input_signature):
     """Returns a (weights, state) pair suitable for initializing this layer.
 
     Authors of new Layer subclasses should override this method if their layer
@@ -231,9 +231,8 @@ class Layer(object):
     Args:
       input_signature: A ShapeDtype instance (if this layer takes one input)
           or a list/tuple of ShapeDtype instances.
-      rng: A PRNG key for random number generation.
     """
-    return self.new_weights(input_signature, rng), EMPTY_STATE
+    return self.new_weights(input_signature), EMPTY_STATE
 
   @property
   def has_backward(self):
@@ -335,7 +334,37 @@ class Layer(object):
   def state(self, state):
     self._state = state
 
-  def initialize_once(self, input_signature, rng):
+  def new_rng(self):
+    """Returns a new single-use random number generator (JAX PRNG key)."""
+    self._rng, rng = backend.random.split(self._rng)
+    return rng
+
+  def new_rngs(self, n):
+    """Returns `n` single-use random number generators (JAX PRNG keys).
+
+    Args:
+      n: The number of rngs to return; must be an integer > 0.
+
+    Returns:
+      A tuple of `n` rngs. Successive calls will yield continually new values.
+    """
+    if n < 1:
+      raise ValueError('n must be > 0; received value: {}'.format(n))
+    rngs = backend.random.split(self._rng, n + 1)
+    self._rng = rngs[0]
+    return tuple(rngs[1:])
+
+  def _set_rng(self, rng):
+    """Sets the rng (JAX PRNG key) for this layer and sublayers, recursively."""
+    # TODO(jonni): Call this from inside (forthcoming) init(seed=None)  method.
+    self._rng = rng
+    sublayers = self.sublayers
+    if sublayers:
+      rngs = backend.random.split(rng, len(sublayers))
+      for sublayer, key in zip(sublayers, rngs):
+        sublayer.rng = key
+
+  def initialize_once(self, input_signature):
     """Initializes this layer and its sublayers recursively.
 
     This method is designed to initialize each layer instance once, even if the
@@ -345,7 +374,6 @@ class Layer(object):
     Args:
       input_signature: A ShapeDtype instance (if this layer takes one input)
           or a list/tuple of ShapeDtype instances.
-      rng: A PRNG key for random number generation.
 
     Returns:
       A (weights, state) tuple, in which weights contains newly created weights
@@ -358,7 +386,7 @@ class Layer(object):
       # be able to remove unnecessary computation.
       # TODO(lukaszkaiser): Revisit this decision and see whether layers sharing
       #   weights should also share states.
-      weights, state = self.new_weights_and_state(input_signature, rng)
+      weights, state = self.new_weights_and_state(input_signature)
       if not self._init_finished:
         self._init_finished = True
         self._weights = weights
@@ -451,9 +479,8 @@ class Layer(object):
 
   def new_weights_and_state_abstract(self, input_signature):
     """Returns shapes/dtypes of the weights and state this layer would use."""
-    rng = backend.random.get_prng(0)
     def new_w_and_s():
-      return self.new_weights_and_state(input_signature, rng)
+      return self.new_weights_and_state(input_signature)
     return backend.eval_on_shapes(new_w_and_s)()
 
   def _do_custom_gradients(self, x, weights, state, **kwargs):
@@ -524,11 +551,11 @@ def layer(n_in=1, n_out=1, new_weights_fn=None):
       output = () if _is_empty(raw_output) else raw_output
       return output
 
-    def _new_weights(self, input_signature, rng):
+    def _new_weights(self, input_signature):
       if new_weights_fn is None:
         return EMPTY_WEIGHTS
       kwargs = self._kwargs  # pylint: disable=protected-access
-      return new_weights_fn(input_signature, rng, **kwargs)
+      return new_weights_fn(input_signature, **kwargs)
 
     def _is_empty(raw_output):
       return raw_output is None or (isinstance(raw_output, (list, tuple))
@@ -655,16 +682,16 @@ def check_shape_agreement(layer_obj, input_signature):
     A tuple representing either a single shape (if the layer has one output) or
     a tuple of shape tuples (if the layer has more than one output).
   """
-  rng1, rng2, rng3 = backend.random.split(backend.random.get_prng(0), 3)
-  weights, state = layer_obj.initialize_once(input_signature, rng1)
+  rng1, rng2 = layer_obj.new_rngs(2)
+  weights, state = layer_obj.initialize_once(input_signature)
   pseudo_output, _ = layer_obj.forward_abstract(input_signature, weights, state)
   if isinstance(pseudo_output, tuple):
     output_shape = tuple(x.shape for x in pseudo_output)
   else:
     output_shape = pseudo_output.shape
 
-  random_input = _random_values(input_signature, rng2)
-  real_output = layer_obj(random_input, weights=weights, state=state, rng=rng3)
+  random_input = _random_values(input_signature, rng1)
+  real_output = layer_obj(random_input, weights=weights, state=state, rng=rng2)
   result_shape = _shapes(real_output)
 
   msg = 'output shape %s != real result shape %s' % (output_shape, result_shape)

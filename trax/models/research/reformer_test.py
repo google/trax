@@ -88,7 +88,7 @@ class ReformerTest(parameterized.TestCase):
           attention_type=PoisonOnRNGMismatchAttention)
 
       rng = backend.random.get_prng(0)
-      weights, state = model.initialize_once(input_signature, rng)
+      weights, state = model.initialize_once(input_signature)
 
       def dummy_loss_fn(weights):
         inputs = (np.zeros(input_sd.shape, dtype=np.int32),) * 2

@@ -66,9 +66,9 @@ class Map(tl.Layer):
     # TODO(kitaev): think about how to merge state across copies in the map.
     return results, self._layer.state
 
-  def new_weights_and_state(self, input_signature, rng):
+  def new_weights_and_state(self, input_signature):
     if self._n_sections == 1:
-      return self._layer.initialize_once(input_signature, rng)
+      return self._layer.initialize_once(input_signature)
     first_shape = input_signature[0].shape
     if self._check_shapes:
       for shape_dtype in input_signature:
@@ -76,7 +76,7 @@ class Map(tl.Layer):
           raise ValueError('Map layer can only be applied to list of elements '
                            'with the same shapes. This shape %s vs first shape '
                            '%s.' % (str(shape_dtype.shape), str(first_shape)))
-    return self._layer.initialize_once(input_signature[0], rng)
+    return self._layer.initialize_once(input_signature[0])
 
   @tl.Layer.input_signature.setter
   def input_signature(self, input_signature):

@@ -66,12 +66,12 @@ class LSTMCell(base.Layer):
     new_h = np.tanh(new_c) * backend.sigmoid(o)
     return new_h, np.concatenate([new_c, new_h], axis=-1)
 
-  def new_weights(self, input_signature, rng):
+  def new_weights(self, input_signature):
     # LSTM state last dimension must be twice n_units.
     assert input_signature[1].shape[-1] == 2 * self._n_units
     # The dense layer input is the input and half of the lstm state.
     input_shape = input_signature[0].shape[-1] + self._n_units
-    rng1, rng2 = backend.random.split(rng, 2)
+    rng1, rng2 = self.new_rngs(2)
     w = self._kernel_initializer((input_shape, 4 * self._n_units), rng1)
     b = self._bias_initializer((4 * self._n_units,), rng2) + self._forget_bias
     return (w, b)
@@ -110,12 +110,12 @@ class GRUCell(base.Layer):
     new_gru_state = u * gru_state + (1 - u) * np.tanh(c)
     return new_gru_state, new_gru_state
 
-  def new_weights(self, input_signature, rng):
+  def new_weights(self, input_signature):
     # State last dimension must be n_units.
     assert input_signature[1].shape[-1] == self._n_units
     # The dense layer input is the input and half of the GRU state.
     input_shape = input_signature[0].shape[-1] + self._n_units
-    rng1, rng2, rng3, rng4 = backend.random.split(rng, 4)
+    rng1, rng2, rng3, rng4 = self.new_rngs(4)
     w1 = self._kernel_initializer((input_shape, 2 * self._n_units), rng1)
     b1 = self._bias_initializer((2 * self._n_units,), rng2) + self._forget_bias
     w2 = self._kernel_initializer((input_shape, self._n_units), rng3)

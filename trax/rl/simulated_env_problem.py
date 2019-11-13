@@ -67,6 +67,7 @@ class SimulatedEnvProblem(env_problem.EnvProblem):
     if model_predict_kwargs is None:
       model_predict_kwargs = {}
     model_predict = self._model(mode='predict', **model_predict_kwargs)
+    # NOTE: can set non-default PRNG key by: model_predict._set_rng(...)
     def predict_with_state(*args, **kwargs):
       output = model_predict(*args, **kwargs)
       return (output, model_predict.state)
@@ -369,10 +370,8 @@ class SerializedSequenceSimulatedEnvProblem(SimulatedEnvProblem):
     self._last_symbols = np.zeros((batch_size, 1), dtype=np.int32)
     super(SerializedSequenceSimulatedEnvProblem, self).initialize_environments(
         batch_size=batch_size, **kwargs)
-    (subrng, self._rng) = jax_random.split(self._rng)
     input_signature = ShapeDtype((batch_size, 1), np.int32)
-    (_, self._init_model_state) = self._model_initialize(input_signature,
-                                                         subrng)
+    (_, self._init_model_state) = self._model_initialize(input_signature)
 
   def _predict_obs(self, predict_fn, rng):
     obs_repr = np.zeros(

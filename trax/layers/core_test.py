@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from absl.testing import absltest
 import numpy as onp
-from trax import backend
 from trax.layers import base
 from trax.layers import combinators
 from trax.layers import core
@@ -84,10 +83,9 @@ class CoreLayerTest(absltest.TestCase):
     layer = core.Dense(32)
     model2 = combinators.Serial(layer, layer)
 
-    rng1, rng2 = backend.random.split(backend.random.get_prng(0), 2)
     input_signature = ShapeDtype((1, 32))
-    params1, _ = model1.initialize_once(input_signature, rng1)
-    params2, _ = model2.initialize_once(input_signature, rng2)
+    params1, _ = model1.initialize_once(input_signature)
+    params2, _ = model2.initialize_once(input_signature)
     # The first parameters have 2 kernels of size (32, 32).
     self.assertEqual((32, 32), params1[0][0].shape)
     self.assertEqual((32, 32), params1[1][0].shape)

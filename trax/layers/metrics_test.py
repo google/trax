@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from absl.testing import absltest
 import numpy as onp
-from trax import backend
 from trax.layers import base
 from trax.layers import metrics
 from trax.shapes import ShapeDtype
@@ -57,9 +56,8 @@ class MetricsLayerTest(absltest.TestCase):
     inputs = onp.array([1, 2, 3], dtype=onp.float32)
     weights1 = onp.array([1, 1, 1], dtype=onp.float32)
     layer = metrics.WeightedMean()
-    rng = backend.random.get_prng(0)
     full_signature = (signature(inputs), signature(weights1))
-    layer.initialize_once(full_signature, rng)
+    layer.initialize_once(full_signature)
     mean1 = layer((inputs, weights1))
     onp.testing.assert_allclose(mean1, 2.0)
     weights2 = onp.array([0, 0, 1], dtype=onp.float32)

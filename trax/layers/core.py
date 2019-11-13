@@ -131,9 +131,9 @@ class Dense(base.Layer):
     w, b = weights
     return np.dot(x, w) + b
 
-  def new_weights(self, input_signature, rng):
+  def new_weights(self, input_signature):
     input_shape = input_signature.shape
-    rng1, rng2 = backend.random.split(rng, 2)
+    rng1, rng2 = self.new_rngs(2)
     w = self._kernel_initializer((input_shape[-1], self._n_units), rng1)
     b = self._bias_initializer((self._n_units,), rng2)
     return (w, b)
@@ -154,10 +154,10 @@ class Embedding(base.Layer):
   def forward(self, x, weights):
     return np.take(weights, x, axis=0)
 
-  def new_weights(self, input_signature, rng):
+  def new_weights(self, input_signature):
     del input_signature
     out_dim = (self._vocab_size, self._d_feature)
-    weights = self._kernel_initializer(out_dim, rng)
+    weights = self._kernel_initializer(out_dim, self.new_rng())
     return weights
 
 
@@ -181,8 +181,8 @@ class Dropout(base.Layer):
     self._name = 'dropout_' + name
     self._mode = mode
 
-  def new_weights_and_state(self, input_signature, rng):
-    del input_signature, rng
+  def new_weights_and_state(self, input_signature):
+    del input_signature
     state = {self._name: np.array(self._initial_rate)}
     return base.EMPTY_WEIGHTS, state
 

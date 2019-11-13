@@ -77,7 +77,7 @@ class Conv(base.Layer):
             input_shape[self._lhs_spec.index('C')] if c == 'I' else
             next(kernel_size_iter) for c in self._rhs_spec]
 
-  def new_weights(self, input_signature, rng):
+  def new_weights(self, input_signature):
     input_shape = input_signature.shape
     if len(input_shape) > 4:
       self._check_nhwc()
@@ -86,7 +86,7 @@ class Conv(base.Layer):
     kernel_shape = self._kernel_shape(input_shape)
     bias_shape = [self._filters if c == 'C' else 1 for c in self._out_spec]
     bias_shape = tuple(itertools.dropwhile(lambda x: x == 1, bias_shape))
-    rng1, rng2 = backend.random.split(rng, 2)
+    rng1, rng2 = self.new_rngs(2)
     w = self._kernel_initializer(kernel_shape, rng1)
     b = self._bias_initializer(bias_shape, rng2)
     return (w, b)

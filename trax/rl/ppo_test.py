@@ -95,7 +95,7 @@ class PpoTest(test.TestCase):
         two_towers=True,
     )
     input_signature = ShapeDtype(batch_observation_shape)
-    _, _ = pnv_model.initialize_once(input_signature, self.rng_key)
+    _, _ = pnv_model.initialize_once(input_signature)
 
     batch = 2
     time_steps = 10
@@ -443,8 +443,6 @@ class PpoTest(test.TestCase):
         ppo.clipped_objective(probab_ratios, advantages, mask, epsilon))
 
   def test_combined_loss(self):
-    self.rng_key, key1, key2 = jax_random.split(self.rng_key, num=3)
-
     B, T, A, OBS = 2, 10, 2, (28, 28, 3)  # pylint: disable=invalid-name
     batch_observation_shape = (1, 1) + OBS
 
@@ -457,8 +455,8 @@ class PpoTest(test.TestCase):
     )
 
     input_signature = ShapeDtype(batch_observation_shape)
-    old_params, _ = net.initialize_once(input_signature, key1)
-    new_params, state = net.initialize_once(input_signature, key2)
+    old_params, _ = net.initialize_once(input_signature)
+    new_params, state = net.initialize_once(input_signature)
 
     # Generate a batch of observations.
 
@@ -614,7 +612,8 @@ class PpoTest(test.TestCase):
         two_towers=False,
     )
     input_signature = ShapeDtype((1, 1), np.int32)
-    (policy_params, policy_state) = policy.initialize_once(input_signature, rng)
+    policy._set_rng(rng)
+    (policy_params, policy_state) = policy.initialize_once(input_signature)
 
     # Initialize policy parameters from world model parameters.
     new_policy_params = ppo.init_policy_from_world_model_checkpoint(

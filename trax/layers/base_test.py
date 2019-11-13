@@ -54,7 +54,7 @@ class BaseLayerTest(absltest.TestCase):
     input_signature = ShapeDtype((9, 17))
     random_input = backend.random.uniform(rng, input_signature.shape,
                                           minval=-1.0, maxval=1.0)
-    layer.initialize_once(input_signature, rng)
+    layer.initialize_once(input_signature)
     f = lambda x: backend.numpy.mean(layer(x))
     grad = backend.grad(f)(random_input)
     self.assertEqual(grad.shape, (9, 17))  # Gradient for each input.
@@ -79,7 +79,7 @@ class BaseLayerTest(absltest.TestCase):
     input_signature = ShapeDtype((9, 17))
     random_input = backend.random.uniform(rng, input_signature.shape,
                                           minval=-1.0, maxval=1.0)
-    layer.initialize_once(input_signature, rng)
+    layer.initialize_once(input_signature)
     f = lambda x: backend.numpy.mean(layer(x))
     grad = backend.grad(f)(random_input)
     self.assertEqual(grad.shape, (9, 17))  # Gradient for each input.
