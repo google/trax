@@ -262,7 +262,66 @@ class Layer(object):
     """
     raise NotImplementedError
 
-  # End of subclassing interface. Methods below are reserved for internal use.
+  # End of public subclassing interface.
+  # Begin public callable interface.
+
+  def initialize_once(self, input_signature):
+    """Initializes this layer and its sublayers recursively.
+
+    This method is designed to initialize each layer instance once, even if the
+    same layer instance occurs in multiple places in the network. This enables
+    weight sharing to be implemented as layer sharing.
+
+    Args:
+      input_signature: A ShapeDtype instance (if this layer takes one input)
+          or a list/tuple of ShapeDtype instances.
+
+    Returns:
+      A (weights, state) tuple, in which weights contains newly created weights
+          on the first call and `EMPTY_WEIGHTS` on all subsequent calls.
+    """
+    try:
+      # Initialize weights once; store them for use when this layer is called.
+      # Needs to call new_weights_and_state regardless of _init_finished because
+      # state also needs to be initialized. After jitting, graph pruning should
+      # be able to remove unnecessary computation.
+      # TODO(lukaszkaiser): Revisit this decision and see whether layers sharing
+      #   weights should also share states.
+      weights, state = self.new_weights_and_state(input_signature)
+      if not self._init_finished:
+        self._init_finished = True
+        self._weights = weights
+        self._state = state
+      else:
+        weights = EMPTY_WEIGHTS
+      return (weights, state)
+    except Exception:
+      name, trace = self.__class__.__name__, _short_traceback(skip=3)
+      raise LayerError(name, 'initialize_once', self._caller,
+                       input_signature, trace)
+
+  def new_rng(self):
+    """Returns a new single-use random number generator (JAX PRNG key)."""
+    self._rng, rng = backend.random.split(self._rng)
+    return rng
+
+  def new_rngs(self, n):
+    """Returns `n` single-use random number generators (JAX PRNG keys).
+
+    Args:
+      n: The number of rngs to return; must be an integer > 0.
+
+    Returns:
+      A tuple of `n` rngs. Successive calls will yield continually new values.
+    """
+    if n < 1:
+      raise ValueError('n must be > 0; received value: {}'.format(n))
+    rngs = backend.random.split(self._rng, n + 1)
+    self._rng = rngs[0]
+    return tuple(rngs[1:])
+
+  # End of public callable methods.
+  # Methods and properties below are reserved for internal use.
 
   @property
   def n_in(self):
@@ -334,26 +393,6 @@ class Layer(object):
   def state(self, state):
     self._state = state
 
-  def new_rng(self):
-    """Returns a new single-use random number generator (JAX PRNG key)."""
-    self._rng, rng = backend.random.split(self._rng)
-    return rng
-
-  def new_rngs(self, n):
-    """Returns `n` single-use random number generators (JAX PRNG keys).
-
-    Args:
-      n: The number of rngs to return; must be an integer > 0.
-
-    Returns:
-      A tuple of `n` rngs. Successive calls will yield continually new values.
-    """
-    if n < 1:
-      raise ValueError('n must be > 0; received value: {}'.format(n))
-    rngs = backend.random.split(self._rng, n + 1)
-    self._rng = rngs[0]
-    return tuple(rngs[1:])
-
   def _set_rng(self, rng):
     """Sets the rng (JAX PRNG key) for this layer and sublayers, recursively."""
     # TODO(jonni): Call this from inside (forthcoming) init(seed=None)  method.
@@ -363,41 +402,6 @@ class Layer(object):
       rngs = backend.random.split(rng, len(sublayers))
       for sublayer, key in zip(sublayers, rngs):
         sublayer.rng = key
-
-  def initialize_once(self, input_signature):
-    """Initializes this layer and its sublayers recursively.
-
-    This method is designed to initialize each layer instance once, even if the
-    same layer instance occurs in multiple places in the network. This enables
-    weight sharing to be implemented as layer sharing.
-
-    Args:
-      input_signature: A ShapeDtype instance (if this layer takes one input)
-          or a list/tuple of ShapeDtype instances.
-
-    Returns:
-      A (weights, state) tuple, in which weights contains newly created weights
-          on the first call and `EMPTY_WEIGHTS` on all subsequent calls.
-    """
-    try:
-      # Initialize weights once; store them for use when this layer is called.
-      # Needs to call new_weights_and_state regardless of _init_finished because
-      # state also needs to be initialized. After jitting, graph pruning should
-      # be able to remove unnecessary computation.
-      # TODO(lukaszkaiser): Revisit this decision and see whether layers sharing
-      #   weights should also share states.
-      weights, state = self.new_weights_and_state(input_signature)
-      if not self._init_finished:
-        self._init_finished = True
-        self._weights = weights
-        self._state = state
-      else:
-        weights = EMPTY_WEIGHTS
-      return (weights, state)
-    except Exception:
-      name, trace = self.__class__.__name__, _short_traceback(skip=3)
-      raise LayerError(name, 'initialize_once', self._caller,
-                       input_signature, trace)
 
   # XXX(kitaev):
   _STASH_IN = None
