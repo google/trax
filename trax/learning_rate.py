@@ -48,7 +48,8 @@ def MultifactorSchedule(history=None,
                         constant=0.1,
                         warmup_steps=400,
                         decay_factor=0.5,
-                        steps_per_decay=20000):
+                        steps_per_decay=20000,
+                        steps_per_cycle=100000):
   """Factor-based learning rate schedule.
 
   Interprets factors in the factors string which can consist of:
@@ -56,6 +57,7 @@ def MultifactorSchedule(history=None,
   * linear_warmup: interpreted as linear warmup until warmup_steps,
   * rsqrt_decay: divide by square root of max(step, warmup_steps)
   * decay_every: Every k steps decay the learning rate by decay_factor.
+  * cosine_deay: Cyclic cosine decay, uses steps_per_cycle parameter.
 
   Args:
     history: the history of training and evaluation (History object).
@@ -64,6 +66,7 @@ def MultifactorSchedule(history=None,
     warmup_steps: how many steps to warm up for in the warmup schedule.
     decay_factor: The amount to decay the learning rate by.
     steps_per_decay: How often to decay the learning rate.
+    steps_per_cycle: Steps per cycle when using cosine decay.
 
   Returns:
     a function learning_rate(step): float -> {'learning_rate': float}, the
@@ -88,6 +91,10 @@ def MultifactorSchedule(history=None,
         ret /= np.sqrt(np.maximum(step, warmup_steps))
       elif name == 'decay_every':
         ret *= (decay_factor ** (step//steps_per_decay))
+      elif name == 'cosine_decay':
+        progress = np.maximum(
+            0.0, (step - warmup_steps) / float(steps_per_cycle))
+        ret *= np.maximum(0.0, 0.5 * (1.0 + np.cos(np.pi * (progress % 1.0))))
       else:
         raise ValueError('Unknown factor %s.' % name)
     ret = np.asarray(ret, dtype=np.float32)
