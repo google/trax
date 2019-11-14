@@ -45,7 +45,16 @@ flags.DEFINE_multi_string('config_file', None,
 flags.DEFINE_multi_string('config', None,
                           'Configuration parameters (gin string).')
 flags.DEFINE_integer('log_level', logging.INFO, 'Log level.')
+# TPU Flags
 flags.DEFINE_bool('use_tpu', False, "Whether we're running on TPU.")
+flags.DEFINE_string(
+    'jax_xla_backend', 'xla',
+    'Either "xla" for the XLA service directly, or "tpu_driver"'
+    'for a TPU Driver backend.')
+flags.DEFINE_string('jax_backend_target', 'local',
+                    'Either "local" or "rpc:address" to connect to a '
+                    'remote service target.')
+# TF Flags
 flags.DEFINE_bool('enable_eager_execution', True,
                   "Whether we're running TF in eager mode.")
 flags.DEFINE_bool('tf_xla', True, 'Whether to turn on XLA for TF.')
@@ -159,6 +168,8 @@ def main(_):
   # If on TPU, let JAX know.
   if FLAGS.use_tpu:
     jax.config.update('jax_platform_name', 'tpu')
+    jax.config.update('jax_xla_backend', FLAGS.jax_xla_backend)
+    jax.config.update('jax_backend_target', FLAGS.jax_backend_target)
 
   if FLAGS.use_tpu and backend.get_name() == 'tf':
     worker_cpu = tf_init_tpu()

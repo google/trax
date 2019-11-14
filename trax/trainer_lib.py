@@ -370,7 +370,7 @@ def _is_jit_init(value=True):
   return value
 
 
-def multi_device_put(x, devices=None, reuse=True):
+def multi_device_put(x, devices=None):
   """Memory efficient multi-device replication / broadcast in JAX.
 
   JAX uses a ShardedDeviceArray class that holds a list of device buffers
@@ -385,9 +385,6 @@ def multi_device_put(x, devices=None, reuse=True):
     devices: a jax.devices() list or subset thereof of devices to
       replicate onto.  Should match the list passed to any pmaps
       ingesting the replicated array.
-    reuse: bool. If x is a DeviceArray whether to reuse its backing
-      device_buffer in the resulting ShardedDeviceArray.  We do this
-      by default to minimize a 2x overhead with large arrays.
 
   Returns:
     A ShardedDeviceArray with
@@ -406,18 +403,10 @@ def multi_device_put(x, devices=None, reuse=True):
       (n_devices,) + x_aval.shape,
       x_aval.dtype)
   # Create copies of the underlying device buffer for each local device.
-  if reuse:
-    # reuse the original device buffer for its device in the sharded
-    # device array
-    other_devices = [dv for dv in devices
-                     if dv != x.device_buffer.device()]
-    broadcast_buffers = ([x.device_buffer,] +
-                         [jax.xla.xc.Buffer.from_pyval(x, device=dv)
-                          for dv in other_devices])
-  else:
-    # make new copies of the buffer for every local device
-    broadcast_buffers = [jax.xla.xc.Buffer.from_pyval(x, device=dv)
-                         for dv in devices]
+  broadcast_buffers = [
+      jax.device_put(x, dv).device_buffer
+      for dv in devices
+  ]
   return jax.pxla.ShardedDeviceArray(broadcast_x_aval, broadcast_buffers)
 
 
