@@ -142,7 +142,7 @@ class Layer(object):
     weights = kwargs.pop('weights', self.weights)
     state = kwargs.pop('state', self.state)
     rng = kwargs.pop('rng', None)
-    outputs, _ = self.forward_internal(x, weights, state, rng)
+    outputs, _ = self._forward_internal(x, weights, state, rng)
     return outputs
 
   def forward(self, inputs, weights):
@@ -407,7 +407,7 @@ class Layer(object):
   _STASH_IN = None
   _STASH_OUT = None
 
-  def forward_internal(self, x, weights, state, rng):
+  def _forward_internal(self, x, weights, state, rng):
     """Applies this layer as part of a forward pass; an internal system method.
 
     This method is reserved for handling plumbing and other internal affairs
@@ -445,10 +445,10 @@ class Layer(object):
 
     except Exception:
       name, trace = self.__class__.__name__, _short_traceback()
-      raise LayerError(name, 'forward_internal',
+      raise LayerError(name, '_forward_internal',
                        self._caller, signature(x), trace)
 
-  def forward_abstract(self, pseudo_inputs, weights, state):
+  def _forward_abstract(self, pseudo_inputs, weights, state):
     """Computes shapes and dtypes this layer would produce in a forward pass.
 
     Args:
@@ -478,10 +478,10 @@ class Layer(object):
       return s
     except Exception:
       name, trace = self.__class__.__name__, _short_traceback(skip=3)
-      raise LayerError(name, 'forward_abstract', self._caller, pseudo_inputs,
+      raise LayerError(name, '_forward_abstract', self._caller, pseudo_inputs,
                        trace)
 
-  def new_weights_and_state_abstract(self, input_signature):
+  def _new_weights_and_state_abstract(self, input_signature):
     """Returns shapes/dtypes of the weights and state this layer would use."""
     def new_w_and_s():
       return self.new_weights_and_state(input_signature)
@@ -688,7 +688,8 @@ def check_shape_agreement(layer_obj, input_signature):
   """
   rng1, rng2 = layer_obj.new_rngs(2)
   weights, state = layer_obj.initialize_once(input_signature)
-  pseudo_output, _ = layer_obj.forward_abstract(input_signature, weights, state)
+  pseudo_output, _ = layer_obj._forward_abstract(input_signature, weights,  # pylint: disable=protected-access
+                                                 state)
   if isinstance(pseudo_output, tuple):
     output_shape = tuple(x.shape for x in pseudo_output)
   else:

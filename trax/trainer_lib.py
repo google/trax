@@ -280,7 +280,7 @@ def epochs(total_steps, steps_to_skip, epoch_steps):
 def _jit_predict_fn(model_predict, metric_fn, n_devices, jit=True):
   """Returns a JIT-compiled predict function (unless jit=False)."""
   model = layers.Serial(model_predict, metric_fn)
-  model_predict = model.forward_internal
+  model_predict = model._forward_internal  # pylint: disable=protected-access
   if not jit:
     return model_predict
 

@@ -73,11 +73,12 @@ class Serial(base.Layer):
 
     for layer, p, s, rng in zip(self.sublayers, weights, state, rngs):
       inputs = _inputs_from_stack(layer, stack)
-      outputs, s = layer.forward_internal(inputs, p, s, rng)
+      outputs, s = layer._forward_internal(inputs, p, s, rng)  # pylint: disable=protected-access
       stack = _outputs_onto_stack(layer, outputs, stack)
       new_state.append(s)
     return stack, new_state
 
+  # pylint: disable=protected-access
   def new_weights_and_state(self, input_signature):
     weights = []
     states = []
@@ -85,8 +86,8 @@ class Serial(base.Layer):
     for layer in self.sublayers:
       inputs = _inputs_from_stack(layer, pseudo_xs)
       param, state = layer.initialize_once(inputs)
-      pparam = layer._weights   # pylint: disable=protected-access
-      outputs, _ = layer.forward_abstract(inputs, pparam, state)
+      pparam = layer._weights
+      outputs, _ = layer._forward_abstract(inputs, pparam, state)
       pseudo_xs = _outputs_onto_stack(layer, outputs, pseudo_xs)
 
       weights.append(param)
@@ -107,8 +108,9 @@ class Serial(base.Layer):
     next_input = input_signature
     for layer in self.sublayers:
       layer.input_signature = next_input
-      w, s = layer.new_weights_and_state_abstract(next_input)
-      next_input, _ = layer.forward_abstract(next_input, w, s)
+      w, s = layer._new_weights_and_state_abstract(next_input)
+      next_input, _ = layer._forward_abstract(next_input, w, s)
+  # pylint: enable=protected-access
 
   @base.Layer.weights.setter
   def weights(self, weights):
@@ -218,7 +220,7 @@ class Parallel(base.Layer):
     new_state = []
     for layer, x, p, s, r in zip(layers, sublayer_inputs, weights, state, rngs):
       # Note that zip silently truncates its result if lengths don't match.
-      sub_outputs, sub_state = layer.forward_internal(x, p, s, r)
+      sub_outputs, sub_state = layer._forward_internal(x, p, s, r)  # pylint: disable=protected-access
       if layer.n_out == 1:
         outputs.append(sub_outputs)
       else:
