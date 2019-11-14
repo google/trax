@@ -78,20 +78,20 @@ class CoreLayerTest(absltest.TestCase):
     output_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual(output_shape, expected_shape)
 
-  def test_dense_param_sharing(self):
+  def test_dense_weight_sharing(self):
     model1 = combinators.Serial(core.Dense(32), core.Dense(32))
     layer = core.Dense(32)
     model2 = combinators.Serial(layer, layer)
 
     input_signature = ShapeDtype((1, 32))
-    params1, _ = model1.initialize_once(input_signature)
-    params2, _ = model2.initialize_once(input_signature)
-    # The first parameters have 2 kernels of size (32, 32).
-    self.assertEqual((32, 32), params1[0][0].shape)
-    self.assertEqual((32, 32), params1[1][0].shape)
-    # The second parameters have 1 kernel of size (32, 32) and an empty dict.
-    self.assertEqual((32, 32), params2[0][0].shape)
-    self.assertEqual((), params2[1])
+    weights1, _ = model1.initialize_once(input_signature)
+    weights2, _ = model2.initialize_once(input_signature)
+    # The first weights have 2 kernels of size (32, 32).
+    self.assertEqual((32, 32), weights1[0][0].shape)
+    self.assertEqual((32, 32), weights1[1][0].shape)
+    # The second weights have 1 kernel of size (32, 32) and an empty dict.
+    self.assertEqual((32, 32), weights2[0][0].shape)
+    self.assertEqual((), weights2[1])
 
   def test_dropout(self):
     input_signature = ShapeDtype((8, 7, 9))

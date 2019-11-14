@@ -8,11 +8,11 @@ All layers inherit from the Layer class and generally need to implement 2
 methods:
 
 ```python
-def forward(self, inputs, params=(), state=(), **kwargs):
+def forward(self, inputs, weights):
   """Computes the layer's output as part of a forward pass through the model."""
 
-def new_params_and_state(self, input_signature, rng):
-  """Returns a (params, state) pair suitable for initializing this layer."""
+def new_weights(self, input_signature):
+    """Returns new weights suitable for inputs with the given signature.
 ```
 
 The base Layer class wraps these functions and provides initialization
