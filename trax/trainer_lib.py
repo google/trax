@@ -416,7 +416,7 @@ class Trainer(object):
       param_name = key
     if param_name in self.nontrainable_params:
       if self._step == 0:
-        _log('Mapping model state key {} to nontrainable param {}.'.format(
+        log('Mapping model state key {} to nontrainable param {}.'.format(
             key, param_name
         ))
         return self._maybe_replicate(
@@ -458,7 +458,7 @@ class Trainer(object):
       weights_file = os.path.join(output_dir, 'model_{}.pkl'.format(step))
       with gfile.GFile(weights_file, 'wb') as f:
         pkl_module.dump((tuple(opt_state), step, history, model_state), f)
-    _log('Model saved to %s' % weights_file, stdout=False)
+    log('Model saved to %s' % weights_file, stdout=False)
 
   def save_computation_graphs(self, save_backward_graph):
     """Dump computation graphs to files."""
@@ -487,7 +487,7 @@ class Trainer(object):
         f.write(backward_computation.GetHloDotGraph())
 
   def log_step(self, step_message):
-    _log('Step % 6d: %s' % (self.step, step_message))
+    log('Step % 6d: %s' % (self.step, step_message))
 
   def log_metrics(self, metrics, summ_writer, log_prefix):
     """Log metrics to summary writer and history."""
@@ -721,6 +721,13 @@ def _jit_compute_loss_fn(predict_fn, loss_fn, n_devices, jit=True):
   return compute_loss
 
 
+def log(s, stdout=True):
+  logging.info(s)
+  if stdout:
+    print(s)
+    sys.stdout.flush()
+
+
 def epochs(total_steps, steps_to_skip, epoch_steps):
   """Generates the number of steps in each epoch before reaching total_steps.
 
@@ -764,7 +771,7 @@ def load_trainer_state(output_dir):
   pkl_module = utils.get_pickle_module()
   with gfile.GFile(weights_file, 'rb') as f:
     (opt_state, step, history, model_state) = pkl_module.load(f)
-  _log('Model loaded from %s at step %d' % (weights_file, step))
+  log('Model loaded from %s at step %d' % (weights_file, step))
   logging.debug('From loaded model : history = %s', history)
   return TrainerState(step=step, opt_state=OptState(*opt_state),
                       history=history, model_state=model_state)
@@ -882,9 +889,3 @@ def _repeat_stream(stream):
     for example in stream():
       yield example
 
-
-def _log(s, stdout=True):
-  logging.info(s)
-  if stdout:
-    print(s)
-    sys.stdout.flush()
