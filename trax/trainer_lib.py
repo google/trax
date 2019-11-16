@@ -287,7 +287,6 @@ class Trainer(object):
     state = load_trainer_state(output_dir)
     self._step = state.step or 0
     history = state.history
-    self._lr_fn = self._lr_schedule(history)
     self._history = history
     if state.opt_state:
       opt_state = state.opt_state
