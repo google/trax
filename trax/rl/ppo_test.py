@@ -612,7 +612,7 @@ class PpoTest(test.TestCase):
         two_towers=False,
     )
     input_signature = ShapeDtype((1, 1), np.int32)
-    policy._set_rng(rng)
+    policy._set_rng_recursive(rng)
     (policy_params, policy_state) = policy.initialize_once(input_signature)
 
     # Initialize policy parameters from world model parameters.

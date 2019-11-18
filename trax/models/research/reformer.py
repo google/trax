@@ -78,11 +78,6 @@ class Map(tl.Layer):
                            '%s.' % (str(shape_dtype.shape), str(first_shape)))
     return self._layer.initialize_once(input_signature[0])
 
-  @tl.Layer.input_signature.setter
-  def input_signature(self, input_signature):
-    self._input_signature = input_signature
-    self._layer.input_signature = input_signature
-
   @tl.Layer.weights.setter
   def weights(self, weights):
     self._weights = self._layer.weights = weights
@@ -90,6 +85,10 @@ class Map(tl.Layer):
   @tl.Layer.state.setter
   def state(self, state):
     self._state = self._layer.state = state
+
+  def _set_input_signature_recursive(self, input_signature):
+    self._input_signature = input_signature
+    self._layer._set_input_signature_recursive(input_signature)  # pylint: disable=protected-access
 
 
 class BroadcastedDropout(tl.Layer):

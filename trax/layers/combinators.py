@@ -93,23 +93,6 @@ class Serial(base.Layer):
       weights.append(param)
       states.append(state)
     return weights, states
-
-  @base.Layer.input_signature.setter
-  def input_signature(self, input_signature):
-    """Sets input signatures for this layer and sublayers, recursively.
-
-    Args:
-      input_signature: A ShapeDtype instance (if this layer takes one input)
-          or a list/tuple of ShapeDtype instances.
-    """
-    self._input_signature = input_signature
-
-    # Infer shapes and dtypes (signatures) through the successive sublayers.
-    next_input = input_signature
-    for layer in self.sublayers:
-      layer.input_signature = next_input
-      w, s = layer._new_weights_and_state_abstract(next_input)
-      next_input, _ = layer._forward_abstract(next_input, w, s)
   # pylint: enable=protected-access
 
   @base.Layer.weights.setter
@@ -160,6 +143,26 @@ class Serial(base.Layer):
       raise ValueError(
           'number of inputs ({}) to Serial.forward less than n_in'
           ' ({})'.format(len(xs), self.n_in))
+
+  # pylint: disable=protected-access
+  def _set_input_signature_recursive(self, input_signature):
+    """Sets input signatures for this layer and sublayers, recursively.
+
+    Args:
+      input_signature: A `ShapeDtype` instance (if this layer takes one input)
+          or a list/tuple of `ShapeDtype` instances.
+    """
+    self._input_signature = input_signature
+
+    # Infer shapes and dtypes (signatures) through the successive sublayers.
+    stack = input_signature
+    for layer in self.sublayers:
+      inputs = _inputs_from_stack(layer, stack)
+      layer._set_input_signature_recursive(inputs)
+      w, s = layer._new_weights_and_state_abstract(inputs)
+      outputs, _ = layer._forward_abstract(inputs, w, s)
+      stack = _outputs_onto_stack(layer, outputs, stack)
+  # pylint: enable=protected-access
 
 
 class Parallel(base.Layer):
@@ -239,21 +242,6 @@ class Parallel(base.Layer):
     else:
       return tuple(zip(*inits))
 
-  @base.Layer.input_signature.setter
-  def input_signature(self, input_signature):
-    """Sets input signatures for this layer and sublayers, recursively.
-
-    Args:
-      input_signature: A ShapeDtype instance (if this layer takes one input)
-          or a list/tuple of ShapeDtype instances.
-    """
-    self._input_signature = input_signature
-
-    # Assign signatures to the sublayers.
-    sublayer_signatures = self._allot_to_sublayers(input_signature)
-    for layer, signature in zip(self.sublayers, sublayer_signatures):
-      layer.input_signature = signature
-
   @base.Layer.weights.setter
   def weights(self, weights):
     """Recursively sets weights on this layer and all sublayers."""
@@ -314,6 +302,20 @@ class Parallel(base.Layer):
         sub_inputs.append(inputs[start:end])
       start = end
     return tuple(sub_inputs)
+
+  def _set_input_signature_recursive(self, input_signature):
+    """Sets input signatures for this layer and sublayers, recursively.
+
+    Args:
+      input_signature: A `ShapeDtype` instance (if this layer takes one input)
+          or a list/tuple of `ShapeDtype` instances.
+    """
+    self._input_signature = input_signature
+
+    # Assign signatures to the sublayers.
+    sublayer_signatures = self._allot_to_sublayers(input_signature)
+    for layer, signature in zip(self.sublayers, sublayer_signatures):
+      layer._set_input_signature_recursive(signature)  # pylint: disable=protected-access
 
 
 class Concatenate(base.Layer):

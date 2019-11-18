@@ -347,27 +347,6 @@ class Layer(object):
     """
     return self._input_signature
 
-  @input_signature.setter
-  def input_signature(self, input_signature):
-    """Sets this layer to have the given input_signature.
-
-    Args:
-      input_signature: A ShapeDtype instance (if this layer takes one input)
-          or a list/tuple of ShapeDtype instances.
-    """
-    self._input_signature = input_signature
-
-    # Handle special case of a single sublayer. More general combinators
-    # (allowing multiple sublayers) must override the `input_signature`
-    # property setter.
-    sublayers = self.sublayers
-    if sublayers and len(sublayers) == 1:
-      sublayers[0].input_signature = input_signature
-    if sublayers and len(sublayers) > 1:
-      raise ValueError('A layer class whose instances can have more than one '
-                       'sublayer must override the input_signature property '
-                       'setter.')
-
   @property
   def weights(self):
     """Returns this layer's weights.
@@ -392,16 +371,6 @@ class Layer(object):
   @state.setter
   def state(self, state):
     self._state = state
-
-  def _set_rng(self, rng):
-    """Sets the rng (JAX PRNG key) for this layer and sublayers, recursively."""
-    # TODO(jonni): Call this from inside (forthcoming) init(seed=None)  method.
-    self._rng = rng
-    sublayers = self.sublayers
-    if sublayers:
-      rngs = backend.random.split(rng, len(sublayers))
-      for sublayer, key in zip(sublayers, rngs):
-        sublayer.rng = key
 
   # XXX(kitaev):
   _STASH_IN = None
@@ -486,6 +455,40 @@ class Layer(object):
     def new_w_and_s():
       return self.new_weights_and_state(input_signature)
     return backend.abstract_eval(new_w_and_s)()
+
+  # pylint: disable=protected-access
+  def _set_rng_recursive(self, rng):
+    """Sets the rng (JAX PRNG key) for this layer and sublayers, recursively."""
+    self._rng = rng
+    sublayers = self.sublayers
+    if sublayers:
+      rngs = backend.random.split(rng, len(sublayers))
+      for sublayer, rng in zip(sublayers, rngs):
+        sublayer._rng = rng
+
+  def _set_input_signature_recursive(self, input_signature):
+    """Sets input_signatures for this layer and sublayers, recursively.
+
+    General combinators (those that can take multiple sublayers) must override
+    this method to calculate and set input signatures for the sublayers. (See
+    the `Serial` class in combinators.py for an example.)
+
+    Args:
+      input_signature: A `ShapeDtype` instance (if this layer takes one input)
+          or a list/tuple of `ShapeDtype` instances
+    """
+    self._input_signature = input_signature
+
+    # Handle the special case of a single immediate sublayer (which may in turn
+    # have its own sublayers).
+    sublayers = self.sublayers
+    if sublayers and len(sublayers) == 1:
+      sublayers[0]._set_input_signature_recursive(input_signature)
+    if sublayers and len(sublayers) > 1:
+      raise ValueError('A layer class whose instances can have more than one '
+                       'sublayer must override the input_signature property '
+                       'setter.')
+  # pylint: enable=protected-access
 
   def _do_custom_gradients(self, x, weights, state, **kwargs):
     """Calls this layer for a forward pass, but with custom gradients."""

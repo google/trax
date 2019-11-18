@@ -162,7 +162,7 @@ class CombinatorLayerTest(absltest.TestCase):
     layer = cb.Serial(core.Div(divisor=2.0), core.Div(divisor=5.0))
     self.assertIsNone(layer.input_signature)
 
-    layer.input_signature = ShapeDtype((3, 2))
+    layer._set_input_signature_recursive(ShapeDtype((3, 2)))
     self.assertEqual(layer.input_signature, ShapeDtype((3, 2)))
     self.assertLen(layer.sublayers, 2)
     for sublayer in layer.sublayers:
@@ -176,7 +176,7 @@ class CombinatorLayerTest(absltest.TestCase):
 
     # Check for correct shapes entering and exiting the batch_norm layer.
     # And the code should run without errors.
-    batch_norm_and_relu.input_signature = ShapeDtype((3, 28, 28))
+    batch_norm_and_relu._set_input_signature_recursive(ShapeDtype((3, 28, 28)))
     self.assertEqual(batch_norm.input_signature, ShapeDtype((3, 28, 28)))
     self.assertEqual(relu.input_signature, ShapeDtype((3, 28, 28)))
 
@@ -184,7 +184,8 @@ class CombinatorLayerTest(absltest.TestCase):
     layer = cb.Parallel(core.Div(divisor=0.5), core.Div(divisor=3.0))
     self.assertIsNone(layer.input_signature)
 
-    layer.input_signature = (ShapeDtype((3, 2)), ShapeDtype((4, 7)))
+    layer._set_input_signature_recursive((ShapeDtype((3, 2)),
+                                          ShapeDtype((4, 7))))
     self.assertEqual(layer.input_signature,
                      (ShapeDtype((3, 2)), ShapeDtype((4, 7))))
     self.assertLen(layer.sublayers, 2)
