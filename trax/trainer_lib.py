@@ -243,6 +243,11 @@ class Trainer(object):
     return self._step
 
   @property
+  def model_weights(self):
+    # Currently we need ot pick [0] as we ignore loss weights (empty).
+    return self._opt_state.weights[0]
+
+  @property
   def state(self):
     return TrainerState(
         opt_state=self._opt_state, step=self._step, history=self._history,
@@ -888,4 +893,3 @@ def _repeat_stream(stream):
   while True:
     for example in stream():
       yield example
-

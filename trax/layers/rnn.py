@@ -19,7 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from trax import backend
+from trax import backend as math
 from trax.backend import numpy as np
 from trax.layers import base
 from trax.layers import combinators as cb
@@ -62,8 +62,8 @@ class LSTMCell(base.Layer):
     # i = input_gate, j = new_input, f = forget_gate, o = output_gate
     i, j, f, o = np.split(y, 4, axis=-1)
 
-    new_c = c * backend.sigmoid(f) + backend.sigmoid(i) * np.tanh(j)
-    new_h = np.tanh(new_c) * backend.sigmoid(o)
+    new_c = c * math.sigmoid(f) + math.sigmoid(i) * np.tanh(j)
+    new_h = np.tanh(new_c) * math.sigmoid(o)
     return new_h, np.concatenate([new_c, new_h], axis=-1)
 
   def new_weights(self, input_signature):
@@ -102,7 +102,7 @@ class GRUCell(base.Layer):
     y = np.dot(np.concatenate([x, gru_state], axis=-1), w1) + b1
 
     # Update and reset gates.
-    u, r = np.split(backend.sigmoid(y), 2, axis=-1)
+    u, r = np.split(math.sigmoid(y), 2, axis=-1)
 
     # Candidate.
     c = np.dot(np.concatenate([x, r * gru_state], axis=-1), w2) + b2
