@@ -19,5 +19,6 @@ from trax import backend as math
 from trax import inputs
 from trax import layers
 from trax import learning_rate as lr
+from trax import optimizers
 from trax import shapes
-from trax import trainer_lib
+from trax import trainer_lib as supervised
