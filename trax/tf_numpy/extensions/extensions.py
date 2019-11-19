@@ -682,20 +682,22 @@ def _get_pmap_impl(f, devices, has_tpu):
 
 
 def pmap(f, axis_name=None, devices=None):
-  """A prototype of pmap.
+  """Transforms a function into a multi-device function.
 
-  The semantics are meant to be similar to JAX's pmap.
-  This is not ready for use yet, but the tests set out some idea of how they
-  might be used.
+  The semantics are similar to JAX's pmap.
 
   Args:
     f: The function to be converted.
     axis_name: Used for nested pmap, which is not supported yet.
-    devices: The devices over which the function must run.
+    devices: The devices over which the returned function will run.
 
   Returns:
-    A function that will run the underlying function `f` and return
-    ShardedNdArrays for all return values.
+    A function that runs the underlying function `f` on `devices`. Its arguments
+    can be `ShardedNdArray`s, tensors or other Python objects, and its return
+    values are all `ShardedNdArray`s. If an input is a tensor, the length of its
+    first dimension must equal the number of devices, and the tensor will be
+    splitted along its first dimension among the devices. If an input is an
+    unknown Python object, it will be replicated among the devices.
   """
   if devices is None:
     devices = accelerators()
