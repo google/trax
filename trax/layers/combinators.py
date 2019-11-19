@@ -347,12 +347,12 @@ class Split(base.Layer):
 class Scan(base.Layer):
   """Scans the given layer over the given axis of the inputs.
 
-  We assume layer takes a tuple of inputs of the following form:
+  We assume the layer takes a tuple of inputs of the following form:
     (input1, ..., inputN, carry1, ..., carryM)
   and returns
     (output1, ..., outputK, new_carry1, ..., new_carryM)
 
-  The scanned version applied layer iteratively to a tensor treating values
+  The scanned version applies the layer iteratively to a tensor treating values
   at the given axis as if they were a list. For example, to calculate all
   sums of prefixes of a tensor, we can do this:
 
@@ -367,32 +367,38 @@ class Scan(base.Layer):
 
   def __init__(self, layer, axis=0, n_carry=1):
     super(Scan, self).__init__(n_in=layer.n_in, n_out=layer.n_out)
-    self._layer = layer
     self._sublayers = [layer]
     self._n_carry = n_carry
     self._axis = axis
 
+  @property
+  def sublayer(self):
+    """Returns the unique sublayer managed by this layer."""
+    return self._sublayers[0]
+
   def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
                          state=base.EMPTY_STATE, **kwargs):
-    xs = inputs[:-self._n_carry]  # Split input stack into inputs and carry.
-    init = (inputs[-self._n_carry:], state)
-    def LayerFn(x, carry_and_state):
+    n_carry = self._n_carry
+    def scannable_fn(x, carry_and_state):  # pylint: disable=invalid-name
       carry, state = carry_and_state
-      res, new_state = self._layer.forward_with_state(
+      res, new_state = self.sublayer.forward_with_state(
           x + carry, weights=weights, state=state, **kwargs)
-      return (res[:-self._n_carry], (res[-self._n_carry:], new_state))
-    ys, (carry, new_state) = backend.scan(LayerFn, xs, init, axis=self._axis)
+      return (res[:-n_carry], (res[-n_carry:], new_state))
+
+    xs = inputs[:-n_carry]  # Split input stack into inputs and carry.
+    init = (inputs[-n_carry:], state)
+    ys, (carry, new_state) = backend.scan(scannable_fn, xs, init,
+                                          axis=self._axis)
     return ys + carry, new_state  # Put outputs and carry back on stack.
 
   def new_weights_and_state(self, input_signature):
-    def ShapeWithoutAxis(x):
-      shape = x.shape
-      return shape[:self._axis] + shape[self._axis + 1:]
-    xs = input_signature[:-self._n_carry]
-    init = input_signature[-self._n_carry:]
-    xs_slices = [ShapeDtype(ShapeWithoutAxis(x), x.dtype) for x in xs]
+    n_carry = self._n_carry
+    xs = input_signature[:-n_carry]
+    init = input_signature[-n_carry:]
+    xs_slices = [ShapeDtype(_shape_without_axis(x, self._axis), x.dtype)
+                 for x in xs]
     layer_signature = tuple(xs_slices + list(init))
-    return self._layer.new_weights_and_state(layer_signature)
+    return self.sublayer.new_weights_and_state(layer_signature)
 
 
 @base.layer(n_out=0)
@@ -638,3 +644,7 @@ def _outputs_onto_stack(layer, outputs, stack):
 
 def _count_items(xs):
   return len(xs) if isinstance(xs, (list, tuple)) else 1
+
+
+def _shape_without_axis(x, axis):
+  return x.shape[:axis] + x.shape[axis + 1:]
