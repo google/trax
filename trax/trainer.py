@@ -184,6 +184,9 @@ def main(_):
   else:
     trainer_lib.train(output_dir=output_dir)
 
+  trainer_lib.log('Finished training.')
+
+
 
 if __name__ == '__main__':
   app.run(main)
