@@ -409,7 +409,7 @@ class ReversibleAttentionHalfResidual(tl.ReversibleLayer, tl.Serial):
 
 def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
                  n_heads, n_attention_chunks, attention_type,
-                 dropout, share_qk, ff_activation, mode):
+                 dropout, share_qk, ff_activation, ff_use_sru, mode):
   """Reversible transformer decoder layer.
 
   Args:
@@ -423,6 +423,7 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
     dropout: float: dropout rate (how much to drop out)
     share_qk: string, whether to share queries and keys
     ff_activation: the non-linearity in feed-forward layer
+    ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
     mode: str: 'train' or 'eval'
 
   Returns:
@@ -461,9 +462,11 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
       BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
   ]
 
-  feed_forward = [
-      FeedForward(d_model, d_ff, dropout, ff_activation, mode=mode),
-  ]
+  if ff_use_sru:
+    feed_forward = [tl.SRU(d_model) for _ in ff_use_sru]
+  else:
+    feed_forward = [FeedForward(d_model, d_ff, dropout, ff_activation, mode)]
+
   return [
       ReversibleAttentionHalfResidual(pre_attention, attention, post_attention),
       tl.ReversibleSwap(),
@@ -488,6 +491,7 @@ def ReformerLM(vocab_size,
                axial_pos_shape=(),
                d_axial_pos_embs=None,
                ff_activation=tl.FastGelu,
+               ff_use_sru=0,
                mode='train'):
   """Reversible transformer language model (only uses a decoder, no encoder).
 
@@ -510,6 +514,7 @@ def ReformerLM(vocab_size,
     d_axial_pos_embs: tuple of ints: depth of position embedding for each axis.
       Tuple length must match axial_pos_shape, and values must sum to d_model.
     ff_activation: the non-linearity in feed-forward layer
+    ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
     mode: str: 'train' or 'eval'
 
   Returns:
@@ -553,6 +558,7 @@ def ReformerLM(vocab_size,
         share_qk=(share_qk or issubclass(layer_attention_type,
                                          tl.LSHCausalAttention)),
         ff_activation=ff_activation,
+        ff_use_sru=ff_use_sru,
         mode=mode)
     decoder_blocks.append(decoder_block)
 

@@ -20,15 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 from trax import layers as tl
-from trax.backend import numpy as np
-
-
-@tl.layer()
-def MakeZeroState(x, depth_multiplier=1, **unused_kwargs):
-  """Makes zeros of shape like x but removing the length (axis 1)."""
-  assert len(x.shape) == 3, 'Expecting x of shape [batch, length, depth].'
-  return np.zeros((x.shape[0], depth_multiplier * x.shape[-1]),
-                  dtype=np.float32)
 
 
 def RNNLM(vocab_size,
@@ -70,7 +61,7 @@ def RNNLM(vocab_size,
       tl.Embedding(d_model, vocab_size),
       tl.Dropout(rate=dropout, name='embedding', mode=mode),
       tl.Dup(),  # Duplicate to create parallel state.
-      tl.Parallel([], MakeZeroState(  # pylint: disable=no-value-for-parameter
+      tl.Parallel([], tl.MakeZeroState(  # pylint: disable=no-value-for-parameter
           depth_multiplier=n_layers * rnn_cell_d_state_multiplier)),
       tl.Scan(MultiRNNCell(), axis=1),
       tl.Parallel([], tl.Drop()),  # Drop RNN state.

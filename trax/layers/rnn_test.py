@@ -49,6 +49,12 @@ class RnnLayerTest(absltest.TestCase):
         input_signature=(ShapeDtype((8, 9)), ShapeDtype((8, 18))),
         output_shape=((8, 9), (8, 18)))
 
+  def test_sru(self):
+    self._test_cell_runs(
+        rnn.SRU(7),
+        input_signature=ShapeDtype((8, 9, 7)),
+        output_shape=(8, 9, 7))
+
 
 if __name__ == '__main__':
   absltest.main()
