@@ -665,8 +665,12 @@ def _jit_update_fn(predict_fn, loss_fn, optimizer, n_devices, jit=True):
     rng, subrng = jax_random.split(rng)
     grad_fn = backend.grad(model_and_loss_call, has_aux=True)
     grads, state = grad_fn(weights, batch, state, rng)
+    # We do a psum(1.0) here instead of `n_devices` since `n_devices` is just
+    # the number of devices on this host machine, however psum goes over all
+    # devices of all hosts (ex: a TPU pod) and we need to be averaging over all
+    # of them.
     grads = jax.tree_util.tree_map(
-        lambda g: backend.psum(g, 'batch'), grads)
+        lambda g: backend.psum(g, 'batch') / backend.psum(1.0, 'batch'), grads)
     return optimizer.tree_update(
         i, grads, weights, slots, opt_params), state, subrng
 
