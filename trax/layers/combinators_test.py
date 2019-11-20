@@ -116,9 +116,19 @@ class CombinatorLayerTest(absltest.TestCase):
     output_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual(output_shape, expected_shape)
 
-  def test_branch_op_not_defined(self):
-    with self.assertRaises(AttributeError):
-      cb.Branch([], [])
+  def test_branch_noop_dup(self):
+    layer = cb.Branch([], cb.Dup())
+    input_signature = ShapeDtype((3, 2))
+    expected_shape = ((3, 2), (3, 2), (3, 2))
+    output_shape = base.check_shape_agreement(layer, input_signature)
+    self.assertEqual(output_shape, expected_shape)
+
+  def test_branch_add_div(self):
+    layer = cb.Branch(cb.Add(), core.Div(divisor=0.5))
+    input_signature = (ShapeDtype((3, 2)), ShapeDtype((3, 2)))
+    expected_shape = ((3, 2), (3, 2))
+    output_shape = base.check_shape_agreement(layer, input_signature)
+    self.assertEqual(output_shape, expected_shape)
 
   def test_scan_basic(self):
     @base.layer(n_in=2, n_out=2)

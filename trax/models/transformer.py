@@ -107,8 +107,7 @@ def TransformerEncoder(vocab_size,
       tl.PositionalEncoding(max_len=max_len),
   ]
   return tl.Serial(                             #      tokens
-      tl.Dup(),                                 # toks toks
-      tl.Parallel(embedder, tl.PaddingMask()),  # vecs mask
+      tl.Branch(embedder, tl.PaddingMask()),    # vecs mask
       [EncoderBlock(d_model, d_ff, n_heads, dropout, i, mode, ff_activation)
        for i in range(n_layers)],               # vecs mask
       tl.Parallel([], tl.Drop()),               # ____  0
@@ -392,19 +391,17 @@ def Transformer(input_vocab_size,
       tl.Swap(),    # toks_d toks_e ....
 
       # Encode.
-      tl.Parallel(                                       # toks_d        toks_e
-          [], [tl.Dup(),                                 # ______ toks_e toks_e
-               tl.Parallel(in_embed, tl.PaddingMask()),  # ______ vecs_e masks
-               encoder_stack,                            # ______ vecs_e masks
-               tl.LayerNorm(),                           # ______ vecs_e .....
-               tl.Swap()]),                              # ______ masks  vecs_e
+      tl.Parallel(                                     # toks_d        toks_e
+          [], [tl.Branch(in_embed, tl.PaddingMask()),  # ______ vecs_e masks
+               encoder_stack,                          # ______ vecs_e masks
+               tl.LayerNorm(),                         # ______ vecs_e .....
+               tl.Swap()]),                            # ______ masks  vecs_e
 
-      # Decode.                                  #        toks_d masks vecs_e
-      tl.ShiftRight(),                           #        toks_d ..... ......
-      out_embed,                                 #        vecs_d ..... ......
-      tl.Dup(),                                  # vecs_d vecs_d ..... ......
-      tl.Parallel([], tl.EncoderDecoderMask()),  # ______    masks     ......
-      encoder_decoder_stack,                     # vecs_d    masks     vecs_e
+      # Decode.                                  # toks_d masks vecs_e
+      tl.ShiftRight(),                           # toks_d ..... ......
+      out_embed,                                 # vecs_d ..... ......
+      tl.Branch([], tl.EncoderDecoderMask()),    # vecs_d masks ......
+      encoder_decoder_stack,                     # vecs_d masks vecs_e
       tl.Parallel([], tl.Drop(), tl.Drop()),     # vecs_d
       tl.LayerNorm(),                            # vecs_d
       tl.Dense(output_vocab_size),               # vecs_d

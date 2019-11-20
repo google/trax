@@ -504,6 +504,37 @@ def SerialWithSideOutputs(layers, n_side_outputs=1):
   return Serial(serial_layers)
 
 
+def Branch(*layers):
+  """Combinator that applies a list of layers in parallel to copies of inputs.
+
+  Each layer in the input list is applied to as many inputs from the stack
+  as it needs, and their outputs are successively combined on stack.
+
+  For example, suppose one has three layers:
+
+    - F: 1 input, 1 output
+    - G: 3 inputs, 1 output
+    - H: 2 inputs, 2 outputs (h1, h2)
+
+  Then Branch(F, G, H) will take 3 inputs and give 4 outputs:
+
+    - inputs: a, b, c
+    - outputs: F(a), G(a, b, c), h1, h2    where h1, h2 = H(a, b)
+
+  As an important special case, a None argument to Branch acts as if it takes
+  one argument, which it leaves unchanged. (It acts as a one-arg no-op.)
+
+  Args:
+    *layers: list of layers
+
+  Returns:
+    the branch layer
+  """
+  parallel_layer = Parallel(*layers)
+  indices = [list(range(layer.n_in)) for layer in parallel_layer.sublayers]
+  return Serial(Select(_deep_flatten(indices)), parallel_layer)
+
+
 @base.layer(n_in=0)
 def FlattenList(xs, **unused_kwargs):
   """Flatten lists."""
