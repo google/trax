@@ -82,16 +82,15 @@ class Serial(base.Layer):
   def new_weights_and_state(self, input_signature):
     weights = []
     states = []
-    pseudo_xs = input_signature
-    for layer in self.sublayers:
-      inputs = _inputs_from_stack(layer, pseudo_xs)
-      param, state = layer.initialize_once(inputs)
-      pparam = layer._weights
-      outputs, _ = layer._forward_abstract(inputs, pparam, state)
-      pseudo_xs = _outputs_onto_stack(layer, outputs, pseudo_xs)
+    stack = input_signature
+    for sublayer in self.sublayers:
+      inputs = _inputs_from_stack(sublayer, stack)
+      weights_or_empty, sub_state = sublayer.initialize_once(inputs)
+      outputs, _ = sublayer._forward_abstract(inputs)
+      stack = _outputs_onto_stack(sublayer, outputs, stack)
 
-      weights.append(param)
-      states.append(state)
+      weights.append(weights_or_empty)
+      states.append(sub_state)
     return weights, states
   # pylint: enable=protected-access
 
@@ -159,8 +158,8 @@ class Serial(base.Layer):
     for layer in self.sublayers:
       inputs = _inputs_from_stack(layer, stack)
       layer._set_input_signature_recursive(inputs)
-      w, s = layer._new_weights_and_state_abstract(inputs)
-      outputs, _ = layer._forward_abstract(inputs, w, s)
+      _, _ = layer._new_weights_and_state_abstract(inputs)
+      outputs, _ = layer._forward_abstract(inputs)
       stack = _outputs_onto_stack(layer, outputs, stack)
   # pylint: enable=protected-access
 

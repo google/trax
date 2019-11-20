@@ -417,15 +417,12 @@ class Layer(object):
       raise LayerError(name, '_forward_internal',
                        self._caller, signature(x), trace)
 
-  def _forward_abstract(self, pseudo_inputs, weights, state):
+  def _forward_abstract(self, input_signature):
     """Computes shapes and dtypes this layer would produce in a forward pass.
 
     Args:
-      pseudo_inputs: A ShapeDtype instance (input data minus the actual values)
-          or a list/tuple of ShapeDtype instances, following the same
-          conventions as Layer.forward_with_state's input arg.
-      weights: Weights for this layer.
-      state: start state.
+      input_signature: A ShapeDtype instance (if this layer takes one input)
+          or a list/tuple of ShapeDtype instances; signatures of inputs.
 
     Returns:
       A tuple of (output, state).
@@ -441,20 +438,21 @@ class Layer(object):
       rng = ShapeDtype((2,), onp.uint32)
       def call_on_input(x, weights, state, rng):
         return self.forward_with_state(x, weights=weights, state=state, rng=rng)
-      weights_shapes = nested_map(signature, weights)
-      s = backend.abstract_eval(call_on_input)(pseudo_inputs,
-                                               weights_shapes, state, rng)
+      weight_signature = nested_map(signature, self.weights)
+      s = backend.abstract_eval(call_on_input)(
+          input_signature, weight_signature, self.state, rng)
       return s
     except Exception:
       name, trace = self.__class__.__name__, _short_traceback(skip=3)
-      raise LayerError(name, '_forward_abstract', self._caller, pseudo_inputs,
+      raise LayerError(name, '_forward_abstract', self._caller, input_signature,
                        trace)
 
   def _new_weights_and_state_abstract(self, input_signature):
     """Returns shapes/dtypes of the weights and state this layer would use."""
     def new_w_and_s():
       return self.new_weights_and_state(input_signature)
-    return backend.abstract_eval(new_w_and_s)()
+    self._weights, self._state = backend.abstract_eval(new_w_and_s)()
+    return (self._weights, self._state)
 
   # pylint: disable=protected-access
   def _set_rng_recursive(self, rng):
@@ -627,8 +625,7 @@ def check_shape_agreement(layer_obj, input_signature):
   """
   rng1, rng2 = layer_obj.new_rngs(2)
   weights, state = layer_obj.initialize_once(input_signature)
-  pseudo_output, _ = layer_obj._forward_abstract(input_signature, weights,  # pylint: disable=protected-access
-                                                 state)
+  pseudo_output, _ = layer_obj._forward_abstract(input_signature)  # pylint: disable=protected-access
   if isinstance(pseudo_output, tuple):
     output_shape = tuple(x.shape for x in pseudo_output)
   else:
