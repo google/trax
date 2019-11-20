@@ -609,7 +609,7 @@ class LayerError(Exception):
 
 
 def check_shape_agreement(layer_obj, input_signature):
-  """Checks if the layer's call output agrees its pseudo_forward predictions.
+  """Compares the layer's __call__ output to its _foward_abstract shape output.
 
   This function helps test layer mechanics and inter-layer connections that
   aren't dependent on specific data values.
@@ -623,22 +623,23 @@ def check_shape_agreement(layer_obj, input_signature):
     A tuple representing either a single shape (if the layer has one output) or
     a tuple of shape tuples (if the layer has more than one output).
   """
-  rng1, rng2 = layer_obj.new_rngs(2)
   weights, state = layer_obj.initialize_once(input_signature)
-  pseudo_output, _ = layer_obj._forward_abstract(input_signature)  # pylint: disable=protected-access
-  if isinstance(pseudo_output, tuple):
-    output_shape = tuple(x.shape for x in pseudo_output)
+  output_signature, _ = layer_obj._forward_abstract(input_signature)  # pylint: disable=protected-access
+  if isinstance(output_signature, tuple):
+    shape_output = tuple(x.shape for x in output_signature)
   else:
-    output_shape = pseudo_output.shape
+    shape_output = output_signature.shape
 
+  rng1, rng2 = layer_obj.new_rngs(2)
   random_input = _random_values(input_signature, rng1)
-  real_output = layer_obj(random_input, weights=weights, state=state, rng=rng2)
-  result_shape = _shapes(real_output)
+  call_output = layer_obj(random_input, weights=weights, state=state, rng=rng2)
+  call_output_shape = _shapes(call_output)
 
-  msg = 'output shape %s != real result shape %s' % (output_shape, result_shape)
-  assert output_shape == result_shape, msg
+  msg = '_foward_abstract shape output %s != __call__ output shape %s' % (
+      shape_output, call_output_shape)
+  assert shape_output == call_output_shape, msg
   # TODO(jonni): Remove this assert? It makes test logs harder to read.
-  return output_shape
+  return shape_output
 
 
 def _validate_forward_input(x, n_in):
