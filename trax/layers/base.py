@@ -273,8 +273,8 @@ class Layer(object):
     weight sharing to be implemented as layer sharing.
 
     Args:
-      input_signature: A ShapeDtype instance (if this layer takes one input)
-          or a list/tuple of ShapeDtype instances.
+      input_signature: A `ShapeDtype` instance (if this layer takes one input)
+          or a list/tuple of `ShapeDtype` instances.
 
     Returns:
       A (weights, state) tuple, in which weights contains newly created weights
@@ -292,9 +292,9 @@ class Layer(object):
         self._init_finished = True
         self._weights = weights
         self._state = state
+        return (weights, state)
       else:
-        weights = EMPTY_WEIGHTS
-      return (weights, state)
+        return (EMPTY_WEIGHTS, state)
     except Exception:
       name, trace = self.__class__.__name__, _short_traceback(skip=3)
       raise LayerError(name, 'initialize_once', self._caller,

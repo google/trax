@@ -85,15 +85,17 @@ class Serial(base.Layer):
   def new_weights_and_state(self, input_signature):
     weights = []
     states = []
+    # In the code below, stack, inputs, and outputs are abstract (shapes and
+    # dtypes), but weights and states are non-abstract actual values.
     stack = input_signature
     for sublayer in self.sublayers:
       inputs = _inputs_from_stack(sublayer, stack)
-      weights_or_empty, sub_state = sublayer.initialize_once(inputs)
+      weights_or_empty, state = sublayer.initialize_once(inputs)
       outputs, _ = sublayer._forward_abstract(inputs)
       stack = _outputs_onto_stack(sublayer, outputs, stack)
 
       weights.append(weights_or_empty)
-      states.append(sub_state)
+      states.append(state)
     return weights, states
   # pylint: enable=protected-access
 
@@ -239,10 +241,10 @@ class Parallel(base.Layer):
     inits = [layer.initialize_once(signature)
              for layer, signature
              in zip(self.sublayers, sublayer_signatures)]
-    if not inits:
-      return base.EMPTY_WEIGHTS, base.EMPTY_STATE
-    else:
+    if inits:
       return tuple(zip(*inits))
+    else:
+      return (base.EMPTY_WEIGHTS, base.EMPTY_STATE)
 
   @base.Layer.weights.setter
   def weights(self, weights):
