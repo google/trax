@@ -50,7 +50,7 @@ def RNNLM(vocab_size,
     """Multi-layer RNN cell."""
     assert n_layers == 2
     return tl.Serial(
-        tl.Parallel([], tl.Split(n_sections=n_layers)),
+        tl.Parallel([], tl.Split(n_items=n_layers)),
         tl.SerialWithSideOutputs(
             [rnn_cell(n_units=d_model) for _ in range(n_layers)]),
         tl.Parallel([], tl.Concatenate(n_items=n_layers))

@@ -463,7 +463,7 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
   ]
 
   if ff_use_sru:
-    feed_forward = [tl.SRU(d_model) for _ in ff_use_sru]
+    feed_forward = [tl.SRU(d_model) for _ in range(ff_use_sru)]
   else:
     feed_forward = [FeedForward(d_model, d_ff, dropout, ff_activation, mode)]
 

@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import absltest
-from trax import backend
+from trax.backend import numpy as np
 from trax.layers import base
 from trax.layers import combinators as cb
 from trax.layers import core
@@ -140,7 +140,7 @@ class CombinatorLayerTest(absltest.TestCase):
     expected_shape = ((3, 2, 7), (2, 7))
     output_shape = base.check_shape_agreement(scan_layer, input_signature)
     self.assertEqual(output_shape, expected_shape)
-    inp = (backend.numpy.array([1, 2, 3]), backend.numpy.array(0))
+    inp = (np.array([1, 2, 3]), np.array(0))
     o, v = scan_layer(inp)
     self.assertEqual(int(v), 6)
     self.assertEqual([int(x) for x in o], [1, 3, 6])
@@ -166,6 +166,44 @@ class CombinatorLayerTest(absltest.TestCase):
                        ShapeDtype((3, 7)))
     expected_shape = ((3, 2, 7), (3, 2, 7), (3, 7))
     output_shape = base.check_shape_agreement(scan, input_signature)
+    self.assertEqual(output_shape, expected_shape)
+
+  def test_fn_layer_example(self):
+    layer = cb.Fn(lambda x, y: (x + y, np.concatenate([x, y], axis=0)))
+    input_signature = (ShapeDtype((2, 7)), ShapeDtype((2, 7)))
+    expected_shape = ((2, 7), (4, 7))
+    output_shape = base.check_shape_agreement(layer, input_signature)
+    self.assertEqual(output_shape, expected_shape)
+    inp = (np.array([2]), np.array([3]))
+    x, xs = layer(inp)
+    self.assertEqual(int(x), 5)
+    self.assertEqual([int(y) for y in xs], [2, 3])
+
+  def test_fn_layer_fails_wrong_f(self):
+    with self.assertRaisesRegexp(ValueError, 'default arg'):
+      cb.Fn(lambda x, sth=None: x)
+    with self.assertRaisesRegexp(ValueError, 'keyword arg'):
+      cb.Fn(lambda x, **kwargs: x)
+
+  def test_fn_layer_varargs_n_in(self):
+    with self.assertRaisesRegexp(ValueError, 'variable arg'):
+      cb.Fn(lambda *args: args[0])
+    # Check that varargs work when n_in is set.
+    id_layer = cb.Fn(lambda *args: args[0], n_in=1)
+    input_signature = ShapeDtype((2, 7))
+    expected_shape = (2, 7)
+    output_shape = base.check_shape_agreement(id_layer, input_signature)
+    self.assertEqual(output_shape, expected_shape)
+
+  def test_fn_layer_difficult_n_out(self):
+    with self.assertRaisesRegexp(ValueError, 'n_out'):
+      # Determining the output of this layer is hard with dummies.
+      cb.Fn(lambda x: np.concatencate([x, x], axis=4))
+    # Check that this layer works when n_out is set.
+    layer = cb.Fn(lambda x: np.concatenate([x, x], axis=4), n_out=1)
+    input_signature = ShapeDtype((2, 1, 2, 2, 3))
+    expected_shape = (2, 1, 2, 2, 6)
+    output_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual(output_shape, expected_shape)
 
   def test_input_signatures_serial(self):

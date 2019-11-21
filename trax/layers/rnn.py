@@ -229,10 +229,10 @@ def SRU(n_units, activation=None):
   """SRU layer as in https://arxiv.org/abs/1709.02755.
 
   As defined in the paper:
-  (1) x'_t = W x_t (+ B optionally, which we do)
+  (1) y_t = W x_t (+ B optionally, which we do)
   (2) f_t = sigmoid(Wf x_t + bf)
   (3) r_t = sigmoid(Wr x_t + br)
-  (4) c_t = f_t * c_{t-1} + (1 - f_t) * x'_t
+  (4) c_t = f_t * c_{t-1} + (1 - f_t) * y_t
   (5) h_t = r_t * activation(c_t) + (1 - r_t) * x_t
 
   We assume the input is of shape [batch, length, depth] and recurrence
@@ -247,26 +247,14 @@ def SRU(n_units, activation=None):
     The SRU layer.
   """
   activation = activation or []
-  one_minus_x = [
-      core.MulConstant(constant=-1.0),
-      core.AddConstant(constant=1.0)
-  ]
   return cb.Serial(
-      cb.Dup(), cb.Dup(),  # x, x, x
-      cb.Parallel([], MakeZeroState()),  # pylint: disable=no-value-for-parameter
-      core.Dense(3 * n_units),  # x'', c0, x
-      cb.Split(n_sections=3),   # r, f, x', c0, x
-      cb.Parallel(core.Sigmoid(), core.Sigmoid()),  # r, f, x', c0, x
-      cb.Parallel([], cb.Dup()),  # r, f, f, x', c0, x
-      cb.Parallel([], one_minus_x),  # r, 1 - f, f, x', c0, x
-      cb.Parallel([], [], cb.Swap()),  # r, 1 - f, x', f, c0, x
-      cb.Parallel([], cb.Multiply()),  # r, x' * (1 - f), f, c0, x
-      cb.Swap(),  # x' * (1 - f), r, f, c0, x
-      cb.Parallel([], cb.Swap()),  # x * (1 - f), f, r, c0, x
-      cb.Parallel([], [], cb.Swap()),  # x * (1 - f), f, c0, r, x
+      cb.Dup(),                   # x, x
+      core.Dense(3 * n_units),
+      cb.Split(n_items=3),     # r, f, y, x
+      cb.Parallel(core.Sigmoid(), core.Sigmoid()),   # r, f, y, x
+      cb.Fn(lambda r, f, y: (y * (1.0 - f), f, r)),  # y * (1 - f), f, r, x
+      cb.Parallel([], [], [cb.Dup(), MakeZeroState()]),  # pylint: disable=no-value-for-parameter
       cb.Scan(InnerSRUCell(), axis=1),  # pylint: disable=no-value-for-parameter
-      cb.Parallel(activation, cb.Drop(), cb.Dup()),  # act(y), r, r, x
-      cb.Parallel(cb.Multiply(), one_minus_x),  # act(y) * r, 1 - r, x
-      cb.Parallel([], cb.Multiply()),  # act(y) * r, (1 - r) * x
-      cb.Add()
+      cb.Parallel(activation, cb.Drop()),  # act(c), r, x
+      cb.Fn(lambda c, r, x: c * r + x * (1 - r))
   )

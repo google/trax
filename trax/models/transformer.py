@@ -260,7 +260,7 @@ def TransformerLM(vocab_size,
     concatenate_chunks = split_chunks = []
   else:
     concatenate_chunks = tl.Concatenate(n_items=n_chunks)
-    split_chunks = tl.Split(n_sections=n_chunks, axis=-2)
+    split_chunks = tl.Split(n_items=n_chunks, axis=-2)
 
   embedder = [
       tl.Embedding(d_model, vocab_size),
