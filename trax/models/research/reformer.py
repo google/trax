@@ -22,6 +22,7 @@ import jax
 
 from trax import backend
 from trax import layers as tl
+from trax.backend import numpy as np
 from trax.layers.combinators import _pop_rng_and_split
 
 
@@ -155,10 +156,10 @@ class SplitForOutput(tl.ReversibleLayer):
     del weights
     x1, x2 = inputs
 
-    x1_split = backend.numpy.split(x1, self._n_sections, self._axis)
-    x2_split = backend.numpy.split(x2, self._n_sections, self._axis)
+    x1_split = np.split(x1, self._n_sections, self._axis)
+    x2_split = np.split(x2, self._n_sections, self._axis)
 
-    res = [backend.numpy.concatenate(ys, -1) for ys in zip(x1_split, x2_split)]
+    res = [np.concatenate(ys, -1) for ys in zip(x1_split, x2_split)]
     return tuple(res)
 
   def reverse(self, output, weights=(), state=(), **kwargs):
@@ -167,12 +168,12 @@ class SplitForOutput(tl.ReversibleLayer):
     x1_split = []
     x2_split = []
     for y in output:
-      y1, y2 = backend.numpy.split(y, 2, -1)
+      y1, y2 = np.split(y, 2, -1)
       x1_split.append(y1)
       x2_split.append(y2)
 
-    x1 = backend.numpy.concatenate(x1_split, self._axis)
-    x2 = backend.numpy.concatenate(x2_split, self._axis)
+    x1 = np.concatenate(x1_split, self._axis)
+    x2 = np.concatenate(x2_split, self._axis)
 
     return (x1, x2)
 
@@ -185,7 +186,7 @@ class SplitForOutput(tl.ReversibleLayer):
 def Chunk(x, weights, n_sections=2, **kwargs):
   del weights, kwargs
   assert x.shape[1] % n_sections == 0
-  return backend.numpy.reshape(x, (
+  return np.reshape(x, (
       x.shape[0] * n_sections,
       x.shape[1] // n_sections,
       ) + x.shape[2:])
@@ -195,7 +196,7 @@ def Chunk(x, weights, n_sections=2, **kwargs):
 def Unchunk(x, weights, n_sections=2, **kwargs):
   del weights, kwargs
   assert x.shape[0] % n_sections == 0
-  return backend.numpy.reshape(x, (
+  return np.reshape(x, (
       x.shape[0] // n_sections,
       x.shape[1] * n_sections,
       ) + x.shape[2:])
@@ -579,3 +580,122 @@ def ReformerLM(vocab_size,
           tl.LogSoftmax(),
       ], n_sections=n_chunks),
   )
+
+
+def ReformerShortenLM(vocab_size,
+                      shorten_factor=1,
+                      d_embedding=256,
+                      d_model=512,
+                      d_ff=2048,
+                      d_attention_key=64,
+                      d_attention_value=64,
+                      n_layers=6,
+                      n_heads=8,
+                      dropout=0.1,
+                      max_len=2048,
+                      n_attention_chunks=1,
+                      attention_type=tl.DotProductCausalAttention,
+                      share_qk=False,
+                      axial_pos_shape=(),
+                      d_axial_pos_embs=None,
+                      ff_activation=tl.FastGelu,
+                      ff_use_sru=0,
+                      mode='train'):
+  """Reversible transformer language model with shortening.
+
+  When shorten_factor is F and processing an input of shape [batch, length],
+  we embed the (shifted-right) input and then group each F elements (on length)
+  into a single vector -- so that in the end we process a tensor of shape
+    [batch, length // F, d_model]
+  almost until the end -- at the end it's un-shortend and a SRU is applied.
+  This reduces the length processed inside the main model body, effectively
+  making the model faster but possibly slightly less accurate.
+
+  Args:
+    vocab_size: int: vocab size
+    shorten_factor: by how much to shorten, see above
+    d_embedding: the depth of the embedding layer and final logits
+    d_model: int:  depth of *each half* of the two-part features
+    d_ff: int: depth of feed-forward layer
+    d_attention_key: int: depth of key vector for each attention head
+    d_attention_value: int: depth of value vector for each attention head
+    n_layers: int: number of decoder layers
+    n_heads: int: number of attention heads
+    dropout: float: dropout rate (how much to drop out)
+    max_len: int: maximum symbol length for positional encoding
+    n_attention_chunks: int: number of chunks for attention
+    attention_type: class: attention class to use, such as DotProductAttention.
+    share_qk: bool, whether to share queries and keys.
+    axial_pos_shape: tuple of ints: input shape to use for the axial position
+      encoding. If unset, axial position encoding is disabled.
+    d_axial_pos_embs: tuple of ints: depth of position embedding for each axis.
+      Tuple length must match axial_pos_shape, values must sum to d_embedding.
+    ff_activation: the non-linearity in feed-forward layer
+    ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
+    mode: str: 'train' or 'eval'
+
+  Returns:
+    the layer.
+  """
+  if not axial_pos_shape:
+    positional_encoding = tl.PositionalEncoding(
+        max_len=max_len, dropout=dropout)
+  else:
+    assert d_axial_pos_embs is not None
+    positional_encoding = tl.AxialPositionalEncoding(
+        shape=axial_pos_shape, d_embs=d_axial_pos_embs,
+        dropout_broadcast_dims=tuple(range(1, len(axial_pos_shape) + 1)),
+        dropout=dropout)
+
+  positional_embedder = [
+      tl.Embedding(d_embedding, vocab_size),
+      BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
+      positional_encoding,
+  ]
+
+  decoder_blocks = []
+
+  if isinstance(attention_type, (tuple, list)):
+    assert n_layers % len(attention_type) == 0
+  else:
+    attention_type = [attention_type]
+  for layer_idx in range(n_layers):
+    layer_attention_type = attention_type[layer_idx % len(attention_type)]
+    decoder_block = DecoderBlock(
+        d_model, d_ff, d_attention_key, d_attention_value, n_heads,
+        n_attention_chunks,
+        attention_type=layer_attention_type,
+        dropout=dropout,
+        share_qk=(share_qk or issubclass(layer_attention_type,
+                                         tl.LSHCausalAttention)),
+        ff_activation=ff_activation,
+        ff_use_sru=ff_use_sru,
+        mode=mode)
+    decoder_blocks.append(decoder_block)
+
+  # pylint: disable=g-long-lambda
+  return tl.Serial(
+      tl.ShiftRight(),
+      positional_embedder,
+      tl.Dup(),              # Stack has (x, x), the first will be shortened
+      # Before shortening, we need to pad by shorten factor.
+      tl.ShiftRight(n_shifts=shorten_factor - 1),
+      tl.Fn(lambda x: np.reshape(  # Shorten -- move to depth.
+          x, (x.shape[0], x.shape[1] // shorten_factor, -1)), n_out=1),
+      tl.Dense(d_model),
+      tl.Dup(),  # Stack has (short_x, short_x, x)
+      tl.ReversibleSerial(decoder_blocks),
+      tl.Parallel([], tl.Drop()),
+      tl.LayerNorm(),
+      BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
+      tl.Dense(shorten_factor * d_embedding),
+      tl.Fn(lambda x: np.reshape(  # Prolong back.
+          x, (x.shape[0], x.shape[1] * shorten_factor, -1)), n_out=1),
+      tl.Concatenate(),  # Concatenate with just the embeddings.
+      tl.CausalConv(d_embedding),
+      tl.Relu(),
+      tl.SRU(d_embedding),  # One RNN layer for conditional dependence.
+      tl.Dense(vocab_size),
+      tl.LogSoftmax()
+  )
+  # pylint: enable=g-long-lambda

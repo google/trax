@@ -19,7 +19,7 @@ import trax.trainer_lib
 
 # Parameters that will vary between experiments:
 # ==============================================================================
-train.model = @trax.models.ReformerLM
+train.model = @trax.models.ReformerShortenLM
 attn_type = @LSHCausalAttention
 share_qk = True  # Required when using LSHCausalAttention
 attn_kv = 64
@@ -32,8 +32,8 @@ n_layers = 6
 TimeBinCausalAttention.n_bins = 64
 
 # LSHCausalAttention: locality-sensitive hashing (LSH) attention
-LSHCausalAttention.n_bins = 96
-LSHCausalAttention.n_buckets = 192  # Always 2 * n_bins
+LSHCausalAttention.n_bins = 32  # 96
+LSHCausalAttention.n_buckets = 64  # 192  # Always 2 * n_bins
 LSHCausalAttention.n_hashes = 2
 LSHCausalAttention.drop_for_hash_rate = 0.0
 
@@ -135,3 +135,22 @@ ReformerLM.vocab_size = 256
 ReformerLM.share_qk = %share_qk
 ReformerLM.axial_pos_shape = (64, 64, 3)
 ReformerLM.d_axial_pos_embs= (384, 384, 256)
+
+# Parameters for ReformerShortenLM:
+# ==============================================================================
+ReformerShortenLM.attention_type = %attn_type
+ReformerShortenLM.d_attention_key = %attn_kv
+ReformerShortenLM.d_attention_value = %attn_kv
+ReformerShortenLM.shorten_factor = 3
+ReformerShortenLM.d_embedding = 256
+ReformerShortenLM.d_model = 1024
+ReformerShortenLM.d_ff = 4096
+ReformerShortenLM.dropout = 0.0
+ReformerShortenLM.max_len = 12288  # 64 * 64 * 3
+ReformerShortenLM.mode = 'train'
+ReformerShortenLM.n_heads = 8
+ReformerShortenLM.n_layers = %n_layers
+ReformerShortenLM.vocab_size = 256
+ReformerShortenLM.share_qk = %share_qk
+ReformerShortenLM.axial_pos_shape = (64, 64, 3)
+ReformerShortenLM.d_axial_pos_embs= (96, 96, 64)

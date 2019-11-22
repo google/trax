@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import inspect
 import traceback
 
@@ -101,7 +102,11 @@ class Layer(object):
     self._weights = EMPTY_WEIGHTS  # cached weights
     self._state = EMPTY_STATE
     # record root call site for custom error messages:
-    self._caller = _find_frame(inspect.currentframe())
+    frame = _find_frame(inspect.currentframe())
+    # Turns out that frame can mutate in time, so we just copy what we need.
+    self._caller = {'filename': copy.copy(frame.f_code.co_filename),
+                    'lineno': int(frame.f_lineno)}
+    del frame  # Just in case.
     self._init_finished = False
 
   def __repr__(self):
@@ -601,9 +606,9 @@ class LayerError(Exception):
     prefix = 'Exception passing through layer '
     prefix += '%s (in %s):\n' % (self._layer_name, self._function_name)
     short_path = '[...]/' + '/'.join(
-        self._caller.f_code.co_filename.split('/')[-3:])
+        self._caller['filename'].split('/')[-3:])
     caller = '  layer created in file %s, line %d\n' % (short_path,
-                                                        self._caller.f_lineno)
+                                                        self._caller['lineno'])
     shapes_str = '  layer input shapes: %s\n\n' % str(self._input_signature)
     return prefix + caller + shapes_str + self._traceback
 
@@ -655,11 +660,16 @@ def _validate_forward_input(x, n_in):
 
 def _find_frame(frame):
   """Find the frame with the caller on the stack."""
+  # TODO(lukaszkaiser): rewrite this function in a systematic way.
   # We want to find the first place where the layer was called
   # that is *not* an __init__ function of an inheriting layer.
   # We also need to exclude a few decorator functions.
   while frame.f_code.co_name in ['__init__', 'gin_wrapper', '_validate',
-                                 '_init']:
+                                 '_validate_forward_inputs', '_init']:
+    # We only skip __init__ in internal layers, return otherwise.
+    dirname = frame.f_code.co_filename.split('/')[-2]
+    if dirname != 'layers' and frame.f_code.co_name == '__init__':
+      return frame
     # If we are in an init, move up.
     frame = frame.f_back
   return frame

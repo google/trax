@@ -37,17 +37,17 @@ from trax.layers import initializers as init
 
 
 @base.layer()
-def ShiftRight(x, mode='train', **unused_kwargs):
+def ShiftRight(x, n_shifts=1, mode='train', **unused_kwargs):
   """Layer to shift the tensor to the right by padding on axis 1."""
   if mode == 'predict':
     # Do nothing in predict mode, as then the sequence length is 1.
     return x
 
   pad_widths = [(0, 0)] * len(x.shape)
-  pad_widths[1] = (1, 0)  # Padding on axis=1
+  pad_widths[1] = (n_shifts, 0)  # Padding on axis=1
   padded = np.pad(x, pad_widths, mode='constant',
                   constant_values=x.dtype.type(0))
-  return padded[:, :-1]
+  return padded[:, :-n_shifts]
 
 
 @base.layer()
