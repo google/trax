@@ -319,8 +319,8 @@ class Trainer(object):
 
     for _ in range(n_steps):
       batch = next(self._train_stream)
-      if self._n_devices > 1:  # TODO(lukaszkaiser): use everywhere if possible.
-        batch = backend.reshape_by_device(batch, self._n_devices)
+      if self.n_devices > 1:  # TODO(lukaszkaiser): use everywhere if possible.
+        batch = backend.reshape_by_device(batch, self.n_devices)
       self.train_step(batch)
       if self._should_save_now():
         self.save_state(keep=True)
@@ -444,7 +444,7 @@ class Trainer(object):
   def save_state(self, keep):
     """Save trainer state given a possibly replicated opt_state."""
     opt_state = self._opt_state
-    if self._n_devices > 1:
+    if self.n_devices > 1:
       first_replica = lambda x: x[0]
       opt_state = OptState(*layers.nested_map(first_replica, opt_state))
     # This line, while optional, allows JAX to transfer arrays from the device
@@ -466,13 +466,13 @@ class Trainer(object):
 
   def save_computation_graphs(self, save_backward_graph):
     """Dump computation graphs to files."""
-    if self._n_devices != 1:
+    if self.n_devices != 1:
       return  # TODO(lukaszkaiser): make this work with more devices.
     batch = next(self._train_stream)
     output_dir = self._output_dir
-    if self._n_devices > 1:
+    if self.n_devices > 1:
       batch = backend.reshape_by_device(
-          batch, self._n_devices)
+          batch, self.n_devices)
     weights = self._opt_state[0][0]
     forward_computation = jax.xla_computation(self._model_predict_eval)(
         batch, weights=weights, state=self._model_state[0],
@@ -510,7 +510,7 @@ class Trainer(object):
     """Prints the total count of trainable weights."""
     opt_state = self._opt_state
     sizes = _sizes(opt_state.weights)
-    if self._n_devices > 1:
+    if self.n_devices > 1:
       unreplicate = lambda x: x[0]
       single_weights = layers.nested_map(unreplicate, opt_state.weights)
       sizes = _sizes(single_weights)
@@ -518,11 +518,11 @@ class Trainer(object):
     self.log_step('Total number of trainable weights: %d' % total_size)
 
   def _maybe_replicate(self, x):
-    if self._n_devices > 1:
+    if self.n_devices > 1:
       if backend.get_name() == 'jax':
         return _multi_device_put(x)
       else:
-        return np.broadcast_to(x, (self._n_devices,) + x.shape)
+        return np.broadcast_to(x, (self.n_devices,) + x.shape)
     else:
       return x
 
