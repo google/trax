@@ -205,7 +205,7 @@ class PpoTrainerTest(test.TestCase):
           lr_schedule=lr.MultifactorSchedule,
           output_dir=output_dir,
       )
-      trainer.train_epoch(epoch_steps=1, eval_steps=1)
+      trainer.train_epoch(n_steps=1, n_eval_steps=1)
 
       # Repeat the history over and over again.
       stream = itertools.repeat(np.zeros(history_shape))

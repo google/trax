@@ -255,6 +255,7 @@ class Trainer(object):
 
   @property
   def nontrainable_params(self):
+    # TODO(afrozm): Give further thought to this name.
     # TODO(lukaszkaiser): it makes no sense to use an accelerator (e.g. TPU)
     # in op-by-op mode just to compute the learning rate. However, there
     # should be a cleaner approach that forceably swapping out the backend.
@@ -308,41 +309,39 @@ class Trainer(object):
 
     self.update_nontrainable_params()
 
-  def train_epoch(self, epoch_steps, eval_steps):
-    """Runs the trainer for `epoch_steps` steps."""
+  def train_epoch(self, n_steps, n_eval_steps):
+    """Runs `n_steps` of training, with periodic logging, saving, and evals."""
+    # TODO(jonni): Clarify how this method relates to the stricter notion of
+    # epoch (training for as many steps as needed for a full pass through the
+    # training data).
     print()  # Add visual separator in logs for start of training epoch.
     start_time = time.time()
 
-    for _ in range(epoch_steps):
-      next_train_batch = next(self._train_stream)
+    for _ in range(n_steps):
+      batch = next(self._train_stream)
       if self._n_devices > 1:  # TODO(lukaszkaiser): use everywhere if possible.
-        next_train_batch = backend.reshape_by_device(
-            next_train_batch, self._n_devices)
-      self.train_step(next_train_batch)
-
-      # Occasionally save state, and occasionally log nontrainable weights
-      # (e.g., learning rate, dropout).
-      if self._step in self._save_steps and self._should_save():
+        batch = backend.reshape_by_device(batch, self._n_devices)
+      self.train_step(batch)
+      if self._should_save_now():
         self.save_state(keep=True)
-      if (self._step == 1 or self._step % 10 == 0) and self._train_sw:
+      if self._should_log_now():
         for (name, value) in self.nontrainable_params.items():
           self._train_sw.scalar('training/{}'.format(name), value)
 
-    # At end of epoch, do bookkeeping, run evals, and save state.
-    epoch_time = time.time() - start_time
-    self.log_step('Ran %d train steps in %0.2f secs' %
-                  (epoch_steps, epoch_time))
-    if epoch_steps > 1 and self._train_sw:
+    # At end of n_steps, do bookkeeping, run evals, and save state.
+    elapsed_time = time.time() - start_time
+    self.log_step('Ran %d train steps in %0.2f secs' % (n_steps, elapsed_time))
+    if self._train_sw and n_steps > 1:
       self._train_sw.scalar('training/steps per second',
-                            epoch_steps / epoch_time, step=self._step)
-    self.evaluate(eval_steps)
+                            n_steps / elapsed_time, step=self._step)
+      self._train_sw.flush()
+    self.evaluate(n_eval_steps)
+    if self._eval_sw:
+      self._eval_sw.flush()
     if self._should_save():
       self.save_state(keep=False)
-    if self._train_sw:
-      self._train_sw.flush()
-      self._eval_sw.flush()
 
-  def train_step(self, next_train_batch):
+  def train_step(self, batch):
     """Run one training step and update self._opt_state."""
     # Calculate the current optimizer parameters.
     # TODO(pkozakowski): Optimizer parameters get polluted with model state,
@@ -355,12 +354,12 @@ class Trainer(object):
 
     # Run the update.
     (weights, slots), self._model_state, self._rngs = self._jit_update_fn(
-        self._step, opt_state, next_train_batch, self._model_state, self._rngs)
+        self._step, opt_state, batch, self._model_state, self._rngs)
     self._model_state = self._map_to_state_dicts(self._state_dicts_update)
     self._opt_state = opt_state._replace(weights=weights, slots=slots)
     self._step += 1
 
-  def evaluate(self, eval_steps):
+  def evaluate(self, n_eval_steps):
     """Evaluate the model and log metrics."""
     _, rng = jax_random.split(self._rngs[0])
     # TODO(lukaszkaiser): both model state and parameters by default include
@@ -369,11 +368,11 @@ class Trainer(object):
     weights = (self._opt_state[0][0], self._metrics_weights)
     state = (self._model_state[0], self._metrics_state)
     self.log_step('Evaluation')
-    train_eval_slice = itertools.islice(self._train_eval_stream, eval_steps)
+    train_eval_slice = itertools.islice(self._train_eval_stream, n_eval_steps)
     train_metrics, _ = self.evaluation_round(train_eval_slice, weights, state,
                                              rng)
     self.log_metrics(train_metrics, self._train_sw, 'train')
-    eval_slice = itertools.islice(self._eval_stream, eval_steps)
+    eval_slice = itertools.islice(self._eval_stream, n_eval_steps)
     eval_metrics, _ = self.evaluation_round(eval_slice, weights, state, rng)
     self.log_metrics(eval_metrics, self._eval_sw, 'eval')
     self.log_step('Finished evaluation')
@@ -469,21 +468,21 @@ class Trainer(object):
     """Dump computation graphs to files."""
     if self._n_devices != 1:
       return  # TODO(lukaszkaiser): make this work with more devices.
-    next_train_batch = next(self._train_stream)
+    batch = next(self._train_stream)
     output_dir = self._output_dir
     if self._n_devices > 1:
-      next_train_batch = backend.reshape_by_device(
-          next_train_batch, self._n_devices)
+      batch = backend.reshape_by_device(
+          batch, self._n_devices)
     weights = self._opt_state[0][0]
     forward_computation = jax.xla_computation(self._model_predict_eval)(
-        next_train_batch, weights=weights, state=self._model_state[0],
+        batch, weights=weights, state=self._model_state[0],
         rng=self._rngs[0])
     with gfile.GFile(os.path.join(output_dir, 'forward.txt'), 'w') as f:
       f.write(forward_computation.GetHloText())
     with gfile.GFile(os.path.join(output_dir, 'forward.dot'), 'w') as f:
       f.write(forward_computation.GetHloDotGraph())
     backward_computation = jax.xla_computation(self._jit_update_fn)(
-        self._step, self._opt_state, next_train_batch, self._model_state,
+        self._step, self._opt_state, batch, self._model_state,
         self._rngs)
     with gfile.GFile(os.path.join(output_dir, 'backward.txt'), 'w') as f:
       f.write(backward_computation.GetHloText())
@@ -539,6 +538,13 @@ class Trainer(object):
 
   def _should_save(self):
     return self._is_chief and self._should_save_checkpoints
+
+  def _should_save_now(self):
+    return self._should_save() and self._step in self._save_steps
+
+  def _should_log_now(self):
+    return (self._train_sw is not None
+            and (self._step == 1 or self._step % 10 == 0))
 
 
 @gin.configurable(blacklist=['output_dir'])
