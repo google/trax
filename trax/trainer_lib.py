@@ -201,10 +201,8 @@ class Trainer(object):
     metrics_layer._set_rng_recursive(init_rng)  # pylint: disable=protected-access
     metrics_weights, metrics_state = (
         metrics_layer.initialize_once(dummy_signature))
-    self._metrics_weights = layers.nested_map(self._maybe_replicate,
-                                              metrics_weights)
-    self._metrics_state = layers.nested_map(self._maybe_replicate,
-                                            metrics_state)
+    self._metrics_weights = self._for_n_devices(metrics_weights)
+    self._metrics_state = self._for_n_devices(metrics_state)
     self._jit_eval = _jit_predict_fn(
         model_predict_eval, metrics_layer, n_devices)
     self._jit_update_fn = _jit_update_fn(model_train, loss_fn, opt, n_devices)
@@ -300,9 +298,8 @@ class Trainer(object):
       model_state = state.model_state
     else:
       opt_state, model_state = self._new_opt_state_and_model_state()
-      model_state = layers.nested_map(self._maybe_replicate, model_state)
-    self._opt_state = OptState(*layers.nested_map(self._maybe_replicate,
-                                                  opt_state))
+      model_state = self._for_n_devices(model_state)
+    self._opt_state = OptState(*self._for_n_devices(opt_state))
     self._model_state = model_state
     if not state.opt_state and self._should_save():
       self.save_state(keep=False)
@@ -346,9 +343,8 @@ class Trainer(object):
     # Calculate the current optimizer parameters.
     # TODO(pkozakowski): Optimizer parameters get polluted with model state,
     # which doesn't break anything but is weird. Filter it out.
-    opt_param_updates = layers.nested_map(
-        lambda x: self._maybe_replicate(np.array(x)),
-        self.nontrainable_params)
+    opt_param_updates = self._for_n_devices(
+        layers.nested_map(np.array, self.nontrainable_params))
     opt_state = self._opt_state
     opt_state.opt_params.update(opt_param_updates)
 
@@ -414,18 +410,15 @@ class Trainer(object):
     """Updates model state based on nontrainable_params."""
     # Translate model state keys to nontrainable param names.
     if key in self._nontrainable_param_map:
-      param_name = self._nontrainable_param_map[key]
+      p_name = self._nontrainable_param_map[key]
     else:
       # If a key is not in mapping, it stays the same.
-      param_name = key
-    if param_name in self.nontrainable_params:
+      p_name = key
+    if p_name in self.nontrainable_params:
       if self._step == 0:
-        log('Mapping model state key {} to nontrainable param {}.'.format(
-            key, param_name
-        ))
-        return self._maybe_replicate(
-            np.array(self.nontrainable_params[param_name])
-        )
+        log('Mapping model state key {} to nontrainable param {}.'
+            ''.format(key, p_name))
+        return self._for_n_devices(np.array(self.nontrainable_params[p_name]))
     return value
 
   def update_nontrainable_params(self):
@@ -517,15 +510,6 @@ class Trainer(object):
     total_size = _nested_reduce(sum, sizes)
     self.log_step('Total number of trainable weights: %d' % total_size)
 
-  def _maybe_replicate(self, x):
-    if self.n_devices > 1:
-      if backend.get_name() == 'jax':
-        return _multi_device_put(x)
-      else:
-        return np.broadcast_to(x, (self.n_devices,) + x.shape)
-    else:
-      return x
-
   def _map_to_state_dicts(self, f):
     """Map the function f to all dicts in model state."""
     return _nested_map(f, self._model_state)
@@ -545,6 +529,18 @@ class Trainer(object):
   def _should_log_now(self):
     return (self._train_sw is not None
             and (self._step == 1 or self._step % 10 == 0))
+
+  def _for_n_devices(self, x):
+    """Replicates/broadcasts `x` for n devices if `self.n_devicess > 1`."""
+    n = self.n_devices
+    def f(x):
+      if n > 1 and backend.get_name() == 'jax':
+        return _multi_device_put(x)
+      elif n > 1:
+        return np.broadcast_to(x, (n,) + x.shape)
+      else:
+        return x
+    return layers.nested_map(f, x)
 
 
 @gin.configurable(blacklist=['output_dir'])
