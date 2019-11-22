@@ -138,15 +138,26 @@ def _jax_scan(f, xs, init_value, axis=0):
   return ys, last_value
 
 
-def nested_map(f, x):
-  """Map the function f to the nested structure x (dicts, tuples, lists)."""
-  if isinstance(x, list):
-    return [nested_map(f, y) for y in x]
-  if isinstance(x, tuple):
-    return tuple([nested_map(f, y) for y in x])
-  if isinstance(x, dict):
-    return {k: nested_map(f, v) for (k, v) in x.items()}
-  return f(x)
+def nested_map(f, obj):
+  """Maps `f` recursively inside any dicts/lists/tuples in `obj`.
+
+  Args:
+    f: A function taking a single object as input. f's input must NOT be a
+        dict, list, or tuple, or any subclass of those.
+    obj: Either an input object to f or some nested structure of collections
+        of (collections of ...) input objects to f.
+
+  Returns:
+    An object with the same nested structure as `obj`, but with each input
+    object `x` replaced by `f(x)`.
+  """
+  if isinstance(obj, list):
+    return [nested_map(f, y) for y in obj]
+  if isinstance(obj, tuple):
+    return tuple([nested_map(f, y) for y in obj])
+  if isinstance(obj, dict):
+    return {k: nested_map(f, v) for (k, v) in obj.items()}
+  return f(obj)
 
 
 def jax_abstract_eval(f):
@@ -336,37 +347,6 @@ numpy = NumpyBackend()
 
 
 # Helpers and the accelerate function.
-
-
-def _reshape_by_device_single(x, n_devices):
-  """Reshape x into a shape [n_devices, ...]."""
-  x_shape = list(x.shape)
-  batch_size = x_shape[0]
-  batch_size_per_device = batch_size // n_devices
-  # We require that n_devices divides batch_size evenly.
-  if batch_size_per_device * n_devices != batch_size:
-    raise ValueError(
-        'We require that n_devices[%d] divides batch_size[%d] evenly.' %
-        (n_devices, batch_size))
-  # New shape.
-  new_shape_prefix = [n_devices, batch_size_per_device]
-  return numpy.reshape(x, new_shape_prefix + x_shape[1:])
-
-
-def reshape_by_device(x, n_devices):
-  """Reshape possibly nested x into a shape [n_devices, ...]."""
-  return nested_map(
-      lambda y: _reshape_by_device_single(y, n_devices), x)
-
-
-def combine_devices(x_tuple):
-  """Combine multi-device tensors into a single batch."""
-  def combine_single(x):
-    if len(x.shape) < 2:
-      return x  # No extra batch dimension: use devices as batch, so return.
-    batch_size = x.shape[0] * x.shape[1]
-    return numpy.reshape(x, [batch_size] + list(x.shape[2:]))
-  return nested_map(combine_single, x_tuple)
 
 
 def accelerate(f, n_devices):

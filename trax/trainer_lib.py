@@ -40,7 +40,7 @@ from trax import backend
 from trax import history as trax_history
 from trax import inputs as trax_inputs
 from trax import jaxboard
-from trax import layers
+from trax import layers as tl
 from trax import learning_rate as lr
 from trax import optimizers as trax_opt
 from trax import utils
@@ -97,7 +97,7 @@ class Trainer(object):
     n_devices = n_devices or device_count
     # TODO(lukaszkaiser): remove this restriction when possible.
     if n_devices != device_count and backend.get_name() == 'jax':
-      raise ValueError('Jax cannot work yet with n_devices != all devices: '
+      raise ValueError('JAX cannot work yet with n_devices != all devices: '
                        '%d != %d' % (n_devices, device_count))
     self._n_devices = n_devices
 
@@ -130,10 +130,9 @@ class Trainer(object):
       model_input_shape = tuple([None] + list(inputs.input_shape))
       model_target_shape = tuple([None] + list(inputs.target_shape))
     # Change all None to 1 in input and target shape.
-    model_input_shape = layers.nested_map(lambda x: x if x else 1,
-                                          model_input_shape)
-    model_target_shape = layers.nested_map(lambda x: x if x else 1,
-                                           model_target_shape)
+    model_input_shape = backend.nested_map(lambda x: x or 1, model_input_shape)
+    model_target_shape = backend.nested_map(lambda x: x or 1,
+                                            model_target_shape)
     def new_opt_state_and_model_state(input_shape, input_dtype, target_shape,
                                       target_dtype, rng):
       """Returns optimizer and model states suitable for training a model."""
@@ -154,7 +153,7 @@ class Trainer(object):
       # We need to create a new model instance and not reuse `model_train` here,
       # because `m.initialize` puts cached parameter values in `m` and hence the
       # next call of `m.initialize` will give wrong results.
-      m = layers.Serial(model(mode='train'), loss_fn)
+      m = tl.Serial(model(mode='train'), loss_fn)
       m._set_rng_recursive(rng)  # pylint: disable=protected-access
       weights, state = m.initialize_once(input_signature)
       (slots, opt_params) = opt.tree_init(weights)
@@ -171,15 +170,15 @@ class Trainer(object):
     # jit model_predict and update so they're fast
     # TODO(lukaszkaiser): the code below creates a layer computing
     # multiple metrics from a single model output; re-factor for clarity.
-    dup_layer = layers.Dup3() if self._has_weights else layers.Dup2()
+    dup_layer = tl.Dup3() if self._has_weights else tl.Dup2()
     def lower(layer):
       """Apply layer below the current inputs, targets, and possibly weights."""
       if self._has_weights:
         # Apply layer below inputs, targets, and loss weights.
-        return layers.Parallel([], [], [], layer)
+        return tl.Parallel([], [], [], layer)
       else:
         # Apply layer below inputs and targets.
-        return layers.Parallel([], [], layer)
+        return tl.Parallel([], [], layer)
     metrics_layer = []
     self._metrics = list(sorted(self._metrics_dict.keys()))
     for i, m in enumerate(reversed(self._metrics)):
@@ -197,7 +196,7 @@ class Trainer(object):
     dummy_dtypes = [np.float32] * (3 if self._has_weights else 2)
     dummy_signature = tuple(ShapeDtype(s, d)
                             for s, d in zip(dummy_shapes, dummy_dtypes))
-    metrics_layer = layers.Serial(metrics_layer)
+    metrics_layer = tl.Serial(metrics_layer)
     metrics_layer._set_rng_recursive(init_rng)  # pylint: disable=protected-access
     metrics_weights, metrics_state = (
         metrics_layer.initialize_once(dummy_signature))
@@ -317,7 +316,7 @@ class Trainer(object):
     for _ in range(n_steps):
       batch = next(self._train_stream)
       if self.n_devices > 1:  # TODO(lukaszkaiser): use everywhere if possible.
-        batch = backend.reshape_by_device(batch, self.n_devices)
+        batch = _reshape_by_device(batch, self.n_devices)
       self.train_step(batch)
       if self._should_save_now():
         self.save_state(keep=True)
@@ -344,7 +343,7 @@ class Trainer(object):
     # TODO(pkozakowski): Optimizer parameters get polluted with model state,
     # which doesn't break anything but is weird. Filter it out.
     opt_param_updates = self._for_n_devices(
-        layers.nested_map(np.array, self.nontrainable_params))
+        backend.nested_map(np.array, self.nontrainable_params))
     opt_state = self._opt_state
     opt_state.opt_params.update(opt_param_updates)
 
@@ -439,7 +438,7 @@ class Trainer(object):
     opt_state = self._opt_state
     if self.n_devices > 1:
       first_replica = lambda x: x[0]
-      opt_state = OptState(*layers.nested_map(first_replica, opt_state))
+      opt_state = OptState(*backend.nested_map(first_replica, opt_state))
     # This line, while optional, allows JAX to transfer arrays from the device
     # to the host in parallel, which is particularly important for cloud TPU.
     if backend.get_name() == 'jax':
@@ -464,8 +463,7 @@ class Trainer(object):
     batch = next(self._train_stream)
     output_dir = self._output_dir
     if self.n_devices > 1:
-      batch = backend.reshape_by_device(
-          batch, self.n_devices)
+      batch = _reshape_by_device(batch, self.n_devices)
     weights = self._opt_state[0][0]
     forward_computation = jax.xla_computation(self._model_predict_eval)(
         batch, weights=weights, state=self._model_state[0],
@@ -505,13 +503,22 @@ class Trainer(object):
     sizes = _sizes(opt_state.weights)
     if self.n_devices > 1:
       unreplicate = lambda x: x[0]
-      single_weights = layers.nested_map(unreplicate, opt_state.weights)
+      single_weights = backend.nested_map(unreplicate, opt_state.weights)
       sizes = _sizes(single_weights)
     total_size = _nested_reduce(sum, sizes)
     self.log_step('Total number of trainable weights: %d' % total_size)
 
   def _map_to_state_dicts(self, f):
     """Map the function f to all dicts in model state."""
+    # TODO(jonni): Can we replace _nested_map with backend.nested_map?
+    def _nested_map(f, x):
+      if isinstance(x, list):
+        return [_nested_map(f, y) for y in x]
+      if isinstance(x, tuple):
+        return tuple([_nested_map(f, y) for y in x])
+      if isinstance(x, dict) and len(x) == 1:
+        return f(x)
+      return x
     return _nested_map(f, self._model_state)
 
   def _state_dicts_update(self, state_dict):
@@ -540,13 +547,13 @@ class Trainer(object):
         return np.broadcast_to(x, (n,) + x.shape)
       else:
         return x
-    return layers.nested_map(f, x)
+    return backend.nested_map(f, x)
 
 
 @gin.configurable(blacklist=['output_dir'])
 def train(output_dir,
           model=gin.REQUIRED,
-          loss_fn=layers.CrossEntropyLossScalar,
+          loss_fn=tl.CrossEntropyLossScalar,
           inputs=trax_inputs.inputs,
           optimizer=trax_opt.Adafactor,
           lr_schedule=lr.MultifactorSchedule,
@@ -643,7 +650,7 @@ def _is_jit_init(value=True):
 @gin.configurable
 def _jit_update_fn(predict_fn, loss_fn, optimizer, n_devices, jit=True):
   """Returns a (JIT-compiled) function that computes updates for one step."""
-  model_and_loss = layers.Serial(predict_fn, loss_fn)
+  model_and_loss = tl.Serial(predict_fn, loss_fn)
   # Gradients are always wrt. the first argument, so putting weights first.
   def model_and_loss_call(weights, batch, state, rng):
     res = model_and_loss(batch, weights=weights, state=state, rng=rng)
@@ -685,7 +692,7 @@ def _jit_update_fn(predict_fn, loss_fn, optimizer, n_devices, jit=True):
 @gin.configurable
 def _jit_predict_fn(model_predict, metric_fn, n_devices, jit=True):
   """Returns a JIT-compiled predict function (unless jit=False)."""
-  model = layers.Serial(model_predict, metric_fn)
+  model = tl.Serial(model_predict, metric_fn)
   model_predict = model._forward_internal  # pylint: disable=protected-access
   if not jit:
     return model_predict
@@ -696,12 +703,12 @@ def _jit_predict_fn(model_predict, metric_fn, n_devices, jit=True):
 
   def predict(x, weights, state, rng):
     """Predict function jited and parallelized as requested."""
-    res, state = backend.combine_devices(model_predict(
-        backend.reshape_by_device(x, n_devices),
+    res, state = _combine_devices(model_predict(
+        _reshape_by_device(x, n_devices),
         weights,
         state,
         np.stack(jax_random.split(rng, n_devices))))
-    return layers.nested_map(lambda y: np.mean(y, axis=0), res), state
+    return backend.nested_map(lambda y: np.mean(y, axis=0), res), state
 
   return predict
 
@@ -727,7 +734,7 @@ def _jit_compute_loss_fn(predict_fn, loss_fn, n_devices, jit=True):
 
   def compute_loss(opt_state, batch, state, rng):
     return mapped_compute_loss(
-        opt_state, backend.reshape_by_device(batch, n_devices), state, rng)
+        opt_state, _reshape_by_device(batch, n_devices), state, rng)
 
   return compute_loss
 
@@ -856,14 +863,29 @@ def _multi_device_put(x, devices=None):
   return jax.pxla.ShardedDeviceArray(broadcast_x_aval, broadcast_buffers)
 
 
-def _nested_map(f, x):
-  if isinstance(x, list):
-    return [_nested_map(f, y) for y in x]
-  if isinstance(x, tuple):
-    return tuple([_nested_map(f, y) for y in x])
-  if isinstance(x, dict) and len(x) == 1:
-    return f(x)
-  return x
+def _reshape_by_device(x, n_devices):
+  """Reshapes possibly nested x into a shape (n_devices, ...)."""
+  def f(x):
+    x_shape = list(x.shape)
+    batch_size = x_shape[0]
+    batch_size_per_device = batch_size // n_devices
+    if batch_size_per_device * n_devices != batch_size:
+      raise ValueError(
+          'We require that n_devices[%d] divides batch_size[%d] evenly.' %
+          (n_devices, batch_size))
+    new_shape_prefix = [n_devices, batch_size_per_device]
+    return backend.numpy.reshape(x, new_shape_prefix + x_shape[1:])
+  return backend.nested_map(f, x)
+
+
+def _combine_devices(x_tuple):
+  """Combine multi-device tensors into a single batch."""
+  def f(x):
+    if len(x.shape) < 2:
+      return x  # No extra batch dimension: use devices as batch, so return.
+    batch_size = x.shape[0] * x.shape[1]
+    return backend.numpy.reshape(x, [batch_size] + list(x.shape[2:]))
+  return backend.nested_map(f, x_tuple)
 
 
 def _nested_reduce(f, x):
@@ -882,15 +904,15 @@ def _sizes(x):
       return x.size
     except Exception:  # pylint: disable=broad-except
       return 0
-  return layers.nested_map(size, x)
+  return backend.nested_map(size, x)
 
 
 # Metrics to calculate and report.
 _METRICS = {
-    'accuracy': layers.AccuracyScalar,
-    'neg_log_perplexity': layers.NegLogPerplexityScalar,
-    'loss': layers.CrossEntropyLossScalar,
-    'weights_per_batch_per_core': layers.CountWeights,
+    'accuracy': tl.AccuracyScalar,
+    'neg_log_perplexity': tl.NegLogPerplexityScalar,
+    'loss': tl.CrossEntropyLossScalar,
+    'weights_per_batch_per_core': tl.CountWeights,
 }
 
 
