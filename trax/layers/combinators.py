@@ -90,7 +90,7 @@ class Serial(base.Layer):
     stack = input_signature
     for sublayer in self.sublayers:
       inputs = _inputs_from_stack(sublayer, stack)
-      weights_or_empty, state = sublayer.initialize_once(inputs)
+      weights_or_empty, state = sublayer.init(inputs)
       outputs, _ = sublayer._forward_abstract(inputs)
       stack = _outputs_onto_stack(sublayer, outputs, stack)
 
@@ -163,7 +163,6 @@ class Serial(base.Layer):
     for layer in self.sublayers:
       inputs = _inputs_from_stack(layer, stack)
       layer._set_input_signature_recursive(inputs)
-      _, _ = layer._new_weights_and_state_abstract(inputs)
       outputs, _ = layer._forward_abstract(inputs)
       stack = _outputs_onto_stack(layer, outputs, stack)
   # pylint: enable=protected-access
@@ -238,7 +237,7 @@ class Parallel(base.Layer):
 
   def new_weights_and_state(self, input_signature):
     sublayer_signatures = self._allot_to_sublayers(input_signature)
-    inits = [layer.initialize_once(signature)
+    inits = [layer.init(signature)
              for layer, signature
              in zip(self.sublayers, sublayer_signatures)]
     if inits:

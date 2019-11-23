@@ -218,15 +218,17 @@ class CombinatorLayerTest(absltest.TestCase):
 
   def test_input_signatures_serial_batch_norm(self):
     # Include a layer that actively uses state.
+    input_signature = ShapeDtype((3, 28, 28))
     batch_norm = normalization.BatchNorm()
     relu = core.Relu()
     batch_norm_and_relu = cb.Serial(batch_norm, relu)
+    batch_norm_and_relu.init(input_signature)
 
     # Check for correct shapes entering and exiting the batch_norm layer.
     # And the code should run without errors.
-    batch_norm_and_relu._set_input_signature_recursive(ShapeDtype((3, 28, 28)))
-    self.assertEqual(batch_norm.input_signature, ShapeDtype((3, 28, 28)))
-    self.assertEqual(relu.input_signature, ShapeDtype((3, 28, 28)))
+    batch_norm_and_relu._set_input_signature_recursive(input_signature)
+    self.assertEqual(batch_norm.input_signature, input_signature)
+    self.assertEqual(relu.input_signature, input_signature)
 
   def test_input_signatures_parallel(self):
     layer = cb.Parallel(core.Div(divisor=0.5), core.Div(divisor=3.0))

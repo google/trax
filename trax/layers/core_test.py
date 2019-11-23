@@ -84,8 +84,8 @@ class CoreLayerTest(absltest.TestCase):
     model2 = combinators.Serial(layer, layer)
 
     input_signature = ShapeDtype((1, 32))
-    weights1, _ = model1.initialize_once(input_signature)
-    weights2, _ = model2.initialize_once(input_signature)
+    weights1, _ = model1.init(input_signature)
+    weights2, _ = model2.init(input_signature)
     # The first weights have 2 kernels of size (32, 32).
     self.assertEqual((32, 32), weights1[0][0].shape)
     self.assertEqual((32, 32), weights1[1][0].shape)

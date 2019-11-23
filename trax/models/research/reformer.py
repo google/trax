@@ -69,7 +69,7 @@ class Map(tl.Layer):
 
   def new_weights_and_state(self, input_signature):
     if self._n_sections == 1:
-      return self._layer.initialize_once(input_signature)
+      return self._layer.init(input_signature)
     first_shape = input_signature[0].shape
     if self._check_shapes:
       for shape_dtype in input_signature:
@@ -77,7 +77,7 @@ class Map(tl.Layer):
           raise ValueError('Map layer can only be applied to list of elements '
                            'with the same shapes. This shape %s vs first shape '
                            '%s.' % (str(shape_dtype.shape), str(first_shape)))
-    return self._layer.initialize_once(input_signature[0])
+    return self._layer.init(input_signature[0])
 
   @tl.Layer.weights.setter
   def weights(self, weights):

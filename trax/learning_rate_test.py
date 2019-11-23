@@ -64,7 +64,7 @@ class PolicyScheduleTest(test.TestCase):
       shape = (1, 1)
       dtype = np.int32
     input_signature = ShapeDtype(shape, dtype)
-    (params, state) = net.initialize_once(input_signature)
+    (params, state) = net.init(input_signature)
     policy_dir = self.get_temp_dir()
     # Optimizer slots and parameters should not be used for anything.
     slots = None

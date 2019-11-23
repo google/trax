@@ -250,7 +250,7 @@ class SimpleTest(test.TestCase):
     predict_output = (np.array([[[0.0]]] * batch_size))
     mock_model_fn = mock.MagicMock()
     mock_model_fn.return_value.side_effect = itertools.repeat(predict_output)
-    mock_model_fn.return_value.initialize_once.return_value = (
+    mock_model_fn.return_value.init.return_value = (
         base.EMPTY_WEIGHTS, base.EMPTY_STATE)
 
     return simulated_env_problem.SerializedSequenceSimulatedEnvProblem(

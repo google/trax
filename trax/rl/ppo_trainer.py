@@ -220,7 +220,7 @@ class PPO(base_trainer.BaseTrainer):
     self._rng, _ = jax_random.split(self._rng)
     input_signature = ShapeDtype(batch_obs_shape, obs_dtype)
     policy_and_value_net_params, self._model_state = (
-        policy_and_value_net.initialize_once(input_signature))
+        policy_and_value_net.init(input_signature))
     if self._init_policy_from_world_model_output_dir is not None:
       policy_and_value_net_params = ppo.init_policy_from_world_model_checkpoint(
           policy_and_value_net_params,

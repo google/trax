@@ -98,7 +98,7 @@ class Layer(object):
     self._n_out = n_out
     self._sublayers = ()  # Default is no sublayers.
     self._input_signature = None
-    self._rng = backend.random.get_prng(0)
+    self._rng = None
     self._weights = EMPTY_WEIGHTS  # cached weights
     self._state = EMPTY_STATE
     # record root call site for custom error messages:
@@ -270,7 +270,7 @@ class Layer(object):
   # End of public subclassing interface.
   # Begin public callable interface.
 
-  def initialize_once(self, input_signature):
+  def init(self, input_signature, rng=None):
     """Initializes this layer and its sublayers recursively.
 
     This method is designed to initialize each layer instance once, even if the
@@ -280,12 +280,17 @@ class Layer(object):
     Args:
       input_signature: A `ShapeDtype` instance (if this layer takes one input)
           or a list/tuple of `ShapeDtype` instances.
+      rng: A single-use random number generator (JAX PRNG key). If none is
+          provided, a default rng based on the integer seed 0 will be used.
 
     Returns:
       A (weights, state) tuple, in which weights contains newly created weights
           on the first call and `EMPTY_WEIGHTS` on all subsequent calls.
     """
     try:
+      if self._rng is None:
+        rng = backend.random.get_prng(0) if rng is None else rng
+        self._set_rng_recursive(rng)
       # Initialize weights once; store them for use when this layer is called.
       # Needs to call new_weights_and_state regardless of _init_finished because
       # state also needs to be initialized. After jitting, graph pruning should
@@ -302,7 +307,7 @@ class Layer(object):
         return (EMPTY_WEIGHTS, state)
     except Exception:
       name, trace = self.__class__.__name__, _short_traceback(skip=3)
-      raise LayerError(name, 'initialize_once', self._caller,
+      raise LayerError(name, 'init', self._caller,
                        input_signature, trace)
 
   def new_rng(self):
@@ -451,13 +456,6 @@ class Layer(object):
       name, trace = self.__class__.__name__, _short_traceback(skip=3)
       raise LayerError(name, '_forward_abstract', self._caller, input_signature,
                        trace)
-
-  def _new_weights_and_state_abstract(self, input_signature):
-    """Returns shapes/dtypes of the weights and state this layer would use."""
-    def new_w_and_s():
-      return self.new_weights_and_state(input_signature)
-    self._weights, self._state = backend.abstract_eval(new_w_and_s)()
-    return (self._weights, self._state)
 
   # pylint: disable=protected-access
   def _set_rng_recursive(self, rng):
@@ -628,7 +626,7 @@ def check_shape_agreement(layer_obj, input_signature):
     A tuple representing either a single shape (if the layer has one output) or
     a tuple of shape tuples (if the layer has more than one output).
   """
-  weights, state = layer_obj.initialize_once(input_signature)
+  weights, state = layer_obj.init(input_signature)
   output_signature, _ = layer_obj._forward_abstract(input_signature)  # pylint: disable=protected-access
   if isinstance(output_signature, tuple):
     shape_output = tuple(x.shape for x in output_signature)

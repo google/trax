@@ -72,7 +72,7 @@ class SimulatedEnvProblem(env_problem.EnvProblem):
       output = model_predict(*args, **kwargs)
       return (output, model_predict.state)
     self._model_predict = backend.jit(predict_with_state)
-    self._model_initialize = model_predict.initialize_once
+    self._model_initialize = model_predict.init
 
     self._observation_space = observation_space
     self._action_space = action_space

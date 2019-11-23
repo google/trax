@@ -57,7 +57,7 @@ class MetricsLayerTest(absltest.TestCase):
     weights1 = onp.array([1, 1, 1], dtype=onp.float32)
     layer = metrics.WeightedMean()
     full_signature = (signature(inputs), signature(weights1))
-    layer.initialize_once(full_signature)
+    layer.init(full_signature)
     mean1 = layer((inputs, weights1))
     onp.testing.assert_allclose(mean1, 2.0)
     weights2 = onp.array([0, 0, 1], dtype=onp.float32)

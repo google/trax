@@ -95,7 +95,7 @@ class PpoTest(test.TestCase):
         two_towers=True,
     )
     input_signature = ShapeDtype(batch_observation_shape)
-    _, _ = pnv_model.initialize_once(input_signature)
+    _, _ = pnv_model.init(input_signature)
 
     batch = 2
     time_steps = 10
@@ -455,8 +455,8 @@ class PpoTest(test.TestCase):
     )
 
     input_signature = ShapeDtype(batch_observation_shape)
-    old_params, _ = net.initialize_once(input_signature)
-    new_params, state = net.initialize_once(input_signature)
+    old_params, _ = net.init(input_signature)
+    new_params, state = net.init(input_signature)
 
     # Generate a batch of observations.
 
@@ -613,7 +613,7 @@ class PpoTest(test.TestCase):
     )
     input_signature = ShapeDtype((1, 1), np.int32)
     policy._set_rng_recursive(rng)
-    (policy_params, policy_state) = policy.initialize_once(input_signature)
+    (policy_params, policy_state) = policy.init(input_signature)
 
     # Initialize policy parameters from world model parameters.
     new_policy_params = ppo.init_policy_from_world_model_checkpoint(

@@ -155,7 +155,7 @@ class Trainer(object):
       # next call of `m.initialize` will give wrong results.
       m = tl.Serial(model(mode='train'), loss_fn)
       m._set_rng_recursive(rng)  # pylint: disable=protected-access
-      weights, state = m.initialize_once(input_signature)
+      weights, state = m.init(input_signature)
       (slots, opt_params) = opt.tree_init(weights)
       return (OptState(weights, slots, opt_params), state)
     if _is_jit_init():
@@ -199,7 +199,7 @@ class Trainer(object):
     metrics_layer = tl.Serial(metrics_layer)
     metrics_layer._set_rng_recursive(init_rng)  # pylint: disable=protected-access
     metrics_weights, metrics_state = (
-        metrics_layer.initialize_once(dummy_signature))
+        metrics_layer.init(dummy_signature))
     self._metrics_weights = self._for_n_devices(metrics_weights)
     self._metrics_state = self._for_n_devices(metrics_state)
     self._jit_eval = _jit_predict_fn(

@@ -36,7 +36,7 @@ class AtariCnnTest(test.TestCase):
         hidden_sizes=hidden_size, output_size=output_size)
     B, T, OBS = 2, 2, (28, 28, 3)  # pylint: disable=invalid-name
     input_signature = ShapeDtype((1, 1) + OBS)
-    _, _ = model.initialize_once(input_signature)
+    _, _ = model.init(input_signature)
     x = onp.arange(B * (T + 1) * functools.reduce(op.mul, OBS)).reshape(
         B, T + 1, *OBS)
     y = model(x)
@@ -52,7 +52,7 @@ class FrameStackMLPTest(test.TestCase):
         hidden_sizes=hidden_size, output_size=output_size)
     B, T, OBS = 2, 2, 3  # pylint: disable=invalid-name
     input_signature = ShapeDtype((1, 1, OBS))
-    _, _ = model.initialize_once(input_signature)
+    _, _ = model.init(input_signature)
     x = onp.arange(B * (T + 1) * OBS).reshape(
         B, T + 1, OBS)
     y = model(x)

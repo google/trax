@@ -36,13 +36,15 @@ class MLPTest(absltest.TestCase):
     self.assertEqual((3, 10), final_shape)
 
   def test_mlp_input_signatures(self):
+    input_signature = ShapeDtype((3, 28, 28, 1))
     mlp_block = mlp.MLP(d_hidden=32, n_output_classes=10)
     relu = tl.Relu()
     mlp_and_relu = tl.Serial(mlp_block, relu)
+    mlp_and_relu.init(input_signature)
 
     # Check for correct shapes entering and exiting the mlp_block.
-    mlp_and_relu._set_input_signature_recursive(ShapeDtype((3, 28, 28, 1)))
-    self.assertEqual(mlp_block.input_signature, ShapeDtype((3, 28, 28, 1)))
+    mlp_and_relu._set_input_signature_recursive(input_signature)
+    self.assertEqual(mlp_block.input_signature, input_signature)
     self.assertEqual(relu.input_signature, ShapeDtype((3, 10)))
 
 

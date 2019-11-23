@@ -45,7 +45,7 @@ class NormalizationLayerTest(absltest.TestCase):
     m1 = 11.5  # Mean of this random input.
     v1 = 47.9167  # Variance of this random input.
     layer = normalization.BatchNorm(axis=(0, 1, 2))
-    _, _ = layer.initialize_once(input_signature)
+    _, _ = layer.init(input_signature)
     state = layer.state
     onp.testing.assert_allclose(state[0], 0)
     onp.testing.assert_allclose(state[1], 1)
