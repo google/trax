@@ -678,7 +678,14 @@ def ReformerShortenLM(vocab_size,
       tl.ShiftRight(),
       positional_embedder,
       tl.Dup(),              # Stack has (x, x), the first will be shortened
-      # Before shortening, we need to pad by shorten factor.
+      # Before shortening, we need to pad by shorten factor so as not to leak
+      # information into the future. To understand why, imagine shorten factor
+      # of 2 and sequence of length 4, so ABCD. If we shift just by 1, then we
+      # would have 0ABC, which gets grouped to [0A][BC] on input, which is
+      # predicting ABCD as targets. The problem is that [0A] has access to A
+      # and [BC] has access to C -- it will learn to copy it, peek into
+      # the future. Shifting twice to [00][AB] solves the problem as the first
+      # "big" symbol becomes all-0 and the rest is shifted enough.
       tl.ShiftRight(n_shifts=shorten_factor - 1),
       tl.Fn(lambda x: np.reshape(  # Shorten -- move to depth.
           x, (x.shape[0], x.shape[1] // shorten_factor, -1)), n_out=1),
