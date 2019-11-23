@@ -20,8 +20,14 @@ from setuptools import setup
 
 setup(
     name='trax',
-    version='1.1.1',
+    version='1.1.2',
     description='Trax',
+    long_description=(
+        'Trax helps you understand deep learning. We start with basic maths and'
+        ' go through layers, models, supervised and reinforcement learning. We '
+        'get to advanced deep learning results, including recent papers and '
+        'state-of-the-art models.'
+    ),
     author='Google Inc.',
     author_email='no-reply@google.com',
     url='http://github.com/google/trax',
