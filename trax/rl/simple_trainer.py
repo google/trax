@@ -28,7 +28,7 @@ import time
 from absl import logging
 import gin
 from matplotlib import pyplot as plt
-from tensorflow.io import gfile
+import tensorflow as tf
 from trax import inputs as trax_inputs
 from trax import jaxboard
 from trax import trainer_lib
@@ -83,9 +83,9 @@ class SimPLe(base_trainer.BaseTrainer):
     self._n_model_train_steps_per_epoch = n_model_train_steps_per_epoch
     self._data_eval_frac = data_eval_frac
 
-    gfile.makedirs(self._model_dir)
+    tf.io.gfile.makedirs(self._model_dir)
     if initial_model is not None:
-      gfile.copy(
+      tf.io.gfile.copy(
           initial_model,
           os.path.join(self._model_dir, 'model.pkl'),
           overwrite=True,

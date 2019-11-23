@@ -27,7 +27,7 @@ from absl import logging
 import numpy as np
 from tensor2tensor.envs import env_problem_utils
 from tensor2tensor.envs import trajectory
-from tensorflow.io import gfile
+import tensorflow as tf
 from trax import utils
 
 
@@ -37,11 +37,11 @@ def load_trajectories(trajectory_dir, eval_frac):
   train_trajectories = []
   eval_trajectories = []
   # Search the entire directory subtree for trajectories.
-  for (subdir, _, filenames) in gfile.walk(trajectory_dir):
+  for (subdir, _, filenames) in tf.io.gfile.walk(trajectory_dir):
     for filename in filenames:
       shard_path = os.path.join(subdir, filename)
       try:
-        with gfile.GFile(shard_path, 'rb') as f:
+        with tf.io.gfile.GFile(shard_path, 'rb') as f:
           trajectories = pkl_module.load(f)
         pivot = int(len(trajectories) * (1 - eval_frac))
         train_trajectories.extend(trajectories[:pivot])

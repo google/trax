@@ -66,10 +66,9 @@ from jax import lax
 from jax import numpy as np
 from jax import random as jax_random
 import numpy as onp
-
 from tensor2tensor.envs import env_problem
 from tensor2tensor.envs import env_problem_utils
-from tensorflow.io import gfile
+import tensorflow as tf
 from trax import history as trax_history
 from trax import layers as tl
 from trax import utils
@@ -805,7 +804,8 @@ def masked_entropy(log_probs, mask):
 def get_policy_model_files(output_dir):
   return list(
       reversed(
-          sorted(gfile.glob(os.path.join(output_dir, 'model-??????.pkl')))))
+          sorted(
+              tf.io.gfile.glob(os.path.join(output_dir, 'model-??????.pkl')))))
 
 
 def get_epoch_from_policy_model_file(policy_model_file):
@@ -843,7 +843,7 @@ def maybe_restore_opt_state(output_dir,
   for model_file in get_policy_model_files(output_dir):
     logging.info('Trying to restore model from %s', model_file)
     try:
-      with gfile.GFile(model_file, 'rb') as f:
+      with tf.io.gfile.GFile(model_file, 'rb') as f:
         (policy_and_value_opt_state, policy_and_value_state, total_opt_step,
          history) = pkl_module.load(f)
       epoch = get_epoch_from_policy_model_file(model_file)
@@ -874,14 +874,14 @@ def save_opt_state(output_dir,
   pkl_module = utils.get_pickle_module()
   old_model_files = get_policy_model_files(output_dir)
   params_file = os.path.join(output_dir, 'model-%06d.pkl' % epoch)
-  with gfile.GFile(params_file, 'wb') as f:
+  with tf.io.gfile.GFile(params_file, 'wb') as f:
     pkl_module.dump((policy_and_value_opt_state, policy_and_value_state,
                      total_opt_step, history), f)
   # Keep the last k model files lying around (note k > 1 because the latest
   # model file might be in the process of getting read async).
   for path in old_model_files[LAST_N_POLICY_MODELS_TO_KEEP:]:
     if path != params_file:
-      gfile.remove(path)
+      tf.io.gfile.remove(path)
 
 
 def init_policy_from_world_model_checkpoint(policy_params, model_output_dir):
@@ -889,7 +889,7 @@ def init_policy_from_world_model_checkpoint(policy_params, model_output_dir):
   pkl_module = utils.get_pickle_module()
   params_file = os.path.join(model_output_dir, 'model.pkl')
   # Don't use trax.load_trainer_state to avoid a circular import.
-  with gfile.GFile(params_file, 'rb') as f:
+  with tf.io.gfile.GFile(params_file, 'rb') as f:
     model_params = pkl_module.load(f)[0][0]
   # TODO(pkozakowski): The following, brittle line of code is hardcoded for
   # transplanting parameters from TransformerLM to TransformerDecoder-based

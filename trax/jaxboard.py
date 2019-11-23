@@ -38,7 +38,6 @@ import tensorflow as tf
 from tensorflow import HistogramProto
 from tensorflow import Summary
 from tensorflow import SummaryMetadata
-from tensorflow.io import gfile
 
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.core.util import event_pb2
@@ -83,8 +82,8 @@ class SummaryWriter(object):
         multihost training.
     """
     # If needed, create log_dir directory as well as missing parent directories.
-    if not gfile.isdir(log_dir):
-      gfile.makedirs(log_dir)
+    if not tf.io.gfile.isdir(log_dir):
+      tf.io.gfile.makedirs(log_dir)
 
     self._event_writer = EventFileWriter(log_dir, 10, 120, None)
     self._step = 0

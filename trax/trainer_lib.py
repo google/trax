@@ -35,7 +35,6 @@ import jax
 import numpy
 import six
 import tensorflow.compat.v2 as tf
-from tensorflow.io import gfile
 from trax import backend
 from trax import history as trax_history
 from trax import inputs as trax_inputs
@@ -271,7 +270,7 @@ class Trainer(object):
       output_dir: Output directory.
     """
     self._output_dir = output_dir
-    gfile.makedirs(output_dir)
+    tf.io.gfile.makedirs(output_dir)
     # Create summary writers and history.
     if self._should_write_summaries:
       self._train_sw = jaxboard.SummaryWriter(os.path.join(output_dir, 'train'),
@@ -426,7 +425,7 @@ class Trainer(object):
   def save_gin(self):
     config_path = os.path.join(self._output_dir, 'config.gin')
     config_str = gin.operative_config_str()
-    with gfile.GFile(config_path, 'w') as f:
+    with tf.io.gfile.GFile(config_path, 'w') as f:
       f.write(config_str)
     sw = self._train_sw
     if sw:
@@ -448,11 +447,11 @@ class Trainer(object):
 
     pkl_module = utils.get_pickle_module()
     weights_file = os.path.join(output_dir, 'model.pkl')
-    with gfile.GFile(weights_file, 'wb') as f:
+    with tf.io.gfile.GFile(weights_file, 'wb') as f:
       pkl_module.dump((tuple(opt_state), step, history, model_state), f)
     if keep:
       weights_file = os.path.join(output_dir, 'model_{}.pkl'.format(step))
-      with gfile.GFile(weights_file, 'wb') as f:
+      with tf.io.gfile.GFile(weights_file, 'wb') as f:
         pkl_module.dump((tuple(opt_state), step, history, model_state), f)
     log('Model saved to %s' % weights_file, stdout=False)
 
@@ -468,17 +467,18 @@ class Trainer(object):
     forward_computation = jax.xla_computation(self._model_predict_eval)(
         batch, weights=weights, state=self._model_state[0],
         rng=self._rngs[0])
-    with gfile.GFile(os.path.join(output_dir, 'forward.txt'), 'w') as f:
+    with tf.io.gfile.GFile(os.path.join(output_dir, 'forward.txt'), 'w') as f:
       f.write(forward_computation.GetHloText())
-    with gfile.GFile(os.path.join(output_dir, 'forward.dot'), 'w') as f:
+    with tf.io.gfile.GFile(os.path.join(output_dir, 'forward.dot'), 'w') as f:
       f.write(forward_computation.GetHloDotGraph())
     backward_computation = jax.xla_computation(self._jit_update_fn)(
         self._step, self._opt_state, batch, self._model_state,
         self._rngs)
-    with gfile.GFile(os.path.join(output_dir, 'backward.txt'), 'w') as f:
+    with tf.io.gfile.GFile(os.path.join(output_dir, 'backward.txt'), 'w') as f:
       f.write(backward_computation.GetHloText())
     if save_backward_graph:  # Backward graphs can be large so we guard it.
-      with gfile.GFile(os.path.join(output_dir, 'backward.dot'), 'w') as f:
+      with tf.io.gfile.GFile(
+          os.path.join(output_dir, 'backward.dot'), 'w') as f:
         f.write(backward_computation.GetHloDotGraph())
 
   def log_step(self, step_message):
@@ -782,12 +782,12 @@ def epochs(total_steps, steps_to_skip, epoch_steps):
 def load_trainer_state(output_dir):
   """Returns a TrainerState instance loaded from the given `output_dir`."""
   weights_file = os.path.join(output_dir, 'model.pkl')
-  if not gfile.exists(weights_file):
+  if not tf.io.gfile.exists(weights_file):
     return TrainerState(step=None, opt_state=None,
                         history=trax_history.History(), model_state=None)
 
   pkl_module = utils.get_pickle_module()
-  with gfile.GFile(weights_file, 'rb') as f:
+  with tf.io.gfile.GFile(weights_file, 'rb') as f:
     (opt_state, step, history, model_state) = pkl_module.load(f)
   log('Model loaded from %s at step %d' % (weights_file, step))
   logging.debug('From loaded model : history = %s', history)

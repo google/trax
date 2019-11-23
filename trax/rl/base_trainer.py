@@ -22,7 +22,7 @@ from __future__ import print_function
 import os
 
 from absl import logging
-from tensorflow.io import gfile
+import tensorflow as tf
 from trax import utils
 
 
@@ -61,7 +61,7 @@ class BaseTrainer(object):
 
   def reset(self, output_dir):
     self._output_dir = output_dir
-    gfile.makedirs(self._output_dir)
+    tf.io.gfile.makedirs(self._output_dir)
 
   @property
   def async_mode(self):
@@ -101,7 +101,7 @@ class BaseTrainer(object):
     pkl_module = utils.get_pickle_module()
     if self.trajectory_dump_dir is None:
       return
-    gfile.makedirs(self.trajectory_dump_dir)
+    tf.io.gfile.makedirs(self.trajectory_dump_dir)
 
     trajectories = self.train_env.trajectories
     if force:
@@ -124,13 +124,13 @@ class BaseTrainer(object):
     if ready or force:
       shard_path = os.path.join(
           self.trajectory_dump_dir, '{}.pkl'.format(self.epoch))
-      if gfile.exists(shard_path):
+      if tf.io.gfile.exists(shard_path):
         # Since we do an extra dump at the end of the training loop, we
         # sometimes dump 2 times in the same epoch. When this happens, merge the
         # two sets of trajectories.
-        with gfile.GFile(shard_path, 'rb') as f:
+        with tf.io.gfile.GFile(shard_path, 'rb') as f:
           self._trajectory_buffer = pkl_module.load(f) + self._trajectory_buffer
-      with gfile.GFile(shard_path, 'wb') as f:
+      with tf.io.gfile.GFile(shard_path, 'wb') as f:
         pkl_module.dump(self._trajectory_buffer, f)
       self._trajectory_buffer = []
 
@@ -152,5 +152,6 @@ class BaseTrainer(object):
     """If in async mode, workers need to know we are done."""
     if not self.async_mode:
       return
-    with gfile.GFile(os.path.join(self._output_dir, '__done__'), 'wb') as f:
+    with tf.io.gfile.GFile(
+        os.path.join(self._output_dir, '__done__'), 'wb') as f:
       f.write('')

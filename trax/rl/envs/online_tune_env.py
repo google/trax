@@ -23,7 +23,7 @@ import functools
 import os
 
 import gym
-from tensorflow.io import gfile
+import tensorflow as tf
 from trax import inputs as trax_inputs
 from trax import layers
 from trax import models as trax_models
@@ -112,7 +112,7 @@ class OnlineTuneEnv(gym.Env):
     self._observation_range = observation_range
 
     self._output_dir = output_dir
-    gfile.makedirs(self._output_dir)
+    tf.io.gfile.makedirs(self._output_dir)
     # Actions are indices in self._action_multipliers.
     self.action_space = gym.spaces.MultiDiscrete(
         [len(self._action_multipliers)] * len(self._control_configs)
@@ -141,7 +141,7 @@ class OnlineTuneEnv(gym.Env):
     Returns:
       A path of the new directory.
     """
-    trajectory_dirs = gfile.listdir(self._output_dir)
+    trajectory_dirs = tf.io.gfile.listdir(self._output_dir)
 
     def int_or_none(s):
       try:
