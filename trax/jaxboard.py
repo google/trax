@@ -35,9 +35,6 @@ with warnings.catch_warnings():
 import matplotlib.pyplot as plt
 import numpy as onp
 import tensorflow as tf
-from tensorflow import HistogramProto
-from tensorflow import Summary
-from tensorflow import SummaryMetadata
 
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.core.util import event_pb2
@@ -127,7 +124,8 @@ class SummaryWriter(object):
       step = self._step
     else:
       self._step = step
-    summary = Summary(value=[Summary.Value(tag=tag, simple_value=value)])
+    summary = tf.compat.v1.Summary(
+        value=[tf.compat.v1.Summary.Value(tag=tag, simple_value=value)])
     self.add_summary(summary, step)
 
   def image(self, tag, image, step=None):
@@ -149,12 +147,13 @@ class SummaryWriter(object):
       image = onp.repeat(image, 3, axis=-1)
     image_strio = io.BytesIO()
     plt.imsave(image_strio, image, format='png')
-    image_summary = Summary.Image(
+    image_summary = tf.compat.v1.Summary.Image(
         encoded_image_string=image_strio.getvalue(),
         colorspace=3,
         height=image.shape[0],
         width=image.shape[1])
-    summary = Summary(value=[Summary.Value(tag=tag, image=image_summary)])
+    summary = tf.compat.v1.Summary(
+        value=[tf.compat.v1.Summary.Value(tag=tag, image=image_summary)])
     self.add_summary(summary, step)
 
   def images(self, tag, images, step=None, rows=None, cols=None):
@@ -205,12 +204,13 @@ class SummaryWriter(object):
     img_w, img_h = fig.canvas.get_width_height()
     image_buf = io.BytesIO()
     mpl_plt.savefig(image_buf, format='png')
-    image_summary = Summary.Image(
+    image_summary = tf.compat.v1.Summary.Image(
         encoded_image_string=image_buf.getvalue(),
         colorspace=4,  # RGBA
         height=img_h,
         width=img_w)
-    summary = Summary(value=[Summary.Value(tag=tag, image=image_summary)])
+    summary = tf.compat.v1.Summary(
+        value=[tf.compat.v1.Summary.Value(tag=tag, image=image_summary)])
     self.add_summary(summary, step)
     if close_plot:
       mpl_plt.close()
@@ -245,13 +245,14 @@ class SummaryWriter(object):
     wav_buf.close()
     encoded_audio_bytes = wio.getvalue()
     wio.close()
-    audio = Summary.Audio(
+    audio = tf.compat.v1.Summary.Audio(
         sample_rate=sample_rate,
         num_channels=1,
         length_frames=len(sample_list),
         encoded_audio_string=encoded_audio_bytes,
         content_type='audio/wav')
-    summary = Summary(value=[Summary.Value(tag=tag, audio=audio)])
+    summary = tf.compat.v1.Summary(
+        value=[tf.compat.v1.Summary.Value(tag=tag, audio=audio)])
     self.add_summary(summary, step)
 
   def histogram(self, tag, values, bins, step=None):
@@ -281,7 +282,7 @@ class SummaryWriter(object):
                1:end] if start > 0 else onp.concatenate([[0], counts[:end]]))
     limits = limits[start:end + 1]
     sum_sq = values.dot(values)
-    histo = HistogramProto(
+    histo = tf.compat.v1.HistogramProto(
         min=values.min(),
         max=values.max(),
         num=len(values),
@@ -289,7 +290,8 @@ class SummaryWriter(object):
         sum_squares=sum_sq,
         bucket_limit=limits.tolist(),
         bucket=counts.tolist())
-    summary = Summary(value=[Summary.Value(tag=tag, histo=histo)])
+    summary = tf.compat.v1.Summary(
+        value=[tf.compat.v1.Summary.Value(tag=tag, histo=histo)])
     self.add_summary(summary, step)
 
   def text(self, tag, textdata, step=None):
@@ -305,8 +307,8 @@ class SummaryWriter(object):
       step = self._step
     else:
       self._step = step
-    smd = SummaryMetadata(
-        plugin_data=SummaryMetadata.PluginData(plugin_name='text'))
+    smd = tf.compat.v1.SummaryMetadata(
+        plugin_data=tf.compat.v1.SummaryMetadata.PluginData(plugin_name='text'))
     if isinstance(textdata, (str, bytes)):
       tensor = tf.make_tensor_proto(
           values=[textdata.encode(encoding='utf_8')], shape=(1,))
@@ -323,8 +325,9 @@ class SummaryWriter(object):
                 td.encode(encoding='utf_8') for td in onp.reshape(textdata, -1)
             ],
             shape=(datashape[0], datashape[1]))
-    summary = Summary(
-        value=[Summary.Value(tag=tag, metadata=smd, tensor=tensor)])
+    summary = tf.compat.v1.Summary(
+        value=[tf.compat.v1.Summary.Value(
+            tag=tag, metadata=smd, tensor=tensor)])
     self.add_summary(summary, step)
 
 

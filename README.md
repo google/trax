@@ -26,8 +26,8 @@ or send along a pull request (see [our contribution doc](CONTRIBUTING.md)).
 
 ### Examples
 
-See our example constructing language models from scratch in a GPU-backed colab notebook at
-[Trax Demo](https://colab.research.google.com/github/google/trax/blob/master/trax/notebooks/trax_demo_iclr2019.ipynb)
+See our example layers in a TPU/GPU-backed colab notebook at
+[Trax Demo](https://colab.research.google.com/github/google/trax/blob/master/trax/layers/intro.ipynb)
 
 #### MLP on MNIST
 
