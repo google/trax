@@ -248,7 +248,7 @@ class Layer(object):
     """
     return False
 
-  def backward(self, inputs, output, grad, weights, state, **kwargs):
+  def backward(self, inputs, output, grad, weights, state, new_state, **kwargs):
     """Custom backward pass to propagate gradients in a custom way.
 
     Args:
@@ -258,6 +258,7 @@ class Layer(object):
         subsequent layers. The structure and shape must match output.
       weights: layer weights
       state: start state.
+      new_state: end state computed by running the layer
       **kwargs: kwargs for the layer
 
     Returns:
@@ -382,10 +383,6 @@ class Layer(object):
   def state(self, state):
     self._state = state
 
-  # XXX(kitaev):
-  _STASH_IN = None
-  _STASH_OUT = None
-
   def _forward_internal(self, x, weights, state, rng):
     """Applies this layer as part of a forward pass; an internal system method.
 
@@ -414,7 +411,7 @@ class Layer(object):
         # In this case, we're called for the first time: cache weights.
         self._weights = weights
 
-      if not self.has_backward or Layer._STASH_IN is not None:
+      if not self.has_backward:
         outputs, s = self.forward_with_state(
             x, weights=weights, state=state, rng=rng)
       else:
@@ -496,50 +493,33 @@ class Layer(object):
     assert backend.get_name() == 'jax', (
         'Custom gradients are only supported in JAX for now.')
 
-    # TODO(wangpeng): JAX doesn't support custom grads for functions with
-    #   auxiliary output yet (https://github.com/google/jax/issues/844). Will
-    #   remove the constraints on state below when this feature is added to
-    #   JAX.
-
-    assert not jax.tree_util.tree_leaves(state), (
-        'Custom gradients require trivial start state. Got %s' % str(state))
-
-    def check_end_state(output_state):
-      output, state = output_state
-      assert not jax.tree_util.tree_leaves(state), (
-          'Custom gradients require trivial end state. Got %s' % str(state))
-      return output
-
     # See this link for how custom transformations are defined in JAX:
     # https://jax.readthedocs.io/en/latest/jax.html#jax.custom_transforms
     # Note that we capture the kwargs and don't calculate gradients wrt. them.
     @jax.custom_transforms
     def _do_forward(y, weights):
-      return check_end_state(self.forward_with_state(
-          y, weights=weights, state=state, **kwargs))
+      res = self.forward_with_state(
+          y, weights=weights, state=state, **kwargs)
+      return res
 
     # This is the custom gradient (vector-jacobian product in JAX) function.
     # For the exact specification of this custom transformation see this link:
     # https://jax.readthedocs.io/en/latest/jax.html#jax.defjvp_all
     def do_forward_vjp(y, weights):
       """Custom gradient (vjp) function."""
-      stash = None
-      if Layer._STASH_IN is None:
-        Layer._STASH_IN = stash = {}
-      output = check_end_state(self.forward_with_state(
-          y, weights=weights, state=state, **kwargs))
-      if stash is not None:
-        Layer._STASH_IN = None
+      output, new_state = self.forward_with_state(
+          y, weights=weights, state=state, **kwargs)
       def vjpfun(grad):
-        assert Layer._STASH_OUT is None
-        Layer._STASH_OUT = stash
-        res = self.backward(y, output, grad, weights, state, **kwargs)
-        Layer._STASH_OUT = None
+        grad = grad[0]  # Ignore dummy gradient wrt state.
+        res = self.backward(
+            y, output, grad, weights, state, new_state, **kwargs)
         return res
-      return output, vjpfun
+      return (output, state), vjpfun
 
     jax.defvjp_all(_do_forward, do_forward_vjp)
-    return _do_forward(x, weights), state
+    output, state = _do_forward(x, weights)
+    state = jax.lax.stop_gradient(state)
+    return output, state
 
 
 def layer(n_in=1, n_out=1, new_weights_fn=None):

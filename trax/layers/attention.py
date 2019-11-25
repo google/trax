@@ -441,7 +441,7 @@ class BaseCausalAttention(base.Layer):
     """Forward pass for the attention layer."""
     raise NotImplementedError()
 
-  def forward_and_backward(self, inputs, grad, **kwargs):
+  def forward_and_backward(self, inputs, grad, state, new_state, **kwargs):
     """Performs both forward and backward pass for the attention layer.
 
     This is used in reversible models: for the backward pass of a reversible
@@ -456,6 +456,8 @@ class BaseCausalAttention(base.Layer):
       inputs: A tuple (q, k, v), where each element has shape
           n_batch*n_heads, seqlen, d_head
       grad: gradient signal for the layer output.
+      state: start state
+      new_state: updated state computed by the forward pass
       **kwargs: kwargs for the layer
 
     Returns:
@@ -529,12 +531,14 @@ class DotProductCausalAttention(BaseCausalAttention):
         q, k, v, mask, dropout=self._dropout, mode=self._mode, rng=rng)
     return res, state
 
-  def forward_and_backward(self, inputs, ct, **kwargs):
+  def forward_and_backward(self, inputs, ct, state=base.EMPTY_STATE,
+                           new_state=base.EMPTY_STATE, **kwargs):
+    del new_state
     assert backend.get_name() == 'jax', (
         'JAX backend is required to use forward_and_backward.')
     # Simultaneous forward pass and backprop through the attention mechanism.
     def _do_forward(x):  # pylint: disable=invalid-name
-      res, _ = self.forward_with_state(x, **kwargs)
+      res, _ = self.forward_with_state(x, state=state, **kwargs)
       return res
     output, vjpfun = jax.vjp(_do_forward, inputs)
     return output, vjpfun(ct)[0]
@@ -600,8 +604,9 @@ class MemoryEfficientCausalAttention(BaseCausalAttention):
     norm_inputs = x / np.sqrt(variance + epsilon)
     return norm_inputs
 
-  def forward_and_backward(self, inputs, ct, rng=None, **kwargs):
-    del kwargs
+  def forward_and_backward(self, inputs, ct, state=base.EMPTY_STATE,
+                           new_state=base.EMPTY_STATE, rng=None, **kwargs):
+    del state, new_state, kwargs
     query, key, value = inputs
     depth = np.shape(query)[-1]
     do_backprop = ct is not None
@@ -780,12 +785,12 @@ class TimeBinCausalAttention(BaseCausalAttention):
       self.dropout = 0.0
     self._mode = mode
 
-  def forward_and_backward(self, inputs, ct, **kwargs):
+  def forward_and_backward(self, inputs, ct, state, new_state, **kwargs):
     assert backend.get_name() == 'jax', (
         'JAX backend is required to use forward_and_backward.')
     # Simultaneous forward pass and backprop through the attention mechanism.
     def _do_forward(x):  # pylint: disable=invalid-name
-      res, _ = self.forward_with_state(x, **kwargs)
+      res, _ = self.forward_with_state(x, state=state, **kwargs)
       return res
     output, vjpfun = jax.vjp(_do_forward, inputs)
     return output, vjpfun(ct)[0]
@@ -1000,38 +1005,45 @@ class LSHCausalAttention(BaseCausalAttention):
   def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
                          state=base.EMPTY_STATE, rng=None, **kwargs):
     del weights, kwargs
-    output, _ = self.batch_call_and_or_grad(inputs[0], inputs[2], rng=rng)
+    output, state, _ = self.batch_call_and_or_grad(
+        inputs[0], inputs[2], new_state=None, return_state=True, rng=rng)
     return output, state
 
-  def forward_and_backward(self, inputs, ct, rng=None, **kwargs):
+  def forward_and_backward(self, inputs, ct, state=base.EMPTY_STATE,
+                           new_state=base.EMPTY_STATE, rng=None, **kwargs):
     del kwargs
-    output, (qk_ct, v_ct) = self.batch_call_and_or_grad(
-        inputs[0], inputs[2], ct=ct, rng=rng)
+    output, _, (qk_ct, v_ct) = self.batch_call_and_or_grad(
+        inputs[0], inputs[2], ct=ct, new_state=new_state, rng=rng)
     return output, (qk_ct, np.zeros_like(inputs[1]), v_ct)
 
+  @property
   def has_backward(self):
     return True
 
   def backward(self, inputs, output, ct, weights=base.EMPTY_WEIGHTS,
-               state=base.EMPTY_STATE, rng=None,
+               state=base.EMPTY_STATE, new_state=base.EMPTY_STATE, rng=None,
                **kwargs):
     del output, weights, state
-    _, (qk_ct, v_ct) = self.batch_call_and_or_grad(
-        inputs[0], inputs[2], return_output=False, ct=ct, rng=rng)
+    _, _, (qk_ct, v_ct) = self.batch_call_and_or_grad(
+        inputs[0], inputs[2], return_output=False,
+        ct=ct, new_state=new_state, rng=rng)
     inputs_ct = (qk_ct, np.zeros_like(inputs[1]), v_ct)
     return inputs_ct, ()
 
+  def new_weights_and_state(self, input_signature):
+    qk = input_signature[0]
+    state = np.zeros(
+        (qk.shape[0], self.n_hashes * qk.shape[1]), dtype=np.int32)
+    return self.new_weights(input_signature), state
+
   def batch_call_and_or_grad(self, qk, v, ct=None, return_output=True,
+                             new_state=None, return_state=False,
                              rng=None):
     assert return_output or ct is not None, 'No work to perform!'
-    # pylint: disable=protected-access
-    stash_buckets = (return_output and ct is None
-                     and base.Layer._STASH_IN is not None)
-    if return_output and ct is not None and base.Layer._STASH_OUT is not None:
-      buckets = base.Layer._STASH_OUT.pop(self)
+    if new_state is not None and new_state is not base.EMPTY_STATE:
+      buckets = new_state
     else:
       buckets = None
-    # pylint: enable=protected-access
 
     # The approach here is to perform attention for one batch element and head
     # at a time. Note that there is absolutely no interaction across examples or
@@ -1049,7 +1061,7 @@ class LSHCausalAttention(BaseCausalAttention):
     if return_output:
       out_accum = np.zeros_like(qk)
       init_vals = init_vals + (out_accum,)
-    if stash_buckets:
+    if return_state:
       buckets_accum = np.zeros(
           [qk.shape[0], self.n_hashes * qk.shape[1]], dtype=np.int32)
       init_vals = init_vals + (buckets_accum,)
@@ -1101,7 +1113,7 @@ class LSHCausalAttention(BaseCausalAttention):
         out_accum = jax.lax.dynamic_update_index_in_dim(
             out_accum, out_slice, batch_loop_idx, axis=0)
         new_vals = new_vals + (out_accum,)
-      if stash_buckets:
+      if return_state:
         buckets_accum = vals[2]
         buckets_accum = jax.lax.dynamic_update_index_in_dim(
             buckets_accum, buckets_slice, batch_loop_idx, axis=0)
@@ -1123,15 +1135,17 @@ class LSHCausalAttention(BaseCausalAttention):
     else:
       out = None
 
-    if stash_buckets:
-      base.Layer._STASH_IN[self] = final_vals[2]  # pylint: disable=protected-access
+    if return_state:
+      state = final_vals[2]
+    else:
+      state = None
 
     if ct is not None:
       input_ct = final_vals[-2:]
     else:
       input_ct = None
 
-    return out, input_ct
+    return out, state, input_ct
 
   def make_unit_length(self, x, epsilon=1e-6):
     variance = np.mean(x**2, axis=-1, keepdims=True)

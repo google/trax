@@ -34,30 +34,31 @@ from trax.shapes import ShapeDtype
 class PoisonOnRNGMismatchAttention(tl.BaseCausalAttention):
   """Fills gradients with NaNs if reverse rng does not match forward rng."""
 
-  # pylint: disable=protected-access
-  def forward_and_backward(self, inputs, ct, rng=None, **kwargs):
+  def new_weights_and_state(self, input_signature):
+    state = backend.random.get_prng(1)
+    return self.new_weights(input_signature), state
+
+  def forward_and_backward(self, inputs, ct, state, new_state, rng=None,
+                           **kwargs):
     assert backend.get_name() == 'jax', (
         'JAX backend is required to use forward_and_backward.')
 
-    if ct is not None and tl.Layer._STASH_OUT is not None:
-      recovered_rng = tl.Layer._STASH_OUT.pop(self)
+    if ct is not None and new_state is not tl.EMPTY_STATE:
+      recovered_rng = new_state
       is_same = (rng[0] == recovered_rng[0]) & (rng[1] == recovered_rng[1])
       is_same = is_same.astype(np.float32)
       # Divides by zero if rngs are not the same, which results in NaNs.
       inputs = (inputs[0] / is_same, inputs[1] / is_same, inputs[2] / is_same)
 
     def _do_forward(x):  # pylint: disable=invalid-name
-      res, _ = self.forward_with_state(x, rng=rng, **kwargs)
+      res, _ = self.forward_with_state(x, state=state, rng=rng, **kwargs)
       return res
     output, vjpfun = jax.vjp(_do_forward, inputs)
     return output, vjpfun(ct)[0]
 
   def forward_with_state(self, inputs, weights=(), state=(),
                          rng=None, **kwargs):
-    if tl.Layer._STASH_IN is not None:
-      tl.Layer._STASH_IN[self] = rng
-    return inputs[2], state
-  # pylint: enable=protected-access
+    return inputs[2], rng
 
 
 class ReformerTest(parameterized.TestCase):

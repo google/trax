@@ -162,7 +162,7 @@ class SplitForOutput(tl.ReversibleLayer):
     res = [np.concatenate(ys, -1) for ys in zip(x1_split, x2_split)]
     return tuple(res)
 
-  def reverse(self, output, weights=(), state=(), **kwargs):
+  def reverse(self, output, weights=(), state=(), new_state=(), **kwargs):
     del weights, kwargs
 
     x1_split = []
@@ -177,7 +177,8 @@ class SplitForOutput(tl.ReversibleLayer):
 
     return (x1, x2)
 
-  def reverse_and_grad(self, output, ct, weights=(), state=(), **kwargs):
+  def reverse_and_grad(self, output, ct, weights=(), state=(), new_state=(),
+                       **kwargs):
     del weights, kwargs
     return self.reverse(output), (self.reverse(ct), ())
 
@@ -222,7 +223,7 @@ class ReversibleHalfResidual(tl.ReversibleLayer, tl.Serial):
     self.subtract_top = tl.Parallel(tl.SubtractTop(), [])
     self.reverse_layers = [self.compute_residual, self.subtract_top]
 
-  def reverse(self, output, weights=(), state=(), **kwargs):
+  def reverse(self, output, weights=(), state=(), new_state=(), **kwargs):
     reconstructed_x = output
     rng = kwargs.pop('rng', None)
     rngs = (None,) * self._n_layers
@@ -230,12 +231,14 @@ class ReversibleHalfResidual(tl.ReversibleLayer, tl.Serial):
       rngs = backend.random.split(rng, self._n_layers)
     # Note that self.sublayers aligns exactly with self.reverse_layers in
     # terms of parameter and rng usage, so no re-ordering is required.
-    for layer, p, s, rng in zip(self.reverse_layers, weights, state, rngs):
-      reconstructed_x = layer(reconstructed_x, weights=p, state=s, rng=rng,
-                              **kwargs)
+    for layer, p, s, ns, rng in zip(
+        self.reverse_layers, weights, state, new_state, rngs):
+      reconstructed_x = layer(reconstructed_x, weights=p,
+                              state=s, new_state=ns, rng=rng, **kwargs)
     return reconstructed_x
 
-  def reverse_and_grad(self, output, ct, weights=(), state=(), **kwargs):
+  def reverse_and_grad(self, output, ct, weights=(), state=(), new_state=(),
+                       **kwargs):
     rng = kwargs.pop('rng', None)
     rngs = (None,) * self._n_layers
     if rng is not None:
@@ -269,7 +272,8 @@ class ApplyAttentionWrapper(tl.Parallel):
     super(ApplyAttentionWrapper, self).__init__(attention, [], [])
     self.attention = attention
 
-  def forward_and_backward(self, inputs, ct, rng=None, **kwargs):
+  def forward_and_backward(self, inputs, ct, state, new_state, rng=None,
+                           **kwargs):
     # Simultaneous forward pass and backprop through the attention mechanism.
     qkv = inputs[:3]
     passthrough = inputs[3:]
@@ -280,7 +284,7 @@ class ApplyAttentionWrapper(tl.Parallel):
       rng = backend.random.split(rng, self._n_layers)[0]
 
     out, qkv_ct = self.attention.forward_and_backward(
-        qkv, out_ct, rng=rng, **kwargs)
+        qkv, out_ct, rng=rng, state=state[0], new_state=new_state[0], **kwargs)
     return (out,) + passthrough, qkv_ct + passthrough_ct
 
 
@@ -330,7 +334,7 @@ class ReversibleAttentionHalfResidual(tl.ReversibleLayer, tl.Serial):
         self.subtract_top,
     ]
 
-  def reverse(self, output, weights=(), state=(), **kwargs):
+  def reverse(self, output, weights=(), state=(), new_state=(), **kwargs):
     rng = kwargs.pop('rng', None)
     rngs = (None,) * self._n_layers
     if rng is not None:
@@ -339,12 +343,14 @@ class ReversibleAttentionHalfResidual(tl.ReversibleLayer, tl.Serial):
     reconstructed_x = output
     # Note that self.sublayers aligns exactly with self.reverse_layers in
     # terms of parameter and rng usage, so no re-ordering is required.
-    for layer, p, s, rng in zip(self.reverse_layers, weights, state, rngs):
-      reconstructed_x = layer.reverse(reconstructed_x, weights=p, state=s,
-                                      rng=rng, **kwargs)
+    for layer, p, s, ns, rng in zip(self.reverse_layers, weights,
+                                    state, new_state, rngs):
+      reconstructed_x = layer.reverse(reconstructed_x, weights=p,
+                                      state=s, new_state=ns, rng=rng, **kwargs)
     return reconstructed_x
 
-  def reverse_and_grad(self, output, ct, weights=(), state=(), **kwargs):
+  def reverse_and_grad(self, output, ct, weights=(), state=(), new_state=(),
+                       **kwargs):
     rng = kwargs.pop('rng', None)
     rngs = (None,) * self._n_layers
     if rng is not None:
@@ -375,8 +381,9 @@ class ReversibleAttentionHalfResidual(tl.ReversibleLayer, tl.Serial):
     (ct,) = post_attention_vjpfun(ct)
 
     # Simultaneous forward pass and backprop through the attention mechanism
-    stack, ct = self.attention.forward_and_backward(stack, ct, rng=rngs[1],
-                                                    **kwargs)
+    stack, ct = self.attention.forward_and_backward(
+        stack, ct, rng=rngs[1], state=state[1], new_state=new_state[1],
+        **kwargs)
     assert not jax.tree_util.tree_leaves(weights[1])
     attention_weights_ct = weights[1]  # This is valid when weights is empty.
 
