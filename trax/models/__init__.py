@@ -28,6 +28,7 @@ from trax.models import resnet
 from trax.models import rnn
 from trax.models import transformer
 from trax.models.research import reformer
+from trax.models.research import skipping_transformer
 
 if six.PY3:
   # uses @ notation:
@@ -48,6 +49,8 @@ NeuralGPU = model_configure(neural_gpu.NeuralGPU)
 ReformerLM = model_configure(reformer.ReformerLM)
 ReformerShortenLM = model_configure(reformer.ReformerShortenLM)
 Resnet50 = model_configure(resnet.Resnet50)
+SkippingTransformerLM = model_configure(
+    skipping_transformer.SkippingTransformerLM)
 Transformer = model_configure(transformer.Transformer)
 TransformerDecoder = model_configure(transformer.TransformerDecoder)
 TransformerEncoder = model_configure(transformer.TransformerEncoder)

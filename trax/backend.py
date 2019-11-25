@@ -211,6 +211,9 @@ _JAX_BACKEND = {
     'max_pool': jax_max_pool,
     'sum_pool': jax_sum_pool,
     'scan': _jax_scan,
+    'cond': lax.cond,
+    'lt': lax.lt,
+    'stop_gradient': lax.stop_gradient,
     'jit': jax.jit,
     'grad': jax.grad,
     'pmap': jax.pmap,
@@ -275,6 +278,18 @@ def sum_pool(*args, **kwargs):
 
 def scan(*args, **kwargs):
   return backend()['scan'](*args, **kwargs)
+
+
+def cond(*args, **kwargs):
+  return backend()['cond'](*args, **kwargs)
+
+
+def lt(*args, **kwargs):
+  return backend()['lt'](*args, **kwargs)
+
+
+def stop_gradient(*args, **kwargs):
+  return backend()['stop_gradient'](*args, **kwargs)
 
 
 def jit(*args, **kwargs):
