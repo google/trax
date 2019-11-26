@@ -29,6 +29,94 @@ from trax.layers import base
 from trax.layers import initializers as init
 
 
+class Dense(base.Layer):
+  """A dense (a.k.a. fully-connected, affine) layer."""
+
+  def __init__(self,
+               n_units,
+               kernel_initializer=init.GlorotUniformInitializer(),
+               bias_initializer=init.RandomNormalInitializer(1e-6)):
+    super(Dense, self).__init__()
+    self._n_units = n_units
+    self._kernel_initializer = kernel_initializer
+    self._bias_initializer = bias_initializer
+
+  def forward(self, x, weights):
+    w, b = weights
+    return np.dot(x, w) + b
+
+  def new_weights(self, input_signature):
+    input_shape = input_signature.shape
+    rng1, rng2 = self.new_rngs(2)
+    w = self._kernel_initializer((input_shape[-1], self._n_units), rng1)
+    b = self._bias_initializer((self._n_units,), rng2)
+    return (w, b)
+
+
+class Embedding(base.Layer):
+  """Layer constructor function for an embedding layer."""
+
+  def __init__(self,
+               d_feature,
+               vocab_size,
+               kernel_initializer=init.RandomNormalInitializer(1.0)):
+    super(Embedding, self).__init__()
+    self._d_feature = d_feature  # feature dimensionality
+    self._vocab_size = vocab_size
+    self._kernel_initializer = kernel_initializer
+
+  def forward(self, x, weights):
+    return np.take(weights, x, axis=0)
+
+  def new_weights(self, input_signature):
+    del input_signature
+    out_dim = (self._vocab_size, self._d_feature)
+    weights = self._kernel_initializer(out_dim, self.new_rng())
+    return weights
+
+
+class Dropout(base.Layer):
+  """Dropout."""
+
+  def __init__(self, rate=0.0, name='dropout', mode='train'):
+    super(Dropout, self).__init__()
+    self._initial_rate = rate
+    # TODO(lukaszkaiser): remove the name property by the end of September'19.
+    # It's only needed for a specific purpose in the short term, will go.
+    self._name = 'dropout_' + name
+    self._mode = mode
+
+  def new_weights_and_state(self, input_signature):
+    del input_signature
+    state = {self._name: np.array(self._initial_rate)}
+    return base.EMPTY_WEIGHTS, state
+
+  def forward_with_state(self, x, weights=base.EMPTY_WEIGHTS,
+                         state=base.EMPTY_STATE, rng=None, **kwargs):
+    """Execute dropout."""
+    del kwargs
+    rate = self._initial_rate
+    if isinstance(state, dict) and self._name in state:
+      rate = state[self._name]
+    if rng is None:
+      msg = ('Dropout layer requires apply_fn to be called with a rng keyword '
+             'argument. That is, instead of `Dropout(weights, inputs)`, call '
+             'it like `Dropout(weights, inputs, rng=key)`.')
+      raise ValueError(msg)
+    if self._mode != 'train':
+      return x, state
+    keep = backend.random.bernoulli(rng, 1.0 - rate, x.shape)
+    return np.where(keep, x / (1.0 - rate), np.zeros_like(x)), state
+
+
+@base.layer()
+def Flatten(x, n_axes_to_keep=1, **unused_kwargs):
+  if n_axes_to_keep >= len(x.shape):
+    raise ValueError("n_axes_to_keep[%d] should be less than input's rank[%d]" %
+                     (n_axes_to_keep, len(x.shape)))
+  return np.reshape(x, (x.shape[:n_axes_to_keep] + (-1,)))
+
+
 @base.layer()
 def Relu(x, **unused_kwargs):
   return np.maximum(x, np.zeros_like(x))
@@ -113,95 +201,6 @@ def Softplus(x, **unused_kwargs):
 @base.layer()
 def ToFloat(x, **unused_kwargs):
   return x.astype(onp.float32)
-
-
-class Dense(base.Layer):
-  """A dense (a.k.a. fully-connected, affine) layer."""
-
-  def __init__(self,
-               n_units,
-               kernel_initializer=init.GlorotUniformInitializer(),
-               bias_initializer=init.RandomNormalInitializer(1e-6)):
-    super(Dense, self).__init__()
-    self._n_units = n_units
-    self._kernel_initializer = kernel_initializer
-    self._bias_initializer = bias_initializer
-
-  def forward(self, x, weights):
-    w, b = weights
-    return np.dot(x, w) + b
-
-  def new_weights(self, input_signature):
-    input_shape = input_signature.shape
-    rng1, rng2 = self.new_rngs(2)
-    w = self._kernel_initializer((input_shape[-1], self._n_units), rng1)
-    b = self._bias_initializer((self._n_units,), rng2)
-    return (w, b)
-
-
-class Embedding(base.Layer):
-  """Layer constructor function for an embedding layer."""
-
-  def __init__(self,
-               d_feature,
-               vocab_size,
-               kernel_initializer=init.RandomNormalInitializer(1.0)):
-    super(Embedding, self).__init__()
-    self._d_feature = d_feature  # feature dimensionality
-    self._vocab_size = vocab_size
-    self._kernel_initializer = kernel_initializer
-
-  def forward(self, x, weights):
-    return np.take(weights, x, axis=0)
-
-  def new_weights(self, input_signature):
-    del input_signature
-    out_dim = (self._vocab_size, self._d_feature)
-    weights = self._kernel_initializer(out_dim, self.new_rng())
-    return weights
-
-
-# Flatten.
-@base.layer()
-def Flatten(x, n_axes_to_keep=1, **unused_kwargs):
-  if n_axes_to_keep >= len(x.shape):
-    raise ValueError("n_axes_to_keep[%d] should be less than input's rank[%d]" %
-                     (n_axes_to_keep, len(x.shape)))
-  return np.reshape(x, (x.shape[:n_axes_to_keep] + (-1,)))
-
-
-class Dropout(base.Layer):
-  """Dropout."""
-
-  def __init__(self, rate=0.0, name='dropout', mode='train'):
-    super(Dropout, self).__init__()
-    self._initial_rate = rate
-    # TODO(lukaszkaiser): remove the name property by the end of September'19.
-    # It's only needed for a specific purpose in the short term, will go.
-    self._name = 'dropout_' + name
-    self._mode = mode
-
-  def new_weights_and_state(self, input_signature):
-    del input_signature
-    state = {self._name: np.array(self._initial_rate)}
-    return base.EMPTY_WEIGHTS, state
-
-  def forward_with_state(self, x, weights=base.EMPTY_WEIGHTS,
-                         state=base.EMPTY_STATE, rng=None, **kwargs):
-    """Execute dropout."""
-    del kwargs
-    rate = self._initial_rate
-    if isinstance(state, dict) and self._name in state:
-      rate = state[self._name]
-    if rng is None:
-      msg = ('Dropout layer requires apply_fn to be called with a rng keyword '
-             'argument. That is, instead of `Dropout(weights, inputs)`, call '
-             'it like `Dropout(weights, inputs, rng=key)`.')
-      raise ValueError(msg)
-    if self._mode != 'train':
-      return x, state
-    keep = backend.random.bernoulli(rng, 1.0 - rate, x.shape)
-    return np.where(keep, x / (1.0 - rate), np.zeros_like(x)), state
 
 
 @base.layer()
