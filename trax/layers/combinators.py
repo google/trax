@@ -585,10 +585,10 @@ def Gate(xs, **unused_kwargs):
 
 def Residual(*layers, **kwargs):
   """Adds a residual connection in parallel to a series of layers."""
+  # TODO(jonni): Change *layers arg to a single layer.
   shortcut = kwargs.get('shortcut')  # default None signals no-op
   return [
-      Dup(),  # pylint: disable=no-value-for-parameter
-      Parallel(shortcut, layers),
+      Branch(shortcut, Serial(layers)),
       Add(),  # pylint: disable=no-value-for-parameter
   ]
 
