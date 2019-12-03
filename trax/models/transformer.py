@@ -23,54 +23,6 @@ import functools
 from trax import layers as tl
 
 
-def FeedForward(d_model, d_ff, dropout, layer_idx, mode, activation):
-  """Feed-forward block with layer normalization at start."""
-  return tl.Serial(
-      tl.LayerNorm(),
-      tl.Dense(d_ff),
-      activation(),
-      tl.Dropout(rate=dropout, name='ff_middle_%d' % layer_idx, mode=mode),
-      tl.Dense(d_model),
-      tl.Dropout(rate=dropout, name='ff_final_%d' % layer_idx, mode=mode),
-  )
-
-
-def EncoderBlock(d_model, d_ff, n_heads, dropout, layer_idx, mode,
-                 ff_activation):
-  """Returns a layer sequence that implements a Transformer encoder block.
-
-  The input to the layer sequence is a pair, (activations, mask), where the
-  mask was created from the original source tokens to prevent attending to the
-  padding part of the input.
-
-  Args:
-    d_model: int:  depth of embedding
-    d_ff: int: depth of feed-forward layer
-    n_heads: int: number of attention heads
-    dropout: float: dropout rate (how much to drop out)
-    layer_idx: which layer are we at (for bookkeeping)
-    mode: str: 'train' or 'eval'
-    ff_activation: the non-linearity in feed-forward layer
-
-  Returns:
-    A sequence of layers that maps an (activations, mask) pair to an
-    (activations, mask) pair.
-  """
-  attention = [
-      tl.LayerNorm(),
-      tl.Attention(d_model, n_heads=n_heads, dropout=dropout, mode=mode),
-      tl.Dropout(rate=dropout, name='enc_attn_dropout', mode=mode),
-  ]
-  feed_forward = [
-      FeedForward(
-          d_model, d_ff, dropout, layer_idx, mode, ff_activation),
-  ]
-  return tl.Serial(
-      tl.Residual(attention),
-      tl.Residual(feed_forward),
-  )
-
-
 def TransformerEncoder(vocab_size,
                        n_classes=10,
                        d_model=512,
@@ -115,46 +67,6 @@ def TransformerEncoder(vocab_size,
       tl.Mean(axis=1),  # Average on length.    # vecs
       tl.Dense(n_classes),                      # vecs
       tl.LogSoftmax(),                          # vecs
-  )
-
-
-def DecoderBlock(d_model, d_ff, n_heads, d_attention_key, d_attention_value,
-                 attention_type, dropout, share_qk, layer_idx, mode,
-                 ff_activation):
-  """Returns a layer sequence that implements a Transformer decoder block.
-
-  The input to the layer sequence is an activation tensor.
-
-  Args:
-    d_model: int:  depth of embedding
-    d_ff: int: depth of feed-forward layer
-    n_heads: int: number of attention heads
-    d_attention_key: int: depth of key vector for each attention head
-    d_attention_value: int: depth of value vector for each attention head
-    attention_type: subclass of tl.BaseCausalAttention: attention class to use
-    dropout: float: dropout rate (how much to drop out)
-    share_qk: bool, whether to share queries and keys
-    layer_idx: which layer are we at (for bookkeeping)
-    mode: str: 'train' or 'eval'
-    ff_activation: the non-linearity in feed-forward layer
-
-  Returns:
-    A sequence of layers that maps an activation tensor to an activation tensor.
-  """
-  self_attention = [
-      tl.LayerNorm(),  # vec
-      tl.CausalAttention(
-          d_model, n_heads=n_heads, d_attention_key=d_attention_key,
-          d_attention_value=d_attention_value, attention_type=attention_type,
-          share_qk=share_qk, mode=mode),
-      tl.Dropout(rate=dropout, name='attention_%d' % layer_idx, mode=mode),
-  ]
-  feed_forward = [
-      FeedForward(d_model, d_ff, dropout, layer_idx, mode, ff_activation),
-  ]
-  return tl.Serial(
-      tl.Residual(self_attention),
-      tl.Residual(feed_forward),
   )
 
 
@@ -283,51 +195,6 @@ def TransformerLM(vocab_size,
   )
 
 
-def EncoderDecoder(d_model, d_ff, n_heads, dropout, layer_idx, mode,
-                   ff_activation):
-  """Transformer encoder-decoder layer.
-
-  The input is a triple (decoder_input, mask, encoder) where the mask is
-  created from the original source to prevent attending to the padding part
-  of the encoder.
-
-  Args:
-    d_model: int:  depth of embedding
-    d_ff: int: depth of feed-forward layer
-    n_heads: int: number of attention heads
-    dropout: float: dropout rate (how much to drop out)
-    layer_idx: which layer are we at (for bookkeeping)
-    mode: str: 'train' or 'eval'
-    ff_activation: the non-linearity in feed-forward layer
-
-  Returns:
-    the layer, returning a triple (decoder_activations, mask, encoder).
-  """
-  decoder_self_attention = [                    #        vecs_d   pmask vecs_e
-      tl.LayerNorm(),                           #        vecs_d   ..... ......
-      tl.BasicCausalAttention(
-          d_model, n_heads=n_heads, dropout=dropout, mode=mode),
-      tl.Dropout(rate=dropout, mode=mode),      # vecs_d          ..... ......
-  ]
-  decoder_to_encoder_attention = [        # vecs_d        masks         vecs_e
-      tl.LayerNorm(),                     # vecs_d        masks         vecs_e
-      tl.Parallel([], [], tl.Dup()),      # ______        _____  vecs_e vecs_e
-      tl.Parallel([], tl.Swap()),         # ______        vecs_e masks  ......
-      tl.Parallel([], tl.Dup()),          # ______ vecs_e vecs_e .....  ......
-      tl.AttentionQKV(  # (q k v masks ... --> vecs_d masks ...)
-          d_model, n_heads=n_heads, dropout=dropout, mode=mode),
-      tl.Dropout(rate=dropout, mode=mode),  # vecs_d mask vecs_e
-  ]
-  feed_forward = [
-      FeedForward(d_model, d_ff, dropout, layer_idx, mode, ff_activation),
-  ]
-  return tl.Serial(                               # vecs_d masks vecs_e
-      tl.Residual(decoder_self_attention),        # vecs_d masks vecs_e
-      tl.Residual(decoder_to_encoder_attention),  # vecs_d masks vecs_e
-      tl.Residual(feed_forward),                  # vecs_d masks vecs_e
-  )
-
-
 def Transformer(input_vocab_size,
                 output_vocab_size=None,
                 d_model=512,
@@ -406,4 +273,137 @@ def Transformer(input_vocab_size,
       tl.LayerNorm(),                            # vecs_d
       tl.Dense(output_vocab_size),               # vecs_d
       tl.LogSoftmax(),                           # vecs_d
+  )
+
+
+def EncoderBlock(d_model, d_ff, n_heads, dropout, layer_idx, mode,
+                 ff_activation):
+  """Returns a layer sequence that implements a Transformer encoder block.
+
+  The input to the layer sequence is a pair, (activations, mask), where the
+  mask was created from the original source tokens to prevent attending to the
+  padding part of the input.
+
+  Args:
+    d_model: int:  depth of embedding
+    d_ff: int: depth of feed-forward layer
+    n_heads: int: number of attention heads
+    dropout: float: dropout rate (how much to drop out)
+    layer_idx: which layer are we at (for bookkeeping)
+    mode: str: 'train' or 'eval'
+    ff_activation: the non-linearity in feed-forward layer
+
+  Returns:
+    A sequence of layers that maps an (activations, mask) pair to an
+    (activations, mask) pair.
+  """
+  attention = [
+      tl.LayerNorm(),
+      tl.Attention(d_model, n_heads=n_heads, dropout=dropout, mode=mode),
+      tl.Dropout(rate=dropout, name='enc_attn_dropout', mode=mode),
+  ]
+  feed_forward = [
+      FeedForward(
+          d_model, d_ff, dropout, layer_idx, mode, ff_activation),
+  ]
+  return tl.Serial(
+      tl.Residual(attention),
+      tl.Residual(feed_forward),
+  )
+
+
+def DecoderBlock(d_model, d_ff, n_heads, d_attention_key, d_attention_value,
+                 attention_type, dropout, share_qk, layer_idx, mode,
+                 ff_activation):
+  """Returns a layer sequence that implements a Transformer decoder block.
+
+  The input to the layer sequence is an activation tensor.
+
+  Args:
+    d_model: int:  depth of embedding
+    d_ff: int: depth of feed-forward layer
+    n_heads: int: number of attention heads
+    d_attention_key: int: depth of key vector for each attention head
+    d_attention_value: int: depth of value vector for each attention head
+    attention_type: subclass of tl.BaseCausalAttention: attention class to use
+    dropout: float: dropout rate (how much to drop out)
+    share_qk: bool, whether to share queries and keys
+    layer_idx: which layer are we at (for bookkeeping)
+    mode: str: 'train' or 'eval'
+    ff_activation: the non-linearity in feed-forward layer
+
+  Returns:
+    A sequence of layers that maps an activation tensor to an activation tensor.
+  """
+  self_attention = [
+      tl.LayerNorm(),  # vec
+      tl.CausalAttention(
+          d_model, n_heads=n_heads, d_attention_key=d_attention_key,
+          d_attention_value=d_attention_value, attention_type=attention_type,
+          share_qk=share_qk, mode=mode),
+      tl.Dropout(rate=dropout, name='attention_%d' % layer_idx, mode=mode),
+  ]
+  feed_forward = [
+      FeedForward(d_model, d_ff, dropout, layer_idx, mode, ff_activation),
+  ]
+  return tl.Serial(
+      tl.Residual(self_attention),
+      tl.Residual(feed_forward),
+  )
+
+
+def EncoderDecoder(d_model, d_ff, n_heads, dropout, layer_idx, mode,
+                   ff_activation):
+  """Transformer encoder-decoder layer.
+
+  The input is a triple (decoder_input, mask, encoder) where the mask is
+  created from the original source to prevent attending to the padding part
+  of the encoder.
+
+  Args:
+    d_model: int:  depth of embedding
+    d_ff: int: depth of feed-forward layer
+    n_heads: int: number of attention heads
+    dropout: float: dropout rate (how much to drop out)
+    layer_idx: which layer are we at (for bookkeeping)
+    mode: str: 'train' or 'eval'
+    ff_activation: the non-linearity in feed-forward layer
+
+  Returns:
+    the layer, returning a triple (decoder_activations, mask, encoder).
+  """
+  decoder_self_attention = [                    #        vecs_d   pmask vecs_e
+      tl.LayerNorm(),                           #        vecs_d   ..... ......
+      tl.BasicCausalAttention(
+          d_model, n_heads=n_heads, dropout=dropout, mode=mode),
+      tl.Dropout(rate=dropout, mode=mode),      # vecs_d          ..... ......
+  ]
+  decoder_to_encoder_attention = [        # vecs_d        masks         vecs_e
+      tl.LayerNorm(),                     # vecs_d        masks         vecs_e
+      tl.Parallel([], [], tl.Dup()),      # ______        _____  vecs_e vecs_e
+      tl.Parallel([], tl.Swap()),         # ______        vecs_e masks  ......
+      tl.Parallel([], tl.Dup()),          # ______ vecs_e vecs_e .....  ......
+      tl.AttentionQKV(  # (q k v masks ... --> vecs_d masks ...)
+          d_model, n_heads=n_heads, dropout=dropout, mode=mode),
+      tl.Dropout(rate=dropout, mode=mode),  # vecs_d mask vecs_e
+  ]
+  feed_forward = [
+      FeedForward(d_model, d_ff, dropout, layer_idx, mode, ff_activation),
+  ]
+  return tl.Serial(                               # vecs_d masks vecs_e
+      tl.Residual(decoder_self_attention),        # vecs_d masks vecs_e
+      tl.Residual(decoder_to_encoder_attention),  # vecs_d masks vecs_e
+      tl.Residual(feed_forward),                  # vecs_d masks vecs_e
+  )
+
+
+def FeedForward(d_model, d_ff, dropout, layer_idx, mode, activation):
+  """Feed-forward block with layer normalization at start."""
+  return tl.Serial(
+      tl.LayerNorm(),
+      tl.Dense(d_ff),
+      activation(),
+      tl.Dropout(rate=dropout, name='ff_middle_%d' % layer_idx, mode=mode),
+      tl.Dense(d_model),
+      tl.Dropout(rate=dropout, name='ff_final_%d' % layer_idx, mode=mode),
   )
