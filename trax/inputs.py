@@ -353,9 +353,11 @@ def _train_and_eval_dataset_v1(problem_name, data_dir,
   """Return train and evaluation datasets, feature info and supervised keys."""
   with tf.device('cpu:0'):
     problem = t2t_problems.problem(problem_name)
-    train_dataset = problem.dataset(tf.estimator.ModeKeys.TRAIN, data_dir, shuffle_files=train_shuffle_files)
+    train_dataset = problem.dataset(tf.estimator.ModeKeys.TRAIN, data_dir,
+                                    shuffle_files=train_shuffle_files)
     train_dataset = train_dataset.map(_select_features)
-    eval_dataset = problem.dataset(tf.estimator.ModeKeys.EVAL, data_dir, shuffle_files=eval_shuffle_files)
+    eval_dataset = problem.dataset(tf.estimator.ModeKeys.EVAL, data_dir,
+                                   shuffle_files=eval_shuffle_files)
     eval_dataset = eval_dataset.map(_select_features)
     hparams = problem.get_hparams()
     # We take a few training examples to guess the shapes.
