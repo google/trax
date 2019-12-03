@@ -288,7 +288,8 @@ def train_and_eval_dataset(dataset_name, data_dir, eval_holdout_size=0,
          ie., a pair of lists with input and target feature names.
   """
   if dataset_name.startswith('t2t_'):
-    return _train_and_eval_dataset_v1(dataset_name[4:], data_dir)
+    return _train_and_eval_dataset_v1(dataset_name[4:], data_dir,
+                                      train_shuffle_files, eval_shuffle_files)
   dataset_builder = tfds.builder(dataset_name, data_dir=data_dir)
   info = dataset_builder.info
   splits = dataset_builder.info.splits
@@ -347,13 +348,14 @@ def _eager_dataset_iterator(dataset):
     yield tf.nest.pack_sequence_as(item, flat)
 
 
-def _train_and_eval_dataset_v1(problem_name, data_dir):
+def _train_and_eval_dataset_v1(problem_name, data_dir,
+                               train_shuffle_files, eval_shuffle_files):
   """Return train and evaluation datasets, feature info and supervised keys."""
   with tf.device('cpu:0'):
     problem = t2t_problems.problem(problem_name)
-    train_dataset = problem.dataset(tf.estimator.ModeKeys.TRAIN, data_dir)
+    train_dataset = problem.dataset(tf.estimator.ModeKeys.TRAIN, data_dir, shuffle_files=train_shuffle_files)
     train_dataset = train_dataset.map(_select_features)
-    eval_dataset = problem.dataset(tf.estimator.ModeKeys.EVAL, data_dir)
+    eval_dataset = problem.dataset(tf.estimator.ModeKeys.EVAL, data_dir, shuffle_files=eval_shuffle_files)
     eval_dataset = eval_dataset.map(_select_features)
     hparams = problem.get_hparams()
     # We take a few training examples to guess the shapes.
