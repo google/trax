@@ -252,9 +252,9 @@ def SRU(n_units, activation=None):
       core.Dense(3 * n_units),
       cb.Split(n_items=3),     # r, f, y, x
       cb.Parallel(core.Sigmoid(), core.Sigmoid()),   # r, f, y, x
-      cb.Fn(lambda r, f, y: (y * (1.0 - f), f, r)),  # y * (1 - f), f, r, x
+      base.Fn(lambda r, f, y: (y * (1.0 - f), f, r)),  # y * (1 - f), f, r, x
       cb.Parallel([], [], [cb.Dup(), MakeZeroState()]),  # pylint: disable=no-value-for-parameter
       cb.Scan(InnerSRUCell(), axis=1),  # pylint: disable=no-value-for-parameter
       cb.Parallel(activation, cb.Drop()),  # act(c), r, x
-      cb.Fn(lambda c, r, x: c * r + x * (1 - r))
+      base.Fn(lambda c, r, x: c * r + x * (1 - r))
   )

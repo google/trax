@@ -30,6 +30,7 @@ import six
 
 from trax import backend
 from trax.backend import nested_map
+from trax.backend import numpy as np
 from trax.shapes import ShapeDtype
 from trax.shapes import signature
 
@@ -560,6 +561,63 @@ def layer(n_in=1, n_out=1, new_weights_fn=None):
     return cls
 
   return _build_layer_class
+
+
+def Fn(f, n_in=None, n_out=None):  # pylint: disable=invalid-name
+  """Returns a layer with no weights that applies the function f.
+
+  The function f can take and return any number of arguments, but it cannot
+  have default arguments or keywords arguments. It can use numpy though, e.g:
+
+  A layer that takes 2 arguments and returns sum and concatenation on stack:
+
+    Fn(lambda x, y: (x + y, np.concatenate([x, y], axis=0)))
+
+  Sometimes determining the number of outputs automatically fails,
+  in such cases specify n_in and n_out.
+
+  Args:
+    f: the function to execute
+    n_in: optional, number of inputs
+    n_out: optional, number of outputs
+
+  Returns:
+    A layer executing the function f.
+  """
+  # Inspect the function f to restrict to no-defaults and no-kwargs functions.
+  if six.PY2:
+    argspec = inspect.getargspec(f)
+    varkwargs = argspec.keywords
+  else:
+    argspec = inspect.getfullargspec(f)
+    varkwargs = argspec.varkw
+  # This layer cannot handle functions with kwargs or defaults.
+  if argspec.defaults is not None:
+    raise ValueError('function cannot have default arguments')
+  if varkwargs:
+    raise ValueError('function cannot have keyword arguments')
+
+  # Determine n_in from function signature if not set.
+  if n_in is None:
+    if argspec.varargs is not None:
+      raise ValueError('n_in is not set and f has variable args')
+    n_in = len(argspec.args)
+  # Try to determine n_out from function signature.
+  if n_out is None:
+    try:
+      dummy_args = [np.array([[0.0]]) for _ in range(n_in)]
+      res = f(*dummy_args)
+      n_out = len(res) if isinstance(res, (list, tuple)) else 1
+    except:
+      raise ValueError('n_out is not set and could not be determined')
+
+  # Create the layer.
+  @layer(n_in=n_in, n_out=n_out)
+  def F(xs, **unused_kwargs):  # pylint: disable=invalid-name
+    if not isinstance(xs, (tuple, list)):
+      xs = (xs,)
+    return f(*xs)
+  return F()  # pylint: disable=no-value-for-parameter
 
 
 class LayerError(Exception):

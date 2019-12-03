@@ -168,44 +168,6 @@ class CombinatorLayerTest(absltest.TestCase):
     output_shape = base.check_shape_agreement(scan, input_signature)
     self.assertEqual(output_shape, expected_shape)
 
-  def test_fn_layer_example(self):
-    layer = cb.Fn(lambda x, y: (x + y, np.concatenate([x, y], axis=0)))
-    input_signature = (ShapeDtype((2, 7)), ShapeDtype((2, 7)))
-    expected_shape = ((2, 7), (4, 7))
-    output_shape = base.check_shape_agreement(layer, input_signature)
-    self.assertEqual(output_shape, expected_shape)
-    inp = (np.array([2]), np.array([3]))
-    x, xs = layer(inp)
-    self.assertEqual(int(x), 5)
-    self.assertEqual([int(y) for y in xs], [2, 3])
-
-  def test_fn_layer_fails_wrong_f(self):
-    with self.assertRaisesRegexp(ValueError, 'default arg'):
-      cb.Fn(lambda x, sth=None: x)
-    with self.assertRaisesRegexp(ValueError, 'keyword arg'):
-      cb.Fn(lambda x, **kwargs: x)
-
-  def test_fn_layer_varargs_n_in(self):
-    with self.assertRaisesRegexp(ValueError, 'variable arg'):
-      cb.Fn(lambda *args: args[0])
-    # Check that varargs work when n_in is set.
-    id_layer = cb.Fn(lambda *args: args[0], n_in=1)
-    input_signature = ShapeDtype((2, 7))
-    expected_shape = (2, 7)
-    output_shape = base.check_shape_agreement(id_layer, input_signature)
-    self.assertEqual(output_shape, expected_shape)
-
-  def test_fn_layer_difficult_n_out(self):
-    with self.assertRaisesRegexp(ValueError, 'n_out'):
-      # Determining the output of this layer is hard with dummies.
-      cb.Fn(lambda x: np.concatencate([x, x], axis=4))
-    # Check that this layer works when n_out is set.
-    layer = cb.Fn(lambda x: np.concatenate([x, x], axis=4), n_out=1)
-    input_signature = ShapeDtype((2, 1, 2, 2, 3))
-    expected_shape = (2, 1, 2, 2, 6)
-    output_shape = base.check_shape_agreement(layer, input_signature)
-    self.assertEqual(output_shape, expected_shape)
-
   def test_input_signatures_serial(self):
     layer = cb.Serial(core.Div(divisor=2.0), core.Div(divisor=5.0))
     self.assertIsNone(layer.input_signature)
