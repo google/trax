@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
-
 from trax import layers as tl
 
 
@@ -53,20 +51,30 @@ def TransformerEncoder(vocab_size,
     A Transformer model as a layer that maps from a tensor of tokens to
     activations over a set of output classes.
   """
-  embedder = [
+  def EncoderBlocks(n_blocks):  # vectors masks --> vectors masks
+    return [
+        _EncoderBlock(d_model, d_ff, n_heads, dropout, i, mode, ff_activation)
+        for i in range(n_blocks)]
+
+  positional_embedder = [
       tl.Embedding(d_model, vocab_size),
       tl.Dropout(rate=dropout, name='emb_dropout', mode=mode),
       tl.PositionalEncoding(max_len=max_len),
   ]
-  return tl.Serial(                             #      tokens
-      tl.Branch(embedder, tl.PaddingMask()),    # vecs mask
-      [EncoderBlock(d_model, d_ff, n_heads, dropout, i, mode, ff_activation)
-       for i in range(n_layers)],               # vecs mask
-      tl.Parallel([], tl.Drop()),               # ____  0
-      tl.LayerNorm(),                           # vecs
-      tl.Mean(axis=1),  # Average on length.    # vecs
-      tl.Dense(n_classes),                      # vecs
-      tl.LogSoftmax(),                          # vecs
+
+  # Assemble and return the model.
+  return tl.Serial(                                # toks
+      # Encode.
+      tl.Branch(
+          positional_embedder, tl.PaddingMask()),  # vecs masks
+      EncoderBlocks(n_layers),                     # vecs masks
+      tl.LayerNorm(),                              # vecs .....
+
+      # Map to output categories.
+      tl.Select([0], n_in=2),                      # vecs
+      tl.Mean(axis=1),                             # vecs
+      tl.Dense(n_classes),                         # vecs
+      tl.LogSoftmax(),                             # vecs
   )
 
 
@@ -111,19 +119,26 @@ def TransformerDecoder(vocab_size=None,
     A Transformer decoder as a layer that maps from a continuous or discrete
     tensor to a continuous tensor.
   """
-  if vocab_size is None:
-    input_layer = tl.Dense
-  else:
-    input_layer = functools.partial(tl.Embedding, vocab_size=vocab_size)
-  return tl.Serial(                  # vecs
-      input_layer(d_model),         # vecs
-      tl.Dropout(rate=dropout, mode=mode),
-      tl.PositionalEncoding(max_len=max_len),
-      [DecoderBlock(  # pylint: disable=g-complex-comprehension
-          d_model, d_ff, n_heads, d_attention_key, d_attention_value,
-          attention_type, dropout, share_qk, i, mode, ff_activation)
-       for i in range(n_layers)],   # vecs
-      tl.LayerNorm(),               # vecs
+  def DecoderBlocks(n_blocks):  # vectors --> vectors
+    return [  # pylint: disable=g-complex-comprehension
+        _DecoderBlock(d_model, d_ff, n_heads,
+                      d_attention_key, d_attention_value, attention_type,
+                      dropout, share_qk, i, mode, ff_activation)
+        for i in range(n_blocks)]
+
+  embedding_or_dense = (
+      tl.Embedding(d_model, vocab_size) if vocab_size is not None
+      else tl.Dense(d_model))
+  dropout_ = tl.Dropout(rate=dropout, mode=mode)
+  positional_encoding = tl.PositionalEncoding(max_len=max_len)
+
+  # Assemble and return the model.
+  return tl.Serial(             # toks
+      embedding_or_dense,       # vecs
+      dropout_,                 # vecs
+      positional_encoding,      # vecs
+      DecoderBlocks(n_layers),  # vecs
+      tl.LayerNorm(),           # vecs
   )
 
 
@@ -168,30 +183,36 @@ def TransformerLM(vocab_size,
     A Transformer language model as a layer that maps from a tensor of tokens
     to activations over a vocab set.
   """
+  def DecoderBlocks(n_blocks):  # vectors --> vectors
+    return [  # pylint: disable=g-complex-comprehension
+        _DecoderBlock(d_model, d_ff, n_heads,
+                      d_attention_key, d_attention_value, attention_type,
+                      dropout, share_qk, i, mode, ff_activation)
+        for i in range(n_blocks)]
+
   if n_chunks == 0:
-    concatenate_chunks = split_chunks = []
+    concatenate_chunks = []
+    split_chunks = []
   else:
     concatenate_chunks = tl.Concatenate(n_items=n_chunks)
     split_chunks = tl.Split(n_items=n_chunks, axis=-2)
 
-  embedder = [
-      tl.Embedding(d_model, vocab_size),
-      tl.Dropout(rate=dropout, name='embedding', mode=mode),
-      tl.PositionalEncoding(max_len=max_len, mode=mode),
-  ]
+  embedding = tl.Embedding(d_model, vocab_size)
+  dropout_ = tl.Dropout(rate=dropout, name='embedding', mode=mode)
+  positional_encoding = tl.PositionalEncoding(max_len=max_len, mode=mode)
 
-  return tl.Serial(                  # tokens (or chunked tuple of tokens)
-      concatenate_chunks,           # tokens
-      tl.ShiftRight(mode=mode),     # toks
-      embedder,                     # vecs
-      [DecoderBlock(  # pylint: disable=g-complex-comprehension
-          d_model, d_ff, n_heads, d_attention_key, d_attention_value,
-          attention_type, dropout, share_qk, i, mode, ff_activation)
-       for i in range(n_layers)],   # vecs
-      tl.LayerNorm(),               # vecs
-      tl.Dense(vocab_size),         # vecs
-      tl.LogSoftmax(),              # vecs
-      split_chunks,                 # vecs (or chunked tuple of vecs)
+  # Assemble and return the model.
+  return tl.Serial(              # tokens (or chunked tuple of tokens)
+      concatenate_chunks,        # toks
+      tl.ShiftRight(mode=mode),  # toks
+      embedding,                 # vecs
+      dropout_,                  # vecs
+      positional_encoding,       # vecs
+      DecoderBlocks(n_layers),   # vecs
+      tl.LayerNorm(),            # vecs
+      tl.Dense(vocab_size),      # vecs
+      tl.LogSoftmax(),           # vecs
+      split_chunks,              # vecs (or chunked tuple of vecs)
   )
 
 
@@ -228,61 +249,65 @@ def Transformer(input_vocab_size,
     A Transformer model as a layer that maps from a target, source pair to
     activations over a vocab set.
   """
-  in_embed = [                                    # tokens
-      tl.Embedding(d_model, input_vocab_size),    # vecs
-      tl.Dropout(rate=dropout, mode=mode),        # vecs
-      tl.PositionalEncoding(max_len=max_len),     # vecs
-  ]
-
-  if output_vocab_size is None:
-    output_vocab_size = input_vocab_size
-    out_embed = in_embed
-  else:
-    out_embed = [                                    # tokens
-        tl.Embedding(d_model, output_vocab_size),    # vecs
-        tl.Dropout(rate=dropout, mode=mode),         # vecs
-        tl.PositionalEncoding(max_len=max_len),      # vecs
+  def PositionalEmbedder(vocab_size):  # tokens --> vectors
+    return [
+        tl.Embedding(d_model, vocab_size),
+        tl.Dropout(rate=dropout, mode=mode),
+        tl.PositionalEncoding(max_len=max_len),
     ]
 
-  encoder_stack = (  # masks vectors --> masks vectors
-      [EncoderBlock(d_model, d_ff, n_heads, dropout, i, mode, ff_activation)
-       for i in range(n_encoder_layers)])
+  def EncoderBlocks(n_blocks):  # vectors masks --> vectors masks
+    return [
+        _EncoderBlock(d_model, d_ff, n_heads, dropout, i, mode, ff_activation)
+        for i in range(n_blocks)]
 
-  encoder_decoder_stack = (  # vecs_d masks vecs_e --> vecs_d masks vecs_e
-      [EncoderDecoder(d_model, d_ff, n_heads, dropout, i, mode, ff_activation)
-       for i in range(n_decoder_layers)])
+  def EncoderDecoderBlocks(n_blocks):  # vectors masks --> vectors masks
+    return [
+        _EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, i, mode,
+                             ff_activation)
+        for i in range(n_blocks)]
 
-  # Input: encoder_side_tokens, decoder_side_tokens
-  return tl.Serial(  # tokens_e tokens_d
-      tl.Parallel([], tl.Dup()),    # toks_e toks_d toks_d (for loss)
-      tl.Swap(),    # toks_d toks_e ....
+  in_embed = PositionalEmbedder(input_vocab_size)
+  out_embed = (in_embed if output_vocab_size is None
+               else PositionalEmbedder(output_vocab_size))
+  if output_vocab_size is None:
+    output_vocab_size = input_vocab_size
+
+  # Assemble and return the model.
+  return tl.Serial(
+      # Input: encoder_side_tokens, decoder_side_tokens
+      # Copy decoder tokens for use in loss.
+      tl.Select([0, 1, 1]),                    # tok_e tok_d tok_d
 
       # Encode.
-      tl.Parallel(                                     # toks_d        toks_e
-          [], [tl.Branch(in_embed, tl.PaddingMask()),  # ______ vecs_e masks
-               encoder_stack,                          # ______ vecs_e masks
-               tl.LayerNorm(),                         # ______ vecs_e .....
-               tl.Swap()]),                            # ______ masks  vecs_e
+      tl.Branch(
+          in_embed, tl.PaddingMask()),         # vec_e masks ..... .....
+      EncoderBlocks(n_encoder_layers),         # vec_d masks ..... .....
+      tl.LayerNorm(),                          # vec_e ..... ..... .....
 
-      # Decode.                                  # toks_d masks vecs_e
-      tl.ShiftRight(),                           # toks_d ..... ......
-      out_embed,                                 # vecs_d ..... ......
-      tl.Branch([], tl.EncoderDecoderMask()),    # vecs_d masks ......
-      encoder_decoder_stack,                     # vecs_d masks vecs_e
-      tl.Parallel([], tl.Drop(), tl.Drop()),     # vecs_d
-      tl.LayerNorm(),                            # vecs_d
-      tl.Dense(output_vocab_size),               # vecs_d
-      tl.LogSoftmax(),                           # vecs_d
+      # Decode.
+      tl.Select([2, 1, 0]),                    # tok_d masks vec_e .....
+      tl.ShiftRight(),                         # tok_d ..... ..... .....
+      out_embed,                               # vec_d ..... ..... .....
+      tl.Branch(
+          [], tl.EncoderDecoderMask()),        # vec_d masks ..... .....
+      EncoderDecoderBlocks(n_decoder_layers),  # vec_d masks ..... .....
+      tl.LayerNorm(),                          # vec_d ..... ..... .....
+
+      # Map to output vocab.
+      tl.Parallel([], tl.Drop(), tl.Drop()),   # vec_d tok_d
+      tl.Dense(output_vocab_size),             # vec_d .....
+      tl.LogSoftmax(),                         # vec_d .....
   )
 
 
-def EncoderBlock(d_model, d_ff, n_heads, dropout, layer_idx, mode,
-                 ff_activation):
-  """Returns a layer sequence that implements a Transformer encoder block.
+def _EncoderBlock(d_model, d_ff, n_heads, dropout, layer_idx, mode,
+                  ff_activation):
+  """Returns a list of layers that implements a Transformer encoder block.
 
-  The input to the layer sequence is a pair, (activations, mask), where the
-  mask was created from the original source tokens to prevent attending to the
-  padding part of the input.
+  The input to the layer is a pair, (activations, mask), where the mask was
+  created from the original source tokens to prevent attending to the padding
+  part of the input.
 
   Args:
     d_model: int:  depth of embedding
@@ -294,38 +319,42 @@ def EncoderBlock(d_model, d_ff, n_heads, dropout, layer_idx, mode,
     ff_activation: the non-linearity in feed-forward layer
 
   Returns:
-    A sequence of layers that maps an (activations, mask) pair to an
-    (activations, mask) pair.
+    A list of layers that maps (activations, mask) to (activations, mask).
   """
-  attention = [
-      tl.LayerNorm(),
-      tl.Attention(d_model, n_heads=n_heads, dropout=dropout, mode=mode),
-      tl.Dropout(rate=dropout, name='enc_attn_dropout', mode=mode),
+  attention = tl.Attention(
+      d_model, n_heads=n_heads, dropout=dropout, mode=mode)
+
+  dropout_ = tl.Dropout(
+      rate=dropout, name='dropout_enc_attn', mode=mode)
+
+  feed_forward = _FeedForwardBlock(
+      d_model, d_ff, dropout, layer_idx, mode, ff_activation)
+
+  return [
+      tl.Residual(
+          tl.LayerNorm(),
+          attention,
+          dropout_,
+      ),
+      tl.Residual(
+          feed_forward
+      ),
   ]
-  feed_forward = [
-      FeedForward(
-          d_model, d_ff, dropout, layer_idx, mode, ff_activation),
-  ]
-  return tl.Serial(
-      tl.Residual(attention),
-      tl.Residual(feed_forward),
-  )
 
 
-def DecoderBlock(d_model, d_ff, n_heads, d_attention_key, d_attention_value,
-                 attention_type, dropout, share_qk, layer_idx, mode,
-                 ff_activation):
-  """Returns a layer sequence that implements a Transformer decoder block.
+def _DecoderBlock(d_model, d_ff, n_heads, d_attn_key, d_attn_value, attn_type,
+                  dropout, share_qk, layer_idx, mode, ff_activation):
+  """Returns a list of layers that implements a Transformer decoder block.
 
-  The input to the layer sequence is an activation tensor.
+  The input is an activation tensor.
 
   Args:
     d_model: int:  depth of embedding
     d_ff: int: depth of feed-forward layer
     n_heads: int: number of attention heads
-    d_attention_key: int: depth of key vector for each attention head
-    d_attention_value: int: depth of value vector for each attention head
-    attention_type: subclass of tl.BaseCausalAttention: attention class to use
+    d_attn_key: int: depth of key vector for each attention head
+    d_attn_value: int: depth of value vector for each attention head
+    attn_type: subclass of tl.BaseCausalAttention: attention class to use
     dropout: float: dropout rate (how much to drop out)
     share_qk: bool, whether to share queries and keys
     layer_idx: which layer are we at (for bookkeeping)
@@ -333,28 +362,34 @@ def DecoderBlock(d_model, d_ff, n_heads, d_attention_key, d_attention_value,
     ff_activation: the non-linearity in feed-forward layer
 
   Returns:
-    A sequence of layers that maps an activation tensor to an activation tensor.
+    A list of layers that maps an activation tensor to an activation tensor.
   """
-  self_attention = [
-      tl.LayerNorm(),  # vec
-      tl.CausalAttention(
-          d_model, n_heads=n_heads, d_attention_key=d_attention_key,
-          d_attention_value=d_attention_value, attention_type=attention_type,
-          share_qk=share_qk, mode=mode),
-      tl.Dropout(rate=dropout, name='attention_%d' % layer_idx, mode=mode),
+  causal_attention = tl.CausalAttention(
+      d_model, n_heads=n_heads, d_attention_key=d_attn_key,
+      d_attention_value=d_attn_value, attention_type=attn_type,
+      share_qk=share_qk, mode=mode),
+
+  dropout_ = tl.Dropout(
+      rate=dropout, name='attention_%d' % layer_idx, mode=mode)
+
+  feed_forward = _FeedForwardBlock(
+      d_model, d_ff, dropout, layer_idx, mode, ff_activation)
+
+  return [
+      tl.Residual(
+          tl.LayerNorm(),
+          causal_attention,
+          dropout_,
+      ),
+      tl.Residual(
+          feed_forward
+      ),
   ]
-  feed_forward = [
-      FeedForward(d_model, d_ff, dropout, layer_idx, mode, ff_activation),
-  ]
-  return tl.Serial(
-      tl.Residual(self_attention),
-      tl.Residual(feed_forward),
-  )
 
 
-def EncoderDecoder(d_model, d_ff, n_heads, dropout, layer_idx, mode,
-                   ff_activation):
-  """Transformer encoder-decoder layer.
+def _EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, layer_idx, mode,
+                         ff_activation):
+  """Returns a list of layers implementing a Transformer encoder-decoder block.
 
   The input is a triple (decoder_input, mask, encoder) where the mask is
   created from the original source to prevent attending to the padding part
@@ -370,40 +405,63 @@ def EncoderDecoder(d_model, d_ff, n_heads, dropout, layer_idx, mode,
     ff_activation: the non-linearity in feed-forward layer
 
   Returns:
-    the layer, returning a triple (decoder_activations, mask, encoder).
+    A list of layers which maps triples (decoder_activations, mask,
+    encoder_activations) to triples of the same sort.
   """
-  decoder_self_attention = [                    #        vecs_d   pmask vecs_e
-      tl.LayerNorm(),                           #        vecs_d   ..... ......
-      tl.BasicCausalAttention(
-          d_model, n_heads=n_heads, dropout=dropout, mode=mode),
-      tl.Dropout(rate=dropout, mode=mode),      # vecs_d          ..... ......
+  def _Dropout():
+    return tl.Dropout(rate=dropout, mode=mode)
+
+  attention_qkv = tl.AttentionQKV(
+      d_model, n_heads=n_heads, dropout=dropout, mode=mode)
+
+  basic_causal_attention = tl.BasicCausalAttention(
+      d_model, n_heads=n_heads, dropout=dropout, mode=mode)
+
+  feed_forward = _FeedForwardBlock(
+      d_model, d_ff, dropout, layer_idx, mode, ff_activation)
+
+  return [                             # vec_d masks vec_e
+      tl.Residual(
+          tl.LayerNorm(),              # vec_d ..... .....
+          basic_causal_attention,      # vec_d masks .....
+          _Dropout(),                  # vec_d ..... .....
+      ),
+      tl.Residual(
+          tl.LayerNorm(),              # vec_d ..... .....
+          tl.Select([0, 2, 2, 1, 2]),  # vec_d vec_e vec_e masks vec_e
+          attention_qkv,               # vec_d masks vec_e
+          _Dropout(),                  # vec_d masks vec_e
+      ),
+      tl.Residual(
+          feed_forward                 # vec_d masks vec_e
+      ),
   ]
-  decoder_to_encoder_attention = [        # vecs_d        masks         vecs_e
-      tl.LayerNorm(),                     # vecs_d        masks         vecs_e
-      tl.Parallel([], [], tl.Dup()),      # ______        _____  vecs_e vecs_e
-      tl.Parallel([], tl.Swap()),         # ______        vecs_e masks  ......
-      tl.Parallel([], tl.Dup()),          # ______ vecs_e vecs_e .....  ......
-      tl.AttentionQKV(  # (q k v masks ... --> vecs_d masks ...)
-          d_model, n_heads=n_heads, dropout=dropout, mode=mode),
-      tl.Dropout(rate=dropout, mode=mode),  # vecs_d mask vecs_e
-  ]
-  feed_forward = [
-      FeedForward(d_model, d_ff, dropout, layer_idx, mode, ff_activation),
-  ]
-  return tl.Serial(                               # vecs_d masks vecs_e
-      tl.Residual(decoder_self_attention),        # vecs_d masks vecs_e
-      tl.Residual(decoder_to_encoder_attention),  # vecs_d masks vecs_e
-      tl.Residual(feed_forward),                  # vecs_d masks vecs_e
-  )
 
 
-def FeedForward(d_model, d_ff, dropout, layer_idx, mode, activation):
-  """Feed-forward block with layer normalization at start."""
-  return tl.Serial(
+def _FeedForwardBlock(d_model, d_ff, dropout, layer_idx, mode, activation):
+  """Returns a list of layers implementing a feed-forward block.
+
+  Args:
+    d_model: int:  depth of embedding
+    d_ff: int: depth of feed-forward layer
+    dropout: float: dropout rate (how much to drop out)
+    layer_idx: which layer are we at (for bookkeeping)
+    mode: str: 'train' or 'eval'
+    activation: the non-linearity in feed-forward layer
+
+  Returns:
+    A list of layers which maps vectors to vectors.
+  """
+  dropout_middle = tl.Dropout(
+      rate=dropout, name='ff_middle_%d' % layer_idx, mode=mode)
+  dropout_final = tl.Dropout(
+      rate=dropout, name='ff_final_%d' % layer_idx, mode=mode)
+
+  return [
       tl.LayerNorm(),
       tl.Dense(d_ff),
       activation(),
-      tl.Dropout(rate=dropout, name='ff_middle_%d' % layer_idx, mode=mode),
+      dropout_middle,
       tl.Dense(d_model),
-      tl.Dropout(rate=dropout, name='ff_final_%d' % layer_idx, mode=mode),
-  )
+      dropout_final,
+  ]
