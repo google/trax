@@ -235,29 +235,13 @@ def AttentionPosition(vec, pos,
   return x, pos
 
 
-def ResidualFeedForward(d_model,
-                        d_ff,
-                        dropout,
-                        mode):
-  """Residual feed-forward layer with normalization at start."""
-  stack = tl.Serial(
-      tl.LayerNorm(),
-      tl.Dense(d_ff),
-      tl.Relu(),
-      tl.Dropout(rate=dropout, mode=mode),
-      tl.Dense(d_model),
-      tl.Dropout(rate=dropout, mode=mode),
-  )
-  return tl.Residual(stack)
-
-
-def DecoderLayer(positions,
-                 d_model,
-                 d_ff,
-                 n_heads,
-                 dropout,
-                 mode):
-  """Transformer decoder layer.
+def _DecoderBlock(positions,
+                  d_model,
+                  d_ff,
+                  n_heads,
+                  dropout,
+                  mode):
+  """Returns a layer sequence representing a Transformer decoder.
 
   (acts, pos) --> (acts', pos')
 
@@ -268,9 +252,6 @@ def DecoderLayer(positions,
     n_heads: int: number of attention heads
     dropout: float: dropout rate (how much to drop out)
     mode: str: 'train' or 'eval'
-
-  Returns:
-    the layer.
   """
   return tl.Serial(
       tl.Residual(  # Self-attention block.
@@ -282,7 +263,14 @@ def DecoderLayer(positions,
                             mode=mode),
           tl.Dropout(rate=dropout, mode=mode)
       ),
-      ResidualFeedForward(d_model, d_ff, dropout, mode=mode)
+      tl.Residual(
+          tl.LayerNorm(),
+          tl.Dense(d_ff),
+          tl.Relu(),
+          tl.Dropout(rate=dropout, mode=mode),
+          tl.Dense(d_model),
+          tl.Dropout(rate=dropout, mode=mode),
+      )
   )
 
 
@@ -310,15 +298,18 @@ def PositionLookupTransformerLM(vocab_size=128,
     the layer.
   """
   positions = _POSITIONS[:max_len, :]
+
+  decoder_blocks = [
+      _DecoderBlock(positions, d_model, d_ff, n_heads, dropout, mode)
+      for _ in range(n_layers)]
+
   return tl.Serial(
       tl.ShiftRight(),
       tl.Embedding(d_model, vocab_size),
       tl.Dropout(rate=dropout, mode=mode),
-      tl.Dup(),
-      tl.Parallel([], NewPositionalEncoding(positions=positions)),
-      [DecoderLayer(positions, d_model, d_ff, n_heads, dropout, mode)
-       for _ in range(n_layers)],
-      tl.Parallel([], tl.Drop()),  # Drop positions.
+      tl.Branch([], NewPositionalEncoding(positions=positions)),
+      decoder_blocks,
+      tl.Select([0], n_in=2),  # Drop positions.
       tl.LayerNorm(),
       tl.Dense(vocab_size),
       tl.LogSoftmax()

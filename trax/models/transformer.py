@@ -183,12 +183,6 @@ def TransformerLM(vocab_size,
     A Transformer language model as a layer that maps from a tensor of tokens
     to activations over a vocab set.
   """
-  def DecoderBlocks(n_blocks):  # vectors --> vectors
-    return [  # pylint: disable=g-complex-comprehension
-        _DecoderBlock(d_model, d_ff, n_heads,
-                      d_attention_key, d_attention_value, attention_type,
-                      dropout, share_qk, i, mode, ff_activation)
-        for i in range(n_blocks)]
 
   if n_chunks == 0:
     concatenate_chunks = []
@@ -201,6 +195,13 @@ def TransformerLM(vocab_size,
   dropout_ = tl.Dropout(rate=dropout, name='embedding', mode=mode)
   positional_encoding = tl.PositionalEncoding(max_len=max_len, mode=mode)
 
+  decoder_blocks = [
+      # pylint: disable=g-complex-comprehension
+      _DecoderBlock(d_model, d_ff, n_heads,
+                    d_attention_key, d_attention_value, attention_type,
+                    dropout, share_qk, i, mode, ff_activation)
+      for i in range(n_layers)]
+
   # Assemble and return the model.
   return tl.Serial(              # tokens (or chunked tuple of tokens)
       concatenate_chunks,        # toks
@@ -208,7 +209,7 @@ def TransformerLM(vocab_size,
       embedding,                 # vecs
       dropout_,                  # vecs
       positional_encoding,       # vecs
-      DecoderBlocks(n_layers),   # vecs
+      decoder_blocks,            # vecs
       tl.LayerNorm(),            # vecs
       tl.Dense(vocab_size),      # vecs
       tl.LogSoftmax(),           # vecs
