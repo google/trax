@@ -524,8 +524,8 @@ class Trainer(object):
   def _state_dicts_update(self, state_dict):
     assert len(state_dict.keys()) == 1
     key = list(state_dict.keys())[0]
-    value = np.array(state_dict[key])
-    return {key: np.array(self.update_model_state(key, value))}
+    value = state_dict[key]
+    return {key: self.update_model_state(key, value)}
 
   def _should_save(self):
     return self._is_chief and self._should_save_checkpoints
