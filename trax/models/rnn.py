@@ -56,15 +56,17 @@ def RNNLM(vocab_size,
         tl.Parallel([], tl.Concatenate(n_items=n_layers))
     )
 
+  zero_state = tl.MakeZeroState(  # pylint: disable=no-value-for-parameter
+      depth_multiplier=n_layers * rnn_cell_d_state_multiplier
+  )
+
   return tl.Serial(
       tl.ShiftRight(mode=mode),
       tl.Embedding(d_model, vocab_size),
       tl.Dropout(rate=dropout, name='embedding', mode=mode),
-      tl.Dup(),  # Duplicate to create parallel state.
-      tl.Parallel([], tl.MakeZeroState(  # pylint: disable=no-value-for-parameter
-          depth_multiplier=n_layers * rnn_cell_d_state_multiplier)),
+      tl.Branch([], zero_state),
       tl.Scan(MultiRNNCell(), axis=1),
-      tl.Parallel([], tl.Drop()),  # Drop RNN state.
+      tl.Select([0], n_in=2),  # Drop RNN state.
       tl.Dense(vocab_size),
       tl.LogSoftmax()
   )
