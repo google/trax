@@ -339,10 +339,9 @@ def BasicCausalAttention(d_feature, n_heads=1, dropout=0.0, mode='train'):
     Multi-headed self-attention result.
   """
   return cb.Serial(
-      cb.Dup(),
-      cb.Parallel([], CausalMask(axis=-2)),  # pylint: disable=no-value-for-parameter
+      cb.Branch([], CausalMask(axis=-2)),  # pylint: disable=no-value-for-parameter
       Attention(d_feature, n_heads=n_heads, dropout=dropout, mode=mode),
-      cb.Parallel([], cb.Drop()),  # x
+      cb.Select([0], n_in=2),  # x
   )
 
 

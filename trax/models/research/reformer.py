@@ -699,7 +699,7 @@ def ReformerShortenLM(vocab_size,
       tl.Dense(d_model),
       tl.Dup(),  # Stack has (short_x, short_x, x)
       tl.ReversibleSerial(decoder_blocks),
-      tl.Parallel([], tl.Drop()),
+      tl.Select([0], n_in=2),
       tl.LayerNorm(),
       BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
       tl.Dense(shorten_factor * d_embedding),
