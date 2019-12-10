@@ -95,6 +95,8 @@ class Dropout(base.Layer):
                          state=base.EMPTY_STATE, rng=None, **kwargs):
     """Execute dropout."""
     del kwargs
+    if self._mode != 'train':
+      return x, state
     rate = self._initial_rate
     if isinstance(state, dict) and self._name in state:
       rate = state[self._name]
@@ -103,8 +105,6 @@ class Dropout(base.Layer):
              'argument. That is, instead of `Dropout(weights, inputs)`, call '
              'it like `Dropout(weights, inputs, rng=key)`.')
       raise ValueError(msg)
-    if self._mode != 'train':
-      return x, state
     keep = backend.random.bernoulli(rng, 1.0 - rate, x.shape)
     return np.where(keep, x / (1.0 - rate), np.zeros_like(x)), state
 
