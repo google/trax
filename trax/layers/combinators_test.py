@@ -29,27 +29,6 @@ from trax.shapes import ShapeDtype
 
 class CombinatorLayerTest(absltest.TestCase):
 
-  def test_drop(self):
-    layer = cb.Drop()
-    input_signature = ShapeDtype((3, 2))
-    expected_shape = ()
-    output_shape = base.check_shape_agreement(layer, input_signature)
-    self.assertEqual(output_shape, expected_shape)
-
-  def test_dup(self):
-    layer = cb.Dup()
-    input_signature = ShapeDtype((3, 2))
-    expected_shape = ((3, 2), (3, 2))
-    output_shape = base.check_shape_agreement(layer, input_signature)
-    self.assertEqual(output_shape, expected_shape)
-
-  def test_swap(self):
-    layer = cb.Swap()
-    input_signature = (ShapeDtype((3, 2)), ShapeDtype((4, 7)))
-    expected_shape = ((4, 7), (3, 2))
-    output_shape = base.check_shape_agreement(layer, input_signature)
-    self.assertEqual(output_shape, expected_shape)
-
   def test_serial_no_op(self):
     layer = cb.Serial(None)
     input_signature = (ShapeDtype((3, 2)), ShapeDtype((4, 7)))
@@ -95,6 +74,50 @@ class CombinatorLayerTest(absltest.TestCase):
     output_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual(output_shape, expected_shape)
 
+  def test_branch_noop_dup(self):
+    layer = cb.Branch([], cb.Dup())
+    input_signature = ShapeDtype((3, 2))
+    expected_shape = ((3, 2), (3, 2), (3, 2))
+    output_shape = base.check_shape_agreement(layer, input_signature)
+    self.assertEqual(output_shape, expected_shape)
+
+  def test_branch_add_div(self):
+    layer = cb.Branch(cb.Add(), core.Div(divisor=0.5))
+    input_signature = (ShapeDtype((3, 2)), ShapeDtype((3, 2)))
+    expected_shape = ((3, 2), (3, 2))
+    output_shape = base.check_shape_agreement(layer, input_signature)
+    self.assertEqual(output_shape, expected_shape)
+
+  def test_select_computes_n_in(self):
+    layer = cb.Select([0, 0])
+    self.assertEqual(layer.n_in, 1)
+    layer = cb.Select([1, 0])
+    self.assertEqual(layer.n_in, 2)
+    layer = cb.Select([2])
+    self.assertEqual(layer.n_in, 3)
+
+  def test_select_given_n_in(self):
+    layer = cb.Select([0], n_in=2)
+    self.assertEqual(layer.n_in, 2)
+    layer = cb.Select([0], n_in=3)
+    self.assertEqual(layer.n_in, 3)
+
+  def test_select_first_of_3(self):
+    layer = cb.Select([0], n_in=3)
+    input_signature = (
+        ShapeDtype((3, 2)), ShapeDtype((4, 7)), ShapeDtype((11, 13)))
+    expected_shape = (3, 2)
+    output_shape = base.check_shape_agreement(layer, input_signature)
+    self.assertEqual(output_shape, expected_shape)
+
+  def test_select_second_of_3(self):
+    layer = cb.Select([1], n_in=3)
+    input_signature = (
+        ShapeDtype((3, 2)), ShapeDtype((4, 7)), ShapeDtype((11, 13)))
+    expected_shape = (4, 7)
+    output_shape = base.check_shape_agreement(layer, input_signature)
+    self.assertEqual(output_shape, expected_shape)
+
   def test_parallel_dup_dup(self):
     layer = cb.Parallel(cb.Dup(), cb.Dup())
     input_signature = (ShapeDtype((3, 2)), ShapeDtype((4, 7)))
@@ -116,17 +139,24 @@ class CombinatorLayerTest(absltest.TestCase):
     output_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual(output_shape, expected_shape)
 
-  def test_branch_noop_dup(self):
-    layer = cb.Branch([], cb.Dup())
+  def test_drop(self):
+    layer = cb.Drop()
     input_signature = ShapeDtype((3, 2))
-    expected_shape = ((3, 2), (3, 2), (3, 2))
+    expected_shape = ()
     output_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual(output_shape, expected_shape)
 
-  def test_branch_add_div(self):
-    layer = cb.Branch(cb.Add(), core.Div(divisor=0.5))
-    input_signature = (ShapeDtype((3, 2)), ShapeDtype((3, 2)))
+  def test_dup(self):
+    layer = cb.Dup()
+    input_signature = ShapeDtype((3, 2))
     expected_shape = ((3, 2), (3, 2))
+    output_shape = base.check_shape_agreement(layer, input_signature)
+    self.assertEqual(output_shape, expected_shape)
+
+  def test_swap(self):
+    layer = cb.Swap()
+    input_signature = (ShapeDtype((3, 2)), ShapeDtype((4, 7)))
+    expected_shape = ((4, 7), (3, 2))
     output_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual(output_shape, expected_shape)
 

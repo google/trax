@@ -461,15 +461,33 @@ def Swap(xs, **unused_kwargs):
   return (xs[1], xs[0])
 
 
-def Select(idxs, n_in=None):
-  """Permutes stack elements with copies according to provided indices."""
+def Select(indices, n_in=None):
+  """Copies, reorders, or deletes stack elements according to `indices`.
+
+  Args:
+    indices: A list or tuple of 0-based indices to select elements relative to
+        the top of the stack.
+    n_in: Number of input elements to pop from the stack, and replace with
+        those specified by `indices`. If not specified, its value will be
+        calculated as `max(indices) + 1`.
+
+  Returns:
+    Tensors, matching the number selected (`n_out = len(indices)`).
+    Specifically:
+      - n_out = 0: an empty tuple
+      - n_out = 1: one tensor (NOT wrapped in a tuple)
+      - n_out > 1: a tuple of tensors, with n_out items
+  """
   if n_in is None:
-    n_in = max(idxs) + 1
-  @base.layer(n_in=n_in, n_out=len(idxs))
+    n_in = max(indices) + 1
+
+  @base.layer(n_in=n_in, n_out=len(indices))
   def Selection(xs, **unused_kwargs):  # pylint: disable=invalid-name
     if not isinstance(xs, (tuple, list)):
       xs = (xs,)
-    return tuple(xs[i] for i in idxs)
+    selected = tuple(xs[i] for i in indices)
+    return selected[0] if len(selected) == 1 else selected
+
   return Selection()  # pylint: disable=no-value-for-parameter
 
 
