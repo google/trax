@@ -51,30 +51,28 @@ def TransformerEncoder(vocab_size,
     A Transformer model as a layer that maps from a tensor of tokens to
     activations over a set of output classes.
   """
-  def EncoderBlocks(n_blocks):  # vectors masks --> vectors masks
-    return [
-        _EncoderBlock(d_model, d_ff, n_heads, dropout, i, mode, ff_activation)
-        for i in range(n_blocks)]
-
-  positional_embedder = [
+  positional_encoder = [
       tl.Embedding(d_model, vocab_size),
       tl.Dropout(rate=dropout, name='emb_dropout', mode=mode),
-      tl.PositionalEncoding(max_len=max_len),
-  ]
+      tl.PositionalEncoding(max_len=max_len)]
+
+  encoder_blocks = [
+      _EncoderBlock(d_model, d_ff, n_heads, dropout, i, mode, ff_activation)
+      for i in range(n_layers)]
 
   # Assemble and return the model.
-  return tl.Serial(                                # toks
+  return tl.Serial(                               # toks
       # Encode.
       tl.Branch(
-          positional_embedder, tl.PaddingMask()),  # vecs masks
-      EncoderBlocks(n_layers),                     # vecs masks
-      tl.LayerNorm(),                              # vecs .....
+          positional_encoder, tl.PaddingMask()),  # vecs masks
+      encoder_blocks,                             # vecs masks
+      tl.Select([0], n_in=2),                     # vecs
+      tl.LayerNorm(),                             # vecs
 
       # Map to output categories.
-      tl.Select([0], n_in=2),                      # vecs
-      tl.Mean(axis=1),                             # vecs
-      tl.Dense(n_classes),                         # vecs
-      tl.LogSoftmax(),                             # vecs
+      tl.Mean(axis=1),                            # vecs
+      tl.Dense(n_classes),                        # vecs
+      tl.LogSoftmax(),                            # vecs
   )
 
 
@@ -119,26 +117,24 @@ def TransformerDecoder(vocab_size=None,
     A Transformer decoder as a layer that maps from a continuous or discrete
     tensor to a continuous tensor.
   """
-  def DecoderBlocks(n_blocks):  # vectors --> vectors
-    return [  # pylint: disable=g-complex-comprehension
-        _DecoderBlock(d_model, d_ff, n_heads,
-                      d_attention_key, d_attention_value, attention_type,
-                      dropout, share_qk, i, mode, ff_activation)
-        for i in range(n_blocks)]
+  positional_encoder = [
+      (tl.Embedding(d_model, vocab_size) if vocab_size is not None
+       else tl.Dense(d_model)),
+      tl.Dropout(rate=dropout, mode=mode),
+      tl.PositionalEncoding(max_len=max_len)]
 
-  embedding_or_dense = (
-      tl.Embedding(d_model, vocab_size) if vocab_size is not None
-      else tl.Dense(d_model))
-  dropout_ = tl.Dropout(rate=dropout, mode=mode)
-  positional_encoding = tl.PositionalEncoding(max_len=max_len)
+  decoder_blocks = [
+      # pylint: disable=g-complex-comprehension
+      _DecoderBlock(d_model, d_ff, n_heads,
+                    d_attention_key, d_attention_value, attention_type,
+                    dropout, share_qk, i, mode, ff_activation)
+      for i in range(n_layers)]
 
   # Assemble and return the model.
-  return tl.Serial(             # toks
-      embedding_or_dense,       # vecs
-      dropout_,                 # vecs
-      positional_encoding,      # vecs
-      DecoderBlocks(n_layers),  # vecs
-      tl.LayerNorm(),           # vecs
+  return tl.Serial(        # toks
+      positional_encoder,  # vecs
+      decoder_blocks,      # vecs
+      tl.LayerNorm(),      # vecs
   )
 
 
@@ -191,9 +187,10 @@ def TransformerLM(vocab_size,
     concatenate_chunks = tl.Concatenate(n_items=n_chunks)
     split_chunks = tl.Split(n_items=n_chunks, axis=-2)
 
-  embedding = tl.Embedding(d_model, vocab_size)
-  dropout_ = tl.Dropout(rate=dropout, name='embedding', mode=mode)
-  positional_encoding = tl.PositionalEncoding(max_len=max_len, mode=mode)
+  positional_encoder = [
+      tl.Embedding(d_model, vocab_size),
+      tl.Dropout(rate=dropout, name='embedding', mode=mode),
+      tl.PositionalEncoding(max_len=max_len, mode=mode)]
 
   decoder_blocks = [
       # pylint: disable=g-complex-comprehension
@@ -206,9 +203,7 @@ def TransformerLM(vocab_size,
   return tl.Serial(              # tokens (or chunked tuple of tokens)
       concatenate_chunks,        # toks
       tl.ShiftRight(mode=mode),  # toks
-      embedding,                 # vecs
-      dropout_,                  # vecs
-      positional_encoding,       # vecs
+      positional_encoder,        # vecs
       decoder_blocks,            # vecs
       tl.LayerNorm(),            # vecs
       tl.Dense(vocab_size),      # vecs
@@ -250,55 +245,54 @@ def Transformer(input_vocab_size,
     A Transformer model as a layer that maps from a target, source pair to
     activations over a vocab set.
   """
-  def PositionalEmbedder(vocab_size):  # tokens --> vectors
+  def PositionalEncoder(vocab_size):  # tokens --> vectors
     return [
         tl.Embedding(d_model, vocab_size),
         tl.Dropout(rate=dropout, mode=mode),
         tl.PositionalEncoding(max_len=max_len),
     ]
 
-  def EncoderBlocks(n_blocks):  # vectors masks --> vectors masks
-    return [
-        _EncoderBlock(d_model, d_ff, n_heads, dropout, i, mode, ff_activation)
-        for i in range(n_blocks)]
-
-  def EncoderDecoderBlocks(n_blocks):  # vectors masks --> vectors masks
-    return [
-        _EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, i, mode,
-                             ff_activation)
-        for i in range(n_blocks)]
-
-  in_embed = PositionalEmbedder(input_vocab_size)
-  out_embed = (in_embed if output_vocab_size is None
-               else PositionalEmbedder(output_vocab_size))
+  in_encoder = PositionalEncoder(input_vocab_size)
+  out_encoder = (in_encoder if output_vocab_size is None
+                 else PositionalEncoder(output_vocab_size))
   if output_vocab_size is None:
     output_vocab_size = input_vocab_size
+
+  encoder_blocks = [
+      _EncoderBlock(
+          d_model, d_ff, n_heads, dropout, i, mode, ff_activation)
+      for i in range(n_encoder_layers)]
+
+  encoder_decoder_blocks = [
+      _EncoderDecoderBlock(
+          d_model, d_ff, n_heads, dropout, i, mode, ff_activation)
+      for i in range(n_decoder_layers)]
 
   # Assemble and return the model.
   return tl.Serial(
       # Input: encoder_side_tokens, decoder_side_tokens
       # Copy decoder tokens for use in loss.
-      tl.Select([0, 1, 1]),                    # tok_e tok_d tok_d
+      tl.Select([0, 1, 1]),               # tok_e tok_d tok_d
 
       # Encode.
       tl.Branch(
-          in_embed, tl.PaddingMask()),         # vec_e masks ..... .....
-      EncoderBlocks(n_encoder_layers),         # vec_d masks ..... .....
-      tl.LayerNorm(),                          # vec_e ..... ..... .....
+          in_encoder, tl.PaddingMask()),  # vec_e masks ..... .....
+      encoder_blocks,                     # vec_d masks ..... .....
+      tl.LayerNorm(),                     # vec_e ..... ..... .....
 
       # Decode.
-      tl.Select([2, 1, 0]),                    # tok_d masks vec_e .....
-      tl.ShiftRight(),                         # tok_d ..... ..... .....
-      out_embed,                               # vec_d ..... ..... .....
+      tl.Select([2, 1, 0]),               # tok_d masks vec_e .....
+      tl.ShiftRight(),                    # tok_d ..... ..... .....
+      out_encoder,                        # vec_d ..... ..... .....
       tl.Branch(
-          [], tl.EncoderDecoderMask()),        # vec_d masks ..... .....
-      EncoderDecoderBlocks(n_decoder_layers),  # vec_d masks ..... .....
-      tl.LayerNorm(),                          # vec_d ..... ..... .....
+          [], tl.EncoderDecoderMask()),   # vec_d masks ..... .....
+      encoder_decoder_blocks,             # vec_d masks ..... .....
+      tl.LayerNorm(),                     # vec_d ..... ..... .....
 
       # Map to output vocab.
-      tl.Select([0], n_in=3),                  # vec_d tok_d
-      tl.Dense(output_vocab_size),             # vec_d .....
-      tl.LogSoftmax(),                         # vec_d .....
+      tl.Select([0], n_in=3),             # vec_d tok_d
+      tl.Dense(output_vocab_size),        # vec_d .....
+      tl.LogSoftmax(),                    # vec_d .....
   )
 
 
