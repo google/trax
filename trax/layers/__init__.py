@@ -58,6 +58,9 @@ L2LossScalar = layer_configure(L2LossScalar)
 LSTMCell = layer_configure(LSTMCell)
 GRUCell = layer_configure(GRUCell)
 
+BatchNorm = layer_configure(BatchNorm)
+FilterResponseNorm = layer_configure(FilterResponseNorm)
+ThresholdedLinearUnit = layer_configure(ThresholdedLinearUnit)
 
 DotProductCausalAttention = layer_configure(
     DotProductCausalAttention, blacklist=['mode'])

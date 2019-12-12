@@ -22,88 +22,99 @@ from __future__ import print_function
 from trax import layers as tl
 
 
-def ConvBlock(kernel_size, filters, strides, mode='train'):
+def ConvBlock(kernel_size, filters, strides, norm, non_linearity,
+              mode='train'):
   """ResNet convolutional striding block."""
   # TODO(jonni): Use good defaults so Resnet50 code is cleaner / less redundant.
   ks = kernel_size
   filters1, filters2, filters3 = filters
   main = [
       tl.Conv(filters1, (1, 1), strides),
-      tl.BatchNorm(mode=mode),
-      tl.Relu(),
+      norm(mode=mode),
+      non_linearity(),
       tl.Conv(filters2, (ks, ks), padding='SAME'),
-      tl.BatchNorm(mode=mode),
-      tl.Relu(),
+      norm(mode=mode),
+      non_linearity(),
       tl.Conv(filters3, (1, 1)),
-      tl.BatchNorm(mode=mode),
+      norm(mode=mode),
   ]
   shortcut = [
       tl.Conv(filters3, (1, 1), strides),
-      tl.BatchNorm(mode=mode),
+      norm(mode=mode),
   ]
   return [
       tl.Residual(main, shortcut=shortcut),
-      tl.Relu(),
+      non_linearity()
   ]
 
 
-def IdentityBlock(kernel_size, filters, mode='train'):
+def IdentityBlock(kernel_size, filters, norm, non_linearity,
+                  mode='train'):
   """ResNet identical size block."""
   # TODO(jonni): Use good defaults so Resnet50 code is cleaner / less redundant.
   ks = kernel_size
   filters1, filters2, filters3 = filters
   main = [
       tl.Conv(filters1, (1, 1)),
-      tl.BatchNorm(mode=mode),
-      tl.Relu(),
+      norm(mode=mode),
+      non_linearity(),
       tl.Conv(filters2, (ks, ks), padding='SAME'),
-      tl.BatchNorm(mode=mode),
-      tl.Relu(),
+      norm(mode=mode),
+      non_linearity(),
       tl.Conv(filters3, (1, 1)),
-      tl.BatchNorm(mode=mode),
+      norm(mode=mode),
   ]
   return [
       tl.Residual(main),
-      tl.Relu(),
+      non_linearity(),
   ]
 
 
-def Resnet50(d_hidden=64, n_output_classes=1001, mode='train'):
+def Resnet50(d_hidden=64, n_output_classes=1001, mode='train',
+             norm=tl.BatchNorm,
+             non_linearity=tl.Relu):
   """ResNet.
 
   Args:
     d_hidden: Dimensionality of the first hidden layer (multiplied later).
     n_output_classes: Number of distinct output classes.
     mode: Whether we are training or evaluating or doing inference.
+    norm: `Layer` used for normalization, Ex: BatchNorm or
+      FilterResponseNorm.
+    non_linearity: `Layer` used as a non-linearity, Ex: If norm is
+      BatchNorm then this is a Relu, otherwise for FilterResponseNorm this
+      should be ThresholdedLinearUnit.
 
   Returns:
     The list of layers comprising a ResNet model with the given parameters.
   """
+
+  # A ConvBlock configured with the given norm, non-linearity and mode.
+  def Resnet50ConvBlock(filter_multiplier=1, strides=(2, 2)):
+    filters = (
+        [filter_multiplier * dim for dim in [d_hidden, d_hidden, 4 * d_hidden]])
+    return ConvBlock(3, filters, strides, norm, non_linearity, mode)
+
+  # Same as above for IdentityBlock.
+  def Resnet50IdentityBlock(filter_multiplier=1):
+    filters = (
+        [filter_multiplier * dim for dim in [d_hidden, d_hidden, 4 * d_hidden]])
+    return IdentityBlock(3, filters, norm, non_linearity, mode)
+
   return tl.Serial(
       tl.ToFloat(),
       tl.Conv(d_hidden, (7, 7), (2, 2), 'SAME'),
-      tl.BatchNorm(mode=mode),
-      tl.Relu(),
+      norm(mode=mode),
+      non_linearity(),
       tl.MaxPool(pool_size=(3, 3), strides=(2, 2)),
-      ConvBlock(3, [d_hidden, d_hidden, 4 * d_hidden], (1, 1), mode=mode),
-      IdentityBlock(3, [d_hidden, d_hidden, 4 * d_hidden], mode=mode),
-      IdentityBlock(3, [d_hidden, d_hidden, 4 * d_hidden], mode=mode),
-      ConvBlock(3, [2 * d_hidden, 2 * d_hidden, 8 * d_hidden], (2, 2),
-                mode=mode),
-      IdentityBlock(3, [2 * d_hidden, 2 * d_hidden, 8 * d_hidden], mode=mode),
-      IdentityBlock(3, [2 * d_hidden, 2 * d_hidden, 8 * d_hidden], mode=mode),
-      IdentityBlock(3, [2 * d_hidden, 2 * d_hidden, 8 * d_hidden], mode=mode),
-      ConvBlock(3, [4 * d_hidden, 4 * d_hidden, 16 * d_hidden], (2, 2),
-                mode=mode),
-      IdentityBlock(3, [4 * d_hidden, 4 * d_hidden, 16 * d_hidden], mode=mode),
-      IdentityBlock(3, [4 * d_hidden, 4 * d_hidden, 16 * d_hidden], mode=mode),
-      IdentityBlock(3, [4 * d_hidden, 4 * d_hidden, 16 * d_hidden], mode=mode),
-      IdentityBlock(3, [4 * d_hidden, 4 * d_hidden, 16 * d_hidden], mode=mode),
-      IdentityBlock(3, [4 * d_hidden, 4 * d_hidden, 16 * d_hidden], mode=mode),
-      ConvBlock(3, [8 * d_hidden, 8 * d_hidden, 32 * d_hidden], (2, 2),
-                mode=mode),
-      IdentityBlock(3, [8 * d_hidden, 8 * d_hidden, 32 * d_hidden], mode=mode),
-      IdentityBlock(3, [8 * d_hidden, 8 * d_hidden, 32 * d_hidden], mode=mode),
+      Resnet50ConvBlock(strides=(1, 1)),
+      [Resnet50IdentityBlock() for _ in range(2)],
+      Resnet50ConvBlock(2),
+      [Resnet50IdentityBlock(2) for _ in range(3)],
+      Resnet50ConvBlock(4),
+      [Resnet50IdentityBlock(4) for _ in range(5)],
+      Resnet50ConvBlock(8),
+      [Resnet50IdentityBlock(8) for _ in range(2)],
       tl.AvgPool(pool_size=(7, 7)),
       tl.Flatten(),
       tl.Dense(n_output_classes),

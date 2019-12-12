@@ -64,6 +64,18 @@ class NormalizationLayerTest(absltest.TestCase):
         normalization.LayerNorm(), input_signature)
     self.assertEqual(result_shape, input_signature.shape)
 
+  def test_frn_shape(self):
+    B, H, W, C = 64, 5, 7, 3  # pylint: disable=invalid-name
+    input_signature = ShapeDtype((B, H, W, C))
+    result_shape = base.check_shape_agreement(
+        normalization.FilterResponseNorm(), input_signature)
+    self.assertEqual(result_shape, input_signature.shape)
+
+    result_shape = base.check_shape_agreement(
+        normalization.FilterResponseNorm(learn_epsilon=False),
+        input_signature)
+    self.assertEqual(result_shape, input_signature.shape)
+
 
 if __name__ == '__main__':
   absltest.main()

@@ -274,3 +274,15 @@ def multigaussian_loss(preds, targets, ngauss=1):  # pylint: disable=invalid-nam
   targets = np.reshape(targets, [-1, 1, ndims])
   glogprobs = log_gaussian_diag_pdf(targets, mus, sigmas)
   return backend.logsumexp(loglogits + glogprobs, axis=-1)
+
+
+class ThresholdedLinearUnit(base.Layer):
+  """Thresholded Linear Unit, c.f. https://arxiv.org/pdf/1911.09737.pdf ."""
+
+  def new_weights(self, input_signature):
+    del input_signature
+    return (np.zeros((), dtype=np.float32),)
+
+  def forward(self, inputs, weights):
+    threshold = weights[0]
+    return np.maximum(inputs, threshold)

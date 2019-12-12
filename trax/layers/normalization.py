@@ -134,3 +134,62 @@ def LayerNorm(x, weights, epsilon=1e-6, **unused_kwargs):  # pylint: disable=inv
   variance = np.mean((x - mean)**2, axis=-1, keepdims=True)
   norm_inputs = (x - mean) / np.sqrt(variance + epsilon)
   return norm_inputs * scale + bias
+
+
+class FilterResponseNorm(base.Layer):
+  """Filter Response Normalization layer without Threshold Linear Unit.
+
+  c.f. https://arxiv.org/pdf/1911.09737.pdf
+  """
+
+  def __init__(self,
+               mode=None,
+               learn_epsilon=False,
+               init_epsilon=1e-6,
+               init_learnt_epsilon=1e-4):
+    super(FilterResponseNorm, self).__init__()
+
+    del mode
+
+    # If we learn epsilon then epsilon = init_epsilon + |learnt_value|
+    # where learnt_value is initialized to init_learnt_epsilon.
+    # If learn_epsilon is false then epsilon is just init_epsilon.
+    #
+    # NOTE: I (afrozm) haven't been able to train with `learn_epsilon = True`.
+    self._learn_epsilon = learn_epsilon
+
+    assert init_epsilon > 0
+    assert init_learnt_epsilon > 0
+
+    self._init_epsilon = np.array(init_epsilon, dtype=np.float32)
+    self._init_learnt_epsilon = np.array(init_learnt_epsilon, dtype=np.float32)
+
+  def new_weights(self, input_signature):
+    # Usually (B, W, H, C)
+    shape = input_signature.shape
+    num_channels = shape[-1]
+
+    gamma = np.ones((num_channels,), dtype=np.float32)
+    beta = np.zeros((num_channels,), dtype=np.float32)
+
+    epsilon_l = base.EMPTY_WEIGHTS
+    if self._learn_epsilon:
+      epsilon_l = (self._init_learnt_epsilon,)
+
+    return gamma, beta, epsilon_l
+
+  def forward(self, inputs, weights):
+    gamma, beta, epsilon_l = weights
+
+    epsilon = self._init_epsilon
+    if epsilon_l is not base.EMPTY_WEIGHTS:
+      epsilon += np.abs(epsilon_l[0])
+
+    # Omit B and C
+    axis = tuple(range(1, len(np.shape(inputs)) - 1))
+    # (B, 1, 1, C)
+    nu2 = np.mean(inputs**2, axis=axis, keepdims=True)
+    # (B, W, H, C)
+    xhat = inputs / np.sqrt(nu2 + epsilon)
+
+    return gamma * xhat + beta
