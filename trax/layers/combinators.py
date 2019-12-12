@@ -47,7 +47,7 @@ class Serial(base.Layer):
   def __init__(self, *sublayers):
     super(Serial, self).__init__()
 
-    sublayers = self._ensure_flat(sublayers)
+    sublayers = _ensure_flat(sublayers)
     self._sublayers = sublayers
     self._n_layers = len(sublayers)
 
@@ -111,19 +111,6 @@ class Serial(base.Layer):
     assert len(state) == self._n_layers
     for layer, sublayer_state in zip(self.sublayers, state):
       layer.state = sublayer_state
-
-  def _ensure_flat(self, layers):
-    """Ensures that layers is a single flat list of Layer instances."""
-    del self
-    if len(layers) == 1 and layers[0] is None:
-      layers = ()
-    else:
-      layers = _deep_flatten(layers)
-    for obj in layers:
-      if not isinstance(obj, base.Layer):
-        raise ValueError(
-            'Found nonlayer object ({}) in layers: {}.'.format(obj, layers))
-    return layers
 
   def _n_inputs_n_outputs(self, layers):
     del self
@@ -432,6 +419,30 @@ def Branch(*layers):
   return Serial(Select(_deep_flatten(indices)), parallel_layer)
 
 
+def Residual(*layers, **kwargs):
+  """Wraps a series of layers with a residual connection.
+
+  Args:
+    *layers: One or more layers, to be applied in series.
+    **kwargs: If empty (the usual case), the Residual layer computes the
+        element-wise sum of the stack-top input with the output of the layer
+        series. If non-empty, the only key should be 'shortcut', whose value is
+        a layer that applies to a copy of the inputs and (elementwise) adds its
+        output to the output from the main layer series.
+
+  Returns:
+      A layer representing a residual connection paired with a layer series.
+  """
+  shortcut = kwargs.get('shortcut')  # default None signals no-op (copy inputs)
+  layers = _ensure_flat(layers)
+  layer = layers[0] if len(layers) == 1 else Serial(layers)
+  # TODO(jonni): Should we require layer.n_out = 1 and shortcut.n_out = 1?
+  return Serial(
+      Branch(shortcut, layer),
+      Add(),  # pylint: disable=no-value-for-parameter
+  )
+
+
 @base.layer(n_out=0)
 def Drop(x, **unused_kwargs):
   """Drops the top stack element."""
@@ -598,16 +609,6 @@ def Gate(xs, **unused_kwargs):
   return gate * state + (1.0 - gate) * candidate
 
 
-def Residual(*layers, **kwargs):
-  """Adds a residual connection in parallel to a series of layers."""
-  # TODO(jonni): Change *layers arg to a single layer.
-  shortcut = kwargs.get('shortcut')  # default None signals no-op
-  return [
-      Branch(shortcut, Serial(layers)),
-      Add(),  # pylint: disable=no-value-for-parameter
-  ]
-
-
 # All module-private helper functions are below.
 # pylint: disable=invalid-name
 
@@ -697,3 +698,16 @@ def _count_items(xs):
 
 def _shape_without_axis(x, axis):
   return x.shape[:axis] + x.shape[axis + 1:]
+
+
+def _ensure_flat(layers):
+  """Ensures that layers is a single flat list of Layer instances."""
+  if len(layers) == 1 and layers[0] is None:
+    layers = ()
+  else:
+    layers = _deep_flatten(layers)
+  for obj in layers:
+    if not isinstance(obj, base.Layer):
+      raise ValueError(
+          'Found nonlayer object ({}) in layers: {}.'.format(obj, layers))
+  return layers
