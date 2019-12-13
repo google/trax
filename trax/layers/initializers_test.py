@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import absltest
+from trax.backend import numpy as np
 from trax.backend import random
 from trax.layers import initializers
 
@@ -78,6 +79,16 @@ class InitializersTest(absltest.TestCase):
     input_shape = (29, 5, 7, 20)
     init_value = initializer(input_shape, random.get_prng(0))
     self.assertEqual(tuple(init_value.shape), input_shape)
+
+  def test_from_file(self):
+    params = np.array([[0.0, 0.1], [0.2, 0.3], [0.4, 0.5]])
+    filename = self.create_tempfile('params.npy').full_path
+    with open(filename, 'wb') as f:
+      np.save(f, params)
+    initializer = initializers.InitializerFromFile(filename)
+    input_shape = (3, 2)
+    init_value = initializer(input_shape, random.get_prng(0))
+    self.assertEqual('%s' % init_value, '%s' % params)
 
 if __name__ == '__main__':
   absltest.main()

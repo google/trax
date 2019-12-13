@@ -19,7 +19,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl import logging
+
 import numpy as onp
+import tensorflow.compat.v2 as tf
 from trax.backend import numpy as np
 from trax.backend import random
 
@@ -44,6 +47,21 @@ def _GetFans(shape, out_dim=-1, in_dim=-2):
     fan_in *= receptive_field
     fan_out *= receptive_field
   return fan_in, fan_out
+
+
+def InitializerFromFile(path):
+  """Loads parameters from .npy file."""
+
+  def Initializer(shape, rng):
+    del rng
+    logging.info('Loading pretrained embeddings from %s', path)
+    with tf.io.gfile.GFile(path, 'rb') as f:
+      parameters = np.load(f)
+    assert np.shape(parameters) == shape, (
+        'Expected shape %s, got %s' % (shape, np.shape(parameters)))
+    return parameters
+
+  return Initializer
 
 
 def RandomNormalInitializer(stddev=1e-2):
