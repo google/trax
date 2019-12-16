@@ -31,6 +31,7 @@ from trax.layers.initializers import *
 from trax.layers.metrics import *
 from trax.layers.normalization import *
 from trax.layers.pooling import *
+from trax.layers.research.efficient_attention import *
 from trax.layers.reversible import *
 from trax.layers.rnn import *
 from trax.layers.tracer import symbolic
