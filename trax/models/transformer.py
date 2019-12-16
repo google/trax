@@ -409,8 +409,8 @@ def _EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, layer_idx, mode,
   attention_qkv = tl.AttentionQKV(
       d_model, n_heads=n_heads, dropout=dropout, mode=mode)
 
-  basic_causal_attention = tl.BasicCausalAttention(
-      d_model, n_heads=n_heads, dropout=dropout, mode=mode)
+  causal_attention = tl.CausalAttention(
+      d_model, n_heads=n_heads, mode=mode)
 
   feed_forward = _FeedForwardBlock(
       d_model, d_ff, dropout, layer_idx, mode, ff_activation)
@@ -418,7 +418,7 @@ def _EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, layer_idx, mode,
   return [                             # vec_d masks vec_e
       tl.Residual(
           tl.LayerNorm(),              # vec_d ..... .....
-          basic_causal_attention,      # vec_d masks .....
+          causal_attention,            # vec_d ..... .....
           _Dropout(),                  # vec_d ..... .....
       ),
       tl.Residual(

@@ -48,13 +48,6 @@ def ShiftRight(x, n_shifts=1, mode='train', **unused_kwargs):
 
 
 @base.layer()
-def CausalMask(x, weights, axis=-1, **kwargs):
-  del weights, kwargs
-  size = x.shape[axis]
-  return onp.tril(onp.ones((1, size, size), dtype=onp.bool_), k=0)
-
-
-@base.layer()
 def PaddingMask(x, weights, pad=0, **kwargs):
   del weights, kwargs
   return np.reshape(x != pad, (x.shape[0], 1, 1, x.shape[-1]))
@@ -314,31 +307,6 @@ def Attention(d_feature, n_heads=1, dropout=0.0, mode='train'):
   return cb.Serial(
       cb.Dup(), cb.Dup(),
       AttentionQKV(d_feature, n_heads=n_heads, dropout=dropout, mode=mode),
-  )
-
-
-def BasicCausalAttention(d_feature, n_heads=1, dropout=0.0, mode='train'):
-  """Transformer-style multi-headed causal attention.
-
-  This implementation is less configurable than the CausalAttention layer
-  defined below, but it shares code with the non-causal attention.
-
-  # TODO(jonni,lukaszkaiser): standardize and improve layer comments.
-  Accepts inputs of the form x and constructs (q, k, v) and causal mask from x.
-
-  Args:
-    d_feature: int:  dimensionality of feature embedding
-    n_heads: int: number of attention heads
-    dropout: float: dropout rate
-    mode: str: 'train' or 'eval'
-
-  Returns:
-    Multi-headed self-attention result.
-  """
-  return cb.Serial(
-      cb.Branch([], CausalMask(axis=-2)),  # pylint: disable=no-value-for-parameter
-      Attention(d_feature, n_heads=n_heads, dropout=dropout, mode=mode),
-      cb.Select([0], n_in=2),  # x
   )
 
 
