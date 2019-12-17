@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import trax.inputs
 import trax.learning_rate
 import trax.models
 import trax.optimizers
-import trax.trainer_lib
+import trax.supervised.inputs
+import trax.supervised.trainer_lib
 
 # Parameters for batch_fn:
 # ==============================================================================
@@ -43,7 +43,7 @@ Momentum.weight_decay_rate = 5e-4
 
 # Parameters for preprocess_fun:
 # ==============================================================================
-shuffle_and_batch_data.preprocess_fun=@trax.inputs.cifar10_augmentation_preprocess
+shuffle_and_batch_data.preprocess_fun=@trax.supervised.inputs.cifar10_augmentation_preprocess
 
 # Parameters for WideResnet:
 # ==============================================================================
@@ -55,7 +55,7 @@ WideResnet.n_output_classes = 10
 # ==============================================================================
 train.eval_frequency = 100
 train.eval_steps = 10
-train.inputs = @trax.inputs.inputs
+train.inputs = @trax.supervised.inputs.inputs
 train.model = @trax.models.WideResnet
 train.optimizer = @trax.optimizers.Momentum
 train.train_steps = 10000

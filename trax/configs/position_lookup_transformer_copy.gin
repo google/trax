@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import trax.inputs
 import trax.models
 import trax.optimizers
-import trax.trainer_lib
+import trax.supervised.inputs
+import trax.supervised.trainer_lib
 
 # Parameters for inputs:
 # ==============================================================================
@@ -58,7 +58,7 @@ TransformerLM.vocab_size = 128
 
 # Parameters for train:
 # ==============================================================================
-train.inputs = @trax.inputs.sequence_copy_inputs
+train.inputs = @trax.supervised.inputs.sequence_copy_inputs
 train.eval_frequency = 1000
 train.eval_steps = 40
 train.model = @trax.models.PositionLookupTransformerLM

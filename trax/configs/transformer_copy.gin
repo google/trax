@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import trax.inputs
 import trax.models
 import trax.optimizers
-import trax.trainer_lib
+import trax.supervised.inputs
+import trax.supervised.trainer_lib
 
 n_symbols = 128
 length = 4096
@@ -50,7 +50,7 @@ sequence_copy_inputs.reverse = False
 # ==============================================================================
 train.eval_frequency = 500
 train.eval_steps = 64
-train.inputs = @trax.inputs.sequence_copy_inputs
+train.inputs = @trax.supervised.inputs.sequence_copy_inputs
 train.model = @trax.models.TransformerLM
 train.optimizer = @trax.optimizers.Adafactor
 train.train_steps = 50000
