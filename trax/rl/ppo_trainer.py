@@ -35,11 +35,11 @@ from tensor2tensor.envs import trajectory
 from trax import jaxboard
 from trax import models as trax_models
 from trax import optimizers as trax_opt
-from trax import trainer_lib
 from trax.rl import base_trainer
 from trax.rl import ppo
 from trax.rl import serialization_utils
 from trax.shapes import ShapeDtype
+from trax.supervised import trainer_lib
 
 DEBUG_LOGGING = False
 GAMMA = 0.99

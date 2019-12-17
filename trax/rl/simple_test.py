@@ -32,12 +32,12 @@ from tensor2tensor.envs import trajectory
 from tensorflow import test
 from tensorflow.io import gfile
 from trax import backend
-from trax import trainer_lib
 from trax import utils
 from trax.layers import base
 from trax.rl import simple
 from trax.rl import simulated_env_problem
 from trax.rl import space_serializer  # pylint: disable=unused-import
+from trax.supervised import trainer_lib
 
 
 class SimpleTest(test.TestCase):

@@ -24,12 +24,12 @@ import functools
 import numpy as np
 from tensorflow import test
 from tensorflow.io import gfile
-from trax import inputs as trax_inputs
 from trax import models
 from trax import optimizers
-from trax import trainer_lib
 from trax.rl import online_tune
 from trax.rl.envs import online_tune_env
+from trax.supervised import inputs as trax_inputs
+from trax.supervised import trainer_lib
 
 HISTORY_MODE = 'eval'
 METRIC = 'metrics/accuracy'

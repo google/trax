@@ -26,12 +26,12 @@ import numpy as np
 
 from tensor2tensor.envs import env_problem
 from trax import backend
-from trax import trainer_lib
 from trax import utils
 from trax.backend import random as jax_random
 from trax.rl import serialization_utils
 from trax.rl import space_serializer
 from trax.shapes import ShapeDtype
+from trax.supervised import trainer_lib
 
 
 class SimulatedEnvProblem(env_problem.EnvProblem):

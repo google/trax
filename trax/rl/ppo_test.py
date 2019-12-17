@@ -29,13 +29,13 @@ from jax import random as jax_random
 import numpy as np
 from tensorflow import test
 from tensorflow.io import gfile
-from trax import inputs
 from trax import layers
 from trax import models
-from trax import trainer_lib
 from trax.rl import ppo
 from trax.rl import serialization_utils
 from trax.shapes import ShapeDtype
+from trax.supervised import inputs
+from trax.supervised import trainer_lib
 
 
 class PpoTest(test.TestCase):

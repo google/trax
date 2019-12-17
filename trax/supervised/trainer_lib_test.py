@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""trax test."""
+"""Tests for trax.supervised.trainer_lib."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -33,13 +33,13 @@ from tensorflow.compat.v2 import test
 from tensorflow.compat.v2.io import gfile
 
 from trax import backend
-from trax import inputs as inputs_lib
 from trax import layers
 from trax import learning_rate as lr
 from trax import models
 from trax import optimizers as trax_opt
-from trax import trainer_lib
 from trax.backend import numpy as np
+from trax.supervised import inputs as inputs_lib
+from trax.supervised import trainer_lib
 from trax.tf_numpy import numpy as tf_np
 
 

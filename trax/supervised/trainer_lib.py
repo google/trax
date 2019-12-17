@@ -37,7 +37,6 @@ import six
 import tensorflow.compat.v2 as tf
 from trax import backend
 from trax import history as trax_history
-from trax import inputs as trax_inputs
 from trax import jaxboard
 from trax import layers as tl
 from trax import learning_rate as lr
@@ -46,6 +45,7 @@ from trax import utils
 from trax.backend import numpy as np
 from trax.backend import random as jax_random
 from trax.shapes import ShapeDtype
+from trax.supervised import inputs as trax_inputs
 
 
 TrainerState = collections.namedtuple('_TrainerState', [

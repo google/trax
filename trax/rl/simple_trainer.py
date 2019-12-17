@@ -29,12 +29,12 @@ from absl import logging
 import gin
 from matplotlib import pyplot as plt
 import tensorflow as tf
-from trax import inputs as trax_inputs
 from trax import jaxboard
-from trax import trainer_lib
 from trax.rl import base_trainer
 from trax.rl import simple
 from trax.rl import simulated_env_problem
+from trax.supervised import inputs as trax_inputs
+from trax.supervised import trainer_lib
 
 
 class SimPLe(base_trainer.BaseTrainer):

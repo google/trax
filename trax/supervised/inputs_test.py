@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for trax.inputs."""
+"""Tests for trax.supervised.inputs."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,7 +23,7 @@ import gin
 import numpy as np
 import tensorflow as tf
 import tensorflow_datasets as tfds
-from trax import inputs
+from trax.supervised import inputs
 
 
 def test_dataset_ints(lengths):

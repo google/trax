@@ -24,12 +24,12 @@ import os
 
 import gym
 import tensorflow as tf
-from trax import inputs as trax_inputs
 from trax import layers
 from trax import models as trax_models
 from trax import optimizers as trax_opt
-from trax import trainer_lib
 from trax.rl import online_tune
+from trax.supervised import inputs as trax_inputs
+from trax.supervised import trainer_lib
 
 
 class OnlineTuneEnv(gym.Env):

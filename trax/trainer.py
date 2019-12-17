@@ -30,7 +30,7 @@ import gin
 import jax
 import tensorflow.compat.v2 as tf
 from trax import backend
-from trax import trainer_lib
+from trax.supervised import trainer_lib
 from trax.tf_numpy import numpy as tf_np
 
 FLAGS = flags.FLAGS

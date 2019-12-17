@@ -33,15 +33,15 @@ from tensor2tensor.envs import gym_env_problem
 from tensor2tensor.rl import gym_utils
 from tensorflow import test
 from tensorflow.io import gfile
-from trax import inputs as trax_inputs
 from trax import layers
 from trax import learning_rate as lr
 from trax import models
 from trax import optimizers as trax_opt
-from trax import trainer_lib
 from trax.rl import envs  # pylint: disable=unused-import
 from trax.rl import ppo_trainer
 from trax.rl import simulated_env_problem
+from trax.supervised import inputs as trax_inputs
+from trax.supervised import trainer_lib
 
 
 class PpoTrainerTest(test.TestCase):
