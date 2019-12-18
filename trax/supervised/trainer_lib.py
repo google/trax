@@ -166,43 +166,25 @@ class Trainer(object):
             model_input_shape, self._inputs.input_dtype,
             model_target_shape, self._inputs.target_dtype, init_rng))
 
-    # jit model_predict and update so they're fast
-    # TODO(lukaszkaiser): the code below creates a layer computing
-    # multiple metrics from a single model output; re-factor for clarity.
-    dup_layer = tl.Dup3() if self._has_weights else tl.Dup2()
-    def lower(layer):
-      """Apply layer below the current inputs, targets, and possibly weights."""
-      if self._has_weights:
-        # Apply layer below inputs, targets, and loss weights.
-        return tl.Parallel([], [], [], layer)
-      else:
-        # Apply layer below inputs and targets.
-        return tl.Parallel([], [], layer)
-    metrics_layer = []
+    # Arrange and initialize metrics layers.
     self._metrics = list(sorted(self._metrics_dict.keys()))
-    for i, m in enumerate(reversed(self._metrics)):
-      metric = self._metrics_dict[m](has_weights=self._has_weights,
-                                     mask_id=self._mask_id)
-      if i != len(self._metrics) - 1:
-        metrics_layer.append(dup_layer)
-        metrics_layer.append(lower(metric))
-      else:
-        metrics_layer.append(metric)
+    metrics_layers = [self._metrics_dict[m](has_weights=self._has_weights,
+                                            mask_id=self._mask_id)
+                      for m in reversed(self._metrics)]
+    metrics_in_parallel = tl.Branch(*metrics_layers)
     # TODO(lukaszkaiser): clean this up once layer API stabilizes.
     # For now, we need to initialize metric layers somehow, so here we go.
     # We assume that they do not have any parameters, so this is a dummy.
     dummy_shapes = ((1, 2), (1,), (1,)) if self._has_weights else ((1, 2), (1,))
-    dummy_dtypes = [np.float32] * (3 if self._has_weights else 2)
-    dummy_signature = tuple(ShapeDtype(s, d)
-                            for s, d in zip(dummy_shapes, dummy_dtypes))
-    metrics_layer = tl.Serial(metrics_layer)
-    metrics_layer._set_rng_recursive(init_rng)  # pylint: disable=protected-access
-    metrics_weights, metrics_state = (
-        metrics_layer.init(dummy_signature))
-    self._metrics_weights = self._for_n_devices(metrics_weights)
-    self._metrics_state = self._for_n_devices(metrics_state)
+    dummy_signature = tuple(ShapeDtype(s) for s in dummy_shapes)
+    metrics_in_parallel._set_rng_recursive(init_rng)  # pylint: disable=protected-access
+    m_weights, m_state = metrics_in_parallel.init(dummy_signature)
+    self._metrics_weights = self._for_n_devices(m_weights)
+    self._metrics_state = self._for_n_devices(m_state)
+
+    # Jit model_predict and update so they're fast.
     self._jit_eval = _jit_predict_fn(
-        model_predict_eval, metrics_layer, n_devices)
+        model_predict_eval, metrics_in_parallel, n_devices)
     self._jit_update_fn = _jit_update_fn(model_train, loss_fn, opt, n_devices)
 
     self._model_train = model_train
