@@ -77,7 +77,7 @@ def download_and_prepare(dataset_name, data_dir):
   if not data_dir:
     data_dir = os.path.expanduser('~/tensorflow_datasets/')
     dl_dir = os.path.join(data_dir, 'download')
-    tf.logging.info(
+    tf.compat.v1.logging.info(
         ('No dataset directory provided. '
          'Downloading and generating dataset for %s inside data directory %s '
          'For large datasets it is better to prepare datasets manually!')
@@ -159,11 +159,11 @@ def random_inputs(
     trax.inputs.Inputs
   """
   if input_shape[0] % n_devices != 0:
-    tf.logging.fatal(
+    tf.compat.v1.logging.fatal(
         'n_devices[%d] should divide the first dimension of input_shape[%s]',
         n_devices, input_shape)
   if output_shape[0] % n_devices != 0:
-    tf.logging.fatal(
+    tf.compat.v1.logging.fatal(
         'n_devices[%d] should divide the first dimension of output_shape[%s]',
         n_devices, output_shape)
 
@@ -411,7 +411,7 @@ def batch_fn(dataset, training, shapes, target_names, n_devices,
     for dim in target_shape:
       if dim is None:
         variable_target_shapes = True
-    tf.logging.info('Heuristically setting bucketing to %s based on shapes '
+    tf.compat.v1.logging.info('Heuristically setting bucketing to %s based on shapes '
                     'of target tensors.' % variable_target_shapes)
     if variable_target_shapes:
       bucket_boundaries = [bucket_length // 4, bucket_length // 2,
@@ -435,7 +435,7 @@ def batch_fn(dataset, training, shapes, target_names, n_devices,
       buckets = (bucket_boundaries, bucket_batch_sizes)
 
   if buckets:
-    tf.logging.info('Bucketing with buckets %s.' % str(buckets))
+    tf.compat.v1.logging.info('Bucketing with buckets %s.' % str(buckets))
     def example_length(example_inputs, target):
       """The length function used by bucket_by_sequence_length to bucket."""
       other_length = 0
