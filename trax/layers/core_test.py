@@ -26,6 +26,11 @@ from trax.layers import core
 from trax.shapes import ShapeDtype
 
 
+def divide_by(val):
+  """Returns a simple division layer with n_in == 1 and n_out == 1."""
+  return base.Fn(lambda x: x / val)
+
+
 class CoreLayerTest(absltest.TestCase):
 
   def test_flatten_n(self):
@@ -61,7 +66,7 @@ class CoreLayerTest(absltest.TestCase):
                                  input_signature)
 
   def test_div(self):
-    layer = core.Div(divisor=2.0)
+    layer = divide_by(2.0)
     input_np = onp.array([[1, 2, 3], [4, 5, 6]], dtype=onp.float32)
     output_np = layer(input_np)
     # absltest doesn't have ndarray equalities.
@@ -72,7 +77,7 @@ class CoreLayerTest(absltest.TestCase):
         delta=1e-6)
 
   def test_div_shapes(self):
-    layer = core.Div(divisor=2.0)
+    layer = divide_by(2.0)
     input_signature = ShapeDtype((3, 2))
     expected_shape = (3, 2)
     output_shape = base.check_shape_agreement(layer, input_signature)

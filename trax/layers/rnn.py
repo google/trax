@@ -182,12 +182,12 @@ def GeneralGRUCell(candidate_transform,
   """
   gate_block = [  # u_t
       candidate_transform(),
-      core.AddConstant(constant=sigmoid_bias),
+      base.Fn(lambda x: x + sigmoid_bias),
       gate_nonlinearity(),
   ]
   reset_block = [  # r_t
       candidate_transform(),
-      core.AddConstant(constant=sigmoid_bias),  # Want bias to start positive.
+      base.Fn(lambda x: x + sigmoid_bias),  # Want bias to start positive.
       gate_nonlinearity(),
   ]
   candidate_block = [
@@ -202,9 +202,7 @@ def GeneralGRUCell(candidate_transform,
   ]
   memory_transform = memory_transform_fn() if memory_transform_fn else []
   return cb.Serial(
-      cb.Dup(),
-      cb.Dup(),
-      cb.Parallel(memory_transform, gate_block, candidate_block),
+      cb.Branch(memory_transform, gate_block, candidate_block),
       cb.Gate(),
   )
 
@@ -226,7 +224,7 @@ def MakeZeroState(x, depth_multiplier=1, **unused_kwargs):
 
 
 def SRU(n_units, activation=None):
-  """SRU layer as in https://arxiv.org/abs/1709.02755.
+  """SRU (Simple Recurrent Unit) layer as in https://arxiv.org/abs/1709.02755.
 
   As defined in the paper:
   (1) y_t = W x_t (+ B optionally, which we do)
@@ -246,15 +244,16 @@ def SRU(n_units, activation=None):
   Returns:
     The SRU layer.
   """
-  activation = activation or []
-  return cb.Serial(
-      cb.Dup(),                   # x, x
-      core.Dense(3 * n_units),
-      cb.Split(n_items=3),     # r, f, y, x
-      cb.Parallel(core.Sigmoid(), core.Sigmoid()),   # r, f, y, x
+  # pylint: disable=no-value-for-parameter
+  return cb.Serial(                                    # x
+      cb.Branch(core.Dense(3 * n_units), []),          # r_f_y, x
+      cb.Split(n_items=3),                             # r, f, y, x
+      cb.Parallel(core.Sigmoid(), core.Sigmoid()),     # r, f, y, x
       base.Fn(lambda r, f, y: (y * (1.0 - f), f, r)),  # y * (1 - f), f, r, x
-      cb.Parallel([], [], [cb.Dup(), MakeZeroState()]),  # pylint: disable=no-value-for-parameter
-      cb.Scan(InnerSRUCell(), axis=1),  # pylint: disable=no-value-for-parameter
-      cb.Parallel(activation, cb.Drop()),  # act(c), r, x
+      cb.Parallel([], [], cb.Branch(MakeZeroState(), [])),
+      cb.Scan(InnerSRUCell(), axis=1),
+      cb.Select([0], n_in=2),                          # act(c), r, x
+      activation or [],
       base.Fn(lambda c, r, x: c * r + x * (1 - r))
   )
+  # pylint: enable=no-value-for-parameter

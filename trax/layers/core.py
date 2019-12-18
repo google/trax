@@ -203,21 +203,6 @@ def ToFloat(x, **unused_kwargs):
   return x.astype(onp.float32)
 
 
-@base.layer()
-def Div(x, divisor=1.0, **unused_kwargs):
-  return x / divisor
-
-
-@base.layer()
-def AddConstant(x, constant=0.0, **unused_kwargs):
-  return x + constant
-
-
-@base.layer()
-def MulConstant(x, constant=1.0, **unused_kwargs):
-  return x * constant
-
-
 def one_hot(x, size, dtype=np.float32):  # pylint: disable=invalid-name
   """Make a n+1 dim one-hot array from n dim int-categorical array."""
   arange_size = np.arange(size)

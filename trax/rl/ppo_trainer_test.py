@@ -192,7 +192,7 @@ class PpoTrainerTest(test.TestCase):
           # Add both losses.
           layers.Add(),
           # Zero out in this test.
-          layers.MulConstant(constant=0.0)
+          layers.Fn(lambda x: x * 0.0),
       )
 
     with self.tmp_dir() as output_dir:

@@ -118,7 +118,7 @@ def CrossEntropyLossScalar(mask_id=None, has_weights=False):
   """Cross-entropy loss as scalar compatible with Trax masking."""
   return cb.Serial(
       CrossEntropyScalar(mask_id=mask_id, has_weights=has_weights),
-      core.MulConstant(constant=-1.0)
+      base.Fn(lambda x: x * -1.0),
   )
 
 

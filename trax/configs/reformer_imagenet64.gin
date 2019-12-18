@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import trax.inputs
 import trax.models
 import trax.optimizers
-import trax.trainer_lib
+import trax.supervised.inputs
+import trax.supervised.trainer_lib
 
 # Parameters that will vary between experiments:
 # ==============================================================================
@@ -67,7 +67,7 @@ Adam.eps = 1e-9
 # ==============================================================================
 train.eval_frequency = 500
 train.eval_steps = 64
-train.inputs = @trax.inputs.inputs
+train.inputs = @trax.supervised.inputs.inputs
 # train.model: see top
 train.optimizer = @trax.optimizers.Adam
 train.train_steps = 500000

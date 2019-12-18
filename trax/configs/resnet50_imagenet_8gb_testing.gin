@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import trax.inputs
 import trax.learning_rate
 import trax.models
 import trax.optimizers
-import trax.trainer_lib
+import trax.supervised.inputs
+import trax.supervised.trainer_lib
 
 # Parameters for batch_fn:
 # ==============================================================================
@@ -50,7 +50,7 @@ Resnet50.n_output_classes = 1001
 # ==============================================================================
 train.eval_frequency = 2000
 train.eval_steps = 20
-train.inputs = @trax.inputs.inputs
+train.inputs = @trax.supervised.inputs.inputs
 train.model = @trax.models.Resnet50
 train.optimizer = @trax.optimizers.Momentum
 train.train_steps = 100000
