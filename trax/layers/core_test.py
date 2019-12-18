@@ -123,5 +123,40 @@ class CoreLayerTest(absltest.TestCase):
     self.assertEqual(int(prob[0]), -4)
     self.assertEqual(int(prob[1]), -6)
 
+  def test_inline_capture(self):
+
+    class InlineLayer(base.Layer):
+
+      def __init__(self):
+        super(InlineLayer, self).__init__()
+        self._capture = True  # Can we aviod having this?
+
+      def forward(self, x, weights):
+        # From here, it's code that would be integrated, only here for tests.
+        captured = isinstance(self._captured_weights, list)
+        self._counter = 0
+        def run_layer(layer, inp, w):
+          if not captured:
+            layer_weights, _ = layer.init(ShapeDtype(inp.shape, inp.dtype))
+            self._captured_weights.append(layer_weights)
+            weights = layer_weights
+          else:
+            weights = w[self._counter]
+            self._counter += 1
+          return layer(x, weights=weights)
+
+        self._captured_weights = []
+        # End integration block, real code starts below.
+
+        x = run_layer(core.Dense(32), x, weights)
+        x = run_layer(core.Dense(16), x, weights)
+        return x
+
+    layer = InlineLayer()
+    input_signature = ShapeDtype((9, 17))
+    layer.init(input_signature)
+    self.assertLen(layer.weights, 2)
+
+
 if __name__ == '__main__':
   absltest.main()

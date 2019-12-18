@@ -100,6 +100,8 @@ class Layer(object):
     self._sublayers = ()  # Default is no sublayers.
     self._input_signature = None
     self._rng = None
+    self._capture = False
+    self._captured_weights = EMPTY_WEIGHTS  # for automatic capture
     self._weights = EMPTY_WEIGHTS  # cached weights
     self._state = EMPTY_STATE
     # record root call site for custom error messages:
@@ -224,7 +226,7 @@ class Layer(object):
           or a list/tuple of ShapeDtype instances; signatures of inputs.
     """
     del input_signature
-    return EMPTY_WEIGHTS
+    return self._captured_weights
 
   def new_weights_and_state(self, input_signature):
     """Returns a (weights, state) pair suitable for initializing this layer.
@@ -299,6 +301,8 @@ class Layer(object):
       # be able to remove unnecessary computation.
       # TODO(lukaszkaiser): Revisit this decision and see whether layers sharing
       #   weights should also share states.
+      if self._capture:
+        self._forward_abstract(input_signature)
       weights, state = self.new_weights_and_state(input_signature)
       if not self._init_finished:
         self._init_finished = True
