@@ -22,7 +22,7 @@ from __future__ import print_function
 import functools
 import operator as op
 import numpy as onp
-from tensorflow import test
+from tensorflow.compat.v1 import test
 from trax.models import atari_cnn
 from trax.shapes import ShapeDtype
 

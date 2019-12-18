@@ -20,7 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as onp
-from tensorflow import test
+from tensorflow.compat.v1 import test
 from trax.layers import attention
 
 

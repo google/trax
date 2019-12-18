@@ -21,8 +21,8 @@ from __future__ import print_function
 
 import functools
 
-from tensorflow import test
-from tensorflow.io import gfile
+from tensorflow.compat.v1 import test
+from tensorflow.compat.v1.io import gfile
 from trax import models
 from trax.rl import ppo_trainer
 from trax.rl.envs import online_tune_rl_env

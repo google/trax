@@ -68,7 +68,7 @@ from jax import random as jax_random
 import numpy as onp
 from tensor2tensor.envs import env_problem
 from tensor2tensor.envs import env_problem_utils
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from trax import history as trax_history
 from trax import layers as tl
 from trax import utils

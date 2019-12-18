@@ -22,7 +22,7 @@ from __future__ import print_function
 import gin
 import gym
 import numpy as np
-from tensorflow import test
+from tensorflow.compat.v1 import test
 from trax.rl import serialization_utils
 from trax.rl import space_serializer
 

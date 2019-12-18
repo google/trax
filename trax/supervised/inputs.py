@@ -27,7 +27,7 @@ import gin
 import numpy as onp
 
 from tensor2tensor import problems_colab as t2t_problems
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import tensorflow_datasets as tfds
 from trax import backend
 from trax.backend import numpy as np

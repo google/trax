@@ -25,7 +25,7 @@ import gin
 
 from tensor2tensor.envs import gym_env_problem
 from tensor2tensor.rl import gym_utils
-from tensorflow import test
+from tensorflow.compat.v1 import test
 from trax import models
 from trax.rl import envs  # pylint: disable=unused-import
 from trax.rl import simulated_env_problem

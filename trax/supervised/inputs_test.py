@@ -21,7 +21,7 @@ from __future__ import print_function
 
 import gin
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import tensorflow_datasets as tfds
 from trax.supervised import inputs
 

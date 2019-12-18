@@ -19,7 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow import newaxis
+from tensorflow.compat.v1 import newaxis
 
 from trax.tf_numpy.numpy import random
 

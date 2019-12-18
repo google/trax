@@ -18,7 +18,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from tensorflow import test
+from tensorflow.compat.v1 import test
 from trax.rl.envs import fake_env
 
 

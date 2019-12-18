@@ -29,8 +29,8 @@ import mock
 import numpy as np
 
 from tensor2tensor.envs import trajectory
-from tensorflow import test
-from tensorflow.io import gfile
+from tensorflow.compat.v1 import test
+from tensorflow.compat.v1.io import gfile
 from trax import backend
 from trax import utils
 from trax.layers import base

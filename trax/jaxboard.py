@@ -34,7 +34,7 @@ with warnings.catch_warnings():
 # pylint: disable=g-import-not-at-top
 import matplotlib.pyplot as plt
 import numpy as onp
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.core.util import event_pb2

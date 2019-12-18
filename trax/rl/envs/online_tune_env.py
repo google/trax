@@ -23,7 +23,7 @@ import functools
 import os
 
 import gym
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from trax import layers
 from trax import models as trax_models
 from trax import optimizers as trax_opt

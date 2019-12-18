@@ -22,7 +22,7 @@ from __future__ import print_function
 import functools
 
 import numpy as onp
-from tensorflow import test
+from tensorflow.compat.v1 import test
 from trax import history as trax_history
 from trax import learning_rate
 from trax.backend import numpy as np

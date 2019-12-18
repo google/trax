@@ -27,7 +27,7 @@ import mock
 import numpy as np
 
 from tensor2tensor.envs import trajectory
-from tensorflow import test
+from tensorflow.compat.v1 import test
 from trax import backend
 from trax.layers import base
 from trax.rl import simulated_env_problem

@@ -20,7 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-from tensorflow import test
+from tensorflow.compat.v1 import test
 from trax import history as trax_history
 from trax.rl import online_tune
 

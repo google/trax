@@ -25,7 +25,7 @@ import cloudpickle as pickle
 import numpy as np
 
 from tensor2tensor.envs import gym_env_problem
-from tensorflow import test
+from tensorflow.compat.v1 import test
 from trax.rl import base_trainer
 
 

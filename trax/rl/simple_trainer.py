@@ -28,7 +28,7 @@ import time
 from absl import logging
 import gin
 from matplotlib import pyplot as plt
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from trax import jaxboard
 from trax.rl import base_trainer
 from trax.rl import simple

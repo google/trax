@@ -25,7 +25,7 @@ import time
 
 from absl import logging
 from tensor2tensor.envs import trajectory
-from tensorflow.io import gfile
+from tensorflow.compat.v1.io import gfile
 from trax.rl import ppo
 from trax.rl import trainers as rl_trainers
 
