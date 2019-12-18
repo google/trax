@@ -27,6 +27,11 @@ from trax.layers import normalization
 from trax.shapes import ShapeDtype
 
 
+def divide_by(val):
+  """Returns a simple division layer with n_in == 1 and n_out == 1."""
+  return base.Fn(lambda x: x / val)
+
+
 class CombinatorLayerTest(absltest.TestCase):
 
   def test_serial_no_op(self):
@@ -44,14 +49,14 @@ class CombinatorLayerTest(absltest.TestCase):
     self.assertEqual(output_shape, expected_shape)
 
   def test_serial_one_in_one_out(self):
-    layer = cb.Serial(core.Div(divisor=2.0))
+    layer = cb.Serial(divide_by(3.0))
     input_signature = ShapeDtype((3, 2))
     expected_shape = (3, 2)
     output_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual(output_shape, expected_shape)
 
   def test_serial_div_div(self):
-    layer = cb.Serial(core.Div(divisor=2.0), core.Div(divisor=5.0))
+    layer = cb.Serial(divide_by(2.0), divide_by(5.0))
     input_signature = ShapeDtype((3, 2))
     expected_shape = (3, 2)
     output_shape = base.check_shape_agreement(layer, input_signature)
@@ -66,7 +71,7 @@ class CombinatorLayerTest(absltest.TestCase):
 
   def test_serial_with_side_outputs_div_div(self):
     def some_layer():
-      return cb.Parallel(core.Div(divisor=2.0), core.Div(divisor=5.0))
+      return cb.Parallel(divide_by(2.0), divide_by(5.0))
     layer = cb.SerialWithSideOutputs([some_layer(), some_layer()])
     input_signature = (ShapeDtype((3, 2)), ShapeDtype((4, 2)),
                        ShapeDtype((5, 2)))
@@ -82,7 +87,7 @@ class CombinatorLayerTest(absltest.TestCase):
     self.assertEqual(output_shape, expected_shape)
 
   def test_branch_add_div(self):
-    layer = cb.Branch(cb.Add(), core.Div(divisor=0.5))
+    layer = cb.Branch(cb.Add(), divide_by(0.5))
     input_signature = (ShapeDtype((3, 2)), ShapeDtype((3, 2)))
     expected_shape = ((3, 2), (3, 2))
     output_shape = base.check_shape_agreement(layer, input_signature)
@@ -126,7 +131,7 @@ class CombinatorLayerTest(absltest.TestCase):
     self.assertEqual(output_shape, expected_shape)
 
   def test_parallel_div_div(self):
-    layer = cb.Parallel(core.Div(divisor=0.5), core.Div(divisor=3.0))
+    layer = cb.Parallel(divide_by(0.5), divide_by(3.0))
     input_signature = (ShapeDtype((3, 2)), ShapeDtype((4, 7)))
     expected_shape = ((3, 2), (4, 7))
     output_shape = base.check_shape_agreement(layer, input_signature)
@@ -199,7 +204,7 @@ class CombinatorLayerTest(absltest.TestCase):
     self.assertEqual(output_shape, expected_shape)
 
   def test_input_signatures_serial(self):
-    layer = cb.Serial(core.Div(divisor=2.0), core.Div(divisor=5.0))
+    layer = cb.Serial(divide_by(2.0), divide_by(5.0))
     self.assertIsNone(layer.input_signature)
 
     layer._set_input_signature_recursive(ShapeDtype((3, 2)))
@@ -223,7 +228,7 @@ class CombinatorLayerTest(absltest.TestCase):
     self.assertEqual(relu.input_signature, input_signature)
 
   def test_input_signatures_parallel(self):
-    layer = cb.Parallel(core.Div(divisor=0.5), core.Div(divisor=3.0))
+    layer = cb.Parallel(divide_by(0.5), divide_by(3.0))
     self.assertIsNone(layer.input_signature)
 
     layer._set_input_signature_recursive((ShapeDtype((3, 2)),
