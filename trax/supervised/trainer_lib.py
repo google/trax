@@ -63,6 +63,14 @@ OptState = collections.namedtuple('_OptState', [
 ])
 
 
+_DEFAULT_METRICS = {
+    'accuracy': tl.AccuracyScalar,
+    'neg_log_perplexity': tl.NegLogPerplexityScalar,
+    'loss': tl.CrossEntropyLossScalar,
+    'weights_per_batch_per_core': tl.CountWeights,
+}
+
+
 class Trainer(object):
   """Trax trainer.
 
@@ -90,7 +98,7 @@ class Trainer(object):
     self._should_write_summaries = should_write_summaries
     self._has_weights = has_weights
     self._mask_id = mask_id
-    self._metrics_dict = _METRICS if metrics is None else metrics
+    self._metrics_dict = metrics if metrics is not None else _DEFAULT_METRICS
     loss_fn = loss_fn(has_weights=has_weights, mask_id=mask_id)
     device_count = backend.device_count()
     n_devices = n_devices or device_count
@@ -887,15 +895,6 @@ def _sizes(x):
     except Exception:  # pylint: disable=broad-except
       return 0
   return backend.nested_map(size, x)
-
-
-# Metrics to calculate and report.
-_METRICS = {
-    'accuracy': tl.AccuracyScalar,
-    'neg_log_perplexity': tl.NegLogPerplexityScalar,
-    'loss': tl.CrossEntropyLossScalar,
-    'weights_per_batch_per_core': tl.CountWeights,
-}
 
 
 def _repeat_stream(stream):
