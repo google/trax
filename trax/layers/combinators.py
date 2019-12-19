@@ -463,16 +463,6 @@ def Dup(x, **unused_kwargs):
   return (x, x)
 
 
-def Dup2():
-  """Copies top 2 stack elements: (a, b, ...) -> (a, b, a, b, ...)."""
-  return Select([0, 1, 0, 1])
-
-
-def Dup3():
-  """Copies top 3 stack elements: (a, b, c, ...) -> (a, b, c, a, b, c, ...)."""
-  return Select([0, 1, 2, 0, 1, 2])
-
-
 @base.layer(n_in=2, n_out=2)
 def Swap(xs, **unused_kwargs):
   """Swaps the top two stack elements."""
