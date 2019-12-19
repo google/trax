@@ -170,7 +170,7 @@ class Trainer(object):
     self._metrics = list(sorted(self._metrics_dict.keys()))
     metrics_layers = [self._metrics_dict[m](has_weights=self._has_weights,
                                             mask_id=self._mask_id)
-                      for m in reversed(self._metrics)]
+                      for m in self._metrics]
     metrics_in_parallel = tl.Branch(*metrics_layers)
     # TODO(lukaszkaiser): clean this up once layer API stabilizes.
     # For now, we need to initialize metric layers somehow, so here we go.
