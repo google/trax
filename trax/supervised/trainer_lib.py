@@ -110,8 +110,7 @@ class Trainer(object):
 
     # Simple differential seeding of RNG across hosts by host_id and time.
     if random_seed is None and self._host_count > 1:
-      _, random_seed = divmod(int(time.time() * 1e6) +
-                              int(self._host_id * 1e6), 2**32)
+      random_seed = int(1e6 * (self._host_id + time.time())) % 2**32
     rng = init_random_number_generators(random_seed)
     inputs = inputs(n_devices)
     self._inputs = inputs
