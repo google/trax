@@ -170,8 +170,7 @@ class PPO(base_trainer.BaseTrainer):
 
     (n_controls, n_actions) = ppo.analyze_action_space(train_env.action_space)
 
-    self._rng = trainer_lib.get_random_number_generator_and_set_seed(
-        random_seed)
+    self._rng = trainer_lib.init_random_number_generators(random_seed)
 
     self._policy_and_value_vocab_size = policy_and_value_vocab_size
     if self._policy_and_value_vocab_size is not None:

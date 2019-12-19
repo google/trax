@@ -112,7 +112,7 @@ class Trainer(object):
     if random_seed is None and self._host_count > 1:
       _, random_seed = divmod(int(time.time() * 1e6) +
                               int(self._host_id * 1e6), 2**32)
-    rng = get_random_number_generator_and_set_seed(random_seed)
+    rng = init_random_number_generators(random_seed)
     inputs = inputs(n_devices)
     self._inputs = inputs
 
@@ -785,15 +785,14 @@ def load_trainer_state(output_dir):
                       history=history, model_state=model_state)
 
 
-def get_random_number_generator_and_set_seed(seed=None):
-  """Get a JAX random number generator and set random seed everywhere."""
+def init_random_number_generators(seed=None):
+  """Initializes random generators for Python, NumPy, TensorFlow, and JAX."""
+  # Seed Python random (None as seed is okay), then use it to seed the others.
   random.seed(seed)
-  # While python random accepts None as seed and uses time/os seed then,
-  # some other functions expect integers so we create one here.
   if seed is None:
     seed = random.randint(0, 2**31 - 1)
-  tf.random.set_seed(seed)
   numpy.random.seed(seed)
+  tf.random.set_seed(seed)
   return jax_random.get_prng(seed)
 
 

@@ -42,7 +42,7 @@ class PpoTest(test.TestCase):
 
   def setUp(self):
     super(PpoTest, self).setUp()
-    self.rng_key = trainer_lib.get_random_number_generator_and_set_seed(0)
+    self.rng_key = trainer_lib.init_random_number_generators(0)
 
   def test_get_policy_model_files(self):
     output_dir = self.get_temp_dir()
