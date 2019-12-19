@@ -332,9 +332,16 @@ class Split(base.Layer):
 
 
 class Scan(base.Layer):
-  """Scans the given layer over the given axis of the inputs.
+  """Applies a layer progressively/cumulatively to an axis-derived sequence.
 
-  We assume the layer takes a tuple of inputs of the following form:
+  Conceptually, this is a function from a list to a same-length list of partial
+  (cumulatative) results. For instance, a list of values (`[1, 2, 3, 4, 5]`) can
+  transform to a list of cumulative sums (`[1, 3, 6, 10, 15]`). Functions for
+  the same concept are called `scan` in Scala, `scanl` in Haskell, and
+  `accumulate*` in Factor.
+
+  In more detail, we assume the layer takes a tuple of inputs of the following
+  form:
     (input1, ..., inputN, carry1, ..., carryM)
   and returns
     (output1, ..., outputK, new_carry1, ..., new_carryM)
