@@ -453,8 +453,9 @@ def batch_fn(dataset, training, shapes, target_names, n_devices,
   return dataset
 
 
-@gin.configurable(blacklist=['dataset', 'training'])
-def cifar10_no_augmentation_preprocess(dataset, training):
+# Makes the function accessible in gin configs, even with all args blacklisted.
+@gin.configurable(blacklist=['dataset', 'training', 'shapes'])
+def cifar10_no_augmentation_preprocess(dataset, training, shapes):
   del training
 
   def cast_image(features, targets):
@@ -462,30 +463,32 @@ def cifar10_no_augmentation_preprocess(dataset, training):
     return features, targets
 
   dataset = dataset.map(cast_image)
-  return dataset
+  return dataset, shapes
 
 
-@gin.configurable(blacklist=['dataset', 'training'])
-def cifar10_augmentation_preprocess(dataset, training):
+def _cifar_augment_image(image):
+  """Image augmentation suitable for CIFAR-10/100.
+
+  As described in https://arxiv.org/pdf/1608.06993v3.pdf (page 5).
+
+  Args:
+    image: a Tensor.
+  Returns:
+    Tensor of the same shape as image.
+  """
+  image = tf.image.resize_image_with_crop_or_pad(image, 40, 40)
+  image = tf.random_crop(image, [32, 32, 3])
+  image = tf.image.random_flip_left_right(image)
+  return image
+
+
+# Makes the function accessible in gin configs, even with all args blacklisted.
+@gin.configurable(blacklist=['dataset', 'training', 'shapes'])
+def cifar10_augmentation_preprocess(dataset, training, shapes):
   """Preprocessing for cifar10 with augmentation (see below)."""
 
-  def augment_image(image):
-    """Image augmentation suitable for CIFAR-10/100.
-
-    As described in https://arxiv.org/pdf/1608.06993v3.pdf (page 5).
-
-    Args:
-      image: a Tensor.
-    Returns:
-      Tensor of the same shape as image.
-    """
-    image = tf.image.resize_image_with_crop_or_pad(image, 40, 40)
-    image = tf.random_crop(image, [32, 32, 3])
-    image = tf.image.random_flip_left_right(image)
-    return image
-
   def augment(features, targets):
-    features['image'] = augment_image(features['image'])
+    features['image'] = _cifar_augment_image(features['image'])
     return features, targets
 
   def cast_image(features, targets):
@@ -495,16 +498,51 @@ def cifar10_augmentation_preprocess(dataset, training):
   if training:
     dataset = dataset.map(augment)
   dataset = dataset.map(cast_image)
-  return dataset
+  return dataset, shapes
 
 
-def no_preprocess(dataset, training):
+@gin.configurable(blacklist=['dataset', 'training', 'shapes'])
+def cifar10_augmentation_flatten_preprocess(dataset, training, shapes,
+                                            predict_image_train_weight=0.01):
+  """Preprocessing for cifar10 that flattens it and appends targets."""
+
+  def augment(features, targets):
+    features['image'] = _cifar_augment_image(features['image'])
+    return features, targets
+
+  def flatten_image(features, targets):
+    """Flatten the image."""
+    img = features['image']
+    flat = tf.cast(tf.reshape(img, [-1]), tf.int64)
+    tgt = tf.expand_dims(targets, axis=0)
+    flat_with_target = tf.concat([flat, tgt], axis=0)
+    new_features = {}
+    new_features['image'] = flat_with_target
+    predict_image_weight = predict_image_train_weight if training else 0.0
+    mask_begin = tf.ones_like(flat)
+    mask_begin = tf.cast(mask_begin, tf.float32) * predict_image_weight
+    mask_end = tf.cast(tf.ones_like(tgt), tf.float32)
+    new_features['mask'] = tf.concat([mask_begin, mask_end], axis=0)
+    return new_features, flat_with_target
+
+  if training:
+    dataset = dataset.map(augment)
+  dataset = dataset.map(flatten_image)
+
+  inp_shape, _ = shapes
+  img_shape = inp_shape['image']
+  flat_shape = img_shape[0] * img_shape[1] * img_shape[2] + 1
+  new_shapes = {'image': (flat_shape,), 'mask': (flat_shape,)}
+  return dataset, (new_shapes, (flat_shape,))
+
+
+def no_preprocess(dataset, training, shapes):
   del training
-  return dataset
+  return dataset, shapes
 
 
-@gin.configurable(blacklist=['dataset', 'training'])
-def concat_preprocess(dataset, training, pad_symbol=0):
+@gin.configurable(blacklist=['dataset', 'training', 'shapes'])
+def concat_preprocess(dataset, training, shapes, pad_symbol=0):
   """Pre-processing function that concatenates input and target for LM."""
   del training
 
@@ -518,11 +556,11 @@ def concat_preprocess(dataset, training, pad_symbol=0):
     return features, concat
 
   dataset = dataset.map(concat)
-  return dataset
+  return dataset, shapes
 
 
-@gin.configurable(blacklist=['dataset', 'training'])
-def lm1b_preprocess(dataset, training,
+@gin.configurable(blacklist=['dataset', 'training', 'shapes'])
+def lm1b_preprocess(dataset, training, shapes,
                     max_target_length=-1, max_eval_target_length=-1):
   """Preprocessing for LM1B: filter out targets exceeding maximum length."""
 
@@ -538,12 +576,13 @@ def lm1b_preprocess(dataset, training,
   if max_eval_target_length > 0 and not training:
     dataset = dataset.filter(eval_target_right_length)
 
-  return dataset
+  return dataset, shapes
 
 
 # TODO(lukaszkaiser): find a single more abstract way of text pre-processing.
-@gin.configurable(blacklist=['dataset', 'training'])
-def wmt_preprocess(dataset, training, max_length=-1, max_eval_length=-1):
+@gin.configurable(blacklist=['dataset', 'training', 'shapes'])
+def wmt_preprocess(dataset, training, shapes,
+                   max_length=-1, max_eval_length=-1):
   """Preprocessing for LM1B: filter out targets exceeding maximum length."""
 
   def train_right_length(example, target):
@@ -560,11 +599,12 @@ def wmt_preprocess(dataset, training, max_length=-1, max_eval_length=-1):
   if max_eval_length > 0 and not training:
     dataset = dataset.filter(eval_right_length)
 
-  return dataset
+  return dataset, shapes
 
 
-@gin.configurable(blacklist=['dataset', 'training'])
-def wmt_concat_preprocess(dataset, training, max_length=-1, max_eval_length=-1):
+@gin.configurable(blacklist=['dataset', 'training', 'shapes'])
+def wmt_concat_preprocess(dataset, training, shapes,
+                          max_length=-1, max_eval_length=-1):
   """Preprocessing for WMT: filter exceeding maximum length and concatenate."""
   dataset = wmt_preprocess(dataset, training, max_length, max_eval_length)
 
@@ -578,7 +618,7 @@ def wmt_concat_preprocess(dataset, training, max_length=-1, max_eval_length=-1):
     return features, concat
 
   dataset = dataset.map(concat_and_add_mask)
-  return dataset
+  return dataset, shapes
 
 
 @gin.configurable(whitelist=['preprocess_fun', 'shuffle_buffer_size'])
@@ -609,12 +649,12 @@ def shuffle_and_batch_data(dataset,
     # essential for synchronous highly-parallel training to avoid multiple
     # replicas reading the same data in lock-step.
     dataset = dataset.skip(random.randint(0, _MAX_SKIP_EXAMPLES))
-  dataset = preprocess_fun(dataset, training)
   shapes = {k: features_info[k].shape for k in features_info}
   shapes = (shapes, shapes[target_names[0]])
+  dataset, shapes = preprocess_fun(dataset, training, shapes)
   dataset = dataset.shuffle(shuffle_buffer_size)
   dataset = batch_fn(dataset, training, shapes, target_names, n_devices)
-  return dataset.prefetch(2)
+  return dataset.prefetch(2), shapes
 
 
 def _train_and_eval_batches(dataset, data_dir, input_name, n_devices):
@@ -622,19 +662,21 @@ def _train_and_eval_batches(dataset, data_dir, input_name, n_devices):
   (train_data, eval_data, features_info, keys) = train_and_eval_dataset(
       dataset, data_dir)
   input_names, target_names = keys[0], keys[1]
-  train_batches = shuffle_and_batch_data(
+  train_batches, shape1 = shuffle_and_batch_data(
       train_data, target_names, features_info, training=True,
       n_devices=n_devices)
-  train_eval_batches = shuffle_and_batch_data(  # Data for eval-on-train.
+  train_eval_batches, shape2 = shuffle_and_batch_data(  # Data for eval-on-train
       train_data, target_names, features_info, training=False,
       n_devices=n_devices)
-  eval_batches = shuffle_and_batch_data(
+  eval_batches, shape3 = shuffle_and_batch_data(
       eval_data, target_names, features_info, training=False,
       n_devices=n_devices)
+  assert shape1 == shape2 == shape3
+  shapes = shape1
   input_name = input_name or input_names[0]
-  input_shape = features_info[input_name].shape
+  input_shape = shapes[0][input_name]
   input_dtype = features_info[input_name].dtype
-  target_shape = features_info[target_names[0]].shape
+  target_shape = shapes[1]
   target_dtype = features_info[target_names[0]].dtype
   return (train_batches, train_eval_batches, eval_batches,
           input_name, list(input_shape), input_dtype,
