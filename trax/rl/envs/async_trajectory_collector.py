@@ -117,15 +117,6 @@ def create_envs_and_collect_trajectories(
     train_env_kwargs = {'output_dir': train_env_output_dir}
     eval_env_kwargs = {'output_dir': eval_env_output_dir}
 
-  if 'ClientEnv' in env_name:
-    train_env_kwargs['per_env_kwargs'] = [{
-        'remote_env_address': os.path.join(FLAGS.train_server_bns, str(replica))
-    } for replica in range(train_batch_size)]
-
-    eval_env_kwargs['per_env_kwargs'] = [{
-        'remote_env_address': os.path.join(FLAGS.eval_server_bns, str(replica))
-    } for replica in range(eval_batch_size)]
-
   parallelism = multiprocessing.cpu_count() if FLAGS.parallelize_envs else 1
   train_parallelism = min(train_batch_size, parallelism)
   eval_parallelism = min(eval_batch_size, parallelism)
