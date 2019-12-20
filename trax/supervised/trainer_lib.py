@@ -83,36 +83,18 @@ class Trainer(object):
                save_steps=None, should_save_checkpoints=True,
                should_write_summaries=True, has_weights=False,
                nontrainable_param_map=None, mask_id=None, metrics=None):
-    if backend.get_name() == 'jax':
-      self._host_id = jax.host_id()
-      self._host_count = jax.host_count()
-    else:
-      self._host_id = 0
-      self._host_count = 1
-    self._is_chief = (self._host_id == 0)
 
-    if save_steps is None:
-      save_steps = []
-    self._save_steps = save_steps
-    self._should_save_checkpoints = should_save_checkpoints
+    self._is_chief, self._n_devices, rng = (
+        self._init_host_and_devices(n_devices, random_seed))
+    self._should_save_checkpoints = should_save_checkpoints and self._is_chief
+    self._save_steps = save_steps or []
     self._should_write_summaries = should_write_summaries
+
     self._has_weights = has_weights
     self._mask_id = mask_id
     self._metrics_dict = metrics if metrics is not None else _DEFAULT_METRICS
     loss_fn = loss_fn(has_weights=has_weights, mask_id=mask_id)
-    device_count = backend.device_count()
-    n_devices = n_devices or device_count
-    # TODO(lukaszkaiser): remove this restriction when possible.
-    if n_devices != device_count and backend.get_name() == 'jax':
-      raise ValueError('JAX cannot work yet with n_devices != all devices: '
-                       '%d != %d' % (n_devices, device_count))
-    self._n_devices = n_devices
-
-    # Simple differential seeding of RNG across hosts by host_id and time.
-    if random_seed is None and self._host_count > 1:
-      random_seed = int(1e6 * (self._host_id + time.time())) % 2**32
-    rng = init_random_number_generators(random_seed)
-    inputs = inputs(n_devices)
+    inputs = inputs(self._n_devices)
     self._inputs = inputs
 
     # Initialize the learning rate to a dummy value. It will be set in reset().
@@ -124,7 +106,7 @@ class Trainer(object):
 
     # Setup state.
     rng, init_rng = jax_random.split(rng)
-    self._rngs = np.stack(jax_random.split(rng, n_devices))
+    self._rngs = np.stack(jax_random.split(rng, self._n_devices))
     first_shape = inputs.input_shape[0]
     # If the inputs are a tuple/list, add [None] (batch) to each element.
     if isinstance(first_shape, (list, tuple)):
@@ -139,6 +121,7 @@ class Trainer(object):
     model_input_shape = backend.nested_map(lambda x: x or 1, model_input_shape)
     model_target_shape = backend.nested_map(lambda x: x or 1,
                                             model_target_shape)
+
     def new_opt_state_and_model_state(input_shape, input_dtype, target_shape,
                                       target_dtype, rng):
       """Returns optimizer and model states suitable for training a model."""
@@ -164,6 +147,7 @@ class Trainer(object):
       weights, state = m.init(input_signature)
       (slots, opt_params) = opt.tree_init(weights)
       return (OptState(weights, slots, opt_params), state)
+
     if _is_jit_init():
       # JIT parameter initialization to avoid memory fragmentation
       new_opt_state_and_model_state = backend.jit(new_opt_state_and_model_state,
@@ -191,8 +175,9 @@ class Trainer(object):
 
     # Jit model_predict and update so they're fast.
     self._jit_eval = _jit_predict_fn(
-        model_predict_eval, metrics_in_parallel, n_devices)
-    self._jit_update_fn = _jit_update_fn(model_train, loss_fn, opt, n_devices)
+        model_predict_eval, metrics_in_parallel, self._n_devices)
+    self._jit_update_fn = _jit_update_fn(
+        model_train, loss_fn, opt, self._n_devices)
 
     self._model_train = model_train
     self._model_predict_eval = model_predict_eval
@@ -288,7 +273,7 @@ class Trainer(object):
       model_state = self._for_n_devices(model_state)
     self._opt_state = OptState(*self._for_n_devices(opt_state))
     self._model_state = model_state
-    if not state.opt_state and self._should_save():
+    if not state.opt_state and self._should_save_checkpoints:
       self.save_state(keep=False)
 
     self.update_nontrainable_params()
@@ -322,7 +307,7 @@ class Trainer(object):
     self.evaluate(n_eval_steps)
     if self._eval_sw:
       self._eval_sw.flush()
-    if self._should_save():
+    if self._should_save_checkpoints:
       self.save_state(keep=False)
 
   def train_step(self, batch):
@@ -497,6 +482,39 @@ class Trainer(object):
     total_size = _nested_reduce(sum, sizes)
     self.log_step('Total number of trainable weights: %d' % total_size)
 
+  def _init_host_and_devices(self, n_devices=None, random_seed=None):
+    """Initializes host and device attributes for this trainer.
+
+    Args:
+      n_devices: Number of devices this trainer will use. If `None`, get the
+          number from the backend.
+      random_seed: Random seed as the starting point for all random numbers used
+          by the trainer. If `None`, calculate one from system time and host id.
+
+    Returns:
+      is_chief: True if this trainer has special chief responsibilities.
+      n_devices: The passed in value of n_devices or a computed default.
+      random_seed: The passed in value of random_seed or a computed default.
+    """
+    if backend.get_name() == 'jax':
+      host_id = jax.host_id()
+      host_count = jax.host_count()
+    else:
+      host_id = 0
+      host_count = 1
+    is_chief = (host_id == 0)
+
+    device_count = backend.device_count()
+    n_devices = n_devices or device_count
+    # TODO(lukaszkaiser): remove this restriction when possible.
+    if n_devices != device_count and backend.get_name() == 'jax':
+      raise ValueError('JAX cannot work yet with n_devices != all devices: '
+                       '%d != %d' % (n_devices, device_count))
+
+    if random_seed is None and host_count > 1:
+      random_seed = int(1e6 * (host_id + time.time())) % 2**32
+    return is_chief, n_devices, init_random_number_generators(random_seed)
+
   def _map_to_state_dicts(self, f):
     """Map the function f to all dicts in model state."""
     # TODO(jonni): Can we replace _nested_map with backend.nested_map?
@@ -516,11 +534,8 @@ class Trainer(object):
     value = state_dict[key]
     return {key: self.update_model_state(key, value)}
 
-  def _should_save(self):
-    return self._is_chief and self._should_save_checkpoints
-
   def _should_save_now(self):
-    return self._should_save() and self._step in self._save_steps
+    return self._should_save_checkpoints and self._step in self._save_steps
 
   def _should_log_now(self):
     return (self._train_sw is not None
