@@ -77,7 +77,7 @@ train.eval_steps = 1
 train.inputs = @trax.supervised.inputs.inputs
 # train.model: see top
 train.optimizer = @trax.optimizers.Adam
-train.train_steps = 20000
+train.steps = 20000
 train.save_graphs = False
 
 # Parameters for MemoryEfficientCausalAttention:

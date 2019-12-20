@@ -51,7 +51,7 @@ train.eval_frequency = 1000
 train.eval_steps = 10
 train.inputs = @trax.supervised.inputs.inputs
 train.model = @trax.models.Transformer
-train.train_steps = 500000
+train.steps = 500000
 train.optimizer = @trax.optimizers.SM3
 train.mask_id = 0
 

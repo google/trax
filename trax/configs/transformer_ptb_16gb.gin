@@ -49,7 +49,7 @@ train.eval_steps = 2
 train.inputs = @trax.supervised.inputs.inputs
 train.model = @trax.models.TransformerLM
 train.optimizer = @trax.optimizers.Adafactor
-train.train_steps = 20000
+train.steps = 20000
 train.mask_id = 0
 
 # Parameters for DotProductCausalAttention:

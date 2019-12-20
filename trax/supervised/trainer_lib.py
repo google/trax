@@ -80,14 +80,14 @@ class Trainer(object):
 
   def __init__(self, model, loss_fn, optimizer, lr_schedule, inputs,
                output_dir=None, random_seed=None, n_devices=None,
-               save_steps=None, should_save_checkpoints=True,
+               checkpoints_at=None, should_save_checkpoints=True,
                should_write_summaries=True, has_weights=False,
                nontrainable_param_map=None, mask_id=None, metrics=None):
 
     self._is_chief, self._n_devices, rng = (
         self._init_host_and_devices(n_devices, random_seed))
     self._should_save_checkpoints = should_save_checkpoints and self._is_chief
-    self._save_steps = save_steps or []
+    self._checkpoints_at = checkpoints_at or []
     self._should_write_summaries = should_write_summaries
 
     self._has_weights = has_weights
@@ -535,7 +535,7 @@ class Trainer(object):
     return {key: self.update_model_state(key, value)}
 
   def _should_save_now(self):
-    return self._should_save_checkpoints and self._step in self._save_steps
+    return self._should_save_checkpoints and self._step in self._checkpoints_at
 
   def _should_log_now(self):
     return (self._train_sw is not None
@@ -562,8 +562,8 @@ def train(output_dir,
           optimizer=trax_opt.Adafactor,
           lr_schedule=lr.MultifactorSchedule,
           trainer_class=Trainer,
-          train_steps=1000,
-          save_steps=None,
+          steps=1000,
+          checkpoints_at=None,
           eval_steps=10,
           eval_frequency=100,
           random_seed=None,
@@ -586,9 +586,9 @@ def train(output_dir,
     lr_schedule: A learning rate schedule as a function that takes history and
       returns a function from step to learning rate (a float).
     trainer_class: The trainer class to use.
-    train_steps: int, total number of training steps.
-    save_steps: list of integers. Keep a model file at each of the supplied save
-      steps.
+    steps: int, total number of training steps.
+    checkpoints_at: list of integers. Save a checkpoint for each training step
+      in the list.
     eval_steps: int, num of steps per evaluation. If None or 0, eval disabled.
     eval_frequency: int, how often to run evaluation (every eval_frequency
       steps). If None or 0, eval disabled.
@@ -609,11 +609,12 @@ def train(output_dir,
   trainer = trainer_class(model, loss_fn, optimizer, lr_schedule, inputs,
                           output_dir,
                           random_seed=random_seed, n_devices=n_devices,
-                          save_steps=save_steps, has_weights=has_weights,
+                          checkpoints_at=checkpoints_at,
+                          has_weights=has_weights,
                           nontrainable_param_map=nontrainable_param_map,
                           metrics=metrics, mask_id=mask_id)
 
-  epoch_steps = [train_steps]  # Only training if eval_frequency is 0 or None
+  epoch_steps = [steps]  # Only training if eval_frequency is 0 or None
   if eval_frequency and eval_steps > 0:
     epoch_steps = itertools.chain([1,  # first epoch only 1 step
                                    eval_frequency - 1],
@@ -621,7 +622,7 @@ def train(output_dir,
   trainer.log_step('Starting training using %d devices' % trainer.n_devices)
   trainer.print_n_weights()
 
-  for epoch_steps in epochs(train_steps, trainer.step, epoch_steps):
+  for epoch_steps in epochs(steps, trainer.step, epoch_steps):
     trainer.train_epoch(epoch_steps, eval_steps)
 
     # Update nontrainable parameters with new history

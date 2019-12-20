@@ -46,4 +46,4 @@ train.optimizer = @trax.optimizers.Adafactor
 train.eval_frequency = 200
 train.eval_steps = 10
 train.model = @trax.models.MLP
-train.train_steps = 2000
+train.steps = 2000

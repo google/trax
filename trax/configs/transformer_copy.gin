@@ -53,7 +53,7 @@ train.eval_steps = 64
 train.inputs = @trax.supervised.inputs.sequence_copy_inputs
 train.model = @trax.models.TransformerLM
 train.optimizer = @trax.optimizers.Adafactor
-train.train_steps = 50000
+train.steps = 50000
 train.has_weights = True
 
 # Parameters for MemoryEfficientCausalAttention:

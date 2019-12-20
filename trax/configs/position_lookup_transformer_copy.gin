@@ -63,6 +63,6 @@ train.eval_frequency = 1000
 train.eval_steps = 40
 train.model = @trax.models.PositionLookupTransformerLM
 train.optimizer = @trax.optimizers.Adam
-train.train_steps = 100000
+train.steps = 100000
 train.mask_id = 0
 train.has_weights = True

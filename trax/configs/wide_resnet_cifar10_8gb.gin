@@ -58,7 +58,7 @@ train.eval_steps = 10
 train.inputs = @trax.supervised.inputs.inputs
 train.model = @trax.models.WideResnet
 train.optimizer = @trax.optimizers.Momentum
-train.train_steps = 10000
+train.steps = 10000
 train.lr_schedule = @learning_rate.EvalAdjustingSchedule
 
 # ==============================================================================

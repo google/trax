@@ -70,9 +70,9 @@ train.eval_steps = 64
 train.inputs = @trax.supervised.inputs.inputs
 # train.model: see top
 train.optimizer = @trax.optimizers.Adam
-train.train_steps = 500000
+train.steps = 500000
 train.save_graphs = False
-train.save_steps = \
+train.checkpoints_at = \
     [1000, 5000, 10000, 20000, 40000, 60000, 80000,
      100000, 200000, 300000, 400000, 500000]
 

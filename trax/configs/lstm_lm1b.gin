@@ -48,7 +48,7 @@ train.eval_steps = 10
 train.inputs = @trax.supervised.inputs.inputs
 train.model = @trax.models.RNNLM
 train.optimizer = @trax.optimizers.Adam
-train.train_steps = 500000
+train.steps = 500000
 train.mask_id = 0
 train.has_weights = False
 

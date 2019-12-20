@@ -201,7 +201,7 @@ class SimPLe(base_trainer.BaseTrainer):
       state = trainer_lib.train(
           model=self._sim_env.model,
           inputs=inputs,
-          train_steps=self._model_train_step,
+          steps=self._model_train_step,
           output_dir=self._model_dir,
           has_weights=True,
       )

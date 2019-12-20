@@ -598,7 +598,7 @@ class PpoTest(test.TestCase):
         inputs=functools.partial(
             inputs.random_inputs, input_shape=(1, 1), output_shape=(1, 1)
         ),
-        train_steps=1,
+        steps=1,
         eval_steps=1,
     )
 

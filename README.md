@@ -36,7 +36,7 @@ See our example layers in a TPU/GPU-backed colab notebook at
 python -m trax.trainer \
   --dataset=mnist \
   --model=MLP \
-  --config="train.train_steps=1000"
+  --config="train.steps=1000"
 ```
 
 #### Resnet50 on Imagenet

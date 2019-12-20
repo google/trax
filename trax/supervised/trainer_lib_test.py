@@ -92,7 +92,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
     with backend.use_backend(backend_name), self.tmp_dir() as output_dir:
       # Prepare model and inputs
       n_classes = 4
-      train_steps = 2
+      steps = 2
       eval_steps = 2
 
       # Adds Dropout and BatchNorm to test state handling.
@@ -108,11 +108,11 @@ class TraxTest(test.TestCase, parameterized.TestCase):
           output_dir,
           model=model_fn,
           inputs=inputs,
-          train_steps=train_steps,
+          steps=steps,
           eval_steps=eval_steps)
 
       # Assert total train steps
-      self.assertEqual(train_steps, state.step)
+      self.assertEqual(steps, state.step)
 
       # Assert 2 evaluations ran
       train_acc = state.history.get('train', 'metrics/accuracy')
@@ -136,7 +136,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
     with backend.use_backend(backend_name), self.tmp_dir() as output_dir:
       # Prepare model and inputs
       n_classes = 4
-      train_steps = 2
+      steps = 2
       eval_steps = 2
       model_fn = functools.partial(
           models.MLP, d_hidden=16, n_output_classes=n_classes)
@@ -147,12 +147,12 @@ class TraxTest(test.TestCase, parameterized.TestCase):
           output_dir,
           model=model_fn,
           inputs=inputs,
-          train_steps=train_steps,
+          steps=steps,
           eval_steps=eval_steps,
           optimizer=trax_opt.SM3)
 
       # Assert total train steps
-      self.assertEqual(train_steps, state.step)
+      self.assertEqual(steps, state.step)
 
       # Assert 2 evaluations ran
       train_acc = state.history.get('train', 'metrics/accuracy')
@@ -172,7 +172,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
     with backend.use_backend(backend_name), self.tmp_dir() as output_dir:
       # Prepare model and inputs
       n_classes = 4
-      train_steps = 2
+      steps = 2
       eval_steps = 2
       model_fn = functools.partial(
           models.MLP, d_hidden=16, n_output_classes=n_classes)
@@ -183,7 +183,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
           output_dir,
           model=model_fn,
           inputs=inputs,
-          train_steps=train_steps,
+          steps=steps,
           eval_steps=eval_steps)
 
       # Restart training
@@ -191,11 +191,11 @@ class TraxTest(test.TestCase, parameterized.TestCase):
           output_dir,
           model=model_fn,
           inputs=inputs,
-          train_steps=(2 * train_steps),
+          steps=(2 * steps),
           eval_steps=eval_steps)
 
       # Assert total train steps
-      self.assertEqual(state.step, 2 * train_steps)
+      self.assertEqual(state.step, 2 * steps)
 
   @parameterized.parameters(BACKENDS)
   def test_train_with_weights(self, backend_name):
@@ -204,7 +204,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
     with backend.use_backend(backend_name), self.tmp_dir() as output_dir:
       # Prepare model and inputs
       n_classes = 4
-      train_steps = 2
+      steps = 2
       eval_steps = 2
       model_fn = functools.partial(
           models.MLP, d_hidden=16, n_output_classes=n_classes)
@@ -215,12 +215,12 @@ class TraxTest(test.TestCase, parameterized.TestCase):
           output_dir,
           model=model_fn,
           inputs=inputs,
-          train_steps=train_steps,
+          steps=steps,
           eval_steps=eval_steps,
           has_weights=True)
 
       # Assert total train steps
-      self.assertEqual(state.step, train_steps)
+      self.assertEqual(state.step, steps)
 
   @parameterized.parameters(BACKENDS)
   def test_reset_twice(self, backend_name):
