@@ -96,7 +96,7 @@ class Adafactor(opt_base.Optimizer):
       slots.append(m)
     return slots
 
-  def update(self, step, grads, params, slots, opt_params):
+  def update(self, step, grads, weights, slots, opt_params):
     updates = []
     learning_rate = opt_params['learning_rate']
     beta1 = opt_params['beta1']
@@ -109,11 +109,11 @@ class Adafactor(opt_base.Optimizer):
     update_scale = learning_rate
     if self._multiply_by_parameter_scale:
       update_scale *= np.maximum(
-          np.sqrt(np.mean(params * params)), epsilon2)
+          np.sqrt(np.mean(weights * weights)), epsilon2)
     mixing_rate = 1.0 - decay_rate
 
     grads_sqr = grads * grads + epsilon1
-    if self._factored and len(params.shape) >= 2:
+    if self._factored and len(weights.shape) >= 2:
       v_row = slots.pop(0)
       v_col = slots.pop(0)
       new_v_row = decay_rate * v_row + mixing_rate * np.mean(grads_sqr, axis=-1)
@@ -143,7 +143,7 @@ class Adafactor(opt_base.Optimizer):
       subtrahend = new_m
       updates.append(new_m)
 
-    new_params = (1 - weight_decay_rate) * params - subtrahend
+    new_weights = (1 - weight_decay_rate) * weights - subtrahend
     # TODO(lukaszkaiser): why is the astype needed here? Check and correct.
-    return new_params.astype(params.dtype), updates
+    return new_weights.astype(weights.dtype), updates
 

@@ -45,7 +45,7 @@ class SM3(opt_base.Optimizer):
     vs = [np.zeros(sz, dtype=params.dtype) for sz in params.shape]
     return (np.zeros_like(params), vs)
 
-  def _update_diagonal(self, grads, params, m, v, opt_params):
+  def _update_diagonal(self, grads, weights, m, v, opt_params):
     learning_rate = opt_params['learning_rate']
     momentum = opt_params['momentum']
     v[0] += grads * grads
@@ -53,8 +53,8 @@ class SM3(opt_base.Optimizer):
                               np.zeros_like(v[0]))
     preconditioned_grads = preconditioner * grads
     m = (1 - momentum) * preconditioned_grads + momentum * m
-    params = params - (learning_rate * m).astype(params.dtype)
-    return params, (m, v)
+    weights = weights - (learning_rate * m).astype(weights.dtype)
+    return weights, (m, v)
 
   def _expanded_shape(self, shape, axis):
     # Replaces a `shape` of [M, N, K] with 1 in all dimensions except for i.
@@ -68,11 +68,11 @@ class SM3(opt_base.Optimizer):
       minimum = np.minimum(minimum, tensor_list[i])
     return minimum
 
-  def _update_sketched(self, grads, params, m, v, opt_params):
+  def _update_sketched(self, grads, weights, m, v, opt_params):
     """Update for higher-rank parameters."""
     learning_rate = opt_params['learning_rate']
     momentum = opt_params['momentum']
-    shape = params.shape
+    shape = weights.shape
     rank = len(shape)
     reshaped_accumulators = [np.reshape(v[i], self._expanded_shape(shape, i))
                              for i in range(rank)]
@@ -83,20 +83,20 @@ class SM3(opt_base.Optimizer):
                                     np.zeros_like(current_accumulator))
     preconditioned_gradient = grads * accumulator_inv_sqrt
     m = (1.0 - momentum) * preconditioned_gradient + momentum * m
-    params = params - (learning_rate * m).astype(params.dtype)
+    weights = weights - (learning_rate * m).astype(weights.dtype)
     for i in range(len(v)):
       axes = list(range(int(i))) + list(range(int(i) + 1, rank))
       dim_accumulator = np.amax(current_accumulator, axis=axes)
       v[i] = dim_accumulator
-    return params, (m, v)
+    return weights, (m, v)
 
-  def update(self, step, grads, params, slots, opt_params):
+  def update(self, step, grads, weights, slots, opt_params):
     del step
     m, v = slots
-    shape = params.shape
+    shape = weights.shape
     rank = len(shape)
     if rank > 1:
-      return self._update_sketched(grads, params, m, v, opt_params)
+      return self._update_sketched(grads, weights, m, v, opt_params)
     else:
-      return self._update_diagonal(grads, params, m, v, opt_params)
+      return self._update_diagonal(grads, weights, m, v, opt_params)
 

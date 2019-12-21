@@ -88,18 +88,18 @@ class Optimizer(object):
     """Create optimizer slots for the given parameters."""
     raise NotImplementedError
 
-  def update(self, step, grads, params, slots, opt_params):
+  def update(self, step, grads, weights, slots, opt_params):
     """Update a single parameter array.
 
     Args:
       step: Current step.
       grads: Gradients.
-      params: Parameters.
+      weights: Trainable model weights.
       slots: Optimizer slots (e.g. gradient moments).
       opt_params: Optimizer (hyper)parameters (e.g. learning rate, momentum).
 
     Returns:
-      (new_params, new_slots)
+      (new_weights, new_slots)
     """
     raise NotImplementedError
 

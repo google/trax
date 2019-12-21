@@ -28,8 +28,8 @@ class SGD(opt_base.Optimizer):
   def init(self, params):
     return None
 
-  def update(self, step, grads, params, slots, opt_params):
+  def update(self, step, grads, weights, slots, opt_params):
     del step
     del slots
     learning_rate = opt_params['learning_rate']
-    return params - (learning_rate * grads).astype(params.dtype), None
+    return weights - (learning_rate * grads).astype(weights.dtype), None

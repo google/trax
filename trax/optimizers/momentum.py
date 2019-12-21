@@ -55,7 +55,7 @@ class Momentum(base.Optimizer):
   def init(self, params):
     return np.zeros_like(params)
 
-  def update(self, step, grads, params, velocity, opt_params):
+  def update(self, step, grads, weights, velocity, opt_params):
     del step
     v = velocity
     mu = opt_params['mass']
@@ -63,7 +63,7 @@ class Momentum(base.Optimizer):
     epsilon = opt_params['learning_rate']
 
     new_v = mu * v + grads
-    new_params = (1 - alpha) * params - epsilon * (mu * new_v + grads)
+    new_weights = (1 - alpha) * weights - epsilon * (mu * new_v + grads)
 
-    new_params = new_params.astype(params.dtype)
-    return (new_params, new_v)
+    new_weights = new_weights.astype(weights.dtype)
+    return (new_weights, new_v)
