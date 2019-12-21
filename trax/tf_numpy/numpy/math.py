@@ -79,6 +79,7 @@ def dot(a, b):
   return utils.tensor_to_ndarray(result_t)
 
 
+# TODO(wangpeng): Make bitwise ops `ufunc`s
 def _bin_op(tf_fun, a, b, promote=True):
   if promote:
     a, b = promote_args_types(a, b)
@@ -133,6 +134,7 @@ def tanh(x):
   return _scalar(x, tf.tanh)
 
 
+@utils.np_doc(np.sqrt)
 def sqrt(x):
   return _scalar(x, tf.sqrt)
 
