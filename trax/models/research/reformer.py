@@ -523,7 +523,7 @@ def ReformerLM(vocab_size,
       Tuple length must match axial_pos_shape, and values must sum to d_model.
     ff_activation: the non-linearity in feed-forward layer
     ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
-    mode: str: 'train' or 'eval'
+    mode: str: 'train', 'eval', or 'predict'
 
   Returns:
     the layer.
@@ -536,13 +536,13 @@ def ReformerLM(vocab_size,
 
   if not axial_pos_shape:
     positional_encoding = tl.PositionalEncoding(
-        max_len=max_len, dropout=dropout)
+        max_len=max_len, dropout=dropout, mode=mode)
   else:
     assert d_axial_pos_embs is not None
     positional_encoding = tl.AxialPositionalEncoding(
         shape=axial_pos_shape, d_embs=d_axial_pos_embs,
         dropout_broadcast_dims=tuple(range(1, len(axial_pos_shape) + 1)),
-        dropout=dropout)
+        dropout=dropout, mode=mode)
 
   positional_embedder = [
       tl.Embedding(d_model, vocab_size),
@@ -572,7 +572,7 @@ def ReformerLM(vocab_size,
 
   return tl.Serial(
       concatenate_input_chunks,
-      tl.ShiftRight(),
+      tl.ShiftRight(mode=mode),
       positional_embedder,
       tl.Dup(),
       tl.ReversibleSerial(decoder_blocks + [
@@ -644,15 +644,17 @@ def ReformerShortenLM(vocab_size,
   Returns:
     the layer.
   """
+  assert mode != 'predict'  # TODO(lukaszkaiser,kitaev): fast inference
+
   if not axial_pos_shape:
     positional_encoding = tl.PositionalEncoding(
-        max_len=max_len, dropout=dropout)
+        max_len=max_len, dropout=dropout, mode=mode)
   else:
     assert d_axial_pos_embs is not None
     positional_encoding = tl.AxialPositionalEncoding(
         shape=axial_pos_shape, d_embs=d_axial_pos_embs,
         dropout_broadcast_dims=tuple(range(1, len(axial_pos_shape) + 1)),
-        dropout=dropout)
+        dropout=dropout, mode=mode)
 
   positional_embedder = [
       tl.Embedding(d_embedding, vocab_size),
