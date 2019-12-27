@@ -232,7 +232,7 @@ class Trainer(object):
     with backend.use_backend('numpy'):
       return self._lr_fn(self._step)
 
-  def reset(self, output_dir):
+  def reset(self, output_dir, init_checkpoint=None):
     """Reset the model parameters.
 
     Restores the parameters from the given output_dir if a checkpoint exists,
@@ -242,6 +242,7 @@ class Trainer(object):
 
     Args:
       output_dir: Output directory.
+      init_checkpoint: Initial checkpoint to use (default $output_dir/model.pkl)
     """
     self._output_dir = output_dir
     tf.io.gfile.makedirs(output_dir)
@@ -260,7 +261,7 @@ class Trainer(object):
     self._train_eval_stream = _repeat_stream(self._inputs.train_eval_stream)
 
     # Restore the training state.
-    state = load_trainer_state(output_dir)
+    state = load_trainer_state(output_dir, init_checkpoint)
     self._step = state.step or 0
     history = state.history
     self._lr_fn = self._lr_schedule(history)
@@ -784,12 +785,15 @@ def epochs(total_steps, steps_to_skip, epoch_steps):
       break
 
 
-def load_trainer_state(output_dir):
+def load_trainer_state(output_dir, weights_file=None):
   """Returns a TrainerState instance loaded from the given `output_dir`."""
-  weights_file = os.path.join(output_dir, 'model.pkl')
-  if not tf.io.gfile.exists(weights_file):
-    return TrainerState(step=None, opt_state=None,
-                        history=trax_history.History(), model_state=None)
+  if weights_file is None:
+    weights_file = os.path.join(output_dir, 'model.pkl')
+    if not tf.io.gfile.exists(weights_file):
+      return TrainerState(step=None, opt_state=None,
+                          history=trax_history.History(), model_state=None)
+  elif not tf.io.gfile.exists(weights_file):
+    raise ValueError('File not found: %s' % weights_file)
 
   pkl_module = utils.get_pickle_module()
   with tf.io.gfile.GFile(weights_file, 'rb') as f:
