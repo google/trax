@@ -157,7 +157,7 @@ class Parallel(base.Layer):
 
   Layers in the list apply to successive spans of inputs, where the spans are
   determined how many inputs each layer takes. The resulting output is the
-  (flattened) concatenation of the resepective layer outputs.
+  (flattened) concatenation of the respective layer outputs.
 
   For example, suppose one has three layers:
 
@@ -335,7 +335,7 @@ class Scan(base.Layer):
   """Applies a layer progressively/cumulatively to an axis-derived sequence.
 
   Conceptually, this is a function from a list to a same-length list of partial
-  (cumulatative) results. For instance, a list of values (`[1, 2, 3, 4, 5]`) can
+  (cumulative) results. For instance, a list of values (`[1, 2, 3, 4, 5]`) can
   transform to a list of cumulative sums (`[1, 3, 6, 10, 15]`). Functions for
   the same concept are called `scan` in Scala, `scanl` in Haskell, and
   `accumulate*` in Factor.
