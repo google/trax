@@ -152,7 +152,11 @@ class AxialPositionalEncoding(base.Layer):
       embs.append(ax_emb)
     emb = np.concatenate(embs, -1)
 
-    if self._dropout == 0:
+    if self._mode == 'predict':
+      assert self._dropout == 0.0
+      emb = np.reshape(emb, (inputs.shape[0], -1, emb.shape[-1]))
+      return inputs + emb[:, state, :][:, None, :], state + 1
+    elif self._dropout == 0:
       return inputs + np.reshape(emb, inputs.shape), state
     else:
       noise_shape = list(emb.shape)
@@ -180,7 +184,8 @@ class AxialPositionalEncoding(base.Layer):
       ax_emb = self._kernel_initializer(ax_shape, ax_rng)
       weights.append(ax_emb)
 
-    return tuple(weights), base.EMPTY_STATE
+    state = 0 if self._mode == 'predict' else base.EMPTY_STATE
+    return tuple(weights), state
 
 
 def DotProductAttention(query, key, value, mask, dropout, mode, rng):

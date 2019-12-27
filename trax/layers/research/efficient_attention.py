@@ -375,10 +375,19 @@ class TimeBinCausalAttention(attention.BaseCausalAttention):
     return output[..., :original_len, :]
 
   def _forward_predict(self, inputs, state, rng):
-    state = _fast_inference_update_state(inputs, state)
+    if not self._share_qk:
+      state = _fast_inference_update_state(inputs, state)
+      (q, _, _) = inputs
+      (ks, vs, mask, index) = state
+    else:
+      mask_excluding_attention_in_place = state[2]
+      (q, _, v) = inputs
+      k = self.make_unit_length(q)
+      state = _fast_inference_update_state((q, k, v), state)
+      (ks, vs, mask, index) = state
+      # Only the initial position in a sequence may attend to itself.
+      mask = np.where(index > 1, mask_excluding_attention_in_place, mask)
 
-    (q, _, _) = inputs
-    (ks, vs, mask, index) = state
     output = attention.DotProductAttention(
         q, ks, vs, mask, dropout=self.dropout, mode=self._mode, rng=rng
     )
