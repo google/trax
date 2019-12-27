@@ -864,7 +864,7 @@ class LSHCausalAttention(attention.BaseCausalAttention):
     # There are two possible strategies here. (1) The default is to count how
     # many times a query-key pair is repeated, and to lower its log-prob
     # correspondingly at each repetition. (2) When hard_k is set, the code
-    # instead masks all but the first occurence of each query-key pair.
+    # instead masks all but the first occurrence of each query-key pair.
     # TODO(kitaev): is one strategy faster or more numerically stable?
     if not self._allow_duplicate_attention:
       locs1 = undo_sort // bq_t.shape[-1]
