@@ -44,6 +44,7 @@ setup(
         'tensor2tensor',
         'tensorflow-datasets',
         'absl-py',
+        'funcsigs'
     ],
     extras_require={
         'tensorflow': ['tensorflow>=1.14.0'],
