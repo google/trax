@@ -93,6 +93,13 @@ class CombinatorLayerTest(absltest.TestCase):
     output_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual(output_shape, expected_shape)
 
+  def test_branch_one_layer(self):
+    layer = cb.Branch(divide_by(0.5))
+    input_signature = ShapeDtype((3, 2))
+    expected_shape = (3, 2)
+    output_shape = base.check_shape_agreement(layer, input_signature)
+    self.assertEqual(output_shape, expected_shape)
+
   def test_select_computes_n_in(self):
     layer = cb.Select([0, 0])
     self.assertEqual(layer.n_in, 1)

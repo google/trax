@@ -421,6 +421,8 @@ def Branch(*layers):
   Returns:
     the branch layer
   """
+  if len(layers) == 1:
+    return layers[0]
   parallel_layer = Parallel(*layers)
   indices = [list(range(layer.n_in)) for layer in parallel_layer.sublayers]
   return Serial(Select(_deep_flatten(indices)), parallel_layer)
