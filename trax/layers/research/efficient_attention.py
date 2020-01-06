@@ -457,7 +457,10 @@ class LSHCausalAttention(attention.BaseCausalAttention):
                drop_for_hash_rate=0.0,
                data_rotation=False,
                data_rotation_farthest=False,
-               data_rotation_farthest_num=8):
+               data_rotation_farthest_num=8,
+               max_len_for_inference=16384,
+               bucket_capacity_for_inference=256):
+    # TODO(kitaev): use shared bucket length config that's shared for train+eval
     super(LSHCausalAttention, self).__init__(mode=mode)
     self._mode = mode
     if dropout >= 1.0:
@@ -492,16 +495,23 @@ class LSHCausalAttention(attention.BaseCausalAttention):
     self._data_rotation_farthest = data_rotation_farthest
     self._data_rotation_farthest_num = data_rotation_farthest_num
 
+    self._max_len_for_inference = max_len_for_inference
+    self._bucket_capacity_for_inference = bucket_capacity_for_inference
+
   def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
                          state=base.EMPTY_STATE, rng=None, **kwargs):
     del weights, kwargs
-    output, state, _ = self.batch_call_and_or_grad(
-        inputs[0], inputs[2], new_state=None, return_state=True, rng=rng)
+    if self._mode == 'predict':
+      output, state = self.batch_predict(inputs[0], inputs[2], state, rng=rng)
+    else:
+      output, state, _ = self.batch_call_and_or_grad(
+          inputs[0], inputs[2], new_state=None, return_state=True, rng=rng)
     return output, state
 
   def forward_and_backward(self, inputs, ct, state=base.EMPTY_STATE,
                            new_state=base.EMPTY_STATE, rng=None, **kwargs):
     del kwargs
+    assert self._mode != 'predict'
     output, _, (qk_ct, v_ct) = self.batch_call_and_or_grad(
         inputs[0], inputs[2], ct=ct, new_state=new_state, rng=rng)
     return output, (qk_ct, np.zeros_like(inputs[1]), v_ct)
@@ -514,6 +524,7 @@ class LSHCausalAttention(attention.BaseCausalAttention):
                state=base.EMPTY_STATE, new_state=base.EMPTY_STATE, rng=None,
                **kwargs):
     del output, weights, state
+    assert self._mode != 'predict'
     _, _, (qk_ct, v_ct) = self.batch_call_and_or_grad(
         inputs[0], inputs[2], return_output=False,
         ct=ct, new_state=new_state, rng=rng)
@@ -522,8 +533,40 @@ class LSHCausalAttention(attention.BaseCausalAttention):
 
   def new_weights_and_state(self, input_signature):
     qk = input_signature[0]
-    state = np.zeros(
-        (qk.shape[0], self.n_hashes * qk.shape[1]), dtype=np.int32)
+    if self._mode != 'predict':
+      state = np.zeros(
+          (qk.shape[0], self.n_hashes * qk.shape[1]), dtype=np.int32)
+    else:
+      # Having separate key/value caches for each hashing round would use a
+      # lot of memory, so instead each hashing round stores indices into a
+      # single key/value cache. Even with this approach, the maximum sequence
+      # length that fits in memory is shorter for fast inference than training.
+      # Fast inference is "fast" in that it avoids recomputation, which is the
+      # exact opposite tradeoff of memory-saving tricks like reversibility.
+      # There is still some potential room for memory savings by caching
+      # activations rather than key-value pairs (currently not implemented
+      # because it would require changes outside of this class).
+      batch_size = input_signature[0].shape[0]
+      max_len = self._max_len_for_inference
+      bucket_capacity = self._bucket_capacity_for_inference
+      d_qk = input_signature[0].shape[-1]
+      d_v = input_signature[2].shape[-1]
+      dtype = input_signature[0].dtype
+
+      ks = np.zeros((batch_size, max_len, d_qk), dtype=dtype)
+      vs = np.zeros((batch_size, max_len, d_v), dtype=dtype)
+      mask = np.full((batch_size, max_len), -1e9, dtype=dtype)
+      index = 0
+      bucket_assignments = np.full(
+          (batch_size * self.n_hashes * self.n_buckets, bucket_capacity),
+          max_len, dtype=np.int32)
+      assignment_locs = np.zeros(
+          batch_size * self.n_hashes * self.n_buckets, dtype=np.int32)
+      hash_rng = self.new_rng()
+
+      state = (
+          ks, vs, mask, index, bucket_assignments, assignment_locs, hash_rng)
+
     return self.new_weights(input_signature), state
 
   def batch_call_and_or_grad(self, qk, v, ct=None, return_output=True,
@@ -997,3 +1040,87 @@ class LSHCausalAttention(attention.BaseCausalAttention):
 
     assert out.shape == v.shape
     return out
+
+  def batch_predict(self, qk, v, state, rng=None):
+    assert not self._data_rotation, (
+        'Fast inference with data-dependent rotation is unsupported.')
+    assert self._hard_k == 0, 'Fast inference with hard_k is not implemented.'
+    assert self._dropout == 0.0, (
+        'Fast inference with dropout is not implemented.')
+
+    (ks, vs, mask, index, bucket_assignments, assignment_locs, hash_rng) = state
+
+    # TODO(kitaev): separate random projection for each attention head
+    assert qk.shape[1] == 1
+    batch_size = qk.shape[0]
+
+    buckets = np.reshape(
+        self.hash_vectors(np.squeeze(qk, 1), hash_rng),
+        (self.n_hashes, batch_size))
+    buckets = np.swapaxes(buckets, 0, 1)
+
+    k = self.make_unit_length(qk)
+    ks = jax.ops.index_update(ks, jax.ops.index[:, index, :], k[:, 0, :])
+    vs = jax.ops.index_update(vs, jax.ops.index[:, index, :], v[:, 0, :])
+    # Mask out attention to self except when no other targets are available.
+    # Invalid elements are masked at -1e9 strength, rather than -1e5.
+    cur_mask = jax.ops.index_update(mask, jax.ops.index[:, index], -1e5)
+    mask = jax.ops.index_update(mask, jax.ops.index[:, index], 0.0)
+
+    # Update bucket_assignments and assignment_locs.
+    batch_idxs = np.broadcast_to(
+        np.reshape(np.arange(batch_size), (-1, 1)), buckets.shape)
+    batch_offsets = batch_idxs * self.n_hashes * self.n_buckets
+    batch_bucket_idxs = np.reshape(batch_offsets + buckets, (-1,))
+    update_locs = assignment_locs[batch_bucket_idxs]
+    bucket_assignments = jax.ops.index_update(
+        bucket_assignments,
+        jax.ops.index[batch_bucket_idxs, update_locs],
+        np.broadcast_to(index, batch_bucket_idxs.shape))
+    assignment_locs = jax.ops.index_update(
+        assignment_locs,
+        jax.ops.index[batch_bucket_idxs],
+        (update_locs + 1) % self._bucket_capacity_for_inference)
+
+    # kv_refs: batch_size, n_kv
+    kv_refs = bucket_assignments[batch_bucket_idxs]
+    kv_refs = np.reshape(kv_refs, (batch_size, -1))
+    kv_refs = np.sort(kv_refs, -1)
+
+    # cur_mask: batch_size, 1, n_kv
+    # cur_k: batch_size, n_kv, d_qk
+    # cur_v: batch_size, n_kv, d_v
+    cur_mask = np.take_along_axis(cur_mask, kv_refs, 1)[:, None, :]
+    # The low-level implementation of np.take_along_axis runs out of memory on
+    # TPU, so we perform the equivalent with manual index arithmetic.
+    # cur_k = np.take_along_axis(ks, kv_refs[:, :, None], 1)
+    # cur_v = np.take_along_axis(vs, kv_refs[:, :, None], 1)
+    ref_offsets = jax.lax.tie_in(kv_refs, np.arange(batch_size))
+    kv_refs_flat = kv_refs + np.reshape(
+        ref_offsets, (-1, 1)) * ks.shape[1]
+    kv_refs_flat = np.reshape(kv_refs_flat, (-1,))
+    cur_k = np.reshape(ks, (-1, ks.shape[-1]))[kv_refs_flat]
+    cur_v = np.reshape(vs, (-1, vs.shape[-1]))[kv_refs_flat]
+    cur_k = np.reshape(cur_k, (batch_size, -1, ks.shape[-1]))
+    cur_v = np.reshape(cur_v, (batch_size, -1, vs.shape[-1]))
+
+    dots = np.matmul(qk, np.swapaxes(cur_k, -1, -2)) / np.sqrt(qk.shape[-1])
+    dots = dots + cur_mask
+
+    if not self._allow_duplicate_attention:
+      no_repeat_mask = jax.lax.convert_element_type(
+          kv_refs == np.pad(
+              kv_refs, [[0, 0], [1, 0]], constant_values=-99)[:, :-1],
+          np.float32)
+      dots = dots - 1e7 * no_repeat_mask[:, None, :]
+
+    # Softmax.
+    dots_logsumexp = backend.logsumexp(dots, axis=-1, keepdims=True)
+    dots = np.exp(dots - dots_logsumexp)
+
+    out = np.matmul(dots, cur_v)  # batch_size, 1, d_v
+    assert out.shape == v.shape
+
+    new_state = (
+        ks, vs, mask, index + 1, bucket_assignments, assignment_locs, hash_rng)
+    return out, new_state

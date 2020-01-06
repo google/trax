@@ -67,6 +67,14 @@ class EfficientAttentionTest(test.TestCase):
     time_bin_output = time_bin_layer(inputs)
     onp.testing.assert_array_almost_equal(dot_product_output, time_bin_output)
 
+  def test_lsh_causal_attention_fast_inference(self):
+    qkv_shape = ShapeDtype((3, 1, 8))
+    input_signature = (qkv_shape, qkv_shape, qkv_shape)
+    layer = efficient_attention.LSHCausalAttention(
+        n_bins=4, dropout=0.0, max_len_for_inference=128, mode='predict')
+    final_shape = base.check_shape_agreement(layer, input_signature)
+    self.assertEqual((3, 1, 8), final_shape)
+
 
 if __name__ == '__main__':
   test.main()
