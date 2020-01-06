@@ -89,26 +89,77 @@ def _bin_op(tf_fun, a, b, promote=True):
   return utils.tensor_to_ndarray(tf_fun(a.data, b.data))
 
 
-def maximum(a, b):
-  return _bin_op(tf.math.maximum, a, b)
+@utils.np_doc(np.add)
+def add(x1, x2):
+  def add_or_or(x1, x2):
+    if x1.dtype == tf.bool:
+      return tf.logical_or(x1, x2)
+    return tf.add(x1, x2)
+  return _bin_op(add_or_or, x1, x2)
 
 
-def minimum(a, b):
-  return _bin_op(tf.math.minimum, a, b)
+@utils.np_doc(np.subtract)
+def subtract(x1, x2):
+  return _bin_op(tf.subtract, x1, x2)
+
+
+@utils.np_doc(np.multiply)
+def multiply(x1, x2):
+  def mul_or_and(x1, x2):
+    if x1.dtype == tf.bool:
+      return tf.logical_and(x1, x2)
+    return tf.multiply(x1, x2)
+  return _bin_op(mul_or_and, x1, x2)
+
+
+@utils.np_doc(np.maximum)
+def maximum(x1, x2):
+  def max_or_or(x1, x2):
+    if x1.dtype == tf.bool:
+      return tf.logical_or(x1, x2)
+    return tf.math.maximum(x1, x2)
+  return _bin_op(max_or_or, x1, x2)
+
+
+@utils.np_doc(np.minimum)
+def minimum(x1, x2):
+  def min_or_and(x1, x2):
+    if x1.dtype == tf.bool:
+      return tf.logical_and(x1, x2)
+    return tf.math.minimum(x1, x2)
+  return _bin_op(min_or_and, x1, x2)
 
 
 # TODO(wangpeng): support broadcasting and 1-D case
-def matmul(a, b):
-  return _bin_op(tf.matmul, a, b)
+@utils.np_doc(np.matmul)
+def matmul(x1, x2):
+  return _bin_op(tf.matmul, x1, x2)
 
 
-def _scalar(x, tf_fn):
+@utils.np_doc(np.power)
+def power(x1, x2):
+  return _bin_op(tf.math.pow, x1, x2)
+
+
+@utils.np_doc(np.float_power)
+def float_power(x1, x2):
+  return power(x1, x2)
+
+
+@utils.np_doc(np.arctan2)
+def arctan2(x1, x2):
+  return _bin_op(tf.math.atan2, x1, x2)
+
+
+def _scalar(tf_fn, x, promote_to_float=False):
   """Computes the tf_fn(x) for each element in `x`.
 
   Args:
+    tf_fn: function that takes a single Tensor argument.
     x: array_like. Could be an ndarray, a Tensor or any object that can
       be converted to a Tensor using `tf.convert_to_tensor`.
-    tf_fn: function that takes a single Tensor argument.
+    promote_to_float: whether to cast the argument to a float dtype
+      (`dtypes.default_float_type`) if it is not already.
 
   Returns:
     An ndarray with the same shape as `x`. The default output dtype is
@@ -116,29 +167,136 @@ def _scalar(x, tf_fn):
     floating point type, in which case the output type is same as x.dtype.
   """
   x = array_creation.asarray(x)
-  if x.dtype not in (np.float16, np.float32, np.float64):
+  if promote_to_float and x.dtype not in (np.float16, np.float32, np.float64):
     x = x.astype(dtypes.default_float_type())
   return utils.tensor_to_ndarray(tf_fn(x.data))
 
 
-# TODO(agarwal): programmatically add documentation to functions below..
+@utils.np_doc(np.log)
 def log(x):
-  return _scalar(x, tf.math.log)
+  return _scalar(tf.math.log, x, True)
 
 
+@utils.np_doc(np.exp)
 def exp(x):
-  return _scalar(x, tf.exp)
-
-
-def tanh(x):
-  return _scalar(x, tf.tanh)
+  return _scalar(tf.exp, x, True)
 
 
 @utils.np_doc(np.sqrt)
 def sqrt(x):
-  return _scalar(x, tf.sqrt)
+  return _scalar(tf.sqrt, x, True)
 
 
+@utils.np_doc(np.abs)
+def abs(x):
+  return _scalar(tf.math.abs, x)
+
+
+@utils.np_doc(np.absolute)
+def absolute(x):
+  return abs(x)
+
+
+@utils.np_doc(np.fabs)
+def fabs(x):
+  return abs(x)
+
+
+@utils.np_doc(np.ceil)
+def ceil(x):
+  return _scalar(tf.math.ceil, x, True)
+
+
+@utils.np_doc(np.floor)
+def floor(x):
+  return _scalar(tf.math.floor, x, True)
+
+
+@utils.np_doc(np.conj)
+def conj(x):
+  return _scalar(tf.math.conj, x)
+
+
+@utils.np_doc(np.negative)
+def negative(x):
+  return _scalar(tf.math.negative, x)
+
+
+@utils.np_doc(np.reciprocal)
+def reciprocal(x):
+  return _scalar(tf.math.reciprocal, x)
+
+
+@utils.np_doc(np.signbit)
+def signbit(x):
+  def f(x):
+    if x.dtype == tf.bool:
+      return tf.fill(x.shape, False)
+    return x < 0
+  return _scalar(f, x)
+
+
+@utils.np_doc(np.sin)
+def sin(x):
+  return _scalar(tf.math.sin, x, True)
+
+
+@utils.np_doc(np.cos)
+def cos(x):
+  return _scalar(tf.math.cos, x, True)
+
+
+@utils.np_doc(np.tan)
+def tan(x):
+  return _scalar(tf.math.tan, x, True)
+
+
+@utils.np_doc(np.sinh)
+def sinh(x):
+  return _scalar(tf.math.sinh, x, True)
+
+
+@utils.np_doc(np.cosh)
+def cosh(x):
+  return _scalar(tf.math.cosh, x, True)
+
+
+@utils.np_doc(np.tanh)
+def tanh(x):
+  return _scalar(tf.math.tanh, x, True)
+
+
+@utils.np_doc(np.arcsin)
+def arcsin(x):
+  return _scalar(tf.math.asin, x, True)
+
+
+@utils.np_doc(np.arccos)
+def arccos(x):
+  return _scalar(tf.math.acos, x, True)
+
+
+@utils.np_doc(np.arctan)
+def arctan(x):
+  return _scalar(tf.math.atan, x, True)
+
+
+@utils.np_doc(np.arcsinh)
+def arcsinh(x):
+  return _scalar(tf.math.asinh, x, True)
+
+
+@utils.np_doc(np.arccosh)
+def arccosh(x):
+  return _scalar(tf.math.acosh, x, True)
+
+
+@utils.np_doc(np.arctanh)
+def arctanh(x):
+  return _scalar(tf.math.atanh, x, True)
+
+
+@utils.np_doc(np.sum)
 def sum(a, axis=None, dtype=None, keepdims=None):  # pylint: disable=redefined-builtin
   """Computes sum of all array elements or along specified axes.
 
@@ -168,6 +326,7 @@ def sum(a, axis=None, dtype=None, keepdims=None):  # pylint: disable=redefined-b
                                                keepdims=keepdims))
 
 
+@utils.np_doc(np.max)
 def max(a, axis=None, keepdims=None):  # pylint: disable=redefined-builtin
   """Computes the max of all array elements or along specified axes.
 

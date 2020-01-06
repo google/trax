@@ -25,10 +25,7 @@ import numpy as np
 # `if x.dtype.type is np.int64`.
 # pylint: disable=unused-import
 from numpy import bool_
-from numpy import float16
-from numpy import float32
-from numpy import float64
-from numpy import inf
+from numpy import int_
 from numpy import int16
 from numpy import int32
 from numpy import int64
@@ -37,6 +34,23 @@ from numpy import uint16
 from numpy import uint32
 from numpy import uint64
 from numpy import uint8
+from numpy import float_
+from numpy import float16
+from numpy import float32
+from numpy import float64
+from numpy import complex_
+from numpy import complex64
+from numpy import complex128
+
+from numpy import inexact
+
+from numpy import iinfo
+from numpy import issubdtype
+
+from numpy import inf
+
+# TODO(wangpeng): Make bfloat16 a numpy dtype instead of using TF's
+from tensorflow.compat.v2 import bfloat16
 # pylint: enable=unused-import
 
 
@@ -65,9 +79,14 @@ def canonicalize_dtype(dtype):
     return dtype
 
 
+# TODO(wangpeng): combine the following two
 def get_result_type(*dtypes):
   dtype = np.result_type(*dtypes)
   return canonicalize_dtype(dtype)
+
+
+def result_type(*arrays_and_dtypes):
+  return get_result_type(*arrays_and_dtypes)
 
 
 def default_float_type():
