@@ -19,9 +19,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from trax import backend
-from trax.backend import numpy as np
+from trax import math
 from trax.layers import base
+from trax.math import numpy as np
 from trax.shapes import ShapeDtype
 
 
@@ -315,7 +315,7 @@ class Concatenate(base.Layer):
 
   def forward(self, xs, weights):
     del weights
-    return backend.numpy.concatenate(xs, self._axis)
+    return np.concatenate(xs, self._axis)
 
 
 class Split(base.Layer):
@@ -328,7 +328,7 @@ class Split(base.Layer):
 
   def forward(self, inputs, weights):
     del weights
-    return tuple(backend.numpy.split(inputs, self._n_items, self._axis))
+    return tuple(np.split(inputs, self._n_items, self._axis))
 
 
 class Scan(base.Layer):
@@ -381,8 +381,8 @@ class Scan(base.Layer):
 
     xs = inputs[:-n_carry]  # Split input stack into inputs and carry.
     init = (inputs[-n_carry:], state)
-    ys, (carry, new_state) = backend.scan(scannable_fn, xs, init,
-                                          axis=self._axis)
+    ys, (carry, new_state) = math.scan(scannable_fn, xs, init,
+                                       axis=self._axis)
     return ys + carry, new_state  # Put outputs and carry back on stack.
 
   def new_weights_and_state(self, input_signature):
@@ -663,7 +663,7 @@ def _pop_rng_and_split(args_dict, n_copies):
   rng = args_dict.pop('rng', None)
   if rng is None:
     return (None,) * n_copies
-  return backend.random.split(rng, n_copies)
+  return math.random.split(rng, n_copies)
 
 
 def _inputs_from_stack(layer, stack):

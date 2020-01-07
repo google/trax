@@ -21,12 +21,12 @@ from __future__ import print_function
 import jax
 import numpy as onp
 
-from trax import backend
-from trax.backend import numpy as np
+from trax import math
 from trax.layers import base
 from trax.layers import combinators as cb
 from trax.layers import core
 from trax.layers import initializers as init
+from trax.math import numpy as np
 
 
 # Layers are always CamelCase, but functions in general are snake_case
@@ -92,9 +92,9 @@ class PositionalEncoding(base.Layer):
         for dim in self._dropout_broadcast_dims:
           noise_shape[dim] = 1
         keep_prob = 1.0 - self._dropout
-        if backend.get_name() == 'jax':
+        if math.backend_name() == 'jax':
           keep_prob = jax.lax.tie_in(x, np.full((), keep_prob, dtype=x.dtype))
-        keep = backend.random.bernoulli(rng, keep_prob, tuple(noise_shape))
+        keep = math.random.bernoulli(rng, keep_prob, tuple(noise_shape))
         multiplier = keep.astype(x.dtype) / keep_prob
         return (x + px * multiplier, state)
     else:
@@ -163,10 +163,10 @@ class AxialPositionalEncoding(base.Layer):
       for dim in self._dropout_broadcast_dims:
         noise_shape[dim] = 1
       keep_prob = 1.0 - self._dropout
-      if backend.get_name() == 'jax':
+      if math.backend_name() == 'jax':
         keep_prob = jax.lax.tie_in(
             inputs, np.full((), keep_prob, dtype=inputs.dtype))
-      keep = backend.random.bernoulli(rng, keep_prob, tuple(noise_shape))
+      keep = math.random.bernoulli(rng, keep_prob, tuple(noise_shape))
       multiplier = keep.astype(inputs.dtype) / keep_prob
 
       return inputs + np.reshape(emb * multiplier, inputs.shape), state
@@ -210,16 +210,16 @@ def DotProductAttention(query, key, value, mask, dropout, mode, rng):
     # We must ensure that both mask and the -1e9 constant have a data dependency
     # on the input. Broadcasted copies of these use a lot of memory, so they
     # should be computed at runtime (rather than being global constants).
-    if backend.get_name() == 'jax':
+    if math.backend_name() == 'jax':
       mask = jax.lax.tie_in(dots, mask)
     # JAX's `full_like` already ties in -1e9 to dots.
     dots = np.where(mask, dots, np.full_like(dots, -1e9))
   # Softmax.
-  dots = np.exp(dots - backend.logsumexp(dots, axis=-1, keepdims=True))
+  dots = np.exp(dots - math.logsumexp(dots, axis=-1, keepdims=True))
   if dropout >= 1.0:
     raise ValueError('Dropout rates must be lower than 1.')
   if dropout is not None and dropout > 0.0 and mode == 'train':
-    keep = backend.random.bernoulli(rng, 1.0 - dropout, dots.shape)
+    keep = math.random.bernoulli(rng, 1.0 - dropout, dots.shape)
     dots = np.where(keep, dots / (1.0 - dropout), np.zeros_like(dots))
   out = np.matmul(dots, value)
   return out
@@ -323,9 +323,9 @@ class ShiftRightLearned(base.Layer):
     self._initializer = initializer
 
   def forward(self, x, weights):
-    c = backend.numpy.reshape(weights, [1, 1, -1])
-    c += backend.numpy.zeros((x.shape[0], 1, x.shape[2]), dtype=x.dtype)
-    return backend.numpy.concatenate([c, x], axis=1)[:, :-1, :]
+    c = np.reshape(weights, [1, 1, -1])
+    c += np.zeros((x.shape[0], 1, x.shape[2]), dtype=x.dtype)
+    return np.concatenate([c, x], axis=1)[:, :-1, :]
 
   def new_weights(self, input_signature):
     b = self._initializer((input_signature.shape[-1],), self.new_rng())
@@ -453,7 +453,7 @@ def _fast_inference_init_state(input_signature, buffer_length):
 
 def _fast_inference_update_state(inputs, state):
   """Updates state of a causal attention layer for fast inference."""
-  assert backend.get_name() == 'jax', (
+  assert math.backend_name() == 'jax', (
       'JAX backend is required to use the predict mode.')
   for x in inputs:
     assert x.shape[1] == 1, (
@@ -485,7 +485,7 @@ class DotProductCausalAttention(BaseCausalAttention):
       # Not all backends define np.tril. However, using onp.tril is inefficient
       # in that it creates a large global constant. TODO(kitaev): try to find an
       # alternative that works across all backends.
-      if backend.get_name() == 'jax':
+      if math.backend_name() == 'jax':
         mask = np.tril(
             np.ones((1, mask_size, mask_size), dtype=onp.bool_), k=0)
       else:
@@ -503,7 +503,7 @@ class DotProductCausalAttention(BaseCausalAttention):
   def forward_and_backward(self, inputs, ct, state=base.EMPTY_STATE,
                            new_state=base.EMPTY_STATE, **kwargs):
     del new_state
-    assert backend.get_name() == 'jax', (
+    assert math.backend_name() == 'jax', (
         'JAX backend is required to use forward_and_backward.')
     # Simultaneous forward pass and backprop through the attention mechanism.
     def _do_forward(x):  # pylint: disable=invalid-name

@@ -28,9 +28,9 @@ import jax
 import numpy as onp
 import six
 
-from trax import backend
-from trax.backend import nested_map
-from trax.backend import numpy as np
+from trax import math
+from trax.math import nested_map
+from trax.math import numpy as np
 from trax.shapes import ShapeDtype
 from trax.shapes import signature
 
@@ -291,7 +291,7 @@ class Layer(object):
     """
     try:
       if self._rng is None:
-        rng = backend.random.get_prng(0) if rng is None else rng
+        rng = math.random.get_prng(0) if rng is None else rng
         self._set_rng_recursive(rng)
       # Initialize weights once; store them for use when this layer is called.
       # Needs to call new_weights_and_state regardless of _init_finished because
@@ -314,7 +314,7 @@ class Layer(object):
 
   def new_rng(self):
     """Returns a new single-use random number generator (JAX PRNG key)."""
-    self._rng, rng = backend.random.split(self._rng)
+    self._rng, rng = math.random.split(self._rng)
     return rng
 
   def new_rngs(self, n):
@@ -328,7 +328,7 @@ class Layer(object):
     """
     if n < 1:
       raise ValueError('n must be > 0; received value: {}'.format(n))
-    rngs = backend.random.split(self._rng, n + 1)
+    rngs = math.random.split(self._rng, n + 1)
     self._rng = rngs[0]
     return tuple(rngs[1:])
 
@@ -447,7 +447,7 @@ class Layer(object):
       def call_on_input(x, weights, state, rng):
         return self.forward_with_state(x, weights=weights, state=state, rng=rng)
       weight_signature = nested_map(signature, self.weights)
-      s = backend.abstract_eval(call_on_input)(
+      s = math.abstract_eval(call_on_input)(
           input_signature, weight_signature, self.state, rng)
       return s
     except Exception:
@@ -461,7 +461,7 @@ class Layer(object):
     self._rng = rng
     sublayers = self.sublayers
     if sublayers:
-      rngs = backend.random.split(rng, len(sublayers))
+      rngs = math.random.split(rng, len(sublayers))
       for sublayer, rng in zip(sublayers, rngs):
         sublayer._rng = rng
 
@@ -491,7 +491,7 @@ class Layer(object):
 
   def _do_custom_gradients(self, x, weights, state, **kwargs):
     """Calls this layer for a forward pass, but with custom gradients."""
-    assert backend.get_name() == 'jax', (
+    assert math.backend_name() == 'jax', (
         'Custom gradients are only supported in JAX for now.')
 
     # See this link for how custom transformations are defined in JAX:
@@ -766,9 +766,9 @@ def _random_values(input_signature, rng):
   if isinstance(input_signature, ShapeDtype):
     shape, dtype = input_signature.shape, input_signature.dtype
     if onp.issubdtype(dtype, onp.integer):
-      return backend.random.bernoulli(rng, 0.5, shape).astype(onp.int32)
+      return math.random.bernoulli(rng, 0.5, shape).astype(onp.int32)
     else:
-      return backend.random.uniform(rng, shape, minval=-1.0, maxval=1.0)
+      return math.random.uniform(rng, shape, minval=-1.0, maxval=1.0)
   elif isinstance(input_signature, (list, tuple)):
     return tuple(_random_values(x, rng) for x in input_signature)
   else:

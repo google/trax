@@ -23,8 +23,8 @@ from absl import logging
 
 import numpy as onp
 import tensorflow.compat.v2 as tf
-from trax.backend import numpy as np
-from trax.backend import random
+from trax.math import numpy as np
+from trax.math import random
 
 
 def _GetFans(shape, out_dim=-1, in_dim=-2):

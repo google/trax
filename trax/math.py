@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Trax backend: all the primitive functions needed."""
+"""Trax math: all the primitive functions needed."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -240,7 +240,7 @@ _NUMPY_BACKEND = {
 }
 
 
-def get_name():
+def backend_name():
   return backend()['name']
 
 

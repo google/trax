@@ -25,7 +25,7 @@ import numpy as onp
 from tensorflow import test
 from trax import history as trax_history
 from trax import learning_rate
-from trax.backend import numpy as np
+from trax.math import numpy as np
 from trax.models import transformer
 from trax.rl import online_tune
 from trax.rl import ppo

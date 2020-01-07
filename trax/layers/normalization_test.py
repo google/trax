@@ -21,9 +21,9 @@ from __future__ import print_function
 from absl.testing import absltest
 import numpy as onp
 
-from trax.backend import numpy as np
 from trax.layers import base
 from trax.layers import normalization
+from trax.math import numpy as np
 from trax.shapes import ShapeDtype
 
 

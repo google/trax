@@ -18,13 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from trax import backend as math
 from trax import layers as tl
-from trax.backend import numpy as np
-from trax.backend import random
+from trax import math
 from trax.layers.combinators import _inputs_from_stack
 from trax.layers.combinators import _outputs_onto_stack
 from trax.layers.combinators import _pop_rng_and_split
+from trax.math import numpy as np
+from trax.math import random
 from trax.models import transformer
 
 

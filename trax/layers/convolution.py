@@ -24,10 +24,10 @@ import operator
 
 import six
 
-from trax import backend
-from trax.backend import numpy as np
+from trax import math
 from trax.layers import base
 from trax.layers import initializers as init
+from trax.math import numpy as np
 
 
 class Conv(base.Layer):
@@ -63,7 +63,7 @@ class Conv(base.Layer):
       self._check_nhwc()
       new_batch_dim = six.moves.reduce(operator.mul, x_shape[:-3])
       x = np.reshape(x, [new_batch_dim] + x_shape[-3:])
-    res = backend.conv(
+    res = math.conv(
         x, w, self._strides, self._padding, self._dimension_numbers,
         self._one) + b
     if len(x_shape) > 4:

@@ -38,8 +38,8 @@ import gym
 
 from trax import models as trax_models
 from trax import utils
-from trax.backend import numpy as np
-from trax.backend import random as jax_random
+from trax.math import numpy as np
+from trax.math import random as jax_random
 
 
 @gin.configurable(blacklist=['history'])

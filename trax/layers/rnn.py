@@ -19,13 +19,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from trax import backend as math
-from trax.backend import numpy as np
+from trax import math
 from trax.layers import base
 from trax.layers import combinators as cb
 from trax.layers import convolution
 from trax.layers import core
 from trax.layers import initializers
+from trax.math import numpy as np
 
 
 class LSTMCell(base.Layer):

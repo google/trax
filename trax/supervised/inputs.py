@@ -29,8 +29,8 @@ import numpy as onp
 from tensor2tensor import problems_colab as t2t_problems
 import tensorflow as tf
 import tensorflow_datasets as tfds
-from trax import backend
-from trax.backend import numpy as np
+from trax import math
+from trax.math import numpy as np
 
 # Inputs is a named tuple holding input streams and shapes for a training run.
 # Each named stream in the tuple is a function that returns a generator
@@ -244,7 +244,7 @@ def sequence_copy_inputs(
 
 def dataset_to_stream(dataset, input_name):
   """Takes a tf.Dataset and creates a numpy stream of ready batches."""
-  for example in backend.dataset_as_numpy(dataset):
+  for example in math.dataset_as_numpy(dataset):
     features = example[0]
     inp, out = features[input_name], example[1]
     mask = features['mask'] if 'mask' in features else None

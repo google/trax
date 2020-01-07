@@ -19,7 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from trax.backend import numpy as np
+from trax.math import numpy as np
 from trax.optimizers import base as opt_base
 
 
@@ -67,4 +67,3 @@ class Adam(opt_base.Optimizer):
     weights = (1 - weight_decay_rate) * weights - (
         learning_rate * mhat / (np.sqrt(vhat) + eps)).astype(weights.dtype)
     return weights, (m, v)
-

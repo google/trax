@@ -32,12 +32,12 @@ import tensorflow.compat.v2 as tf
 from tensorflow.compat.v2 import test
 from tensorflow.compat.v2.io import gfile
 
-from trax import backend
 from trax import layers
 from trax import learning_rate as lr
+from trax import math
 from trax import models
 from trax import optimizers as trax_opt
-from trax.backend import numpy as np
+from trax.math import numpy as np
 from trax.supervised import inputs as inputs_lib
 from trax.supervised import trainer_lib
 from trax.tf_numpy import numpy as tf_np
@@ -49,14 +49,14 @@ def test_inputs(n_classes, with_weights=False, input_shape=(6, 6, 3)):
   batch_size = 2 * xla_bridge.device_count()
 
   def input_stream():
-    key = backend.random.get_prng(0)
+    key = math.random.get_prng(0)
     while True:
-      keys = backend.random.split(key, 4)
+      keys = math.random.split(key, 4)
       key = keys[0]
-      inputs = backend.random.uniform(keys[1], [batch_size] + list(input_shape))
-      targets = backend.random.randint(
+      inputs = math.random.uniform(keys[1], [batch_size] + list(input_shape))
+      targets = math.random.randint(
           keys[2], [batch_size], dtype=np.int32, minval=0, maxval=n_classes)
-      weights = backend.random.uniform(keys[3], [batch_size])
+      weights = math.random.uniform(keys[3], [batch_size])
       if with_weights:
         yield inputs, targets, weights
       else:
@@ -89,7 +89,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
   def _test_train_eval_predict(self, backend_name):
     if xla_bridge.device_count() > 1 and backend_name == 'tf':
       self.skipTest("tf-numpy backend does't support multi-devices yet.")
-    with backend.use_backend(backend_name), self.tmp_dir() as output_dir:
+    with math.use_backend(backend_name), self.tmp_dir() as output_dir:
       # Prepare model and inputs
       n_classes = 4
       steps = 2
@@ -133,7 +133,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
   def test_train_eval_predict_sm3(self, backend_name):
     if xla_bridge.device_count() > 1 and backend_name == 'tf':
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with backend.use_backend(backend_name), self.tmp_dir() as output_dir:
+    with math.use_backend(backend_name), self.tmp_dir() as output_dir:
       # Prepare model and inputs
       n_classes = 4
       steps = 2
@@ -169,7 +169,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
   def test_train_restart(self, backend_name):
     if xla_bridge.device_count() > 1 and backend_name == 'tf':
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with backend.use_backend(backend_name), self.tmp_dir() as output_dir:
+    with math.use_backend(backend_name), self.tmp_dir() as output_dir:
       # Prepare model and inputs
       n_classes = 4
       steps = 2
@@ -201,7 +201,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
   def test_train_with_weights(self, backend_name):
     if xla_bridge.device_count() > 1 and backend_name == 'tf':
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with backend.use_backend(backend_name), self.tmp_dir() as output_dir:
+    with math.use_backend(backend_name), self.tmp_dir() as output_dir:
       # Prepare model and inputs
       n_classes = 4
       steps = 2
@@ -226,7 +226,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
   def test_reset_twice(self, backend_name):
     if xla_bridge.device_count() > 1 and backend_name == 'tf':
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with backend.use_backend(backend_name), self.tmp_dir() as output_dir1, \
+    with math.use_backend(backend_name), self.tmp_dir() as output_dir1, \
           self.tmp_dir() as output_dir2:
       n_classes = 4
       model_fn = functools.partial(
@@ -249,10 +249,10 @@ class TraxTest(test.TestCase, parameterized.TestCase):
   def test_tf_xla_forced_compile(self):
     # TODO(wangpeng): re-enable this test
     self.skipTest('Needs --config=cuda to pass this test')
-    old_flag = backend.tf_xla_forced_compile_enabled()
-    backend.set_tf_xla_forced_compile(True)
+    old_flag = math.tf_xla_forced_compile_enabled()
+    math.set_tf_xla_forced_compile(True)
     self._test_train_eval_predict('tf')
-    backend.set_tf_xla_forced_compile(old_flag)
+    math.set_tf_xla_forced_compile(old_flag)
 
   def test_no_int32_or_uint32_returned(self):
     """Tests that Trainer._jit_update_fn doesn't return int32 or uint32.
@@ -263,7 +263,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
     """
     if xla_bridge.device_count() > 1:
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with backend.use_backend('tf'), self.tmp_dir() as output_dir:
+    with math.use_backend('tf'), self.tmp_dir() as output_dir:
       n_classes = 1001
       model_fn = functools.partial(models.Resnet50,
                                    n_output_classes=n_classes)

@@ -20,8 +20,8 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import absltest
-from trax import backend
 from trax import layers as tl
+from trax import math
 from trax.models import resnet
 from trax.shapes import ShapeDtype
 

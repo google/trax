@@ -28,7 +28,7 @@ import numpy as np
 
 from tensor2tensor.envs import trajectory
 from tensorflow import test
-from trax import backend
+from trax import math
 from trax.layers import base
 from trax.rl import simulated_env_problem
 from trax.supervised import trainer_lib
@@ -79,7 +79,7 @@ class RawSimulatedEnvProblemTest(test.TestCase):
     expected_histories = np.array([[[0, 1, 2, 3]], [[1, 2, 3, 4]]])
     expected_actions = actions_to_take
 
-    with backend.use_backend('numpy'):
+    with math.use_backend('numpy'):
       env = self._create_env(  # pylint: disable=no-value-for-parameter
           model=mock_model_fn,
           histories=histories,
@@ -110,7 +110,7 @@ class RawSimulatedEnvProblemTest(test.TestCase):
   def test_takes_new_history(self):
     histories = np.array([[[0, 1, 2]], [[3, 4, 5]]])
 
-    with backend.use_backend('numpy'):
+    with math.use_backend('numpy'):
       env = self._create_env(  # pylint: disable=no-value-for-parameter
           model=mock.MagicMock(),
           histories=histories,
@@ -177,7 +177,7 @@ class SerializedSequenceSimulatedEnvProblemTest(test.TestCase):
     mock_predict_fn = mock.MagicMock()
     mock_predict_fn.side_effect = map(make_prediction, symbols)
 
-    with backend.use_backend('numpy'):
+    with math.use_backend('numpy'):
       # (model_params, opt_state)
       mock_restore_state.return_value.params = (None, None)
       env = self._make_env(

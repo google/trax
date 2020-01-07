@@ -15,11 +15,9 @@
 
 """Trax top level import."""
 
-from trax import backend as math
 from trax import layers
 from trax import learning_rate as lr
+from trax import math
 from trax import optimizers
 from trax import shapes
-from trax.supervised import inputs
-from trax.supervised import trainer_lib as supervised
-
+from trax import supervised

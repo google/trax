@@ -20,7 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import jax
-from trax import backend
+from trax import math
 from trax.layers import base
 from trax.layers import combinators as cb
 
@@ -101,7 +101,7 @@ class ReversibleSerial(ReversibleLayer, cb.Serial):
     rng = kwargs.pop('rng', None)
     rngs = (None,) * self._n_layers
     if rng is not None:
-      rngs = backend.random.split(rng, self._n_layers)
+      rngs = math.random.split(rng, self._n_layers)
 
     layer_val = output
     for layer, p, s, ns, rng in reversed(list(zip(
@@ -115,7 +115,7 @@ class ReversibleSerial(ReversibleLayer, cb.Serial):
     rng = kwargs.pop('rng', None)
     rngs = (None,) * self._n_layers
     if rng is not None:
-      rngs = backend.random.split(rng, self._n_layers)
+      rngs = math.random.split(rng, self._n_layers)
 
     layer_val = output
     layer_ct = ct

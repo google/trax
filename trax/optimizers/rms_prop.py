@@ -19,7 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from trax.backend import numpy as np
+from trax.math import numpy as np
 from trax.optimizers import base as opt_base
 
 
@@ -45,4 +45,3 @@ class RMSProp(opt_base.Optimizer):
     weights = weights - (learning_rate * grads /
                          (np.sqrt(avg_sq_grad) + eps)).astype(weights.dtype)
     return weights, avg_sq_grad
-

@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for trax.backend."""
+"""Tests for trax.math."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,32 +23,33 @@ import gin
 import jax.numpy as jnp
 import numpy as onp
 from tensorflow import test
-from trax import backend as backend_lib
+from trax import math
 
 
 class BackendTest(test.TestCase):
 
   def setUp(self):
+    super(BackendTest, self).setUp()
     gin.clear_config()
 
   def override_gin(self, bindings):
     gin.parse_config_files_and_bindings(None, bindings)
 
   def test_backend_imports_correctly(self):
-    backend = backend_lib.backend()
+    backend = math.backend()
     self.assertEqual(jnp, backend['np'])
     self.assertNotEqual(onp, backend['np'])
 
     self.override_gin("backend.name = 'numpy'")
 
-    backend = backend_lib.backend()
+    backend = math.backend()
     self.assertNotEqual(jnp, backend['np'])
     self.assertEqual(onp, backend['np'])
 
   def test_numpy_backend_delegation(self):
     # Assert that we are getting JAX's numpy backend.
-    backend = backend_lib.backend()
-    numpy = backend_lib.numpy
+    backend = math.backend()
+    numpy = math.numpy
     self.assertEqual(jnp, backend['np'])
 
     # Assert that `numpy` calls the appropriate gin configured functions and
@@ -61,8 +62,8 @@ class BackendTest(test.TestCase):
 
     self.override_gin("backend.name = 'numpy'")
 
-    backend = backend_lib.backend()
-    numpy = backend_lib.numpy
+    backend = math.backend()
+    numpy = math.numpy
     self.assertEqual(onp, backend['np'])
 
     # Assert that `numpy` calls the appropriate gin configured functions and

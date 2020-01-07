@@ -20,7 +20,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from trax.backend import numpy as np
+from trax.math import numpy as np
 from trax.optimizers import base
 
 

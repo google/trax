@@ -22,7 +22,7 @@ from __future__ import print_function
 import numpy as onp
 
 from trax import layers as tl
-from trax.backend import numpy as np
+from trax.math import numpy as np
 
 
 # pylint: disable=g-complex-comprehension

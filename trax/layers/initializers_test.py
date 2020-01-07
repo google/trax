@@ -19,9 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import absltest
-from trax.backend import numpy as np
-from trax.backend import random
 from trax.layers import initializers
+from trax.math import numpy as np
+from trax.math import random
 
 
 class InitializersTest(absltest.TestCase):

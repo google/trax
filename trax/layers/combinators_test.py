@@ -19,11 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import absltest
-from trax.backend import numpy as np
 from trax.layers import base
 from trax.layers import combinators as cb
 from trax.layers import core
 from trax.layers import normalization
+from trax.math import numpy as np
 from trax.shapes import ShapeDtype
 
 

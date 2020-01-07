@@ -24,9 +24,9 @@ from absl.testing import parameterized
 import jax
 import numpy as onp
 
-from trax import backend
 from trax import layers as tl
-from trax.backend import numpy as np
+from trax import math
+from trax.math import numpy as np
 from trax.models.research import reformer
 from trax.shapes import ShapeDtype
 
@@ -35,12 +35,12 @@ class PoisonOnRNGMismatchAttention(tl.BaseCausalAttention):
   """Fills gradients with NaNs if reverse rng does not match forward rng."""
 
   def new_weights_and_state(self, input_signature):
-    state = backend.random.get_prng(1)
+    state = math.random.get_prng(1)
     return self.new_weights(input_signature), state
 
   def forward_and_backward(self, inputs, ct, state, new_state, rng=None,
                            **kwargs):
-    assert backend.get_name() == 'jax', (
+    assert math.backend_name() == 'jax', (
         'JAX backend is required to use forward_and_backward.')
 
     if ct is not None and new_state is not tl.EMPTY_STATE:
@@ -77,7 +77,7 @@ class ReformerTest(parameterized.TestCase):
     self.assertEqual(((1, 8, 16), (1, 8, 16)), final_shape)
 
   def test_reformer_rng_consistency(self):
-    with backend.use_backend('jax'):
+    with math.use_backend('jax'):
       vocab_size = 16
       batch_size = 1
       input_sd = ShapeDtype((batch_size, 8), np.int32)
@@ -88,16 +88,16 @@ class ReformerTest(parameterized.TestCase):
           max_len=16, n_chunks=2, n_attention_chunks=1, mode='train',
           attention_type=PoisonOnRNGMismatchAttention)
 
-      rng = backend.random.get_prng(0)
+      rng = math.random.get_prng(0)
       weights, state = model.init(input_signature)
 
       def dummy_loss_fn(weights):
         inputs = (np.zeros(input_sd.shape, dtype=np.int32),) * 2
         output = model(inputs, weights=weights, state=state, rng=rng)
-        dummy_loss = backend.numpy.sum(output[0])
+        dummy_loss = math.numpy.sum(output[0])
         return dummy_loss
 
-      grad_fn = backend.grad(dummy_loss_fn)
+      grad_fn = math.grad(dummy_loss_fn)
       grads = grad_fn(weights)
       # PoisonOnRNGMismatchAttention uses NaNs to signal an rng mismatch.
       for grad in jax.tree_util.tree_leaves(grads):

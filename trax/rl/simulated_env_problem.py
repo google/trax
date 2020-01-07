@@ -25,9 +25,9 @@ import random
 import numpy as np
 
 from tensor2tensor.envs import env_problem
-from trax import backend
+from trax import math
 from trax import utils
-from trax.backend import random as jax_random
+from trax.math import random as jax_random
 from trax.rl import serialization_utils
 from trax.rl import space_serializer
 from trax.shapes import ShapeDtype
@@ -71,7 +71,7 @@ class SimulatedEnvProblem(env_problem.EnvProblem):
     def predict_with_state(*args, **kwargs):
       output = model_predict(*args, **kwargs)
       return (output, model_predict.state)
-    self._model_predict = backend.jit(predict_with_state)
+    self._model_predict = math.jit(predict_with_state)
     self._model_initialize = model_predict.init
 
     self._observation_space = observation_space

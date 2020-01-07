@@ -23,10 +23,10 @@ import math
 import jax
 import numpy as onp
 
-from trax import backend
-from trax.backend import numpy as np
+from trax import math
 from trax.layers import base
 from trax.layers import initializers as init
+from trax.math import numpy as np
 
 
 class Dense(base.Layer):
@@ -105,7 +105,7 @@ class Dropout(base.Layer):
              'argument. That is, instead of `Dropout(weights, inputs)`, call '
              'it like `Dropout(weights, inputs, rng=key)`.')
       raise ValueError(msg)
-    keep = backend.random.bernoulli(rng, 1.0 - rate, x.shape)
+    keep = math.random.bernoulli(rng, 1.0 - rate, x.shape)
     return np.where(keep, x / (1.0 - rate), np.zeros_like(x)), state
 
 
@@ -146,7 +146,7 @@ def Selu(x,
 
 @base.layer()
 def Gelu(x, **unused_kwargs):
-  return x * 0.5 * (1.0 + backend.erf(x / math.sqrt(2.0)))
+  return x * 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
 
 
 @base.layer()
@@ -156,7 +156,7 @@ def FastGelu(x, **unused_kwargs):
 
 @base.layer()
 def Sigmoid(x, **unused_kwargs):
-  return backend.expit(x)
+  return math.expit(x)
 
 
 @base.layer()
@@ -184,13 +184,13 @@ def Exp(x, **unused_kwargs):
 @base.layer()
 def LogSoftmax(x, axis=-1, **unused_kwargs):
   """Apply log softmax to x: log-normalize along the given axis."""
-  return x - backend.logsumexp(x, axis, keepdims=True)
+  return x - math.logsumexp(x, axis, keepdims=True)
 
 
 @base.layer()
 def Softmax(x, axis=-1, **unused_kwargs):
   """Apply softmax to x: exponentiate and normalize along the given axis."""
-  return np.exp(x - backend.logsumexp(x, axis, keepdims=True))
+  return np.exp(x - math.logsumexp(x, axis, keepdims=True))
 
 
 @base.layer()
@@ -206,7 +206,7 @@ def ToFloat(x, **unused_kwargs):
 def one_hot(x, size, dtype=np.float32):  # pylint: disable=invalid-name
   """Make a n+1 dim one-hot array from n dim int-categorical array."""
   arange_size = np.arange(size)
-  if backend.get_name() == 'jax':
+  if math.backend_name() == 'jax':
     # Work around a jax broadcasting issue.
     arange_size = jax.lax.tie_in(x, arange_size)
   return np.array(x[..., np.newaxis] == arange_size, dtype)
@@ -253,12 +253,12 @@ def multigaussian_loss(preds, targets, ngauss=1):  # pylint: disable=invalid-nam
   mus = preds[:, ngauss:ngauss*(ndims + 1)]
   sigmas = preds[:, ngauss(ndims + 1):]
   sigmas = sigmas * sigmas + 1e-6  # Make positive.
-  loglogits = logits - backend.logsumexp(logits, axis=-1, keepdims=True)
+  loglogits = logits - math.logsumexp(logits, axis=-1, keepdims=True)
   mus = np.reshape(mus, [-1, ngauss, ndims])
   sigmas = np.reshape(sigmas, [-1, ngauss, ndims])
   targets = np.reshape(targets, [-1, 1, ndims])
   glogprobs = log_gaussian_diag_pdf(targets, mus, sigmas)
-  return backend.logsumexp(loglogits + glogprobs, axis=-1)
+  return math.logsumexp(loglogits + glogprobs, axis=-1)
 
 
 class ThresholdedLinearUnit(base.Layer):

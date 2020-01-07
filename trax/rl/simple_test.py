@@ -31,7 +31,7 @@ import numpy as np
 from tensor2tensor.envs import trajectory
 from tensorflow import test
 from tensorflow.io import gfile
-from trax import backend
+from trax import math
 from trax import utils
 from trax.layers import base
 from trax.rl import simple
@@ -269,7 +269,7 @@ class SimpleTest(test.TestCase):
     )
 
   def test_evaluates_model_with_vector_observation_space(self):
-    with backend.use_backend('numpy'):
+    with math.use_backend('numpy'):
       env = self._make_env(  # pylint: disable=no-value-for-parameter
           observation_space=gym.spaces.Box(shape=(2,), low=0, high=1),
           action_space=gym.spaces.Discrete(n=1),
@@ -289,7 +289,7 @@ class SimpleTest(test.TestCase):
       self.assertEqual(len(metrics), 2)
 
   def test_fails_to_evaluate_model_with_matrix_observation_space(self):
-    with backend.use_backend('numpy'):
+    with math.use_backend('numpy'):
       env = self._make_env(  # pylint: disable=no-value-for-parameter
           observation_space=gym.spaces.Box(shape=(2, 2), low=0, high=1),
           action_space=gym.spaces.Discrete(n=1),

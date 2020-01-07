@@ -19,7 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from trax.backend import numpy as np
+from trax.math import numpy as np
 from trax.optimizers import base as opt_base
 
 
@@ -146,4 +146,3 @@ class Adafactor(opt_base.Optimizer):
     new_weights = (1 - weight_decay_rate) * weights - subtrahend
     # TODO(lukaszkaiser): why is the astype needed here? Check and correct.
     return new_weights.astype(weights.dtype), updates
-

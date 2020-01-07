@@ -24,9 +24,9 @@ import functools
 from absl.testing import absltest
 from absl.testing import parameterized
 import numpy as onp
-from trax import backend
 from trax import layers as tl
-from trax.backend import numpy as np
+from trax import math
+from trax.math import numpy as np
 from trax.models import transformer
 from trax.shapes import ShapeDtype
 
@@ -65,7 +65,7 @@ class TransformerTest(parameterized.TestCase):
 
 
   def _test_fast_inference(self, attention_type, length):
-    with backend.use_backend('jax'):
+    with math.use_backend('jax'):
       vocab_size = 16
       model_fn = functools.partial(
           transformer.TransformerLM,
@@ -74,7 +74,7 @@ class TransformerTest(parameterized.TestCase):
       )
       model_slow = model_fn(mode='eval')
       model_fast = model_fn(mode='predict')
-      rng = backend.random.get_prng(0)
+      rng = math.random.get_prng(0)
       batch_size = 2
       input_signature = ShapeDtype((batch_size, 1), np.int32)
       # Given the same rng, both models initialize with the same parameters.

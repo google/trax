@@ -20,10 +20,10 @@ from __future__ import print_function
 
 import jax
 
-from trax import backend
 from trax import layers as tl
-from trax.backend import numpy as np
 from trax.layers.combinators import _pop_rng_and_split
+from trax.math import numpy as np
+from trax.math import random
 
 
 # Layers are always CamelCase, but functions in general are snake_case
@@ -113,7 +113,7 @@ class BroadcastedDropout(tl.Layer):
       for dim in self._broadcast_dims:
         noise_shape[dim] = 1
       keep_prob = jax.lax.tie_in(rng, 1.0 - self._rate)
-      keep = backend.random.bernoulli(rng, keep_prob, tuple(noise_shape))
+      keep = random.bernoulli(rng, keep_prob, tuple(noise_shape))
       multiplier = keep.astype(x.dtype) / jax.lax.tie_in(keep, keep_prob)
       return x * multiplier, state
     else:
@@ -228,7 +228,7 @@ class ReversibleHalfResidual(tl.ReversibleLayer, tl.Serial):
     rng = kwargs.pop('rng', None)
     rngs = (None,) * self._n_layers
     if rng is not None:
-      rngs = backend.random.split(rng, self._n_layers)
+      rngs = random.split(rng, self._n_layers)
     # Note that self.sublayers aligns exactly with self.reverse_layers in
     # terms of parameter and rng usage, so no re-ordering is required.
     for layer, p, s, ns, rng in zip(
@@ -242,7 +242,7 @@ class ReversibleHalfResidual(tl.ReversibleLayer, tl.Serial):
     rng = kwargs.pop('rng', None)
     rngs = (None,) * self._n_layers
     if rng is not None:
-      rngs = backend.random.split(rng, self._n_layers)
+      rngs = random.split(rng, self._n_layers)
 
     def call_compute_residual(x, weights):
       res = self.compute_residual(x, weights=weights, state=state[0],
@@ -281,7 +281,7 @@ class ApplyAttentionWrapper(tl.Parallel):
     passthrough_ct = ct[1:]
     if rng is not None:
       # Adjust RNG to match the forward pass.
-      rng = backend.random.split(rng, self._n_layers)[0]
+      rng = random.split(rng, self._n_layers)[0]
 
     out, qkv_ct = self.attention.forward_and_backward(
         qkv, out_ct, rng=rng, state=state[0], new_state=new_state[0], **kwargs)
@@ -338,7 +338,7 @@ class ReversibleAttentionHalfResidual(tl.ReversibleLayer, tl.Serial):
     rng = kwargs.pop('rng', None)
     rngs = (None,) * self._n_layers
     if rng is not None:
-      rngs = backend.random.split(rng, self._n_layers)
+      rngs = random.split(rng, self._n_layers)
 
     reconstructed_x = output
     # Note that self.sublayers aligns exactly with self.reverse_layers in
@@ -354,7 +354,7 @@ class ReversibleAttentionHalfResidual(tl.ReversibleLayer, tl.Serial):
     rng = kwargs.pop('rng', None)
     rngs = (None,) * self._n_layers
     if rng is not None:
-      rngs = backend.random.split(rng, self._n_layers)
+      rngs = random.split(rng, self._n_layers)
 
     # Forward pass through self.pre_attention, while preparing for
     # later backprop.

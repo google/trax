@@ -20,7 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from trax import layers as tl
-from trax.backend import numpy as np
+from trax.math import numpy as np
 
 
 # TODO(ddohan): Combinator to add saturation costs to loss

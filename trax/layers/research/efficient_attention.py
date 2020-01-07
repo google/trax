@@ -18,15 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
+import math as python_math
 import random
 
 import jax
 
-from trax import backend
-from trax.backend import numpy as np
+from trax import math
 from trax.layers import attention
 from trax.layers import base
+from trax.math import numpy as np
 
 # pylint: disable=protected-access
 _fast_inference_init_state = attention._fast_inference_init_state
@@ -52,7 +52,7 @@ class MemoryEfficientCausalAttention(attention.BaseCausalAttention):
   """
 
   def __init__(self, loop_stride, dropout, mode, share_qk=False, hard_k=0):
-    assert backend.get_name() == 'jax', (
+    assert math.backend_name() == 'jax', (
         'JAX backend is required to use MemoryEfficientCausalAttention.')
     super(MemoryEfficientCausalAttention, self).__init__()
     self._loop_stride = loop_stride
@@ -152,14 +152,14 @@ class MemoryEfficientCausalAttention(attention.BaseCausalAttention):
         dots = dots - 1e5 * self_mask
 
       # Softmax.
-      dots = np.exp(dots - backend.logsumexp(dots, axis=-1, keepdims=True))
+      dots = np.exp(dots - math.logsumexp(dots, axis=-1, keepdims=True))
 
       if self.dropout is not None and self.dropout > 0.0:
         # Dropout is broadcast across the batch+head dimension
         dropout_shape = (1, dots.shape[-2], dots.shape[-1])
         slice_rng = jax.random.fold_in(rng, q_loop_idx)
         keep_prob = jax.lax.tie_in(dots, 1.0 - self.dropout)
-        keep = backend.random.bernoulli(slice_rng, keep_prob, dropout_shape)
+        keep = math.random.bernoulli(slice_rng, keep_prob, dropout_shape)
         multiplier = keep.astype(dots.dtype) / jax.lax.tie_in(keep, keep_prob)
         dots = dots * multiplier
 
@@ -267,7 +267,7 @@ class TimeBinCausalAttention(attention.BaseCausalAttention):
     self._mode = mode
 
   def forward_and_backward(self, inputs, ct, state, new_state, **kwargs):
-    assert backend.get_name() == 'jax', (
+    assert math.backend_name() == 'jax', (
         'JAX backend is required to use forward_and_backward.')
     # Simultaneous forward pass and backprop through the attention mechanism.
     def _do_forward(x):  # pylint: disable=invalid-name
@@ -286,9 +286,9 @@ class TimeBinCausalAttention(attention.BaseCausalAttention):
     n_bins = self.n_bins
     bin_length = self.bin_length
     if n_bins is None:
-      n_bins = int(math.ceil(seq_len / bin_length))
+      n_bins = int(python_math.ceil(seq_len / bin_length))
     else:
-      bin_length = int(math.ceil(seq_len / n_bins))
+      bin_length = int(python_math.ceil(seq_len / n_bins))
     pad_len = n_bins * bin_length - seq_len
 
     def pad_input(x):
@@ -358,13 +358,13 @@ class TimeBinCausalAttention(attention.BaseCausalAttention):
       dots = dots - 1e5 * self_mask
 
     # Softmax.
-    dots = np.exp(dots - backend.logsumexp(dots, axis=-1, keepdims=True))
+    dots = np.exp(dots - math.logsumexp(dots, axis=-1, keepdims=True))
 
     if self.dropout > 0.0:
       # Dropout is broadcast across the batch+head dimension
       dropout_shape = (1, dots.shape[-3], dots.shape[-2], dots.shape[-1])
       keep_prob = jax.lax.tie_in(dots, 1.0 - self.dropout)
-      keep = backend.random.bernoulli(rng, keep_prob, dropout_shape)
+      keep = math.random.bernoulli(rng, keep_prob, dropout_shape)
       multiplier = keep.astype(dots.dtype) / jax.lax.tie_in(keep, keep_prob)
       dots = dots * multiplier
 
@@ -483,7 +483,7 @@ class LSHCausalAttention(attention.BaseCausalAttention):
     self._prng = None
     if one_rng:
       seed = random.randint(0, 2**31 - 1)
-      self._prng = backend.random.get_prng(seed)
+      self._prng = math.random.get_prng(seed)
 
     self._allow_duplicate_attention = allow_duplicate_attention
     self._attend_across_buckets = attend_across_buckets
@@ -612,7 +612,7 @@ class LSHCausalAttention(attention.BaseCausalAttention):
       batch_loop_idx = vals[0]
       if self._prng is None:
         hash_slice_rng = jax.random.fold_in(rng, batch_loop_idx)
-        hash_rng, slice_rng = backend.random.split(hash_slice_rng)
+        hash_rng, slice_rng = math.random.split(hash_slice_rng)
       else:
         # TODO(kitaev): Maybe use the same RNG across examples (but not heads)?
         hash_rng = jax.random.fold_in(self._prng, batch_loop_idx)
@@ -688,7 +688,7 @@ class LSHCausalAttention(attention.BaseCausalAttention):
   def drop_for_hash(self, x, rng):
     rate = self._drop_for_hash_rate
     if self._mode == 'train' and rate > 0.0:
-      keep = backend.random.bernoulli(rng, 1.0 - rate, x.shape)
+      keep = math.random.bernoulli(rng, 1.0 - rate, x.shape)
       return np.where(keep, x / (1.0 - rate), np.zeros_like(x))
     return x
 
@@ -704,7 +704,7 @@ class LSHCausalAttention(attention.BaseCausalAttention):
     assert len(vecs.shape) == 2
     n_vecs = vecs.shape[0]
 
-    rng1, rng2 = backend.random.split(rng, num=2)
+    rng1, rng2 = math.random.split(rng, num=2)
 
     # We need to sample 2 * n_hashes * r_div_2 vectors from `vecs` at random.
     num_needed = 2 * n_hashes * r_div_2
@@ -728,7 +728,7 @@ class LSHCausalAttention(attention.BaseCausalAttention):
       random_vecs_1 = vecs[random_idxs_1]
 
       # Sample candidates for vec2s.
-      rng, subrng = backend.random.split(rng)
+      rng, subrng = math.random.split(rng)
       # shape = (self._data_rotation_farthest_num, n_hashes * r_div_2)
       candidate_idxs_2 = jax.random.randint(
           subrng, (self._data_rotation_farthest_num, n_hashes * r_div_2), 0,
@@ -777,7 +777,7 @@ class LSHCausalAttention(attention.BaseCausalAttention):
         # (1) both factor and rest are even, and (2) factor + rest is minimal.
         # To compute this we start from factor = sqrt(n_buckets) and go down
         # with it until we find one that satisfies the constraints above.
-        factor = int(math.sqrt(self.n_buckets))
+        factor = int(python_math.sqrt(self.n_buckets))
         while factor > 0 and not (
             self.n_buckets % factor == 0 and
             factor % 2 == 0 and
@@ -793,7 +793,7 @@ class LSHCausalAttention(attention.BaseCausalAttention):
         rot_size // 2)
 
     rng = jax.lax.tie_in(vecs, rng)
-    rng, subrng = backend.random.split(rng)
+    rng, subrng = math.random.split(rng)
     random_rotations = self._sample_rotation(rotations_shape, vecs, rng)
 
     # TODO(lukaszkaiser): the dropout mask will be used for all rounds of
@@ -984,14 +984,14 @@ class LSHCausalAttention(attention.BaseCausalAttention):
       dots = dots - 1e7 * jax.lax.stop_gradient(top_k_mask)
 
     # Softmax.
-    dots_logsumexp = backend.logsumexp(dots, axis=-1, keepdims=True)
+    dots_logsumexp = math.logsumexp(dots, axis=-1, keepdims=True)
     dots = np.exp(dots - dots_logsumexp)
 
     if self._dropout > 0.0:
       # Dropout is broadcast across the bin dimension
       dropout_shape = (1, dots.shape[-2], dots.shape[-1])
       keep_prob = jax.lax.tie_in(dots, 1.0 - self._dropout)
-      keep = backend.random.bernoulli(rng, keep_prob, dropout_shape)
+      keep = math.random.bernoulli(rng, keep_prob, dropout_shape)
       multiplier = keep.astype(dots.dtype) / jax.lax.tie_in(keep, keep_prob)
       dots = dots * multiplier
 
@@ -1035,7 +1035,7 @@ class LSHCausalAttention(attention.BaseCausalAttention):
     else:
       o = np.reshape(o, (self.n_hashes, seqlen, o.shape[-1]))
       logits = np.reshape(logits, (self.n_hashes, seqlen, 1))
-      probs = np.exp(logits - backend.logsumexp(logits, axis=0, keepdims=True))
+      probs = np.exp(logits - math.logsumexp(logits, axis=0, keepdims=True))
       out = np.sum(o * probs, axis=0)
 
     assert out.shape == v.shape
@@ -1115,7 +1115,7 @@ class LSHCausalAttention(attention.BaseCausalAttention):
       dots = dots - 1e7 * no_repeat_mask[:, None, :]
 
     # Softmax.
-    dots_logsumexp = backend.logsumexp(dots, axis=-1, keepdims=True)
+    dots_logsumexp = math.logsumexp(dots, axis=-1, keepdims=True)
     dots = np.exp(dots - dots_logsumexp)
 
     out = np.matmul(dots, cur_v)  # batch_size, 1, d_v

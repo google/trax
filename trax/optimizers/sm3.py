@@ -19,7 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from trax.backend import numpy as np
+from trax.math import numpy as np
 from trax.optimizers import base as opt_base
 
 
@@ -99,4 +99,3 @@ class SM3(opt_base.Optimizer):
       return self._update_sketched(grads, weights, m, v, opt_params)
     else:
       return self._update_diagonal(grads, weights, m, v, opt_params)
-

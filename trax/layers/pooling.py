@@ -19,26 +19,26 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from trax import backend
+from trax import math
 from trax.layers import base
 
 
 @base.layer()
 def MaxPool(x, weights, pool_size=(2, 2), strides=None, padding='VALID', **kw):
   del weights, kw
-  return backend.max_pool(x, pool_size=pool_size, strides=strides,
-                          padding=padding)
+  return math.max_pool(x, pool_size=pool_size, strides=strides,
+                       padding=padding)
 
 
 @base.layer()
 def SumPool(x, weights, pool_size=(2, 2), strides=None, padding='VALID', **kw):
   del weights, kw
-  return backend.sum_pool(x, pool_size=pool_size, strides=strides,
-                          padding=padding)
+  return math.sum_pool(x, pool_size=pool_size, strides=strides,
+                       padding=padding)
 
 
 @base.layer()
 def AvgPool(x, weights, pool_size=(2, 2), strides=None, padding='VALID', **kw):
   del weights, kw
-  return backend.avg_pool(x, pool_size=pool_size, strides=strides,
-                          padding=padding)
+  return math.avg_pool(x, pool_size=pool_size, strides=strides,
+                       padding=padding)

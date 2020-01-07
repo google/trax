@@ -19,9 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import absltest
-from trax import backend
-from trax.backend import numpy as np
+from trax import math
 from trax.layers import base
+from trax.math import numpy as np
 from trax.shapes import ShapeDtype
 
 
@@ -130,16 +130,16 @@ class BaseLayerTest(absltest.TestCase):
 
       def backward(self, inputs, output, ct, weights, state, new_state,
                    **kwargs):
-        return (backend.numpy.zeros_like(ct), ())
+        return (np.zeros_like(ct), ())
 
     layer = IdWithZeroGrad()
-    rng = backend.random.get_prng(0)
+    rng = math.random.get_prng(0)
     input_signature = ShapeDtype((9, 17))
-    random_input = backend.random.uniform(rng, input_signature.shape,
-                                          minval=-1.0, maxval=1.0)
+    random_input = math.random.uniform(rng, input_signature.shape,
+                                       minval=-1.0, maxval=1.0)
     layer.init(input_signature)
-    f = lambda x: backend.numpy.mean(layer(x))
-    grad = backend.grad(f)(random_input)
+    f = lambda x: np.mean(layer(x))
+    grad = math.grad(f)(random_input)
     self.assertEqual(grad.shape, (9, 17))  # Gradient for each input.
     self.assertEqual(sum(sum(grad * grad)), 0.0)  # Each one is 0.
 
@@ -159,13 +159,13 @@ class BaseLayerTest(absltest.TestCase):
         return (inputs, ())
 
     layer = IdWithIdGrad()
-    rng = backend.random.get_prng(0)
+    rng = math.random.get_prng(0)
     input_signature = ShapeDtype((9, 17))
-    random_input = backend.random.uniform(rng, input_signature.shape,
-                                          minval=-1.0, maxval=1.0)
+    random_input = math.random.uniform(rng, input_signature.shape,
+                                       minval=-1.0, maxval=1.0)
     layer.init(input_signature)
-    f = lambda x: backend.numpy.mean(layer(x))
-    grad = backend.grad(f)(random_input)
+    f = lambda x: np.mean(layer(x))
+    grad = math.grad(f)(random_input)
     self.assertEqual(grad.shape, (9, 17))  # Gradient for each input.
     self.assertEqual(sum(sum(grad)), sum(sum(random_input)))  # Same as input.
 
