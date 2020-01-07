@@ -214,7 +214,7 @@ class Trainer(object):
 
   @property
   def model_weights(self):
-    # Currently we need ot pick [0] as we ignore loss weights (empty).
+    # Currently we need to pick [0] as we ignore loss weights (empty).
     return self._opt_state.weights[0]
 
   @property
@@ -836,7 +836,7 @@ def _multi_device_put(x, devices=None):
 
   JAX uses a ShardedDeviceArray class that holds a list of device buffers
   on separate devices for use with pmap'd computations.  Sharded arrays
-  are explicitly used to eliminate unneccessary inter-device transfer of
+  are explicitly used to eliminate unnecessary inter-device transfer of
   memory buffers between use in pmap'd computations.  The JAX API currently
   does not have a multi-device 'put' function that copies a buffer onto
   N devices in a memory-efficient fashion, so we implement our own here.
