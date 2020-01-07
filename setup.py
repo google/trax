@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# coding=utf-8
 """Install trax."""
 
 from setuptools import find_packages
@@ -44,6 +45,7 @@ setup(
         'tensor2tensor',
         'tensorflow-datasets',
         'absl-py',
+        'funcsigs'
     ],
     extras_require={
         'tensorflow': ['tensorflow>=1.14.0'],
