@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import trax.inputs
+import trax.supervised.inputs
 import trax.models
 import trax.optimizers
 import trax.rl
@@ -38,7 +38,7 @@ train_and_eval_dataset.eval_shuffle_files = True
 
 # Parameters for preprocess_fun:
 # ==============================================================================
-shuffle_and_batch_data.preprocess_fun=@trax.inputs.wmt_concat_preprocess
+shuffle_and_batch_data.preprocess_fun=@trax.supervised.inputs.wmt_concat_preprocess
 wmt_concat_preprocess.max_length = 255
 wmt_concat_preprocess.max_eval_length = 255
 
@@ -55,7 +55,7 @@ TransformerLM.vocab_size = 33300
 
 # Parameters for OnlineTuneEnv:
 # ==============================================================================
-OnlineTuneEnv.inputs = @trax.inputs.inputs
+OnlineTuneEnv.inputs = @trax.supervised.inputs.inputs
 OnlineTuneEnv.model = @trax.models.TransformerLM
 OnlineTuneEnv.optimizer = @trax.optimizers.Adafactor
 OnlineTuneEnv.train_steps = 500

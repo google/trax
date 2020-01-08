@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import trax.inputs
+import trax.supervised.inputs
 import trax.models
 import trax.optimizers
 import trax.rl
@@ -41,7 +41,7 @@ Momentum.mass = 0.9
 
 # Parameters for shuffle_and_batch_data:
 # ==============================================================================
-shuffle_and_batch_data.preprocess_fun = @trax.inputs.cifar10_augmentation_preprocess
+shuffle_and_batch_data.preprocess_fun = @trax.supervised.inputs.cifar10_augmentation_preprocess
 
 # Parameters for WideResnet:
 # ==============================================================================
@@ -51,7 +51,7 @@ WideResnet.n_output_classes = 10
 
 # Parameters for OnlineTuneEnv:
 # ==============================================================================
-OnlineTuneEnv.inputs = @trax.inputs.inputs
+OnlineTuneEnv.inputs = @trax.supervised.inputs.inputs
 OnlineTuneEnv.model = @trax.models.WideResnet
 OnlineTuneEnv.optimizer = @trax.optimizers.Momentum
 OnlineTuneEnv.control_configs = (

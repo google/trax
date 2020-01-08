@@ -14,7 +14,7 @@
 
 import trax.models
 import trax.optimizers
-import trax.trainer_lib
+import trax.supervised.trainer_lib
 import trax.rl
 import trax.rl.space_serializer
 import trax.rl.trainers
