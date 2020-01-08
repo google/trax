@@ -21,13 +21,14 @@ from __future__ import print_function
 
 import copy
 import inspect
+import pickle
 import traceback
 
 import jax
-
 import numpy as onp
 import six
 
+from tensorflow.io import gfile
 from trax import math
 from trax.math import nested_map
 from trax.math import numpy as np
@@ -311,6 +312,22 @@ class Layer(object):
       name, trace = self.__class__.__name__, _short_traceback(skip=3)
       raise LayerError(name, 'init', self._caller,
                        input_signature, trace)
+
+  def init_from_file(self, file_name):
+    """Initializes this layer and its sublayers from a file.
+
+    We assume that the file is a pickled dictionary that contains the fields
+    'weights' and 'state' with structures corresponding to this layers weights
+    and state. Note that the pickled dictionary is allowed to contain other
+    fields too, but these two are required to init.
+
+    Args:
+      file_name: the name of the file to initialize from.
+    """
+    with gfile.GFile(file_name, 'rb') as f:
+      dictionary = pickle.load(f)
+    self.weights = dictionary['weights']
+    self.state = dictionary['state']
 
   def new_rng(self):
     """Returns a new single-use random number generator (JAX PRNG key)."""
