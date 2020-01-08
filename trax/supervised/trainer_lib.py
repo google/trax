@@ -865,7 +865,7 @@ def _multi_device_put(x, devices=None):
       x_aval.dtype)
   # Create copies of the underlying device buffer for each local device.
   broadcast_buffers = [
-      jax.device_put(x, dv).device_buffer
+      jax.interpreters.xla.device_put(x, dv)
       for dv in devices
   ]
   return jax.pxla.ShardedDeviceArray(broadcast_x_aval, broadcast_buffers)
