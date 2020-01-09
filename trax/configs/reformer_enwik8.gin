@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import trax.layers
 import trax.models
 import trax.optimizers
 import trax.supervised.inputs
@@ -131,7 +132,7 @@ ReformerLM.d_attention_value = %attn_kv
 ReformerLM.d_model = 1024
 ReformerLM.d_ff = 4096
 ReformerLM.dropout = %dropout
-ReformerLM.ff_activation = @Relu
+ReformerLM.ff_activation = @trax.layers.Relu
 ReformerLM.max_len = 65536
 ReformerLM.mode = 'train'
 ReformerLM.n_heads = 8

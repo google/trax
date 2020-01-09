@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import trax.layers
 import trax.models
 import trax.optimizers
 import trax.supervised.inputs
@@ -127,6 +128,7 @@ ReformerLM.d_attention_value = %attn_kv
 ReformerLM.d_model = 1024
 ReformerLM.d_ff = 4096
 ReformerLM.dropout = 0.0
+ReformerLM.ff_activation = @trax.layers.FastGelu
 ReformerLM.max_len = 12288  # 64 * 64 * 3
 ReformerLM.mode = 'train'
 ReformerLM.n_heads = 8
@@ -146,6 +148,7 @@ ReformerShortenLM.d_embedding = 256
 ReformerShortenLM.d_model = 1024
 ReformerShortenLM.d_ff = 4096
 ReformerShortenLM.dropout = 0.0
+ReformerShortenLM.ff_activation = @trax.layers.FastGelu
 ReformerShortenLM.max_len = 12288  # 64 * 64 * 3
 ReformerShortenLM.mode = 'train'
 ReformerShortenLM.n_heads = 8
