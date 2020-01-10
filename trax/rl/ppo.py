@@ -884,18 +884,18 @@ def save_opt_state(output_dir,
       tf.io.gfile.remove(path)
 
 
-def init_policy_from_world_model_checkpoint(policy_params, model_output_dir):
+def init_policy_from_world_model_checkpoint(policy_weights, model_output_dir):
   """Initializes policy parameters from world model parameters."""
   pkl_module = utils.get_pickle_module()
-  params_file = os.path.join(model_output_dir, 'model.pkl')
+  weights_file = os.path.join(model_output_dir, 'model.pkl')
   # Don't use trax.load_trainer_state to avoid a circular import.
-  with tf.io.gfile.GFile(params_file, 'rb') as f:
-    model_params = pkl_module.load(f)[0][0]
+  with tf.io.gfile.GFile(weights_file, 'rb') as f:
+    model_weights = pkl_module.load(f)['weights']
   # TODO(pkozakowski): The following, brittle line of code is hardcoded for
   # transplanting parameters from TransformerLM to TransformerDecoder-based
   # policy network of the same configuration. Figure out a more general method.
-  policy_params[0] = model_params[0][1:-2]
-  return policy_params
+  policy_weights[0] = model_weights[0][1:-2]
+  return policy_weights
 
 
 def write_eval_reward_summaries(reward_stats_by_mode, log_fn, epoch):

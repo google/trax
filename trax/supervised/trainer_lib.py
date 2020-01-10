@@ -23,6 +23,7 @@ import collections
 import functools
 import itertools
 import os
+import pickle
 import random
 import sys
 import time
@@ -41,18 +42,18 @@ from trax import layers as tl
 from trax import learning_rate as lr
 from trax import math
 from trax import optimizers as trax_opt
-from trax import utils
 from trax.math import numpy as np
 from trax.math import random as jax_random
 from trax.shapes import ShapeDtype
 from trax.supervised import inputs as trax_inputs
 
 
+# TODO(afrozm): Maybe flatten everything from OptState into TrainerState.
 TrainerState = collections.namedtuple('_TrainerState', [
-    'step',       # Current training step number.
-    'opt_state',  # OptState.
-    'history',    # trax.history.History.
-    'model_state',
+    'step',         # Current training step number.
+    'opt_state',    # OptState.
+    'history',      # trax.history.History.
+    'model_state',  # Auxilliary state of the model.
 ])
 
 
@@ -407,6 +408,11 @@ class Trainer(object):
       sw.text('gin_config',
               jaxboard.markdownify_operative_config_str(config_str))
 
+  def _save_state_dict(self, trainer_state_dict, weights_file):
+    with tf.io.gfile.GFile(weights_file, 'wb') as f:
+      pickle.dump(trainer_state_dict, f)
+    log('Model saved to %s' % weights_file, stdout=False)
+
   def save_state(self, keep):
     """Save trainer state given a possibly replicated opt_state."""
     opt_state = self._opt_state
@@ -420,15 +426,18 @@ class Trainer(object):
     step, history, model_state = self._step, self._history, self._model_state
     output_dir = self._output_dir
 
-    pkl_module = utils.get_pickle_module()
     weights_file = os.path.join(output_dir, 'model.pkl')
-    with tf.io.gfile.GFile(weights_file, 'wb') as f:
-      pkl_module.dump((tuple(opt_state), step, history, model_state), f)
+
+    # This dict will be stored as the model.
+    trainer_state_dict = make_trainer_state_dict(step,
+                                                 opt_state,
+                                                 history,
+                                                 model_state)
+    self._save_state_dict(trainer_state_dict, weights_file)
+
     if keep:
       weights_file = os.path.join(output_dir, 'model_{}.pkl'.format(step))
-      with tf.io.gfile.GFile(weights_file, 'wb') as f:
-        pkl_module.dump((tuple(opt_state), step, history, model_state), f)
-    log('Model saved to %s' % weights_file, stdout=False)
+      self._save_state_dict(trainer_state_dict, weights_file)
 
   def save_computation_graphs(self, save_backward_graph):
     """Dump computation graphs to files."""
@@ -785,6 +794,47 @@ def epochs(total_steps, steps_to_skip, epoch_steps):
       break
 
 
+def make_trainer_state_dict(step,
+                            opt_state,
+                            history,
+                            model_state):
+  """Creates a trainer state dictionary to save to disk.
+
+  Args:
+    step: int, a step number
+    opt_state: OptState namedtuple
+    history: `trax.history.History`, the history object.
+    model_state: A nested structure of the model state.
+
+  Returns:
+    A dictionary with the fields of TrainerState and OptState flattened.
+  """
+
+  return {
+      'step': step,
+      'weights': opt_state.weights,
+      'slots': opt_state.slots,
+      'opt_params': opt_state.opt_params,
+      'history': history,
+      'model_state': model_state,
+  }
+
+
+def trainer_state_from_dict(trainer_state_dict):
+  """Given the trainer state dictionary, returns `TrainerState`."""
+  # TODO(afrozm): This becomes simpler if OptState is flattened into
+  # TrainerState.
+  step = trainer_state_dict['step']
+  history = trainer_state_dict['history']
+  model_state = trainer_state_dict['model_state']
+  opt_state = OptState(
+      weights=trainer_state_dict['weights'],
+      slots=trainer_state_dict['slots'],
+      opt_params=trainer_state_dict['opt_params'])
+  return TrainerState(step=step, opt_state=OptState(*opt_state),
+                      history=history, model_state=model_state)
+
+
 def load_trainer_state(output_dir, weights_file=None):
   """Returns a TrainerState instance loaded from the given `output_dir`."""
   if weights_file is None:
@@ -795,13 +845,14 @@ def load_trainer_state(output_dir, weights_file=None):
   elif not tf.io.gfile.exists(weights_file):
     raise ValueError('File not found: %s' % weights_file)
 
-  pkl_module = utils.get_pickle_module()
   with tf.io.gfile.GFile(weights_file, 'rb') as f:
-    (opt_state, step, history, model_state) = pkl_module.load(f)
-  log('Model loaded from %s at step %d' % (weights_file, step))
-  logging.debug('From loaded model : history = %s', history)
-  return TrainerState(step=step, opt_state=OptState(*opt_state),
-                      history=history, model_state=model_state)
+    trainer_state_dict = pickle.load(f)
+  trainer_state = trainer_state_from_dict(trainer_state_dict)
+  log('Model loaded from %s at step %d' % (weights_file, trainer_state.step))
+  logging.debug('From loaded model : history = %s', trainer_state.history)
+  return trainer_state
+
+
 
 
 def init_random_number_generators(seed=None):
