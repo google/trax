@@ -150,15 +150,23 @@ class AxialPositionalEncoding(base.Layer):
       ax_emb = np.broadcast_to(
           ax_emb, (inputs.shape[0],) + self._shape + (ax_emb.shape[-1],))
       embs.append(ax_emb)
-    emb = np.concatenate(embs, -1)
 
     if self._mode == 'predict':
       assert self._dropout == 0.0
+      emb = np.concatenate(embs, -1)
       emb = np.reshape(emb, (inputs.shape[0], -1, emb.shape[-1]))
       return inputs + emb[:, state, :][:, None, :], state + 1
     elif self._dropout == 0:
-      return inputs + np.reshape(emb, inputs.shape), state
+      # TODO(kitaev): concat-then-reshape (as is the case with dropout enabled)
+      # leads to memory blow-up on TPU.
+      # emb = np.concatenate(embs, -1)
+      # return inputs + np.reshape(emb, inputs.shape), state
+      return inputs + np.concatenate(
+          [np.reshape(emb, inputs.shape[:-1] + (emb.shape[-1],))
+           for emb in embs
+          ], -1), state
     else:
+      emb = np.concatenate(embs, -1)
       noise_shape = list(emb.shape)
       for dim in self._dropout_broadcast_dims:
         noise_shape[dim] = 1

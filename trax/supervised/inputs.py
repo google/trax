@@ -355,13 +355,17 @@ def _train_and_eval_dataset_v1(problem_name, data_dir,
   """Return train and evaluation datasets, feature info and supervised keys."""
   with tf.device('cpu:0'):
     problem = t2t_problems.problem(problem_name)
+    hparams = problem.get_hparams()
+    if problem_name == 'video_bair_robot_pushing':
+      bair_robot_pushing_hparams(hparams)
     train_dataset = problem.dataset(tf.estimator.ModeKeys.TRAIN, data_dir,
-                                    shuffle_files=train_shuffle_files)
+                                    shuffle_files=train_shuffle_files,
+                                    hparams=hparams)
     train_dataset = train_dataset.map(_select_features)
     eval_dataset = problem.dataset(tf.estimator.ModeKeys.EVAL, data_dir,
-                                   shuffle_files=eval_shuffle_files)
+                                   shuffle_files=eval_shuffle_files,
+                                   hparams=hparams)
     eval_dataset = eval_dataset.map(_select_features)
-    hparams = problem.get_hparams()
     # We take a few training examples to guess the shapes.
     input_shapes, target_shapes, examples = [], [], []
     if tf.executing_eagerly():
@@ -621,6 +625,49 @@ def wmt_concat_preprocess(dataset, training, shapes,
 
   dataset = dataset.map(concat_and_add_mask)
   return dataset, shapes
+
+
+@gin.configurable(blacklist=['hparams'])
+def bair_robot_pushing_hparams(
+    hparams=None, video_num_input_frames=1, video_num_target_frames=15
+    ):
+  if hparams is not None:
+    hparams.video_num_input_frames = video_num_input_frames
+    hparams.video_num_target_frames = video_num_target_frames
+  else:
+    return video_num_input_frames, video_num_target_frames
+
+
+@gin.configurable(blacklist=['dataset', 'training', 'shapes'])
+def bair_robot_pushing_preprocess(dataset, training, shapes):
+  """Pre-processing function that concatenates input and target frames."""
+  del training, shapes
+
+  def concat_and_add_mask(features, targets):
+    """Concatenate input and output frames to form a language modeling setup."""
+    inp = features['inputs']
+    concat = tf.concat([inp, targets], axis=0)
+    mask = tf.concat([tf.zeros_like(inp), tf.ones_like(targets)], axis=0)
+    concat = tf.reshape(concat, (-1,))
+    mask = tf.reshape(mask, (-1,))
+    concat = tf.cast(concat, tf.int32)
+    mask = tf.cast(mask, tf.float32)
+    features['inputs'] = features['targets'] = concat
+    features['mask'] = mask
+    return features, concat
+
+  dataset = dataset.map(concat_and_add_mask)
+
+  video_num_input_frames, video_num_target_frames = bair_robot_pushing_hparams()
+  video_num_frames = video_num_input_frames + video_num_target_frames
+  new_shape = (video_num_frames * 64 * 64 * 3,)
+  new_shapes = {
+      'inputs': new_shape,
+      'targets': new_shape,
+      'mask': new_shape,
+  }
+
+  return dataset, (new_shapes, new_shape)
 
 
 @gin.configurable(whitelist=['preprocess_fun', 'shuffle_buffer_size'])
