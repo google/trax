@@ -34,31 +34,90 @@ import tensorflow_datasets as tfds
 from trax import math
 from trax.math import numpy as np
 
-# Inputs is a named tuple holding input streams and shapes for a training run.
-# Each named stream in the tuple is a function that returns a generator
-# of (input_batch, target_batch) tuples.
-#
-# * train_stream: training data that will be used for training
-#     may include all the augmentation or selection the training wants
-#     the shape of examples is [batch_fn.batch_size, ...]
-# * train_eval_stream: training data used for evaluation
-#     examples from training data but usually without augmentation
-#     the shape of examples is [batch_fn.eval_batch_size, ...]
-# * eval_stream: evaluation data stream
-#     examples from evaluation data, usually without augmentation
-#     the shape of examples is [batch_fn.eval_batch_size, ...]
-# * input_shape: the shape of inputs
-#     the [...] above, without batch size
-# * input_dtype: the data type of inputs
-# * target_shape: the shape of targets
-#     the [...] above, without batch size
-# * target_dtype: the data type of targets
 
-Inputs = collections.namedtuple(
-    '_Inputs',
-    ['train_stream', 'train_eval_stream', 'eval_stream',
-     'input_shape', 'input_dtype', 'target_shape', 'target_dtype']
-)
+class Inputs(object):
+  """Inputs bundle..
+
+  Inputs bundle holds input streams and shapes for a training run.
+  It contains stream-creating functions that return python generators
+  of (input_batch, target_batch) tuples.
+
+  * train_stream: training data that will be used for training
+      may include all the augmentation or selection the training wants
+      the shape of examples is [batch_fn.batch_size, ...]
+  * train_eval_stream: training data used for evaluation
+      examples from training data but usually without augmentation
+      the shape of examples is [batch_fn.eval_batch_size, ...]
+  * eval_stream: evaluation data stream
+      examples from evaluation data, usually without augmentation
+      the shape of examples is [batch_fn.eval_batch_size, ...]
+  * input_shape: the shape of inputs
+      the [...] above, without batch size
+  * input_dtype: the data type of inputs
+  * target_shape: the shape of targets
+      the [...] above, without batch size
+  * target_dtype: the data type of targets
+  """
+
+  def __init__(self, train_stream, eval_stream=None, train_eval_stream=None,
+               input_shape=None, target_shape=None,
+               input_dtype=None, target_dtype=None):
+    """Initialize a new set of inputs.
+
+    Args:
+      train_stream: a function returning a python generator of training batches.
+      eval_stream: a function returning a python generator of validation batches
+        if None, then the training generator will be used for evaluation.
+      train_eval_stream: a function returning a python generator of batches from
+        the training set used for evaluation (if None, use train_stream).
+      input_shape: shape of the inputs (obsolete, here for compatibility).
+      target_shape: shape of the targets (obsolete, here for compatibility).
+      input_dtype: dtype of the inputs (obsolete, here for compatibility).
+      target_dtype: dtype of the targets (obsolete, here for compatibility).
+    """
+    del input_shape, target_shape, input_dtype, target_dtype  # Obsolete.
+    self._train_stream = train_stream
+    self._eval_stream = eval_stream or self._train_stream
+
+    # TODO(lukaszkaiser): should we get rid of this one day?
+    self._train_eval_stream = train_eval_stream or self._train_stream
+
+    # Peek into the train stream to get an example shape.
+    example_train_batch = next(train_stream())
+    self._input_shape = tuple(example_train_batch[0].shape)[1:]
+    self._input_dtype = example_train_batch[0].dtype
+    self._target_shape = tuple(example_train_batch[-1].shape)[1:]
+    self._target_dtype = example_train_batch[-1].dtype
+
+  def train_stream(self):
+    return self._train_stream()
+
+  def eval_stream(self):
+    return self._eval_stream()
+
+  def train_eval_stream(self):
+    return self._train_stream()
+
+  @property
+  def input_shape(self):
+    """Example input shape, without batch dimension."""
+    return self._input_shape
+
+  @property
+  def target_shape(self):
+    """Example target shape, without batch dimension."""
+    return self._target_shape
+
+  @property
+  def input_dtype(self):
+    """Dtype of the input."""
+    return self._input_dtype
+
+  @property
+  def target_dtype(self):
+    """Dtype of the target."""
+    return self._target_dtype
+
 
 # How many examples from the stream to skip at random during training.
 # For now, we skip at most 100K examples for efficiency.
