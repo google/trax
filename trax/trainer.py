@@ -75,7 +75,7 @@ def _tf_setup_from_flags():
     tf.compat.v1.enable_eager_execution()
   if FLAGS.tf_xla:
     tf.config.optimizer.set_jit(True)
-    math.set_tf_xla_forced_compile(FLAGS.tf_xla_forced_compile)
+    math.tf_math.set_tf_xla_forced_compile(FLAGS.tf_xla_forced_compile)
   tf.config.optimizer.set_experimental_options({
       'pin_to_host_optimization': FLAGS.tf_opt_pin_to_host,
       'layout_optimizer': FLAGS.tf_opt_layout,

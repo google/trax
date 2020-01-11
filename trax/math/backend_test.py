@@ -23,7 +23,7 @@ import gin
 import jax.numpy as jnp
 import numpy as onp
 from tensorflow import test
-from trax import math
+import trax.math as math
 
 
 class BackendTest(test.TestCase):
