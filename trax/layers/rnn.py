@@ -77,6 +77,24 @@ class LSTMCell(base.Layer):
     return (w, b)
 
 
+@base.layer()
+def MakeZeroState(x, depth_multiplier=1, **unused_kwargs):
+  """Makes zeros of shape like x but removing the length (axis 1)."""
+  assert len(x.shape) == 3, 'Expecting x of shape [batch, length, depth].'
+  return np.zeros((x.shape[0], depth_multiplier * x.shape[-1]),
+                  dtype=np.float32)
+
+
+def LSTM(n_units):
+  """LSTM running on axis 1."""
+  zero_state = MakeZeroState(depth_multiplier=2)  # pylint: disable=no-value-for-parameter
+  return cb.Serial(
+      cb.Branch([], zero_state),
+      cb.Scan(LSTMCell(n_units=n_units), axis=1),
+      cb.Select([0], n_in=2)  # Drop RNN state.
+  )
+
+
 class GRUCell(base.Layer):
   """Builds a traditional GRU cell with dense internal transformations.
 
@@ -121,6 +139,16 @@ class GRUCell(base.Layer):
     w2 = self._kernel_initializer((input_shape, self._n_units), rng3)
     b2 = self._bias_initializer((self._n_units,), rng4)
     return (w1, b1, w2, b2)
+
+
+def GRU(n_units):
+  """GRU running on axis 1."""
+  zero_state = MakeZeroState(depth_multiplier=1)  # pylint: disable=no-value-for-parameter
+  return cb.Serial(
+      cb.Branch([], zero_state),
+      cb.Scan(LSTMCell(n_units=n_units), axis=1),
+      cb.Select([0], n_in=2)  # Drop RNN state.
+  )
 
 
 def ConvGRUCell(n_units, kernel_size=(3, 3)):
@@ -213,14 +241,6 @@ def InnerSRUCell(x, **unused_kwargs):
   cur_x_times_one_minus_f, cur_f, cur_state = x
   res = cur_f * cur_state + cur_x_times_one_minus_f
   return res, res
-
-
-@base.layer()
-def MakeZeroState(x, depth_multiplier=1, **unused_kwargs):
-  """Makes zeros of shape like x but removing the length (axis 1)."""
-  assert len(x.shape) == 3, 'Expecting x of shape [batch, length, depth].'
-  return np.zeros((x.shape[0], depth_multiplier * x.shape[-1]),
-                  dtype=np.float32)
 
 
 def SRU(n_units, activation=None):
