@@ -59,23 +59,19 @@ class Inputs(object):
   * target_dtype: the data type of targets
   """
 
-  def __init__(self, train_stream, eval_stream=None, train_eval_stream=None,
-               input_shape=None, target_shape=None,
-               input_dtype=None, target_dtype=None):
+  def __init__(self, train_stream, eval_stream=None, train_eval_stream=None):
     """Initialize a new set of inputs.
 
     Args:
-      train_stream: a function returning a python generator of training batches.
-      eval_stream: a function returning a python generator of validation batches
+      train_stream: a function taking n_devices (an int) and returning
+        a python generator of training batches.
+      eval_stream: a function taking n_devices (an int) and returning
+        a python generator of validation batches;
         if None, then the training generator will be used for evaluation.
-      train_eval_stream: a function returning a python generator of batches from
+      train_eval_stream: a function taking n_devices (an int) and returning
+        a python generator of batches from
         the training set used for evaluation (if None, use train_stream).
-      input_shape: shape of the inputs (obsolete, here for compatibility).
-      target_shape: shape of the targets (obsolete, here for compatibility).
-      input_dtype: dtype of the inputs (obsolete, here for compatibility).
-      target_dtype: dtype of the targets (obsolete, here for compatibility).
     """
-    del input_shape, target_shape, input_dtype, target_dtype  # Obsolete.
     self._train_stream = train_stream
     self._eval_stream = eval_stream or self._train_stream
 
@@ -83,20 +79,20 @@ class Inputs(object):
     self._train_eval_stream = train_eval_stream or self._train_stream
 
     # Peek into the train stream to get an example shape.
-    example_train_batch = next(train_stream())
+    example_train_batch = next(train_stream(1))
     self._input_shape = tuple(example_train_batch[0].shape)[1:]
     self._input_dtype = example_train_batch[0].dtype
     self._target_shape = tuple(example_train_batch[-1].shape)[1:]
     self._target_dtype = example_train_batch[-1].dtype
 
-  def train_stream(self):
-    return self._train_stream()
+  def train_stream(self, n_devices):
+    return self._train_stream(n_devices)
 
-  def eval_stream(self):
-    return self._eval_stream()
+  def eval_stream(self, n_devices):
+    return self._eval_stream(n_devices)
 
-  def train_eval_stream(self):
-    return self._train_stream()
+  def train_eval_stream(self, n_devices):
+    return self._train_stream(n_devices)
 
   @property
   def input_shape(self):
@@ -159,12 +155,11 @@ def download_and_prepare(dataset_name, data_dir):
   return data_dir
 
 
-@gin.configurable(blacklist=['n_devices'])
-def inputs(n_devices, dataset_name, data_dir=None, input_name=None):
+@gin.configurable()
+def inputs(dataset_name, data_dir=None, input_name=None):
   """Make Inputs for built-in datasets.
 
   Args:
-    n_devices: how many devices to build the inputs for.
     dataset_name: a TFDS or T2T dataset name. If it's a T2T dataset name, prefix
       with 't2t_'.
     data_dir: data directory.
@@ -175,40 +170,33 @@ def inputs(n_devices, dataset_name, data_dir=None, input_name=None):
   """
   data_dir = download_and_prepare(dataset_name, data_dir)
 
-  (train_batches, train_eval_batches, eval_batches,
-   input_name, input_shape, input_dtype,
-   target_shape, target_dtype) = _train_and_eval_batches(
-       dataset_name, data_dir, input_name, n_devices)
+  cache = []
+  def stream(n_devices, which):
+    """Create the stream, cache TF streams if needed."""
+    if not cache:
+      cache.append(_train_and_eval_batches(
+          dataset_name, data_dir, input_name, n_devices))
 
-  if isinstance(input_dtype, tf.DType):
-    input_dtype = input_dtype.as_numpy_dtype
-  if isinstance(target_dtype, tf.DType):
-    target_dtype = target_dtype.as_numpy_dtype
+    (train_batches, train_eval_batches, eval_batches, input_name_c) = cache[0]
+    dataset = train_batches
+    if which == 'eval':
+      dataset = eval_batches
+    if which == 'train_eval':
+      dataset = train_eval_batches
+    return dataset_to_stream(dataset, input_name_c)
 
-  if input_dtype == np.uint8:  # TPUs don't like uint8s, we cast to ints.
-    input_dtype = np.int32
-  if target_dtype == np.uint8:
-    target_dtype = np.int32
-
-  def numpy_stream(dataset):
-    return dataset_to_stream(dataset, input_name)
-
-  return Inputs(train_stream=lambda: numpy_stream(train_batches),
-                train_eval_stream=lambda: numpy_stream(train_eval_batches),
-                eval_stream=lambda: numpy_stream(eval_batches),
-                input_shape=input_shape, input_dtype=input_dtype,
-                target_shape=target_shape, target_dtype=target_dtype)
+  return Inputs(train_stream=lambda n: stream(n, 'train'),
+                train_eval_stream=lambda n: stream(n, 'train_eval'),
+                eval_stream=lambda n: stream(n, 'eval'))
 
 
-@gin.configurable(blacklist=['n_devices'])
+@gin.configurable()
 def random_inputs(
-    n_devices,
     input_shape=gin.REQUIRED, input_dtype=np.int32, input_range=(0, 255),
     output_shape=gin.REQUIRED, output_dtype=np.int32, output_range=(0, 9)):
   """Make random Inputs for debugging.
 
   Args:
-    n_devices: how many devices to build the inputs for.
     input_shape: the shape of inputs (including batch dimension).
     input_dtype: the type of the inputs (int32 by default).
     input_range: the range of inputs (defaults to (0, 255)).
@@ -219,17 +207,9 @@ def random_inputs(
   Returns:
     trax.inputs.Inputs
   """
-  if input_shape[0] % n_devices != 0:
-    logging.fatal(
-        'n_devices[%d] should divide the first dimension of input_shape[%s]',
-        n_devices, input_shape)
-  if output_shape[0] % n_devices != 0:
-    logging.fatal(
-        'n_devices[%d] should divide the first dimension of output_shape[%s]',
-        n_devices, output_shape)
-
-  def random_minibatches():
+  def random_minibatches(n_devices):
     """Generate a stream of random mini-batches."""
+    assert input_range[0] % n_devices == 0
     if input_dtype in [np.float16, np.float32, np.float64]:
       rand = onp.random.uniform
     else:
@@ -241,25 +221,16 @@ def random_inputs(
       out = out.astype(output_dtype)
       yield inp, out
 
-  input_shape_without_batch = list(input_shape)[1:]
-  output_shape_without_batch = list(output_shape)[1:]
-  return Inputs(train_stream=random_minibatches,
-                train_eval_stream=random_minibatches,
-                eval_stream=random_minibatches,
-                input_shape=input_shape_without_batch,
-                input_dtype=input_dtype,
-                target_shape=output_shape_without_batch,
-                target_dtype=output_dtype)
+  return Inputs(random_minibatches)
 
 
-@gin.configurable(blacklist=['n_devices'])
+@gin.configurable()
 def sequence_copy_inputs(
-    n_devices, vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED,
+    vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED,
     train_lengths=gin.REQUIRED, eval_lengths=gin.REQUIRED, reverse=False):
   """Inputs for the sequence copy problem: 0w0w for w in [1..vocab_size-1]*.
 
   Args:
-    n_devices: how many devices to build the inputs for.
     vocab_size: how many symbols to use.
     batch_size: how large are the batches.
     train_lengths: lengths of w for training.
@@ -269,7 +240,6 @@ def sequence_copy_inputs(
   Returns:
     trax.inputs.Inputs
   """
-  assert batch_size % n_devices == 0
   def random_minibatches(length_list):
     """Generate a stream of random mini-batches."""
     while True:
@@ -287,20 +257,10 @@ def sequence_copy_inputs(
         x = onp.concatenate([zero, w, zero, w], axis=1)
       yield (x, x, loss_weights)  # Here inputs and targets are the same.
 
-  # If there's only one length, make the shape known.
-  example_length = None
-  if (len(train_lengths) == 1 and len(eval_lengths) == 1 and
-      train_lengths[0] == eval_lengths[0]):
-    example_length = train_lengths[0]
-
   return Inputs(
-      train_stream=lambda: random_minibatches(train_lengths),
-      train_eval_stream=lambda: random_minibatches(train_lengths),
-      eval_stream=lambda: random_minibatches(eval_lengths),
-      input_shape=(example_length,),
-      input_dtype=onp.int32,
-      target_shape=(example_length,),
-      target_dtype=onp.int32)
+      train_stream=lambda _: random_minibatches(train_lengths),
+      eval_stream=lambda _: random_minibatches(eval_lengths)
+  )
 
 
 def dataset_to_stream(dataset, input_name):
@@ -764,7 +724,7 @@ def shuffle_and_batch_data(dataset,
   dataset, shapes = preprocess_fun(dataset, training, shapes)
   dataset = dataset.shuffle(shuffle_buffer_size)
   dataset = batch_fn(dataset, training, shapes, target_names, n_devices)
-  return dataset.prefetch(2), shapes
+  return dataset.prefetch(2)
 
 
 def _train_and_eval_batches(dataset, data_dir, input_name, n_devices):
@@ -772,22 +732,14 @@ def _train_and_eval_batches(dataset, data_dir, input_name, n_devices):
   (train_data, eval_data, features_info, keys) = train_and_eval_dataset(
       dataset, data_dir)
   input_names, target_names = keys[0], keys[1]
-  train_batches, shape1 = shuffle_and_batch_data(
+  train_batches = shuffle_and_batch_data(
       train_data, target_names, features_info, training=True,
       n_devices=n_devices)
-  train_eval_batches, shape2 = shuffle_and_batch_data(  # Data for eval-on-train
+  train_eval_batches = shuffle_and_batch_data(  # Data for eval-on-train
       train_data, target_names, features_info, training=False,
       n_devices=n_devices)
-  eval_batches, shape3 = shuffle_and_batch_data(
+  eval_batches = shuffle_and_batch_data(
       eval_data, target_names, features_info, training=False,
       n_devices=n_devices)
-  assert shape1 == shape2 == shape3
-  shapes = shape1
   input_name = input_name or input_names[0]
-  input_shape = shapes[0][input_name]
-  input_dtype = features_info[input_name].dtype
-  target_shape = shapes[1]
-  target_dtype = features_info[target_names[0]].dtype
-  return (train_batches, train_eval_batches, eval_batches,
-          input_name, list(input_shape), input_dtype,
-          list(target_shape), target_dtype)
+  return (train_batches, train_eval_batches, eval_batches, input_name)

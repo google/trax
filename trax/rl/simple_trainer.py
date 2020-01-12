@@ -182,15 +182,10 @@ class SimPLe(base_trainer.BaseTrainer):
 
     (train_stream, eval_stream) = self._make_input_streams()
     # Ignore n_devices for now.
-    inputs = lambda _: trax_inputs.Inputs(  # pylint: disable=g-long-lambda
-        train_stream=(lambda: train_stream),
-        train_eval_stream=(lambda: train_stream),
-        eval_stream=(lambda: eval_stream),
-        input_shape=self._sim_env.model_input_shape,
-        input_dtype=self._sim_env.model_input_dtype,
-        # TODO(lukaszkaiser): correct those, they may differ from inputs.
-        target_shape=self._sim_env.model_input_shape,
-        target_dtype=self._sim_env.model_input_dtype)
+    inputs = trax_inputs.Inputs(
+        train_stream=(lambda _: train_stream),
+        eval_stream=(lambda _: eval_stream)
+    )
 
     if self._simple_epoch == 0:
       train_steps = self._n_model_initial_train_steps

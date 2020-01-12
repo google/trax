@@ -95,8 +95,10 @@ class Trainer(object):
     self._mask_id = mask_id
     self._metrics_dict = metrics if metrics is not None else _DEFAULT_METRICS
     loss_fn = loss_fn(has_weights=has_weights, mask_id=mask_id)
-    inputs = inputs(self._n_devices)
+    # Inputs is either an Inputs instance or a function that returns it.
     self._inputs = inputs
+    if callable(inputs):  # If we pass a function, e.g., through gin, call it.
+      self._inputs = inputs()
 
     # Initialize the learning rate to a dummy value. It will be set in reset().
     opt = optimizer(learning_rate=0.0)
@@ -108,16 +110,16 @@ class Trainer(object):
     # Setup state.
     rng, init_rng = jax_random.split(rng)
     self._rngs = np.stack(jax_random.split(rng, self._n_devices))
-    first_shape = inputs.input_shape[0]
+    first_shape = self._inputs.input_shape[0]
     # If the inputs are a tuple/list, add [None] (batch) to each element.
     if isinstance(first_shape, (list, tuple)):
       model_input_shape = tuple(
-          tuple([None] + list(shape)) for shape in inputs.input_shape)
+          tuple([None] + list(shape)) for shape in self._inputs.input_shape)
       model_target_shape = tuple(
-          tuple([None] + list(shape)) for shape in inputs.target_shape)
+          tuple([None] + list(shape)) for shape in self._inputs.target_shape)
     else:  # Otherwise just add [None] to the input shape.
-      model_input_shape = tuple([None] + list(inputs.input_shape))
-      model_target_shape = tuple([None] + list(inputs.target_shape))
+      model_input_shape = tuple([None] + list(self._inputs.input_shape))
+      model_target_shape = tuple([None] + list(self._inputs.target_shape))
     # Change all None to 1 in input and target shape.
     model_input_shape = math.nested_map(lambda x: x or 1, model_input_shape)
     model_target_shape = math.nested_map(lambda x: x or 1,
@@ -255,11 +257,13 @@ class Trainer(object):
                                              enable=self._is_chief)
 
     # Reset the train and eval streams.
-    self._train_stream = self._inputs.train_stream()
+    self._train_stream = self._inputs.train_stream(self._n_devices)
     # TODO(lukaszkaiser): add an option to evaluate exactly on the full eval
     #   set by adding a padding and stopping the stream when too large.
-    self._eval_stream = _repeat_stream(self._inputs.eval_stream)
-    self._train_eval_stream = _repeat_stream(self._inputs.train_eval_stream)
+    self._eval_stream = _repeat_stream(
+        self._inputs.eval_stream, self._n_devices)
+    self._train_eval_stream = _repeat_stream(
+        self._inputs.train_eval_stream, self._n_devices)
 
     # Restore the training state.
     state = load_trainer_state(output_dir, init_checkpoint)
@@ -966,8 +970,8 @@ def _sizes(x):
   return math.nested_map(size, x)
 
 
-def _repeat_stream(stream):
+def _repeat_stream(stream, n_devices):
   """Repeat a stream indefinitely."""
   while True:
-    for example in stream():
+    for example in stream(n_devices):
       yield example

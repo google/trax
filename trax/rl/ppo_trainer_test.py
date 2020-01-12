@@ -164,22 +164,16 @@ class PpoTrainerTest(test.TestCase):
           )
       )
 
-    def inputs(n_devices):
-      del n_devices
-      stream = itertools.repeat(
-          (np.zeros(history_shape), np.zeros(action_shape, dtype=np.int32),
-           np.zeros(obs_shape), np.zeros(reward_shape))
-      )
-      inp = trax_inputs.Inputs(
-          train_stream=lambda: stream,
-          train_eval_stream=lambda: stream,
-          eval_stream=lambda: stream
-      )
-      inp._input_shape = (history_shape[1:], action_shape[1:])
-      inp._input_dtype = (np.float32, np.int32)
-      inp._target_shape = (obs_shape[1:], reward_shape[1:])
-      inp._target_dtype = (np.float32, np.float32)
-      return inp
+    stream = itertools.repeat(
+        (np.zeros(history_shape), np.zeros(action_shape, dtype=np.int32),
+         np.zeros(obs_shape), np.zeros(reward_shape))
+    )
+    inp = trax_inputs.Inputs(lambda _: stream)
+    inp._input_shape = (history_shape[1:], action_shape[1:])
+    inp._input_dtype = (np.float32, np.int32)
+    inp._target_shape = (obs_shape[1:], reward_shape[1:])
+    inp._target_dtype = (np.float32, np.float32)
+    inputs = inp
 
     def loss(mask_id=None, has_weights=False):
       """Cross-entropy loss as scalar compatible with Trax masking."""

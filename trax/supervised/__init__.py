@@ -17,6 +17,6 @@
 
 from trax.supervised import inputs
 from trax.supervised import trainer_lib
+from trax.supervised.inputs import Inputs
 from trax.supervised.trainer_lib import train
 from trax.supervised.trainer_lib import Trainer
-
