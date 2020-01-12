@@ -30,7 +30,7 @@ import numpy as np
 
 from tensor2tensor.envs import trajectory
 from tensorflow import test
-from tensorflow.io import gfile
+from tensorflow.compat.v1.io import gfile
 from trax import math
 from trax import utils
 from trax.layers import base

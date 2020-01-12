@@ -146,8 +146,8 @@ def download_and_prepare(dataset_name, data_dir):
     if dataset_name.startswith('t2t_'):
       # Download and run dataset generator for T2T problem.
       data_dir = os.path.join(data_dir, dataset_name)
-      tf.gfile.MakeDirs(data_dir)
-      tf.gfile.MakeDirs(dl_dir)
+      tf.compat.v1.gfile.MakeDirs(data_dir)
+      tf.compat.v1.gfile.MakeDirs(dl_dir)
       t2t_problems.problem(
           dataset_name[len('t2t_'):]).generate_data(data_dir, dl_dir)
     else:

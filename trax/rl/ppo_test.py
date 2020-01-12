@@ -28,7 +28,7 @@ import jax
 from jax import random as jax_random
 import numpy as np
 from tensorflow import test
-from tensorflow.io import gfile
+from tensorflow.compat.v1.io import gfile
 from trax import layers
 from trax import models
 from trax.rl import ppo

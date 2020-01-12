@@ -25,7 +25,7 @@ import os
 import gym
 
 from tensor2tensor.envs import env_problem_utils
-from tensorflow.io import gfile
+from tensorflow.compat.v1.io import gfile
 from trax.rl import online_tune
 from trax.rl import ppo_trainer
 

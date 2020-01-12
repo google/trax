@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 from tensorflow import test
-from tensorflow.io import gfile
+from tensorflow.compat.v1.io import gfile
 from trax.rl import ppo
 from trax.rl.envs import async_trajectory_collector_lib as async_lib
 

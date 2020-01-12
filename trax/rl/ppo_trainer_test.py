@@ -32,7 +32,7 @@ import numpy as np
 from tensor2tensor.envs import gym_env_problem
 from tensor2tensor.rl import gym_utils
 from tensorflow import test
-from tensorflow.io import gfile
+from tensorflow.compat.v1.io import gfile
 from trax import layers
 from trax import learning_rate as lr
 from trax import models

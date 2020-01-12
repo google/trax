@@ -28,7 +28,7 @@ import jax
 import numpy as onp
 import six
 
-from tensorflow.io import gfile
+from tensorflow.compat.v1.io import gfile
 from trax import math
 from trax.math import nested_map
 from trax.math import numpy as np

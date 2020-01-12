@@ -23,7 +23,7 @@ import functools
 
 import numpy as np
 from tensorflow import test
-from tensorflow.io import gfile
+from tensorflow.compat.v1.io import gfile
 from trax import models
 from trax import optimizers
 from trax.rl import online_tune
