@@ -252,7 +252,12 @@ class Trainer(object):
       init_checkpoint: Initial checkpoint to use (default $output_dir/model.pkl)
     """
     self._output_dir = output_dir
-    tf.io.gfile.makedirs(output_dir)
+    if output_dir is not None:
+      tf.io.gfile.makedirs(output_dir)
+    else:
+      assert not self._should_save_checkpoints
+      assert not self._should_write_summaries
+
     # Create summary writers and history.
     if self._should_write_summaries:
       self._train_sw = jaxboard.SummaryWriter(os.path.join(output_dir, 'train'),
@@ -407,6 +412,7 @@ class Trainer(object):
     self._lr_fn = self._lr_schedule(self._history)
 
   def save_gin(self):
+    assert self._output_dir is not None
     config_path = os.path.join(self._output_dir, 'config.gin')
     config_str = gin.operative_config_str()
     with tf.io.gfile.GFile(config_path, 'w') as f:
