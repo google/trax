@@ -27,7 +27,7 @@ from trax.models import neural_gpu
 from trax.models import resnet
 from trax.models import rnn
 from trax.models import transformer
-from trax.models.research import reformer
+from trax.models.reformer import reformer
 from trax.models.research import skipping_transformer
 
 if six.PY3:

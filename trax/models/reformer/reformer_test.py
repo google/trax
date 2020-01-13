@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for Transformer-Revnet models."""
+"""Tests for Reformer models."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -27,7 +27,7 @@ import numpy as onp
 from trax import layers as tl
 from trax import math
 from trax.math import numpy as np
-from trax.models.research import reformer
+from trax.models.reformer import reformer
 from trax.shapes import ShapeDtype
 
 
