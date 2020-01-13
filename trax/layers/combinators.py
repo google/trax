@@ -375,18 +375,35 @@ class Scan(base.Layer):
     n_carry = self._n_carry
     def scannable_fn(x, carry_and_state):  # pylint: disable=invalid-name
       carry, state = carry_and_state
+      x_and_carry = x + carry if n_carry > 0 else x
       res, new_state = self.sublayer.forward_with_state(
-          x + carry, weights=weights, state=state, **kwargs)
-      return (res[:-n_carry], (res[-n_carry:], new_state))
+          x_and_carry, weights=weights, state=state, **kwargs)
+      if n_carry > 0:
+        return (res[:-n_carry], (res[-n_carry:], new_state))
+      else:
+        return (res, ([], new_state))
 
-    xs = inputs[:-n_carry]  # Split input stack into inputs and carry.
-    init = (inputs[-n_carry:], state)
+    if n_carry > 0:
+      xs = inputs[:-n_carry]  # Split input stack into inputs and carry.
+      init = (inputs[-n_carry:], state)
+    else:
+      xs, init = inputs, ([], state)
     ys, (carry, new_state) = math.scan(scannable_fn, xs, init,
                                        axis=self._axis)
-    return ys + carry, new_state  # Put outputs and carry back on stack.
+    res = ys + carry if n_carry > 0 else ys
+    return res, new_state  # Put outputs and carry back on stack.
 
   def new_weights_and_state(self, input_signature):
     n_carry = self._n_carry
+    if n_carry == 0:
+      if isinstance(input_signature, (list, tuple)):
+        layer_sig = [ShapeDtype(_shape_without_axis(x, self._axis), x.dtype)
+                     for x in input_signature]
+        layer_sig = tuple(layer_sig)
+      else:
+        layer_sig = ShapeDtype(_shape_without_axis(input_signature, self._axis),
+                               input_signature.dtype)
+      return self.sublayer.new_weights_and_state(layer_sig)
     xs = input_signature[:-n_carry]
     init = input_signature[-n_carry:]
     xs_slices = [ShapeDtype(_shape_without_axis(x, self._axis), x.dtype)

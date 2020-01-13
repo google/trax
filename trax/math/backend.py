@@ -148,17 +148,6 @@ class NumpyBackend(object):
 numpy = NumpyBackend()
 
 
-# Helpers and the accelerate function.
-
-
-def accelerate(f, n_devices):
-  """JITed version of f running on n_devices."""
-  if n_devices == 1:
-    return jit(f)
-
-  return pmap(f, axis_name='batch')
-
-
 override_backend_name = None
 
 

@@ -117,8 +117,14 @@ class TraxTest(test.TestCase, parameterized.TestCase):
 
       # Predict with final weights
       inputs = inputs.train_stream(1)
-      model = layers.Serial(model_fn())
-      model(next(inputs)[0], weights=state.opt_state.weights)
+      model = model_fn()
+      weights = state.opt_state.weights[0]
+      state = state.model_state[0]
+      if xla_bridge.device_count() > 1:
+        unreplicate = lambda x: x[0]
+        weights = math.nested_map(unreplicate, weights)
+        state = math.nested_map(unreplicate, state)
+      model(next(inputs)[0], weights=weights, state=state)
 
   @parameterized.parameters(BACKENDS)
   def test_train_eval_predict(self, backend_name):

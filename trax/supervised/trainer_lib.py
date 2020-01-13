@@ -567,15 +567,7 @@ class Trainer(object):
 
   def _for_n_devices(self, x):
     """Replicates/broadcasts `x` for n devices if `self.n_devicess > 1`."""
-    n = self.n_devices
-    def f(x):
-      if n > 1 and math.backend_name() == 'jax':
-        return _multi_device_put(x)
-      elif n > 1:
-        return np.broadcast_to(x, (n,) + x.shape)
-      else:
-        return x
-    return math.nested_map(f, x)
+    return tl.for_n_devices(x, self.n_devices)  # pylint: disable=protected-access
 
 
 @gin.configurable(blacklist=['output_dir'])
@@ -726,20 +718,7 @@ def _jit_predict_fn(model_predict, metric_fn, n_devices, jit=True):
   if not jit:
     return model_predict
 
-  model_predict = math.accelerate(model_predict, n_devices)
-  if n_devices == 1:
-    return model_predict
-
-  def predict(x, weights, state, rng):
-    """Predict function jited and parallelized as requested."""
-    res, state = _combine_devices(model_predict(
-        _reshape_by_device(x, n_devices),
-        weights,
-        state,
-        np.stack(jax_random.split(rng, n_devices))))
-    return math.nested_map(lambda y: np.mean(y, axis=0), res), state
-
-  return predict
+  return tl.jit_forward(model_predict, n_devices)
 
 
 @gin.configurable
@@ -908,69 +887,9 @@ def _stack_inputs_targets_and_get_predictions(inputs_and_targets):
   return tuple(model_inp), get_pred
 
 
-def _multi_device_put(x, devices=None):
-  """Memory efficient multi-device replication / broadcast in JAX.
-
-  JAX uses a ShardedDeviceArray class that holds a list of device buffers
-  on separate devices for use with pmap'd computations.  Sharded arrays
-  are explicitly used to eliminate unnecessary inter-device transfer of
-  memory buffers between use in pmap'd computations.  The JAX API currently
-  does not have a multi-device 'put' function that copies a buffer onto
-  N devices in a memory-efficient fashion, so we implement our own here.
-
-  Args:
-    x: jax DeviceArray or numpy ndarray to be replicated.
-    devices: a jax.devices() list or subset thereof of devices to
-      replicate onto.  Should match the list passed to any pmaps
-      ingesting the replicated array.
-
-  Returns:
-    A ShardedDeviceArray with
-    dtype = x.dtype and shape = (n_devices,) + x.shape
-    that's backed by replicated device_buffers on each local device.
-  """
-  # Convert _FilledConstants that don't have device_buffer, etc.
-  if type(x) != jax.xla.DeviceArray:  # pylint: disable=unidiomatic-typecheck
-    x = np.array(x)
-  # Calculate the abstract shape of the replicated array.
-  if not devices:
-    devices = jax.local_devices()
-  n_devices = len(devices)
-  x_aval = jax.xla.abstractify(x)
-  broadcast_x_aval = jax.abstract_arrays.ShapedArray(
-      (n_devices,) + x_aval.shape,
-      x_aval.dtype)
-  # Create copies of the underlying device buffer for each local device.
-  broadcast_buffers = [
-      jax.interpreters.xla.device_put(x, dv)
-      for dv in devices
-  ]
-  return jax.pxla.ShardedDeviceArray(broadcast_x_aval, broadcast_buffers)
-
-
 def _reshape_by_device(x, n_devices):
   """Reshapes possibly nested x into a shape (n_devices, ...)."""
-  def f(x):
-    x_shape = list(x.shape)
-    batch_size = x_shape[0]
-    batch_size_per_device = batch_size // n_devices
-    if batch_size_per_device * n_devices != batch_size:
-      raise ValueError(
-          'We require that n_devices[%d] divides batch_size[%d] evenly.' %
-          (n_devices, batch_size))
-    new_shape_prefix = [n_devices, batch_size_per_device]
-    return math.numpy.reshape(x, new_shape_prefix + x_shape[1:])
-  return math.nested_map(f, x)
-
-
-def _combine_devices(x_tuple):
-  """Combine multi-device tensors into a single batch."""
-  def f(x):
-    if len(x.shape) < 2:
-      return x  # No extra batch dimension: use devices as batch, so return.
-    batch_size = x.shape[0] * x.shape[1]
-    return math.numpy.reshape(x, [batch_size] + list(x.shape[2:]))
-  return math.nested_map(f, x_tuple)
+  return tl.reshape_by_device(x, n_devices)  # pylint: disable=protected-access
 
 
 def _nested_reduce(f, x):

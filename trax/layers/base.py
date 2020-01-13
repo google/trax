@@ -89,12 +89,13 @@ class Layer(object):
   outputs are spliced back into the stack.
   """
 
-  def __init__(self, n_in=1, n_out=1):
+  def __init__(self, n_in=1, n_out=1, n_accelerators=0):
     """Creates a partially initialized, unconnected layer instance.
 
     Args:
       n_in: Number of inputs expected by this layer.
       n_out: Number of outputs promised by this layer.
+      n_accelerators: Accelerate this layer by default on that many devices.
     """
     self._n_in = n_in
     self._n_out = n_out
@@ -103,6 +104,7 @@ class Layer(object):
     self._rng = None
     self._weights = EMPTY_WEIGHTS  # cached weights
     self._state = EMPTY_STATE
+    self._n_accelerators = n_accelerators
     # record root call site for custom error messages:
     frame = _find_frame(inspect.currentframe())
     # Turns out that frame can mutate in time, so we just copy what we need.
@@ -148,8 +150,16 @@ class Layer(object):
     """
     weights = kwargs.pop('weights', self.weights)
     state = kwargs.pop('state', self.state)
-    rng = kwargs.pop('rng', None)
-    outputs, _ = self._forward_internal(x, weights, state, rng)
+    rng = kwargs.pop('rng', self._rng)
+    rng = math.random.get_prng(0) if rng is None else rng
+    forward = self._forward_internal
+    n_accelerators = kwargs.pop('n_accelerators', self._n_accelerators)
+    if n_accelerators:
+      weights = for_n_devices(weights, n_accelerators)
+      state = for_n_devices(state, n_accelerators)
+      forward = jit_forward(forward, n_accelerators)
+    outputs, new_state = forward(x, weights, state, rng)
+    self.state = new_state
     return outputs
 
   def forward(self, inputs, weights):
@@ -313,7 +323,7 @@ class Layer(object):
       raise LayerError(name, 'init', self._caller,
                        input_signature, trace)
 
-  def init_from_file(self, file_name):
+  def init_from_file(self, file_name, weights_only=False):
     """Initializes this layer and its sublayers from a file.
 
     We assume that the file is a pickled dictionary that contains the fields
@@ -323,11 +333,13 @@ class Layer(object):
 
     Args:
       file_name: the name of the file to initialize from.
+      weights_only: if True, initialize only the weights, not state.
     """
     with gfile.GFile(file_name, 'rb') as f:
       dictionary = pickle.load(f)
     self.weights = dictionary['weights']
-    self.state = dictionary['state']
+    if not weights_only:
+      self.state = dictionary['state']
 
   def new_rng(self):
     """Returns a new single-use random number generator (JAX PRNG key)."""
@@ -800,3 +812,106 @@ def _shapes(x):
     except Exception:  # pylint: disable=broad-except
       return ()
   return tuple(nested_map(shape, x))
+
+
+def jit_forward(forward, n_devices):
+  """Returns a JIT-compiled forward function running on n_devices."""
+  model_predict = _accelerate(forward, n_devices)
+  if n_devices == 1:
+    return model_predict
+
+  def predict(x, weights, state, rng):
+    """Predict function jited and parallelized as requested."""
+    res, state = _combine_devices(model_predict(
+        reshape_by_device(x, n_devices),
+        weights,
+        state,
+        np.stack(math.random.split(rng, n_devices))))
+    return math.nested_map(lambda y: np.mean(y, axis=0), res), state
+
+  return predict
+
+
+def _combine_devices(x_tuple):
+  """Combine multi-device tensors into a single batch."""
+  def f(x):
+    if len(x.shape) < 2:
+      return x  # No extra batch dimension: use devices as batch, so return.
+    batch_size = x.shape[0] * x.shape[1]
+    return math.numpy.reshape(x, [batch_size] + list(x.shape[2:]))
+  return math.nested_map(f, x_tuple)
+
+
+def _accelerate(f, n_devices):
+  """JITed version of f running on n_devices."""
+  if n_devices == 1:
+    return math.jit(f)
+
+  return math.pmap(f, axis_name='batch')
+
+
+def reshape_by_device(x, n_devices):
+  """Reshapes possibly nested x into a shape (n_devices, ...)."""
+  def f(x):
+    x_shape = list(x.shape)
+    batch_size = x_shape[0]
+    batch_size_per_device = batch_size // n_devices
+    if batch_size_per_device * n_devices != batch_size:
+      raise ValueError(
+          'We require that n_devices[%d] divides batch_size[%d] evenly.' %
+          (n_devices, batch_size))
+    new_shape_prefix = [n_devices, batch_size_per_device]
+    return math.numpy.reshape(x, new_shape_prefix + x_shape[1:])
+  return math.nested_map(f, x)
+
+
+def for_n_devices(x, n_devices):
+  """Replicates/broadcasts `x` for n_devices."""
+  def f(x):
+    if n_devices > 1 and math.backend_name() == 'jax':
+      return _multi_device_put(x)
+    elif n_devices > 1:
+      return np.broadcast_to(x, (n_devices,) + x.shape)
+    else:
+      return x
+  return math.nested_map(f, x)
+
+
+def _multi_device_put(x, devices=None):
+  """Memory efficient multi-device replication / broadcast in JAX.
+
+  JAX uses a ShardedDeviceArray class that holds a list of device buffers
+  on separate devices for use with pmap'd computations.  Sharded arrays
+  are explicitly used to eliminate unnecessary inter-device transfer of
+  memory buffers between use in pmap'd computations.  The JAX API currently
+  does not have a multi-device 'put' function that copies a buffer onto
+  N devices in a memory-efficient fashion, so we implement our own here.
+
+  Args:
+    x: jax DeviceArray or numpy ndarray to be replicated.
+    devices: a jax.devices() list or subset thereof of devices to
+      replicate onto.  Should match the list passed to any pmaps
+      ingesting the replicated array.
+
+  Returns:
+    A ShardedDeviceArray with
+    dtype = x.dtype and shape = (n_devices,) + x.shape
+    that's backed by replicated device_buffers on each local device.
+  """
+  # Convert _FilledConstants that don't have device_buffer, etc.
+  if type(x) != jax.xla.DeviceArray:  # pylint: disable=unidiomatic-typecheck
+    x = np.array(x)
+  # Calculate the abstract shape of the replicated array.
+  if not devices:
+    devices = jax.local_devices()
+  n_devices = len(devices)
+  x_aval = jax.xla.abstractify(x)
+  broadcast_x_aval = jax.abstract_arrays.ShapedArray(
+      (n_devices,) + x_aval.shape,
+      x_aval.dtype)
+  # Create copies of the underlying device buffer for each local device.
+  broadcast_buffers = [
+      jax.interpreters.xla.device_put(x, dv)
+      for dv in devices
+  ]
+  return jax.pxla.ShardedDeviceArray(broadcast_x_aval, broadcast_buffers)

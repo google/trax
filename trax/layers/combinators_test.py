@@ -210,6 +210,19 @@ class CombinatorLayerTest(absltest.TestCase):
     output_shape = base.check_shape_agreement(scan, input_signature)
     self.assertEqual(output_shape, expected_shape)
 
+  def test_scan_nocarry(self):
+    @base.layer(n_in=1, n_out=1)
+    def addone(x, **unused_kwargs):
+      return x + 1
+    scan_layer = cb.Scan(addone(), n_carry=0)  # pylint: disable=no-value-for-parameter
+    input_signature = ShapeDtype((3, 2, 7))
+    expected_shape = (3, 2, 7)
+    output_shape = base.check_shape_agreement(scan_layer, input_signature)
+    self.assertEqual(output_shape, expected_shape)
+    inp = np.array([1, 2, 3])
+    o = scan_layer(inp)
+    self.assertEqual([int(x) for x in o], [2, 3, 4])
+
   def test_input_signatures_serial(self):
     layer = cb.Serial(divide_by(2.0), divide_by(5.0))
     self.assertIsNone(layer.input_signature)
