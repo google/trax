@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import contextlib
 import functools
+import os
 import tempfile
 from absl.testing import parameterized
 
@@ -154,10 +155,11 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(len(train_acc), len(eval_acc))
       self.assertLen(eval_acc, 2)
 
-      # Predict with final weights
+      # Predict with weights loaded from file.
       inputs = inputs.train_stream(1)
-      model = layers.Serial(model_fn())
-      model(next(inputs)[0], weights=state.opt_state.weights)
+      model = model_fn()
+      model.init_from_file(os.path.join(output_dir, 'model.pkl'))
+      model(next(inputs)[0])
 
   @parameterized.parameters(BACKENDS)
   def test_train_restart(self, backend_name):

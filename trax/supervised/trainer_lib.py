@@ -218,7 +218,11 @@ class Trainer(object):
   @property
   def model_weights(self):
     # Currently we need to pick [0] as we ignore loss weights (empty).
-    return self._opt_state.weights[0]
+    weights = self._opt_state.weights[0]
+    if self.n_devices > 1:
+      unreplicate = lambda x: x[0]
+      weights = math.nested_map(unreplicate, weights)
+    return weights
 
   @property
   def state(self):
@@ -816,11 +820,14 @@ def make_trainer_state_dict(step,
 
   return {
       'step': step,
-      'weights': opt_state.weights,
+      'weights': opt_state.weights[0],
+      'loss_weights': opt_state.weights[1],
       'slots': opt_state.slots,
       'opt_params': opt_state.opt_params,
       'history': history,
-      'model_state': model_state,
+      'state': model_state[0],
+      'loss_state': model_state[1],
+      'version_timestamp': 'Jan-13-2020'  # To update in the future if needed.
   }
 
 
@@ -830,9 +837,18 @@ def trainer_state_from_dict(trainer_state_dict):
   # TrainerState.
   step = trainer_state_dict['step']
   history = trainer_state_dict['history']
-  model_state = trainer_state_dict['model_state']
+  # TODO(lukaszkaiser): remove the first branch after everyone ports to 'state'.
+  if 'model_state' in trainer_state_dict:
+    model_state = trainer_state_dict['model_state'],
+  else:
+    model_state = (trainer_state_dict['state'],
+                   trainer_state_dict['loss_state'])
+  weights = trainer_state_dict['weights']
+  # TODO(lukaszkaiser): remove the next 2 lines after 'loss_weights' is in use.
+  if 'loss_weights' in trainer_state_dict:
+    weights = (weights, trainer_state_dict['loss_weights'])
   opt_state = OptState(
-      weights=trainer_state_dict['weights'],
+      weights=weights,
       slots=trainer_state_dict['slots'],
       opt_params=trainer_state_dict['opt_params'])
   return TrainerState(step=step, opt_state=OptState(*opt_state),
