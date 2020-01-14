@@ -22,17 +22,22 @@ from __future__ import print_function
 from trax import layers as tl
 
 
-def MLP(n_hidden_layers=2,
-        d_hidden=512,
+def MLP(d_hidden=512,
+        n_hidden_layers=2,
         activation_fn=tl.Relu,
         n_output_classes=10,
         mode='train'):
   """A multi-layer feedforward (perceptron) network."""
   del mode
 
+  # Define a function rather than a variable, so that multiple copies will
+  # each be their own object with their own weights.
+  def DensePlusActivation():
+    return [tl.Dense(d_hidden), activation_fn()]
+
   return tl.Serial(
       tl.Flatten(),
-      [[tl.Dense(d_hidden), activation_fn()] for _ in range(n_hidden_layers)],
+      [DensePlusActivation() for _ in range(n_hidden_layers)],
       tl.Dense(n_output_classes),
       tl.LogSoftmax(),
   )
