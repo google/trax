@@ -72,10 +72,6 @@ flags.DEFINE_boolean('parallelize_envs', False,
 flags.DEFINE_string('trajectory_dump_dir', '',
                     'Directory to dump trajectories to.')
 
-# TODO(afrozm): Find a better way to do these configurations.
-flags.DEFINE_string('train_server_bns', '', "Train Server's BNS.")
-flags.DEFINE_string('eval_server_bns', '', "Eval Server's BNS.")
-
 flags.DEFINE_bool('async_mode', False, 'Async mode.')
 
 
