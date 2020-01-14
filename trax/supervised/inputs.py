@@ -170,14 +170,15 @@ def inputs(dataset_name, data_dir=None, input_name=None):
   """
   data_dir = download_and_prepare(dataset_name, data_dir)
 
-  cache = []
+  cache = {}
   def stream(n_devices, which):
     """Create the stream, cache TF streams if needed."""
-    if not cache:
-      cache.append(_train_and_eval_batches(
-          dataset_name, data_dir, input_name, n_devices))
+    if n_devices not in cache:
+      cache[n_devices] = _train_and_eval_batches(
+          dataset_name, data_dir, input_name, n_devices)
 
-    (train_batches, train_eval_batches, eval_batches, input_name_c) = cache[0]
+    (train_batches, train_eval_batches, eval_batches,
+     input_name_c) = cache[n_devices]
     dataset = train_batches
     if which == 'eval':
       dataset = eval_batches

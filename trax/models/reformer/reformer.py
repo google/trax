@@ -132,6 +132,24 @@ def FeedForward(d_model, d_ff, dropout, activation, mode):
   ]
 
 
+def ChunkedFeedForward(d_model, d_ff, dropout, activation, chunk_size, mode):
+  """Chunked feed-forward block with layer normalization at start."""
+  ff = FeedForward(d_model, d_ff, dropout, activation, mode)
+  if chunk_size < 1:
+    return ff
+  def reshape_to_chunks(x):
+    batch_times_length = x.shape[0] * x.shape[1]
+    assert batch_times_length % chunk_size == 0
+    n_chunks = batch_times_length // chunk_size
+    return np.reshape(x, [n_chunks, 1, chunk_size] + list(x.shape[2:]))
+  return [
+      tl.Dup(),  # Just to have shape for later after scan.
+      tl.Fn(reshape_to_chunks, n_out=1),
+      tl.Scan(tl.Serial(ff), axis=0, n_carry=0),
+      tl.Fn(lambda x, y: np.reshape(x, y.shape))
+  ]
+
+
 class SplitForOutput(tl.ReversibleLayer):
   """Splits activations into sections (for use right before the output layer).
 
@@ -417,7 +435,8 @@ class ReversibleAttentionHalfResidual(tl.ReversibleLayer, tl.Serial):
 
 def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
                  n_heads, n_attention_chunks, attention_type,
-                 dropout, share_qk, ff_activation, ff_use_sru, mode):
+                 dropout, share_qk, ff_activation, ff_use_sru, ff_chunk_size,
+                 mode):
   """Reversible transformer decoder layer.
 
   Args:
@@ -432,6 +451,7 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
     share_qk: string, whether to share queries and keys
     ff_activation: the non-linearity in feed-forward layer
     ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
+    ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
     mode: str: 'train' or 'eval'
 
   Returns:
@@ -473,7 +493,8 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
   if ff_use_sru:
     feed_forward = [tl.SRU(d_model) for _ in range(ff_use_sru)]
   else:
-    feed_forward = [FeedForward(d_model, d_ff, dropout, ff_activation, mode)]
+    feed_forward = [ChunkedFeedForward(d_model, d_ff, dropout, ff_activation,
+                                       ff_chunk_size, mode)]
 
   return [
       ReversibleAttentionHalfResidual(pre_attention, attention, post_attention),
@@ -500,6 +521,7 @@ def ReformerLM(vocab_size,
                d_axial_pos_embs=None,
                ff_activation=tl.FastGelu,
                ff_use_sru=0,
+               ff_chunk_size=0,
                mode='train'):
   """Reversible transformer language model (only uses a decoder, no encoder).
 
@@ -523,6 +545,7 @@ def ReformerLM(vocab_size,
       Tuple length must match axial_pos_shape, and values must sum to d_model.
     ff_activation: the non-linearity in feed-forward layer
     ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
+    ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
     mode: str: 'train', 'eval', or 'predict'
 
   Returns:
@@ -567,6 +590,7 @@ def ReformerLM(vocab_size,
                                          tl.LSHCausalAttention)),
         ff_activation=ff_activation,
         ff_use_sru=ff_use_sru,
+        ff_chunk_size=ff_chunk_size,
         mode=mode)
     decoder_blocks.append(decoder_block)
 
@@ -607,6 +631,7 @@ def ReformerShortenLM(vocab_size,
                       d_axial_pos_embs=None,
                       ff_activation=tl.FastGelu,
                       ff_use_sru=0,
+                      ff_chunk_size=0,
                       mode='train'):
   """Reversible transformer language model with shortening.
 
@@ -639,6 +664,7 @@ def ReformerShortenLM(vocab_size,
       Tuple length must match axial_pos_shape, values must sum to d_embedding.
     ff_activation: the non-linearity in feed-forward layer
     ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
+    ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
     mode: str: 'train' or 'eval'
 
   Returns:
@@ -679,6 +705,7 @@ def ReformerShortenLM(vocab_size,
                                          tl.LSHCausalAttention)),
         ff_activation=ff_activation,
         ff_use_sru=ff_use_sru,
+        ff_chunk_size=ff_chunk_size,
         mode=mode)
     decoder_blocks.append(decoder_block)
 
