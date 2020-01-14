@@ -26,40 +26,35 @@ from trax.math import numpy as np
 
 
 @base.layer(n_in=2, n_out=1)
-def CrossEntropy(x, axis=-1, **kw):
-  del kw
-  prediction, target = x
+def CrossEntropy(inputs, axis=-1, **unused_kwargs):
+  prediction, target = inputs
   return np.sum(prediction * core.one_hot(target, prediction.shape[-1]),
                 axis=axis)
 
 
 @base.layer(n_in=2, n_out=1)
-def L2(x, axis=-1, **kw):
-  del kw
-  prediction, target = x
+def L2(inputs, axis=-1, **unused_kwargs):
+  prediction, target = inputs
   return np.sum((prediction - target)**2, axis=axis)
 
 
 @base.layer(n_in=2, n_out=1)
-def Accuracy(x, axis=-1, **kw):
-  del kw
-  prediction, target = x
+def Accuracy(inputs, axis=-1, **unused_kwargs):
+  prediction, target = inputs
   predicted_class = np.argmax(prediction, axis=axis)
   return np.equal(predicted_class, target)
 
 
 @base.layer()
-def WeightMask(target, mask_id=0, **kw):
-  del kw
+def WeightMask(target, mask_id=0, **unused_kwargs):
   if mask_id is None:
     return np.ones_like(target)
   return 1.0 - np.equal(target, mask_id).astype(np.float32)
 
 
 @base.layer(n_in=2, n_out=1)
-def WeightedMean(x, **kw):
-  del kw
-  metric, weights = x
+def WeightedMean(inputs, **unused_kwargs):
+  metric, weights = inputs
   weights_sum = np.sum(weights)
   return np.sum(metric * weights) / weights_sum
 
