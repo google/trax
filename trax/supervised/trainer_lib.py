@@ -824,7 +824,7 @@ def trainer_state_from_dict(trainer_state_dict):
   history = trainer_state_dict['history']
   # TODO(lukaszkaiser): remove the first branch after everyone ports to 'state'.
   if 'model_state' in trainer_state_dict:
-    model_state = trainer_state_dict['model_state'],
+    model_state = trainer_state_dict['model_state']
   else:
     model_state = (trainer_state_dict['state'],
                    trainer_state_dict['loss_state'])
