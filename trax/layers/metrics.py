@@ -19,6 +19,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import jax
+
+from trax import math
 from trax.layers import base
 from trax.layers import combinators as cb
 from trax.layers import core
@@ -28,8 +31,7 @@ from trax.math import numpy as np
 @base.layer(n_in=2, n_out=1)
 def CrossEntropy(inputs, axis=-1, **unused_kwargs):
   prediction, target = inputs
-  return np.sum(prediction * core.one_hot(target, prediction.shape[-1]),
-                axis=axis)
+  return np.sum(prediction * one_hot(target, prediction.shape[-1]), axis=axis)
 
 
 @base.layer(n_in=2, n_out=1)
@@ -130,3 +132,12 @@ def L2LossScalar(mask_id=None, has_weights=False):
 def AccuracyScalar(mask_id=None, has_weights=False):
   """Accuracy as scalar compatible with Trax masking."""
   return MaskedScalar(Accuracy(), mask_id=mask_id, has_weights=has_weights)  # pylint: disable=no-value-for-parameter
+
+
+def one_hot(x, n_categories, dtype=np.float32):  # pylint: disable=invalid-name
+  """Makes a one-hot array (n+1 dims) from an int-categorical array (n dims)."""
+  indices_less_than_n = np.arange(n_categories)
+  if math.backend_name() == 'jax':
+    # Work around a jax broadcasting issue.
+    indices_less_than_n = jax.lax.tie_in(x, indices_less_than_n)
+  return np.array(x[..., np.newaxis] == indices_less_than_n, dtype)

@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import math
-import jax
 import numpy as onp
 
 from trax import math
@@ -201,15 +200,6 @@ def Softplus(x, **unused_kwargs):
 @base.layer()
 def ToFloat(x, **unused_kwargs):
   return x.astype(onp.float32)
-
-
-def one_hot(x, size, dtype=np.float32):  # pylint: disable=invalid-name
-  """Make a n+1 dim one-hot array from n dim int-categorical array."""
-  arange_size = np.arange(size)
-  if math.backend_name() == 'jax':
-    # Work around a jax broadcasting issue.
-    arange_size = jax.lax.tie_in(x, arange_size)
-  return np.array(x[..., np.newaxis] == arange_size, dtype)
 
 
 @base.layer()
