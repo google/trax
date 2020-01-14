@@ -169,5 +169,21 @@ class BaseLayerTest(absltest.TestCase):
     self.assertEqual(grad.shape, (9, 17))  # Gradient for each input.
     self.assertEqual(sum(sum(grad)), sum(sum(random_input)))  # Same as input.
 
+  def test_accelerated_forward_called_twice(self):
+
+    class Constant(base.Layer):
+
+      def new_weights(self, input_signature):
+        return 123
+
+      def forward(self, inputs, weights, **kwargs):
+        return weights
+
+    layer = Constant()
+    layer.init(input_signature=ShapeDtype(()))
+    layer(0, n_accelerators=1)
+    layer(0, n_accelerators=1)
+
+
 if __name__ == '__main__':
   absltest.main()

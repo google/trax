@@ -437,16 +437,12 @@ class Layer(object):
       # `weights == EMPTY_WEIGHTS`.
       if weights is EMPTY_WEIGHTS:  # pylint: disable=literal-comparison
         weights = self._weights
-      else:
-        # In this case, we're called for the first time: cache weights.
-        self._weights = weights
 
       if not self.has_backward:
         outputs, s = self.forward_with_state(
             x, weights=weights, state=state, rng=rng)
       else:
         outputs, s = self._do_custom_gradients(x, weights, state, rng=rng)
-      self._state = s
       return outputs, s
 
     except Exception:
