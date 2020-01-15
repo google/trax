@@ -50,15 +50,16 @@ def CrossEntropy(inputs, **unused_kwargs):
   return np.sum(y_hat * one_hot(target_category, y_hat.shape[-1]), axis=-1)
 
 
-def L2Loss(mask_id=None, has_weights=False):
+def L2Loss(id_to_mask=None, has_weights=False):
   """Returns a layer to computen L2 loss."""
-  return MaskedScalar(L2(), mask_id=mask_id, has_weights=has_weights)  # pylint: disable=no-value-for-parameter
+  return MaskedScalar(L2(), id_to_mask=id_to_mask, has_weights=has_weights)  # pylint: disable=no-value-for-parameter
 
 
-def CrossEntropyLoss(mask_id=None, has_weights=False):
+def CrossEntropyLoss(id_to_mask=None, has_weights=False):
   """Returns a layer to compute cross-entropy loss."""
   return cb.Serial(
-      MaskedScalar(CrossEntropy(), mask_id=mask_id, has_weights=has_weights),  # pylint: disable=no-value-for-parameter
+      MaskedScalar(
+          CrossEntropy(), id_to_mask=id_to_mask, has_weights=has_weights),  # pylint: disable=no-value-for-parameter
       base.Fn(lambda x: x * -1.0),
   )
 
@@ -66,27 +67,29 @@ def CrossEntropyLoss(mask_id=None, has_weights=False):
 NegLogPerplexityScalar = CrossEntropyLoss
 
 
-def SumOfWeights(mask_id=None, has_weights=False):
+def SumOfWeights(id_to_mask=None, has_weights=False):
   """Returns a layer to compute sum of weights of all non-masked elements."""
   multiply_by_weights = cb.Multiply() if has_weights else []
   return cb.Serial(
       cb.Drop(),  # Drop inputs.
-      WeightMask(mask_id=mask_id),  # pylint: disable=no-value-for-parameter
+      ElementMask(id_to_mask=id_to_mask),  # pylint: disable=no-value-for-parameter
       multiply_by_weights,
       core.Sum(axis=None)  # Sum all.
   )
 
 
-def AccuracyScalar(mask_id=None, has_weights=False):
+def AccuracyScalar(id_to_mask=None, has_weights=False):
   """Returns an accuracy scalar metric layer (with masking and weights)."""
-  return MaskedScalar(Accuracy(), mask_id=mask_id, has_weights=has_weights)  # pylint: disable=no-value-for-parameter
+  return MaskedScalar(
+      Accuracy(), id_to_mask=id_to_mask, has_weights=has_weights)  # pylint: disable=no-value-for-parameter
 
 
 @base.layer()
-def WeightMask(target, mask_id=0, **unused_kwargs):
-  if mask_id is None:
+def ElementMask(target, id_to_mask=0, **unused_kwargs):
+  """Returns a mask with zeros for elements that don't belong in metrics."""
+  if id_to_mask is None:
     return np.ones_like(target)
-  return 1.0 - np.equal(target, mask_id).astype(np.float32)
+  return 1.0 - np.equal(target, id_to_mask).astype(np.float32)
 
 
 @base.layer(n_in=2, n_out=1)
@@ -96,7 +99,7 @@ def WeightedMean(inputs, **unused_kwargs):
   return np.sum(metric * weights) / weights_sum
 
 
-def MaskedScalar(metric_layer, mask_id=None, has_weights=False):
+def MaskedScalar(metric_layer, id_to_mask=None, has_weights=False):
   """Metric as scalar compatible with Trax masking."""
   # Stack of (inputs, targets) --> (metric, weight-mask).
   metric_and_mask = [
@@ -106,7 +109,7 @@ def MaskedScalar(metric_layer, mask_id=None, has_weights=False):
       ),
       cb.Parallel(
           metric_layer,  # Metric: (inputs, targets) --> metric
-          WeightMask(mask_id=mask_id)  # pylint: disable=no-value-for-parameter
+          ElementMask(id_to_mask=id_to_mask)  # pylint: disable=no-value-for-parameter
       )
   ]
   if not has_weights:
@@ -116,7 +119,7 @@ def MaskedScalar(metric_layer, mask_id=None, has_weights=False):
       metric_and_mask,
       cb.Parallel(
           [],
-          cb.Multiply()  # Multiply given weights by mask_id weights
+          cb.Multiply()  # Multiply weights by masks
       ),
       WeightedMean()  # pylint: disable=no-value-for-parameter
   )

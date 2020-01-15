@@ -83,7 +83,7 @@ class Trainer(object):
                output_dir=None, random_seed=None, n_devices=None,
                checkpoints_at=None, should_save_checkpoints=True,
                should_write_summaries=True, has_weights=False,
-               nontrainable_param_map=None, mask_id=None, metrics=None):
+               nontrainable_param_map=None, id_to_mask=None, metrics=None):
 
     self._is_chief, self._n_devices, rng = (
         self._init_host_and_devices(n_devices, random_seed))
@@ -92,9 +92,9 @@ class Trainer(object):
     self._should_write_summaries = should_write_summaries
 
     self._has_weights = has_weights
-    self._mask_id = mask_id
+    self._id_to_mask = id_to_mask
     self._metrics_dict = metrics if metrics is not None else _DEFAULT_METRICS
-    loss_fn = loss_fn(has_weights=has_weights, mask_id=mask_id)
+    loss_fn = loss_fn(has_weights=has_weights, id_to_mask=id_to_mask)
     # Inputs is either an Inputs instance or a function that returns it.
     self._inputs = inputs
     if callable(inputs):  # If we pass a function, e.g., through gin, call it.
@@ -163,7 +163,7 @@ class Trainer(object):
     # Arrange and initialize metrics layers.
     self._metrics = list(sorted(self._metrics_dict.keys()))
     metrics_layers = [self._metrics_dict[m](has_weights=self._has_weights,
-                                            mask_id=self._mask_id)
+                                            id_to_mask=self._id_to_mask)
                       for m in self._metrics]
     metrics_in_parallel = tl.Branch(*metrics_layers)
     # TODO(lukaszkaiser): clean this up once layer API stabilizes.
@@ -587,7 +587,7 @@ def train(output_dir,
           save_backward_graph=False,
           has_weights=False,
           nontrainable_param_map=None,
-          mask_id=None,
+          id_to_mask=None,
           metrics=None):
   """Train the model on the inputs.
 
@@ -614,21 +614,21 @@ def train(output_dir,
     has_weights: bool, whether weights are included in the inputs.
     nontrainable_param_map: dict, mapping from model nontrainable parameter
       names to control names in PolicySchedule.
-    mask_id: id to mask out (None by default).
+    id_to_mask: id to mask out (None by default).
     metrics: optionally override the default metrics dictionary.
 
   Returns:
     trax.TrainerState
   """
   n_devices = num_devices()
-  # TODO(lukaszkaiser): remove has_weights and mask_id later (configure loss).
+  # TODO(lukaszkaiser): remove has_weights and id_to_mask (configure loss).
   trainer = trainer_class(model, loss_fn, optimizer, lr_schedule, inputs,
                           output_dir,
                           random_seed=random_seed, n_devices=n_devices,
                           checkpoints_at=checkpoints_at,
                           has_weights=has_weights,
                           nontrainable_param_map=nontrainable_param_map,
-                          metrics=metrics, mask_id=mask_id)
+                          metrics=metrics, id_to_mask=id_to_mask)
 
   epoch_steps = [steps]  # Only training if eval_frequency is 0 or None
   if eval_frequency and eval_steps > 0:

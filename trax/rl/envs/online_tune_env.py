@@ -80,7 +80,7 @@ class OnlineTuneEnv(gym.Env):
                # Same here.
                should_write_summaries=False,
                has_weights=False,
-               mask_id=None):
+               id_to_mask=None):
     if action_multipliers is None:
       action_multipliers = self.DEFAULT_ACTION_MULTIPLIERS
     self._model = model
@@ -98,7 +98,7 @@ class OnlineTuneEnv(gym.Env):
         should_write_summaries=should_write_summaries,
         nontrainable_param_map=nontrainable_param_map,
         has_weights=has_weights,
-        mask_id=mask_id,
+        id_to_mask=id_to_mask,
     )
     self._trainer = None
     self._action_multipliers = action_multipliers

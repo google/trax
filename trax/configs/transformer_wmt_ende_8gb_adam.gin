@@ -56,7 +56,7 @@ train.inputs = @trax.supervised.inputs.inputs
 train.model = @trax.models.Transformer
 train.steps = 500000
 train.optimizer = @trax.optimizers.Adam
-train.mask_id = 0
+train.id_to_mask = 0
 
 # Parameters for Transformer:
 # ==============================================================================

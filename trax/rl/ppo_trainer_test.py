@@ -175,15 +175,15 @@ class PpoTrainerTest(test.TestCase):
     inp._target_dtype = (np.float32, np.float32)
     inputs = inp
 
-    def loss(mask_id=None, has_weights=False):
+    def loss(id_to_mask=None, has_weights=False):
       """Cross-entropy loss as scalar compatible with Trax masking."""
       return layers.Serial(
           # Swap from (pred-obs, pred-reward, target-obs, target-reward)
           # to (pred-obs, target-obs, pred-reward, target-reward).
           layers.Parallel([], layers.Swap()),
           # Cross-entropy loss for obs, L2 loss on reward.
-          layers.Parallel(layers.CrossEntropyLoss(mask_id, has_weights),
-                          layers.L2Loss(mask_id, has_weights)),
+          layers.Parallel(layers.CrossEntropyLoss(id_to_mask, has_weights),
+                          layers.L2Loss(id_to_mask, has_weights)),
           # Add both losses.
           layers.Add(),
           # Zero out in this test.

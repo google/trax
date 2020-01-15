@@ -61,7 +61,7 @@ train.model = @trax.models.TransformerLM
 train.steps = 50000
 train.optimizer = @trax.optimizers.Adafactor
 train.has_weights = True
-train.mask_id = 0
+train.id_to_mask = 0
 
 # Parameters for TransformerLM:
 # ==============================================================================

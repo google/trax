@@ -40,10 +40,10 @@ class MetricsLayerTest(absltest.TestCase):
         metrics.Accuracy(), input_signature)
     self.assertEqual(result_shape, (29, 4, 4))
 
-  def test_weight_mask(self):
+  def test_element_mask(self):
     input_signature = ShapeDtype((29, 4, 4, 20))
     result_shape = base.check_shape_agreement(
-        metrics.WeightMask(), input_signature)
+        metrics.ElementMask(), input_signature)
     self.assertEqual(result_shape, (29, 4, 4, 20))
 
   def test_weighted_mean_shape(self):
