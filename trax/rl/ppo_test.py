@@ -446,17 +446,18 @@ class PpoTest(test.TestCase):
     B, T, A, OBS = 2, 10, 2, (28, 28, 3)  # pylint: disable=invalid-name
     batch_observation_shape = (1, 1) + OBS
 
-    net = ppo.policy_and_value_net(
+    make_net = lambda: ppo.policy_and_value_net(  # pylint: disable=g-long-lambda
         n_controls=1,
         n_actions=A,
         vocab_size=None,
         bottom_layers_fn=lambda: [layers.Flatten(n_axes_to_keep=2)],
         two_towers=True,
     )
+    net = make_net()
 
     input_signature = ShapeDtype(batch_observation_shape)
     old_params, _ = net.init(input_signature)
-    new_params, state = net.init(input_signature)
+    new_params, state = make_net().init(input_signature)
 
     # Generate a batch of observations.
 
@@ -602,7 +603,7 @@ class PpoTest(test.TestCase):
         eval_steps=1,
     )
 
-    policy = ppo.policy_and_value_net(
+    make_policy = lambda: ppo.policy_and_value_net(  # pylint: disable=g-long-lambda
         n_actions=3,
         n_controls=2,
         vocab_size=4,
@@ -611,9 +612,10 @@ class PpoTest(test.TestCase):
         ),
         two_towers=False,
     )
+    policy = make_policy()
     input_signature = ShapeDtype((1, 1), np.int32)
     policy._set_rng_recursive(rng)
-    (policy_params, policy_state) = policy.init(input_signature)
+    policy_params, policy_state = make_policy().init(input_signature)
 
     # Initialize policy parameters from world model parameters.
     new_policy_params = ppo.init_policy_from_world_model_checkpoint(

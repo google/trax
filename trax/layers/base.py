@@ -89,13 +89,12 @@ class Layer(object):
   outputs are spliced back into the stack.
   """
 
-  def __init__(self, n_in=1, n_out=1, n_accelerators=0):
+  def __init__(self, n_in=1, n_out=1):
     """Creates a partially initialized, unconnected layer instance.
 
     Args:
       n_in: Number of inputs expected by this layer.
       n_out: Number of outputs promised by this layer.
-      n_accelerators: Accelerate this layer by default on that many devices.
     """
     self._n_in = n_in
     self._n_out = n_out
@@ -104,7 +103,6 @@ class Layer(object):
     self._rng = None
     self._weights = EMPTY_WEIGHTS  # cached weights
     self._state = EMPTY_STATE
-    self._n_accelerators = n_accelerators
     # record root call site for custom error messages:
     frame = _find_frame(inspect.currentframe())
     # Turns out that frame can mutate in time, so we just copy what we need.
@@ -153,13 +151,22 @@ class Layer(object):
     rng = kwargs.pop('rng', self._rng)
     rng = math.random.get_prng(0) if rng is None else rng
     forward = self._forward_internal
-    n_accelerators = kwargs.pop('n_accelerators', self._n_accelerators)
-    if n_accelerators:
+    # TODO(lukaszkaiser): the following arguments are experimental, decide which
+    #   are really useful after a number of experiments and finalize the API.
+    n_accelerators = kwargs.pop('n_accelerators', 0)
+    replicate = kwargs.pop('replicate', True)
+    set_after_forward = kwargs.pop('set_after_forward', True)
+    if n_accelerators > 1 and replicate:
       weights = for_n_devices(weights, n_accelerators)
       state = for_n_devices(state, n_accelerators)
+    if n_accelerators:
       forward = jit_forward(forward, n_accelerators)
     outputs, new_state = forward(x, weights, state, rng)
-    self.state = new_state
+    if n_accelerators > 1 and replicate:  # Unreplicate state if needed.
+      new_state = math.nested_map(new_state, lambda x: x[0])
+    if set_after_forward:
+      self.state = new_state
+      self.weights = weights
     return outputs
 
   def forward(self, inputs, weights):

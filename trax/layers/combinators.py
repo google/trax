@@ -99,8 +99,12 @@ class Serial(base.Layer):
   @base.Layer.weights.setter
   def weights(self, weights):
     """Recursively sets weights on this layer and all sublayers."""
+    if weights == base.EMPTY_WEIGHTS:
+      return
     self._weights = weights
-    assert len(weights) == self._n_layers
+    assert len(weights) == self._n_layers, (
+        'Number of weights [%d] differs from the number of sublayers [%d].'
+        % (len(weights), self._n_layers))
     for layer, sublayer_weights in zip(self.sublayers, weights):
       layer.weights = sublayer_weights
 
@@ -232,6 +236,8 @@ class Parallel(base.Layer):
   @base.Layer.weights.setter
   def weights(self, weights):
     """Recursively sets weights on this layer and all sublayers."""
+    if weights == base.EMPTY_WEIGHTS:
+      return
     self._weights = weights
     assert len(weights) == self._n_layers
     for layer, sublayer_weights in zip(self.sublayers, weights):
