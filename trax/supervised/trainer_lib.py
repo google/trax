@@ -68,7 +68,7 @@ _DEFAULT_METRICS = {
     'accuracy': tl.AccuracyScalar,
     'neg_log_perplexity': tl.NegLogPerplexityScalar,
     'loss': tl.CrossEntropyLossScalar,
-    'weights_per_batch_per_core': tl.CountWeights,
+    'weights_per_batch_per_core': tl.SumOfWeights,
 }
 
 

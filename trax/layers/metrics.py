@@ -61,19 +61,14 @@ def WeightedMean(inputs, **unused_kwargs):
   return np.sum(metric * weights) / weights_sum
 
 
-def CountWeights(mask_id=None, has_weights=False):
-  """Sum the weights assigned to all elements."""
-  if has_weights:
-    return cb.Serial(
-        cb.Drop(),  # Drop inputs.
-        WeightMask(mask_id=mask_id),  # pylint: disable=no-value-for-parameter
-        cb.Multiply(),  # Multiply with provided mask.
-        core.Sum(axis=None)  # Sum all weights.
-    )
+def SumOfWeights(mask_id=None, has_weights=False):
+  """Returns a layer to compute sum of weights of all non-masked elements."""
+  multiply_by_weights = cb.Multiply() if has_weights else []
   return cb.Serial(
       cb.Drop(),  # Drop inputs.
       WeightMask(mask_id=mask_id),  # pylint: disable=no-value-for-parameter
-      core.Sum(axis=None)  # Sum all weights.
+      multiply_by_weights,
+      core.Sum(axis=None)  # Sum all.
   )
 
 
