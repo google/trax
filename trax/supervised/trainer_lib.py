@@ -65,9 +65,9 @@ OptState = collections.namedtuple('_OptState', [
 
 
 _DEFAULT_METRICS = {
+    'loss': tl.CrossEntropyLoss,
     'accuracy': tl.AccuracyScalar,
     'neg_log_perplexity': tl.NegLogPerplexityScalar,
-    'loss': tl.CrossEntropyLossScalar,
     'weights_per_batch_per_core': tl.SumOfWeights,
 }
 
@@ -573,7 +573,7 @@ class Trainer(object):
 @gin.configurable(blacklist=['output_dir'])
 def train(output_dir,
           model=gin.REQUIRED,
-          loss_fn=tl.CrossEntropyLossScalar,
+          loss_fn=tl.CrossEntropyLoss,
           inputs=trax_inputs.inputs,
           optimizer=trax_opt.Adafactor,
           lr_schedule=lr.MultifactorSchedule,

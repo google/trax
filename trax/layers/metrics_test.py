@@ -67,16 +67,10 @@ class MetricsLayerTest(absltest.TestCase):
     mean3 = layer((inputs, weights3))
     onp.testing.assert_allclose(mean3, 1.0)
 
-  def test_cross_entropy_scalar(self):
+  def test_cross_entropy_loss(self):
     input_signature = (ShapeDtype((29, 4, 4, 20)), ShapeDtype((29, 4, 4)))
     result_shape = base.check_shape_agreement(
-        metrics.CrossEntropyScalar(), input_signature)
-    self.assertEqual(result_shape, ())
-
-  def test_cross_entropy_loss_scalar(self):
-    input_signature = (ShapeDtype((29, 4, 4, 20)), ShapeDtype((29, 4, 4)))
-    result_shape = base.check_shape_agreement(
-        metrics.CrossEntropyLossScalar(), input_signature)
+        metrics.CrossEntropyLoss(), input_signature)
     self.assertEqual(result_shape, ())
 
   def test_accuracy_scalar(self):

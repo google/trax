@@ -29,22 +29,57 @@ from trax.math import numpy as np
 
 
 @base.layer(n_in=2, n_out=1)
-def CrossEntropy(inputs, axis=-1, **unused_kwargs):
-  prediction, target = inputs
-  return np.sum(prediction * one_hot(target, prediction.shape[-1]), axis=axis)
-
-
-@base.layer(n_in=2, n_out=1)
-def L2(inputs, axis=-1, **unused_kwargs):
-  prediction, target = inputs
-  return np.sum((prediction - target)**2, axis=axis)
+def L2(inputs, **unused_kwargs):
+  """Returns a layer to compute L2 norms of predicted minus target vectors."""
+  y_hat, y = inputs
+  return np.sum((y_hat - y)**2, axis=-1)
 
 
 @base.layer(n_in=2, n_out=1)
 def Accuracy(inputs, axis=-1, **unused_kwargs):
-  prediction, target = inputs
-  predicted_class = np.argmax(prediction, axis=axis)
-  return np.equal(predicted_class, target)
+  """Returns a layer to score matches of predicted versus target categories."""
+  y_hat, target_category = inputs
+  predicted_category = np.argmax(y_hat, axis=axis)
+  return np.equal(predicted_category, target_category)
+
+
+@base.layer(n_in=2, n_out=1)
+def CrossEntropy(inputs, **unused_kwargs):
+  """Returns a layer to compute prediction-target cross entropies."""
+  y_hat, target_category = inputs
+  return np.sum(y_hat * one_hot(target_category, y_hat.shape[-1]), axis=-1)
+
+
+def L2Loss(mask_id=None, has_weights=False):
+  """Returns a layer to computen L2 loss."""
+  return MaskedScalar(L2(), mask_id=mask_id, has_weights=has_weights)  # pylint: disable=no-value-for-parameter
+
+
+def CrossEntropyLoss(mask_id=None, has_weights=False):
+  """Returns a layer to compute cross-entropy loss."""
+  return cb.Serial(
+      MaskedScalar(CrossEntropy(), mask_id=mask_id, has_weights=has_weights),  # pylint: disable=no-value-for-parameter
+      base.Fn(lambda x: x * -1.0),
+  )
+
+
+NegLogPerplexityScalar = CrossEntropyLoss
+
+
+def SumOfWeights(mask_id=None, has_weights=False):
+  """Returns a layer to compute sum of weights of all non-masked elements."""
+  multiply_by_weights = cb.Multiply() if has_weights else []
+  return cb.Serial(
+      cb.Drop(),  # Drop inputs.
+      WeightMask(mask_id=mask_id),  # pylint: disable=no-value-for-parameter
+      multiply_by_weights,
+      core.Sum(axis=None)  # Sum all.
+  )
+
+
+def AccuracyScalar(mask_id=None, has_weights=False):
+  """Returns an accuracy scalar metric layer (with masking and weights)."""
+  return MaskedScalar(Accuracy(), mask_id=mask_id, has_weights=has_weights)  # pylint: disable=no-value-for-parameter
 
 
 @base.layer()
@@ -59,17 +94,6 @@ def WeightedMean(inputs, **unused_kwargs):
   metric, weights = inputs
   weights_sum = np.sum(weights)
   return np.sum(metric * weights) / weights_sum
-
-
-def SumOfWeights(mask_id=None, has_weights=False):
-  """Returns a layer to compute sum of weights of all non-masked elements."""
-  multiply_by_weights = cb.Multiply() if has_weights else []
-  return cb.Serial(
-      cb.Drop(),  # Drop inputs.
-      WeightMask(mask_id=mask_id),  # pylint: disable=no-value-for-parameter
-      multiply_by_weights,
-      core.Sum(axis=None)  # Sum all.
-  )
 
 
 def MaskedScalar(metric_layer, mask_id=None, has_weights=False):
@@ -96,37 +120,6 @@ def MaskedScalar(metric_layer, mask_id=None, has_weights=False):
       ),
       WeightedMean()  # pylint: disable=no-value-for-parameter
   )
-
-
-def CrossEntropyScalar(mask_id=None, has_weights=False):
-  """Cross-entropy as scalar compatible with Trax masking."""
-  return MaskedScalar(CrossEntropy(), mask_id=mask_id, has_weights=has_weights)  # pylint: disable=no-value-for-parameter
-
-
-NegLogPerplexityScalar = CrossEntropyScalar
-
-
-def CrossEntropyLossScalar(mask_id=None, has_weights=False):
-  """Cross-entropy loss as scalar compatible with Trax masking."""
-  return cb.Serial(
-      CrossEntropyScalar(mask_id=mask_id, has_weights=has_weights),
-      base.Fn(lambda x: x * -1.0),
-  )
-
-
-def L2Scalar(mask_id=None, has_weights=False):
-  """L2 as scalar compatible with Trax masking."""
-  return MaskedScalar(L2(), mask_id=mask_id, has_weights=has_weights)  # pylint: disable=no-value-for-parameter
-
-
-def L2LossScalar(mask_id=None, has_weights=False):
-  """L2 loss as scalar compatible with Trax masking."""
-  return L2Scalar(mask_id=mask_id, has_weights=has_weights)
-
-
-def AccuracyScalar(mask_id=None, has_weights=False):
-  """Accuracy as scalar compatible with Trax masking."""
-  return MaskedScalar(Accuracy(), mask_id=mask_id, has_weights=has_weights)  # pylint: disable=no-value-for-parameter
 
 
 def one_hot(x, n_categories, dtype=np.float32):  # pylint: disable=invalid-name

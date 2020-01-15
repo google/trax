@@ -51,7 +51,7 @@ class OnlineTuneEnv(gym.Env):
                output_dir,
                model=trax_models.TransformerLM,
                trainer_class=trainer_lib.Trainer,
-               loss_fn=layers.CrossEntropyLossScalar,
+               loss_fn=layers.CrossEntropyLoss,
                optimizer=trax_opt.Adafactor,
                inputs=trax_inputs.inputs,
                action_multipliers=None,

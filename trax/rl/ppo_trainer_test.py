@@ -182,8 +182,8 @@ class PpoTrainerTest(test.TestCase):
           # to (pred-obs, target-obs, pred-reward, target-reward).
           layers.Parallel([], layers.Swap()),
           # Cross-entropy loss for obs, L2 loss on reward.
-          layers.Parallel(layers.CrossEntropyLossScalar(mask_id, has_weights),
-                          layers.L2LossScalar(mask_id, has_weights)),
+          layers.Parallel(layers.CrossEntropyLoss(mask_id, has_weights),
+                          layers.L2Loss(mask_id, has_weights)),
           # Add both losses.
           layers.Add(),
           # Zero out in this test.

@@ -55,7 +55,7 @@ Exp = layer_configure(Exp)
 LogSoftmax = layer_configure(LogSoftmax)
 Softmax = layer_configure(Softmax)
 Softplus = layer_configure(Softplus)
-L2LossScalar = layer_configure(L2LossScalar)
+L2Loss = layer_configure(L2Loss)
 LSTMCell = layer_configure(LSTMCell)
 GRUCell = layer_configure(GRUCell)
 
