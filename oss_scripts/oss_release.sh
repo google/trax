@@ -28,7 +28,7 @@ git clone https://github.com/google/trax.git
 cd trax
 git checkout $GIT_COMMIT_ID
 
-pip install wheel twine pyopenssl
+python -m pip install wheel twine pyopenssl
 
 # Build the distribution
 echo "Building distribution"
