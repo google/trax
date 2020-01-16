@@ -67,7 +67,7 @@ OptState = collections.namedtuple('_OptState', [
 _DEFAULT_METRICS = {
     'loss': tl.CrossEntropyLoss,
     'accuracy': tl.AccuracyScalar,
-    'neg_log_perplexity': tl.NegLogPerplexityScalar,
+    'neg_log_perplexity': tl.CrossEntropyLoss,
     'weights_per_batch_per_core': tl.SumOfWeights,
 }
 

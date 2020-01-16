@@ -31,31 +31,31 @@ class MetricsLayerTest(absltest.TestCase):
   def test_cross_entropy(self):
     input_signature = (ShapeDtype((29, 4, 4, 20)), ShapeDtype((29, 4, 4)))
     result_shape = base.check_shape_agreement(
-        metrics.CrossEntropy(), input_signature)
+        metrics._CrossEntropy(), input_signature)
     self.assertEqual(result_shape, (29, 4, 4))
 
   def test_accuracy(self):
     input_signature = (ShapeDtype((29, 4, 4, 20)), ShapeDtype((29, 4, 4)))
     result_shape = base.check_shape_agreement(
-        metrics.Accuracy(), input_signature)
+        metrics._Accuracy(), input_signature)
     self.assertEqual(result_shape, (29, 4, 4))
 
   def test_element_mask(self):
     input_signature = ShapeDtype((29, 4, 4, 20))
     result_shape = base.check_shape_agreement(
-        metrics.ElementMask(), input_signature)
+        metrics._ElementMask(), input_signature)
     self.assertEqual(result_shape, (29, 4, 4, 20))
 
   def test_weighted_mean_shape(self):
     input_signature = (ShapeDtype((29, 4, 4, 20)), ShapeDtype((29, 4, 4, 20)))
     result_shape = base.check_shape_agreement(
-        metrics.WeightedMean(), input_signature)
+        metrics._WeightedMean(), input_signature)
     self.assertEqual(result_shape, ())
 
   def test_weighted_mean_semantics(self):
     inputs = onp.array([1, 2, 3], dtype=onp.float32)
     weights1 = onp.array([1, 1, 1], dtype=onp.float32)
-    layer = metrics.WeightedMean()
+    layer = metrics._WeightedMean()
     full_signature = (signature(inputs), signature(weights1))
     layer.init(full_signature)
     mean1 = layer((inputs, weights1))
