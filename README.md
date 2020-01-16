@@ -28,7 +28,7 @@ and has bindings to a large number of deep learning datasets, including
 [Tensor2Tensor](https://github.com/tensorflow/tensor2tensor) and [TensorFlow datasets](https://www.tensorflow.org/datasets/catalog/overview).
 It runs without any changes on CPUs, GPUs and TPUs.
 
-To see how to use Trax as a library, take a look at this [quick start colab](https://github.com/google/trax/blob/master/trax/intro.ipynb)
+To see how to use Trax as a library, take a look at this [quick start colab](https://colab.research.google.com/github/google/trax/blob/master/trax/intro.ipynb)
 which explains how to create data in python, connect it to a Transformer model in Trax, train it and run inference.
 You can select a CPU or GPU runtime, or even get a free 8-core TPU as
 runtime. With TPUs in colab you need to set extra flags as demonstrated in these
@@ -56,14 +56,14 @@ python -m trax.trainer --config_file=$PWD/trax/configs/reformer_imagenet64.gin
 
 Trax code is structured in a way that allows you to understand deep learning
 from scratch. We start with basic maths and go through layers, models,
-models, supervised and reinforcement learning. We get to advanced deep learning
+supervised and reinforcement learning. We get to advanced deep learning
 results, including recent papers such as [Reformer - The Efficient Transformer](https://arxiv.org/abs/2001.04451),
 selected for oral presentation at [ICLR 2020](https://iclr.cc/Conferences/2020/).
 
 The main steps needed to understand deep learning correspond to sub-directories
 in Trax code:
 
-* [math/](https://github.com/google/trax/tree/master/trax/math) &mdash; basic math operations (like numpy, gradients) and ways to accelerate them on GPUs and TPUs (through [JAX](https://github.com/google/jax) and [TensorFlow](https://www.tensorflow.org/))
+* [math/](https://github.com/google/trax/tree/master/trax/math) &mdash; basic math operations and ways to accelerate them on GPUs and TPUs (through [JAX](https://github.com/google/jax) and [TensorFlow](https://www.tensorflow.org/))
 * [layers/](https://github.com/google/trax/tree/master/trax/layers) are the basic building blocks of neural networks and here you'll find how they are build and all the needed ones
 * [models/](https://github.com/google/trax/tree/master/trax/models) contains all basic models (MLP, ResNet, Transformer, ...) and a number of new research models
 * [optimizers/](https://github.com/google/trax/tree/master/trax/optimizers) is a directory with optimizers needed for deep learning
@@ -72,11 +72,13 @@ in Trax code:
 
 ### Development
 
+To get the most recent update on Trax development, [chat with us](https://gitter.im/trax-ml/community).
+
 Most common supervised learning models in Trax are running and should have clear
 code &mdash; if this is not the case, please [open an issue](https://github.com/google/trax/issues)
 or, even better, send along a pull request (see [our contribution doc](CONTRIBUTING.md)).
-In Trax we value documentation, examples and colabs very much, so if you find any
-problems with those, please report it or contribute a solution.
+In Trax we value documentation, examples and colabs so if you find any
+problems with those, please report it and contribute a solution.
 
 We are still improving a few smaller parts of [layers](https://github.com/google/trax/tree/master/trax/layers),
 planning to update the [supervised](https://github.com/google/trax/tree/master/trax/supervised) API and
