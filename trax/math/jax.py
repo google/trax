@@ -125,7 +125,7 @@ def _jax_scan(f, xs, init_value, axis=0):
   def transposed_f(c, x):
     y, d = f(x, c)
     return d, y
-  last_value, ys = lax.scan(transposed_f, init_value, xs)
+  last_value, ys = lax.scan(jax.remat(transposed_f), init_value, xs)
   if axis != 0:
     ys = nested_map(swapaxes, ys)
   return ys, last_value

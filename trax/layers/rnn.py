@@ -146,7 +146,7 @@ def GRU(n_units):
   zero_state = MakeZeroState(depth_multiplier=1)  # pylint: disable=no-value-for-parameter
   return cb.Serial(
       cb.Branch([], zero_state),
-      cb.Scan(LSTMCell(n_units=n_units), axis=1),
+      cb.Scan(GRUCell(n_units=n_units), axis=1),
       cb.Select([0], n_in=2)  # Drop RNN state.
   )
 

@@ -348,6 +348,8 @@ class Layer(object):
 
   def new_rng(self):
     """Returns a new single-use random number generator (JAX PRNG key)."""
+    if self._rng is None:
+      self._rng = math.random.get_prng(0)
     self._rng, rng = math.random.split(self._rng)
     return rng
 
