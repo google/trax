@@ -155,7 +155,6 @@ class Layer(object):
     #   are really useful after a number of experiments and finalize the API.
     n_accelerators = kwargs.pop('n_accelerators', 0)
     replicate = kwargs.pop('replicate', True)
-    set_after_forward = kwargs.pop('set_after_forward', True)
     if n_accelerators > 1 and replicate:
       weights = for_n_devices(weights, n_accelerators)
       state = for_n_devices(state, n_accelerators)
@@ -164,9 +163,8 @@ class Layer(object):
     outputs, new_state = forward(x, weights, state, rng)
     if n_accelerators > 1 and replicate:  # Unreplicate state if needed.
       new_state = math.nested_map(new_state, lambda x: x[0])
-    if set_after_forward:
-      self.state = new_state
-      self.weights = weights
+    self.state = new_state
+    self.weights = weights
     return outputs
 
   def forward(self, inputs, weights):
