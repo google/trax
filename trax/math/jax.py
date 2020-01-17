@@ -92,7 +92,7 @@ def jax_avg_pool(x, pool_size, strides, padding):
                           pool_size, strides=strides, padding=padding)
 
 
-def _jax_scan(f, xs, init_value, axis=0):
+def _jax_scan(f, xs, init_value, axis=0, remat=False):
   """Scans the f over the given axis of xs.
 
   In pseudo-python, the scan function would look as follows:
@@ -111,6 +111,7 @@ def _jax_scan(f, xs, init_value, axis=0):
     xs: tensor, x will be xs slices on axis
     init_value: tensor, initial value of the carry-over
     axis: int, the axis on which to slice xs
+    remat: whether to re-materialize f
 
   Returns:
     A pair (ys, last_value) as described above.
@@ -125,7 +126,10 @@ def _jax_scan(f, xs, init_value, axis=0):
   def transposed_f(c, x):
     y, d = f(x, c)
     return d, y
-  last_value, ys = lax.scan(jax.remat(transposed_f), init_value, xs)
+  if remat:
+    last_value, ys = lax.scan(jax.remat(transposed_f), init_value, xs)
+  else:
+    last_value, ys = lax.scan(transposed_f, init_value, xs)
   if axis != 0:
     ys = nested_map(swapaxes, ys)
   return ys, last_value

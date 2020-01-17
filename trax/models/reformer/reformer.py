@@ -145,7 +145,7 @@ def ChunkedFeedForward(d_model, d_ff, dropout, activation, chunk_size, mode):
   return [
       tl.Dup(),  # Just to have shape for later after scan.
       tl.Fn(reshape_to_chunks, n_out=1),
-      tl.Scan(tl.Serial(ff), axis=0, n_carry=0),
+      tl.Scan(tl.Serial(ff), axis=0, n_carry=0, remat=True),
       tl.Fn(lambda x, y: np.reshape(x, y.shape))
   ]
 

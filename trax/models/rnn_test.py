@@ -35,6 +35,14 @@ class RNNTest(absltest.TestCase):
     final_shape = tl.check_shape_agreement(model, input_signature)
     self.assertEqual((3, 28, 20), final_shape)
 
+  def test_grulm_forward_shape(self):
+    """Runs the GRU LM forward and checks output shape."""
+    input_signature = ShapeDtype((3, 28), dtype=math.numpy.int32)
+    model = rnn.GRULM(vocab_size=20, d_model=16)
+    model.init(input_signature)
+    final_shape = tl.check_shape_agreement(model, input_signature)
+    self.assertEqual((3, 28, 20), final_shape)
+
 
 if __name__ == '__main__':
   absltest.main()

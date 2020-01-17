@@ -70,3 +70,30 @@ def RNNLM(vocab_size,
       tl.Dense(vocab_size),
       tl.LogSoftmax()
   )
+
+
+def GRULM(vocab_size=256,
+          d_model=512,
+          n_layers=1,
+          mode='train'):
+  """Returns an GRU language model.
+
+  The input to the model is a tensor of tokens (ints).
+
+  Args:
+    vocab_size: int: vocab size
+    d_model: int:  depth of embedding (n_units in the RNN cell)
+    n_layers: int: number of RNN layers
+    mode: str: 'train', 'eval' or 'predict', predict mode is for fast inference
+
+  Returns:
+    An RNN language model as a layer that maps from a tensor of tokens
+    to activations over a vocab set.
+  """
+  return tl.Serial(
+      tl.ShiftRight(mode=mode),
+      tl.Embedding(d_model, vocab_size),
+      [tl.GRU(d_model) for _ in range(n_layers)],
+      tl.Dense(vocab_size),
+      tl.LogSoftmax()
+  )

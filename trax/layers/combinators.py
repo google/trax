@@ -365,11 +365,12 @@ class Scan(base.Layer):
   Scan(add)([1, 2, 3], 0) = [1, 3, 6], 6
   """
 
-  def __init__(self, layer, axis=0, n_carry=1):
+  def __init__(self, layer, axis=0, n_carry=1, remat=False):
     super(Scan, self).__init__(n_in=layer.n_in, n_out=layer.n_out)
     self._sublayers = [layer]
     self._n_carry = n_carry
     self._axis = axis
+    self._remat = remat
 
   @property
   def sublayer(self):
@@ -395,7 +396,7 @@ class Scan(base.Layer):
     else:
       xs, init = inputs, ([], state)
     ys, (carry, new_state) = math.scan(scannable_fn, xs, init,
-                                       axis=self._axis)
+                                       axis=self._axis, remat=self._remat)
     res = ys + carry if n_carry > 0 else ys
     return res, new_state  # Put outputs and carry back on stack.
 

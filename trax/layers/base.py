@@ -364,6 +364,8 @@ class Layer(object):
     """
     if n < 1:
       raise ValueError('n must be > 0; received value: {}'.format(n))
+    if self._rng is None:
+      self._rng = math.random.get_prng(0)
     rngs = math.random.split(self._rng, n + 1)
     self._rng = rngs[0]
     return tuple(rngs[1:])
