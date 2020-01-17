@@ -50,6 +50,34 @@ from trax.layers import core
 from trax.math import numpy as np
 
 
+# pylint: disable=no-value-for-parameter
+def L2Loss(id_to_mask=None, has_weights=False):
+  """Returns a layer to compute L2 loss."""
+  return _WeightedMaskedMean(_L2(), id_to_mask, has_weights)
+
+
+def AccuracyScalar(id_to_mask=None, has_weights=False):
+  """Computes weighted masked mean of category prediction accuracy."""
+  return _WeightedMaskedMean(_Accuracy(), id_to_mask, has_weights)
+
+
+def CrossEntropyLoss(id_to_mask=None, has_weights=False):
+  """Computes weighted masked mean of prediction-target cross entropies."""
+  return _WeightedMaskedMean(_CrossEntropy(), id_to_mask, has_weights)
+
+
+def SumOfWeights(id_to_mask=None, has_weights=False):
+  """Returns a layer to compute sum of weights of all non-masked elements."""
+  multiply_by_weights = cb.Multiply() if has_weights else []
+  return cb.Serial(
+      cb.Drop(),  # Drop inputs.
+      _ElementMask(id_to_mask=id_to_mask),
+      multiply_by_weights,
+      core.Sum(axis=None)  # Sum all.
+  )
+# pylint: enable=no-value-for-parameter
+
+
 @base.layer(n_in=2, n_out=1)
 def _L2(inputs, **unused_kwargs):
   """Returns a layer to compute L2 norms of predicted minus target vectors."""
@@ -71,32 +99,6 @@ def _CrossEntropy(inputs, **unused_kwargs):
   y_hat, target_category = inputs
   return -1.0 * np.sum(y_hat * one_hot(target_category, y_hat.shape[-1]),
                        axis=-1)
-
-
-def L2Loss(id_to_mask=None, has_weights=False):
-  """Returns a layer to compute L2 loss."""
-  return _WeightedMaskedMean(_L2(), id_to_mask, has_weights)  # pylint: disable=no-value-for-parameter
-
-
-def CrossEntropyLoss(id_to_mask=None, has_weights=False):
-  """Computes weighted masked mean of prediction-target cross entropies."""
-  return _WeightedMaskedMean(_CrossEntropy(), id_to_mask, has_weights)  # pylint: disable=no-value-for-parameter
-
-
-def SumOfWeights(id_to_mask=None, has_weights=False):
-  """Returns a layer to compute sum of weights of all non-masked elements."""
-  multiply_by_weights = cb.Multiply() if has_weights else []
-  return cb.Serial(
-      cb.Drop(),  # Drop inputs.
-      _ElementMask(id_to_mask=id_to_mask),  # pylint: disable=no-value-for-parameter
-      multiply_by_weights,
-      core.Sum(axis=None)  # Sum all.
-  )
-
-
-def AccuracyScalar(id_to_mask=None, has_weights=False):
-  """Computes weighted masked mean of category prediction accuracy."""
-  return _WeightedMaskedMean(_Accuracy(), id_to_mask, has_weights)  # pylint: disable=no-value-for-parameter
 
 
 @base.layer()
