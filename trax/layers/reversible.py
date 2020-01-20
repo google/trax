@@ -24,6 +24,11 @@ from trax import math
 from trax.layers import base
 from trax.layers import combinators as cb
 
+# pylint: disable=protected-access
+_inputs_from_stack = cb._inputs_from_stack
+_outputs_onto_stack = cb._outputs_onto_stack
+# pylint: enable=protected-access
+
 
 class ReversibleLayer(base.Layer):
   """Reversible Layer."""
@@ -103,12 +108,15 @@ class ReversibleSerial(ReversibleLayer, cb.Serial):
     if rng is not None:
       rngs = math.random.split(rng, self._n_layers)
 
-    layer_val = output
+    stack = output
     for layer, p, s, ns, rng in reversed(list(zip(
         self.sublayers, weights, state, new_state, rngs))):
+      layer_val = _inputs_from_stack(layer, stack, layer.n_out)
       layer_val = layer.reverse(layer_val, p, s, ns, rng=rng, **kwargs)
+      stack = _outputs_onto_stack(
+          layer, layer_val, stack, layer.n_out, layer.n_in)
 
-    return layer_val
+    return stack
 
   def reverse_and_grad(self, output, ct, weights=(), state=(), new_state=(),
                        **kwargs):
@@ -117,14 +125,20 @@ class ReversibleSerial(ReversibleLayer, cb.Serial):
     if rng is not None:
       rngs = math.random.split(rng, self._n_layers)
 
-    layer_val = output
-    layer_ct = ct
+    stack = output
+    stack_ct = ct
     weights_ct = []
     for layer, p, s, ns, rng in reversed(list(zip(
         self.sublayers, weights, state, new_state, rngs))):
+      layer_val = _inputs_from_stack(layer, stack, layer.n_out)
+      layer_ct = _inputs_from_stack(layer, stack_ct, layer.n_out)
       layer_val, layer_ct = layer.reverse_and_grad(
           layer_val, layer_ct, p, s, ns, rng=rng, **kwargs)
       layer_ct, p_ct = layer_ct
       weights_ct.insert(0, p_ct)
+      stack = _outputs_onto_stack(
+          layer, layer_val, stack, layer.n_out, layer.n_in)
+      stack_ct = _outputs_onto_stack(
+          layer, layer_ct, stack_ct, layer.n_out, layer.n_in)
 
-    return layer_val, (layer_ct, weights_ct)
+    return stack, (stack_ct, weights_ct)

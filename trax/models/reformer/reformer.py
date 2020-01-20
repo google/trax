@@ -24,6 +24,7 @@ from trax import layers as tl
 from trax.layers.combinators import _pop_rng_and_split
 from trax.math import numpy as np
 from trax.math import random
+from trax.models import transformer
 
 
 # Layers are always CamelCase, but functions in general are snake_case
@@ -225,20 +226,23 @@ class ReversibleHalfResidual(tl.ReversibleLayer, tl.Serial):
   """Half of a RevNet-style residual (only updates part of the hidden state)."""
 
   def __init__(self, residual_layers):
-    self.compute_residual = tl.Serial(
-        # (x1_or_y1, x2) -> (x2, x1_or_y1, x2)
-        tl.Parallel([], tl.Dup()),
-        tl.Swap(),
-        tl.Parallel(residual_layers, [], []),
+    self.compute_residual = tl.Serial(         # x1_or_y1, x2,           ...
+        tl.Parallel([], tl.Dup()),             # x1_or_y1, x2, x2,       ...
+        tl.Swap(),                             # x2, x1_or_y1, x2,       ...
+        tl.Parallel([], [], residual_layers),  # x2, x1_or_y1, residual, ...
+        tl.Select([2, 1, 0]),                  # residual, x1_or_y1, x2, ...
     )
+
+    self.n_preserve = self.compute_residual.n_out - 2
+    parallel_preserve = [[]] * self.n_preserve
 
     layers = [
         self.compute_residual,
-        tl.Parallel(tl.Add(), [])
+        tl.Parallel(tl.Add(), *parallel_preserve)
     ]
     super(ReversibleHalfResidual, self).__init__(layers)
 
-    self.subtract_top = tl.Parallel(tl.SubtractTop(), [])
+    self.subtract_top = tl.Parallel(tl.SubtractTop(), *parallel_preserve)
     self.reverse_layers = [self.compute_residual, self.subtract_top]
 
   def reverse(self, output, weights=(), state=(), new_state=(), **kwargs):
@@ -267,8 +271,8 @@ class ReversibleHalfResidual(tl.ReversibleLayer, tl.Serial):
                                   rng=rngs[0], **kwargs)
       return res
 
-    assert len(ct) == 2
-    ct = ((ct[0], ct[0], ct[1]))
+    assert len(ct) == self.n_preserve + 1
+    ct = (ct[0], ct[0]) + ct[1:]
 
     stack_with_residual, vjpfun = jax.vjp(
         call_compute_residual, output, weights[0])
@@ -742,3 +746,195 @@ def ReformerShortenLM(vocab_size,
       tl.LogSoftmax()
   )
   # pylint: enable=g-long-lambda
+
+
+def EncoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, mode):
+  """Returns a list of layers that implements a Reformer encoder block.
+
+  The input to the layer is a pair, (activations, mask), where the mask was
+  created from the original source tokens to prevent attending to the padding
+  part of the input.
+
+  Args:
+    d_model: int:  depth of embedding
+    d_ff: int: depth of feed-forward layer
+    n_heads: int: number of attention heads
+    dropout: float: dropout rate (how much to drop out)
+    ff_activation: the non-linearity in feed-forward layer
+    mode: str: 'train' or 'eval'
+
+  Returns:
+    A list of layers that maps (activations, mask) to (activations, mask).
+  """
+  pre_attention = tl.LayerNorm()
+  attention = tl.Attention(
+      d_model, n_heads=n_heads, dropout=dropout, mode=mode)
+  post_attention = tl.Dropout(
+      rate=dropout, name='dropout_enc_attn', mode=mode)
+
+  # TODO(kitaev): Switch to FeedForward with BroadcastedDropout?
+  feed_forward = transformer._FeedForwardBlock(  # pylint: disable=protected-access
+      d_model, d_ff, dropout, -1, mode, ff_activation)
+  # feed_forward = FeedForward(d_model, d_ff, dropout, ff_activation, mode)
+
+  return [
+      # TODO(kitaev): consider ReversibleAttentionHalfResidual for efficiency
+      ReversibleHalfResidual([pre_attention, attention, post_attention]),
+      tl.ReversibleSwap(),
+      ReversibleHalfResidual(feed_forward),
+      tl.ReversibleSwap(),
+  ]
+
+
+def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, mode):
+  """Reversible transformer decoder layer.
+
+  Args:
+    d_model: int:  depth of embedding
+    d_ff: int: depth of feed-forward layer
+    n_heads: int: number of attention heads
+    dropout: float: dropout rate (how much to drop out)
+    ff_activation: the non-linearity in feed-forward layer
+    mode: str: 'train' or 'eval'
+
+  Returns:
+    the layer.
+  """
+  pre_attention_qkv = [
+      tl.LayerNorm(),
+      tl.Select([0, 2, 2, 1, 2]),  # vec_d vec_e vec_e masks vec_e
+  ]
+  attention_qkv = tl.AttentionQKV(
+      d_model, n_heads=n_heads, dropout=dropout, mode=mode)
+  # TODO(kitaev): BroadcastedDropout?
+  post_attention_qkv = tl.Dropout(rate=dropout, mode=mode)
+
+  pre_causal_attention = tl.LayerNorm()
+  causal_attention = tl.CausalAttention(
+      d_model, n_heads=n_heads, mode=mode)
+  # TODO(kitaev): BroadcastedDropout?
+  post_causal_attention = tl.Dropout(rate=dropout, mode=mode)
+
+  feed_forward = FeedForward(d_model, d_ff, dropout, ff_activation, mode)
+
+  return [                             # vec_d1 vec_d2 masks vec_e
+      # TODO(kitaev): consider ReversibleAttentionHalfResidual for efficiency
+      ReversibleHalfResidual(
+          [pre_causal_attention, causal_attention, post_causal_attention]),
+      tl.ReversibleSwap(),
+      ReversibleHalfResidual(
+          [pre_attention_qkv, attention_qkv, post_attention_qkv]),
+      tl.ReversibleSwap(),
+      ReversibleHalfResidual(feed_forward),
+      tl.ReversibleSwap(),             # vec_d1 vec_d2 masks vec_e
+  ]
+
+
+def Reformer(input_vocab_size,
+             output_vocab_size=None,
+             d_model=512,
+             d_ff=2048,
+             n_encoder_layers=6,
+             n_decoder_layers=6,
+             n_heads=8,
+             dropout=0.1,
+             max_len=2048,
+             ff_activation=tl.Relu,
+             mode='train'):
+  """Reversible transformer encoder-decoder model.
+
+  This model expects an input pair: target, source.
+
+  At the moment, this model supports dot-product attention only. For the
+  attention types in the Reformer paper, see ReformerLM.
+
+  Args:
+    input_vocab_size: int: vocab size of the source.
+    output_vocab_size: int (optional): vocab size of the target. If None, the
+      source and target are assumed to have the same vocab.
+    d_model: int:  depth of embedding
+    d_ff: int: depth of feed-forward layer
+    n_encoder_layers: int: number of encoder layers
+    n_decoder_layers: int: number of decoder layers
+    n_heads: int: number of attention heads
+    dropout: float: dropout rate (how much to drop out)
+    max_len: int: maximum symbol length for positional encoding
+    ff_activation: the non-linearity in feed-forward layer
+    mode: str: 'train' or 'eval'
+
+  Returns:
+    A Reformer model as a layer that maps from a target, source pair to
+    activations over a vocab set.
+  """
+  # The current API for custom gradients assumes that a layer must be
+  # differentiable wrt all of its inputs, but the Transformer puts bool-dtype
+  # masks on the stack. This causes jax to error, even though the so-called
+  # "gradient" wrt the masks is never actually computed.
+  # TODO(kitaev): remove this hack.
+  jax.api._check_inexact_input_vjp = lambda x: None  # pylint: disable=protected-access
+
+  def PositionalEncoder(vocab_size):  # tokens --> vectors
+    # TODO(kitaev): axial positional encoding is better for very long sequences.
+    # TODO(kitaev): dropout=0.0 for tl.PositionalEncoding matches trax
+    # Transformer, but may not be the right option in general.
+    positional_encoding = tl.PositionalEncoding(
+        max_len=max_len, dropout=0.0, mode=mode)
+    return [
+        tl.Embedding(d_model, vocab_size),
+        # TODO(kitaev): BroadcastedDropout?
+        tl.Dropout(rate=dropout, mode=mode),
+        positional_encoding,
+    ]
+
+  in_encoder = PositionalEncoder(input_vocab_size)
+  out_encoder = (in_encoder if output_vocab_size is None
+                 else PositionalEncoder(output_vocab_size))
+  if output_vocab_size is None:
+    output_vocab_size = input_vocab_size
+
+  encoder_blocks = [
+      EncoderBlock(
+          d_model, d_ff, n_heads, dropout, ff_activation, mode)
+      for _ in range(n_encoder_layers)]
+
+  encoder_decoder_blocks = [
+      EncoderDecoderBlock(
+          d_model, d_ff, n_heads, dropout, ff_activation, mode)
+      for _ in range(n_decoder_layers)]
+
+  # Assemble and return the model.
+  return tl.Serial(
+      # Input: encoder_side_tokens, decoder_side_tokens
+      # Copy decoder tokens for use in loss.
+      tl.Select([0, 1, 1]),               # tok_e tok_d tok_d
+
+      # Encode.
+      tl.Branch(
+          in_encoder, tl.PaddingMask()),    # vec_e  masks  tok_d .....
+      tl.Dup(),                             # vec_e1 vec_e2 masks tok_d .....
+      tl.ReversibleSerial(encoder_blocks),  # vec_e1 vec_e2 masks tok_d .....
+      # The two sets of activations need to be reduced to one, in this case by
+      # averaging them. Note that ReformerLM concatenates instead. Various
+      # options (concat, average, add, keep only one, etc.) seem to perform
+      # similarly. We don't concatenate here because we want exact parameter
+      # parity with the standard Transformer.
+      tl.Fn(lambda x, y: (x+y)/2.0),        # vec_e  masks tok_d .....
+      tl.LayerNorm(),                       # vec_e  masks tok_d .....
+
+      # Decode.
+      tl.Select([2, 1, 0]),                 # tok_d masks vec_e .....
+      tl.ShiftRight(),                      # tok_d masks vec_e .....
+      out_encoder,                          # vec_d masks vec_e .....
+      tl.Branch(
+          [], tl.EncoderDecoderMask()),     # vec_d masks vec_e .....
+      tl.Dup(),                             # vec_d1 vec_d2 masks vec_e .....
+      tl.ReversibleSerial(encoder_decoder_blocks),
+      tl.Fn(lambda x, y: (x+y)/2.0),        # vec_d masks vec_e .....
+      tl.LayerNorm(),                       # vec_d masks vec_e .....
+
+      # Map to output vocab.
+      tl.Select([0], n_in=3),               # vec_d .....
+      tl.Dense(output_vocab_size),          # vec_d .....
+      tl.LogSoftmax(),                      # vec_d .....
+  )
+

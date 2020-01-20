@@ -690,12 +690,13 @@ def _pop_rng_and_split(args_dict, n_copies):
   return math.random.split(rng, n_copies)
 
 
-def _inputs_from_stack(layer, stack):
+def _inputs_from_stack(layer, stack, n_in=None):
   """Returns the correct number/format of inputs for the given layer."""
   is_stack_just_one_item = (_count_items(stack) == 1)
   if isinstance(stack, (list, tuple)) and is_stack_just_one_item:
     stack = stack[0]
-  n_in = layer.n_in
+  if n_in is None:
+    n_in = layer.n_in
   if n_in == 1 and is_stack_just_one_item:
     return stack
   elif n_in == 1:
@@ -704,11 +705,14 @@ def _inputs_from_stack(layer, stack):
     return stack[:n_in]
 
 
-def _outputs_onto_stack(layer, outputs, stack):
+def _outputs_onto_stack(layer, outputs, stack, n_in=None, n_out=None):
   """"Returns the new stack after outputs have been pushed onto it."""
-  n_in = layer.n_in
+  if n_in is None:
+    n_in = layer.n_in
+  if n_out is None:
+    n_out = layer.n_out
   if n_in < _count_items(stack):
-    if layer.n_out == 1:
+    if n_out == 1:
       outputs = (outputs,)
     return outputs + stack[n_in:]
   else:

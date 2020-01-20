@@ -1,0 +1,71 @@
+# Copyright 2019 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.models
+import trax.optimizers
+import trax.supervised.inputs
+import trax.supervised.trainer_lib
+
+# Parameters for batch_fn:
+# ==============================================================================
+batch_fn.batch_size_per_device = 64
+batch_fn.eval_batch_size = 64
+batch_fn.max_eval_length = 1024
+batch_fn.buckets_include_inputs_in_length=True
+
+# Parameters for inputs:
+# ==============================================================================
+inputs.data_dir = None
+inputs.dataset_name = 't2t_translate_ende_wmt32k'
+
+# Parameters for MultifactorSchedule:
+# ==============================================================================
+# 0.044 ~= 512^-0.5 = d_model^-0.5
+MultifactorSchedule.constant = 0.044
+MultifactorSchedule.factors = 'constant * linear_warmup * rsqrt_decay'
+MultifactorSchedule.warmup_steps = 8000
+
+# Parameters for Adam:
+# ==============================================================================
+Adam.b1 = 0.9
+Adam.b2 = 0.98
+Adam.eps = 1e-9
+
+# Parameters for preprocess_fun:
+# ==============================================================================
+shuffle_and_batch_data.preprocess_fun=@trax.supervised.inputs.wmt_preprocess
+wmt_preprocess.max_length = 512
+wmt_preprocess.max_eval_length = 1024
+
+# Parameters for train:
+# ==============================================================================
+train.eval_frequency = 1000
+train.eval_steps = 10
+train.inputs = @trax.supervised.inputs.inputs
+train.model = @trax.models.Reformer
+train.steps = 500000
+train.optimizer = @trax.optimizers.Adam
+train.id_to_mask = 0
+
+# Parameters for Reformer:
+# ==============================================================================
+Reformer.d_model= 512
+Reformer.d_ff = 2048
+Reformer.dropout = 0.1
+Reformer.max_len = 2048
+Reformer.mode = 'train'
+Reformer.n_heads = 8
+Reformer.n_encoder_layers = 6
+Reformer.n_decoder_layers = 6
+Reformer.input_vocab_size = 33300
