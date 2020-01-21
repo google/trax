@@ -45,34 +45,12 @@ from tensor2tensor import envs  # pylint: disable=unused-import
 from tensor2tensor.envs import env_problem_utils
 from tensor2tensor.rl.google import atari_utils  # GOOGLE-INTERNAL:
 from trax import rl  # pylint: disable=unused-import
+from trax import trainer_flags  # pylint: disable=unused-import
 from trax.rl import envs as rl_envs  # pylint: disable=unused-import
 from trax.rl import trainers as rl_trainers
 
 
 FLAGS = flags.FLAGS
-
-flags.DEFINE_boolean(
-    'jax_debug_nans', False,
-    'Setting to true will help to debug nans and disable jit.')
-flags.DEFINE_boolean('disable_jit', False, 'Setting to true will disable jit.')
-
-flags.DEFINE_string('output_dir', '', 'Output dir.')
-flags.DEFINE_string('envs_output_dir', '', 'Output dir for the envs.')
-flags.DEFINE_multi_string('config_file', None,
-                          'Configuration file with parameters (.gin).')
-flags.DEFINE_multi_string('config', None,
-                          'Configuration parameters (gin string).')
-flags.DEFINE_bool('use_tpu', False, "Whether we're running on TPU.")
-flags.DEFINE_bool('xm', False, 'Copy atari roms?')
-flags.DEFINE_integer('train_batch_size', 32,
-                     'Number of parallel environments during training.')
-flags.DEFINE_integer('eval_batch_size', 4, 'Batch size for evaluation.')
-flags.DEFINE_boolean('parallelize_envs', False,
-                     'If true, sets parallelism to number of cpu cores.')
-flags.DEFINE_string('trajectory_dump_dir', '',
-                    'Directory to dump trajectories to.')
-
-flags.DEFINE_bool('async_mode', False, 'Async mode.')
 
 
 # Not just 'train' to avoid a conflict with trax.train in GIN files.

@@ -30,45 +30,14 @@ import gin
 import jax
 import tensorflow.compat.v2 as tf
 from trax import math
+from trax import trainer_flags  # pylint: disable=unused-import
 from trax.supervised import trainer_lib
 from trax.tf_numpy import numpy as tf_np
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string('dataset', None, 'Which dataset to use.')
-flags.DEFINE_string('model', None, 'Which model to train.')
-flags.DEFINE_string('data_dir', None, 'Path to the directory with data.')
-flags.DEFINE_string('output_dir', None,
-                    'Path to the directory to save logs and checkpoints.')
-flags.DEFINE_multi_string('config_file', None,
-                          'Configuration file with parameters (.gin).')
-flags.DEFINE_multi_string('config', None,
-                          'Configuration parameters (gin string).')
-flags.DEFINE_integer('log_level', logging.INFO, 'Log level.')
-# TPU Flags
-flags.DEFINE_bool('use_tpu', False, "Whether we're running on TPU.")
-flags.DEFINE_string(
-    'jax_xla_backend', 'xla',
-    'Either "xla" for the XLA service directly, or "tpu_driver"'
-    'for a TPU Driver backend.')
-flags.DEFINE_string('jax_backend_target', 'local',
-                    'Either "local" or "rpc:address" to connect to a '
-                    'remote service target.')
 
-# TensorFlow Flags
-flags.DEFINE_bool('enable_eager_execution', True,
-                  "Whether we're running TF in eager mode.")
-flags.DEFINE_bool('tf_xla', True, 'Whether to turn on XLA for TF.')
-flags.DEFINE_bool('tf_opt_pin_to_host', False, 'Whether to turn on TF '
-                  'pin-to-host optimization.')
-flags.DEFINE_bool('tf_opt_layout', False, 'Whether to turn on TF layout '
-                  'optimization.')
-flags.DEFINE_bool('tf_xla_forced_compile', False, 'Use forced-compilation '
-                  'instead of auto-clustering for XLA. This flag only has '
-                  'effects when --tf_xla is on.')
-flags.DEFINE_bool('tf_allow_float64', False, 'Whether to allow float64 for TF.')
-
-
+# TODO(afrozm): Share between trainer.py and rl_trainer.py
 def _tf_setup_from_flags():
   """Processes TensorFlow-relevant flags."""
   if FLAGS.enable_eager_execution:
@@ -83,6 +52,7 @@ def _tf_setup_from_flags():
   tf_np.set_allow_float64(FLAGS.tf_allow_float64)
 
 
+# TODO(afrozm): Share between trainer.py and rl_trainer.py
 def _gin_parse_configs():
   """Initializes gin-controlled bindings."""
   # Imports for configurables
@@ -127,6 +97,7 @@ def _output_dir_or_default():
   return output_dir
 
 
+# TODO(afrozm): Share between trainer.py and rl_trainer.py
 def _jax_and_tf_configure_for_devices():
   if FLAGS.use_tpu:
     jax.config.update('jax_platform_name', 'tpu')
