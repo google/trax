@@ -19,7 +19,7 @@ import trax.rl.trainers
 # ==============================================================================
 TransformerDecoder.d_model = 64
 TransformerDecoder.d_ff = 128
-TransformerDecoder.dropout = 0.1
+TransformerDecoder.dropout = 0.0
 TransformerDecoder.n_heads = 2
 TransformerDecoder.n_layers = 1
 
@@ -27,9 +27,9 @@ TransformerDecoder.n_layers = 1
 # ==============================================================================
 PPO.n_optimizer_steps = 32
 PPO.target_kl = 1000  # Virtually infinite.
-PPO.boundary = 512
-PPO.max_timestep = 512
-PPO.max_timestep_eval = 20000
+PPO.boundary = 500
+PPO.max_timestep = 500
+PPO.max_timestep_eval = 500
 PPO.random_seed = None
 PPO.gamma = 0.99
 PPO.lambda_ = 0.95
