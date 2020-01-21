@@ -266,7 +266,8 @@ class Trainer(object):
                                              enable=self._is_chief)
 
     # Reset the train and eval streams.
-    self._train_stream = self._inputs.train_stream(self._n_devices)
+    self._train_stream = _repeat_stream(self._inputs.train_stream,
+                                        self._n_devices)
     # TODO(lukaszkaiser): add an option to evaluate exactly on the full eval
     #   set by adding a padding and stopping the stream when too large.
     self._eval_stream = _repeat_stream(
