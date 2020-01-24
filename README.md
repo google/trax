@@ -29,14 +29,19 @@ and has bindings to a large number of deep learning datasets, including
 It runs without any changes on CPUs, GPUs and TPUs.
 
 To see how to use Trax as a library, take a look at this [quick start colab](https://colab.research.google.com/github/google/trax/blob/master/trax/intro.ipynb)
-which explains how to create data in python, connect it to a Transformer model in Trax, train it and run inference.
-You can select a CPU or GPU runtime, or even get a free 8-core TPU as
-runtime. With TPUs in colab you need to set extra flags as demonstrated in these
+which explains how to:
+1. create data in python,
+2. connect it to a Transformer model in Trax,
+3. train it and run inference.
+
+With Colab, you can select a CPU or GPU runtime, or even get a free 8-core TPU as
+runtime. Please not, with TPUs in colab you need to set extra flags as demonstrated in these
 [training](https://colab.research.google.com/github/google/trax/blob/master/trax/models/reformer/text_generation.ipynb)
 and [inference](https://colab.research.google.com/github/google/trax/blob/master/trax/models/reformer/image_generation.ipynb) colabs.
 
-To use Trax as a binary and not forget all the parameters (model type, learning
-rate, other hyper-paramters and training settings), we recommend [gin-config](https://github.com/google/gin-config).
+To use Trax as a binary, we recommend pairing your usage with [gin-config](https://github.com/google/gin-config)
+to keep track of model type, learning rate, and hyper-parameters or training settings.
+
 Take a look at [an example gin config](https://github.com/google/trax/blob/master/trax/configs/mlp_mnist.gin)
  for training a simple MLP on MNIST and run it as follows:
 
@@ -64,7 +69,7 @@ The main steps needed to understand deep learning correspond to sub-directories
 in Trax code:
 
 * [math/](https://github.com/google/trax/tree/master/trax/math) &mdash; basic math operations and ways to accelerate them on GPUs and TPUs (through [JAX](https://github.com/google/jax) and [TensorFlow](https://www.tensorflow.org/))
-* [layers/](https://github.com/google/trax/tree/master/trax/layers) are the basic building blocks of neural networks and here you'll find how they are build and all the needed ones
+* [layers/](https://github.com/google/trax/tree/master/trax/layers) are the basic building blocks of neural networks and here you'll find how they are built and all the essentials
 * [models/](https://github.com/google/trax/tree/master/trax/models) contains all basic models (MLP, ResNet, Transformer, ...) and a number of new research models
 * [optimizers/](https://github.com/google/trax/tree/master/trax/optimizers) is a directory with optimizers needed for deep learning
 * [supervised/](https://github.com/google/trax/tree/master/trax/supervised) contains the utilities needed to run supervised learning and the Trainer class
