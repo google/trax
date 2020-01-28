@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -50,6 +50,7 @@ from trax.rl import envs as rl_envs  # pylint: disable=unused-import
 from trax.rl import trainers as rl_trainers
 
 
+
 FLAGS = flags.FLAGS
 
 
@@ -65,10 +66,12 @@ def train_rl(
     max_timestep=None,
     clip_rewards=False,
     rendered_env=False,
+    resize=False,
     resize_dims=(105, 80),
     trainer_class=rl_trainers.PPO,
     n_epochs=10000,
     trajectory_dump_dir=None,
+    num_actions=None,
 ):
   """Train the RL agent.
 
@@ -82,11 +85,14 @@ def train_rl(
     clip_rewards: Whether to clip and discretize the rewards.
     rendered_env: Whether the environment has visual input. If so, a
       RenderedEnvProblem will be used.
+    resize: whether to do resize or not
     resize_dims: Pair (height, width), dimensions to resize the visual
       observations to.
     trainer_class: RLTrainer class to use.
     n_epochs: Number epochs to run the training for.
     trajectory_dump_dir: Directory to dump trajectories to.
+    num_actions: None unless one wants to use the discretization wrapper. Then
+      num_actions specifies the number of discrete actions.
   """
 
   if FLAGS.jax_debug_nans:
@@ -110,27 +116,34 @@ def train_rl(
 
   parallelism = multiprocessing.cpu_count() if FLAGS.parallelize_envs else 1
 
+  logging.info('Num actions %d', num_actions)
+  logging.info('Resize %d', resize)
+
   train_env = env_problem_utils.make_env(
       batch_size=train_batch_size,
       env_problem_name=env_name,
-      resize=rendered_env,
+      rendered_env=rendered_env,
+      resize=resize,
       resize_dims=resize_dims,
       max_timestep=max_timestep,
       clip_rewards=clip_rewards,
       parallelism=parallelism,
       use_tpu=FLAGS.use_tpu,
+      num_actions=num_actions,
       **train_env_kwargs)
   assert train_env
 
   eval_env = env_problem_utils.make_env(
       batch_size=eval_batch_size,
       env_problem_name=env_name,
-      resize=rendered_env,
+      rendered_env=rendered_env,
+      resize=resize,
       resize_dims=resize_dims,
       max_timestep=max_timestep,
       clip_rewards=clip_rewards,
       parallelism=parallelism,
       use_tpu=FLAGS.use_tpu,
+      num_actions=num_actions,
       **eval_env_kwargs)
   assert eval_env
 
@@ -160,6 +173,9 @@ def main(argv):
 
   gin_configs = FLAGS.config or []
   gin.parse_config_files_and_bindings(FLAGS.config_file, gin_configs)
+
+  logging.info('Gin cofig:')
+  logging.info(gin_configs)
 
   train_rl(
       output_dir=FLAGS.output_dir,

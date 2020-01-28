@@ -15,34 +15,35 @@
 import trax.models
 import trax.rl.trainers
 
-# Parameters for TransformerDecoder:
+# Parameters for FrameStackMLP:
 # ==============================================================================
-TransformerDecoder.d_model = 64
-TransformerDecoder.d_ff = 128
-TransformerDecoder.dropout = 0.0
-TransformerDecoder.n_heads = 2
-TransformerDecoder.n_layers = 1
+FrameStackMLP.n_frames = 1
 
 # Parameters for PPO:
 # ==============================================================================
-PPO.n_optimizer_steps = 32
+PPO.n_optimizer_steps = 4
 PPO.target_kl = 1000  # Virtually infinite.
-PPO.boundary = 500
-PPO.max_timestep = 500
-PPO.max_timestep_eval = 500
+PPO.boundary = 512
+PPO.max_timestep = 512
+PPO.max_timestep_eval = 20000
 PPO.random_seed = None
 PPO.gamma = 0.99
 PPO.lambda_ = 0.95
-PPO.value_weight = 1.0
-PPO.entropy_weight = 0.0
+PPO.value_weight = 0.001
+PPO.entropy_weight = 0.01
 PPO.eval_every_n = 500
 PPO.done_frac_for_policy_save = 0.9
 PPO.n_evals = 16
-PPO.len_history_for_policy = None
+PPO.len_history_for_policy = 1
 PPO.eval_temperatures = (1.0, 0.5)
-PPO.policy_and_value_model = @trax.models.TransformerDecoder
+PPO.policy_and_value_model = @trax.models.FrameStackMLP
+PPO.policy_and_value_optimizer = @trax.optimizers.Adam
+Adam.learning_rate=1e-4
 
 # Parameters for train_rl:
 # ==============================================================================
-train_rl.env_name = "Acrobot-v1"
-train_rl.n_epochs = 40000
+train_rl.env_name = "Pendulum-v0"
+train_rl.n_epochs = 10000
+train_rl.clip_rewards = False
+train_rl.resize = True
+train_rl.num_actions = 7
