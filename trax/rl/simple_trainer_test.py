@@ -44,6 +44,7 @@ class SimpleTrainerTest(test.TestCase):
             'rendered_env_resize_to': None,  # Do not resize frames
             'sticky_actions': False,
             'output_dtype': None,
+            'num_actions': None,
         })
 
     return gym_env_problem.GymEnvProblem(base_env_name=name,
