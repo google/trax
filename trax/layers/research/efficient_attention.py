@@ -378,49 +378,73 @@ class TimeBinCausalAttention(attention.BaseCausalAttention):
     if not self._share_qk:
       state = _fast_inference_update_state(inputs, state)
       (q, _, _) = inputs
-      (ks, vs, mask, index) = state
+      (ks, vs, mask, seq_indices) = state
     else:
       mask_excluding_attention_in_place = state[2]
       (q, _, v) = inputs
       k = self.make_unit_length(q)
       state = _fast_inference_update_state((q, k, v), state)
-      (ks, vs, mask, index) = state
+      (ks, vs, mask, seq_indices) = state
       # Only the initial position in a sequence may attend to itself.
-      mask = np.where(index > 1, mask_excluding_attention_in_place, mask)
+      where = (seq_indices > 1)[None, None]
+      mask = np.where(where, mask_excluding_attention_in_place, mask)
 
     output = attention.DotProductAttention(
         q, ks, vs, mask, dropout=self.dropout, mode=self._mode, rng=rng
     )
 
-    def roll_state(state):
-      """Rolls the buffers backward to make space for new data."""
+    def roll_single_seq(state):
+      """Rolls the buffers backward to make space for new data.
+
+      Works for just one sequence in a batch.
+
+      Args:
+        state: Tuple (keys, values, mask, index).
+
+      Returns:
+        New state for a single sequence.
+      """
       (ks, vs, mask, index) = state
       # Move the second bin into the first one's place in both buffers.
       def roll_buffer(buf):
         return jax.ops.index_update(
             buf,
-            jax.ops.index[:, :self.bin_length, :],
-            buf[:, self.bin_length:, :],
+            jax.ops.index[:self.bin_length, :],
+            buf[self.bin_length:, :],
         )
       (ks, vs) = map(roll_buffer, (ks, vs))
       # Zero out the second bin in the mask.
       mask = jax.ops.index_update(
-          mask, jax.ops.index[:, :, self.bin_length:], 0
+          mask, jax.ops.index[:, self.bin_length:], 0
       )
       # Update the index to match the rolled buffers.
       index -= self.bin_length
       return (ks, vs, mask, index)
 
-    # Once we get to the end of the buffer, move the second bin back to make
-    # space for new data: [ bin_i bin_{i+1} | ] -> [ bin_{i+1} | bin_{i+1} ],
-    # where | is where index points at in the buffer.
-    state = jax.lax.cond(
-        pred=(index == 2 * self.bin_length),
-        true_operand=state,
-        true_fun=roll_state,
-        false_operand=state,
-        false_fun=(lambda x: x),
-    )
+    @jax.vmap
+    def maybe_roll_state(state):
+      """Rolls the buffers if they reach the end.
+
+      Vectorized to handle batches of sequences.
+
+      Args:
+        state: Tuple (keys, values, mask, index).
+
+      Returns:
+        New state for a batch of sequences.
+      """
+      (_, _, _, index) = state
+      # Once we get to the end of the buffer, move the second bin back to make
+      # space for new data: [ bin_i bin_{i+1} | ] -> [ bin_{i+1} | bin_{i+1} ],
+      # where | is where index points at in the buffer.
+      return jax.lax.cond(
+          pred=(index == 2 * self.bin_length),
+          true_operand=state,
+          true_fun=roll_single_seq,
+          false_operand=state,
+          false_fun=(lambda x: x),
+      )
+    state = maybe_roll_state(state)
     return (output, state)
 
   def new_weights_and_state(self, input_signature):

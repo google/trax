@@ -455,8 +455,8 @@ def _fast_inference_init_state(input_signature, buffer_length):
   k = zeros_for(batch_size, input_signature[1])
   v = zeros_for(batch_size, input_signature[2])
   mask = np.zeros((batch_size, 1, buffer_length))
-  index = 0
-  return (k, v, mask, index)
+  seq_indices = np.zeros((batch_size,), dtype=np.int32)
+  return (k, v, mask, seq_indices)
 
 
 def _fast_inference_update_state(inputs, state):
@@ -469,11 +469,18 @@ def _fast_inference_update_state(inputs, state):
   # Fast inference: run with only 1 query in each step, storing the sequence
   # of keys and values calculated so far in state.
   (_, new_k, new_v) = inputs
-  (ks, vs, mask, index) = state
-  ks = jax.ops.index_update(ks, jax.ops.index[:, index, :], new_k[:, 0, :])
-  vs = jax.ops.index_update(vs, jax.ops.index[:, index, :], new_v[:, 0, :])
-  mask = jax.ops.index_update(mask, jax.ops.index[:, :, index], 1)
-  return (ks, vs, mask, index + 1)
+  (ks, vs, mask, seq_indices) = state
+  batch_indices = np.arange(ks.shape[0])
+  ks = jax.ops.index_update(
+      ks, jax.ops.index[batch_indices, seq_indices, :], new_k[:, 0, :]
+  )
+  vs = jax.ops.index_update(
+      vs, jax.ops.index[batch_indices, seq_indices, :], new_v[:, 0, :]
+  )
+  mask = jax.ops.index_update(
+      mask, jax.ops.index[batch_indices, :, seq_indices], 1
+  )
+  return (ks, vs, mask, seq_indices + 1)
 
 
 class DotProductCausalAttention(BaseCausalAttention):
