@@ -71,9 +71,9 @@ class Serial(base.Layer):
       raise ValueError('length of state ({}) not equal to number of layers '
                        '({})'.format(len(state), n_layers))
 
-    for layer, p, s, rng in zip(self.sublayers, weights, state, rngs):
+    for layer, w, s, rng in zip(self.sublayers, weights, state, rngs):
       inputs = _inputs_from_stack(layer, stack)
-      outputs, s = layer._forward_internal(inputs, p, s, rng)  # pylint: disable=protected-access
+      outputs, s = layer._forward_internal(inputs, w, s, rng)  # pylint: disable=protected-access
       stack = _outputs_onto_stack(layer, outputs, stack)
       new_state.append(s)
     return stack, new_state
@@ -212,9 +212,9 @@ class Parallel(base.Layer):
     assert len(rngs) == n_layers
     outputs = []
     new_state = []
-    for layer, x, p, s, r in zip(layers, sublayer_inputs, weights, state, rngs):
+    for layer, x, w, s, r in zip(layers, sublayer_inputs, weights, state, rngs):
       # Note that zip silently truncates its result if lengths don't match.
-      sub_outputs, sub_state = layer._forward_internal(x, p, s, r)  # pylint: disable=protected-access
+      sub_outputs, sub_state = layer._forward_internal(x, w, s, r)  # pylint: disable=protected-access
       if layer.n_out == 1:
         outputs.append(sub_outputs)
       else:
