@@ -714,7 +714,7 @@ def _outputs_onto_stack(layer, outputs, stack, n_in=None, n_out=None):
   if n_in < _count_items(stack):
     if n_out == 1:
       outputs = (outputs,)
-    return outputs + stack[n_in:]
+    return outputs + tuple(stack[n_in:])
   else:
     return outputs  # NOTE: can be single value or tuple.
 
