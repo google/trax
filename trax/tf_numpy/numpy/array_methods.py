@@ -554,9 +554,9 @@ def reshape(a, newshape):
     An ndarray with the contents and dtype of `a` and shape `newshape`.
   """
   a = array_creation.asarray(a)
-  newshape = array_creation.asarray(newshape)
-  return utils.tensor_to_ndarray(
-      tf.reshape(a.data, utils.get_shape_from_ndarray(newshape)))
+  if isinstance(newshape, arrays.ndarray):
+    newshape = utils.get_shape_from_ndarray(newshape)
+  return utils.tensor_to_ndarray(tf.reshape(a.data, newshape))
 
 
 def expand_dims(a, axis):

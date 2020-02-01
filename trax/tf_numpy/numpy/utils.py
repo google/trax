@@ -133,13 +133,13 @@ def get_shape_from_ndarray(shape):
   """
   if shape.ndim > 1:
     raise ValueError('shape must have rank <= 1.')
-  if shape.dtype.type in (np.int32, np.int64):
+  if shape.dtype in (np.int32, np.int64):
     shape = shape.data
   else:
     # Ensure this is a valid shape by converting to TensorShape
     # which raises an exception if there is data loss during casting.
     # TODO(srbs): Raise error when graph building is enabled.
-    shape = tf.TensorShape(shape.numpy())
+    shape = tf.TensorShape(shape.data)
   return shape
 
 
