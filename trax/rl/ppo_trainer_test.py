@@ -242,12 +242,14 @@ class PpoTrainerTest(test.TestCase):
       trainer.training_loop(n_epochs=1)
       self.assertEqual(trainer.epoch, 1)
 
-      # Restore from the saved state.
+      # Initialize with the same `output_dir`.
       trainer = self._make_trainer(
           train_env=train_env,
           eval_env=eval_env,
           output_dir=output_dir,
       )
+      # reset the trainer manually and check that it initializes.
+      trainer.reset()
       self.assertEqual(trainer.epoch, 1)
       # Check that we can continue training from the restored checkpoint.
       trainer.training_loop(n_epochs=2)
