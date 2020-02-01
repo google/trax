@@ -66,35 +66,35 @@ class Optimizer(object):
 
   # End subclass interface.
 
-  def tree_init(self, param_tree):
+  def tree_init(self, weight_tree):
     return (
-        [self.init(param) for param in _tree_flatten(param_tree)],
+        [self.init(weight) for weight in _tree_flatten(weight_tree)],
         self._init_opt_params,
     )
 
-  def _update_and_check(self, step, grads, params, slots, opt_params):
-    """Update a single parameter array and check types."""
-    new_params, new_slots = self.update(
-        step, grads, params, slots, opt_params)
-    if isinstance(params, np.ndarray):
-      assert isinstance(new_params, np.ndarray), (
-          'The type of the new parameter values should be np.ndarray; got %s' %
-          type(new_params))
-      assert new_params.dtype == params.dtype, (
-          'The dtype of the new parameter values (%s) is not the same as the '
-          'old one (%s)' % (new_params.dtype, params.dtype))
-    return new_params, new_slots
+  def _update_and_check(self, step, grads, weights, slots, opt_params):
+    """Update a single weight array and check types."""
+    new_weights, new_slots = self.update(
+        step, grads, weights, slots, opt_params)
+    if isinstance(weights, np.ndarray):
+      assert isinstance(new_weights, np.ndarray), (
+          'The type of the new weight values should be np.ndarray; got %s' %
+          type(new_weights))
+      assert new_weights.dtype == weights.dtype, (
+          'The dtype of the new weight values (%s) is not the same as the '
+          'old one (%s)' % (new_weights.dtype, weights.dtype))
+    return new_weights, new_slots
 
-  def tree_update(self, step, grad_tree, param_tree, slots, opt_params):
+  def tree_update(self, step, grad_tree, weight_tree, slots, opt_params):
     grads_flat = _tree_flatten(grad_tree)
-    params_flat = _tree_flatten(param_tree)
+    weights_flat = _tree_flatten(weight_tree)
     updated_pairs = [
-        self._update_and_check(step, grad, param, slot, opt_params)
-        for (grad, param, slot) in zip(grads_flat, params_flat, slots)
+        self._update_and_check(step, grad, weight, slot, opt_params)
+        for (grad, weight, slot) in zip(grads_flat, weights_flat, slots)
     ]
-    new_params_flat, new_slots = zip(*updated_pairs)
-    new_params, _ = _tree_unflatten(new_params_flat, param_tree)
-    return new_params, new_slots
+    new_weights_flat, new_slots = zip(*updated_pairs)
+    new_weights, _ = _tree_unflatten(new_weights_flat, weight_tree)
+    return new_weights, new_slots
 
 
 def _tree_flatten(tree):
