@@ -179,10 +179,15 @@ class SplitForOutput(tl.ReversibleLayer):
     x2_split = np.split(x2, self._n_sections, self._axis)
 
     res = [np.concatenate(ys, -1) for ys in zip(x1_split, x2_split)]
-    return tuple(res)
+    if len(res) == 1:
+      return res[0]
+    else:
+      return tuple(res)
 
   def reverse(self, output, weights=(), state=(), new_state=(), **kwargs):
     del weights, kwargs
+    if not isinstance(output, (list, tuple)):
+      output = [output]
 
     x1_split = []
     x2_split = []
