@@ -553,7 +553,7 @@ class Layer(object):
         res = self.backward(
             y, output, grad, weights, state, new_state, **kwargs)
         return res
-      return (output, state), vjpfun
+      return (output, new_state), vjpfun
 
     jax.defvjp_all(_do_forward, do_forward_vjp)
     output, state = _do_forward(x, weights)

@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Reformer Models."""
 from __future__ import absolute_import
 from __future__ import division
@@ -21,7 +22,9 @@ from __future__ import print_function
 import jax
 
 from trax import layers as tl
-from trax.layers.combinators import _pop_rng_and_split
+from trax.layers import base
+from trax.layers.combinators import (  # pylint: disable=g-multiple-import
+    _pop_rng_and_split, _inputs_from_stack, _outputs_onto_stack)
 from trax.math import numpy as np
 from trax.math import random
 from trax.models import transformer
@@ -442,6 +445,161 @@ class ReversibleAttentionHalfResidual(tl.ReversibleLayer, tl.Serial):
     return reconstructed_x, (x_ct, weights_ct)
 
 
+class ReversibleHalfResidualV2(tl.ReversibleLayer):
+  """Half of a RevNet-style residual that optionally performs attention.
+
+  This layer is designed to replace both ReversibleHalfResidual and
+  ReversibleAttentionHalfResidual. When attention_layer is None, this layer has
+  the signature [accumulator, *context] -> [accumulator + f(context), *context].
+  The attention_layer must be an instance of EfficientAttentionBase or one of
+  its subclasses (see efficient_attention_v2.py), or None.
+
+  Attention is special-cased for the following two reasons:
+  - LSH attention needs to save bucket assignments from the forward pass to the
+    backward pass, for training stability. This requires special-casing it.
+  - We can call attention_layer.forward_and_or_backward to compute its output
+    (needed for inverting a reversible residual layer) while simultaneously
+    performing the backward pass. Sharing computation between these two
+    operations improves training speed.
+  """
+
+  def __init__(self, *residual_layers, attention_layer=None):
+    super(ReversibleHalfResidualV2, self).__init__()
+
+    self.compute_residual = tl.Serial(*residual_layers)
+    self.attention_layer = attention_layer
+
+    if self.attention_layer is None:
+      self._sublayers = (self.compute_residual,)
+    else:
+      assert hasattr(attention_layer, 'forward_and_or_backward')
+      self._sublayers = (self.compute_residual, self.attention_layer)
+
+    running_max = 0
+    running_total = 0
+    for layer in self._sublayers:
+      running_total += layer.n_in
+      running_max = max(running_max, running_total)
+      running_total -= layer.n_out
+    self._n_in = self._n_out = running_max + 1
+
+  def forward_with_state(self, xs, weights=base.EMPTY_WEIGHTS,
+                         state=base.EMPTY_STATE, **kwargs):
+    rngs = _pop_rng_and_split(kwargs, len(self.sublayers))
+
+    accumulator, *context = xs
+    stack = context = tuple(context)
+    new_state = []
+    for layer, w, s, rng in zip(self.sublayers, weights, state, rngs):
+      inputs = _inputs_from_stack(layer, stack)
+      outputs, s = layer._forward_internal(inputs, w, s, rng)  # pylint: disable=protected-access
+      stack = _outputs_onto_stack(layer, outputs, stack)
+      new_state.append(s)
+    residual = stack[0] if isinstance(stack, (tuple, list)) else stack
+
+    output = accumulator + residual
+    stack = (output,) + context
+    return stack, new_state
+
+  def reverse(self, *args, **kwargs):
+    raise NotImplementedError('Only reverse_and_grad is actually used.')
+
+  def reverse_and_grad(self, output, ct, weights=(), state=(), new_state=(),
+                       **kwargs):
+    rngs = _pop_rng_and_split(kwargs, len(self.sublayers))
+
+    accumulator_output, *context = output
+    context = tuple(context)
+    accumulator_output_ct, *context_ct = ct
+    context_ct = tuple(context_ct)
+
+    # Forward pass through self.compute_residual
+    def call_compute_residual(x, weights):
+      res, _ = self.compute_residual._forward_internal(  # pylint: disable=protected-access
+          x, weights=weights, state=state[0], rng=rngs[0])
+      return res
+
+    stack = context
+    inputs = _inputs_from_stack(self.compute_residual, stack)
+    outputs, compute_residual_vjpfun = jax.vjp(
+        call_compute_residual, inputs, weights[0])
+    stack = _outputs_onto_stack(self.compute_residual, outputs, stack)
+
+    # TODO(kitaev): handle the case of multiple outputs from
+    # self.compute_residual.
+    stack_ct = accumulator_output_ct
+    if self.attention_layer is None:
+      residual = stack[0] if isinstance(stack, (tuple, list)) else stack
+    else:
+      inputs = _inputs_from_stack(self.attention_layer, stack)
+      (residual, _, attn_inputs_ct, attn_weights_ct
+      ) = self.attention_layer.forward_and_or_backward(
+          inputs, weights[1], new_state[1], output_grad=accumulator_output_ct,
+          compute_output=True, update_state=False)
+      stack_ct = _outputs_onto_stack(
+          self.attention_layer, attn_inputs_ct, stack_ct,
+          self.attention_layer.n_out, self.attention_layer.n_in)
+
+    compute_residual_ct = _inputs_from_stack(
+        self.compute_residual, stack_ct, self.compute_residual.n_out)
+    (compute_residual_inputs_ct, compute_residual_weights_ct
+    ) = compute_residual_vjpfun(compute_residual_ct)
+    stack_ct = _outputs_onto_stack(
+        self.compute_residual, compute_residual_inputs_ct, stack_ct,
+        self.compute_residual.n_out, self.compute_residual.n_in)
+    if not isinstance(stack_ct, (tuple, list)):
+      stack_ct = (stack_ct,)
+    stack_ct = (accumulator_output_ct,) + jax.tree_multimap(
+        lambda x, y: x+y, context_ct[:len(stack_ct)], stack_ct
+        ) + context_ct[len(stack_ct):]
+
+    reconstructed_x = accumulator_output - residual
+    stack = (reconstructed_x,) + context
+    if self.attention_layer is None:
+      weights_ct = (compute_residual_weights_ct,)
+    else:
+      weights_ct = (compute_residual_weights_ct, attn_weights_ct)
+    return stack, (stack_ct, weights_ct)
+
+  # pylint: disable=protected-access
+  def new_weights_and_state(self, input_signature):
+    stack = input_signature[1:]
+    if len(stack) == 1:
+      stack = stack[0]
+
+    inputs = _inputs_from_stack(self.compute_residual, stack)
+    weights, state = self.compute_residual.init(inputs)
+    outputs, _ = self.compute_residual._forward_abstract(inputs)
+    stack = _outputs_onto_stack(self.compute_residual, outputs, stack)
+
+    if self.attention_layer is None:
+      return (weights,), (state,)
+    else:
+      inputs = _inputs_from_stack(self.attention_layer, stack)
+      attn_weights, attn_state = self.attention_layer.init(inputs)
+      return (weights, attn_weights), (state, attn_state)
+  # pylint: enable=protected-access
+
+  # pylint: disable=protected-access
+  def _set_input_signature_recursive(self, input_signature):
+    """Sets input signatures for this layer and sublayers, recursively.
+
+    Args:
+      input_signature: A `ShapeDtype` instance (if this layer takes one input)
+          or a list/tuple of `ShapeDtype` instances.
+    """
+    self._input_signature = input_signature
+
+    # Infer shapes and dtypes (signatures) through the successive sublayers.
+    stack = input_signature[1:]
+    for layer in self.sublayers:
+      inputs = _inputs_from_stack(layer, stack)
+      layer._set_input_signature_recursive(inputs)
+      outputs, _ = layer._forward_abstract(inputs)
+      stack = _outputs_onto_stack(layer, outputs, stack)
+  # pylint: enable=protected-access
+
+
 def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
                  n_heads, n_attention_chunks, attention_type,
                  dropout, share_qk, ff_activation, ff_use_sru, ff_chunk_size,
@@ -466,38 +624,53 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
   Returns:
     the layer.
   """
-  if share_qk:
-    pre_attention = [
-        Chunk(n_sections=n_attention_chunks),  # pylint: disable=no-value-for-parameter
-        tl.LayerNorm(),
-        tl.Dup(),
-        tl.Parallel(
-            tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_attention_key),
-            tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_attention_value),
-        ),
-        tl.Dup(),
+  if not hasattr(attention_type, 'forward_unbatched'):
+    if share_qk:
+      pre_attention = [
+          Chunk(n_sections=n_attention_chunks),  # pylint: disable=no-value-for-parameter
+          tl.LayerNorm(),
+          tl.Dup(),
+          tl.Parallel(
+              tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_attention_key),
+              tl.ComputeAttentionHeads(
+                  n_heads=n_heads, d_head=d_attention_value),
+          ),
+          tl.Dup(),
+      ]
+    else:
+      pre_attention = [
+          Chunk(n_sections=n_attention_chunks),  # pylint: disable=no-value-for-parameter
+          tl.LayerNorm(),
+          tl.Dup(), tl.Dup(),
+          tl.Parallel(
+              tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_attention_key),
+              tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_attention_key),
+              tl.ComputeAttentionHeads(
+                  n_heads=n_heads, d_head=d_attention_value),
+          ),
+      ]
+
+    attention = attention_type(mode=mode)
+
+    # ReversibleAttentionHalfResidual requires that post_attention be linear in
+    # its input (so the backward pass can be computed without knowing the input)
+    post_attention = [
+        tl.ComputeAttentionOutput(n_heads=n_heads, d_model=d_model),
+        Unchunk(n_sections=n_attention_chunks),  # pylint: disable=no-value-for-parameter
+        BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
     ]
+
+    attention_half_residual = ReversibleAttentionHalfResidual(
+        pre_attention, attention, post_attention)
   else:
-    pre_attention = [
-        Chunk(n_sections=n_attention_chunks),  # pylint: disable=no-value-for-parameter
+    attention = attention_type(
+        n_heads=n_heads, d_qk=d_attention_key, d_v=d_attention_value,
+        share_qk=share_qk, causal=True, mode=mode)
+    attention_half_residual = ReversibleHalfResidualV2(
         tl.LayerNorm(),
-        tl.Dup(), tl.Dup(),
-        tl.Parallel(
-            tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_attention_key),
-            tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_attention_key),
-            tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_attention_value),
-        ),
-    ]
-
-  attention = attention_type(mode=mode)
-
-  # ReversibleAttentionHalfResidual requires that post_attention be linear in
-  # its input (so the backward pass can be computed without knowing the input)
-  post_attention = [
-      tl.ComputeAttentionOutput(n_heads=n_heads, d_model=d_model),
-      Unchunk(n_sections=n_attention_chunks),  # pylint: disable=no-value-for-parameter
-      BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
-  ]
+        attention_layer=attention,
+        # TODO(kitaev): add output dropout to attention layer.
+    )
 
   if ff_use_sru:
     feed_forward = [tl.SRU(d_model) for _ in range(ff_use_sru)]
@@ -506,7 +679,7 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
                                        ff_chunk_size, mode)]
 
   return [
-      ReversibleAttentionHalfResidual(pre_attention, attention, post_attention),
+      attention_half_residual,
       tl.ReversibleSwap(),
       ReversibleHalfResidual(feed_forward),
       tl.ReversibleSwap(),

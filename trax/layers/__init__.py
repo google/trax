@@ -32,6 +32,7 @@ from trax.layers.metrics import *
 from trax.layers.normalization import *
 from trax.layers.pooling import *
 from trax.layers.research.efficient_attention import *
+from trax.layers.research.efficient_attention_v2 import *
 from trax.layers.reversible import *
 from trax.layers.rnn import *
 from trax.layers.tracer import symbolic
@@ -71,3 +72,8 @@ TimeBinCausalAttention = layer_configure(
     TimeBinCausalAttention, blacklist=['mode'])
 LSHCausalAttention = layer_configure(
     LSHCausalAttention, blacklist=['mode'])
+
+SelfAttention = layer_configure(
+    SelfAttention, blacklist=['mode'])
+LSHSelfAttention = layer_configure(
+    LSHSelfAttention, blacklist=['mode'])
