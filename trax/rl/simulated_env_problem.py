@@ -406,6 +406,19 @@ class SerializedSequenceSimulatedEnvProblem(SimulatedEnvProblem):
 
     indices = np.array(indices)
 
+    # During reset, we need to predict the first observation for a subset of
+    # indices, however inference only works for the full set of indices. To
+    # workaround that:
+    # 1. Save prior inference state.
+    old_model_state = self._model_state
+    old_last_symbols = self._last_symbols
+    # 2. Reset the entire inference state.
+    self._model_state = self._init_model_state
+    self._last_symbols[:] = 0
+    # 3. Predict the next observation.
+    observation = self._predict_obs(predict_fn, rng)[indices]
+    self._last_observations[indices] = observation
+
     # TODO(pkozakowski): Abstract out this primitive e.g. as
     # trax.math.nested_zip_with?
     def reset_recursively(current_state, init_state):
@@ -426,6 +439,9 @@ class SerializedSequenceSimulatedEnvProblem(SimulatedEnvProblem):
             current_state.shape[0] == self._batch_size):
           # If the state component is batched, substitute it on appropriate
           # indices.
+          # This doesn't work with more than one head in attention layers,
+          # because the batch dimension gets multiplied by the number of heads.
+          # TODO(pkozakowski): Fix that in trax.layes.attention.
           return jax.ops.index_update(
               current_state, jax.ops.index[indices], init_state[indices]
           )
@@ -433,11 +449,12 @@ class SerializedSequenceSimulatedEnvProblem(SimulatedEnvProblem):
           # Otherwise, leave as it is.
           return current_state
 
-    reset_recursively(self._model_state, self._init_model_state)
-    self._last_symbols[indices] = 0
+    # 4. Assign back the old inference state, updated on the appropriate
+    # indices.
+    self._model_state = reset_recursively(old_model_state, self._model_state)
+    old_last_symbols[indices] = self._last_symbols[indices]
+    self._last_symbols = old_last_symbols
     self._steps[indices] = 0
-    observation = self._predict_obs(predict_fn, rng)[indices]
-    self._last_observations[indices] = observation
     return observation
 
   def _step_model(self, predict_fn, actions, rng):

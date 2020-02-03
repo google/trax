@@ -105,7 +105,7 @@ class PositionalEncoding(base.Layer):
       # This positional encoding layer needs to store the index of the current
       # position then and increment it on each call -- that's how state is used
       # and updated below.
-      return (inputs + np.expand_dims(weights[:, state, :], 1), state + 1)
+      return (inputs + np.expand_dims(weights[0, state, :], 1), state + 1)
 
   def new_weights_and_state(self, input_signature):
     d_feature = input_signature.shape[-1]
@@ -117,7 +117,11 @@ class PositionalEncoding(base.Layer):
     pe[:, 1::2] = onp.cos(position * div_term)
     pe = pe[onp.newaxis, :, :]  # [1, self._max_len, d_feature]
     weights = np.array(pe)  # These are trainable parameters, initialized above.
-    state = 0 if self._mode == 'predict' else base.EMPTY_STATE
+    if self._mode == 'predict':
+      batch_size = input_signature.shape[0]
+      state = np.zeros((batch_size,), dtype=np.int32)
+    else:
+      state = base.EMPTY_STATE
     return weights, state
 
 
