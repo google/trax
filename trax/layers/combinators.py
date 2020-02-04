@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Combinators for composing layers."""
 
 from __future__ import absolute_import
@@ -65,11 +66,11 @@ class Serial(base.Layer):
     new_state = []
     n_layers = self._n_layers
     if n_layers != 1 and len(weights) != n_layers:
-      raise ValueError('number of weights ({}) not equal to number of layers '
-                       '({})'.format(len(weights), n_layers))
+      raise ValueError(
+          f'len(weights) ({len(weights)}) != number of layers ({n_layers})')
     if n_layers != 1 and len(state) != n_layers:
-      raise ValueError('length of state ({}) not equal to number of layers '
-                       '({})'.format(len(state), n_layers))
+      raise ValueError(
+          f'len(state) ({len(state)}) != number of layers ({n_layers})')
 
     for layer, w, s, rng in zip(self.sublayers, weights, state, rngs):
       inputs = _inputs_from_stack(layer, stack)
@@ -102,9 +103,10 @@ class Serial(base.Layer):
     if weights == base.EMPTY_WEIGHTS:
       return
     self._weights = weights
-    assert len(weights) == self._n_layers, (
-        'Number of weights [%d] differs from the number of sublayers [%d].'
-        % (len(weights), self._n_layers))
+    n_layers = self._n_layers
+    if len(weights) != n_layers:
+      raise ValueError(
+          f'len(weights) ({len(weights)}) != number of layers ({n_layers})')
     for layer, sublayer_weights in zip(self.sublayers, weights):
       layer.weights = sublayer_weights
 
@@ -112,7 +114,10 @@ class Serial(base.Layer):
   def state(self, state):
     """Recursively sets non-param state on this layer and all sublayers."""
     self._state = state
-    assert len(state) == self._n_layers
+    n_layers = self._n_layers
+    if n_layers != 1 and len(state) != n_layers:
+      raise ValueError(
+          f'len(state) ({len(state)}) != number of layers ({n_layers})')
     for layer, sublayer_state in zip(self.sublayers, state):
       layer.state = sublayer_state
 
@@ -129,12 +134,12 @@ class Serial(base.Layer):
   def _validate_forward_inputs(self, xs):
     if not isinstance(xs, tuple) and self._n_in != 1:
       raise TypeError(
-          'Serial.forward input must be a tuple; instead got {}'.format(xs))
+          f'Serial.forward input must be a tuple; instead got {xs}')
     len_xs = 1 if isinstance(xs, np.ndarray) else len(xs)
     if len_xs < self.n_in:
       raise ValueError(
-          'number of inputs ({}) to Serial.forward less than n_in'
-          ' ({})'.format(len(xs), self.n_in))
+          f'number of inputs ({len(xs)}) to Serial.forward less than n_in '
+          f'({self.n_in})')
 
   # pylint: disable=protected-access
   def _set_input_signature_recursive(self, input_signature):
@@ -207,8 +212,12 @@ class Parallel(base.Layer):
     sublayer_inputs = self._allot_to_sublayers(inputs)
     rngs = _pop_rng_and_split(kwargs, n_layers)
     assert len(sublayer_inputs) == n_layers
-    assert len(weights) == n_layers
-    assert len(state) == n_layers
+    if len(weights) != n_layers:
+      raise ValueError(
+          f'len(weights) ({len(weights)}) != number of layers ({n_layers})')
+    if len(state) != n_layers:
+      raise ValueError(
+          f'len(state) ({len(state)}) != number of layers ({n_layers})')
     assert len(rngs) == n_layers
     outputs = []
     new_state = []
@@ -254,8 +263,7 @@ class Parallel(base.Layer):
   def _validate(self, layers):
     if not layers or len(layers) < 2:
       raise ValueError(
-          'layers ({}) must be a list with at least two elements'.format(
-              layers))
+          f'layers ({layers}) must be a list with at least two elements')
     layers = list(layers)  # Ensure we can modify layers.
     for i, obj in enumerate(layers):
       if obj is None or obj == []:  # pylint: disable=g-explicit-bool-comparison
@@ -265,12 +273,10 @@ class Parallel(base.Layer):
       else:
         if not isinstance(obj, base.Layer):
           raise ValueError(
-              'Found nonlayer object ({}) in layers list: [{}].'.format(
-                  obj, layers))
+              f'found nonlayer object ({obj}) in layers list: [{layers}]')
       if layers[i].n_in == 0:
         raise ValueError(
-            'Sublayer with n_in = 0 not allowed in Parallel:'
-            ' {}'.format(layers[i]))
+            f'sublayer with n_in = 0 not allowed in Parallel: {layers[i]}')
     return layers
 
   def _allot_to_sublayers(self, inputs):
@@ -736,5 +742,5 @@ def _ensure_flat(layers):
   for obj in layers:
     if not isinstance(obj, base.Layer):
       raise ValueError(
-          'Found nonlayer object ({}) in layers: {}.'.format(obj, layers))
+          f'found nonlayer object ({obj}) in layers: {layers}')
   return layers
