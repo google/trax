@@ -422,7 +422,7 @@ class Scan(base.Layer):
     xs_slices = [ShapeDtype(_shape_without_axis(x, self._axis), x.dtype)
                  for x in xs]
     layer_signature = tuple(xs_slices + list(init))
-    return self.sublayer.new_weights_and_state(layer_signature)
+    return self.sublayer.init(layer_signature)
 
 
 def Branch(*layers):

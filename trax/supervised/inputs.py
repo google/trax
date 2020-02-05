@@ -264,6 +264,76 @@ def sequence_copy_inputs(
   )
 
 
+def lower_endian_to_number(l, base):
+  """Helper function: convert a list of digits in the given base to a number."""
+  return sum([d * (base**i) for i, d in enumerate(l)])
+
+
+def number_to_lower_endian(n, base):
+  """Helper function: convert a number to a list of digits in the given base."""
+  if n < base:
+    return [n]
+  return [n % base] + number_to_lower_endian(n // base, base)
+
+
+def random_number_lower_endian(length, base):
+  """Helper function: generate a random number as a lower-endian digits list."""
+  if length == 1:  # Last digit can be 0 only if length is 1.
+    return [onp.random.randint(base)]
+  prefix = [onp.random.randint(base) for _ in range(length - 1)]
+  return prefix + [onp.random.randint(base - 1) + 1]  # Last digit is not 0.
+
+
+@gin.configurable()
+def addition_inputs(
+    vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, train_length=gin.REQUIRED,
+    eval_min_length=gin.REQUIRED, eval_max_length=gin.REQUIRED):
+  """Inputs for the add problem: <S>x+y<S>(x+y).
+
+  Args:
+    vocab_size: how many symbols to use.
+    batch_size: how large are the batches.
+    train_length: maximal length of w for training.
+    eval_min_length: minimal length of w for eval.
+    eval_max_length: maximal length of w for eval.
+
+  Returns:
+    trax.inputs.Inputs
+  """
+  base = vocab_size - 3  # We use 0 to pad, base+1 as "+" and base+2 as "<S>".
+  def single_example(max_length, min_length):
+    """Generate a stream of random mini-batches."""
+    add_len = (min_length - 1) // 2
+    l1 = onp.random.randint((max_length - add_len + 1) // 2) + add_len
+    l2 = onp.random.randint(max_length - l1 - 1) + 1
+    n1 = random_number_lower_endian(l1, base)
+    n2 = random_number_lower_endian(l2, base)
+    result = lower_endian_to_number(n1, base) + lower_endian_to_number(
+        n2, base)
+    inp = n1 + [base] + n2
+    tgt = number_to_lower_endian(result, base)
+    x = [base+2] + [i+1 for i in inp] + [base+2] + [i+1 for i in tgt]
+    weights = ([0] * (len(inp) + 2)) + ([1] * len(tgt))
+    return (x, weights)
+
+  def batches(max_length, min_length):
+    """Batches of examples."""
+    if max_length < 3:
+      raise ValueError('Maximum length must be at least 3.')
+    while True:
+      res = [single_example(max_length, min_length) for _ in range(batch_size)]
+      l = max([len(x[0]) for x in res])
+      xs = onp.array([x[0] + [0] * (l - len(x[0])) for x in res])
+      ws = onp.array([x[1] + [0] * (l - len(x[1])) for x in res],
+                     dtype=onp.float32)
+      yield (xs, xs, ws)
+
+  return Inputs(
+      train_stream=lambda _: batches(train_length, 3),
+      eval_stream=lambda _: batches(eval_max_length, eval_min_length)
+  )
+
+
 def dataset_to_stream(dataset, input_name):
   """Takes a tf.Dataset and creates a numpy stream of ready batches."""
   for example in math.dataset_as_numpy(dataset):

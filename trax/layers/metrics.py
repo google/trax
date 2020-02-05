@@ -61,6 +61,12 @@ def AccuracyScalar(id_to_mask=None, has_weights=False):
   return _WeightedMaskedMean(_Accuracy(), id_to_mask, has_weights)
 
 
+def SequenceAccuracyScalar(id_to_mask=None, has_weights=False):
+  """Computes weighted masked mean of sequence prediction accuracy."""
+  return _WeightedMaskedMean(_Accuracy(), id_to_mask, has_weights,
+                             final_layer_override=_WeightedSequenceMean())
+
+
 def CrossEntropyLoss(id_to_mask=None, has_weights=False):
   """Computes weighted masked mean of prediction-target cross entropies."""
   return _WeightedMaskedMean(_CrossEntropy(), id_to_mask, has_weights)
@@ -90,7 +96,7 @@ def _Accuracy(inputs, axis=-1, **unused_kwargs):
   """Returns a layer to score matches of predicted versus target categories."""
   y_hat, target_category = inputs
   predicted_category = np.argmax(y_hat, axis=axis)
-  return np.equal(predicted_category, target_category)
+  return np.equal(predicted_category, target_category).astype(np.float32)
 
 
 @base.layer(n_in=2, n_out=1)
@@ -116,10 +122,26 @@ def _WeightedMean(inputs, **unused_kwargs):
   return np.sum(values * weights) / np.sum(weights)
 
 
+@base.layer(n_in=2, n_out=1)
+def _WeightedSequenceMean(inputs, **unused_kwargs):
+  """Returns a layer to compute weighted seqeunce accuracy mean."""
+  values, weights = inputs  # This function assumes weights are 0 or 1.
+  not_correct = (1.0 - values) * weights  # 1: not-correct, 0: correct or masked
+  axis_to_sum = list(range(1, len(not_correct.shape)))
+  # Summing not-correct on all axes but batch. We're summing 0s and 1s,
+  # so the sum is 0 if it's all 0 and >=1 in all other cases.
+  not_correct_seq = np.sum(not_correct, axis=axis_to_sum)
+  # Sequence is correct if not_correct_seq is 0, reverting here.
+  correct_seq = 1.0 - np.minimum(1.0, not_correct_seq)
+  return np.mean(correct_seq)  # Mean over batch.
+
+
 # pylint: disable=no-value-for-parameter
-def _WeightedMaskedMean(metric_layer, id_to_mask, has_weights):
+def _WeightedMaskedMean(metric_layer, id_to_mask, has_weights,
+                        final_layer_override=None):
   """Computes weighted masked mean of metric_layer(predictions, targets)."""
   multiply_by_weights = cb.Multiply() if has_weights else []
+  final_layer = final_layer_override or _WeightedMean()  # For sequence acc.
   # Create a layer with 2 or 3 inputs:
   #   - predictions targets (weights)
   # that applies the specified metric to a batch and gathers the results into
@@ -128,7 +150,7 @@ def _WeightedMaskedMean(metric_layer, id_to_mask, has_weights):
       cb.Select([0, 1, 1]),
       cb.Parallel(metric_layer, _ElementMask(id_to_mask=id_to_mask)),
       cb.Parallel([], multiply_by_weights),  # Stack now: metric_values weights
-      _WeightedMean()
+      final_layer
   )
 # pylint: enable=no-value-for-parameter
 
