@@ -67,6 +67,18 @@ class MetricsLayerTest(absltest.TestCase):
     mean3 = layer((inputs, weights3))
     onp.testing.assert_allclose(mean3, 1.0)
 
+  def test_weighted_sequence_mean_semantics(self):
+    inputs = onp.array([[1, 1, 1], [1, 1, 0]], dtype=onp.float32)
+    weights1 = onp.array([1, 1, 1], dtype=onp.float32)
+    layer = metrics._WeightedSequenceMean()
+    full_signature = (signature(inputs), signature(weights1))
+    layer.init(full_signature)
+    mean1 = layer((inputs, weights1))
+    onp.testing.assert_allclose(mean1, 0.5)
+    weights2 = onp.array([1, 1, 0], dtype=onp.float32)
+    mean2 = layer((inputs, weights2))
+    onp.testing.assert_allclose(mean2, 1.0)
+
   def test_cross_entropy_loss(self):
     input_signature = (ShapeDtype((29, 4, 4, 20)), ShapeDtype((29, 4, 4)))
     result_shape = base.check_shape_agreement(

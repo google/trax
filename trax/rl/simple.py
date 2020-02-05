@@ -127,7 +127,7 @@ def play_env_problem(env, policy_fn):
         traj.change_last_time_step(action=action)
         traj.add_time_step(
             observation=observation, raw_reward=reward, done=done)
-      env.reset(indices=env_problem_utils.done_indices(dones))
+    env.reset(env_problem_utils.done_indices(dones))
     done_so_far = np.logical_or(done_so_far, dones)
   return trajectories
 

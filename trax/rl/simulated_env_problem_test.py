@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import itertools
 
 import gin
@@ -30,6 +31,7 @@ from tensor2tensor.envs import trajectory
 from tensorflow import test
 from trax import math
 from trax.layers import base
+from trax.models import transformer
 from trax.rl import simulated_env_problem
 from trax.supervised import trainer_lib
 
@@ -69,6 +71,7 @@ class RawSimulatedEnvProblemTest(test.TestCase):
 
     mock_model_fn = mock.MagicMock()
     mock_model_fn.return_value.side_effect = mock_transition
+    mock_model_fn.return_value.init.return_value = (None, None)
     mock_model = mock_model_fn.return_value
 
     actions_to_take = np.array([[1], [3]])
@@ -110,9 +113,12 @@ class RawSimulatedEnvProblemTest(test.TestCase):
   def test_takes_new_history(self):
     histories = np.array([[[0, 1, 2]], [[3, 4, 5]]])
 
+    mock_model_fn = mock.MagicMock()
+    mock_model_fn.return_value.init.return_value = (None, None)
+
     with math.use_backend('numpy'):
       env = self._create_env(  # pylint: disable=no-value-for-parameter
-          model=mock.MagicMock(),
+          model=mock_model_fn,
           histories=histories,
           trajectory_length=2,
       )
@@ -129,6 +135,7 @@ class SerializedSequenceSimulatedEnvProblemTest(test.TestCase):
       batch_size=None, max_trajectory_length=None,
   ):
     mock_model_fn = mock.MagicMock()
+    mock_model_fn.return_value.init.return_value = (None, None)
     if predict_fn is not None:
       mock_model_fn.return_value = predict_fn
       mock_model_fn.return_value.init.return_value = (
@@ -218,6 +225,29 @@ class SerializedSequenceSimulatedEnvProblemTest(test.TestCase):
       np.testing.assert_array_equal(obs1, obs3)
       np.testing.assert_array_equal(reward, [0.5])
       np.testing.assert_array_equal(done, [True])
+
+  def test_runs_with_transformer(self):
+    env = simulated_env_problem.SerializedSequenceSimulatedEnvProblem(
+        model=functools.partial(
+            transformer.TransformerLM, d_model=2, d_ff=2, n_heads=1, n_layers=1
+        ),
+        reward_fn=(lambda _1, _2: np.array([0.5])),
+        done_fn=(lambda _1, _2: np.array([False])),
+        vocab_size=4,
+        max_trajectory_length=3,
+        batch_size=1,
+        observation_space=gym.spaces.Box(low=0, high=5, shape=(4,)),
+        action_space=gym.spaces.Discrete(n=2),
+        reward_range=(-1, 1),
+        discrete_rewards=False,
+        history_stream=itertools.repeat(None),
+        output_dir=None,
+    )
+
+    env.reset()
+    for expected_done in [False, True]:
+      (_, _, dones, _) = env.step(np.array([0]))
+      np.testing.assert_array_equal(dones, [expected_done])
 
   def test_makes_training_example(self):
     env = self._make_env(

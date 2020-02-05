@@ -116,7 +116,7 @@ def train_rl(
 
   parallelism = multiprocessing.cpu_count() if FLAGS.parallelize_envs else 1
 
-  logging.info('Num actions %d', num_actions)
+  logging.info('Num discretized actions %s', num_actions)
   logging.info('Resize %d', resize)
 
   train_env = env_problem_utils.make_env(

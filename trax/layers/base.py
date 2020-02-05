@@ -348,8 +348,6 @@ class Layer(object):
 
   def new_rng(self):
     """Returns a new single-use random number generator (JAX PRNG key)."""
-    if self._rng is None:
-      self._rng = math.random.get_prng(0)
     self._rng, rng = math.random.split(self._rng)
     return rng
 
@@ -364,8 +362,6 @@ class Layer(object):
     """
     if n < 1:
       raise ValueError('n must be > 0; received value: {}'.format(n))
-    if self._rng is None:
-      self._rng = math.random.get_prng(0)
     rngs = math.random.split(self._rng, n + 1)
     self._rng = rngs[0]
     return tuple(rngs[1:])
@@ -553,7 +549,7 @@ class Layer(object):
         res = self.backward(
             y, output, grad, weights, state, new_state, **kwargs)
         return res
-      return (output, state), vjpfun
+      return (output, new_state), vjpfun
 
     jax.defvjp_all(_do_forward, do_forward_vjp)
     output, state = _do_forward(x, weights)

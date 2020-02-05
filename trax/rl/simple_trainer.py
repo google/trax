@@ -72,9 +72,6 @@ class SimPLe(base_trainer.BaseTrainer):
         eval_env=eval_env,
         output_dir=self._policy_dir,
         async_mode=self._async_mode,
-        init_policy_from_world_model_output_dir=(
-            self._model_dir if init_policy_from_world_model else None
-        ),
     )
     self._policy_trainer = None
     self._n_real_epochs = n_real_epochs
@@ -92,6 +89,7 @@ class SimPLe(base_trainer.BaseTrainer):
       )
     self._initial_model = initial_model
     self._initial_trajectories = None
+    self._init_policy_from_world_model = init_policy_from_world_model
 
     self._sim_env = simulated_env_problem_class(
         batch_size=None,
@@ -166,6 +164,15 @@ class SimPLe(base_trainer.BaseTrainer):
     self.policy_trainer.trajectory_dump_dir = os.path.join(
         self._trajectory_dump_root_dir, str(self.epoch))
     self._policy_epoch += self._n_real_epochs
+
+    # After the first world model training, reinitialize the policy from the
+    # world model parameters if requested.
+    if self._simple_epoch == 1 and self._init_policy_from_world_model:
+      self.policy_trainer.init_policy_from_world_model_output_dir = (
+          self._model_dir
+      )
+      self.policy_trainer.reset(output_dir=self._policy_dir)
+
     self.policy_trainer.training_loop(self._policy_epoch, evaluate=evaluate)
 
     logging.vlog(
