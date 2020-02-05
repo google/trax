@@ -94,7 +94,7 @@ class EfficientAttentionTest(test.TestCase):
     with math.use_backend('jax'):
       common_kwargs = dict(
           n_heads=6, d_qk=7, d_v=17, share_qk=False, causal=True,
-          chunk_len=8, n_chunks_before=1, n_chunks_after=0,
+          chunk_len=5, n_chunks_before=1, n_chunks_after=0,
           attention_dropout=0.0, mode='train',
       )
       test_kwargs = []
@@ -104,8 +104,8 @@ class EfficientAttentionTest(test.TestCase):
                                   use_python_loop=use_python_loop))
 
       inp = jax.random.uniform(
-          jax.random.PRNGKey(0), (2, 16, 64), dtype=np.float32)
-      input_signature = ShapeDtype((2, 16, 64), dtype=np.float32)
+          jax.random.PRNGKey(0), (2, 10, 13), dtype=np.float32)
+      input_signature = ShapeDtype((2, 10, 13), dtype=np.float32)
       self._test_equivalence_to_reference_code(
           efficient_attention_v2.SelfAttention,
           inp, input_signature,
@@ -115,7 +115,7 @@ class EfficientAttentionTest(test.TestCase):
     with math.use_backend('jax'):
       common_kwargs = dict(
           n_heads=6, d_qk=7, d_v=17, causal=True,
-          chunk_len=8, n_chunks_before=1, n_chunks_after=0,
+          chunk_len=5, n_chunks_before=1, n_chunks_after=0,
           n_hashes=2, n_buckets=4,
           attention_dropout=0.2, mode='train',
       )
@@ -126,8 +126,8 @@ class EfficientAttentionTest(test.TestCase):
                                   use_python_loop=use_python_loop))
 
       inp = jax.random.uniform(
-          jax.random.PRNGKey(0), (2, 16, 64), dtype=np.float32)
-      input_signature = ShapeDtype((2, 16, 64), dtype=np.float32)
+          jax.random.PRNGKey(0), (2, 10, 13), dtype=np.float32)
+      input_signature = ShapeDtype((2, 10, 13), dtype=np.float32)
       self._test_equivalence_to_reference_code(
           efficient_attention_v2.LSHSelfAttention,
           inp, input_signature,

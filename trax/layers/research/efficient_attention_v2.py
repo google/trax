@@ -73,13 +73,20 @@ def look_adjacent(x, n_chunks_before, n_chunks_after):
   return np.concatenate(slices, axis=1)
 
 
-def mask_self_attention(dots, q_info, kv_info, causal=True, exclude_self=True):
+def mask_self_attention(
+    dots, q_info, kv_info, causal=True, exclude_self=True, masked=False):
+  """Performs masking for self-attention."""
   if causal:
     mask = jax.lax.convert_element_type(jax.lax.lt(q_info, kv_info), np.float32)
     dots = dots - 1e9 * mask
   if exclude_self:
     mask = jax.lax.convert_element_type(jax.lax.eq(q_info, kv_info), np.float32)
     dots = dots - 1e5 * mask
+  if masked:
+    zeros_like_kv_info = jax.lax.tie_in(kv_info, np.zeros_like(kv_info))
+    mask = jax.lax.convert_element_type(
+        jax.lax.lt(kv_info, zeros_like_kv_info), np.float32)
+    dots = dots - 1e9 * mask
   return dots
 
 
@@ -192,12 +199,13 @@ class EfficientAttentionBase(base.Layer):
   to define the actual attention mechanism.
   """
 
-  def __init__(self, n_heads, n_parallel_heads=None,
+  def __init__(self, n_heads, n_in=1, n_parallel_heads=None,
                use_python_loop=False, use_reference_code=False):
     """Construct an EfficientAttentionBase instance.
 
     Args:
       n_heads: int: Number of attention heads
+      n_in: int: Number of inputs to the layer (default 1)
       n_parallel_heads: int: Number of attention heads to compute in parallel.
         if n_parallel_heads is None (default): The entire layer is computed with
           maximum parallelism. This mode is the fastest, but also uses the most
@@ -224,7 +232,7 @@ class EfficientAttentionBase(base.Layer):
         compilation time and jitted code size, potentially drastically. Using it
         is not recommended except for testing/debugging.
     """
-    super().__init__(n_in=1, n_out=1)
+    super().__init__(n_in=n_in, n_out=1)
     self.n_heads = n_heads
     if n_parallel_heads:
       if ((n_parallel_heads > n_heads and n_parallel_heads % n_heads != 0)
@@ -434,6 +442,38 @@ class EfficientAttentionBase(base.Layer):
           lambda x, y: jax.ops.index_add(x, jax.ops.index[indices], y),
           tree, new_values)
 
+    if compute_grad:
+      inputs_is_differentiable = jax.tree_map(
+          lambda x: np.issubdtype(x.dtype, np.inexact), inputs)
+      def split_differentiable(xs):
+        differentiable_xs = jax.tree_multimap(
+            lambda x, is_differentiable: x if is_differentiable else None,
+            xs, inputs_is_differentiable)
+        non_differentiable_xs = jax.tree_multimap(
+            lambda x, is_differentiable: None if is_differentiable else x,
+            xs, inputs_is_differentiable)
+        return differentiable_xs, non_differentiable_xs
+      def join_differentiable(differentiable_xs, non_differentiable_xs):
+        """Reconstitute inputs pytree from differentiable/non-d. partitions."""
+        differentiable_leaves = list(jax.tree_leaves(differentiable_xs))
+        non_differentiable_leaves = list(jax.tree_leaves(non_differentiable_xs))
+        leaves = []
+        for is_differentiable in jax.tree_leaves(inputs_is_differentiable):
+          if is_differentiable:
+            leaves.append(differentiable_leaves.pop(0))
+          else:
+            leaves.append(non_differentiable_leaves.pop(0))
+        assert not differentiable_leaves
+        assert not non_differentiable_leaves
+        return jax.tree_unflatten(jax.tree_structure(inputs), leaves)
+
+      def vjp(fn, inp, *args, has_aux=False):
+        d_inp, nd_inp = split_differentiable(inp)
+        def fn_closed_over_nd_inp(d_inp, *args):
+          inp = join_differentiable(d_inp, nd_inp)
+          return fn(inp, *args)
+        return jax.vjp(fn_closed_over_nd_inp, d_inp, *args, has_aux=has_aux)
+
     if n_parallel_heads == 1:
       def run_inner(idx, loop_val):
         """Runs one slice of attention (for a single head)."""
@@ -451,7 +491,7 @@ class EfficientAttentionBase(base.Layer):
               update_state=update_state)
 
         if compute_grad:
-          o_h, backward_fn, s_h = jax.vjp(forward_fn, i_h, w_h, has_aux=True)
+          o_h, backward_fn, s_h = vjp(forward_fn, i_h, w_h, has_aux=True)
           ct_h = output_grad[example_idx]
           assert o_h.shape == ct_h.shape
           i_ct_h, w_ct_h = backward_fn(ct_h)
@@ -493,8 +533,7 @@ class EfficientAttentionBase(base.Layer):
           return o_mh, new_s_mh
 
         if compute_grad:
-          o_mh, backward_fn, s_mh = jax.vjp(forward_fn, i_mh, w_mh,
-                                            has_aux=True)
+          o_mh, backward_fn, s_mh = vjp(forward_fn, i_mh, w_mh, has_aux=True)
           ct_mh = output_grad[example_idx]
           assert o_mh.shape == ct_mh.shape
           i_ct_mh, w_ct_mh = backward_fn(ct_mh)
@@ -546,8 +585,8 @@ class EfficientAttentionBase(base.Layer):
           return o_mex, new_s_mex
 
         if compute_grad:
-          o_mex, backward_fn, s_mex = jax.vjp(forward_fn, i_mex, weights,
-                                              has_aux=True)
+          o_mex, backward_fn, s_mex = vjp(forward_fn, i_mex, weights,
+                                          has_aux=True)
           ct_mex = output_grad[example_range]
           assert o_mex.shape == ct_mex.shape
           i_ct_mex, w_ct_mex = backward_fn(ct_mex)
@@ -572,8 +611,8 @@ class EfficientAttentionBase(base.Layer):
     if update_state:
       s_all = state
     if compute_grad:
-      # TODO(kitaev): no gradients for non-float inputs
       i_ct_all = jax.tree_map(np.zeros_like, inputs)
+      i_ct_all, i_nondifferentiable_dummy_ct = split_differentiable(i_ct_all)
       w_ct_all = jax.tree_map(np.zeros_like, weights)
 
     loop_val = (o_all, s_all, i_ct_all, w_ct_all)
@@ -587,12 +626,16 @@ class EfficientAttentionBase(base.Layer):
       loop_val = jax.lax.fori_loop(
           0, loop_hi, run_inner, loop_val)
 
+    (o_all, s_all, i_ct_all, w_ct_all) = loop_val
+
+    if compute_grad:
+      i_ct_all = join_differentiable(i_ct_all, i_nondifferentiable_dummy_ct)
+
     if have_single_input and compute_grad:
-      (o_all, s_all, i_ct_all, w_ct_all) = loop_val
       assert isinstance(i_ct_all, tuple) and len(i_ct_all) == 1
       return (o_all, s_all, i_ct_all[0], w_ct_all)
     else:
-      return loop_val
+      return (o_all, s_all, i_ct_all, w_ct_all)
 
 
 class SelfAttention(EfficientAttentionBase):
@@ -600,7 +643,7 @@ class SelfAttention(EfficientAttentionBase):
 
   def __init__(self,
                n_heads=2, d_qk=64, d_v=64, share_qk=False,
-               causal=False,
+               causal=False, masked=False,
                chunk_len=None, n_chunks_before=0, n_chunks_after=0,
                mode='train',
                attention_dropout=0.0,
@@ -616,6 +659,8 @@ class SelfAttention(EfficientAttentionBase):
       d_v: int: Depth of value vectors
       share_qk: bool: Set to True to share query and key projection weights
       causal: bool: Set to True to mask out attention to future items
+      masked: bool: Set to True to accept an additional mask argument, that
+        allows masking out attention to padding tokens.
       chunk_len (optional): Number of tokens per chunk. Setting this option will
         enable chunked attention.
       n_chunks_before: Number of previous chunks to attend to, when using
@@ -634,6 +679,7 @@ class SelfAttention(EfficientAttentionBase):
     """
     super().__init__(
         n_heads=n_heads,
+        n_in=(2 if masked else 1),
         n_parallel_heads=n_parallel_heads,
         use_python_loop=use_python_loop,
         use_reference_code=use_reference_code,
@@ -642,6 +688,7 @@ class SelfAttention(EfficientAttentionBase):
     self.d_v = d_v
     self.share_qk = share_qk
     self.causal = causal
+    self.masked = masked
     self.chunk_len = chunk_len
     self.n_chunks_before = n_chunks_before
     self.n_chunks_after = n_chunks_after
@@ -660,6 +707,8 @@ class SelfAttention(EfficientAttentionBase):
     return jax.random.uniform(rng, shape, np.float32, -lim, lim)
 
   def create_weights_unbatched(self, input_signature, rng):
+    if isinstance(input_signature, (tuple, list)):
+      input_signature = input_signature[0]
     d_model = input_signature.shape[-1]
     rng_q, rng_k, rng_v, rng_o = jax.random.split(rng, 4)
     w_q = self._kernel_initializer((d_model, self.d_qk), rng_q)
@@ -672,7 +721,7 @@ class SelfAttention(EfficientAttentionBase):
     else:
       return (w_q, w_k, w_v, w_o)
 
-  def forward_unbatched(self, x, *, weights, state, update_state):
+  def forward_unbatched(self, x, mask=None, *, weights, state, update_state):
     del update_state
     if self.share_qk:
       w_q, w_v, w_o = weights
@@ -686,8 +735,16 @@ class SelfAttention(EfficientAttentionBase):
     v = np.matmul(x, w_v)
 
     mask_fn = functools.partial(
-        mask_self_attention, causal=self.causal, exclude_self=self.share_qk)
+        mask_self_attention,
+        causal=self.causal, exclude_self=self.share_qk, masked=self.masked)
     q_info = kv_info = jax.lax.tie_in(x, np.arange(q.shape[-2]))
+
+    assert (mask is not None) == self.masked
+    if self.masked:
+      # mask is a boolean array (True means "is valid token")
+      ones_like_mask = jax.lax.tie_in(x, np.ones_like(mask, dtype=np.int32))
+      kv_info = kv_info * np.where(mask, ones_like_mask, -ones_like_mask)
+
     o, _ = attend(
         q, k, v,
         q_chunk_len=self.chunk_len,
@@ -734,8 +791,10 @@ class LSHSelfAttention(SelfAttention):
     self.attention_dropout = attention_dropout
 
   def create_state_unbatched(self, input_signature, rng):
-    # TODO(kitaev): storing RNG in the state is a HACK.
+    if isinstance(input_signature, (tuple, list)):
+      input_signature = input_signature[0]
     buckets = np.zeros(self.n_hashes * input_signature.shape[0], dtype=np.int32)
+    # TODO(kitaev): storing RNG in the state is a HACK.
     return (buckets, rng)
 
   def hash_vectors(self, vecs, rng):
@@ -870,5 +929,84 @@ class LSHSelfAttention(SelfAttention):
       o = np.sum(o * probs, axis=0)
 
     assert o.shape == (seqlen, w_v.shape[-1])
+    out = np.matmul(o, w_o)
+    return out, state
+
+
+class EncDecAttention(EfficientAttentionBase):
+  """Memory-efficient encoder-decoder attention."""
+
+  def __init__(self,
+               n_heads=2, d_qk=64, d_v=64,
+               masked=True,
+               mode='train',
+               attention_dropout=0.0,
+               n_parallel_heads=None,
+               use_python_loop=False,
+               use_reference_code=False,
+              ):
+    super().__init__(
+        n_heads=n_heads,
+        n_in=(3 if masked else 2),
+        n_parallel_heads=n_parallel_heads,
+        use_python_loop=use_python_loop,
+        use_reference_code=use_reference_code,
+        )
+    self.d_qk = d_qk
+    self.d_v = d_v
+    self.masked = masked
+    self.mode = mode
+    self.attention_dropout = attention_dropout
+    if self.attention_dropout != 0.0:
+      raise NotImplementedError('RNG support not implemented yet.')
+
+  def _kernel_initializer(self, shape, rng):
+    # Attention uses Glorot uniform initalization with respect to the *total*
+    # dimension of queries/key/values across all heads. We initialize one head
+    # at a time in this class, so init.GlorotUniformInitializer won't work.
+    # This initialization type is for parity with previous Trax & tensor2tensor
+    # Transformers; it's not clear if it's strictly needed for model accuracy.
+    lim = np.sqrt(6.0 / (shape[0] + shape[1] * self.n_heads))
+    return jax.random.uniform(rng, shape, np.float32, -lim, lim)
+
+  def create_weights_unbatched(self, input_signature, rng):
+    d_model = input_signature[0].shape[-1]
+    d_kv_antecedent = input_signature[1].shape[-1]
+    rng_q, rng_k, rng_v, rng_o = jax.random.split(rng, 4)
+    w_q = self._kernel_initializer((d_model, self.d_qk), rng_q)
+    w_k = self._kernel_initializer((d_kv_antecedent, self.d_qk), rng_k)
+    w_v = self._kernel_initializer((d_kv_antecedent, self.d_v), rng_v)
+    w_o = np.transpose(self._kernel_initializer((d_model, self.d_v), rng_o))
+    return (w_q, w_k, w_v, w_o)
+
+  def forward_unbatched(self, q_antecedent, kv_antecedent, mask=None, *,
+                        weights, state, update_state):
+    del update_state
+    w_q, w_k, w_v, w_o = weights
+
+    q = np.matmul(q_antecedent, w_q)
+    k = np.matmul(kv_antecedent, w_k)
+    v = np.matmul(kv_antecedent, w_v)
+
+    if not self.masked:
+      assert mask is None
+      q_info = kv_info = mask_fn = None
+    else:
+      # mask is a boolean array (True means "is valid token")
+      assert mask is not None
+      q_info = None
+      kv_info = (~mask).astype(np.int32)  # pylint: disable=invalid-unary-operand-type
+      def mask_fn(dots, q_info, kv_info):
+        del q_info
+        mask = jax.lax.convert_element_type(kv_info, np.float32)
+        dots = dots - 1e9 * mask
+        return dots
+
+    o, _ = attend(
+        q, k, v,
+        mask_fn=mask_fn, q_info=q_info, kv_info=kv_info,
+        dropout=self.attention_dropout, rng=None,  # TODO(kitaev): support RNG
+        )
+
     out = np.matmul(o, w_o)
     return out, state

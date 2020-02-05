@@ -78,3 +78,5 @@ SelfAttention = layer_configure(
     SelfAttention, blacklist=['mode'])
 LSHSelfAttention = layer_configure(
     LSHSelfAttention, blacklist=['mode'])
+EncDecAttention = layer_configure(
+    EncDecAttention, blacklist=['mode'])

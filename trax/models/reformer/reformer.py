@@ -513,20 +513,28 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
     accumulator_output_ct, *context_ct = ct
     context_ct = tuple(context_ct)
 
-    # Forward pass through self.compute_residual
+    # Forward pass through self.compute_residual. Outputs that will not receive
+    # a gradient signal from subsequent layers are moved to aux.
     def call_compute_residual(x, weights):
       res, _ = self.compute_residual._forward_internal(  # pylint: disable=protected-access
           x, weights=weights, state=state[0], rng=rngs[0])
-      return res
+      if not isinstance(res, (tuple, list)):
+        return res, None
+      else:
+        n_differentiable = 1
+        if self.attention_layer is not None:
+          n_differentiable = min(len(res), self.attention_layer.n_in)
+        return res[:n_differentiable], res[n_differentiable:]
 
     stack = context
     inputs = _inputs_from_stack(self.compute_residual, stack)
-    outputs, compute_residual_vjpfun = jax.vjp(
-        call_compute_residual, inputs, weights[0])
+    outputs, compute_residual_vjpfun, outputs_aux = jax.vjp(
+        call_compute_residual, inputs, weights[0], has_aux=True)
+    if outputs_aux is not None:
+      n_differentiable_outputs = len(outputs)
+      outputs = outputs + outputs_aux
     stack = _outputs_onto_stack(self.compute_residual, outputs, stack)
 
-    # TODO(kitaev): handle the case of multiple outputs from
-    # self.compute_residual.
     stack_ct = accumulator_output_ct
     if self.attention_layer is None:
       residual = stack[0] if isinstance(stack, (tuple, list)) else stack
@@ -542,6 +550,11 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
 
     compute_residual_ct = _inputs_from_stack(
         self.compute_residual, stack_ct, self.compute_residual.n_out)
+    if outputs_aux is not None:
+      if not isinstance(compute_residual_ct, (tuple, list)):
+        compute_residual_ct = (compute_residual_ct,)
+      compute_residual_ct = compute_residual_ct[:n_differentiable_outputs]
+      assert len(compute_residual_ct) == n_differentiable_outputs
     (compute_residual_inputs_ct, compute_residual_weights_ct
     ) = compute_residual_vjpfun(compute_residual_ct)
     stack_ct = _outputs_onto_stack(
@@ -946,11 +959,16 @@ def EncoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, mode):
   Returns:
     A list of layers that maps (activations, mask) to (activations, mask).
   """
-  pre_attention = tl.LayerNorm()
-  attention = tl.Attention(
-      d_model, n_heads=n_heads, dropout=dropout, mode=mode)
-  post_attention = tl.Dropout(
-      rate=dropout, name='dropout_enc_attn', mode=mode)
+  attention = tl.SelfAttention(
+      n_heads=n_heads, d_qk=d_model//n_heads, d_v=d_model//n_heads,
+      masked=True,
+      attention_dropout=0.0,  # TODO(kitaev): attention dropout
+      mode=mode)
+  attention_half_residual = ReversibleHalfResidualV2(
+      tl.LayerNorm(),
+      attention_layer=attention,
+      # TODO(kitaev): add output dropout to attention layer. rate=dropout
+  )
 
   # TODO(kitaev): Switch to FeedForward with BroadcastedDropout?
   feed_forward = transformer._FeedForwardBlock(  # pylint: disable=protected-access
@@ -958,10 +976,9 @@ def EncoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, mode):
   # feed_forward = FeedForward(d_model, d_ff, dropout, ff_activation, mode)
 
   return [
-      # TODO(kitaev): consider ReversibleAttentionHalfResidual for efficiency
-      ReversibleHalfResidual([pre_attention, attention, post_attention]),
+      attention_half_residual,
       tl.ReversibleSwap(),
-      ReversibleHalfResidual(feed_forward),
+      ReversibleHalfResidualV2(feed_forward),
       tl.ReversibleSwap(),
   ]
 
@@ -980,33 +997,36 @@ def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, mode):
   Returns:
     the layer.
   """
-  pre_attention_qkv = [
+  enc_dec_attention = tl.EncDecAttention(
+      n_heads=n_heads, d_qk=d_model//n_heads, d_v=d_model//n_heads,
+      attention_dropout=0.0,  # TODO(kitaev): attention dropout
+      mode=mode)
+  enc_dec_attention_half_residual = ReversibleHalfResidualV2(
       tl.LayerNorm(),
-      tl.Select([0, 2, 2, 1, 2]),  # vec_d vec_e vec_e masks vec_e
-  ]
-  attention_qkv = tl.AttentionQKV(
-      d_model, n_heads=n_heads, dropout=dropout, mode=mode)
-  # TODO(kitaev): BroadcastedDropout?
-  post_attention_qkv = tl.Dropout(rate=dropout, mode=mode)
+      attention_layer=enc_dec_attention,
+      # TODO(kitaev): add output dropout to attention layer. rate=dropout
+  )
 
-  pre_causal_attention = tl.LayerNorm()
-  causal_attention = tl.CausalAttention(
-      d_model, n_heads=n_heads, mode=mode)
-  # TODO(kitaev): BroadcastedDropout?
-  post_causal_attention = tl.Dropout(rate=dropout, mode=mode)
+  causal_attention = tl.SelfAttention(
+      n_heads=n_heads, d_qk=d_model//n_heads, d_v=d_model//n_heads,
+      causal=True,
+      attention_dropout=0.0,  # TODO(kitaev): attention dropout
+      mode=mode)
+  causal_attention_half_residual = ReversibleHalfResidualV2(
+      tl.LayerNorm(),
+      attention_layer=causal_attention,
+      # TODO(kitaev): add output dropout to attention layer. rate=dropout
+  )
 
   feed_forward = FeedForward(d_model, d_ff, dropout, ff_activation, mode)
 
-  return [                             # vec_d1 vec_d2 masks vec_e
-      # TODO(kitaev): consider ReversibleAttentionHalfResidual for efficiency
-      ReversibleHalfResidual(
-          [pre_causal_attention, causal_attention, post_causal_attention]),
+  return [                             # vec_d1 vec_d2 vec_e masks
+      causal_attention_half_residual,
       tl.ReversibleSwap(),
-      ReversibleHalfResidual(
-          [pre_attention_qkv, attention_qkv, post_attention_qkv]),
+      enc_dec_attention_half_residual,
       tl.ReversibleSwap(),
-      ReversibleHalfResidual(feed_forward),
-      tl.ReversibleSwap(),             # vec_d1 vec_d2 masks vec_e
+      ReversibleHalfResidualV2(feed_forward),
+      tl.ReversibleSwap(),
   ]
 
 
@@ -1090,27 +1110,27 @@ def Reformer(input_vocab_size,
 
       # Encode.
       tl.Branch(
-          in_encoder, tl.PaddingMask()),    # vec_e  masks  tok_d .....
-      tl.Dup(),                             # vec_e1 vec_e2 masks tok_d .....
-      tl.ReversibleSerial(encoder_blocks),  # vec_e1 vec_e2 masks tok_d .....
+          in_encoder, [tl.PaddingMask(),
+                       tl.Fn(lambda x: np.squeeze(x, (1, 2)), n_out=1)]
+          ),                                # vec_e  mask  tok_d .....
+      tl.Dup(),                             # vec_e1 vec_e2 mask tok_d .....
+      tl.ReversibleSerial(encoder_blocks),  # vec_e1 vec_e2 mask tok_d .....
       # The two sets of activations need to be reduced to one, in this case by
       # averaging them. Note that ReformerLM concatenates instead. Various
       # options (concat, average, add, keep only one, etc.) seem to perform
       # similarly. We don't concatenate here because we want exact parameter
       # parity with the standard Transformer.
-      tl.Fn(lambda x, y: (x+y)/2.0),        # vec_e  masks tok_d .....
-      tl.LayerNorm(),                       # vec_e  masks tok_d .....
+      tl.Fn(lambda x, y: (x+y)/2.0),        # vec_e  mask tok_d .....
+      tl.LayerNorm(),                       # vec_e  mask tok_d .....
 
       # Decode.
-      tl.Select([2, 1, 0]),                 # tok_d masks vec_e .....
-      tl.ShiftRight(),                      # tok_d masks vec_e .....
-      out_encoder,                          # vec_d masks vec_e .....
-      tl.Branch(
-          [], tl.EncoderDecoderMask()),     # vec_d masks vec_e .....
-      tl.Dup(),                             # vec_d1 vec_d2 masks vec_e .....
+      tl.Select([2, 0, 1]),                 # tok_d vec_e mask .....
+      tl.ShiftRight(),                      # tok_d vec_e mask .....
+      out_encoder,                          # vec_d vec_e mask .....
+      tl.Dup(),                             # vec_d1 vec_d2 vec_e mask .....
       tl.ReversibleSerial(encoder_decoder_blocks),
-      tl.Fn(lambda x, y: (x+y)/2.0),        # vec_d masks vec_e .....
-      tl.LayerNorm(),                       # vec_d masks vec_e .....
+      tl.Fn(lambda x, y: (x+y)/2.0),        # vec_d vec_e mask .....
+      tl.LayerNorm(),                       # vec_d vec_e mask .....
 
       # Map to output vocab.
       tl.Select([0], n_in=3),               # vec_d .....
