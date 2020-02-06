@@ -243,7 +243,7 @@ def InnerSRUCell(x, **unused_kwargs):
   return res, res
 
 
-def SRU(n_units, activation=None):
+def SRU(n_units, activation=None, rescale=False, highway_bias=0):
   """SRU (Simple Recurrent Unit) layer as in https://arxiv.org/abs/1709.02755.
 
   As defined in the paper:
@@ -251,7 +251,7 @@ def SRU(n_units, activation=None):
   (2) f_t = sigmoid(Wf x_t + bf)
   (3) r_t = sigmoid(Wr x_t + br)
   (4) c_t = f_t * c_{t-1} + (1 - f_t) * y_t
-  (5) h_t = r_t * activation(c_t) + (1 - r_t) * x_t
+  (5) h_t = r_t * activation(c_t) + (1 - r_t) * x_t * alpha
 
   We assume the input is of shape [batch, length, depth] and recurrence
   happens on the length dimension. This returns a single layer. It's best
@@ -260,7 +260,10 @@ def SRU(n_units, activation=None):
   Args:
     n_units: output depth of the SRU layer.
     activation: Optional activation function.
-
+    rescale: To offset the problem of the gradient vanishing in the h_t as a result
+    of light recurrence and highway computation for deeper layers, a scaling correction
+    alpha is applied as follows: (1 + exp(highway_bias) * 2)**0.5
+    highway_bias: intial bias of highway gates
   Returns:
     The SRU layer.
   """
@@ -274,6 +277,6 @@ def SRU(n_units, activation=None):
       cb.Scan(InnerSRUCell(), axis=1),
       cb.Select([0], n_in=2),                          # act(c), r, x
       activation or [],
-      base.Fn(lambda c, r, x: c * r + x * (1 - r))
+      base.Fn(lambda c, r, x: c * r + x * (1 - r) * ((1 + np.exp(highway_bias) * 2)**0.5 if rescale else 1))
   )
   # pylint: enable=no-value-for-parameter
