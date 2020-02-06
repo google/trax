@@ -542,7 +542,8 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
       inputs = _inputs_from_stack(self.attention_layer, stack)
       (residual, _, attn_inputs_ct, attn_weights_ct
       ) = self.attention_layer.forward_and_or_backward(
-          inputs, weights[1], new_state[1], output_grad=accumulator_output_ct,
+          inputs, weights[1], new_state[1], rngs[1],
+          output_grad=accumulator_output_ct,
           compute_output=True, update_state=False)
       stack_ct = _outputs_onto_stack(
           self.attention_layer, attn_inputs_ct, stack_ct,
@@ -678,11 +679,10 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
   else:
     attention = attention_type(
         n_heads=n_heads, d_qk=d_attention_key, d_v=d_attention_value,
-        share_qk=share_qk, causal=True, mode=mode)
+        share_qk=share_qk, causal=True, output_dropout=dropout, mode=mode)
     attention_half_residual = ReversibleHalfResidualV2(
         tl.LayerNorm(),
         attention_layer=attention,
-        # TODO(kitaev): add output dropout to attention layer.
     )
 
   if ff_use_sru:
@@ -962,12 +962,11 @@ def EncoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, mode):
   attention = tl.SelfAttention(
       n_heads=n_heads, d_qk=d_model//n_heads, d_v=d_model//n_heads,
       masked=True,
-      attention_dropout=0.0,  # TODO(kitaev): attention dropout
+      attention_dropout=dropout, output_dropout=dropout,
       mode=mode)
   attention_half_residual = ReversibleHalfResidualV2(
       tl.LayerNorm(),
       attention_layer=attention,
-      # TODO(kitaev): add output dropout to attention layer. rate=dropout
   )
 
   # TODO(kitaev): Switch to FeedForward with BroadcastedDropout?
@@ -999,23 +998,21 @@ def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, mode):
   """
   enc_dec_attention = tl.EncDecAttention(
       n_heads=n_heads, d_qk=d_model//n_heads, d_v=d_model//n_heads,
-      attention_dropout=0.0,  # TODO(kitaev): attention dropout
+      attention_dropout=dropout, output_dropout=dropout,
       mode=mode)
   enc_dec_attention_half_residual = ReversibleHalfResidualV2(
       tl.LayerNorm(),
       attention_layer=enc_dec_attention,
-      # TODO(kitaev): add output dropout to attention layer. rate=dropout
   )
 
   causal_attention = tl.SelfAttention(
       n_heads=n_heads, d_qk=d_model//n_heads, d_v=d_model//n_heads,
       causal=True,
-      attention_dropout=0.0,  # TODO(kitaev): attention dropout
+      attention_dropout=dropout, output_dropout=dropout,
       mode=mode)
   causal_attention_half_residual = ReversibleHalfResidualV2(
       tl.LayerNorm(),
       attention_layer=causal_attention,
-      # TODO(kitaev): add output dropout to attention layer. rate=dropout
   )
 
   feed_forward = FeedForward(d_model, d_ff, dropout, ff_activation, mode)

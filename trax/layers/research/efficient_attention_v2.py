@@ -187,6 +187,18 @@ def attend(
   return out, dots_logsumexp
 
 
+def apply_broadcasted_dropout(vecs, dropout_rate, rng):
+  """Apply dropout, broadcasted across all but the last dimension of `vecs`."""
+  if dropout_rate > 0.0:
+    assert rng is not None
+    keep_prob = jax.lax.tie_in(vecs, 1.0 - dropout_rate)
+    keep = jax.random.bernoulli(rng, keep_prob, (vecs.shape[-1],))
+    multiplier = keep.astype(vecs.dtype) / jax.lax.tie_in(keep, keep_prob)
+    return vecs * multiplier
+  else:
+    return vecs
+
+
 def permute_via_gather(val, permutation, inverse_permutation, axis=0):
   """Permutation helper for LSH attention."""
   def permute_impl(val):
@@ -335,7 +347,11 @@ class EfficientAttentionBase(base.Layer):
       inputs: Layer inputs (subclasses may use different inputs)
       weights: Layer weights
       state: Complete state of the layer
-      rng: PRNG key
+      rng: PRNG key. Note that the RNG is shared across all examples and heads.
+        This sharing is useful to reduce memory usage for dropout (all dropout
+        instances are automatically broadcasted across the batch and head
+        dimensions). Attention types that need separate random numbers for each
+        example and head may store their own RNG in the model state.
 
     Returns:
       A tuple (output, new_state).
@@ -343,7 +359,7 @@ class EfficientAttentionBase(base.Layer):
     if not self.use_reference_code:
       # By default, an efficient, batched implementation is used.
       output, new_state, _, _ = self.forward_and_or_backward(
-          inputs, weights, state, compute_output=True, update_state=True)
+          inputs, weights, state, rng, compute_output=True, update_state=True)
       return output, new_state
 
     # The reference implementation below provides a more readable overview of
@@ -365,7 +381,7 @@ class EfficientAttentionBase(base.Layer):
             lambda s: s[example_idx * self.n_heads + head_idx], state)
         # pylint: enable=cell-var-from-loop
         single_out, single_new_state = self.forward_unbatched(
-            *single_inputs, weights=single_weights, state=single_state,
+            *single_inputs, weights=single_weights, rng=rng, state=single_state,
             update_state=True)
         new_state.append(single_new_state)
         output_accum[example_idx] = output_accum[example_idx] + single_out
@@ -388,12 +404,12 @@ class EfficientAttentionBase(base.Layer):
     assert not self.use_reference_code
     del output, state, kwargs
     _, _, inputs_grad, weights_grad = self.forward_and_or_backward(
-        inputs, weights, new_state, output_grad=grad,
+        inputs, weights, new_state, rng, output_grad=grad,
         compute_output=False, update_state=False)
     return inputs_grad, weights_grad
 
   def forward_and_or_backward(
-      self, inputs, weights, state, output_grad=None,
+      self, inputs, weights, state, rng, output_grad=None,
       compute_output=True, update_state=True):
     """Performs batched forward and/or backward passes.
 
@@ -405,6 +421,7 @@ class EfficientAttentionBase(base.Layer):
       inputs: inputs to the attention layer
       weights: weights for the attention layer
       state: state of the attention layer
+      rng: PRNG key for the layer (shared across all examples and heads)
       output_grad: gradient of the loss wrt the output of the layer, or None.
         This function performs the backward pass iff `output_grad` is not None.
       compute_output: bool: whether to return the output of the forward pass
@@ -442,9 +459,6 @@ class EfficientAttentionBase(base.Layer):
                   for example, head in zip(examples, heads):
                     backward(example, head)
     """
-    # TODO(kitaev): support non-differentiable inputs (for enc-dec attn masking)
-    # TODO(kitaev): support RNGs (needed for dropout and LSH). Currently LSH
-    #     hacks around this by storing an RNG in its state
     # TODO(kitaev): profile ~4% speed drop compared to previous implementation
     #     in some conditions. Other conditions (e.g. the enwik8 model) appear
     #     to have the same overall training speed.
@@ -522,7 +536,7 @@ class EfficientAttentionBase(base.Layer):
 
         def forward_fn(i_h, w_h):
           return self.forward_unbatched(
-              *i_h, weights=w_h, state=jax.lax.stop_gradient(s_h),
+              *i_h, weights=w_h, state=jax.lax.stop_gradient(s_h), rng=rng,
               update_state=update_state)
 
         if compute_grad:
@@ -559,7 +573,7 @@ class EfficientAttentionBase(base.Layer):
         s_mh = jax.tree_map(lambda s: s[state_range], state)
         def forward_unbatched(i_h, w_h, s_h):
           return self.forward_unbatched(
-              *i_h, weights=w_h, state=s_h, update_state=update_state)
+              *i_h, weights=w_h, state=s_h, rng=rng, update_state=update_state)
         def forward_fn(i_mh, w_mh):
           o_mh, new_s_mh = jax.vmap(
               forward_unbatched, in_axes=(None, 0, 0), out_axes=0)(
@@ -588,7 +602,7 @@ class EfficientAttentionBase(base.Layer):
       def forward_single_example(i_x, w_all, s_x):
         def forward_unbatched(i_h, w_h, s_h):
           return self.forward_unbatched(
-              *i_h, weights=w_h, state=s_h, update_state=update_state)
+              *i_h, weights=w_h, state=s_h, rng=rng, update_state=update_state)
         o_x, s_x = jax.vmap(
             forward_unbatched, in_axes=(None, 0, 0), out_axes=(0, 0))(
                 i_x, w_all, s_x)
@@ -682,6 +696,7 @@ class SelfAttention(EfficientAttentionBase):
                chunk_len=None, n_chunks_before=0, n_chunks_after=0,
                mode='train',
                attention_dropout=0.0,
+               output_dropout=0.0,
                n_parallel_heads=None,
                use_python_loop=False,
                use_reference_code=False,
@@ -707,6 +722,7 @@ class SelfAttention(EfficientAttentionBase):
         is never a strict no-op.
       mode: 'train' or 'eval'
       attention_dropout: Dropout probability for attention mask.
+      output_dropout: Dropout probability for the layer output.
       n_parallel_heads: see EfficientAttentionBase. This option controls the
         trade-off between parallelism and memory usage.
       use_python_loop: For testing/debugging (see EfficientAttentionBase)
@@ -728,9 +744,12 @@ class SelfAttention(EfficientAttentionBase):
     self.n_chunks_before = n_chunks_before
     self.n_chunks_after = n_chunks_after
     self.mode = mode
-    self.attention_dropout = attention_dropout
-    if self.attention_dropout != 0.0:
-      raise NotImplementedError('RNG support not implemented yet.')
+    if mode == 'train':
+      self.attention_dropout = attention_dropout
+      self.output_dropout = output_dropout
+    else:
+      self.attention_dropout = 0.0
+      self.output_dropout = 0.0
 
   def _kernel_initializer(self, shape, rng):
     # Attention uses Glorot uniform initalization with respect to the *total*
@@ -756,8 +775,10 @@ class SelfAttention(EfficientAttentionBase):
     else:
       return (w_q, w_k, w_v, w_o)
 
-  def forward_unbatched(self, x, mask=None, *, weights, state, update_state):
+  def forward_unbatched(self, x, mask=None, *,
+                        weights, state, rng, update_state):
     del update_state
+    attend_rng, output_rng = jax.random.split(rng)
     if self.share_qk:
       w_q, w_v, w_o = weights
     else:
@@ -787,10 +808,11 @@ class SelfAttention(EfficientAttentionBase):
         n_chunks_before=self.n_chunks_before,
         n_chunks_after=self.n_chunks_after,
         mask_fn=mask_fn, q_info=q_info, kv_info=kv_info,
-        dropout=self.attention_dropout, rng=None,  # TODO(kitaev): support RNG
+        dropout=self.attention_dropout, rng=attend_rng,
         )
 
     out = np.matmul(o, w_o)
+    out = apply_broadcasted_dropout(out, self.output_dropout, output_rng)
     return out, state
 
 
@@ -805,6 +827,7 @@ class LSHSelfAttention(SelfAttention):
                n_buckets=256,
                mode='train',
                attention_dropout=0.0,
+               output_dropout=0.0,
                n_parallel_heads=1,
                use_python_loop=False,
                use_reference_code=False,
@@ -816,20 +839,25 @@ class LSHSelfAttention(SelfAttention):
         chunk_len=chunk_len,
         n_chunks_before=n_chunks_before, n_chunks_after=n_chunks_after,
         mode=mode,
-        attention_dropout=0.0,  # Base class does not support dropout yet.
+        attention_dropout=attention_dropout,
+        output_dropout=output_dropout,
         n_parallel_heads=n_parallel_heads,
         use_python_loop=use_python_loop,
         use_reference_code=use_reference_code,
         )
     self.n_hashes = n_hashes
     self.n_buckets = n_buckets
-    self.attention_dropout = attention_dropout
 
   def create_state_unbatched(self, input_signature, rng):
     if isinstance(input_signature, (tuple, list)):
       input_signature = input_signature[0]
     buckets = np.zeros(self.n_hashes * input_signature.shape[0], dtype=np.int32)
-    # TODO(kitaev): storing RNG in the state is a HACK.
+    # The `rng` argument passed to forward_unbatched is shared across all
+    # examples and heads. This facilitates using broadcasted dropout, which
+    # saves memory and hasn't been shown to hurt model quality. Even though the
+    # same sharing is likely to be safe when selecting random hash functions
+    # for LSH, we haven't run experiments to demonstrate this. To be on the safe
+    # side we include a per-head RNG in the state for the purpose of doing LSH.
     return (buckets, rng)
 
   def hash_vectors(self, vecs, rng):
@@ -878,22 +906,20 @@ class LSHSelfAttention(SelfAttention):
 
     return buckets
 
-  def forward_unbatched(self, x, *, weights, state, update_state):
+  def forward_unbatched(self, x, *, weights, state, rng, update_state):
+    attend_rng, output_rng = jax.random.split(rng)
     w_q, w_v, w_o = weights
 
     q = np.matmul(x, w_q)
     v = np.matmul(x, w_v)
 
     if update_state:
-      _, old_rng = state
-      rng = jax.random.fold_in(old_rng, 0)
-      hash_rng = jax.random.fold_in(rng, 1)
-      buckets = self.hash_vectors(q, hash_rng)
-      state = (buckets, rng)
+      _, old_hash_rng = state
+      hash_rng, hash_subrng = jax.random.split(old_hash_rng)
+      buckets = self.hash_vectors(q, hash_subrng)
+      state = (buckets, hash_rng)
     else:
-      buckets, rng = state
-
-    rng = jax.random.fold_in(rng, 2)
+      buckets, _ = state
 
     seqlen = x.shape[0]
     assert int(buckets.shape[0]) == self.n_hashes * seqlen
@@ -923,7 +949,7 @@ class LSHSelfAttention(SelfAttention):
         n_chunks_before=self.n_chunks_before,
         n_chunks_after=self.n_chunks_after,
         mask_fn=mask_fn, q_info=q_info,
-        dropout=self.attention_dropout, rng=rng,
+        dropout=self.attention_dropout, rng=attend_rng,
         )
 
     # np.take(so, undo_sort, axis=0); np.take(slogits, undo_sort, axis=0) would
@@ -939,6 +965,7 @@ class LSHSelfAttention(SelfAttention):
 
     assert o.shape == (seqlen, w_v.shape[-1])
     out = np.matmul(o, w_o)
+    out = apply_broadcasted_dropout(out, self.output_dropout, output_rng)
     return out, state
 
 
@@ -950,6 +977,7 @@ class EncDecAttention(EfficientAttentionBase):
                masked=True,
                mode='train',
                attention_dropout=0.0,
+               output_dropout=0.0,
                n_parallel_heads=None,
                use_python_loop=False,
                use_reference_code=False,
@@ -965,9 +993,12 @@ class EncDecAttention(EfficientAttentionBase):
     self.d_v = d_v
     self.masked = masked
     self.mode = mode
-    self.attention_dropout = attention_dropout
-    if self.attention_dropout != 0.0:
-      raise NotImplementedError('RNG support not implemented yet.')
+    if mode == 'train':
+      self.attention_dropout = attention_dropout
+      self.output_dropout = output_dropout
+    else:
+      self.attention_dropout = 0.0
+      self.output_dropout = 0.0
 
   def _kernel_initializer(self, shape, rng):
     # Attention uses Glorot uniform initalization with respect to the *total*
@@ -989,8 +1020,9 @@ class EncDecAttention(EfficientAttentionBase):
     return (w_q, w_k, w_v, w_o)
 
   def forward_unbatched(self, q_antecedent, kv_antecedent, mask=None, *,
-                        weights, state, update_state):
+                        weights, state, rng, update_state):
     del update_state
+    attend_rng, output_rng = jax.random.split(rng)
     w_q, w_k, w_v, w_o = weights
 
     q = np.matmul(q_antecedent, w_q)
@@ -1014,8 +1046,9 @@ class EncDecAttention(EfficientAttentionBase):
     o, _ = attend(
         q, k, v,
         mask_fn=mask_fn, q_info=q_info, kv_info=kv_info,
-        dropout=self.attention_dropout, rng=None,  # TODO(kitaev): support RNG
+        dropout=self.attention_dropout, rng=attend_rng,
         )
 
     out = np.matmul(o, w_o)
+    out = apply_broadcasted_dropout(out, self.output_dropout, output_rng)
     return out, state

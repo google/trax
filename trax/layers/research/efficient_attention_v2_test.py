@@ -95,7 +95,7 @@ class EfficientAttentionTest(test.TestCase):
       common_kwargs = dict(
           n_heads=6, d_qk=7, d_v=17, share_qk=False, causal=True,
           chunk_len=5, n_chunks_before=1, n_chunks_after=0,
-          attention_dropout=0.0, mode='train',
+          attention_dropout=0.2, output_dropout=0.1, mode='train',
       )
       test_kwargs = []
       for n_parallel_heads in [1, 3, 6, 12]:
@@ -117,7 +117,7 @@ class EfficientAttentionTest(test.TestCase):
           n_heads=6, d_qk=7, d_v=17, causal=True,
           chunk_len=5, n_chunks_before=1, n_chunks_after=0,
           n_hashes=2, n_buckets=4,
-          attention_dropout=0.2, mode='train',
+          attention_dropout=0.2, output_dropout=0.1, mode='train',
       )
       test_kwargs = []
       for n_parallel_heads in [1, 3, 6, 12]:
