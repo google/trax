@@ -19,11 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-from numpy import asarray as np_asarray
-from numpy import asscalar as np_asscalar
-from numpy import dtype as np_dtype
-from numpy import ndarray as np_ndarray
-from numpy import prod as np_prod
 
 import tensorflow.compat.v2 as tf
 
@@ -69,13 +64,13 @@ class ndarray(object):  # pylint: disable=invalid-name
        `shape`.
     """
     if dtype and not isinstance(dtype, tf.DType):
-      dtype = tf.as_dtype(np_dtype(dtype))
+      dtype = tf.as_dtype(np.dtype(dtype))
     if buffer is None:
       buffer = tf.zeros(shape, dtype=dtype)
     else:
       if isinstance(buffer, ndarray):
         buffer = buffer.data
-      elif isinstance(buffer, np_ndarray):
+      elif isinstance(buffer, np.ndarray):
         # If `buffer` is a np.ndarray, the Tensor will share the underlying
         # storage of the array.
         buffer = tf.convert_to_tensor(value=buffer, dtype=dtype)
@@ -125,7 +120,7 @@ class ndarray(object):  # pylint: disable=invalid-name
   @property
   def size(self):
     """Returns the number of elements in the array."""
-    return np_prod(self.shape)
+    return np.prod(self.shape)
 
   @property
   def T(self):  # pylint: disable=invalid-name
@@ -303,7 +298,7 @@ class ndarray(object):  # pylint: disable=invalid-name
     Returns:
       A NumPy ndarray.
     """
-    return np_asarray(self.data, dtype)
+    return np.asarray(self.data, dtype)
 
   __array_priority__ = 110
 
@@ -321,13 +316,16 @@ class ndarray(object):  # pylint: disable=invalid-name
       TypeError: If the array is not of an integer type.
       ValueError: If the array does not have size 1.
     """
-    return np_asscalar(self.data.numpy())
+    return np.asscalar(self.data.numpy())
 
   def tolist(self):
     return self.data.numpy().tolist()
 
   def __str__(self):
     return 'ndarray<{}>'.format(self.data.__str__())
+
+  def __repr__(self):
+    return 'ndarray<{}>'.format(self.data.__repr__())
 
 
 def tensor_to_ndarray(tensor):

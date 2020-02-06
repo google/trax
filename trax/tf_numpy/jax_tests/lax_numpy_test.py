@@ -39,6 +39,12 @@ import tensorflow.compat.v2 as tf
 import trax.tf_numpy.numpy as lnp
 import trax.tf_numpy.extensions as npe
 
+# These two lines are needed to parse the --num_generated_cases argument used by
+# jtu.cases_from_list, which controls the maximum number of test cases generated
+# from a list.
+from jax.config import config
+config.parse_flags_with_absl()
+
 
 nonempty_nonscalar_array_shapes = [(4,), (3, 4), (3, 1), (1, 4), (2, 1, 4), (2, 3, 4)]
 nonempty_array_shapes = [()] + nonempty_nonscalar_array_shapes
@@ -88,8 +94,10 @@ def op_record(name, nargs, dtypes, shapes, rng_factory, diff_modes,
   return OpRecord(name, nargs, dtypes, shapes, rng_factory, diff_modes,
                   test_name, check_dtypes, tolerance, inexact)
 
+
 def minus(a, b):
   return [x for x in a if x not in b]
+
 
 JAX_ONE_TO_ONE_OP_RECORDS = [
     op_record("abs", 1, number_dtypes, all_shapes, jtu.rand_default, ["rev"]),
@@ -122,7 +130,8 @@ JAX_ONE_TO_ONE_OP_RECORDS = [
     op_record("minimum", 2, all_dtypes, all_shapes, jtu.rand_some_inf, []),
     op_record("multiply", 2, all_dtypes, all_shapes, jtu.rand_default, ["rev"]),
     op_record("negative", 1, number_dtypes, all_shapes, jtu.rand_default, ["rev"]),
-    op_record("nextafter", 2, [f for f in float_dtypes if f != lnp.bfloat16],
+    op_record("nextafter", 2, [f for f in float_dtypes
+                               if f not in (lnp.bfloat16, onp.float16)],
               all_shapes, jtu.rand_default, ["rev"], inexact=True, tolerance=0),
     op_record("not_equal", 2, all_dtypes, all_shapes, jtu.rand_some_equal, ["rev"]),
     op_record("array_equal", 2, number_dtypes, all_shapes, jtu.rand_some_equal, ["rev"]),
@@ -176,8 +185,8 @@ JAX_COMPOUND_OP_RECORDS = [
     op_record("deg2rad", 1, float_dtypes, all_shapes, jtu.rand_default, []),
     op_record("divide", 2, number_dtypes, all_shapes, jtu.rand_nonzero, ["rev"],
               inexact=six.PY3),
-    op_record("divmod", 2, int_dtypes + float_dtypes, all_shapes,
-              jtu.rand_nonzero, []),
+    op_record("divmod", 2, minus(int_dtypes + float_dtypes, [onp.float16]),
+              all_shapes, jtu.rand_nonzero, []),
     op_record("exp2", 1, number_dtypes, all_shapes, jtu.rand_default, ["rev"],
               tolerance={
                   # TODO(wangpeng): lnp.bfloat16: 2e-2,
@@ -230,9 +239,10 @@ JAX_COMPOUND_OP_RECORDS = [
     op_record("rad2deg", 1, float_dtypes, all_shapes, jtu.rand_default, []),
     op_record("ravel", 1, all_dtypes, all_shapes, jtu.rand_default, ["rev"]),
     op_record("real", 1, number_dtypes, all_shapes, jtu.rand_some_inf, []),
-    op_record("remainder", 2, default_dtypes, all_shapes, jtu.rand_nonzero, [],
-              tolerance={onp.float16: 1e-2}),
-    op_record("mod", 2, default_dtypes, all_shapes, jtu.rand_nonzero, []),
+    op_record("remainder", 2, minus(default_dtypes, [onp.float16]), all_shapes,
+              jtu.rand_nonzero, [], tolerance={onp.float16: 1e-2}),
+    op_record("mod", 2, minus(default_dtypes, [onp.float16]), all_shapes,
+              jtu.rand_nonzero, []),
     op_record("sinc", 1, [t for t in number_dtypes if t != lnp.bfloat16],
               all_shapes, jtu.rand_default, ["rev"],
               tolerance={onp.complex64: 1e-5}, inexact=True,
@@ -427,8 +437,9 @@ def named_parameters(ls):
 
 
 # TODO(wangpeng): Remove these filters
-JAX_ONE_TO_ONE_OP_RECORDS = [x for x in JAX_ONE_TO_ONE_OP_RECORDS if hasattr(lnp, x.name)]
 JAX_COMPOUND_OP_RECORDS = [x for x in JAX_COMPOUND_OP_RECORDS if hasattr(lnp, x.name)]
+JAX_OPERATOR_OVERLOADS = [x for x in JAX_OPERATOR_OVERLOADS if hasattr(lnp.ndarray, x.name)]
+JAX_RIGHT_OPERATOR_OVERLOADS = [x for x in JAX_RIGHT_OPERATOR_OVERLOADS if hasattr(lnp.ndarray, x.name)]
 JAX_BITWISE_OP_RECORDS = [x for x in JAX_BITWISE_OP_RECORDS if hasattr(lnp, x.name)]
 JAX_REDUCER_RECORDS = [x for x in JAX_REDUCER_RECORDS if hasattr(lnp, x.name)]
 JAX_REDUCER_NO_DTYPE_RECORDS = [x for x in JAX_REDUCER_NO_DTYPE_RECORDS if hasattr(lnp, x.name)]
@@ -502,6 +513,9 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
                                  JAX_COMPOUND_OP_RECORDS)))
   def testOp(self, onp_op, lnp_op, rng_factory, shapes, dtypes, check_dtypes,
              tolerance, inexact):
+    # TODO(b/147769803): Remove this skipping
+    if lnp_op.__name__ == "kron" and shapes == ((2, 3, 4), (2, 3, 4)):
+      self.skipTest("Case disabled because of b/147769803")
     rng = rng_factory()
     args_maker = self._GetArgsMaker(rng, shapes, dtypes, onp_arrays=False)
     tol = max(jtu.tolerance(dtype, tolerance) for dtype in dtypes)
@@ -525,7 +539,6 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
           *(_valid_dtypes_for_shape(s, rec.dtypes) for s in shapes)))
       for rec in JAX_OPERATOR_OVERLOADS))
   # TODO(wangpeng): Enable disabled tests
-  @disable
   def testOperatorOverload(self, name, rng_factory, shapes, dtypes, tol):
     rng = rng_factory()
     # onp and lnp arrays have different type promotion rules; force the use of
@@ -552,7 +565,6 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
         for dtypes in itertools.product(
           *(_valid_dtypes_for_shape(s, rec.dtypes) for s in shapes)))
       for rec in JAX_RIGHT_OPERATOR_OVERLOADS))
-  @disable
   def testRightOperatorOverload(self, name, rng_factory, shapes, dtypes,
                                 op_tolerance):
     if shapes[1] is jtu.PYTHON_SCALAR_SHAPE:

@@ -20,8 +20,6 @@ from __future__ import print_function
 
 import math
 import numpy as np
-from numpy import iinfo as np_iinfo
-from numpy import promote_types as np_promote_types
 import six
 import tensorflow.compat.v2 as tf
 
@@ -143,9 +141,9 @@ def clip(a, a_min=None, a_max=None):
   # Unlike np.clip, tf.clip_by_value requires both min and max values to be
   # specified so we set them to the smallest/largest values of the array dtype.
   if a_min is None:
-    a_min = np_iinfo(a.dtype).min
+    a_min = np.iinfo(a.dtype).min
   if a_max is None:
-    a_max = np_iinfo(a.dtype).max
+    a_max = np.iinfo(a.dtype).max
   a_min = array_creation.asarray(a_min, dtype=a.dtype)
   a_max = array_creation.asarray(a_max, dtype=a.dtype)
   return utils.tensor_to_ndarray(
@@ -229,7 +227,7 @@ def cumprod(a, axis=None, dtype=None):
   if dtype is None and tf.as_dtype(a.dtype).is_integer:
     # If a is an integer type and its precision is less than that of `int`,
     # the output type will be `int`.
-    output_type = np_promote_types(a.dtype, int)
+    output_type = np.promote_types(a.dtype, int)
     if output_type != a.dtype:
       a = array_creation.asarray(a, dtype=output_type)
 
@@ -266,7 +264,7 @@ def cumsum(a, axis=None, dtype=None):
   if dtype is None and tf.as_dtype(a.dtype).is_integer:
     # If a is an integer type and its precision is less than that of `int`,
     # the output type will be `int`.
-    output_type = np_promote_types(a.dtype, int)
+    output_type = np.promote_types(a.dtype, int)
     if output_type != a.dtype:
       a = array_creation.asarray(a, dtype=output_type)
 
@@ -393,7 +391,7 @@ def prod(a, axis=None, dtype=None, keepdims=None):
   if dtype is None and tf.as_dtype(a.dtype).is_integer:
     # If a is an integer type and its precision is less than that of `int`,
     # the output type will be `int`.
-    output_type = np_promote_types(a.dtype, int)
+    output_type = np.promote_types(a.dtype, int)
     if output_type != a.dtype:
       a = array_creation.asarray(a, dtype=output_type)
 
@@ -555,7 +553,7 @@ def reshape(a, newshape):
   """
   a = array_creation.asarray(a)
   if isinstance(newshape, arrays.ndarray):
-    newshape = utils.get_shape_from_ndarray(newshape)
+    newshape = newshape.data
   return utils.tensor_to_ndarray(tf.reshape(a.data, newshape))
 
 
