@@ -187,6 +187,41 @@ def attend(
   return out, dots_logsumexp
 
 
+def permute_via_gather(val, permutation, inverse_permutation, axis=0):
+  """Permutation helper for LSH attention."""
+  def permute_impl(val):
+    return np.take(val, permutation, axis=axis)
+  def permute_vjp(val):
+    permuted = permute_impl(jax.lax.stop_gradient(val))
+    def vjpfun(permuted_grad):
+      # JAX autodiff would synthesize a scatter operation because it doesn't
+      # know that the indices are a permutatation. However on TPU, gathers are
+      # faster than scatters (at least in the regime the LSH attention uses).
+      return (np.take(permuted_grad, inverse_permutation, axis=axis),)
+    return permuted, vjpfun
+  permute = jax.custom_transforms(permute_impl)
+  jax.defvjp_all(permute, permute_vjp)
+  return permute(val)
+
+
+def permute_via_sort(val, keys, inverse_keys, axis=0):
+  """Permutation helper for LSH attention."""
+  def permute_impl(val):
+    # On TPU, sorting scalars by key is faster than a gather.
+    _, permuted = jax.lax.sort_key_val(keys, val, dimension=axis)
+    return permuted
+  def permute_vjp(val):
+    permuted = permute_impl(jax.lax.stop_gradient(val))
+    def vjpfun(permuted_grad):
+      _, val_grad = jax.lax.sort_key_val(
+          inverse_keys, permuted_grad, dimension=axis)
+      return (val_grad,)
+    return permuted, vjpfun
+  permute = jax.custom_transforms(permute_impl)
+  jax.defvjp_all(permute, permute_vjp)
+  return permute(val)
+
+
 ####################################################### Classes
 
 
@@ -891,36 +926,10 @@ class LSHSelfAttention(SelfAttention):
         dropout=self.attention_dropout, rng=rng,
         )
 
-    def unsort_for_output_impl(so, slogits):
-      o = np.take(so, undo_sort, axis=0)
-      # Sorting is considerably faster than gather, but first we need to get the
-      # XLA compiler to abandon the idea of fusing this sort with the input sort
-      # (which introduces a computation cycle and leads to a crash).
-      # TODO(kitaev): remove "sticker_" variable if XLA is fixed.
-      sticker_ = sticker + jax.lax.convert_element_type(
-          slogits[0] > 0, sticker.dtype)
-      _, logits = jax.lax.sort_key_val(sticker_, slogits, dimension=-1)
-      return o, logits
-
-    def unsort_for_output_vjp(so, slogits):
-      """Custom gradient for unsort_for_output."""
-      so = jax.lax.stop_gradient(so)
-      slogits = jax.lax.stop_gradient(slogits)
-      o, logits = unsort_for_output_impl(so, slogits)
-      def vjpfun(o_logits_grads):
-        so_grad = np.take(o_logits_grads[0], sticker, axis=0)
-        # TODO(kitaev): this exists to match the forward pass, but I'm not sure
-        # if it's actually required.
-        buckets_and_t_ = buckets_and_t + jax.lax.convert_element_type(
-            o_logits_grads[1][0] > 0, buckets_and_t.dtype)
-        _, slogits_grad = jax.lax.sort_key_val(
-            buckets_and_t_, o_logits_grads[1], dimension=-1)
-        return (so_grad, slogits_grad)
-      return (o, logits), vjpfun
-
-    unsort_for_output = jax.custom_transforms(unsort_for_output_impl)
-    jax.defvjp_all(unsort_for_output, unsort_for_output_vjp)
-    o, logits = unsort_for_output_impl(so, slogits)
+    # np.take(so, undo_sort, axis=0); np.take(slogits, undo_sort, axis=0) would
+    # also work, but these helpers include performance optimizations for TPU.
+    o = permute_via_gather(so, undo_sort, sticker, axis=0)
+    logits = permute_via_sort(slogits, sticker, buckets_and_t, axis=-1)
 
     if self.n_hashes > 1:
       o = np.reshape(o, (self.n_hashes, seqlen, o.shape[-1]))
