@@ -122,3 +122,12 @@ class CausalConv(Conv):
     pad = effective_kernel_size - 1
     x_leftpad = np.pad(x, pad_width=[[0, 0], [pad, 0], [0, 0]], mode='constant')
     return super(CausalConv, self).forward(x_leftpad, weights)
+
+
+def Conv1d(filters, kernel_size, stride=1, padding='VALID',
+           kernel_initializer=None,
+           bias_initializer=init.RandomNormalInitializer(1e-6)):
+  return Conv(filters, (kernel_size,), strides=(stride,), padding=padding,
+              dimension_numbers=('NWC', 'WIO', 'NWC'),
+              kernel_initializer=kernel_initializer,
+              bias_initializer=bias_initializer)

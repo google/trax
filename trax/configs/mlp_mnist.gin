@@ -47,3 +47,4 @@ train.eval_frequency = 200
 train.eval_steps = 10
 train.model = @trax.models.MLP
 train.steps = 2000
+train.checkpoint_highest = 'accuracy'
