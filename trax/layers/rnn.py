@@ -262,7 +262,8 @@ def SRU(n_units, activation=None, rescale=False, highway_bias=0):
     activation: Optional activation function.
     rescale: To offset the problem of the gradient vanishing in the h_t as a result
     of light recurrence and highway computation for deeper layers, a scaling correction
-    alpha is applied as follows: (1 + exp(highway_bias) * 2)**0.5
+    alpha is applied as follows: (1 + exp(highway_bias) * 2)**0.5 ref, https://arxiv.org/abs/1709.02755,
+    page 4, section 3.2 Initialization.
     highway_bias: intial bias of highway gates
   Returns:
     The SRU layer.
