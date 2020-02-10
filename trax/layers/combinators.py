@@ -54,6 +54,8 @@ class Serial(base.Layer):
 
     if sublayers:
       self._n_in, self._n_out = self._n_inputs_n_outputs(sublayers)
+      self._weights = tuple(l.weights for l in sublayers)
+      self._state = tuple(l.state for l in sublayers)
 
   def forward_with_state(self, xs, weights=base.EMPTY_WEIGHTS,
                          state=base.EMPTY_STATE, **kwargs):
@@ -203,8 +205,10 @@ class Parallel(base.Layer):
     sublayers = self._validate(sublayers)
     self._n_layers = len(sublayers)
     self._sublayers = sublayers
-    self._n_in = sum(x.n_in for x in sublayers)
-    self._n_out = sum(x.n_out for x in sublayers)
+    self._n_in = sum(l.n_in for l in sublayers)
+    self._n_out = sum(l.n_out for l in sublayers)
+    self._weights = tuple(l.weights for l in sublayers)
+    self._state = tuple(l.state for l in sublayers)
 
   def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
                          state=base.EMPTY_STATE, **kwargs):

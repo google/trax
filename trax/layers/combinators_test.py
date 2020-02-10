@@ -260,6 +260,26 @@ class CombinatorLayerTest(absltest.TestCase):
     self.assertEqual(sublayer_0.input_signature, ShapeDtype((3, 2)))
     self.assertEqual(sublayer_1.input_signature, ShapeDtype((4, 7)))
 
+  def test_state_parallel(self):
+    model = cb.Parallel(core.Dense(3), core.Dense(5))
+    self.assertIsInstance(model.state, tuple)
+    self.assertLen(model.state, 2)
+
+  def test_state_serial(self):
+    model = cb.Serial(core.Dense(4), core.Dense(5), core.Dense(7))
+    self.assertIsInstance(model.state, tuple)
+    self.assertLen(model.state, 3)
+
+  def test_weights_parallel(self):
+    model = cb.Parallel(core.Dense(3), core.Dense(5))
+    self.assertIsInstance(model.weights, tuple)
+    self.assertLen(model.weights, 2)
+
+  def test_weights_serial(self):
+    model = cb.Serial(core.Dense(4), core.Dense(5), core.Dense(7))
+    self.assertIsInstance(model.weights, tuple)
+    self.assertLen(model.weights, 3)
+
 
 if __name__ == '__main__':
   absltest.main()

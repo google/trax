@@ -44,6 +44,7 @@ class Optimizer(object):
     self._init_opt_params = {
         name: np.array(value) for (name, value) in init_opt_params.items()
     }
+    self._slots = None
 
   def init(self, params):
     """Create optimizer slots for the given parameters."""
@@ -66,9 +67,18 @@ class Optimizer(object):
 
   # End subclass interface.
 
+  @property
+  def slots(self):
+    return self._slots
+
+  @slots.setter
+  def slots(self, slots):
+    self._slots = slots
+
   def tree_init(self, weight_tree):
+    self._slots = [self.init(weight) for weight in _tree_flatten(weight_tree)]
     return (
-        [self.init(weight) for weight in _tree_flatten(weight_tree)],
+        self._slots,
         self._init_opt_params,
     )
 
@@ -92,9 +102,9 @@ class Optimizer(object):
         self._update_and_check(step, grad, weight, slot, opt_params)
         for (grad, weight, slot) in zip(grads_flat, weights_flat, slots)
     ]
-    new_weights_flat, new_slots = zip(*updated_pairs)
+    new_weights_flat, self.slots = zip(*updated_pairs)
     new_weights, _ = _tree_unflatten(new_weights_flat, weight_tree)
-    return new_weights, new_slots
+    return new_weights, self.slots
 
 
 def _tree_flatten(tree):
