@@ -242,11 +242,13 @@ class EfficientAttentionBase(base.Layer):
 
   This is a base class that implements memory-efficient batching for both the
   forward and backward passes. Subclasses should override
-  `create_weights_unbatched`, `create_state_unbatched`, and `forward_unbatched`
-  to define the actual attention mechanism.
+  `create_weights_unbatched`, `create_state_unbatched`, `forward_unbatched`, and
+  optionally `incremental_forward_unbatched` to define the actual attention
+  mechanism.
   """
 
   def __init__(self, n_heads, n_in=1, n_parallel_heads=None,
+               incremental=False, predict_mem_len=None, predict_drop_len=None,
                use_python_loop=False, use_reference_code=False):
     """Construct an EfficientAttentionBase instance.
 
@@ -268,6 +270,14 @@ class EfficientAttentionBase(base.Layer):
           heads at a time, but only within a single example. It must be the case
           that n_heads is a multiple of n_parallel_heads. Use this mode for long
           sequences, to strike a balance between parallelism and memory usage.
+      incremental: bool: Enables fast inference for self-attention types. Note
+        that this flag should *not* be set when doing encoder-decoder attention,
+        but only when doing self-attention.
+      predict_mem_len: int: Number of input positions to remember in a cache
+        when doing fast inference. Whenever the cache fills up, some input
+        elements will be forgotten.
+      predict_drop_len: int: Number of input elements to drop once the fast
+        inference input cache fills up.
       use_python_loop: bool: Set to True to use a Python loop when iterating
         over sub-batches of examples/heads (as opposed to a JAX/XLA loop). This
         option will increase compilation time and jitted code size, potentially
@@ -281,6 +291,23 @@ class EfficientAttentionBase(base.Layer):
     """
     super().__init__(n_in=n_in, n_out=1)
     self.n_heads = n_heads
+    self.incremental = incremental
+    if self.incremental:
+      if predict_mem_len is None or predict_drop_len is None:
+        raise ValueError('This configuration does not support fast inference.')
+      if not 0 < predict_drop_len <= predict_mem_len:
+        raise ValueError(
+            'Bad parameter values: (predict_mem_len, predict_drop_len) = ',
+            predict_mem_len, predict_drop_len)
+      self.predict_mem_len = predict_mem_len
+      self.predict_drop_len = predict_drop_len
+      if n_parallel_heads is None or n_parallel_heads > n_heads:
+        # TODO(kitaev): TPU results in batch mode don't match the reference code
+        # and the difference is far larger than floating point epsilon. There is
+        # no such discrepancy on GPU.
+        print('WARNING: inference on TPU may yield incorrect results in this'
+              ' configuration')
+
     if n_parallel_heads:
       if ((n_parallel_heads > n_heads and n_parallel_heads % n_heads != 0)
           or (n_parallel_heads < n_heads and n_heads % n_parallel_heads != 0)):
@@ -293,13 +320,12 @@ class EfficientAttentionBase(base.Layer):
     self.use_reference_code = use_reference_code
 
   def new_weights_and_state(self, input_signature):
+    if not isinstance(input_signature, (tuple, list)):
+      input_signature = (input_signature,)
     input_signature_unbatched = jax.tree_map(
         lambda x: type(x)(shape=x.shape[1:], dtype=x.dtype),
         input_signature)
-    if isinstance(input_signature, (tuple, list)):
-      batch_size = int(input_signature[0].shape[0])
-    else:
-      batch_size = int(input_signature.shape[0])
+    batch_size = int(input_signature[0].shape[0])
 
     weights = []
     weight_rngs = self.new_rngs(self.n_heads)
@@ -315,6 +341,16 @@ class EfficientAttentionBase(base.Layer):
     stack_along_axis_0 = lambda *x: np.stack(x, axis=0)
     weights = jax.tree_multimap(stack_along_axis_0, *weights)
     state = jax.tree_multimap(stack_along_axis_0, *state)
+
+    if self.incremental:
+      mem = jax.tree_map(
+          lambda x: np.zeros(  # pylint: disable=g-long-lambda
+              x.shape[:1] + (self.predict_mem_len,) + x.shape[2:],
+              dtype=x.dtype),
+          input_signature)
+      mem_end = np.zeros((), dtype=np.int32)
+      state = (mem_end, mem, state)
+
     return weights, state
 
   def create_weights_unbatched(self, input_signature, rng):
@@ -339,6 +375,29 @@ class EfficientAttentionBase(base.Layer):
       and attention head.
     """
     raise NotImplementedError('Subclasses should override forward_unbatched')
+
+  def incremental_forward_unbatched(self, *inputs, q_start, q_len,
+                                    weights, state):
+    """Perform fast inference for a single batch element and head.
+
+    Subclasses should override this method.
+
+    Args:
+      *inputs: Inputs for a single example (subclasses may use different inputs)
+      q_start: Index along the sequence-length dimension that points to the
+        first input element that should be used as a query (and not just a key).
+      q_len: Number of new query elements in this call to the attention
+        mechanism. This is typically 1 for autoregressive decoding, but may be
+        longer if initializing a language model with a prefix.
+      weights: Weights for a single attention head
+      state: State for a single example & attention head pair.
+
+    Returns:
+      A tuple (output, new_state) -- output and new state for a single example
+      and attention head.
+    """
+    raise NotImplementedError(
+        'Fast inference is not implemented for this attention type.')
 
   def forward_with_state(self, inputs, weights, state, rng=None):
     """Computes this layer's output as part of a forward pass through the model.
@@ -370,6 +429,10 @@ class EfficientAttentionBase(base.Layer):
     batch_size = int(inputs[0].shape[0])
     seqlen = inputs[0].shape[-2]
     d_model = inputs[0].shape[-1]
+
+    if self.incremental:
+      inputs, state, mem_end, new_mem_end = self.use_predict_mem(inputs, state)
+
     output_accum = [np.zeros((seqlen, d_model)) for _ in range(batch_size)]
     new_state = []
     for example_idx in range(batch_size):
@@ -380,9 +443,15 @@ class EfficientAttentionBase(base.Layer):
         single_state = jax.tree_map(
             lambda s: s[example_idx * self.n_heads + head_idx], state)
         # pylint: enable=cell-var-from-loop
-        single_out, single_new_state = self.forward_unbatched(
-            *single_inputs, weights=single_weights, rng=rng, state=single_state,
-            update_state=True)
+        if self.incremental:
+          single_out, single_new_state = self.incremental_forward_unbatched(
+              *single_inputs, q_start=mem_end, q_len=seqlen,
+              weights=single_weights, rng=rng,
+              state=single_state, update_state=True)
+        else:
+          single_out, single_new_state = self.forward_unbatched(
+              *single_inputs, weights=single_weights, rng=rng,
+              state=single_state, update_state=True)
         new_state.append(single_new_state)
         output_accum[example_idx] = output_accum[example_idx] + single_out
 
@@ -391,7 +460,38 @@ class EfficientAttentionBase(base.Layer):
       new_state = jax.tree_multimap(lambda *s: np.stack(s, 0), *new_state)
     else:
       new_state = state
+    if self.incremental:
+      new_state = (new_mem_end, inputs, new_state)
     return output, new_state
+
+  def use_predict_mem(self, inputs, state):
+    """Update input cache for fast inference."""
+    mem_end, mem, state = state
+    seqlen = inputs[0].shape[-2]
+    def roll_mem(buf):
+      return np.concatenate(
+          [buf[:, self.predict_drop_len:],
+           np.zeros_like(buf[:, :self.predict_drop_len])], axis=1)
+
+    do_roll_mem = (mem_end + seqlen > self.predict_mem_len)
+    mem = jax.lax.cond(
+        pred=do_roll_mem,
+        true_operand=mem,
+        true_fun=lambda x: jax.tree_map(roll_mem, x),
+        false_operand=mem,
+        false_fun=lambda x: x,
+    )
+    mem_end = np.where(do_roll_mem, mem_end - self.predict_drop_len, mem_end)
+    def update_mem(mem_element, new_vals):
+      assert new_vals.shape[1] == seqlen
+      if seqlen == 1:
+        return jax.ops.index_update(
+            mem_element, jax.ops.index[:, mem_end], new_vals[:, 0, ...])
+      else:
+        return jax.ops.index_update(
+            mem_element, jax.ops.index[:, mem_end:mem_end+seqlen], new_vals)
+    inputs = jax.tree_multimap(update_mem, mem, inputs)
+    return inputs, state, mem_end, mem_end + seqlen
 
   @property
   def has_backward(self):
@@ -476,6 +576,23 @@ class EfficientAttentionBase(base.Layer):
     compute_grad = (output_grad is not None)
     assert compute_output or compute_grad, 'No work to perform!'
 
+    if not self.incremental:
+      forward_unbatched = functools.partial(
+          self.forward_unbatched, rng=rng, update_state=update_state)
+    else:
+      if update_state:
+        inputs, state, mem_end, new_mem_end = self.use_predict_mem(
+            inputs, state)
+      else:
+        new_mem_end, inputs, state = state
+        mem_end = new_mem_end - seqlen
+
+      forward_unbatched = functools.partial(
+          self.incremental_forward_unbatched,
+          q_start=jax.lax.stop_gradient(mem_end),
+          q_len=jax.lax.stop_gradient(seqlen),
+          rng=rng, update_state=update_state)
+
     # Adjust degree of parallelism based on the batch size.
     n_parallel_heads = batch_size * self.n_heads
     if self.n_parallel_heads and self.n_parallel_heads < n_parallel_heads:
@@ -535,9 +652,8 @@ class EfficientAttentionBase(base.Layer):
         s_h = jax.tree_map(lambda s: s[idx], state)
 
         def forward_fn(i_h, w_h):
-          return self.forward_unbatched(
-              *i_h, weights=w_h, state=jax.lax.stop_gradient(s_h), rng=rng,
-              update_state=update_state)
+          return forward_unbatched(
+              *i_h, weights=w_h, state=jax.lax.stop_gradient(s_h))
 
         if compute_grad:
           o_h, backward_fn, s_h = vjp(forward_fn, i_h, w_h, has_aux=True)
@@ -571,12 +687,11 @@ class EfficientAttentionBase(base.Layer):
         i_mh = jax.tree_map(lambda x: x[example_idx], inputs)
         w_mh = jax.tree_map(lambda w: w[head_range], weights)
         s_mh = jax.tree_map(lambda s: s[state_range], state)
-        def forward_unbatched(i_h, w_h, s_h):
-          return self.forward_unbatched(
-              *i_h, weights=w_h, state=s_h, rng=rng, update_state=update_state)
+        def forward_unbatched_h(i_h, w_h, s_h):
+          return forward_unbatched(*i_h, weights=w_h, state=s_h)
         def forward_fn(i_mh, w_mh):
           o_mh, new_s_mh = jax.vmap(
-              forward_unbatched, in_axes=(None, 0, 0), out_axes=0)(
+              forward_unbatched_h, in_axes=(None, 0, 0), out_axes=0)(
                   i_mh, w_mh, s_mh)
           o_mh = o_mh.sum(0)
           return o_mh, new_s_mh
@@ -600,11 +715,10 @@ class EfficientAttentionBase(base.Layer):
     else:
       assert n_parallel_heads % self.n_heads == 0
       def forward_single_example(i_x, w_all, s_x):
-        def forward_unbatched(i_h, w_h, s_h):
-          return self.forward_unbatched(
-              *i_h, weights=w_h, state=s_h, rng=rng, update_state=update_state)
+        def forward_unbatched_h(i_h, w_h, s_h):
+          return forward_unbatched(*i_h, weights=w_h, state=s_h)
         o_x, s_x = jax.vmap(
-            forward_unbatched, in_axes=(None, 0, 0), out_axes=(0, 0))(
+            forward_unbatched_h, in_axes=(None, 0, 0), out_axes=(0, 0))(
                 i_x, w_all, s_x)
         o_x = o_x.sum(0)
         return o_x, s_x
@@ -680,6 +794,9 @@ class EfficientAttentionBase(base.Layer):
     if compute_grad:
       i_ct_all = join_differentiable(i_ct_all, i_nondifferentiable_dummy_ct)
 
+    if self.incremental and update_state:
+      s_all = (new_mem_end, inputs, s_all)
+
     if have_single_input and compute_grad:
       assert isinstance(i_ct_all, tuple) and len(i_ct_all) == 1
       return (o_all, s_all, i_ct_all[0], w_ct_all)
@@ -695,6 +812,7 @@ class SelfAttention(EfficientAttentionBase):
                causal=False, masked=False,
                chunk_len=None, n_chunks_before=0, n_chunks_after=0,
                mode='train',
+               predict_mem_len=None, predict_drop_len=None,
                attention_dropout=0.0,
                output_dropout=0.0,
                n_parallel_heads=None,
@@ -720,7 +838,14 @@ class SelfAttention(EfficientAttentionBase):
         attention to future tokens will be masked out anyway. However, note that
         cross-chunk attention "wraps around" in both directions, so this option
         is never a strict no-op.
-      mode: 'train' or 'eval'
+      mode: 'train', 'eval', or 'predict'
+      predict_mem_len: int: Number of input positions to remember in a cache
+        when doing fast inference. Whenever the cache fills up, some input
+        elements will be forgotten. When chunking is enabled, the default is to
+        store chunk_len * (1 + n_chunks_before) elements.
+      predict_drop_len: int: Number of input elements to drop once the fast
+        inference input cache fills up. When chunking is enabled, the default is
+        to drop exactly chunk_len elements.
       attention_dropout: Dropout probability for attention mask.
       output_dropout: Dropout probability for the layer output.
       n_parallel_heads: see EfficientAttentionBase. This option controls the
@@ -728,10 +853,18 @@ class SelfAttention(EfficientAttentionBase):
       use_python_loop: For testing/debugging (see EfficientAttentionBase)
       use_reference_code: For testing/debugging (see EfficientAttentionBase)
     """
+    if mode == 'predict':
+      assert causal, 'Only causal attention supports fast inference'
+      assert chunk_len is not None or (predict_mem_len and predict_drop_len)
+      predict_mem_len = predict_mem_len or (chunk_len * (1 + n_chunks_before))
+      predict_drop_len = predict_drop_len or chunk_len
     super().__init__(
         n_heads=n_heads,
         n_in=(2 if masked else 1),
         n_parallel_heads=n_parallel_heads,
+        incremental=(mode == 'predict'),
+        predict_mem_len=predict_mem_len,
+        predict_drop_len=predict_drop_len,
         use_python_loop=use_python_loop,
         use_reference_code=use_reference_code,
         )
@@ -815,6 +948,49 @@ class SelfAttention(EfficientAttentionBase):
     out = apply_broadcasted_dropout(out, self.output_dropout, output_rng)
     return out, state
 
+  def incremental_forward_unbatched(self, x, mask=None, *,
+                                    q_start, q_len,
+                                    weights, state, rng, update_state):
+    del update_state
+    attend_rng, output_rng = jax.random.split(rng)
+    if self.share_qk:
+      w_q, w_v, w_o = weights
+    else:
+      w_q, w_k, w_v, w_o = weights
+
+    q_range = q_start + jax.lax.tie_in(x, jax.lax.iota(np.int32, q_len))
+    if q_len == 1:
+      # On TPU, np.matmul(a[:1], b) and np.matmul(a, b)[:1] are not
+      # floating-point equivalent, at least in non-jitted code. We correct the
+      # discrepancy by duplicating the slice. Floating-point noise may not be
+      # an issue when using models, but it makes it harder to write tests that
+      # compare fast and slow inference code for equivalence.
+      q = np.matmul(np.concatenate([x[q_range]] * 2, 0), w_q)
+    else:
+      q = np.matmul(x[q_range], w_q)
+    k = None
+    if not self.share_qk:
+      k = np.matmul(x, w_k)
+    v = np.matmul(x, w_v)
+
+    mask_fn = functools.partial(
+        mask_self_attention,
+        causal=self.causal, exclude_self=self.share_qk, masked=self.masked)
+    q_info = q_range
+    kv_info = jax.lax.tie_in(x, np.arange(k.shape[-2]))
+
+    o, _ = attend(
+        q, k, v,
+        mask_fn=mask_fn, q_info=q_info, kv_info=kv_info,
+        dropout=self.attention_dropout, rng=attend_rng,
+        )
+
+    out = np.matmul(o, w_o)
+    if q_len == 1:
+      out = out[:1]
+    out = apply_broadcasted_dropout(out, self.output_dropout, output_rng)
+    return out, state
+
 
 class LSHSelfAttention(SelfAttention):
   """LSH self-attention (second implementation)."""
@@ -826,6 +1002,7 @@ class LSHSelfAttention(SelfAttention):
                n_hashes=1,
                n_buckets=256,
                mode='train',
+               predict_mem_len=2048, predict_drop_len=256,
                attention_dropout=0.0,
                output_dropout=0.0,
                n_parallel_heads=1,
@@ -839,6 +1016,7 @@ class LSHSelfAttention(SelfAttention):
         chunk_len=chunk_len,
         n_chunks_before=n_chunks_before, n_chunks_after=n_chunks_after,
         mode=mode,
+        predict_mem_len=predict_mem_len, predict_drop_len=predict_drop_len,
         attention_dropout=attention_dropout,
         output_dropout=output_dropout,
         n_parallel_heads=n_parallel_heads,

@@ -133,6 +133,58 @@ class EfficientAttentionTest(test.TestCase):
           inp, input_signature,
           common_kwargs, *test_kwargs)
 
+  def _test_fast_inference(
+      self, model_cls, inp, input_signature, common_kwargs, *test_kwargs):
+    ref_model = model_cls(use_reference_code=True, mode='eval', **common_kwargs)
+    weights, state = ref_model.init(input_signature)
+
+    ref_out, _ = ref_model.pure_fn(
+        inp, weights, state, rng=jax.random.PRNGKey(0))
+
+    def get_slice(pytree, i):
+      def get_slice_for_val(x):
+        if isinstance(x, ShapeDtype):
+          return ShapeDtype(shape=x.shape[:1] + (1,) + x.shape[2:],
+                            dtype=x.dtype)
+        else:
+          return x[:, i:i+1]
+      return jax.tree_map(get_slice_for_val, pytree)
+
+    seqlen = inp[0].shape[1] if isinstance(inp, (tuple, list)) else inp.shape[1]
+
+    for kwargs in test_kwargs:
+      test_model = model_cls(mode='predict', **common_kwargs, **kwargs)
+      cur_state = test_model.init(get_slice(input_signature, 0))[1]
+      out = []
+      for i in range(seqlen):
+        cur_out, cur_state = test_model.pure_fn(
+            get_slice(inp, i), weights, cur_state, jax.random.PRNGKey(0))
+        out.append(cur_out)
+      out = np.concatenate(out, axis=1)
+
+      self.assertAllClose(out, ref_out, rtol=1e-3, atol=1e-3)
+
+  def test_fast_inference_self_attention(self):
+    with math.use_backend('jax'):
+      common_kwargs = dict(
+          n_heads=6, d_qk=7, d_v=17, share_qk=False, causal=True,
+          chunk_len=5, n_chunks_before=1, n_chunks_after=0,
+          attention_dropout=0.0, output_dropout=0.0,
+      )
+      test_kwargs = []
+      for n_parallel_heads in [1, 3, 6, 12]:
+        for use_python_loop in [True, False]:
+          test_kwargs.append(dict(n_parallel_heads=n_parallel_heads,
+                                  use_python_loop=use_python_loop))
+
+      inp = jax.random.uniform(
+          jax.random.PRNGKey(0), (2, 10, 13), dtype=np.float32)
+      input_signature = ShapeDtype((2, 10, 13), dtype=np.float32)
+      self._test_fast_inference(
+          efficient_attention_v2.SelfAttention,
+          inp, input_signature,
+          common_kwargs, *test_kwargs)
+
 
 if __name__ == '__main__':
   test.main()
