@@ -55,7 +55,7 @@ class EfficientAttentionTest(test.TestCase):
 
   def _run_forward_and_backward(self, model, inp, weights, state):
     def forward(inp, weights):
-      return model._forward_internal(
+      return model.pure_fn(
           inp, weights, state, rng=jax.random.PRNGKey(0))
     out, vjpfun, new_state = jax.vjp(forward, inp, weights, has_aux=True)
     inp_grad, weights_grad = vjpfun(onp.ones_like(inp))

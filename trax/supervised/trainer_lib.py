@@ -747,11 +747,10 @@ def _jit_update_fn(predict_fn, loss_fn, optimizer, n_devices, jit=True):
 def _jit_predict_fn(model_predict, metric_fn, n_devices, jit=True):
   """Returns a JIT-compiled predict function (unless jit=False)."""
   model = tl.Serial(model_predict, metric_fn)
-  model_predict = model._forward_internal  # pylint: disable=protected-access
   if not jit:
-    return model_predict
+    return model.pure_fn
 
-  return tl.jit_forward(model_predict, n_devices)
+  return tl.jit_forward(model.pure_fn, n_devices)
 
 
 @gin.configurable

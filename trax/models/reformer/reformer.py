@@ -492,7 +492,7 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
     new_state = []
     for layer, w, s, rng in zip(self.sublayers, weights, state, rngs):
       inputs = _inputs_from_stack(layer, stack)
-      outputs, s = layer._forward_internal(inputs, w, s, rng)  # pylint: disable=protected-access
+      outputs, s = layer.pure_fn(inputs, w, s, rng)
       stack = _outputs_onto_stack(layer, outputs, stack)
       new_state.append(s)
     residual = stack[0] if isinstance(stack, (tuple, list)) else stack
@@ -516,7 +516,7 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
     # Forward pass through self.compute_residual. Outputs that will not receive
     # a gradient signal from subsequent layers are moved to aux.
     def call_compute_residual(x, weights):
-      res, _ = self.compute_residual._forward_internal(  # pylint: disable=protected-access
+      res, _ = self.compute_residual.pure_fn(
           x, weights=weights, state=state[0], rng=rngs[0])
       if not isinstance(res, (tuple, list)):
         return res, None

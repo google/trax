@@ -110,6 +110,7 @@ class Layer(object):
                     'lineno': int(frame.f_lineno)}
     del frame  # Just in case.
     self._init_finished = False
+    self._jit_cache = {}
 
   def __repr__(self):
     class_str = self.__class__.__name__
@@ -150,19 +151,14 @@ class Layer(object):
     state = kwargs.pop('state', self.state)
     rng = kwargs.pop('rng', self._rng)
     rng = math.random.get_prng(0) if rng is None else rng
-    forward = self._forward_internal
-    # TODO(lukaszkaiser): the following arguments are experimental, decide which
-    #   are really useful after a number of experiments and finalize the API.
+    forward = self.pure_fn
+    # TODO(lukaszkaiser): n_accelerators is experimental, to decide on API
     n_accelerators = kwargs.pop('n_accelerators', 0)
-    replicate = kwargs.pop('replicate', True)
-    if n_accelerators > 1 and replicate:
-      weights = for_n_devices(weights, n_accelerators)
-      state = for_n_devices(state, n_accelerators)
     if n_accelerators:
-      forward = jit_forward(forward, n_accelerators)
+      if n_accelerators not in self._jit_cache:
+        self._jit_cache[n_accelerators] = jit_forward(forward, n_accelerators)
+      forward = self._jit_cache[n_accelerators]
     outputs, new_state = forward(x, weights, state, rng)
-    if n_accelerators > 1 and replicate:  # Unreplicate state if needed.
-      new_state = math.nested_map(new_state, lambda x: x[0])
     self.state = new_state
     self.weights = weights
     return outputs
@@ -418,12 +414,11 @@ class Layer(object):
   def state(self, state):
     self._state = state
 
-  def _forward_internal(self, x, weights, state, rng):
-    """Applies this layer as part of a forward pass; an internal system method.
+  def pure_fn(self, x, weights, state, rng):
+    """Applies this layer as a pure function.
 
-    This method is reserved for handling plumbing and other internal affairs
-    as needed by the overall library. Trax library users should use or override
-    the `forward` method instead.
+    This method exposes the layer's computation as a pure function. This is
+    esp. useful for JIT compilation. Do not override, use `forward` instead.
 
     Args:
       x: See Layer.forward_with_state inputs.
@@ -456,7 +451,7 @@ class Layer(object):
 
     except Exception:
       name, trace = self.__class__.__name__, _short_traceback()
-      raise LayerError(name, '_forward_internal',
+      raise LayerError(name, 'pure_fn',
                        self._caller, signature(x), trace)
 
   def _forward_abstract(self, input_signature):
@@ -522,6 +517,18 @@ class Layer(object):
                        'sublayer must override the input_signature property '
                        'setter.')
   # pylint: enable=protected-access
+
+  def replicate(self, n_accelerators):
+    """Replicate weights and state for use on n accelerators. Experimental."""
+    if n_accelerators > 1:
+      self.weights = for_n_devices(self.weights, n_accelerators)
+      self.state = for_n_devices(self.state, n_accelerators)
+
+  def unreplicate(self, unreplicate_state=False):
+    """Unreplicate weights and optionally state. Experimental."""
+    self.weights = math.nested_map(self.weights, lambda x: x[0])
+    if unreplicate_state:
+      self.state = math.nested_map(self.state, lambda x: x[0])
 
   def _do_custom_gradients(self, x, weights, state, **kwargs):
     """Calls this layer for a forward pass, but with custom gradients."""
