@@ -638,6 +638,32 @@ def Gate(xs, **unused_kwargs):
   return gate * state + (1.0 - gate) * candidate
 
 
+class Cache(base.Layer):
+  """Applies a layer on the first run and returns the outputs on next calls."""
+
+  def __init__(self, layer):
+    super(Cache, self).__init__(n_in=layer.n_in, n_out=layer.n_out)
+    self._sublayers = [layer]
+
+  @property
+  def sublayer(self):
+    """Returns the unique sublayer managed by this layer."""
+    return self._sublayers[0]
+
+  def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
+                         state=base.EMPTY_STATE, **kwargs):
+    if state[0] is ():  # pylint: disable=literal-comparison
+      res, layer_state = self.sublayer.forward_with_state(
+          inputs, weights=weights, state=state, **kwargs)
+      return res, (res, layer_state)
+    else:
+      return state[0], state
+
+  def new_weights_and_state(self, input_signature):
+    weights, layer_state = self.sublayer.init(input_signature)
+    return weights, ((), layer_state)
+
+
 # All module-private helper functions are below.
 # pylint: disable=invalid-name
 

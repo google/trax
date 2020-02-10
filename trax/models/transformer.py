@@ -263,6 +263,14 @@ def Transformer(input_vocab_size,
           d_model, d_ff, n_heads, dropout, i, mode, ff_activation)
       for i in range(n_encoder_layers)]
 
+  encoder = tl.Serial(
+      in_encoder,
+      encoder_blocks,
+      tl.LayerNorm()
+  )
+  if mode == 'predict':
+    encoder = tl.Cache(encoder)
+
   encoder_decoder_blocks = [
       _EncoderDecoderBlock(
           d_model, d_ff, n_heads, dropout, i, mode, ff_activation)
@@ -275,10 +283,8 @@ def Transformer(input_vocab_size,
       tl.Select([0, 1, 1]),               # tok_e tok_d tok_d
 
       # Encode.
-      tl.Branch(
-          in_encoder, tl.PaddingMask()),  # vec_e masks ..... .....
-      encoder_blocks,                     # vec_d masks ..... .....
-      tl.LayerNorm(),                     # vec_e ..... ..... .....
+      tl.Branch([], tl.PaddingMask()),    # tok_e masks ..... .....
+      encoder,                            # vec_e ..... ..... .....
 
       # Decode.
       tl.Select([2, 1, 0]),               # tok_d masks vec_e .....
