@@ -113,15 +113,21 @@ class Trainer(object):
     # Setup state.
     rng, init_rng = jax_random.split(rng)
     self._rngs = np.stack(jax_random.split(rng, self._n_devices))
-    first_shape = self._inputs.input_shape[0]
     # If the inputs are a tuple/list, add [None] (batch) to each element.
-    if isinstance(first_shape, (list, tuple)):
+    if self._inputs.input_shape and isinstance(
+        self._inputs.input_shape[0], (list, tuple)
+    ):
       model_input_shape = tuple(
           tuple([None] + list(shape)) for shape in self._inputs.input_shape)
-      model_target_shape = tuple(
-          tuple([None] + list(shape)) for shape in self._inputs.target_shape)
     else:  # Otherwise just add [None] to the input shape.
       model_input_shape = tuple([None] + list(self._inputs.input_shape))
+    # Same for targets.
+    if self._inputs.target_shape and isinstance(
+        self._inputs.target_shape[0], (list, tuple)
+    ):
+      model_target_shape = tuple(
+          tuple([None] + list(shape)) for shape in self._inputs.target_shape)
+    else:
       model_target_shape = tuple([None] + list(self._inputs.target_shape))
     # Change all None to 1 in input and target shape.
     model_input_shape = math.nested_map(lambda x: x or 1, model_input_shape)

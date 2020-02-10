@@ -261,63 +261,30 @@ class SerializedSequenceSimulatedEnvProblemTest(test.TestCase):
 
     # There should be 1 example with the whole trajectory.
     self.assertEqual(len(examples), 1)
-    [(inputs, targets, weights)] = examples
+    [(input_obs, input_act, target_obs, weights)] = examples
+    np.testing.assert_array_equal(input_obs, [0, 1, 0])
+    np.testing.assert_array_equal(input_act, [1, 0])
     # inputs == targets for autoregressive sequence prediction.
-    np.testing.assert_array_equal(inputs, targets)
-    # Assert array shapes and datatypes.
-    self.assertEqual(inputs.shape, env.model_input_shape)
-    self.assertEqual(inputs.dtype, env.model_input_dtype)
-    self.assertEqual(weights.shape, env.model_input_shape)
-    # Actions should be masked out.
-    self.assertEqual(np.min(weights), 0)
-    # At least part of the observation should have full weight.
-    self.assertEqual(np.max(weights), 1)
+    np.testing.assert_array_equal(input_obs, target_obs)
+    np.testing.assert_array_equal(weights, [1.0, 1.0, 1.0])
 
-  def test_makes_training_examples_from_trajectories_of_different_lengths(self):
+  def test_makes_training_example_padded(self):
     env = self._make_env(
         vocab_size=2,
         observation_space=gym.spaces.Discrete(2),
         action_space=gym.spaces.Discrete(2),
-        max_trajectory_length=3,
+        max_trajectory_length=4,
     )
-    t1 = self._make_trajectory(observations=[0, 1], actions=[1])
-    [(x1, _, w1)] = env.trajectory_to_training_examples(t1)
-    t2 = self._make_trajectory(observations=[0, 1, 0], actions=[1, 0])
-    [(x2, _, w2)] = env.trajectory_to_training_examples(t2)
-
-    # Examples should be padded to the same shape.
-    self.assertEqual(x1.shape, x2.shape)
-    self.assertEqual(w1.shape, w2.shape)
-    # Cumulative weight should increase with trajectory length.
-    self.assertGreater(np.sum(w2), np.sum(w1))
-
-  def test_masked_representation_changes_with_observation(self):
-    env = self._make_env(
-        vocab_size=2,
-        observation_space=gym.spaces.Discrete(2),
-        action_space=gym.spaces.Discrete(2),
-        max_trajectory_length=3,
-    )
-    t1 = self._make_trajectory(observations=[0, 1], actions=[1])
-    [(x1, _, w1)] = env.trajectory_to_training_examples(t1)
-    t2 = self._make_trajectory(observations=[0, 0], actions=[1])
-    [(x2, _, w2)] = env.trajectory_to_training_examples(t2)
-
-    self.assertFalse(np.array_equal(x1 * w1, x2 * w2))
-
-  def test_masked_representation_doesnt_change_with_action(self):
-    env = self._make_env(
-        vocab_size=2,
-        observation_space=gym.spaces.Discrete(2),
-        action_space=gym.spaces.Discrete(2),
-        max_trajectory_length=3,
-    )
-    t1 = self._make_trajectory(observations=[0, 1], actions=[1])
-    [(x1, _, w1)] = env.trajectory_to_training_examples(t1)
-    t2 = self._make_trajectory(observations=[0, 1], actions=[0])
-    [(x2, _, w2)] = env.trajectory_to_training_examples(t2)
-
-    np.testing.assert_array_equal(x1 * w1, x2 * w2)
+    t = self._make_trajectory(observations=[0, 1, 0], actions=[1, 0])
+    examples = env.trajectory_to_training_examples(t)
+    [(input_obs, input_act, target_obs, weights)] = examples
+    # Should pad by 1 on the right.
+    np.testing.assert_array_equal(input_obs, [0, 1, 0, 0])
+    np.testing.assert_array_equal(input_act, [1, 0, 0])
+    # inputs == targets for autoregressive sequence prediction.
+    np.testing.assert_array_equal(input_obs, target_obs)
+    # The last timestep should be masked out.
+    np.testing.assert_array_equal(weights, [1.0, 1.0, 1.0, 0.0])
 
 
 if __name__ == '__main__':

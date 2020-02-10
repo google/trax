@@ -24,7 +24,7 @@ import copy
 from absl import logging
 import gin
 import gym
-import numpy as np
+from jax import numpy as np
 
 
 class SpaceSerializer(object):
@@ -134,7 +134,7 @@ class BoxSpaceSerializer(SpaceSerializer):
       threshold = self._vocab_size ** digit_index
       digit = np.array(array / threshold).astype(np.int32)
       # For the corner case of x == high.
-      digit[digit == self._vocab_size] -= 1
+      digit = np.where(digit == self._vocab_size, digit - 1, digit)
       digits.append(digit)
       array -= digit * threshold
     digits = np.stack(digits, axis=-1)

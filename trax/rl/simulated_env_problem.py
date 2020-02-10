@@ -119,7 +119,7 @@ class SimulatedEnvProblem(env_problem.EnvProblem):
       # TODO(lukaszkaiser): both model state and parameters by default include
       # the loss layer. Currently, we access the pure-model parameters by just
       # indexing, [0] here. But we should make it more explicit in a better API.
-      model_weights = trax_state.opt_state.weights[0]
+      model_weights = self._extract_weights(trax_state.opt_state.weights[0])
       self._model_state = trax_state.model_state[0]
 
     def predict_fn(inputs, rng):
@@ -131,6 +131,9 @@ class SimulatedEnvProblem(env_problem.EnvProblem):
     self._predict_fn = predict_fn
     self._history_stream = history_stream
     self._steps = np.zeros(batch_size, dtype=np.int32)
+
+  def _extract_weights(self, weights):
+    return weights
 
   @property
   def observation_space(self):
@@ -184,14 +187,6 @@ class SimulatedEnvProblem(env_problem.EnvProblem):
   def trajectory_to_training_examples(self, trajectory):
     raise NotImplementedError
 
-  @property
-  def model_input_shape(self):
-    raise NotImplementedError
-
-  @property
-  def model_input_dtype(self):
-    raise NotImplementedError
-
   def _reset(self, indices):
     """Resets environments at the given indices.
 
@@ -222,7 +217,12 @@ class SimulatedEnvProblem(env_problem.EnvProblem):
 
   @property
   def model(self):
-    return self._model
+    return lambda mode: serialization_utils.SerializedModel(  # pylint: disable=g-long-lambda
+        seq_model=self._model(mode=mode),
+        observation_serializer=self._obs_serializer,
+        action_serializer=self._action_serializer,
+        significance_decay=self._significance_decay,
+    )
 
 
 class RawSimulatedEnvProblem(SimulatedEnvProblem):
@@ -383,6 +383,9 @@ class SerializedSequenceSimulatedEnvProblem(SimulatedEnvProblem):
         batch_size=batch_size, **kwargs)
     self._model_state = self._init_model_state
 
+  def _extract_weights(self, weights):
+    return serialization_utils.extract_inner_model(weights)
+
   def _predict_obs(self, predict_fn, rng):
     obs_repr = np.zeros(
         (self._steps.shape[0], self._obs_repr_length), dtype=np.int32,
@@ -391,7 +394,7 @@ class SerializedSequenceSimulatedEnvProblem(SimulatedEnvProblem):
       log_probs = predict_fn(self._last_symbols, rng=subrng)
       self._last_symbols = utils.gumbel_sample(log_probs)
       obs_repr[:, i] = self._last_symbols[:, 0]
-    return self._obs_serializer.deserialize(obs_repr)
+    return np.array(self._obs_serializer.deserialize(obs_repr))
 
   def _consume_act(self, actions, predict_fn, rng):
     act_repr = self._action_serializer.serialize(actions)
@@ -470,37 +473,15 @@ class SerializedSequenceSimulatedEnvProblem(SimulatedEnvProblem):
     return (observation, reward, done)
 
   def trajectory_to_training_examples(self, trajectory):
-    (repr_length,) = self.model_input_shape
-    seq_mask = np.ones((1, trajectory.num_time_steps - 1))
-    (reprs, repr_mask) = serialization_utils.serialize_observations_and_actions(
-        # Serialization works on batches, so we add a singleton batch dimension.
-        trajectory.observations_np[None, ...],
-        trajectory.actions_np[None, ...],
-        seq_mask,
-        self._obs_serializer,
-        self._action_serializer,
-        repr_length,
-    )
-    reprs = reprs[0, ...].astype(self.model_input_dtype)
-    sig_weights = (
-        self._significance_decay ** serialization_utils.significance_map(
-            self._obs_serializer, self._action_serializer, repr_length
-        )[None, ...]
-    )
-    obs_mask = serialization_utils.observation_mask(
-        self._obs_serializer, self._action_serializer, repr_length
-    )
-    weights = (sig_weights * obs_mask * repr_mask)[0, ...]
-    # (inputs, targets, weights)
-    return [(reprs, reprs, weights)]
-
-  @property
-  def model_input_shape(self):
-    return (self._max_trajectory_length * self._step_repr_length,)
-
-  @property
-  def model_input_dtype(self):
-    return np.int32
+    padding_length = self._max_trajectory_length - trajectory.num_time_steps
+    def pad(x):
+      pad_width = [(0, padding_length)] + [(0, 0)] * (x.ndim - 1)
+      return np.pad(x, pad_width=pad_width, mode='constant')
+    obs = pad(trajectory.observations_np)
+    act = pad(trajectory.actions_np)
+    mask = np.zeros_like(obs)
+    mask[:trajectory.num_time_steps, ...] = 1
+    return [(obs, act, obs, mask)]
 
 
 def cartpole_done_fn(previous_observation, current_observation):

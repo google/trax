@@ -44,8 +44,8 @@ Adafactor.multiply_by_parameter_scale = True
 # Parameters for TransformerDecoder:
 # ==============================================================================
 TransformerDecoder.attention_type = @policy/trax.layers.TimeBinCausalAttention
-TransformerDecoder.d_model = 32
-TransformerDecoder.d_ff = 64
+TransformerDecoder.d_model = 64
+TransformerDecoder.d_ff = 128
 TransformerDecoder.n_layers = 3
 TransformerDecoder.n_heads = 1
 TransformerDecoder.dropout = 0.0
@@ -108,8 +108,8 @@ SimPLe.init_policy_from_world_model = True
 # Parameters for TransformerLM:
 # ==============================================================================
 world_model/TransformerLM.attention_type = @world_model/trax.layers.TimeBinCausalAttention
-world_model/TransformerLM.d_model = 32
-world_model/TransformerLM.d_ff = 64
+world_model/TransformerLM.d_model = 64
+world_model/TransformerLM.d_ff = 128
 world_model/TransformerLM.n_layers = 3
 world_model/TransformerLM.n_heads = 1
 world_model/TransformerLM.dropout = 0.1

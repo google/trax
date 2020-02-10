@@ -809,10 +809,9 @@ class PPO(base_trainer.BaseTrainer):
     return (observations, actions, rewards, reward_mask, infos)
 
   def _serialize_trajectories(self, observations, actions, reward_mask):
-    (reprs, _) = serialization_utils.serialize_observations_and_actions(
+    reprs = serialization_utils.serialize_observations_and_actions(
         observations=observations,
         actions=actions,
-        mask=reward_mask,
         **self._serialization_kwargs
     )
     # Mask out actions in the representation - otherwise we sample an action
