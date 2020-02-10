@@ -20,7 +20,6 @@ from __future__ import print_function
 
 # TODO(wangpeng): Use tf_inspect once we move into TF.
 import funcsigs
-from funcsigs import Parameter
 import numpy as np
 import tensorflow.compat.v2 as tf
 
@@ -114,35 +113,6 @@ def array_dtype(a):
     return tf.as_dtype(np_dtype)
 
 
-def get_shape_from_ndarray(shape):
-  """Converts an ndarray into a valid shape object.
-
-  - If the shape has dtype int32 or int64, the backing tensor of the ndarray
-  is returned.
-  - Otherwise a TensorShape object is returned if the shape can be losslessly
-  cast to an integral type.
-
-  Args:
-    shape: ndarray.
-
-  Returns:
-    A Tensor or a TensorShape object.
-
-  Raises:
-    ValueError: If the shape is invalid.
-  """
-  if shape.ndim > 1:
-    raise ValueError('shape must have rank <= 1.')
-  if shape.dtype in (np.int32, np.int64):
-    shape = shape.data
-  else:
-    # Ensure this is a valid shape by converting to TensorShape
-    # which raises an exception if there is data loss during casting.
-    # TODO(srbs): Raise error when graph building is enabled.
-    shape = tf.TensorShape(shape.data)
-  return shape
-
-
 def isscalar(val):
   """Returns whether `val` is a scalar value or scalar Tensor."""
   if hasattr(val, 'shape'):  # Handles xy.ndarray and Tensor.
@@ -215,13 +185,17 @@ def _np_signature(f):
       ('signature', None),
       ('extobj', None)]
   params = []
-  params += [Parameter(name, Parameter.POSITIONAL_ONLY) for name in input_names]
+  params += [funcsigs.Parameter(name, funcsigs.Parameter.POSITIONAL_ONLY)
+             for name in input_names]
   if f.nout > 1:
-    params += [Parameter(name, Parameter.POSITIONAL_ONLY, default=None)
+    params += [funcsigs.Parameter(name, funcsigs.Parameter.POSITIONAL_ONLY,
+                                  default=None)
                for name in output_names]
-  params += [Parameter('out', Parameter.POSITIONAL_OR_KEYWORD,
-                       default=None if f.nout == 1 else (None,) * f.nout)]
-  params += [Parameter(name, Parameter.KEYWORD_ONLY, default=default)
+  params += [funcsigs.Parameter(
+      'out', funcsigs.Parameter.POSITIONAL_OR_KEYWORD,
+      default=None if f.nout == 1 else (None,) * f.nout)]
+  params += [funcsigs.Parameter(name, funcsigs.Parameter.KEYWORD_ONLY,
+                                default=default)
              for name, default in keyword_only_params]
   return funcsigs.Signature(params)
 
@@ -231,8 +205,9 @@ def _np_signature(f):
 # and positional-or-keyword arguments here.
 def _is_compatible_param_kind(a, b):
   def relax(k):
-    if k in (Parameter.POSITIONAL_ONLY, Parameter.KEYWORD_ONLY):
-      return Parameter.POSITIONAL_OR_KEYWORD
+    if k in (funcsigs.Parameter.POSITIONAL_ONLY,
+             funcsigs.Parameter.KEYWORD_ONLY):
+      return funcsigs.Parameter.POSITIONAL_OR_KEYWORD
     return k
   return relax(a) == relax(b)
 
@@ -259,8 +234,8 @@ def np_doc(np_fun):
       if not _is_compatible_param_kind(param.kind, np_param.kind):
         raise TypeError('Parameter "%s" is of kind %s while in numpy it is of '
                         'kind %s' % (name, param.kind, np_param.kind))
-      has_default = (param.default != Parameter.empty)
-      np_has_default = (np_param.default != Parameter.empty)
+      has_default = (param.default != funcsigs.Parameter.empty)
+      np_has_default = (np_param.default != funcsigs.Parameter.empty)
       if has_default != np_has_default:
         raise TypeError('Parameter "%s" should%s have a default value' %
                         (name, '' if np_has_default else ' not'))

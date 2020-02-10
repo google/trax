@@ -19,13 +19,162 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
+import numpy as onp
+
+from trax import layers as tl
+from trax import shapes
+from trax.math import numpy as np
 
 
-def serialize_observations_and_actions(
+# TODO(pkozakowski): Start using those layers directly instead of through
+# serialize_observations_and_actions, then move them to trax.layers and remove
+# this module.
+@tl.layer()
+def Serialize(x, serializer, **unused_kwargs):
+  """Serializes a given array."""
+  (batch_size, length) = x.shape[:2]
+  shape_suffix = x.shape[2:]
+  x = np.reshape(x, (batch_size * length,) + shape_suffix)
+  x = serializer.serialize(x)
+  return np.reshape(x, (batch_size, -1, serializer.representation_length,))
+
+
+@tl.layer(n_in=2, n_out=1)
+def Interleave(inputs, **unused_kwargs):
+  """Interleaves and flattens two serialized sequences.
+
+  The first sequence can be longer by 1 than the second one. This is so we can
+  interleave sequences of observations and actions, when there's 1 extra
+  observation at the end.
+
+  For serialized sequences [[x_1_1, ..., x_1_R1], ..., [x_L1_1, ..., x_L1_R1]]
+  and [[y_1_1, ..., y_1_R2], ..., [y_L2_1, ..., y_L2_R2]], where L1 = L2 + 1,
+  the result is [x_1_1, ..., x_1_R1, y_1_1, ..., y_1_R2, ..., x_L2_1, ...,
+  x_L2_R1, y_L2_1, ..., y_L2_R2, x_L1_1, ..., x_L1_R1] (batch dimension omitted
+  for clarity).
+
+  Args:
+    inputs: Pair of sequences of shapes (B, L1, R1) and (B, L2, R2), where B
+      is batch size, L* is the length of the sequence and R* is the
+      representation length of each element in the sequence.
+
+  Returns:
+    Interleaved sequence of shape (B, L1 * R1 + L2 * R2).
+  """
+  (x, y) = inputs
+  (batch_size, _, _) = x.shape
+  (_, length, _) = y.shape
+  assert x.shape[1] in (length, length + 1)
+
+  reprs = np.concatenate((x[:, :length], y), axis=2)
+  reprs = np.reshape(reprs, (batch_size, -1))
+  remainder = np.reshape(x[:, length:], (batch_size, -1))
+  return np.concatenate((reprs, remainder), axis=1)
+
+
+@tl.layer(n_in=1, n_out=2)
+def Deinterleave(inputs, x_size, y_size, **unused_kwargs):
+  """Inverse of Interleave."""
+  reprs = inputs
+  (batch_size, length) = reprs.shape[:2]
+  shape_suffix = reprs.shape[2:]
+  remainder_length = length % (x_size + y_size)
+  remainder = reprs[:, None, -remainder_length:]
+  reprs = reprs[:, :-remainder_length]
+  reprs = np.reshape(reprs, (batch_size, -1, x_size + y_size) + shape_suffix)
+  x_reprs = reprs[:, :, :x_size]
+  y_reprs = reprs[:, :, x_size:]
+  x_reprs = np.concatenate((x_reprs, remainder), axis=1)
+  return (x_reprs, y_reprs)
+
+
+@tl.layer()
+def RepresentationMask(mask, serializer, **unused_kwargs):
+  """Upsamples a mask to cover the serialized representation."""
+  # Trax enforces the mask to be of the same size as the target. Get rid of the
+  # extra dimensions.
+  mask = np.amax(mask, axis=tuple(range(2, mask.ndim)))
+  return np.broadcast_to(
+      mask[:, :, None], mask.shape + (serializer.representation_length,)
+  )
+
+
+@tl.layer()
+def SignificanceWeights(mask, serializer, decay, **unused_kwargs):
+  """Multiplies a binary mask with a symbol significance mask."""
+  # (repr,) -> (batch, length, repr)
+  significance = serializer.significance_map[None, None]
+  return mask * decay ** np.broadcast_to(significance, mask.shape)
+
+
+def SerializedModel(
+    seq_model,
+    observation_serializer,
+    action_serializer,
+    significance_decay,
+):
+  """Wraps a world model in serialization machinery for training.
+
+  The resulting model takes as input the observation and action sequences,
+  serializes them and interleaves into one sequence, which is fed into a given
+  autoregressive model. The resulting logit sequence is deinterleaved into
+  observations and actions, and the observation logits are returned together
+  with computed symbol significance weights.
+
+  Args:
+    seq_model: Trax autoregressive model taking as input a sequence of symbols
+      and outputting a sequence of symbol logits.
+    observation_serializer: Serializer to use for observations.
+    action_serializer: Serializer to use for actions.
+    significance_decay: Float from (0, 1) for exponential weighting of symbols
+      in the representation.
+
+  Returns:
+    A model of signature
+    (obs, act, obs, mask) -> (obs_logits, obs_repr, weights), where obs are
+    observations (the second occurrence is the target), act are actions, mask is
+    the observation mask, obs_logits are logits of the output observation
+    representation, obs_repr is the target observation representation and
+    weights are the target weights.
+  """
+  weigh_by_significance = [     # (mask,)
+      RepresentationMask(  # pylint: disable=no-value-for-parameter
+          serializer=observation_serializer,
+      ),                        # (repr_mask)
+      SignificanceWeights(  # pylint: disable=no-value-for-parameter
+          serializer=observation_serializer,
+          decay=significance_decay,
+      ),                        # (mask, sig_weights)
+  ]
+  return tl.Serial([            # (obs, act, obs, mask)
+      tl.Parallel(
+          Serialize(serializer=observation_serializer),  # pylint: disable=no-value-for-parameter
+          Serialize(serializer=action_serializer),  # pylint: disable=no-value-for-parameter
+          Serialize(serializer=observation_serializer),  # pylint: disable=no-value-for-parameter
+      ),                        # (obs_repr, act_repr, obs_repr, mask)
+      Interleave(  # pylint: disable=no-value-for-parameter
+      ),                        # (obs_act_repr, obs_repr, mask)
+      seq_model,                # (obs_act_logits, obs_repr, mask)
+      Deinterleave(  # pylint: disable=no-value-for-parameter
+          x_size=observation_serializer.representation_length,
+          y_size=action_serializer.representation_length,
+      ),                        # (obs_logits, act_logits, obs_repr, mask)
+      tl.Parallel(
+          None, tl.Drop(), None, weigh_by_significance
+      ),                        # (obs_logits, obs_repr, weights)
+  ])
+
+
+# TODO(pkozakowski): Figure out a more generic way to do this (submodel tags
+# inside the model?).
+def extract_inner_model(serialized_model):  # pylint: disable=invalid-name
+  """Extracts the weights/state of the inner model from a SerializedModel."""
+  return serialized_model[2]
+
+
+def serialize_observations_and_actions(  # pylint: disable=invalid-name
     observations,
     actions,
-    mask,
     observation_serializer,
     action_serializer,
     representation_length,
@@ -36,47 +185,35 @@ def serialize_observations_and_actions(
     observations: Array (B, T + 1, ...), of observations, where B is the batch
       size and T is the number of timesteps excluding the last observation.
     actions: Array (B, T, ...) of actions.
-    mask: Binary array (B, T) indicating where each sequence ends (1s while
-      it continues).
     observation_serializer: SpaceSerializer for observations.
     action_serializer: SpaceSerializer for actions.
     representation_length: Number of symbols in the serialized sequence. The
       sequence is padded up to this number.
   Returns:
-    Pair (representation, mask), where representation is the serialized sequence
-    of shape (B, R) where R = representation_length, and mask is a binary array
-    of shape (B, R) indicating where each sequence ends.
+    Serialized sequence of shape (B, R) where R = representation_length.
   """
   (batch_size, n_timesteps) = actions.shape[:2]
   assert observations.shape[:2] == (batch_size, n_timesteps + 1)
-  assert mask.shape == (batch_size, n_timesteps)
 
-  reprs = []
-  for t in range(n_timesteps):
-    reprs.append(observation_serializer.serialize(observations[:, t, ...]))
-    reprs.append(action_serializer.serialize(actions[:, t, ...]))
-  reprs.append(observation_serializer.serialize(observations[:, -1, ...]))
-  reprs = np.concatenate(reprs, axis=1)
+  serialization = tl.Serial([
+      tl.Parallel(
+          Serialize(serializer=observation_serializer),  # pylint: disable=no-value-for-parameter
+          Serialize(serializer=action_serializer),  # pylint: disable=no-value-for-parameter
+      ),
+      Interleave(),  # pylint: disable=no-value-for-parameter
+  ])
+  serialization.init(shapes.signature((observations, actions)))
+  reprs = serialization((observations, actions))
+
   assert reprs.shape[1] <= representation_length
-  reprs = np.pad(
+  return np.pad(
       reprs,
       pad_width=((0, 0), (0, representation_length - reprs.shape[1])),
       mode='constant',
   )
 
-  obs_repr_length = observation_serializer.representation_length
-  act_repr_length = action_serializer.representation_length
-  step_repr_length = obs_repr_length + act_repr_length
-  seq_lengths = np.sum(mask, axis=1).astype(np.int32)
-  repr_lengths = seq_lengths * step_repr_length + obs_repr_length
-  repr_mask = np.zeros((batch_size, representation_length), dtype=np.int32)
-  for (i, repr_length) in enumerate(repr_lengths):
-    repr_mask[i, :repr_length] = 1
 
-  return (reprs, repr_mask)
-
-
-def observation_mask(
+def observation_mask(  # pylint: disable=invalid-name
     observation_serializer, action_serializer, representation_length
 ):
   """Calculates an observation mask for a serialized sequence.
@@ -91,7 +228,7 @@ def observation_mask(
     Binary mask indicating which symbols in the representation correspond to
     observations.
   """
-  mask = np.zeros(representation_length, dtype=np.int32)
+  mask = onp.zeros(representation_length, dtype=np.int32)
   obs_repr_length = observation_serializer.representation_length
   step_repr_length = obs_repr_length + action_serializer.representation_length
   for step_start_index in range(0, representation_length, step_repr_length):
@@ -99,7 +236,7 @@ def observation_mask(
   return mask
 
 
-def action_mask(
+def action_mask(  # pylint: disable=invalid-name
     observation_serializer, action_serializer, representation_length
 ):
   """Calculates an action mask for a serialized sequence.
@@ -119,41 +256,7 @@ def action_mask(
   )
 
 
-def significance_map(
-    observation_serializer, action_serializer, representation_length
-):
-  """Calculates a significance map for the entire serialized sequence.
-
-  See SpaceSerializer.significance_map.
-
-  Args:
-    observation_serializer: SpaceSerializer for observations.
-    action_serializer: SpaceSerializer for actions.
-    representation_length: Number of symbols in the serialized sequence. The
-      significance map is padded up to this number.
-
-  Returns:
-    Significance map for the entire serialized sequence.
-  """
-  sig_map = np.zeros(representation_length, dtype=np.int32)
-  obs_repr_length = observation_serializer.representation_length
-  act_repr_length = action_serializer.representation_length
-  step_repr_length = obs_repr_length + act_repr_length
-  for step_start_index in range(0, representation_length, step_repr_length):
-    act_start_index = step_start_index + obs_repr_length
-    step_end_index = step_start_index + step_repr_length
-    limit = representation_length - step_start_index
-    sig_map[step_start_index:act_start_index] = (
-        observation_serializer.significance_map[:limit]
-    )
-    limit = representation_length - act_start_index
-    sig_map[act_start_index:step_end_index] = (
-        action_serializer.significance_map[:limit]
-    )
-  return sig_map
-
-
-def rewards_to_actions_map(
+def rewards_to_actions_map(  # pylint: disable=invalid-name
     observation_serializer,
     action_serializer,
     n_timesteps,
@@ -174,7 +277,7 @@ def rewards_to_actions_map(
     Array (T, R) translating from the reward sequence to actions in the
     representation.
   """
-  r2a_map = np.zeros((n_timesteps, representation_length))
+  r2a_map = onp.zeros((n_timesteps, representation_length))
   obs_repr_length = observation_serializer.representation_length
   act_repr_length = action_serializer.representation_length
   step_repr_length = obs_repr_length + act_repr_length

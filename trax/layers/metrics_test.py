@@ -91,6 +91,24 @@ class MetricsLayerTest(absltest.TestCase):
         metrics.AccuracyScalar(), input_signature)
     self.assertEqual(result_shape, ())
 
+  def test_l2_loss(self):
+    inputs = onp.array([[1, 1], [1, 1]], dtype=onp.float32)
+    targets = onp.array([[1, 1], [1, 0]], dtype=onp.float32)
+    sig = (signature(inputs), signature(targets))
+    layer = metrics.L2Loss(has_weights=False)
+    layer.init(sig)
+    loss = layer((inputs, targets))
+    onp.testing.assert_allclose(loss, 0.25)
+    weights = onp.array([[1, 1], [1, 0]], dtype=onp.float32)
+    sig = (signature(inputs), signature(targets), signature(weights))
+    layer = metrics.L2Loss(has_weights=True)
+    layer.init(sig)
+    loss = layer((inputs, targets, weights))
+    onp.testing.assert_allclose(loss, 0.0)
+    weights2 = onp.array([[1, 0], [0, 1]], dtype=onp.float32)
+    loss = layer((inputs, targets, weights2))
+    onp.testing.assert_allclose(loss, 0.5)
+
 
 if __name__ == '__main__':
   absltest.main()

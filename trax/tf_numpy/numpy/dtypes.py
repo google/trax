@@ -24,6 +24,7 @@ import numpy as np
 # with numpy facilities such as `np.dtype(np.int64)` and
 # `if x.dtype.type is np.int64`.
 # pylint: disable=unused-import
+# pylint: disable=g-bad-import-order
 from numpy import bool_
 from numpy import int_
 from numpy import int16
@@ -51,6 +52,7 @@ from numpy import inf
 
 # TODO(wangpeng): Make bfloat16 a numpy dtype instead of using TF's
 from tensorflow.compat.v2 import bfloat16
+# pylint: enable=g-bad-import-order
 # pylint: enable=unused-import
 
 

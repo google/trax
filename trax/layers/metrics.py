@@ -53,7 +53,21 @@ from trax.math import numpy as np
 # pylint: disable=no-value-for-parameter
 def L2Loss(id_to_mask=None, has_weights=False):
   """Returns a layer to compute L2 loss."""
-  return _WeightedMaskedMean(_L2(), id_to_mask, has_weights)
+  if id_to_mask is not None:
+    raise ValueError('L2Loss cannot mask by ID, provide weights if needed.')
+
+  @base.layer(n_in=2, n_out=1)
+  def RawL2Loss(inputs, **unused_kwargs):
+    y_hat, y = inputs
+    return np.mean((y_hat - y)**2)
+
+  @base.layer(n_in=3, n_out=1)
+  def MaskedL2Loss(inputs, **unused_kwargs):
+    y_hat, y, mask = inputs
+    l2 = mask * (y_hat - y)**2
+    return np.sum(l2) / np.sum(mask)
+
+  return MaskedL2Loss() if has_weights else RawL2Loss()
 
 
 def AccuracyScalar(id_to_mask=None, has_weights=False):

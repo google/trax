@@ -1014,11 +1014,9 @@ def _prepare_policy_input(
         (batch_size, n_timesteps - 1) + action_space.shape,
         dtype=action_space.dtype,
     )
-    reward_mask = np.ones((batch_size, n_timesteps - 1), dtype=np.int32)
-    (policy_input, _) = serialization_utils.serialize_observations_and_actions(
+    policy_input = serialization_utils.serialize_observations_and_actions(
         observations=observations,
         actions=actions,
-        mask=reward_mask,
         **serialization_kwargs
     )
     return policy_input

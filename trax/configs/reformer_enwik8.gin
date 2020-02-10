@@ -84,10 +84,10 @@ train.checkpoints_at = \
 
 # Parameters for SelfAttention:
 # ==============================================================================
+SelfAttention.attention_dropout = 0.2
 # SelfAttention.chunk_len: see top
 SelfAttention.n_chunks_after = 0
 # SelfAttention.n_chunks_before: see top
-# TODO(kitaev): attention dropout, when implemented
 
 # Parameters for LSHSelfAttention:
 # ==============================================================================

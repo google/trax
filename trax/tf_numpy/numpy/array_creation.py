@@ -75,7 +75,7 @@ def zeros(shape, dtype=float):
   if dtype:
     dtype = utils.to_tf_type(dtype)
   if isinstance(shape, arrays.ndarray):
-    shape = utils.get_shape_from_ndarray(shape)
+    shape = shape.data
   return utils.tensor_to_ndarray(tf.zeros(shape, dtype=dtype))
 
 
@@ -117,7 +117,7 @@ def ones(shape, dtype=float):
   if dtype:
     dtype = utils.to_tf_type(dtype)
   if isinstance(shape, arrays.ndarray):
-    shape = utils.get_shape_from_ndarray(shape)
+    shape = shape.data
   return utils.tensor_to_ndarray(tf.ones(shape, dtype=dtype))
 
 

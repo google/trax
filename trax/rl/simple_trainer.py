@@ -164,15 +164,6 @@ class SimPLe(base_trainer.BaseTrainer):
     self.policy_trainer.trajectory_dump_dir = os.path.join(
         self._trajectory_dump_root_dir, str(self.epoch))
     self._policy_epoch += self._n_real_epochs
-
-    # After the first world model training, reinitialize the policy from the
-    # world model parameters if requested.
-    if self._simple_epoch == 1 and self._init_policy_from_world_model:
-      self.policy_trainer.init_policy_from_world_model_output_dir = (
-          self._model_dir
-      )
-      self.policy_trainer.reset(output_dir=self._policy_dir)
-
     self.policy_trainer.training_loop(self._policy_epoch, evaluate=evaluate)
 
     logging.vlog(
@@ -193,6 +184,10 @@ class SimPLe(base_trainer.BaseTrainer):
         train_stream=(lambda _: train_stream),
         eval_stream=(lambda _: eval_stream)
     )
+    (obs, act, _, _) = next(train_stream)
+    # TODO(pkozakowski): Refactor Inputs so this can be inferred correctly.
+    inputs._input_shape = (tuple(obs.shape)[1:], tuple(act.shape)[1:])  # pylint: disable=protected-access
+    inputs._input_dtype = (obs.dtype, act.dtype)  # pylint: disable=protected-access
 
     if self._simple_epoch == 0:
       train_steps = self._n_model_initial_train_steps
@@ -227,6 +222,15 @@ class SimPLe(base_trainer.BaseTrainer):
     # Don't dump trajectories from the simulated environment.
     self.policy_trainer.trajectory_dump_dir = None
     self._policy_epoch += self._n_simulated_epochs
+
+    # After the first world model training, reinitialize the policy from the
+    # world model parameters if requested.
+    if self._simple_epoch == 0 and self._init_policy_from_world_model:
+      self.policy_trainer.init_policy_from_world_model_output_dir = (
+          self._model_dir
+      )
+      self.policy_trainer.reset(output_dir=self._policy_dir)
+
     self.policy_trainer.training_loop(self._policy_epoch, evaluate=False)
     # Revert back to the original async mode in the policy trainer.
     self.policy_trainer.async_mode = original_async_mode
