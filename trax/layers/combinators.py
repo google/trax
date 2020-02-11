@@ -67,12 +67,14 @@ class Serial(base.Layer):
     stack = xs
     new_state = []
     n_layers = self._n_layers
-    if n_layers != 1 and len(weights) != n_layers:
+    if len(weights) != n_layers:
       raise ValueError(
-          f'len(weights) ({len(weights)}) != number of layers ({n_layers})')
-    if n_layers != 1 and len(state) != n_layers:
+          f'Number of weight elements ({len(weights)}) does not equal '
+          f'number of sublayers ({n_layers}).')
+    if len(state) != n_layers:
       raise ValueError(
-          f'len(state) ({len(state)}) != number of layers ({n_layers})')
+          f'Number of state elements ({len(state)}) does not equal '
+          f'number of sublayers ({n_layers}).')
 
     for layer, w, s, rng in zip(self.sublayers, weights, state, rngs):
       inputs = _inputs_from_stack(layer, stack)
@@ -108,7 +110,8 @@ class Serial(base.Layer):
     n_layers = self._n_layers
     if len(weights) != n_layers:
       raise ValueError(
-          f'len(weights) ({len(weights)}) != number of layers ({n_layers})')
+          f'Number of weight elements ({len(weights)}) does not equal '
+          f'number of sublayers ({n_layers}).')
     for layer, sublayer_weights in zip(self.sublayers, weights):
       layer.weights = sublayer_weights
 
@@ -119,7 +122,8 @@ class Serial(base.Layer):
     n_layers = self._n_layers
     if n_layers != 1 and len(state) != n_layers:
       raise ValueError(
-          f'len(state) ({len(state)}) != number of layers ({n_layers})')
+          f'Number of state elements ({len(state)}) does not equal '
+          f'number of sublayers ({n_layers}).')
     for layer, sublayer_state in zip(self.sublayers, state):
       layer.state = sublayer_state
 
@@ -140,8 +144,8 @@ class Serial(base.Layer):
     len_xs = 1 if isinstance(xs, np.ndarray) else len(xs)
     if len_xs < self.n_in:
       raise ValueError(
-          f'number of inputs ({len(xs)}) to Serial.forward less than n_in '
-          f'({self.n_in})')
+          f'Number of inputs ({len(xs)}) to Serial.forward less than n_in '
+          f'({self.n_in}).')
 
   # pylint: disable=protected-access
   def _set_input_signature_recursive(self, input_signature):
@@ -215,14 +219,22 @@ class Parallel(base.Layer):
     n_layers, layers = self._n_layers, self.sublayers
     sublayer_inputs = self._allot_to_sublayers(inputs)
     rngs = _pop_rng_and_split(kwargs, n_layers)
-    assert len(sublayer_inputs) == n_layers
+    if len(sublayer_inputs) != n_layers:
+      raise ValueError(
+          f'Number of inputs for sublayers ({len(sublayer_inputs)}) does not equal '
+          f'number of sublayers ({n_layers}).')
     if len(weights) != n_layers:
       raise ValueError(
-          f'len(weights) ({len(weights)}) != number of layers ({n_layers})')
+          f'Number of weight elements ({len(weights)}) does not equal '
+          f'number of sublayers ({n_layers}).')
     if len(state) != n_layers:
       raise ValueError(
-          f'len(state) ({len(state)}) != number of layers ({n_layers})')
-    assert len(rngs) == n_layers
+          f'Number of state elements ({len(state)}) does not equal '
+          f'number of sublayers ({n_layers}).')
+    if len(rngs) != n_layers:
+      raise ValueError(
+          f'Number of rngs ({len(rngs)}) does not equal '
+          f'number of sublayers ({n_layers}).')
     outputs = []
     new_state = []
     for layer, x, w, s, r in zip(layers, sublayer_inputs, weights, state, rngs):
@@ -277,10 +289,10 @@ class Parallel(base.Layer):
       else:
         if not isinstance(obj, base.Layer):
           raise ValueError(
-              f'found nonlayer object ({obj}) in layers list: [{layers}]')
+              f'Found nonlayer object ({obj}) in layers list: [{layers}]')
       if layers[i].n_in == 0:
         raise ValueError(
-            f'sublayer with n_in = 0 not allowed in Parallel: {layers[i]}')
+            f'Sublayer with n_in = 0 not allowed in Parallel: {layers[i]}')
     return layers
 
   def _allot_to_sublayers(self, inputs):
@@ -772,5 +784,5 @@ def _ensure_flat(layers):
   for obj in layers:
     if not isinstance(obj, base.Layer):
       raise ValueError(
-          f'found nonlayer object ({obj}) in layers: {layers}')
+          f'Found nonlayer object ({obj}) in layers: {layers}')
   return layers
