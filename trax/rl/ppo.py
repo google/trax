@@ -179,26 +179,112 @@ def collect_trajectories(env,
   """
 
   assert isinstance(env, env_problem.EnvProblem)
-  # This is an env_problem, run its collect function.
-  trajs, n_done, timing_info, state = env_problem_utils.play_env_problem_with_policy(
-      env,
-      policy_fn,
-      num_trajectories=n_trajectories,
-      max_timestep=max_timestep,
-      reset=reset,
-      len_history_for_policy=len_history_for_policy,
-      boundary=boundary,
-      state=state,
-      temperature=temperature,
-      rng=rng,
-      abort_fn=abort_fn,
-      raw_trajectory=raw_trajectory,
-  )
-  # Skip returning raw_rewards here, since they aren't used.
 
-  # t is the return value of Trajectory.as_numpy, so:
-  # (observation, action, processed_reward, raw_reward, infos)
-  return trajs, n_done, timing_info, state
+  def gumbel_sample(log_probs):
+    """Gumbel sampling."""
+    u = onp.random.uniform(low=1e-6, high=1.0 - 1e-6, size=log_probs.shape)
+    g = -onp.log(-onp.log(u))
+    return onp.argmax((log_probs / temperature) + g, axis=-1)
+
+  # We need to reset all environments, if we're coming here the first time.
+  if reset or max_timestep is None or max_timestep <= 0:
+    env.reset()
+  else:
+    # Clear completed trajectories held internally.
+    env.trajectories.clear_completed_trajectories()
+
+  num_done_trajectories = 0
+
+  policy_application_total_time = 0
+  env_actions_total_time = 0
+  bare_env_run_time = 0
+  while env.trajectories.num_completed_trajectories < n_trajectories:
+    # Check if we should abort and return nothing.
+    if abort_fn and abort_fn():
+      # We should also reset the environment, since it will have some
+      # trajectories (complete and incomplete) that we want to discard.
+      env.reset()
+      return None, 0, {}, state
+
+    # Get all the observations for all the active trajectories.
+    # Shape is (B, RT) + OBS
+    # Bucket on whatever length is needed.
+    padded_observations, lengths = env.trajectories.observations_np(
+        boundary=boundary,
+        len_history_for_policy=len_history_for_policy)
+
+    B = padded_observations.shape[0]  # pylint: disable=invalid-name
+
+    assert B == env.batch_size
+    assert (B,) == lengths.shape
+
+    t1 = time.time()
+    log_probs, value_preds, state, rng = policy_fn(
+        padded_observations, lengths, state=state, rng=rng)
+    policy_application_total_time += (time.time() - t1)
+
+    assert B == log_probs.shape[0]
+
+    actions = gumbel_sample(log_probs)
+    if isinstance(env.action_space, gym.spaces.Discrete):
+      actions = onp.squeeze(actions, axis=1)
+
+    # Step through the env.
+    t1 = time.time()
+    _, _, dones, env_infos = env.step(
+        actions,
+        infos={
+            'log_prob_actions': log_probs,
+            'value_predictions': value_preds,
+        })
+    env_actions_total_time += (time.time() - t1)
+    bare_env_run_time += sum(
+        info['__bare_env_run_time__'] for info in env_infos)
+
+    # Count the number of done trajectories, the others could just have been
+    # truncated.
+    num_done_trajectories += onp.sum(dones)
+
+    # Get the indices where we are done ...
+    done_idxs = env_problem_utils.done_indices(dones)
+
+    # ... and reset those.
+    t1 = time.time()
+    if done_idxs.size:
+      env.reset(indices=done_idxs)
+    env_actions_total_time += (time.time() - t1)
+
+    if max_timestep is None or max_timestep < 1:
+      continue
+
+    # Are there any trajectories that have exceeded the time-limit we want.
+    lengths = env.trajectories.trajectory_lengths
+    exceeded_time_limit_idxs = env_problem_utils.done_indices(
+        lengths > max_timestep
+    )
+
+    # If so, reset these as well.
+    t1 = time.time()
+    if exceeded_time_limit_idxs.size:
+      # This just cuts the trajectory, doesn't reset the env, so it continues
+      # from where it left off.
+      env.truncate(indices=exceeded_time_limit_idxs, num_to_keep=1)
+    env_actions_total_time += (time.time() - t1)
+
+  # We have the trajectories we need, return a list of triples:
+  # (observations, actions, rewards)
+  completed_trajectories = (
+      env_problem_utils.get_completed_trajectories_from_env(
+          env, n_trajectories, raw_trajectory=raw_trajectory))
+
+  timing_info = {
+      'trajectory_collection/policy_application': policy_application_total_time,
+      'trajectory_collection/env_actions': env_actions_total_time,
+      'trajectory_collection/env_actions/bare_env': bare_env_run_time,
+  }
+  timing_info = {k: round(1000 * v, 2) for k, v in timing_info.items()}
+
+  return completed_trajectories, num_done_trajectories, timing_info, state
 
 
 # This function can probably be simplified, ask how?
