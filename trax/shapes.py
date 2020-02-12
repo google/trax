@@ -77,8 +77,13 @@ def signature(obj):
   Args:
     obj: An object that has `shape` and `dtype` attributes, or a list/tuple
         of such objects.
+
+  Returns:
+    A single `ShapeDtype` instance if the signature has one element, else a
+    tuple of `ShapeDtype` instances.
   """
   if isinstance(obj, (list, tuple)):
-    return tuple(signature(x) for x in obj)
+    output = tuple(signature(x) for x in obj)
+    return output[0] if len(output) == 1 else output
   else:
     return ShapeDtype(obj.shape, obj.dtype)
