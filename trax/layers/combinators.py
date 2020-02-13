@@ -670,7 +670,7 @@ class Cache(base.Layer):
                          state=base.EMPTY_STATE, **kwargs):
     if state[0] is ():  # pylint: disable=literal-comparison
       res, layer_state = self.sublayer.forward_with_state(
-          inputs, weights=weights, state=state, **kwargs)
+          inputs, weights=weights, state=state[1], **kwargs)
       return res, (res, layer_state)
     else:
       return state[0], state

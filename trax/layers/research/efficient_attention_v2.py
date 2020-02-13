@@ -488,8 +488,8 @@ class EfficientAttentionBase(base.Layer):
         return jax.ops.index_update(
             mem_element, jax.ops.index[:, mem_end], new_vals[:, 0, ...])
       else:
-        return jax.ops.index_update(
-            mem_element, jax.ops.index[:, mem_end:mem_end+seqlen], new_vals)
+        return jax.lax.dynamic_update_slice_in_dim(
+            mem_element, new_vals, mem_end, axis=1)
     inputs = jax.tree_multimap(update_mem, mem, inputs)
     return inputs, state, mem_end, mem_end + seqlen
 

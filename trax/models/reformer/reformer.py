@@ -959,6 +959,12 @@ def EncoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, mode):
   Returns:
     A list of layers that maps (activations, mask) to (activations, mask).
   """
+  if mode == 'predict':
+    # Mode 'predict' means that the decoder should be run one token at a time.
+    # The encoder only ever runs over full sequences, which is why it's switched
+    # to 'eval' mode instead.
+    mode = 'eval'
+
   attention = tl.SelfAttention(
       n_heads=n_heads, d_qk=d_model//n_heads, d_v=d_model//n_heads,
       masked=True,
@@ -1070,7 +1076,7 @@ def Reformer(input_vocab_size,
   # TODO(kitaev): remove this hack.
   jax.api._check_inexact_input_vjp = lambda x: None  # pylint: disable=protected-access
 
-  def PositionalEncoder(vocab_size):  # tokens --> vectors
+  def PositionalEncoder(vocab_size, mode):  # tokens --> vectors
     # TODO(kitaev): axial positional encoding is better for very long sequences.
     # TODO(kitaev): dropout=0.0 for tl.PositionalEncoding matches trax
     # Transformer, but may not be the right option in general.
@@ -1083,16 +1089,36 @@ def Reformer(input_vocab_size,
         positional_encoding,
     ]
 
-  in_encoder = PositionalEncoder(input_vocab_size)
-  out_encoder = (in_encoder if output_vocab_size is None
-                 else PositionalEncoder(output_vocab_size))
+  # TODO(kitaev): The regular trax Transformer shares vocab embeddings and
+  # position embeddings between the encoder and decoder if output_vocab_size is
+  # None. This isn't supported here because (a) Trax shares weights by sharing
+  # layer instances, but we need two separate instances to have mode == 'eval'
+  # for the encoder but mode == 'predict' for the decoder; and (b) tl.Cache does
+  # not work if its sublayers participate in any weight sharing.
+
+  # Mode 'predict' means that the decoder should be run one token at a time.
+  # The encoder only ever runs over full sequences, which is why it's switched
+  # to 'eval' mode instead.
+  in_encoder = PositionalEncoder(
+      input_vocab_size, mode='eval' if mode == 'predict' else mode)
   if output_vocab_size is None:
     output_vocab_size = input_vocab_size
+  out_encoder = PositionalEncoder(output_vocab_size, mode)
 
   encoder_blocks = [
       EncoderBlock(
           d_model, d_ff, n_heads, dropout, ff_activation, mode)
       for _ in range(n_encoder_layers)]
+
+  encoder = tl.Serial([
+      in_encoder,
+      tl.Dup(),
+      tl.ReversibleSerial(encoder_blocks),
+      tl.Fn(lambda x, y: (x+y)/2.0),
+      tl.LayerNorm(),
+  ])
+  if mode == 'predict':
+    encoder = tl.Cache(encoder)
 
   encoder_decoder_blocks = [
       EncoderDecoderBlock(
@@ -1103,26 +1129,17 @@ def Reformer(input_vocab_size,
   return tl.Serial(
       # Input: encoder_side_tokens, decoder_side_tokens
       # Copy decoder tokens for use in loss.
-      tl.Select([0, 1, 1]),               # tok_e tok_d tok_d
+      tl.Select([0, 1, 1]),                 # tok_e tok_d tok_d
+      tl.Branch([], [                       # tok_e mask  tok_d .....
+          tl.PaddingMask(),
+          tl.Fn(lambda x: np.squeeze(x, (1, 2)), n_out=1)]),
 
       # Encode.
-      tl.Branch(
-          in_encoder, [tl.PaddingMask(),
-                       tl.Fn(lambda x: np.squeeze(x, (1, 2)), n_out=1)]
-          ),                                # vec_e  mask  tok_d .....
-      tl.Dup(),                             # vec_e1 vec_e2 mask tok_d .....
-      tl.ReversibleSerial(encoder_blocks),  # vec_e1 vec_e2 mask tok_d .....
-      # The two sets of activations need to be reduced to one, in this case by
-      # averaging them. Note that ReformerLM concatenates instead. Various
-      # options (concat, average, add, keep only one, etc.) seem to perform
-      # similarly. We don't concatenate here because we want exact parameter
-      # parity with the standard Transformer.
-      tl.Fn(lambda x, y: (x+y)/2.0),        # vec_e  mask tok_d .....
-      tl.LayerNorm(),                       # vec_e  mask tok_d .....
+      encoder,                              # vec_e  mask tok_d .....
 
       # Decode.
       tl.Select([2, 0, 1]),                 # tok_d vec_e mask .....
-      tl.ShiftRight(),                      # tok_d vec_e mask .....
+      tl.ShiftRight(mode=mode),             # tok_d vec_e mask .....
       out_encoder,                          # vec_d vec_e mask .....
       tl.Dup(),                             # vec_d1 vec_d2 vec_e mask .....
       tl.ReversibleSerial(encoder_decoder_blocks),
