@@ -27,7 +27,6 @@ from trax.layers.combinators import (  # pylint: disable=g-multiple-import
     _pop_rng_and_split, _inputs_from_stack, _outputs_onto_stack)
 from trax.math import numpy as np
 from trax.math import random
-from trax.models import transformer
 
 
 # Layers are always CamelCase, but functions in general are snake_case
@@ -124,21 +123,24 @@ class BroadcastedDropout(tl.Layer):
       return x, state
 
 
-def FeedForward(d_model, d_ff, dropout, activation, mode):
+def FeedForward(d_model, d_ff, dropout, activation, act_dropout, mode):
   """Feed-forward block with layer normalization at start."""
+  if act_dropout is None:
+    act_dropout = dropout
   return [
       tl.LayerNorm(),
       tl.Dense(d_ff),
-      BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
+      BroadcastedDropout(rate=act_dropout, mode=mode),  # pylint: disable=no-value-for-parameter
       activation(),
       tl.Dense(d_model),
       BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
   ]
 
 
-def ChunkedFeedForward(d_model, d_ff, dropout, activation, chunk_size, mode):
+def ChunkedFeedForward(d_model, d_ff, dropout, activation, act_dropout,
+                       chunk_size, mode):
   """Chunked feed-forward block with layer normalization at start."""
-  ff = FeedForward(d_model, d_ff, dropout, activation, mode)
+  ff = FeedForward(d_model, d_ff, dropout, activation, act_dropout, mode)
   if chunk_size < 1:
     return ff
   def reshape_to_chunks(x):
@@ -689,7 +691,7 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
     feed_forward = [tl.SRU(d_model) for _ in range(ff_use_sru)]
   else:
     feed_forward = [ChunkedFeedForward(d_model, d_ff, dropout, ff_activation,
-                                       ff_chunk_size, mode)]
+                                       dropout, ff_chunk_size, mode)]
 
   return [
       attention_half_residual,
@@ -941,7 +943,8 @@ def ReformerShortenLM(vocab_size,
   # pylint: enable=g-long-lambda
 
 
-def EncoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, mode):
+def EncoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, ff_dropout,
+                 mode):
   """Returns a list of layers that implements a Reformer encoder block.
 
   The input to the layer is a pair, (activations, mask), where the mask was
@@ -954,6 +957,7 @@ def EncoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, mode):
     n_heads: int: number of attention heads
     dropout: float: dropout rate (how much to drop out)
     ff_activation: the non-linearity in feed-forward layer
+    ff_dropout: the dropout rate in feed-forward layer
     mode: str: 'train' or 'eval'
 
   Returns:
@@ -975,10 +979,8 @@ def EncoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, mode):
       attention_layer=attention,
   )
 
-  # TODO(kitaev): Switch to FeedForward with BroadcastedDropout?
-  feed_forward = transformer._FeedForwardBlock(  # pylint: disable=protected-access
-      d_model, d_ff, dropout, -1, mode, ff_activation)
-  # feed_forward = FeedForward(d_model, d_ff, dropout, ff_activation, mode)
+  feed_forward = FeedForward(
+      d_model, d_ff, dropout, ff_activation, ff_dropout, mode)
 
   return [
       attention_half_residual,
@@ -988,7 +990,8 @@ def EncoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, mode):
   ]
 
 
-def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, mode):
+def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, ff_activation,
+                        ff_dropout, mode):
   """Reversible transformer decoder layer.
 
   Args:
@@ -997,6 +1000,7 @@ def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, mode):
     n_heads: int: number of attention heads
     dropout: float: dropout rate (how much to drop out)
     ff_activation: the non-linearity in feed-forward layer
+    ff_dropout: float: (optional) separate dropout rate for feed-forward layer
     mode: str: 'train' or 'eval'
 
   Returns:
@@ -1021,7 +1025,8 @@ def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, mode):
       attention_layer=causal_attention,
   )
 
-  feed_forward = FeedForward(d_model, d_ff, dropout, ff_activation, mode)
+  feed_forward = FeedForward(
+      d_model, d_ff, dropout, ff_activation, ff_dropout, mode)
 
   return [                             # vec_d1 vec_d2 vec_e masks
       causal_attention_half_residual,
@@ -1043,6 +1048,7 @@ def Reformer(input_vocab_size,
              dropout=0.1,
              max_len=2048,
              ff_activation=tl.Relu,
+             ff_dropout=None,
              mode='train'):
   """Reversible transformer encoder-decoder model.
 
@@ -1063,6 +1069,8 @@ def Reformer(input_vocab_size,
     dropout: float: dropout rate (how much to drop out)
     max_len: int: maximum symbol length for positional encoding
     ff_activation: the non-linearity in feed-forward layer
+    ff_dropout: float: (optional) separate dropout rate at feed-forward
+      nonlinearity. This is called relu_dropout in T2T.
     mode: str: 'train' or 'eval'
 
   Returns:
@@ -1078,14 +1086,11 @@ def Reformer(input_vocab_size,
 
   def PositionalEncoder(vocab_size, mode):  # tokens --> vectors
     # TODO(kitaev): axial positional encoding is better for very long sequences.
-    # TODO(kitaev): dropout=0.0 for tl.PositionalEncoding matches trax
-    # Transformer, but may not be the right option in general.
     positional_encoding = tl.PositionalEncoding(
-        max_len=max_len, dropout=0.0, mode=mode)
+        max_len=max_len, dropout=dropout, mode=mode)
     return [
         tl.Embedding(d_model, vocab_size),
-        # TODO(kitaev): BroadcastedDropout?
-        tl.Dropout(rate=dropout, mode=mode),
+        BroadcastedDropout(rate=dropout, mode=mode),
         positional_encoding,
     ]
 
@@ -1107,7 +1112,7 @@ def Reformer(input_vocab_size,
 
   encoder_blocks = [
       EncoderBlock(
-          d_model, d_ff, n_heads, dropout, ff_activation, mode)
+          d_model, d_ff, n_heads, dropout, ff_activation, ff_dropout, mode)
       for _ in range(n_encoder_layers)]
 
   encoder = tl.Serial([
@@ -1122,7 +1127,7 @@ def Reformer(input_vocab_size,
 
   encoder_decoder_blocks = [
       EncoderDecoderBlock(
-          d_model, d_ff, n_heads, dropout, ff_activation, mode)
+          d_model, d_ff, n_heads, dropout, ff_activation, ff_dropout, mode)
       for _ in range(n_decoder_layers)]
 
   # Assemble and return the model.
