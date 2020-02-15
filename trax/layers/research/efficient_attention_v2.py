@@ -301,12 +301,6 @@ class EfficientAttentionBase(base.Layer):
             predict_mem_len, predict_drop_len)
       self.predict_mem_len = predict_mem_len
       self.predict_drop_len = predict_drop_len
-      if n_parallel_heads is None or n_parallel_heads > n_heads:
-        # TODO(kitaev): TPU results in batch mode don't match the reference code
-        # and the difference is far larger than floating point epsilon. There is
-        # no such discrepancy on GPU.
-        print('WARNING: inference on TPU may yield incorrect results in this'
-              ' configuration')
 
     if n_parallel_heads:
       if ((n_parallel_heads > n_heads and n_parallel_heads % n_heads != 0)
