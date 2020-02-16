@@ -64,7 +64,7 @@ train.checkpoints_at = [100000, 200000, 300000, 400000, 500000]
 # Parameters for Reformer:
 # ==============================================================================
 Reformer.d_model= 1024
-Reformer.d_ff = 4906
+Reformer.d_ff = 4096
 Reformer.dropout = 0.3
 Reformer.ff_activation = @trax.layers.Relu
 Reformer.ff_dropout = 0.1
