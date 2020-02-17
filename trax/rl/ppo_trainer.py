@@ -168,7 +168,9 @@ class PPO(base_trainer.BaseTrainer):
     self._should_write_summaries = should_write_summaries
     self._history = None
 
-    (n_controls, n_actions) = ppo.analyze_action_space(train_env.action_space)
+    (n_controls, n_actions) = serialization_utils.analyze_action_space(
+        train_env.action_space
+    )
 
     self._rng = trainer_lib.init_random_number_generators(random_seed)
 

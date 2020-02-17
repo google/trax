@@ -19,11 +19,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
+import gym
 import numpy as onp
 
 from trax import layers as tl
 from trax import shapes
 from trax.math import numpy as np
+from trax.rl import space_serializer
 
 
 # TODO(pkozakowski): Start using those layers directly instead of through
@@ -79,12 +83,14 @@ def Deinterleave(inputs, x_size, y_size, **unused_kwargs):
   (batch_size, length) = reprs.shape[:2]
   shape_suffix = reprs.shape[2:]
   remainder_length = length % (x_size + y_size)
-  remainder = reprs[:, None, -remainder_length:]
-  reprs = reprs[:, :-remainder_length]
+  if remainder_length > 0:
+    remainder = reprs[:, None, -remainder_length:]
+    reprs = reprs[:, :-remainder_length]
   reprs = np.reshape(reprs, (batch_size, -1, x_size + y_size) + shape_suffix)
   x_reprs = reprs[:, :, :x_size]
   y_reprs = reprs[:, :, x_size:]
-  x_reprs = np.concatenate((x_reprs, remainder), axis=1)
+  if remainder_length > 0:
+    x_reprs = np.concatenate((x_reprs, remainder), axis=1)
   return (x_reprs, y_reprs)
 
 
@@ -170,6 +176,184 @@ def SerializedModel(
 def extract_inner_model(serialized_model):  # pylint: disable=invalid-name
   """Extracts the weights/state of the inner model from a SerializedModel."""
   return serialized_model[2]
+
+
+@tl.layer()
+def DropLastTimestep(x, **unused_kwargs):
+  """Drops the last timestep in a sequence."""
+  return x[:, :-1]
+
+
+def RawPolicy(seq_model, n_controls, n_actions):
+  """Wraps a sequence model in a policy interface.
+
+  The resulting model takes as input observation anc action sequences, but only
+  uses the observations. Adds output heads for action logits and value
+  predictions.
+
+  Args:
+    seq_model: Trax sequence model taking as input and outputting a sequence of
+      continuous vectors.
+    n_controls: Number of controls.
+    n_actions: Number of action categories in each control.
+
+  Returns:
+    A model of signature (obs, act) -> (act_logits, values), with shapes:
+      obs: (batch_size, length + 1, obs_depth)
+      act: (batch_size, length, n_controls)
+      act_logits: (batch_size, length, n_controls, n_actions)
+      values: (batch_size, length)
+  """
+  @tl.layer()
+  def SplitControls(x, **unused_kwargs):  # pylint: disable=invalid-name
+    """Splits logits for actions in different controls."""
+    return np.reshape(x, x.shape[:2] + (n_controls, n_actions))
+
+  action_head = [
+      # Predict all action logits at the same time.
+      tl.Dense(n_controls * n_actions),
+      # Then group them into separate controls, adding a new dimension.
+      SplitControls(),  # pylint: disable=no-value-for-parameter
+      # Needed because there is 1 less actions than observations.
+      DropLastTimestep(),  # pylint: disable=no-value-for-parameter
+      tl.LogSoftmax(),
+  ]
+  return tl.Serial([            # (obs, act)
+      tl.Select([0], n_in=2),   # (obs,)
+      seq_model,                # (obs_hidden,)
+      tl.Dup(),                 # (obs_hidden, obs_hidden)
+      tl.Parallel(
+          action_head,
+          [tl.Dense(1), tl.Flatten()],
+      )                         # (act_logits, values)
+  ])
+
+
+def SerializedPolicy(
+    seq_model, n_controls, n_actions, observation_serializer, action_serializer
+):
+  """Wraps a policy in serialization machinery for training.
+
+  The resulting model takes as input observation and action sequences, and
+  serializes them into one sequence similar to SerializedModel, before passing
+  to the given sequence model. Adds output heads for action logits and value
+  predictions.
+
+  Args:
+    seq_model: Trax sequence model taking as input a sequence of symbols and
+      outputting a sequence of continuous vectors.
+    n_controls: Number of controls.
+    n_actions: Number of action categories in each control.
+    observation_serializer: Serializer to use for observations.
+    action_serializer: Serializer to use for actions.
+
+  Returns:
+    A model of signature (obs, act) -> (act_logits, values), same as in
+    RawPolicy.
+  """
+  if action_serializer.representation_length != n_controls:
+    raise ValueError(
+        'Action symbols should correspond 1-1 to controls, but got {} '
+        'controls and {} symbols.'.format(
+            n_controls, action_serializer.representation_length
+        )
+    )
+
+  @tl.layer()
+  def FirstSymbol(x, **unused_kwargs):
+    return x[:, :, 0]
+
+  @tl.layer()
+  def PadRight(x, n_to_pad, **unused_kwargs):
+    pad_widths = [(0, 0), (0, n_to_pad)] + [(0, 0)] * (x.ndim - 2)
+    return np.pad(
+        x, pad_widths, mode='constant', constant_values=x.dtype.type(0)
+    )
+
+  action_head = [
+      # Drop the dummy action introduced before.
+      DropLastTimestep(),  # pylint: disable=no-value-for-parameter
+      tl.Dense(n_actions),
+      tl.LogSoftmax(),
+  ]
+  value_head = [
+      # Take just the vectors corresponding to the first action symbol.
+      FirstSymbol(),  # pylint: disable=no-value-for-parameter
+      # Predict values.
+      tl.Dense(1),
+      # Get rid of the singleton dimension.
+      tl.Flatten(),
+  ]
+  return tl.Serial([            # (obs, act)
+      tl.Parallel(
+          Serialize(serializer=observation_serializer),  # pylint: disable=no-value-for-parameter
+          Serialize(serializer=action_serializer),  # pylint: disable=no-value-for-parameter
+      ),                        # (obs_repr, act_repr)
+      Interleave(  # pylint: disable=no-value-for-parameter
+      ),                        # (obs_act_repr,)
+      # Add one dummy action to the right - we'll use the output at its first
+      # symbol to predict the value for the last observation.
+      PadRight(n_to_pad=action_serializer.representation_length),  # pylint: disable=no-value-for-parameter
+      # Shift one symbol to the right, so we predict the n-th action symbol
+      # based on action symbols 1..n-1 instead of 1..n.
+      tl.ShiftRight(),
+      seq_model,                # (obs_act_hidden,)
+      Deinterleave(  # pylint: disable=no-value-for-parameter
+          x_size=observation_serializer.representation_length,
+          y_size=action_serializer.representation_length,
+      ),                        # (obs_hidden, act_hidden)
+      tl.Select([1]),           # (act_hidden,)
+      tl.Dup(),                 # (act_hidden, act_hidden)
+      tl.Parallel(
+          action_head, value_head
+      )                         # (act_logits, values)
+  ])
+
+
+def analyze_action_space(action_space):  # pylint: disable=invalid-name
+  """Returns the number of controls and actions for an action space."""
+  assert isinstance(
+      action_space, (gym.spaces.Discrete, gym.spaces.MultiDiscrete)
+  ), 'Action space expected to be Discrete of MultiDiscrete, got {}.'.format(
+      type(action_space)
+  )
+  if isinstance(action_space, gym.spaces.Discrete):
+    n_actions = action_space.n
+    n_controls = 1
+  else:
+    (n_controls,) = action_space.nvec.shape
+    assert n_controls > 0
+    assert onp.min(action_space.nvec) == onp.max(action_space.nvec), (
+        'Every control must have the same number of actions.'
+    )
+    n_actions = action_space.nvec[0]
+  return (n_controls, n_actions)
+
+
+def wrap_policy(seq_model, observation_space, action_space, vocab_size):  # pylint: disable=invalid-name
+  """Wraps a sequence model in either RawPolicy or SerializedPolicy.
+
+  Args:
+    seq_model: Trax sequence model.
+    observation_space: Gym observation space.
+    action_space: Gym action space.
+    vocab_size: Either the number of symbols for a serialized policy, or None.
+
+  Returns:
+    RawPolicy if vocab_size is None, else SerializedPolicy.
+  """
+  (n_controls, n_actions) = analyze_action_space(action_space)
+  if vocab_size is None:
+    policy_wrapper = RawPolicy
+  else:
+    obs_serializer = space_serializer.create(observation_space, vocab_size)
+    act_serializer = space_serializer.create(action_space, vocab_size)
+    policy_wrapper = functools.partial(
+        SerializedPolicy,
+        observation_serializer=obs_serializer,
+        action_serializer=act_serializer,
+    )
+  return policy_wrapper(seq_model, n_controls, n_actions)
 
 
 def serialize_observations_and_actions(  # pylint: disable=invalid-name

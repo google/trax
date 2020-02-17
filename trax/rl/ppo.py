@@ -1024,26 +1024,6 @@ def shuffled_index_batches(dataset_size, batch_size):
     yield onp.array(list(itertools.islice(indices, int(batch_size))))
 
 
-def analyze_action_space(action_space):
-  """Returns the number of controls and actions for an action space."""
-  assert isinstance(
-      action_space, (gym.spaces.Discrete, gym.spaces.MultiDiscrete)
-  ), 'Action space expected to be Discrete of MultiDiscrete, got {}.'.format(
-      type(action_space)
-  )
-  if isinstance(action_space, gym.spaces.Discrete):
-    n_actions = action_space.n
-    n_controls = 1
-  else:
-    (n_controls,) = action_space.nvec.shape
-    assert n_controls > 0
-    assert onp.min(action_space.nvec) == onp.max(action_space.nvec), (
-        'Every control must have the same number of actions.'
-    )
-    n_actions = action_space.nvec[0]
-  return (n_controls, n_actions)
-
-
 def init_serialization(
     vocab_size, observation_space, action_space, n_timesteps
 ):
@@ -1073,7 +1053,7 @@ def init_rewards_to_actions(
   # predictions.
   if vocab_size is None:
     rewards_to_actions = onp.eye(n_timesteps)[:, :, None]
-    (n_controls, _) = analyze_action_space(action_space)
+    (n_controls, _) = serialization_utils.analyze_action_space(action_space)
     rewards_to_actions = onp.broadcast_to(
         rewards_to_actions, (n_timesteps, n_timesteps, n_controls)
     )

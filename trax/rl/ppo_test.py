@@ -650,30 +650,6 @@ class PpoTest(test.TestCase):
     stream2 = ppo.shuffled_index_batches(dataset_size, batch_size)
     self.assertFalse(np.array_equal(next(stream1), next(stream2)))
 
-  def test_analyzes_discrete_action_space(self):
-    space = gym.spaces.Discrete(n=5)
-    (n_controls, n_actions) = ppo.analyze_action_space(space)
-    self.assertEqual(n_controls, 1)
-    self.assertEqual(n_actions, 5)
-
-  def test_analyzes_multi_discrete_action_space_with_equal_categories(self):
-    space = gym.spaces.MultiDiscrete(nvec=(3, 3))
-    (n_controls, n_actions) = ppo.analyze_action_space(space)
-    self.assertEqual(n_controls, 2)
-    self.assertEqual(n_actions, 3)
-
-  def test_doesnt_analyze_multi_disccrete_action_space_with_inequal_categories(
-      self
-  ):
-    space = gym.spaces.MultiDiscrete(nvec=(2, 3))
-    with self.assertRaises(AssertionError):
-      ppo.analyze_action_space(space)
-
-  def test_doesnt_analyze_box_action_space(self):
-    space = gym.spaces.Box(shape=(2, 3), low=0, high=1)
-    with self.assertRaises(AssertionError):
-      ppo.analyze_action_space(space)
-
   def test_inits_serialization(self):
     serialization_kwargs = ppo.init_serialization(
         vocab_size=4,
