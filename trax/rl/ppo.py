@@ -136,6 +136,7 @@ def policy_and_value_net(
 def collect_trajectories(env,
                          policy_fn,
                          n_trajectories=1,
+                         n_observations=None,
                          max_timestep=None,
                          reset=True,
                          len_history_for_policy=32,
@@ -151,6 +152,8 @@ def collect_trajectories(env,
     env: A gym env interface, for now this is not-batched.
     policy_fn: observations(B,RT+1) -> log-probabs(B, AT, A) callable.
     n_trajectories: int, number of trajectories.
+    n_observations: int, number of non-terminal observations. NOTE: Exactly one
+      of `n_trajectories` and `n_observations` should be None.
     max_timestep: int or None, the index of the maximum time-step at which we
       return the trajectory, None for ending a trajectory only when env returns
       done.
@@ -195,10 +198,20 @@ def collect_trajectories(env,
 
   num_done_trajectories = 0
 
+  # The stopping criterion, returns True if we should stop.
+  def should_stop():
+    if n_trajectories is not None:
+      assert n_observations is None
+      return env.trajectories.num_completed_trajectories >= n_trajectories
+    assert n_observations is not None
+    # The number of non-terminal observations is what we want.
+    return (env.trajectories.num_completed_time_steps -
+            env.trajectories.num_completed_trajectories) >= n_observations
+
   policy_application_total_time = 0
   env_actions_total_time = 0
   bare_env_run_time = 0
-  while env.trajectories.num_completed_trajectories < n_trajectories:
+  while not should_stop():
     # Check if we should abort and return nothing.
     if abort_fn and abort_fn():
       # We should also reset the environment, since it will have some
@@ -226,7 +239,8 @@ def collect_trajectories(env,
     assert B == log_probs.shape[0]
 
     actions = gumbel_sample(log_probs)
-    if isinstance(env.action_space, gym.spaces.Discrete):
+    if (isinstance(env.action_space, gym.spaces.Discrete) and
+        (actions.shape[1] == 1)):
       actions = onp.squeeze(actions, axis=1)
 
     # Step through the env.
@@ -275,7 +289,8 @@ def collect_trajectories(env,
   # (observations, actions, rewards)
   completed_trajectories = (
       env_problem_utils.get_completed_trajectories_from_env(
-          env, n_trajectories, raw_trajectory=raw_trajectory))
+          env, env.trajectories.num_completed_trajectories,
+          raw_trajectory=raw_trajectory))
 
   timing_info = {
       'trajectory_collection/policy_application': policy_application_total_time,
