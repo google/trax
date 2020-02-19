@@ -64,7 +64,7 @@ class AwrTrainerTest(absltest.TestCase):
                     eval_env,
                     output_dir,
                     num_samples_to_collect=20,
-                    replay_buffer_sample_size=50000,
+                    replay_buffer_sample_size=50,
                     model=None,
                     optimizer=None,
                     max_timestep=None,
@@ -72,15 +72,13 @@ class AwrTrainerTest(absltest.TestCase):
     if model is None:
       # pylint: disable=g-long-lambda
       model = lambda: layers.Serial(
-          layers.Dense(128),
-          layers.Relu(),
-          layers.Dense(64),
+          layers.Dense(32),
           layers.Relu(),
       )
       # pylint: enable=g-long-lambda
 
     if optimizer is None:
-      optimizer = functools.partial(optimizers.Momentum, 5e-5)
+      optimizer = functools.partial(optimizers.SGD, 5e-5)
     return awr_trainer.AwrTrainer(
         train_env=train_env,
         eval_env=eval_env,
@@ -88,8 +86,8 @@ class AwrTrainerTest(absltest.TestCase):
         policy_and_value_optimizer=optimizer,
         num_samples_to_collect=num_samples_to_collect,
         replay_buffer_sample_size=replay_buffer_sample_size,
-        actor_optimization_steps=1000,
-        critic_optimization_steps=400,
+        actor_optimization_steps=2,
+        critic_optimization_steps=2,
         output_dir=output_dir,
         random_seed=0,
         max_timestep=max_timestep,
