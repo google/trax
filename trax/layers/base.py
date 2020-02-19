@@ -492,7 +492,7 @@ class Layer(object):
     if sublayers:
       rngs = math.random.split(rng, len(sublayers))
       for sublayer, rng in zip(sublayers, rngs):
-        sublayer._rng = rng
+        sublayer._set_rng_recursive(rng)
 
   def _set_input_signature_recursive(self, input_signature):
     """Sets input_signatures for this layer and sublayers, recursively.

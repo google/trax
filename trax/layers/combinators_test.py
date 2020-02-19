@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Tests for combinator layers."""
 from __future__ import absolute_import
 from __future__ import division
@@ -279,6 +280,30 @@ class CombinatorLayerTest(absltest.TestCase):
     model = cb.Serial(core.Dense(4), core.Dense(5), core.Dense(7))
     self.assertIsInstance(model.weights, tuple)
     self.assertLen(model.weights, 3)
+
+  def test_set_rng_serial_recurse_two_levels(self):
+    dense_00 = core.Dense(2)
+    dense_01 = core.Dense(2)
+    dense_10 = core.Dense(2)
+    dense_11 = core.Dense(2)
+    layer = cb.Serial(
+        cb.Serial(dense_00, dense_01),
+        cb.Serial(dense_10, dense_11),
+    )
+    input_signature = ShapeDtype((1, 2))
+
+    _, _ = layer.init(input_signature)
+    weights = layer.weights
+    dense_00_w, dense_00_b = weights[0][0]
+    dense_01_w, dense_01_b = weights[0][1]
+    dense_10_w, dense_10_b = weights[1][0]
+    dense_11_w, dense_11_b = weights[1][1]
+
+    # Setting rng's recursively during init should yield differing weights.
+    self.assertFalse(np.array_equal(dense_00_w, dense_01_w))
+    self.assertFalse(np.array_equal(dense_00_b, dense_01_b))
+    self.assertFalse(np.array_equal(dense_10_w, dense_11_w))
+    self.assertFalse(np.array_equal(dense_10_b, dense_11_b))
 
 
 if __name__ == '__main__':
