@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Test fully training an MNIST model (2000 steps)."""
+"""Test training an MNIST model 1000 steps (saves time vs. 2000 steps)."""
 
 import itertools
 
@@ -31,9 +31,9 @@ from trax.supervised import training
 class MnistTest(absltest.TestCase):
 
   def test_train_mnist(self):
-    """Train MNIST model fully, to compare against other implementations.
+    """Train MNIST model (almost) fully, to compare to other implementations.
 
-    Evals for cross-entropy loss and accuracy are run every 100 steps;
+    Evals for cross-entropy loss and accuracy are run every 50 steps;
     their values are visible in the test log.
     """
     gin.parse_config([
@@ -58,12 +58,12 @@ class MnistTest(absltest.TestCase):
         itertools.cycle(inputs.inputs('mnist').eval_stream(1)),
         [tl.CrossEntropyLoss(), tl.AccuracyScalar()],
         names=['CrossEntropyLoss', 'AccuracyScalar'],
-        eval_at=lambda step_n: step_n % 100 == 0,
+        eval_at=lambda step_n: step_n % 50 == 0,
         eval_N=10)
 
     training_session = training.Loop(mnist_model, task, evals=evals)
-    training_session.run(n_steps=2000)
-    self.assertEqual(training_session.current_step, 2000)
+    training_session.run(n_steps=1000)
+    self.assertEqual(training_session.current_step, 1000)
 
 
 def _mnist_dataset():
