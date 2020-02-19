@@ -16,9 +16,12 @@
 # Lint as: python3
 """Tests for supervised training: core classes and flows."""
 
-from absl.testing import absltest
+from jax import test_util  # pylint: disable=unused-import
+from jax.config import config
 
 import numpy as np
+
+from tensorflow.compat.v2 import test
 
 from trax import layers as tl
 from trax.optimizers import momentum
@@ -26,7 +29,7 @@ from trax.optimizers import sgd
 from trax.supervised import training
 
 
-class TrainingTest(absltest.TestCase):
+class TrainingTest(test.TestCase):
 
   def test_train_dense_layer(self):
     """Trains a very simple network on a very simple task."""
@@ -70,4 +73,5 @@ def _very_simple_data():
 
 
 if __name__ == '__main__':
-  absltest.main()
+  config.config_with_absl()
+  test.main()
