@@ -49,7 +49,7 @@ class Loop:
   and save intermediate checkpoints.
   """
 
-  def __init__(self, model, task, output_dir=None, evals=None,
+  def __init__(self, model, task, output_dir=None, eval_task=None,
                checkpoint_at=None):
     """Configures a training `Loop`, including a random initialization.
 
@@ -57,8 +57,8 @@ class Loop:
       model: Trax layer.
       task: TrainTask instance.
       output_dir: Path telling where to save outputs (evals and checkpoints).
-          Can be None if both evals and checkpoint_at are None.
-      evals: EvalTask instance or None. If None, don't do any evals.
+          Can be None if both eval_task and checkpoint_at are None.
+      eval_task: EvalTask instance or None. If None, don't do any evals.
       checkpoint_at: Function or None. Function (integer --> boolean) says,
           for step n, whether that step should have its checkpoint saved. If
           None, don't save any checkpoints.
@@ -66,19 +66,14 @@ class Loop:
     self._model = model
     self._task = task
     self._output_dir = output_dir
-    self._evals = evals
+    self._eval_task = eval_task
     self._checkpoint_at = checkpoint_at
-    self._eval_at = None if evals is None else evals.eval_at
+    self._eval_at = None if eval_task is None else eval_task.eval_at
     self._step = None
 
     # TODO(jonni): Decide how to control when __init__ includes initialization.
     _, _ = model.init(task.input_signature)
     _, _ = task.optimizer.tree_init(model.weights)
-
-  @property
-  def current_step(self):
-    """Returns current step number in this training session."""
-    return self._step
 
   def run(self, n_steps=1):
     """Runs this training loop for n steps.
@@ -86,15 +81,19 @@ class Loop:
     Args:
       n_steps: Stop training after completing n steps.
     """
-    model, evals = self._model, self._evals
+    model, eval_task = self._model, self._eval_task
 
     for step_i in range(1, n_steps + 1):
       self._step = step_i
       self._run_one_step()
       if self._eval_at is not None and self._eval_at(step_i):
-        evals.run(model, step_i)
+        eval_task.run(model, step_i)
       if self._checkpoint_at is not None and self._checkpoint_at(step_i):
         self._save_checkpoint()
+
+  def current_step(self):
+    """Returns current step number in this training session."""
+    return self._step
 
   def _run_one_step(self):
     """Updates model weights and optimizer slots by running one step/batch."""
@@ -107,12 +106,12 @@ class Loop:
     loss_as_fn_of_weights = lambda w: model_with_loss(batch, weights=w)
     gradients = math.grad(loss_as_fn_of_weights)(model_with_loss.weights)
     self._model.weights, optimizer.slots = optimizer.tree_update(
-        self.current_step, gradients, weights, optimizer.slots, opt_params)
+        self.current_step(), gradients, weights, optimizer.slots, opt_params)
 
   def _log_step(self, msg):
     """Logs message, labeled with the current training step number."""
     # TODO(jonni): Is direct print() is better for command-line use?
-    logging.info(f'Step {self.current_step}: {msg}')
+    logging.info(f'Step {self.current_step()}: {msg}')
 
   def _save_checkpoint(self):
     """Saves checkpoint to disk for the current training step."""
@@ -165,7 +164,7 @@ class TrainTask:
 class EvalTask:
   """Labeled data plus scalar functions for (periodically) measuring a model.
 
-  An eval set specifies how (`labeled_data` + `metrics`) and when (`eval_at`)
+  An eval task specifies how (`labeled_data` + `metrics`) and when (`eval_at`)
   to measure a model as it is training. The variance of each scalar output is
   reduced by measuring over multiple (`eval_N`) batches and reporting the
   average from those measurements.
@@ -173,11 +172,12 @@ class EvalTask:
 
   def __init__(self, labeled_data, metrics,
                names=None, eval_at=None, eval_N=10):
-    r"""Configures a set of evals.
+    r"""Configures an eval task: named metrics run with a given data source.
 
     Args:
       labeled_data: Iterator of batches of labeled data tuples. Each tuple has
-          1+ inputs (NumPy ndarrays) followed by an ndarray of target values.
+          1+ data tensors (NumPy ndarrays) followed by 1 label (target value)
+          tensor.
       metrics: List of layers; each computes a scalar value per batch by
           comparing model output $$\hat{y}=f(x)$$ to the target $$y$$.
       names: List of names, one for each item in `metrics`, in matching order,
