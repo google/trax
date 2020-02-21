@@ -101,7 +101,7 @@ def train_rl(
   if FLAGS.use_tpu:
     config.update('jax_platform_name', 'tpu')
   else:
-    config.update('jax_platform_name', 'gpu')
+    config.update('jax_platform_name', '')
 
 
   # TODO(pkozakowski): Find a better way to determine this.
