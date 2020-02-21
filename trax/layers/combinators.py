@@ -16,10 +16,6 @@
 # Lint as: python3
 """Combinators for composing layers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from trax import math
 from trax.layers import base
 from trax.math import numpy as np

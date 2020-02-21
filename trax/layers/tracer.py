@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Simple tracer to transform function specifications into Layers.
 
 Instead of having to figure out complicated combinator expressions, one can
@@ -27,14 +28,10 @@ The DSL supports:
 
 Further documentation is in the 'symbolic' docstring.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import collections
 import functools
 import inspect
-import six
 
 from trax.layers import base
 from trax.layers import combinators as cb
@@ -85,11 +82,7 @@ def apply_to_tracer(self, other):
                      ' got %d.' %  (self.n_in, len(args)))
   return Tracer(ApplyExpr(self, args), self.n_out)
 # Bind this application function to the matmul '@' operator of base.Layer:
-if six.PY3:
-  base.Layer.__matmul__ = apply_to_tracer
-# For Py2 compatibility, also bind this application function to the
-# lshift '<<' operator of base.Layer:
-base.Layer.__lshift__ = apply_to_tracer
+base.Layer.__matmul__ = apply_to_tracer
 
 
 # Traced expressions to SSA equation form
@@ -309,27 +302,17 @@ def split_signature_parameters(fn):
     A tuple of: a list of no-default positional arguments
      and a dict of the kwargs with provided defaults.
   """
-  if six.PY3:
-    positional_kinds = {inspect.Parameter.POSITIONAL_ONLY,
-                        inspect.Parameter.POSITIONAL_OR_KEYWORD}
-    keyword_kinds = {inspect.Parameter.KEYWORD_ONLY,
-                     inspect.Parameter.POSITIONAL_OR_KEYWORD}
-    positionals, kwargs = [], {}
-    for pname, pvar in inspect.signature(fn).parameters.items():
-      if pvar.default == inspect._empty and pvar.kind in positional_kinds:  # pylint: disable=protected-access
-        positionals.append(pname)
-      elif pvar.default != inspect._empty and pvar.kind in keyword_kinds:  # pylint: disable=protected-access
-        kwargs[pname] = pvar.default
-    return positionals, kwargs
-  else:
-    argspec = inspect.getargspec(fn)
-    n_defaults = len(argspec.defaults) if argspec.defaults else 0
-    n_args = len(argspec.args) - n_defaults
-    positionals = argspec.args[:n_args]
-    kwargs = {}
-    if argspec.defaults:
-      kwargs = dict(zip(argspec.args[n_args:], argspec.defaults))
-    return positionals, kwargs
+  positional_kinds = {inspect.Parameter.POSITIONAL_ONLY,
+                      inspect.Parameter.POSITIONAL_OR_KEYWORD}
+  keyword_kinds = {inspect.Parameter.KEYWORD_ONLY,
+                   inspect.Parameter.POSITIONAL_OR_KEYWORD}
+  positionals, kwargs = [], {}
+  for pname, pvar in inspect.signature(fn).parameters.items():
+    if pvar.default == inspect._empty and pvar.kind in positional_kinds:  # pylint: disable=protected-access
+      positionals.append(pname)
+    elif pvar.default != inspect._empty and pvar.kind in keyword_kinds:  # pylint: disable=protected-access
+      kwargs[pname] = pvar.default
+  return positionals, kwargs
 
 
 # The exported, user-facing API call.

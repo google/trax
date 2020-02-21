@@ -13,10 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Tests for base layer."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from absl.testing import absltest
 from trax import math
@@ -82,13 +80,13 @@ class BaseLayerTest(absltest.TestCase):
     self.assertEqual([int(y) for y in xs], [2, 3])
 
   def test_fn_layer_fails_wrong_f(self):
-    with self.assertRaisesRegexp(ValueError, 'default arg'):
+    with self.assertRaisesRegex(ValueError, 'default arg'):
       base.Fn(lambda x, sth=None: x)
-    with self.assertRaisesRegexp(ValueError, 'keyword arg'):
+    with self.assertRaisesRegex(ValueError, 'keyword arg'):
       base.Fn(lambda x, **kwargs: x)
 
   def test_fn_layer_varargs_n_in(self):
-    with self.assertRaisesRegexp(ValueError, 'variable arg'):
+    with self.assertRaisesRegex(ValueError, 'variable arg'):
       base.Fn(lambda *args: args[0])
     # Check that varargs work when n_in is set.
     id_layer = base.Fn(lambda *args: args[0], n_in=1)
@@ -98,7 +96,7 @@ class BaseLayerTest(absltest.TestCase):
     self.assertEqual(output_shape, expected_shape)
 
   def test_fn_layer_difficult_n_out(self):
-    with self.assertRaisesRegexp(ValueError, 'n_out'):
+    with self.assertRaisesRegex(ValueError, 'n_out'):
       # Determining the output of this layer is hard with dummies.
       base.Fn(lambda x: np.concatencate([x, x], axis=4))
     # Check that this layer works when n_out is set.

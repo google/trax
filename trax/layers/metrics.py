@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Trax metrics layers.
 
 Trax computes metrics (loss functions and evaluation metrics) using layers.
@@ -36,10 +37,6 @@ taking the weighted (and often also masked) mean of those values:
 
 TODO(jonni): Explain masks and weighting.
 """
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import jax
 

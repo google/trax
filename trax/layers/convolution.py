@@ -13,16 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Trax convolution layers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import functools
 import itertools
 import operator
-
-import six
 
 from trax import math
 from trax.layers import base
@@ -61,7 +57,7 @@ class Conv(base.Layer):
     x_shape = list(x.shape)
     if len(x_shape) > 4:
       self._check_nhwc()
-      new_batch_dim = six.moves.reduce(operator.mul, x_shape[:-3])
+      new_batch_dim = functools.reduce(operator.mul, x_shape[:-3])
       x = np.reshape(x, [new_batch_dim] + x_shape[-3:])
     res = math.conv(
         x, w, self._strides, self._padding, self._dimension_numbers,
@@ -81,7 +77,7 @@ class Conv(base.Layer):
     input_shape = input_signature.shape
     if len(input_shape) > 4:
       self._check_nhwc()
-      new_batch_dim = six.moves.reduce(operator.mul, input_shape[:-3])
+      new_batch_dim = functools.reduce(operator.mul, input_shape[:-3])
       input_shape = [new_batch_dim] + list(input_shape[-3:])
     kernel_shape = self._kernel_shape(input_shape)
     bias_shape = [self._filters if c == 'C' else 1 for c in self._out_spec]

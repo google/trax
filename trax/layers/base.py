@@ -13,11 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Base layer class."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import copy
 import inspect
@@ -26,7 +23,6 @@ import traceback
 
 import jax
 import numpy as onp
-import six
 
 from tensorflow.compat.v1.io import gfile
 from trax import math
@@ -626,12 +622,8 @@ def Fn(f, n_in=None, n_out=None):  # pylint: disable=invalid-name
     A layer executing the function f.
   """
   # Inspect the function f to restrict to no-defaults and no-kwargs functions.
-  if six.PY2:
-    argspec = inspect.getargspec(f)
-    varkwargs = argspec.keywords
-  else:
-    argspec = inspect.getfullargspec(f)
-    varkwargs = argspec.varkw
+  argspec = inspect.getfullargspec(f)
+  varkwargs = argspec.varkw
   # This layer cannot handle functions with kwargs or defaults.
   if argspec.defaults is not None:
     raise ValueError('function cannot have default arguments')
@@ -773,10 +765,7 @@ def _short_traceback(skip=3):
   counter, res = 0, []
   # Skipping 3 lines by default: the top (useless) and self-call.
   # In python 3, we need to set chain to False (it doesn't exist in python 2).
-  if six.PY2:
-    lines = traceback.format_exc().splitlines()[skip:]
-  else:
-    lines = traceback.format_exc(chain=False).splitlines()[skip:]  # pylint: disable=unexpected-keyword-arg
+  lines = traceback.format_exc(chain=False).splitlines()[skip:]  # pylint: disable=unexpected-keyword-arg
   for l in lines:
     if l.startswith('trax.layers.base.LayerError'):
       l = l[len('trax.layers.base.'):]  # Remove the trax.layers.base prefix.
