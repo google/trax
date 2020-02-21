@@ -157,7 +157,8 @@ class AxialPositionalEncoding(base.Layer):
       assert self._dropout == 0.0
       emb = np.concatenate(embs, -1)
       emb = np.reshape(emb, (inputs.shape[0], -1, emb.shape[-1]))
-      return inputs + emb[:, state, :][:, None, :], state + 1
+      emb = jax.lax.dynamic_slice_in_dim(emb, state, inputs.shape[1], axis=1)
+      return inputs + emb, state + inputs.shape[1]
     elif self._dropout == 0:
       # TODO(kitaev): concat-then-reshape (as is the case with dropout enabled)
       # leads to memory blow-up on TPU.

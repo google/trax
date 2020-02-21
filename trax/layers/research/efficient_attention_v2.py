@@ -425,7 +425,8 @@ class EfficientAttentionBase(base.Layer):
     d_model = inputs[0].shape[-1]
 
     if self.incremental:
-      inputs, state, mem_end, new_mem_end = self.use_predict_mem(inputs, state)
+      inputs, state, q_start, new_mem, new_mem_end = self.use_predict_mem(
+          inputs, state)
 
     output_accum = [np.zeros((seqlen, d_model)) for _ in range(batch_size)]
     new_state = []
@@ -439,7 +440,7 @@ class EfficientAttentionBase(base.Layer):
         # pylint: enable=cell-var-from-loop
         if self.incremental:
           single_out, single_new_state = self.incremental_forward_unbatched(
-              *single_inputs, q_start=mem_end, q_len=seqlen,
+              *single_inputs, q_start=q_start, q_len=seqlen,
               weights=single_weights, rng=rng,
               state=single_state, update_state=True)
         else:
@@ -455,37 +456,79 @@ class EfficientAttentionBase(base.Layer):
     else:
       new_state = state
     if self.incremental:
-      new_state = (new_mem_end, inputs, new_state)
+      new_state = (new_mem_end, new_mem, new_state)
     return output, new_state
 
   def use_predict_mem(self, inputs, state):
     """Update input cache for fast inference."""
     mem_end, mem, state = state
     seqlen = inputs[0].shape[-2]
-    def roll_mem(buf):
-      return np.concatenate(
-          [buf[:, self.predict_drop_len:],
-           np.zeros_like(buf[:, :self.predict_drop_len])], axis=1)
 
-    do_roll_mem = (mem_end + seqlen > self.predict_mem_len)
-    mem = jax.lax.cond(
-        pred=do_roll_mem,
-        true_operand=mem,
-        true_fun=lambda x: jax.tree_map(roll_mem, x),
-        false_operand=mem,
-        false_fun=lambda x: x,
-    )
-    mem_end = np.where(do_roll_mem, mem_end - self.predict_drop_len, mem_end)
-    def update_mem(mem_element, new_vals):
-      assert new_vals.shape[1] == seqlen
-      if seqlen == 1:
-        return jax.ops.index_update(
-            mem_element, jax.ops.index[:, mem_end], new_vals[:, 0, ...])
-      else:
-        return jax.lax.dynamic_update_slice_in_dim(
-            mem_element, new_vals, mem_end, axis=1)
-    inputs = jax.tree_multimap(update_mem, mem, inputs)
-    return inputs, state, mem_end, mem_end + seqlen
+    if seqlen <= self.predict_drop_len and seqlen < self.predict_mem_len:
+      # This branch is called when only a small number of tokens are appended to
+      # the sequence, e.g. when generating one token at a time. A fixed number
+      # of tokens (self.predict_drop_tokens) will be dropped from memory if
+      # needed, and then new values will be inserted into the memory.
+      def roll_mem(buf):
+        return np.concatenate(
+            [buf[:, self.predict_drop_len:],
+             np.zeros_like(buf[:, :self.predict_drop_len])], axis=1)
+
+      do_roll_mem = (mem_end + seqlen > self.predict_mem_len)
+      mem = jax.lax.cond(
+          pred=do_roll_mem,
+          true_operand=mem,
+          true_fun=lambda x: jax.tree_map(roll_mem, x),
+          false_operand=mem,
+          false_fun=lambda x: x,
+      )
+      mem_end = np.where(do_roll_mem, mem_end - self.predict_drop_len, mem_end)
+      def update_mem(mem_element, new_vals):
+        assert new_vals.shape[1] == seqlen
+        if seqlen == 1:
+          return jax.ops.index_update(
+              mem_element, jax.ops.index[:, mem_end], new_vals[:, 0, ...])
+        else:
+          return jax.lax.dynamic_update_slice_in_dim(
+              mem_element, new_vals, mem_end, axis=1)
+      inputs = jax.tree_multimap(update_mem, mem, inputs)
+      return inputs, state, mem_end, inputs, mem_end + seqlen
+    else:
+      assert seqlen > self.predict_drop_len or seqlen == self.predict_mem_len
+      # This branch handles the case where a large number of tokens are being
+      # introduced all at once. The code here assumes that we are at the start
+      # of the sequence, which matches the typical use case of decoding from a
+      # language model given a long prefix. Note that if we're not at the start
+      # of the sequence, the code here won't work.
+      new_flat_mem = []
+      for inp in jax.tree_leaves(inputs):
+        assert inp.shape[1] == seqlen
+        if seqlen == self.predict_mem_len:
+          new_mem_val = inp
+        elif seqlen > self.predict_mem_len:
+          new_mem_val = inp[:, -self.predict_mem_len:]  # pylint: disable=invalid-unary-operand-type
+        else:
+          new_mem_val = np.concatenate([
+              inp,
+              np.zeros(inp.shape[:1]
+                       + (self.predict_mem_len - inp.shape[1],)
+                       + inp.shape[2:],
+                       dtype=inp.dtype)
+          ], axis=1)
+        new_flat_mem.append(new_mem_val)
+      mem = jax.tree_unflatten(jax.tree_structure(mem), new_flat_mem)
+
+      # This code only works at the start of the sequence. There's no "assert"
+      # primitive we can use to signal an error, so we instead signal the error
+      # by introducing NaNs into the computation.
+      def replace_with_nan_if_not_seq_start(x):
+        if x.dtype != np.float32:
+          return x
+        return jax.lax.cond(
+            pred=jax.lax.eq(mem_end, 0), true_operand=x, true_fun=lambda x: x,
+            false_operand=x, false_fun=lambda x: x * np.nan)
+      inputs = jax.tree_map(replace_with_nan_if_not_seq_start, inputs)
+      return inputs, state, 0, mem, np.minimum(seqlen, self.predict_mem_len)
 
   @property
   def has_backward(self):
@@ -575,15 +618,17 @@ class EfficientAttentionBase(base.Layer):
           self.forward_unbatched, rng=rng, update_state=update_state)
     else:
       if update_state:
-        inputs, state, mem_end, new_mem_end = self.use_predict_mem(
+        inputs, state, q_start, new_mem, new_mem_end = self.use_predict_mem(
             inputs, state)
       else:
+        # This assumes that the memory stores all of the inputs, which would not
+        # be valid if doing backprop in mode 'predict' with long lengths.
         new_mem_end, inputs, state = state
-        mem_end = new_mem_end - seqlen
+        q_start = new_mem_end - seqlen
 
       forward_unbatched = functools.partial(
           self.incremental_forward_unbatched,
-          q_start=jax.lax.stop_gradient(mem_end),
+          q_start=jax.lax.stop_gradient(q_start),
           q_len=jax.lax.stop_gradient(seqlen),
           rng=rng, update_state=update_state)
 
@@ -789,7 +834,7 @@ class EfficientAttentionBase(base.Layer):
       i_ct_all = join_differentiable(i_ct_all, i_nondifferentiable_dummy_ct)
 
     if self.incremental and update_state:
-      s_all = (new_mem_end, inputs, s_all)
+      s_all = (new_mem_end, new_mem, s_all)
 
     if have_single_input and compute_grad:
       assert isinstance(i_ct_all, tuple) and len(i_ct_all) == 1
@@ -973,11 +1018,24 @@ class SelfAttention(EfficientAttentionBase):
     q_info = q_range
     kv_info = jax.lax.tie_in(x, np.arange(k.shape[-2]))
 
-    o, _ = attend(
-        q, k, v,
-        mask_fn=mask_fn, q_info=q_info, kv_info=kv_info,
-        dropout=self.attention_dropout, rng=attend_rng,
-        )
+    if self.chunk_len is not None and q_len > self.chunk_len:
+      assert q_start == 0
+      assert q_len % self.chunk_len == 0
+      o, _ = attend(
+          q, k, v,
+          q_chunk_len=self.chunk_len,
+          kv_chunk_len=self.chunk_len,
+          n_chunks_before=self.n_chunks_before,
+          n_chunks_after=self.n_chunks_after,
+          mask_fn=mask_fn, q_info=q_info, kv_info=kv_info,
+          dropout=self.attention_dropout, rng=attend_rng,
+          )
+    else:
+      o, _ = attend(
+          q, k, v,
+          mask_fn=mask_fn, q_info=q_info, kv_info=kv_info,
+          dropout=self.attention_dropout, rng=attend_rng,
+          )
 
     out = np.matmul(o, w_o)
     if q_len == 1:
