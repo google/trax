@@ -24,7 +24,7 @@ python trax/rl_trainer.py \
   --config_file=trax/rl/configs/acrobot.gin \
   --train_batch_size=${TRAIN_BATCH_SIZE} \
   --output_dir=${HOME}/ppo_acrobot \
-  --vmodule=*/tensor2tensor/*=1 \
+  --vmodule=*/trax/*=1 \
   --alsologtostderr
 """
 
