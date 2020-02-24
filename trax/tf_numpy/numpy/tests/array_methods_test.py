@@ -21,6 +21,8 @@ from __future__ import print_function
 
 import itertools
 import numpy as np
+from six.moves import range
+from six.moves import zip
 import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import array_creation
