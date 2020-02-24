@@ -24,8 +24,7 @@ import numpy as np
 from tensorflow.compat.v2 import test
 
 from trax import layers as tl
-from trax.optimizers import momentum
-from trax.optimizers import sgd
+from trax import optimizers
 from trax.supervised import training
 
 
@@ -34,7 +33,8 @@ class TrainingTest(test.TestCase):
   def test_train_dense_layer(self):
     """Trains a very simple network on a very simple task."""
     model = tl.Dense(1)
-    task = training.TrainTask(_very_simple_data(), tl.L2Loss(), sgd.SGD(.01))
+    task = training.TrainTask(
+        _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01))
     eval_task = training.EvalTask(
         _very_simple_data(),  # deliberately re-using training data
         [tl.L2Loss()],
@@ -50,7 +50,7 @@ class TrainingTest(test.TestCase):
     """Trains with an optimizer that has slots / requires initialization."""
     model = tl.Dense(1)
     task = training.TrainTask(
-        _very_simple_data(), tl.L2Loss(), momentum.Momentum(.01))
+        _very_simple_data(), tl.L2Loss(), optimizers.Momentum(.01))
     eval_task = training.EvalTask(
         _very_simple_data(),  # deliberately re-using training data
         [tl.L2Loss()],
