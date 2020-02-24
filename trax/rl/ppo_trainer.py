@@ -19,14 +19,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import functools
 import time
 
 from absl import logging
 from jax import numpy as np
 from jax import random as jax_random
-import numpy as onp
 from trax import models as trax_models
 from trax import optimizers as trax_opt
 from trax.rl import policy_based_trainer
@@ -421,29 +419,4 @@ class PPO(policy_based_trainer.PolicyBasedTrainer):
       for (name, value) in self._nontrainable_params.items():
         self._log('train', 'training/{}'.format(name), value)
 
-    processed_reward_sums = collections.defaultdict(list)
-    raw_reward_sums = collections.defaultdict(list)
-    for _ in range(self._n_evals):
-      for temperature in self._eval_temperatures:
-        trajs, _, _, self._model_state = self.collect_trajectories(
-            train=False, temperature=temperature)
-
-        processed_reward_sums[temperature].extend(
-            sum(traj[2]) for traj in trajs)
-        raw_reward_sums[temperature].extend(sum(traj[3]) for traj in trajs)
-
-    # Return the mean and standard deviation for each temperature.
-    def compute_stats(reward_dict):
-      return {
-          temperature: {  # pylint: disable=g-complex-comprehension
-              'mean': onp.mean(rewards),
-              'std': onp.std(rewards)
-          } for (temperature, rewards) in reward_dict.items()
-      }
-
-    reward_stats = {
-        'processed': compute_stats(processed_reward_sums),
-        'raw': compute_stats(raw_reward_sums),
-    }
-
-    ppo.write_eval_reward_summaries(reward_stats, self._log, epoch=self.epoch)
+    super(PPO, self).evaluate()
