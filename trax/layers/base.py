@@ -450,6 +450,10 @@ class Layer(object):
       raise LayerError(name, 'pure_fn',
                        self._caller, signature(x), trace)
 
+  def output_signature(self, input_signature):
+    """Returns output signature this layer would give for `input_signature`."""
+    return self._forward_abstract(input_signature)[0]  # output only, not state
+
   def _forward_abstract(self, input_signature):
     """Computes shapes and dtypes this layer would produce in a forward pass.
 

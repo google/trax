@@ -22,8 +22,8 @@ from __future__ import print_function
 from absl.testing import absltest
 import numpy as onp
 
+from trax import shapes
 from trax.shapes import ShapeDtype
-from trax.shapes import signature
 
 
 class ShapesTest(absltest.TestCase):
@@ -42,7 +42,7 @@ class ShapesTest(absltest.TestCase):
     array = onp.array([[2, 3, 5, 7],
                        [11, 13, 17, 19]],
                       dtype=onp.int16)
-    sd = signature(array)
+    sd = shapes.signature(array)
     self.assertEqual(sd.shape, (2, 4))
     self.assertEqual(sd.dtype, onp.int16)
 
@@ -51,6 +51,22 @@ class ShapesTest(absltest.TestCase):
     repr_string = '{}'.format(sd)
     self.assertEqual(repr_string,
                      "ShapeDtype{shape:(2, 3), dtype:<class 'numpy.float32'>}")
+
+  def test_splice_signatures(self):
+    sd1 = ShapeDtype((1,))
+    sd2 = ShapeDtype((2,))
+    sd3 = ShapeDtype((3,))
+    sd4 = ShapeDtype((4,))
+    sd5 = ShapeDtype((5,))
+
+    # Signatures can be ShapeDtype instances, tuples of 2+ ShapeDtype instances,
+    # or empty tuples.
+    sig1 = sd1
+    sig2 = (sd2, sd3, sd4)
+    sig3 = ()
+    sig4 = sd5
+    spliced = shapes.splice_signatures(sig1, sig2, sig3, sig4)
+    self.assertEqual(spliced, (sd1, sd2, sd3, sd4, sd5))
 
 
 if __name__ == '__main__':
