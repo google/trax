@@ -98,6 +98,8 @@ LSHSelfAttention.n_chunks_after = 0
 # LSHSelfAttention.n_chunks_before: see top
 # LSHSelfAttention.n_hashes: see top
 LSHSelfAttention.n_parallel_heads = 1
+LSHSelfAttention.predict_drop_len = 256
+LSHSelfAttention.predict_mem_len = 16384
 
 # Parameters for ReformerLM:
 # ==============================================================================

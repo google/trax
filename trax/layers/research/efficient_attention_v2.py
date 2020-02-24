@@ -1007,8 +1007,9 @@ class SelfAttention(EfficientAttentionBase):
       q = np.matmul(np.concatenate([x[q_range]] * 2, 0), w_q)
     else:
       q = np.matmul(x[q_range], w_q)
-    k = None
-    if not self.share_qk:
+    if self.share_qk:
+      k = length_normalized(np.matmul(x, w_q))
+    else:
       k = np.matmul(x, w_k)
     v = np.matmul(x, w_v)
 
@@ -1081,14 +1082,21 @@ class LSHSelfAttention(SelfAttention):
   def create_state_unbatched(self, input_signature, rng):
     if isinstance(input_signature, (tuple, list)):
       input_signature = input_signature[0]
-    buckets = np.zeros(self.n_hashes * input_signature.shape[0], dtype=np.int32)
     # The `rng` argument passed to forward_unbatched is shared across all
     # examples and heads. This facilitates using broadcasted dropout, which
     # saves memory and hasn't been shown to hurt model quality. Even though the
     # same sharing is likely to be safe when selecting random hash functions
     # for LSH, we haven't run experiments to demonstrate this. To be on the safe
     # side we include a per-head RNG in the state for the purpose of doing LSH.
-    return (buckets, rng)
+    if not self.incremental:
+      buckets = np.zeros(
+          self.n_hashes * input_signature.shape[0], dtype=np.int32)
+      return (buckets, rng)
+    else:
+      buckets = np.zeros(
+          self.n_hashes * self.predict_mem_len, dtype=np.int32)
+      buckets_idx = np.zeros((), dtype=np.int32)
+      return (buckets, buckets_idx, rng)
 
   def hash_vectors(self, vecs, rng):
     # See https://arxiv.org/pdf/1509.02897.pdf
@@ -1197,6 +1205,115 @@ class LSHSelfAttention(SelfAttention):
     out = np.matmul(o, w_o)
     out = apply_broadcasted_dropout(out, self.output_dropout, output_rng)
     return out, state
+
+  def incremental_forward_unbatched(self, x, *,
+                                    q_start, q_len,
+                                    weights, state, rng, update_state):
+    assert update_state, (
+        'This setting not supported (e.g. no backprop for fast inference)')
+    if isinstance(q_start, int) and q_start == 0 and q_len > 1:
+      if x.shape[0] % self.chunk_len == 0:
+        x_padded = x
+      else:
+        pad_amount = self.chunk_len - (x.shape[0] % self.chunk_len)
+        x_padded = np.pad(x, ((0, pad_amount), (0, 0)), mode='constant')
+      buckets, buckets_idx, hash_rng = state
+      q = np.matmul(x_padded, weights[0])
+      buckets_update = self.hash_vectors(q, hash_rng)
+
+      out, _ = self.forward_unbatched(
+          x_padded, weights=weights, state=(buckets_update, hash_rng),
+          rng=rng, update_state=False)
+
+      out = out[:q_len]
+      buckets = np.reshape(buckets, (self.n_hashes, -1))
+      buckets_update = np.reshape(
+          buckets_update, (self.n_hashes, -1))[:, :q_len]
+      if q_len > self.predict_mem_len:
+        buckets_update = buckets_update[:, -self.predict_mem_len:]  # pylint: disable=invalid-unary-operand-type
+      buckets = jax.lax.dynamic_update_slice_in_dim(
+          buckets, buckets_update, q_start, axis=1)
+      buckets = np.reshape(buckets, (-1,))
+
+      return out, (buckets, buckets_idx + q_len, hash_rng)
+
+    # This codepath is for handling one token at a time.
+    assert q_len == 1
+    buckets, buckets_idx, hash_rng = state
+
+    def roll_buckets(buckets):
+      buckets = np.reshape(buckets, (self.n_hashes, -1))
+      new_buckets = np.concatenate(
+          [buckets, np.zeros((self.n_hashes, self.predict_drop_len),
+                             dtype=buckets.dtype)
+          ], axis=1)
+      new_buckets = jax.lax.dynamic_slice_in_dim(
+          new_buckets, buckets_idx - q_start, buckets.shape[-1], axis=1)
+      new_buckets = np.reshape(new_buckets, (-1,))
+      return new_buckets
+
+    buckets = jax.lax.cond(
+        pred=buckets_idx > q_start,
+        true_operand=buckets,
+        true_fun=roll_buckets,
+        false_operand=buckets,
+        false_fun=lambda x: x,
+    )
+
+    attend_rng, output_rng = jax.random.split(rng)
+    w_q, w_v, w_o = weights
+
+    q_range = q_start + jax.lax.tie_in(x, jax.lax.iota(np.int32, q_len))
+    # On TPU, np.matmul(a[:1], b) and np.matmul(a, b)[:1] are not
+    # floating-point equivalent, at least in non-jitted code. We correct the
+    # discrepancy by duplicating the slice. Floating-point noise may not be
+    # an issue when using models, but it makes it harder to write tests that
+    # compare fast and slow inference code for equivalence.
+    q = np.matmul(np.concatenate([x[q_range]] * 2, 0), w_q)
+
+    q_buckets = self.hash_vectors(q, hash_rng)
+    q_buckets = np.reshape(q_buckets, (self.n_hashes, 2))[:, :q_len]
+
+    unflattened_buckets = jax.lax.dynamic_update_slice_in_dim(
+        np.reshape(buckets, (self.n_hashes, -1)),
+        q_buckets, q_start, axis=1)
+    buckets = np.reshape(unflattened_buckets, (-1,))
+    is_valid_target = np.any(unflattened_buckets == q_buckets, axis=0)
+
+    assert q_buckets.shape[-1] == 1  # Is true when q_len == 1
+    seqlen = x.shape[0]
+    arange_seqlen = np.arange(seqlen)
+    kv_priorities = np.where(
+        arange_seqlen > (q_start + q_len),
+        -(seqlen + arange_seqlen), arange_seqlen)
+    kv_priorities = kv_priorities + seqlen * is_valid_target.astype(np.int32)
+    _, kv_indices = jax.lax.sort_key_val(kv_priorities, arange_seqlen)
+    kv_indices = kv_indices[
+        -self.n_hashes * self.chunk_len * (1 + self.n_chunks_before):]
+    assert self.n_chunks_after == 0
+
+    x_attend_to = x[kv_indices]
+    k = length_normalized(np.matmul(x_attend_to, w_q))
+    v = np.matmul(x_attend_to, w_v)
+
+    mask_fn = functools.partial(
+        mask_self_attention, causal=True, masked=True, exclude_self=True)
+    q_info = q_start + np.arange(q_len)
+    kv_info = kv_indices
+    # TODO(kitaev): is it better to mask out attention across buckets?
+    # kv_info = np.where(is_valid_target[kv_indices], kv_indices, -kv_indices)
+    o, _ = attend(
+        q, k, v,
+        mask_fn=mask_fn, q_info=q_info, kv_info=kv_info,
+        dropout=self.attention_dropout, rng=attend_rng,
+        )
+
+    out = np.matmul(o, w_o)
+    if q_len == 1:
+      out = out[:1]
+    out = apply_broadcasted_dropout(out, self.output_dropout, output_rng)
+    buckets_idx = np.array(q_start + q_len, dtype=buckets_idx.dtype)
+    return out, (buckets, buckets_idx, hash_rng)
 
 
 class EncDecAttention(EfficientAttentionBase):

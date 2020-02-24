@@ -83,10 +83,17 @@ def add_beam_dim(x, beam_size):
   return jnp.tile(x, tile_dims)
 
 
-def flatten_beam_dim(x):
+def flatten_beam_dim(x, batch_size=None):
   """Flattens the first two dimensions of a non-scalar array."""
   if x.ndim == 0:  # ignore scalars (e.g. cache index)
     return x
+  if batch_size is not None and x.shape[0] != batch_size:
+    assert x.shape[0] % batch_size == 0
+    res = x.reshape((batch_size, -1, x.shape[1]) + x.shape[2:])
+    res = np.swapaxes(res, 1, 2)
+    res = res.reshape(
+        (res.shape[0] * res.shape[1] * res.shape[2],) + res.shape[3:])
+    return res
   return x.reshape((x.shape[0] * x.shape[1],) + x.shape[2:])
 
 
@@ -94,13 +101,14 @@ def unflatten_beam_dim(x, batch_size, beam_size):
   """Unflattens the first, flat batch*beam dimension of a non-scalar array."""
   if x.ndim == 0:  # ignore scalars (e.g. cache index)
     return x
-  assert batch_size * beam_size == x.shape[0]
-  return x.reshape((batch_size, beam_size) + x.shape[1:])
-
-
-def flat_batch_beam_expand(x, beam_size):
-  """Expands the each batch item by beam_size in batch_dimension."""
-  return flatten_beam_dim(add_beam_dim(x, beam_size))
+  if batch_size * beam_size == x.shape[0]:
+    return x.reshape((batch_size, beam_size) + x.shape[1:])
+  else:
+    assert x.shape[0] % (batch_size * beam_size) == 0
+    res = x.reshape((batch_size, beam_size, -1) + x.shape[1:])
+    res = np.swapaxes(res, 1, 2)
+    res = res.reshape((-1, beam_size) + res.shape[3:])
+    return res
 
 
 def gather_beams(nested, beam_indices, batch_size, new_beam_size):
@@ -120,8 +128,17 @@ def gather_beams(nested, beam_indices, batch_size, new_beam_size):
       jnp.arange(batch_size * new_beam_size) // new_beam_size,
       (batch_size, new_beam_size))
   def gather_fn(x):
+    """Gather slices for a single tensor."""
     if x.ndim == 0:  # ignore scalars (e.g. cache index)
       return x
+    elif x.shape[0] != batch_size:
+      assert x.shape[0] % batch_size == 0
+      res = x.reshape((batch_size, -1,) + x.shape[1:])
+      res = np.swapaxes(res, 1, 2)
+      res = res[batch_indices, beam_indices]
+      res = np.swapaxes(res, 1, 2)
+      res = res.reshape((-1,) + res.shape[2:])
+      return res
     else:
       return x[batch_indices, beam_indices]
   return jax.tree_map(gather_fn, nested)
@@ -267,7 +284,8 @@ def beam_search(batch_size,
         (batch_size, beam_size, 1)))
     # Flatten beam dimension into batch to be compatible with model.
     # {[batch, beam, ...], ...} --> {[batch * beam, ...], ...}
-    flat_cache = jax.tree_map(flatten_beam_dim, state.cache)
+    flat_cache = jax.tree_map(
+        lambda x: flatten_beam_dim(x, batch_size), state.cache)
 
     # Call fast-decoder model on current tokens to get next-position logits.
     # --> [batch * beam, vocab]
@@ -547,15 +565,15 @@ class Search:
     """
     n_devices = trax.math.device_count()
     if inputs is not None and targets_prefix is not None:
+      pad_to = batch_size
       batch_size = inputs.shape[0]
       assert targets_prefix.shape[0] == batch_size
-      pad_to = batch_size
     elif inputs is not None:
+      pad_to = batch_size
       batch_size = inputs.shape[0]
-      pad_to = batch_size
     elif targets_prefix is not None:
-      batch_size = targets_prefix.shape[0]
       pad_to = batch_size
+      batch_size = targets_prefix.shape[0]
     else:
       pad_to = None
 
@@ -580,7 +598,7 @@ class Search:
           (n_devices, -1) + targets_prefix.shape[1:])
 
     seqs, scores = self._jit_beam_search(
-        inputs, targets_prefix, batch_size // n_devices,
+        inputs, targets_prefix, (batch_size + pad_amount) // n_devices,
         dummy=np.zeros(n_devices))
     seqs = onp.asarray(seqs)
     scores = onp.asarray(scores)
