@@ -7,3 +7,5 @@ Read about the details in our [Reformer paper](https://arxiv.org/abs/2001.04451)
 Generate images with Reformer using [this colab](https://colab.research.google.com/github/google/trax/blob/master/trax/models/reformer/image_generation.ipynb).
 
 Train Reformer on text of length 0.5M tokens on a single 8GB accelerator code using [this colab](https://colab.research.google.com/github/google/trax/blob/master/trax/models/reformer/text_generation.ipynb).
+
+Translate from English to German with a reversible encoder-decoder model using [this colab](https://colab.research.google.com/github/google/trax/blob/master/trax/models/reformer/machine_translation.ipynb).
