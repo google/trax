@@ -84,12 +84,14 @@ class Optimizer(object):
     new_weights, new_slots = self.update(
         step, grads, weights, slots, opt_params)
     if isinstance(weights, np.ndarray):
-      assert isinstance(new_weights, np.ndarray), (
-          'The type of the new weight values should be np.ndarray; got %s' %
-          type(new_weights))
-      assert new_weights.dtype == weights.dtype, (
-          'The dtype of the new weight values (%s) is not the same as the '
-          'old one (%s)' % (new_weights.dtype, weights.dtype))
+      if not isinstance(new_weights, np.ndarray):
+        raise ValueError(
+            f'New weight values should be of type np.ndarray or a subclass; '
+            f'instead got {type(new_weights)}.')
+      if new_weights.dtype != weights.dtype:
+        raise ValueError(
+            f'New weight values dtype ({new_weights.dtype}) does not match '
+            f'the old one ({weights.dtype}).')
     return new_weights, new_slots
 
   def tree_update(self, step, grad_tree, weight_tree, slots, opt_params):
