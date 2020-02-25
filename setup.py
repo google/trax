@@ -21,7 +21,7 @@ from setuptools import setup
 
 setup(
     name='trax',
-    version='1.2.2',
+    version='1.2.3',
     description='Trax',
     long_description=(
         'Trax helps you understand deep learning. We start with basic maths and'
