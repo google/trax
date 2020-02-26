@@ -38,9 +38,9 @@ class SM3(opt_base.Optimizer):
         momentum=momentum,
     )
 
-  def init(self, params):
-    vs = [np.zeros(sz, dtype=params.dtype) for sz in params.shape]
-    return (np.zeros_like(params), vs)
+  def init(self, weights):
+    vs = [np.zeros(sz, dtype=weights.dtype) for sz in weights.shape]
+    return (np.zeros_like(weights), vs)
 
   def _update_diagonal(self, grads, weights, m, v, opt_params):
     learning_rate = opt_params['learning_rate']

@@ -48,8 +48,8 @@ class Momentum(base.Optimizer):
         weight_decay_rate=weight_decay_rate,
     )
 
-  def init(self, params):
-    return np.zeros_like(params)
+  def init(self, weights):
+    return np.zeros_like(weights)
 
   def update(self, step, grads, weights, velocity, opt_params):
     del step

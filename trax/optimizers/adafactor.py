@@ -78,18 +78,18 @@ class Adafactor(opt_base.Optimizer):
     t = np.array(i, np.float32) + 1.0
     return 1.0 - t**(-exponent)
 
-  def init(self, params):
-    shape = params.shape
+  def init(self, weights):
+    shape = weights.shape
     slots = []
     if self._factored and len(shape) >= 2:
       v_row = np.zeros(shape[:-1], dtype=np.float32)
       v_col = np.zeros(shape[:-2] + shape[-1:], dtype=np.float32)
       slots.extend([v_row, v_col])
     else:
-      v = np.zeros_like(params)
+      v = np.zeros_like(weights)
       slots.append(v)
     if self._do_momentum:
-      m = np.zeros_like(params)
+      m = np.zeros_like(weights)
       slots.append(m)
     return slots
 

@@ -20,8 +20,8 @@ from absl.testing import absltest
 
 import numpy as np
 
+from trax import optimizers
 from trax.optimizers import momentum
-from trax.optimizers import sgd
 
 
 class OptimizersTest(absltest.TestCase):
@@ -31,7 +31,7 @@ class OptimizersTest(absltest.TestCase):
     weight_tree = np.arange(15).reshape(weights_shape)
 
     # SGD - an optimizer that doesn't use slots.
-    opt_1 = sgd.SGD(.01)
+    opt_1 = optimizers.SGD(.01)
     self.assertIsNone(opt_1.slots)
     opt_1.tree_init(weight_tree)
     self.assertIsInstance(opt_1.slots, list)

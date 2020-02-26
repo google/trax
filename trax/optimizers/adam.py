@@ -45,9 +45,9 @@ class Adam(opt_base.Optimizer):
         eps=eps,
     )
 
-  def init(self, params):
-    m = np.zeros_like(params)
-    v = np.zeros_like(params)
+  def init(self, weights):
+    m = np.zeros_like(weights)
+    v = np.zeros_like(weights)
     return m, v
 
   def update(self, step, grads, weights, slots, opt_params):
@@ -61,6 +61,6 @@ class Adam(opt_base.Optimizer):
     v = (1 - b2) * (grads ** 2) + b2 * v  # Second moment estimate.
     mhat = m / (1 - b1 ** (step + 1))  # Bias correction.
     vhat = v / (1 - b2 ** (step + 1))
-    weights = (1 - weight_decay_rate) * weights - (
+    new_weights = (1 - weight_decay_rate) * weights - (
         learning_rate * mhat / (np.sqrt(vhat) + eps)).astype(weights.dtype)
-    return weights, (m, v)
+    return new_weights, (m, v)

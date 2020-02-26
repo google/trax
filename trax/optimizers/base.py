@@ -21,17 +21,29 @@ from trax.math import numpy as np
 
 
 class Optimizer(object):
-  """Optimizer object, base class. Maps per-parameter functions to trees."""
+  """Base class for optimizers that work hand in hand with Trax layers.
+
+  To define an optimizer subclass, specify its behavior with respect to a
+  single level/node in the network (e.g., a single dense layer):
+
+    - `init`: how to create/initialize optimizer-internal weights ("slots")
+        whose shape matches the node's weight shape.
+    - `update`: how to use gradient information to update node weights and
+        optimizer slots.
+
+  The Trax runtime combines these node-local computations into weight updates
+  and slot updates for the whole tree of layers in the model.
+  """
 
   def __init__(self, learning_rate, **init_opt_params):
-    """Initialize the optimizer.
+    """Sets initial hyperparameter values for this optimizer.
 
-    Takes the initial optimizer parameters as positional arguments. They are fed
-    back to the optimizer in tree_update, in the same order. They can be changed
-    between updates, e.g. for learning rate schedules.
+    Takes initial optimizer parameters as keyword arguments. These values can
+    be changed between training steps, e.g., for learning rate schedules.
 
-    The constructor should be overridden in derived classes to give names to the
-    optimizer parameters, so the gin configuration can set them.
+    If you want your subclass to expose hyperparameters for gin configuration,
+    override this constructor and use explicitly named keyword arguments. See
+    `momentum.Momentum.__init__` for one such example.
 
     Args:
       learning_rate: The initial learning rate.
@@ -43,26 +55,32 @@ class Optimizer(object):
     }
     self._slots = None
 
-  def init(self, params):
-    """Create optimizer slots for the given parameters."""
-    raise NotImplementedError
-
-  def update(self, step, grads, weights, slots, opt_params):
-    """Update a single parameter array.
+  def init(self, weights):
+    """Creates optimizer slots for the given parameters.
 
     Args:
-      step: Current step.
-      grads: Gradients.
-      weights: Trainable model weights.
-      slots: Optimizer slots (e.g. gradient moments).
-      opt_params: Optimizer (hyper)parameters (e.g. learning rate, momentum).
-
-    Returns:
-      (new_weights, new_slots)
+      weights: Trainable weights for one layer. Optimizer slots typically match
+          the data shape and type of the given layer weights.
     """
     raise NotImplementedError
 
-  # End subclass interface.
+  def update(self, step, grads, weights, slots, opt_params):
+    """Computes one step's worth of updates.
+
+    The update computes both new weights for the layer/node and new slot values
+    for the optimizer.
+
+    Args:
+      step: Current step number in the training process.
+      grads: Gradients for the weights of the sublayer.
+      weights: Current weights for the sublayer.
+      slots: Optimizer slots.
+      opt_params: Optimizer hyperparameters (e.g. learning rate, momentum).
+
+    Returns:
+      Tuple of (new_weights, new_slots).
+    """
+    raise NotImplementedError
 
   @property
   def slots(self):
@@ -73,6 +91,7 @@ class Optimizer(object):
     self._slots = slots
 
   def tree_init(self, weight_tree):
+    """Assembles node-local initializations into full-tree initialization."""
     self._slots = [self.init(weight) for weight in _tree_flatten(weight_tree)]
     return (
         self._slots,
@@ -95,6 +114,7 @@ class Optimizer(object):
     return new_weights, new_slots
 
   def tree_update(self, step, grad_tree, weight_tree, slots, opt_params):
+    """Assembles node-local weight and slot updates for the full layer tree."""
     grads_flat = _tree_flatten(grad_tree)
     weights_flat = _tree_flatten(weight_tree)
     updated_pairs = [
@@ -104,6 +124,22 @@ class Optimizer(object):
     new_weights_flat, self.slots = zip(*updated_pairs)
     new_weights, _ = _tree_unflatten(new_weights_flat, weight_tree)
     return new_weights, self.slots
+
+
+class SGD(Optimizer):
+  """Stochastic gradient descent (SGD) optimizer.
+
+  A simple optimizer with no weights ("slots") of its own.
+  """
+
+  def init(self, weights):
+    return None
+
+  def update(self, step, grads, weights, slots, opt_params):
+    del step, slots
+    lr = opt_params['learning_rate']
+    new_weights = weights - (lr * grads).astype(weights.dtype)
+    return new_weights, None
 
 
 def _tree_flatten(tree):
@@ -143,7 +179,6 @@ def _tree_unflatten(flat, tree):
       new_tree[k] = new_v
     return new_tree, rest
   return flat[0], flat[1:]
-
 
 # Utilities.
 

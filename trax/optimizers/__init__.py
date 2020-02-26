@@ -13,10 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Optimizers defined in trax."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+# Lint as: python3
+"""Optimizers for use with Trax layers."""
 
 import gin
 
@@ -25,7 +23,6 @@ from trax.optimizers import adam
 from trax.optimizers import base
 from trax.optimizers import momentum
 from trax.optimizers import rms_prop
-from trax.optimizers import sgd
 from trax.optimizers import sm3
 
 
@@ -35,7 +32,7 @@ def opt_configure(*args, **kwargs):
 
 # Optimizers (using upper-case names).
 # pylint: disable=invalid-name
-SGD = opt_configure(sgd.SGD)
+SGD = opt_configure(base.SGD)
 Momentum = opt_configure(momentum.Momentum)
 RMSProp = opt_configure(rms_prop.RMSProp)
 Adam = opt_configure(adam.Adam)
