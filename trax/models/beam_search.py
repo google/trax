@@ -33,7 +33,7 @@ from trax.shapes import ShapeDtype
 
 # Constants
 # "Effective negative infinity" constant for masking in beam search.
-NEG_INF = np.array(-1.0e7)
+NEG_INF = onp.array(-1.0e7)
 
 
 # Beam Search
