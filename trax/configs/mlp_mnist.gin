@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import trax.learning_rate
+import trax.lr_schedules
 import trax.models
 import trax.optimizers
 import trax.supervised.inputs

@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Trax learning rate schedules.
 
 The learning rate schedules here all have the signature:
@@ -24,10 +25,6 @@ function that takes a step and returns a dict with entry 'learning_rate'.
 
 # TODO(pkozakowski): Revisit the decision to control nontrainable parameters
 # using LR schedules, or at least rename the module.
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import random
 import time
@@ -281,8 +278,7 @@ def PolicySchedule(
   controls = {
       # name: value
       control_config[0]: online_tune.update_control(  # pylint: disable=g-complex-comprehension
-          control_config, control_action, history, action_multipliers
-      )
+          control_config, control_action, history, action_multipliers)
       for (control_action, control_config) in zip(action, control_configs)
   }
   return lambda _: controls
@@ -290,7 +286,7 @@ def PolicySchedule(
 
 # pylint: disable=g-import-not-at-top
 # These dependencies are here to break the circular dependency from this
-# module, to itself via online_tune/ppo -> trainer_lib -> learning_rate.
+# module, to itself via online_tune/ppo -> trainer_lib -> lr_schedules.
 from trax.rl import online_tune
 from trax.rl import ppo
 # pylint: enable=g-import-not-at-top

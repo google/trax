@@ -76,7 +76,7 @@ TransformerLM.vocab_size = 33300
 
 # ==============================================================================
 # Parameters for the RL hyperparameter tuner; turn on with
-# train.lr_schedule=@learning_rate.PolicySchedule and set
+# train.lr_schedule=@lr_schedules.PolicySchedule and set
 # PolicySchedule.policy_dir.
 # ==============================================================================
 

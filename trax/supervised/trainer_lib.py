@@ -39,7 +39,7 @@ import tensorflow.compat.v2 as tf
 from trax import history as trax_history
 from trax import jaxboard
 from trax import layers as tl
-from trax import learning_rate as lr
+from trax import lr_schedules as lr
 from trax import math
 from trax import optimizers as trax_opt
 from trax.math import numpy as np

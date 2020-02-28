@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import trax.learning_rate
+import trax.lr_schedules
 import trax.models
 import trax.optimizers
 import trax.supervised.inputs
@@ -59,11 +59,11 @@ train.inputs = @trax.supervised.inputs.inputs
 train.model = @trax.models.WideResnet
 train.optimizer = @trax.optimizers.Momentum
 train.steps = 10000
-train.lr_schedule = @learning_rate.EvalAdjustingSchedule
+train.lr_schedule = @lr_schedules.EvalAdjustingSchedule
 
 # ==============================================================================
 # Parameters for the RL hyperparameter tuner; turn on with
-# train.lr_schedule=@learning_rate.PolicySchedule and set
+# train.lr_schedule=@lr_schedules.PolicySchedule and set
 # PolicySchedule.policy_dir.
 # ==============================================================================
 

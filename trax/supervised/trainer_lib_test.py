@@ -34,7 +34,7 @@ from tensorflow.compat.v2 import test
 from tensorflow.compat.v2.io import gfile
 
 from trax import layers
-from trax import learning_rate as lr
+from trax import lr_schedules as lr
 from trax import math
 from trax import models
 from trax import optimizers as trax_opt

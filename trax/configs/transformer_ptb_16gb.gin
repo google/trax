@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import trax.learning_rate
+import trax.lr_schedules
 import trax.models
 import trax.optimizers
 import trax.supervised.inputs
@@ -70,7 +70,7 @@ TransformerLM.vocab_size = 10240
 
 # ==============================================================================
 # Parameters for the RL hyperparameter tuner; turn on with
-# train.lr_schedule=@learning_rate.PolicySchedule and set
+# train.lr_schedule=@lr_schedules.PolicySchedule and set
 # PolicySchedule.policy_dir.
 # ==============================================================================
 

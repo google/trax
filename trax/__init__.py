@@ -16,7 +16,7 @@
 """Trax top level import."""
 
 from trax import layers
-from trax import learning_rate as lr
+from trax import lr_schedules as lr
 from trax import math
 from trax import optimizers
 from trax import shapes

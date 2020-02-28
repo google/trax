@@ -13,18 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for trax.learning_rate."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+# Lint as: python3
+"""Tests for trax.lr_schedules."""
 
 import functools
 
 import numpy as onp
 from tensorflow import test
 from trax import history as trax_history
-from trax import learning_rate
+from trax import lr_schedules
 from trax.math import numpy as np
 from trax.models import transformer
 from trax.rl import online_tune
@@ -73,7 +70,7 @@ class PolicyScheduleTest(test.TestCase):
     ppo.save_opt_state(
         policy_dir, opt_state, state, epoch=0, total_opt_step=0, history=history
     )
-    return learning_rate.PolicySchedule(
+    return lr_schedules.PolicySchedule(
         history,
         observation_metrics=observation_metrics,
         include_controls_in_observation=False,

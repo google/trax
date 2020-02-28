@@ -34,7 +34,7 @@ from tensor2tensor.rl import gym_utils
 from tensorflow import test
 from tensorflow.compat.v1.io import gfile
 from trax import layers
-from trax import learning_rate as lr
+from trax import lr_schedules as lr
 from trax import models
 from trax import optimizers as trax_opt
 from trax.rl import envs  # pylint: disable=unused-import
