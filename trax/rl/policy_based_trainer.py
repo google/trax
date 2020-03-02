@@ -225,7 +225,8 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
       (batch_obs_shape, obs_dtype) = self._batch_obs_shape_and_dtype(
           self.train_env.observation_space)
       input_signature = ShapeDtype(batch_obs_shape, obs_dtype)
-      weights, self._model_state = policy_and_value_net.init(input_signature)
+      weights, self._model_state = policy_and_value_net.init(
+          input_signature, rng=self._get_rng())
       # Initialize the optimizer.
       self._init_state_from_weights(weights)
 
