@@ -33,7 +33,7 @@ from tensor2tensor.envs import env_problem_utils
 from tensor2tensor.envs import trajectory
 from trax import jaxboard
 from trax.rl import base_trainer
-from trax.rl import ppo
+from trax.rl import policy_based_utils
 from trax.shapes import ShapeDtype
 from trax.supervised import trainer_lib
 
@@ -166,7 +166,7 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
     )
 
     self._policy_and_value_net_fn = functools.partial(
-        ppo.policy_and_value_net,
+        policy_based_utils.policy_and_value_net,
         bottom_layers_fn=policy_and_value_model,
         observation_space=train_env.observation_space,
         action_space=train_env.action_space,
@@ -224,7 +224,7 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
 
     # If we need to initialize from the world model, do that here.
     if self.init_policy_from_world_model_output_dir is not None:
-      weights = ppo.init_policy_from_world_model_checkpoint(
+      weights = policy_based_utils.init_policy_from_world_model_checkpoint(
           self._policy_and_value_net_weights,
           self.init_policy_from_world_model_output_dir,
           self._substitute_fn,
@@ -258,8 +258,11 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
     if output_dir is None:
       output_dir = self._output_dir
     (self._policy_and_value_opt_state, self._model_state, self._epoch,
-     self._total_opt_step, self._history) = ppo.maybe_restore_opt_state(
-         output_dir, self._policy_and_value_opt_state, self._model_state)
+     self._total_opt_step, self._history) = (
+         policy_based_utils.maybe_restore_opt_state(
+             output_dir, self._policy_and_value_opt_state, self._model_state
+         )
+     )
 
     if self.epoch > 0:
       logging.info('Restored parameters from epoch [%d]', self.epoch)
@@ -347,20 +350,22 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
           n_observations=n_observations,
           temperature=temperature)
     else:
-      trajs, n_done, timing_info, self._model_state = ppo.collect_trajectories(
-          env,
-          policy_fn=self._policy_fun,
-          n_trajectories=n_trajectories,
-          n_observations=n_observations,
-          max_timestep=max_timestep,
-          state=self._model_state,
-          rng=key,
-          len_history_for_policy=self._len_history_for_policy,
-          boundary=self._boundary,
-          reset=should_reset,
-          temperature=temperature,
-          abort_fn=abort_fn,
-          raw_trajectory=raw_trajectory,
+      trajs, n_done, timing_info, self._model_state = (
+          policy_based_utils.collect_trajectories(
+              env,
+              policy_fn=self._policy_fun,
+              n_trajectories=n_trajectories,
+              n_observations=n_observations,
+              max_timestep=max_timestep,
+              state=self._model_state,
+              rng=key,
+              len_history_for_policy=self._len_history_for_policy,
+              boundary=self._boundary,
+              reset=should_reset,
+              temperature=temperature,
+              abort_fn=abort_fn,
+              raw_trajectory=raw_trajectory,
+          )
       )
 
     if train:
@@ -404,7 +409,9 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
         'raw': compute_stats(raw_reward_sums),
     }
 
-    ppo.write_eval_reward_summaries(reward_stats, self._log, epoch=self.epoch)
+    policy_based_utils.write_eval_reward_summaries(
+        reward_stats, self._log, epoch=self.epoch
+    )
 
   def save(self):
     """Save the agent parameters."""
@@ -413,7 +420,7 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
 
     logging.vlog(1,
                  'PolicyBasedTrainer epoch [% 6d]: saving model.', self.epoch)
-    ppo.save_opt_state(
+    policy_based_utils.save_opt_state(
         self._output_dir,
         self._policy_and_value_opt_state,
         self._model_state,
@@ -452,7 +459,9 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
   # Prepares the trajectories for policy training.
   def _preprocess_trajectories(self, trajectories):
     (_, reward_mask, observations, actions, rewards, infos) = (
-        ppo.pad_trajectories(trajectories, boundary=self._max_timestep)
+        policy_based_utils.pad_trajectories(
+            trajectories, boundary=self._max_timestep
+        )
     )
     if actions.ndim == 2:
       # Add the control dimension.
@@ -464,7 +473,7 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
     return (observations, actions, rewards, reward_mask, infos)
 
   def _policy_fun(self, observations, lengths, state, rng):
-    return ppo.run_policy(
+    return policy_based_utils.run_policy(
         self._policy_and_value_net_apply,
         observations,
         lengths,

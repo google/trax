@@ -26,7 +26,7 @@ from trax import lr_schedules
 from trax import shapes
 from trax.models import transformer
 from trax.rl import online_tune
-from trax.rl import ppo
+from trax.rl import policy_based_utils
 
 
 class PolicyScheduleTest(test.TestCase):
@@ -54,7 +54,7 @@ class PolicyScheduleTest(test.TestCase):
     action_space = gym.spaces.MultiDiscrete(
         nvec=(len(action_multipliers),) * len(control_configs)
     )
-    (net, _) = ppo.policy_and_value_net(
+    (net, _) = policy_based_utils.policy_and_value_net(
         bottom_layers_fn=policy_and_value_model,
         observation_space=observation_space,
         action_space=action_space,
@@ -73,7 +73,7 @@ class PolicyScheduleTest(test.TestCase):
     slots = None
     opt_params = None
     opt_state = (params, slots, opt_params)
-    ppo.save_opt_state(
+    policy_based_utils.save_opt_state(
         policy_dir, opt_state, state, epoch=0, total_opt_step=0, history=history
     )
     return lr_schedules.PolicySchedule(

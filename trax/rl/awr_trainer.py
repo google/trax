@@ -28,7 +28,7 @@ from trax import jaxboard
 from trax.math import numpy as np
 from trax.rl import awr_utils
 from trax.rl import policy_based_trainer
-from trax.rl import ppo
+from trax.rl import policy_based_utils
 from trax.rl.trajectory import replay_buffer
 
 
@@ -143,7 +143,9 @@ class AwrTrainer(policy_based_trainer.PolicyBasedTrainer):
     trajs, _, timing_info, self._model_state = self.collect_trajectories(
         train=True, temperature=1.0, raw_trajectory=True)
     del timing_info
-    trajectory_collection_time = ppo.get_time(trajectory_collection_start_time)
+    trajectory_collection_time = policy_based_utils.get_time(
+        trajectory_collection_start_time
+    )
 
     # Convert these into numpy now.
     def extract_obs_act_rew_dones(traj_np):

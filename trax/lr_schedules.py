@@ -224,7 +224,7 @@ def PolicySchedule(
   action_space = gym.spaces.MultiDiscrete(
       nvec=(len(action_multipliers),) * len(control_configs)
   )
-  (net, _) = ppo.policy_and_value_net(
+  (net, _) = policy_based_utils.policy_and_value_net(
       bottom_layers_fn=policy_and_value_model,
       observation_space=observation_space,
       action_space=action_space,
@@ -236,7 +236,9 @@ def PolicySchedule(
   )
   start_time = time.time()
   # (opt_state, state, epoch, opt_step, history)
-  (opt_state, state, _, _, _) = ppo.maybe_restore_opt_state(policy_dir)
+  (opt_state, state, _, _, _) = policy_based_utils.maybe_restore_opt_state(
+      policy_dir
+  )
   assert opt_state is not None, 'Policy checkpoint not found.'
   (params, _, _) = opt_state
   logging.vlog(
@@ -251,7 +253,7 @@ def PolicySchedule(
 
   n_timesteps = observations.shape[0]
   # (log_probs, value_preds, state, rng)
-  (log_probs, _, _, _) = ppo.run_policy(
+  (log_probs, _, _, _) = policy_based_utils.run_policy(
       policy_and_value_net_apply=net,
       observations=np.array([observations]),
       lengths=np.array([n_timesteps]),
@@ -280,7 +282,8 @@ def PolicySchedule(
 
 # pylint: disable=g-import-not-at-top
 # These dependencies are here to break the circular dependency from this
-# module, to itself via online_tune/ppo -> trainer_lib -> lr_schedules.
+# module, to itself via online_tune/policy_based_utils -> trainer_lib ->
+# lr_schedules.
 from trax.rl import online_tune
-from trax.rl import ppo
+from trax.rl import policy_based_utils
 # pylint: enable=g-import-not-at-top

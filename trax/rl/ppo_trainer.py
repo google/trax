@@ -15,10 +15,6 @@
 
 """PPO trainer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import time
 
@@ -28,6 +24,7 @@ from jax import random as jax_random
 from trax import models as trax_models
 from trax import optimizers as trax_opt
 from trax.rl import policy_based_trainer
+from trax.rl import policy_based_utils
 from trax.rl import ppo
 
 DEBUG_LOGGING = False
@@ -113,7 +110,7 @@ class PPO(policy_based_trainer.PolicyBasedTrainer):
       key = self._get_rng()
       self.evaluate()
 
-    policy_eval_time = ppo.get_time(policy_eval_start_time)
+    policy_eval_time = policy_based_utils.get_time(policy_eval_start_time)
 
     trajectory_collection_start_time = time.time()
     logging.vlog(1, 'PPO epoch [% 6d]: collecting trajectories.', self.epoch)
@@ -122,7 +119,9 @@ class PPO(policy_based_trainer.PolicyBasedTrainer):
         train=True, temperature=1.0)
     trajs = [(t[0], t[1], t[2], t[4]) for t in trajs]
     self._should_reset_train_env = False
-    trajectory_collection_time = ppo.get_time(trajectory_collection_start_time)
+    trajectory_collection_time = policy_based_utils.get_time(
+        trajectory_collection_start_time
+    )
 
     logging.vlog(1, 'Collecting trajectories took %0.2f msec.',
                  trajectory_collection_time)
@@ -136,7 +135,9 @@ class PPO(policy_based_trainer.PolicyBasedTrainer):
     self._log('train', 'train/reward_mean_truncated', avg_reward)
     if evaluate and not self._separate_eval:
       metrics = {'raw': {1.0: {'mean': avg_reward, 'std': std_reward}}}
-      ppo.write_eval_reward_summaries(metrics, self._log, self.epoch)
+      policy_based_utils.write_eval_reward_summaries(
+          metrics, self._log, self.epoch
+      )
 
     logging.vlog(1, 'Rewards avg=[%0.2f], max=[%0.2f], min=[%0.2f], all=%s',
                  avg_reward, max_reward, min_reward,
@@ -152,10 +153,10 @@ class PPO(policy_based_trainer.PolicyBasedTrainer):
     preprocessing_start_time = time.time()
     (padded_observations, padded_actions, padded_rewards, reward_mask,
      padded_infos) = self._preprocess_trajectories(trajs)
-    preprocessing_time = ppo.get_time(preprocessing_start_time)
+    preprocessing_time = policy_based_utils.get_time(preprocessing_start_time)
 
     logging.vlog(1, 'Preprocessing trajectories took %0.2f msec.',
-                 ppo.get_time(preprocessing_start_time))
+                 policy_based_utils.get_time(preprocessing_start_time))
     logging.vlog(1, 'Padded Observations\' shape [%s]',
                  str(padded_observations.shape))
     logging.vlog(1, 'Padded Actions\' shape [%s]', str(padded_actions.shape))
@@ -218,7 +219,9 @@ class PPO(policy_based_trainer.PolicyBasedTrainer):
     #     (actual_value_predictions_traj, value_predictions_traj[:, -1:, :]),
     #     axis=1)
 
-    log_prob_recompute_time = ppo.get_time(log_prob_recompute_start_time)
+    log_prob_recompute_time = policy_based_utils.get_time(
+        log_prob_recompute_start_time
+    )
 
     # Compute value and ppo losses.
     key1 = self._get_rng()
@@ -237,13 +240,13 @@ class PPO(policy_based_trainer.PolicyBasedTrainer):
             nontrainable_params=self._nontrainable_params,
             state=self._model_state,
             rng=key1))
-    loss_compute_time = ppo.get_time(loss_compute_start_time)
+    loss_compute_time = policy_based_utils.get_time(loss_compute_start_time)
     (cur_ppo_loss, cur_value_loss, cur_entropy_bonus) = component_losses
     logging.vlog(
         1,
         'Calculating P&V loss [%10.2f(%10.2f, %10.2f, %10.2f)] took %0.2f msec.',
         cur_combined_loss, cur_ppo_loss, cur_value_loss, cur_entropy_bonus,
-        ppo.get_time(loss_compute_start_time))
+        policy_based_utils.get_time(loss_compute_start_time))
 
     key1 = self._get_rng()
     logging.vlog(1, 'Policy and Value Optimization')
@@ -327,7 +330,7 @@ class PPO(policy_based_trainer.PolicyBasedTrainer):
                 state=self._model_state,
                 rng=k3))
         logging.vlog(1, 'One Policy and Value grad desc took: %0.2f msec',
-                     ppo.get_time(t, t2))
+                     policy_based_utils.get_time(t, t2))
         (ppo_loss, value_loss, entropy_bonus) = component_losses
         logging.vlog(
             1, 'Combined Loss(value, ppo, entropy_bonus) [%10.2f] ->'
@@ -337,7 +340,7 @@ class PPO(policy_based_trainer.PolicyBasedTrainer):
       if early_stopping:
         break
 
-    optimization_time = ppo.get_time(optimization_start_time)
+    optimization_time = policy_based_utils.get_time(optimization_start_time)
 
     logging.vlog(
         1, 'Total Combined Loss reduction [%0.2f]%%',
@@ -372,9 +375,9 @@ class PPO(policy_based_trainer.PolicyBasedTrainer):
         self._done_frac_for_policy_save * self.train_env.batch_size and
         self.epoch % self._save_every_n == 0) or self._async_mode:
       self.save()
-    policy_save_time = ppo.get_time(policy_save_start_time)
+    policy_save_time = policy_based_utils.get_time(policy_save_start_time)
 
-    epoch_time = ppo.get_time(epoch_start_time)
+    epoch_time = policy_based_utils.get_time(epoch_start_time)
 
     timing_dict = {
         'epoch': epoch_time,
