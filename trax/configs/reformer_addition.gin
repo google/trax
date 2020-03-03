@@ -28,17 +28,20 @@ inputs.dataset_name = 'addition'
 # ==============================================================================
 sequence_copy_inputs.vocab_size = %vocab_size
 sequence_copy_inputs.batch_size = 128
-sequence_copy_inputs.train_lengths = [12, 16, 20, 24, 28, 32, 36, 40]
-sequence_copy_inputs.eval_lengths = [60, 80]
+sequence_copy_inputs.train_length = 64
+sequence_copy_inputs.eval_min_length = 128
+sequence_copy_inputs.eval_max_length = 160
 sequence_copy_inputs.reverse = False
+sequence_copy_inputs.pad_to_multiple = 32
 
 # Parameters for addition_inputs:
 # ==============================================================================
 addition_inputs.vocab_size = %vocab_size
 addition_inputs.batch_size = 128
-addition_inputs.train_length = 40
-addition_inputs.eval_min_length = 50
-addition_inputs.eval_max_length = 60
+addition_inputs.train_length = 64
+addition_inputs.eval_min_length = 128
+addition_inputs.eval_max_length = 160
+addition_inputs.pad_to_multiple = 32
 
 # Parameters for MultifactorSchedule:
 # ==============================================================================
@@ -46,16 +49,26 @@ MultifactorSchedule.constant = 0.05
 MultifactorSchedule.factors = 'constant * linear_warmup * rsqrt_decay'
 MultifactorSchedule.warmup_steps = 4000
 
+# Parameters for LSHSelfAttention:
+# ==============================================================================
+LSHSelfAttention.attention_dropout = 0.0
+LSHSelfAttention.chunk_len = 16
+LSHSelfAttention.n_chunks_after = 0
+LSHSelfAttention.n_chunks_before = 1
+LSHSelfAttention.n_hashes = 2
+LSHSelfAttention.n_parallel_heads = 1
+
 # Parameters for ReformerLM:
 # ==============================================================================
 ReformerLM.d_model = 256
-ReformerLM.d_ff = 256
+ReformerLM.d_ff = 512
 ReformerLM.dropout = 0.05
 ReformerLM.max_len = 256
 ReformerLM.n_heads = 4
 ReformerLM.n_layers = 3
 ReformerLM.ff_use_sru = 1
 ReformerLM.axial_pos_shape = 'fixed-base'
+# ReformerLM.attention_type = @LSHSelfAttention
 ReformerLM.vocab_size = %vocab_size
 
 # Parameters for train:

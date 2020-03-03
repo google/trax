@@ -225,18 +225,30 @@ def random_inputs(
   return Inputs(random_minibatches)
 
 
+def _pad_to_multiple_of(x, y, axis):
+  """Pads x to multiple of y on the given axis."""
+  pad_len = onp.ceil(x.shape[axis] / float(y)) * y
+  pad_widths = [(0, 0)] * len(x.shape)
+  pad_widths[axis] = (0, int(pad_len - x.shape[axis]))
+  return onp.pad(x, pad_widths, mode='constant',
+                 constant_values=x.dtype.type(0))
+
+
 @gin.configurable()
 def sequence_copy_inputs(
-    vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED,
-    train_lengths=gin.REQUIRED, eval_lengths=gin.REQUIRED, reverse=False):
+    vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, train_length=gin.REQUIRED,
+    eval_min_length=gin.REQUIRED, eval_max_length=gin.REQUIRED, reverse=False,
+    pad_to_multiple=32):
   """Inputs for the sequence copy problem: 0w0w for w in [1..vocab_size-1]*.
 
   Args:
     vocab_size: how many symbols to use.
     batch_size: how large are the batches.
-    train_lengths: lengths of w for training.
-    eval_lengths: lengths of w for eval.
+    train_length: maximum length of w for training.
+    eval_min_length: minimum length of w for eval.
+    eval_max_length : maximum length of w for eval.
     reverse: bool (optional, false by default): reverse the second sequence.
+    pad_to_multiple: int, pad length to be multiple of this number.
 
   Returns:
     trax.inputs.Inputs
@@ -256,8 +268,12 @@ def sequence_copy_inputs(
         x = onp.concatenate([zero, w, zero, np.flip(w, axis=1)], axis=1)
       else:
         x = onp.concatenate([zero, w, zero, w], axis=1)
+      x = _pad_to_multiple_of(x, pad_to_multiple, 1)
+      loss_weights = _pad_to_multiple_of(loss_weights, pad_to_multiple, 1)
       yield (x, x, loss_weights)  # Here inputs and targets are the same.
 
+  train_lengths = [2*(i+2) for i in range(train_length - 1)]
+  eval_lengths = [2*(i+1) for i in range(eval_min_length, eval_max_length)]
   return Inputs(
       train_stream=lambda _: random_minibatches(train_lengths),
       eval_stream=lambda _: random_minibatches(eval_lengths)
@@ -287,7 +303,8 @@ def random_number_lower_endian(length, base):
 @gin.configurable()
 def addition_inputs(
     vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, train_length=gin.REQUIRED,
-    eval_min_length=gin.REQUIRED, eval_max_length=gin.REQUIRED):
+    eval_min_length=gin.REQUIRED, eval_max_length=gin.REQUIRED,
+    pad_to_multiple=32):
   """Inputs for the add problem: <S>x+y<S>(x+y).
 
   Args:
@@ -296,6 +313,7 @@ def addition_inputs(
     train_length: maximal length of w for training.
     eval_min_length: minimal length of w for eval.
     eval_max_length: maximal length of w for eval.
+    pad_to_multiple: int, pad length to be multiple of this number.
 
   Returns:
     trax.inputs.Inputs
@@ -326,6 +344,8 @@ def addition_inputs(
       xs = onp.array([x[0] + [0] * (l - len(x[0])) for x in res])
       ws = onp.array([x[1] + [0] * (l - len(x[1])) for x in res],
                      dtype=onp.float32)
+      xs = _pad_to_multiple_of(xs, pad_to_multiple, 1)
+      ws = _pad_to_multiple_of(ws, pad_to_multiple, 1)
       yield (xs, xs, ws)
 
   return Inputs(

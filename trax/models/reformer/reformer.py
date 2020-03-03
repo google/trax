@@ -754,11 +754,13 @@ def ReformerLM(vocab_size,
   else:
     concatenate_input_chunks = tl.Concatenate(n_items=n_chunks)
 
+  d_emb = d_model
   if not axial_pos_shape:
     positional_encoding = tl.PositionalEncoding(
         max_len=max_len, dropout=dropout, mode=mode)
   elif axial_pos_shape == 'fixed-base':  # TODO(lukaszkaiser): remove this HACK
     positional_encoding = tl.FixedBasePositionalEncoding(mode=mode)
+    d_emb //= 2
   else:
     assert d_axial_pos_embs is not None
     positional_encoding = tl.AxialPositionalEncoding(
@@ -767,7 +769,7 @@ def ReformerLM(vocab_size,
         dropout=dropout, mode=mode)
 
   positional_embedder = [
-      tl.Embedding(d_model, vocab_size),
+      tl.Embedding(d_emb, vocab_size),
       BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
       positional_encoding,
   ]
