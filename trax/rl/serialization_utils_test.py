@@ -180,7 +180,7 @@ class SerializationTest(parameterized.TestCase):
     n_actions = 4
     gin.bind_parameter('BoxSpaceSerializer.precision', precision)
 
-    obs = onp.array([[[1.5, 2], [-0.3, 1.23], [0.84, 0.07], [0, 0]]])
+    obs = onp.array([[[1.5, 2], [-0.3, 1.23], [0.84, 0.07], [0.01, 0.66]]])
     act = onp.array([[[0, 1], [2, 0], [1, 3]]])
 
     wrapped_policy = serialization_utils.wrap_policy(
@@ -193,7 +193,7 @@ class SerializationTest(parameterized.TestCase):
     example = (obs, act)
     wrapped_policy.init(shapes.signature(example))
     (act_logits, values) = wrapped_policy(example)
-    self.assertEqual(act_logits.shape, act.shape + (n_actions,))
+    self.assertEqual(act_logits.shape, obs.shape[:2] + (n_controls, n_actions))
     self.assertEqual(values.shape, obs.shape[:2])
 
   def test_analyzes_discrete_action_space(self):
@@ -219,86 +219,6 @@ class SerializationTest(parameterized.TestCase):
     space = gym.spaces.Box(shape=(2, 3), low=0, high=1)
     with self.assertRaises(AssertionError):
       serialization_utils.analyze_action_space(space)
-
-  def test_serializes_observations_and_actions(self):
-    reprs = serialization_utils.serialize_observations_and_actions(
-        observations=onp.array([[0, 1]]),
-        actions=onp.array([[0]]),
-        **self._serialization_utils_kwargs
-    )
-    self.assertEqual(reprs.shape, (1, self._repr_length))
-
-  def test_observation_and_action_masks_are_valid_and_complementary(self):
-    obs_mask = serialization_utils.observation_mask(
-        **self._serialization_utils_kwargs
-    )
-    self.assertEqual(obs_mask.shape, (self._repr_length,))
-    self.assertEqual(onp.min(obs_mask), 0)
-    self.assertEqual(onp.max(obs_mask), 1)
-
-    act_mask = serialization_utils.action_mask(
-        **self._serialization_utils_kwargs
-    )
-    self.assertEqual(act_mask.shape, (self._repr_length,))
-    self.assertEqual(onp.min(act_mask), 0)
-    self.assertEqual(onp.max(act_mask), 1)
-
-    onp.testing.assert_array_equal(
-        obs_mask + act_mask, onp.ones(self._repr_length)
-    )
-
-  def test_masks_observations(self):
-    reprs = serialization_utils.serialize_observations_and_actions(
-        # Observations are different, actions are the same.
-        observations=onp.array([[0, 1], [1, 1]]),
-        actions=onp.array([[0], [0]]),
-        **self._serialization_utils_kwargs
-    )
-    obs_mask = serialization_utils.observation_mask(
-        **self._serialization_utils_kwargs
-    )
-    act_mask = serialization_utils.action_mask(
-        **self._serialization_utils_kwargs
-    )
-
-    self.assertFalse(onp.array_equal(reprs[0] * obs_mask, reprs[1] * obs_mask))
-    onp.testing.assert_array_equal(reprs[0] * act_mask, reprs[1] * act_mask)
-
-  def test_masks_actions(self):
-    reprs = serialization_utils.serialize_observations_and_actions(
-        # Observations are the same, actions are different.
-        observations=onp.array([[0, 1], [0, 1]]),
-        actions=onp.array([[0], [1]]),
-        **self._serialization_utils_kwargs
-    )
-    obs_mask = serialization_utils.observation_mask(
-        **self._serialization_utils_kwargs
-    )
-    act_mask = serialization_utils.action_mask(
-        **self._serialization_utils_kwargs
-    )
-
-    onp.testing.assert_array_equal(reprs[0] * obs_mask, reprs[1] * obs_mask)
-    self.assertFalse(onp.array_equal(reprs[0] * act_mask, reprs[1] * act_mask))
-
-  def test_rewards_to_actions_map(self):
-    rewards = onp.array([1, 2, 3])
-    r2a_map = serialization_utils.rewards_to_actions_map(
-        observation_serializer=space_serializer.create(
-            gym.spaces.MultiDiscrete(nvec=[2, 2, 2]), vocab_size=2
-        ),
-        action_serializer=space_serializer.create(
-            gym.spaces.MultiDiscrete(nvec=[2, 2]), vocab_size=2
-        ),
-        n_timesteps=len(rewards),
-        representation_length=16,
-    )
-    broadcast_rewards = onp.dot(rewards, r2a_map)
-    onp.testing.assert_array_equal(
-        broadcast_rewards,
-        # obs1, act1, obs2, act2, obs3 cut after 1st symbol.
-        [0, 0, 0, 1, 1, 0, 0, 0, 2, 2, 0, 0, 0, 3, 3, 0],
-    )
 
 
 if __name__ == '__main__':

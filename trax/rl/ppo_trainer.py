@@ -162,9 +162,8 @@ class PPO(policy_based_trainer.PolicyBasedTrainer):
     logging.vlog(1, 'Padded Rewards\' shape [%s]', str(padded_rewards.shape))
 
     # Some assertions.
-    B, RT = padded_rewards.shape  # pylint: disable=invalid-name
-    B, AT = padded_actions.shape  # pylint: disable=invalid-name
-    assert (B, RT) == reward_mask.shape
+    (B, T) = reward_mask.shape  # pylint: disable=invalid-name
+    assert (B, T) == padded_rewards.shape
     assert B == padded_observations.shape[0]
 
     log_prob_recompute_start_time = time.time()
@@ -188,24 +187,26 @@ class PPO(policy_based_trainer.PolicyBasedTrainer):
 
     del padded_infos
 
-    # TODO(afrozm): log-probabs doesn't need to be (B, T+1, C, A) it can do with
-    # (B, T, C, A), so make that change throughout.
-
     # NOTE: We don't have the log-probabs and value-predictions for the last
     # observation, so we re-calculate for everything, but use the original ones
     # for all but the last time-step.
     key = self._get_rng()
 
+    # TODO(pkozakowski): Pass the actual actions here, to enable autoregressive
+    # action sampling.
+    dummy_actions = np.zeros_like(padded_actions)
     (log_probabs_traj, value_predictions_traj) = (
         self._policy_and_value_net_apply(
-            padded_observations,
+            (padded_observations, dummy_actions),
             weights=self._policy_and_value_net_weights,
             state=self._model_state,
             rng=key,
         ))
+    # Cut off the last extra action to obtain shape (B, T, C, A).
+    log_probabs_traj_cut = log_probabs_traj[:, :-1]
 
-    assert (B, AT) == log_probabs_traj.shape[:2]
-    assert (B, AT) == value_predictions_traj.shape
+    assert (B, T) == log_probabs_traj_cut.shape[:2]
+    assert (B, T + 1) == value_predictions_traj.shape
 
     # TODO(pkozakowski): Commented out for the same reason as before.
 
@@ -226,12 +227,11 @@ class PPO(policy_based_trainer.PolicyBasedTrainer):
     (cur_combined_loss, component_losses, summaries, self._model_state) = (
         ppo.combined_loss(
             self._policy_and_value_net_weights,
-            log_probabs_traj,
+            log_probabs_traj_cut,
             value_predictions_traj,
             self._policy_and_value_net_apply,
             padded_observations,
             padded_actions,
-            self._rewards_to_actions,
             padded_rewards,
             reward_mask,
             nontrainable_params=self._nontrainable_params,
@@ -272,11 +272,10 @@ class PPO(policy_based_trainer.PolicyBasedTrainer):
               self._policy_and_value_opt_update,
               self._policy_and_value_get_params,
               self._policy_and_value_net_apply,
-              log_probabs_traj[index_batch],
+              log_probabs_traj_cut[index_batch],
               value_predictions_traj[index_batch],
               padded_observations[index_batch],
               padded_actions[index_batch],
-              self._rewards_to_actions,
               padded_rewards[index_batch],
               reward_mask[index_batch],
               nontrainable_params=self._nontrainable_params,
@@ -287,17 +286,20 @@ class PPO(policy_based_trainer.PolicyBasedTrainer):
 
       # Compute the approx KL for early stopping. Use the whole dataset - as we
       # only do inference, it should fit in the memory.
+      # TODO(pkozakowski): Pass the actual actions here, to enable
+      # autoregressive action sampling.
+      dummy_actions = np.zeros_like(padded_actions)
       (log_probab_actions_new, _) = (
           self._policy_and_value_net_apply(
-              padded_observations,
+              (padded_observations, dummy_actions),
               weights=self._policy_and_value_net_weights,
               state=self._model_state,
               rng=k2))
+      # Cut off the last extra action to obtain shape (B, T, C, A).
+      log_probab_actions_new_cut = log_probab_actions_new[:, :-1]
 
-      action_mask = np.dot(
-          np.pad(reward_mask, ((0, 0), (0, 1))), self._rewards_to_actions)
-      approx_kl = ppo.approximate_kl(log_probab_actions_new, log_probabs_traj,
-                                     action_mask)
+      approx_kl = ppo.approximate_kl(log_probab_actions_new_cut,
+                                     log_probabs_traj_cut, reward_mask)
 
       early_stopping = approx_kl > 1.5 * self._target_kl
       if early_stopping:
@@ -314,12 +316,11 @@ class PPO(policy_based_trainer.PolicyBasedTrainer):
         (combined_loss, component_losses, _, self._model_state) = (
             ppo.combined_loss(
                 self._policy_and_value_net_weights,
-                log_probabs_traj,
+                log_probabs_traj_cut,
                 value_predictions_traj,
                 self._policy_and_value_net_apply,
                 padded_observations,
                 padded_actions,
-                self._rewards_to_actions,
                 padded_rewards,
                 reward_mask,
                 nontrainable_params=self._nontrainable_params,

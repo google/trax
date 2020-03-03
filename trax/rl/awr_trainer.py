@@ -233,12 +233,18 @@ class AwrTrainer(policy_based_trainer.PolicyBasedTrainer):
           f'Shapes mismatch, batch {batch}, t_final {t_final}'
           f'padded_rewards.shape {padded_rewards.shape}')
 
+    # TODO(pkozakowski): Pass the actual actions here, to enable autoregressive
+    # action sampling.
+    dummy_actions = np.zeros(
+        (batch, t_final + 1) + self._action_shape,
+        self._action_dtype,
+    )
     # Shapes:
     # log_probabs_traj       = (B, T + 1, #actions)
     # value_predictions_traj = (B, T + 1)
     (log_probabs_traj, value_predictions_traj) = (
         self._policy_and_value_net_apply(
-            padded_observations,
+            (padded_observations, dummy_actions),
             weights=self._policy_and_value_net_weights,
             state=self._model_state,
             rng=self._get_rng(),
@@ -486,9 +492,16 @@ def combined_loss(new_weights,
   # demanded by `policy_and_value_net_apply`
   observations = np.expand_dims(observations, axis=1)
 
+  # TODO(pkozakowski): Pass the actual actions here, to enable autoregressive
+  # action sampling.
+  dummy_actions = np.zeros_like(actions)
   (log_probab_actions_new, value_predictions_new) = (
       policy_and_value_net_apply(
-          observations, weights=new_weights, state=state, rng=rng))
+          (observations, dummy_actions),
+          weights=new_weights,
+          state=state,
+          rng=rng,
+      ))
 
   critic_loss_val, intermediate_state = critic_loss(
       observations,

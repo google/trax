@@ -34,7 +34,6 @@ from tensor2tensor.envs import trajectory
 from trax import jaxboard
 from trax.rl import base_trainer
 from trax.rl import ppo
-from trax.rl import serialization_utils
 from trax.shapes import ShapeDtype
 from trax.supervised import trainer_lib
 
@@ -161,37 +160,23 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
 
     # Policy and Value model arguments.
     self._policy_and_value_vocab_size = policy_and_value_vocab_size
-    self._serialization_kwargs = {}
-    if self._policy_and_value_vocab_size is not None:
-      self._serialization_kwargs = ppo.init_serialization(
-          vocab_size=self._policy_and_value_vocab_size,
-          observation_space=train_env.observation_space,
-          action_space=train_env.action_space,
-          n_timesteps=(self._max_timestep + 1),
-      )
-    self._init_policy_from_world_model_output_dir = (
+
+    self.init_policy_from_world_model_output_dir = (
         init_policy_from_world_model_output_dir
     )
 
-    self._rewards_to_actions = ppo.init_rewards_to_actions(
-        self._policy_and_value_vocab_size,
-        train_env.observation_space,
-        train_env.action_space,
-        n_timesteps=(self._max_timestep + 1),
-    )
-
-    (n_controls, n_actions) = serialization_utils.analyze_action_space(
-        train_env.action_space
-    )
     self._policy_and_value_net_fn = functools.partial(
         ppo.policy_and_value_net,
-        n_actions=n_actions,
-        n_controls=n_controls,
-        vocab_size=self._policy_and_value_vocab_size,
         bottom_layers_fn=policy_and_value_model,
+        observation_space=train_env.observation_space,
+        action_space=train_env.action_space,
+        vocab_size=self._policy_and_value_vocab_size,
         two_towers=policy_and_value_two_towers,
     )
-    self._policy_and_value_net_apply = jit(self._policy_and_value_net_fn())
+    (policy_and_value_net, self._substitute_fn) = (
+        self._policy_and_value_net_fn()
+    )
+    self._policy_and_value_net_apply = jit(policy_and_value_net)
     self._policy_and_value_optimizer = policy_and_value_optimizer()
     self._model_state = None
     self._policy_and_value_opt_state = None
@@ -219,22 +204,30 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
     # If uninitialized, i.e. _policy_and_value_opt_state is None, then
     # initialize.
     if self._policy_and_value_opt_state is None:
-      # Initialize the policy and value network.
-      # Create the network again to avoid caching of parameters.
-      policy_and_value_net = self._policy_and_value_net_fn()
-      (batch_obs_shape, obs_dtype) = self._batch_obs_shape_and_dtype(
-          self.train_env.observation_space)
-      input_signature = ShapeDtype(batch_obs_shape, obs_dtype)
+      (policy_and_value_net, _) = self._policy_and_value_net_fn()
+      obs_space = self.train_env.observation_space
+      act_space = self.train_env.action_space
+      input_signature = (
+          ShapeDtype(
+              (1, self._max_timestep + 1) + obs_space.shape, obs_space.dtype
+          ),
+          ShapeDtype(
+              (1, self._max_timestep) + act_space.shape, act_space.dtype
+          ),
+      )
       weights, self._model_state = policy_and_value_net.init(
-          input_signature, rng=self._get_rng())
+          input_signature, rng=self._get_rng()
+      )
+
       # Initialize the optimizer.
       self._init_state_from_weights(weights)
 
     # If we need to initialize from the world model, do that here.
-    if self._init_policy_from_world_model_output_dir is not None:
+    if self.init_policy_from_world_model_output_dir is not None:
       weights = ppo.init_policy_from_world_model_checkpoint(
           self._policy_and_value_net_weights,
-          self._init_policy_from_world_model_output_dir,
+          self.init_policy_from_world_model_output_dir,
+          self._substitute_fn,
       )
       # Initialize the optimizer.
       self._init_state_from_weights(weights)
@@ -252,17 +245,6 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
         self._policy_and_value_optimizer.tree_init(weights)
     )
     self._policy_and_value_opt_state = (weights, init_slots, init_opt_params)
-
-  def _batch_obs_shape_and_dtype(self, obs_space):
-    if self._policy_and_value_vocab_size is None:
-      # Batch Observations Shape = [1, 1] + OBS, because we will eventually call
-      # policy and value networks on shape [B, T] +_OBS
-      shape = (1, 1) + obs_space.shape
-      dtype = obs_space.dtype
-    else:
-      shape = (1, 1)
-      dtype = np.int32
-    return (shape, dtype)
 
   def _policy_and_value_opt_update(self, step, grads, opt_state):
     (params, slots, opt_params) = opt_state
@@ -470,35 +452,16 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
   # Prepares the trajectories for policy training.
   def _preprocess_trajectories(self, trajectories):
     (_, reward_mask, observations, actions, rewards, infos) = (
-        ppo.pad_trajectories(trajectories, boundary=self._max_timestep))
+        ppo.pad_trajectories(trajectories, boundary=self._max_timestep)
+    )
+    if actions.ndim == 2:
+      # Add the control dimension.
+      actions = actions[:, :, None]
     (low, high) = self.train_env.reward_range
     outside = np.logical_or(rewards < low, rewards > high)
     rewards = jax.ops.index_update(rewards, jax.ops.index[outside], 0)
     assert self.train_env.observation_space.shape == observations.shape[2:]
-    if self._policy_and_value_vocab_size is None:
-      # Add one timestep at the end, so it's compatible with
-      # self._rewards_to_actions.
-      pad_width = ((0, 0), (0, 1)) + ((0, 0),) * (actions.ndim - 2)
-      actions = np.pad(actions, pad_width)
-      actions = np.reshape(actions, (actions.shape[0], -1))
-    else:
-      (observations,
-       actions) = self._serialize_trajectories(observations, actions,
-                                               reward_mask)
     return (observations, actions, rewards, reward_mask, infos)
-
-  def _serialize_trajectories(self, observations, actions, reward_mask):
-    reprs = serialization_utils.serialize_observations_and_actions(
-        observations=observations,
-        actions=actions,
-        **self._serialization_kwargs
-    )
-    # Mask out actions in the representation - otherwise we sample an action
-    # based on itself.
-    observations = reprs * serialization_utils.observation_mask(
-        **self._serialization_kwargs)
-    actions = reprs
-    return (observations, actions)
 
   def _policy_fun(self, observations, lengths, state, rng):
     return ppo.run_policy(
@@ -508,8 +471,5 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
         self._policy_and_value_net_weights,
         state,
         rng,
-        self._policy_and_value_vocab_size,
-        self.train_env.observation_space,
         self.train_env.action_space,
-        self._rewards_to_actions,
     )

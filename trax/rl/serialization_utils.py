@@ -25,14 +25,11 @@ import gym
 import numpy as onp
 
 from trax import layers as tl
-from trax import shapes
 from trax.math import numpy as np
 from trax.rl import space_serializer
 
 
-# TODO(pkozakowski): Start using those layers directly instead of through
-# serialize_observations_and_actions, then move them to trax.layers and remove
-# this module.
+# TODO(pkozakowski): Move the layers to trax.layers and remove this module.
 @tl.layer()
 def Serialize(x, serializer, **unused_kwargs):
   """Serializes a given array."""
@@ -178,12 +175,6 @@ def extract_inner_model(serialized_model):  # pylint: disable=invalid-name
   return serialized_model[2]
 
 
-@tl.layer()
-def DropLastTimestep(x, **unused_kwargs):
-  """Drops the last timestep in a sequence."""
-  return x[:, :-1]
-
-
 def RawPolicy(seq_model, n_controls, n_actions):
   """Wraps a sequence model in a policy interface.
 
@@ -214,8 +205,6 @@ def RawPolicy(seq_model, n_controls, n_actions):
       tl.Dense(n_controls * n_actions),
       # Then group them into separate controls, adding a new dimension.
       SplitControls(),  # pylint: disable=no-value-for-parameter
-      # Needed because there is 1 less actions than observations.
-      DropLastTimestep(),  # pylint: disable=no-value-for-parameter
       tl.LogSoftmax(),
   ]
   return tl.Serial([            # (obs, act)
@@ -227,6 +216,11 @@ def RawPolicy(seq_model, n_controls, n_actions):
           [tl.Dense(1), tl.Flatten()],
       )                         # (act_logits, values)
   ])
+
+
+def substitute_inner_policy_raw(raw_policy, inner_policy):  # pylint: disable=invalid-name
+  """Substitutes the weights/state of the inner model in a RawPolicy."""
+  return raw_policy[:1] + [inner_policy] + raw_policy[2:]
 
 
 def SerializedPolicy(
@@ -271,8 +265,6 @@ def SerializedPolicy(
     )
 
   action_head = [
-      # Drop the dummy action introduced before.
-      DropLastTimestep(),  # pylint: disable=no-value-for-parameter
       tl.Dense(n_actions),
       tl.LogSoftmax(),
   ]
@@ -308,6 +300,11 @@ def SerializedPolicy(
           action_head, value_head
       )                         # (act_logits, values)
   ])
+
+
+def substitute_inner_policy_serialized(serialized_policy, inner_policy):  # pylint: disable=invalid-name
+  """Substitutes the weights/state of the inner model in a SerializedPolicy."""
+  return serialized_policy[:4] + [inner_policy] + serialized_policy[5:]
 
 
 def analyze_action_space(action_space):  # pylint: disable=invalid-name
@@ -356,116 +353,21 @@ def wrap_policy(seq_model, observation_space, action_space, vocab_size):  # pyli
   return policy_wrapper(seq_model, n_controls, n_actions)
 
 
-def serialize_observations_and_actions(  # pylint: disable=invalid-name
-    observations,
-    actions,
-    observation_serializer,
-    action_serializer,
-    representation_length,
-):
-  """Serializes observations and actions into a discrete sequence.
+def substitute_inner_policy(wrapped_policy, inner_policy, vocab_size):  # pylint: disable=invalid-name
+  """Substitutes the inner weights/state in a {Raw,Serialized}Policy.
 
   Args:
-    observations: Array (B, T + 1, ...), of observations, where B is the batch
-      size and T is the number of timesteps excluding the last observation.
-    actions: Array (B, T, ...) of actions.
-    observation_serializer: SpaceSerializer for observations.
-    action_serializer: SpaceSerializer for actions.
-    representation_length: Number of symbols in the serialized sequence. The
-      sequence is padded up to this number.
-  Returns:
-    Serialized sequence of shape (B, R) where R = representation_length.
-  """
-  (batch_size, n_timesteps) = actions.shape[:2]
-  assert observations.shape[:2] == (batch_size, n_timesteps + 1)
-
-  serialization = tl.Serial([
-      tl.Parallel(
-          Serialize(serializer=observation_serializer),  # pylint: disable=no-value-for-parameter
-          Serialize(serializer=action_serializer),  # pylint: disable=no-value-for-parameter
-      ),
-      Interleave(),  # pylint: disable=no-value-for-parameter
-  ])
-  serialization.init(shapes.signature((observations, actions)))
-  reprs = serialization((observations, actions))
-
-  assert reprs.shape[1] <= representation_length
-  return np.pad(
-      reprs,
-      pad_width=((0, 0), (0, representation_length - reprs.shape[1])),
-      mode='constant',
-  )
-
-
-def observation_mask(  # pylint: disable=invalid-name
-    observation_serializer, action_serializer, representation_length
-):
-  """Calculates an observation mask for a serialized sequence.
-
-  Args:
-    observation_serializer: SpaceSerializer for observations.
-    action_serializer: SpaceSerializer for actions.
-    representation_length: Number of symbols in the serialized sequence. The
-      mask is padded up to this number.
+    wrapped_policy (pytree): Weights or state of a wrapped policy.
+    inner_policy (pytree): Weights or state of an inner policy.
+    vocab_size (int or None): Vocabulary size of a serialized policy, or None
+      in case of a raw policy.
 
   Returns:
-    Binary mask indicating which symbols in the representation correspond to
-    observations.
+    New weights or state of wrapped_policy, with the inner weights/state
+      copied from inner_policy.
   """
-  mask = onp.zeros(representation_length, dtype=np.int32)
-  obs_repr_length = observation_serializer.representation_length
-  step_repr_length = obs_repr_length + action_serializer.representation_length
-  for step_start_index in range(0, representation_length, step_repr_length):
-    mask[step_start_index:(step_start_index + obs_repr_length)] = 1
-  return mask
-
-
-def action_mask(  # pylint: disable=invalid-name
-    observation_serializer, action_serializer, representation_length
-):
-  """Calculates an action mask for a serialized sequence.
-
-  Args:
-    observation_serializer: SpaceSerializer for observations.
-    action_serializer: SpaceSerializer for actions.
-    representation_length: Number of symbols in the serialized sequence. The
-      mask is padded up to this number.
-
-  Returns:
-    Binary mask indicating which symbols in the representation correspond to
-    actions.
-  """
-  return 1 - observation_mask(
-      observation_serializer, action_serializer, representation_length
-  )
-
-
-def rewards_to_actions_map(  # pylint: disable=invalid-name
-    observation_serializer,
-    action_serializer,
-    n_timesteps,
-    representation_length,
-):
-  """Calculates a mapping between the rewards and the serialized sequence.
-
-  Used to broadcast advantages over the log-probabilities of corresponding
-  actions.
-
-  Args:
-    observation_serializer: SpaceSerializer for observations.
-    action_serializer: SpaceSerializer for actions.
-    n_timesteps: Number of timesteps (length of the reward sequence).
-    representation_length: Number of symbols in the serialized sequence.
-
-  Returns:
-    Array (T, R) translating from the reward sequence to actions in the
-    representation.
-  """
-  r2a_map = onp.zeros((n_timesteps, representation_length))
-  obs_repr_length = observation_serializer.representation_length
-  act_repr_length = action_serializer.representation_length
-  step_repr_length = obs_repr_length + act_repr_length
-  for t in range(n_timesteps):
-    act_start_index = t * step_repr_length + obs_repr_length
-    r2a_map[t, act_start_index:(act_start_index + act_repr_length)] = 1
-  return r2a_map
+  if vocab_size is None:
+    substitute_fn = substitute_inner_policy_raw
+  else:
+    substitute_fn = substitute_inner_policy_serialized
+  return substitute_fn(wrapped_policy, inner_policy)

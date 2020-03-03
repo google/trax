@@ -18,15 +18,15 @@
 
 import functools
 
+import gym
 import numpy as onp
 from tensorflow import test
 from trax import history as trax_history
 from trax import lr_schedules
-from trax.math import numpy as np
+from trax import shapes
 from trax.models import transformer
 from trax.rl import online_tune
 from trax.rl import ppo
-from trax.shapes import ShapeDtype
 
 
 class PolicyScheduleTest(test.TestCase):
@@ -46,21 +46,27 @@ class PolicyScheduleTest(test.TestCase):
         n_layers=0,
         vocab_size=vocab_size,
     )
-    net = ppo.policy_and_value_net(
-        n_actions=len(action_multipliers),
-        n_controls=len(control_configs),
-        vocab_size=None,
+    observation_space = gym.spaces.Box(
+        shape=(len(observation_metrics),),
+        low=0.0,
+        high=1.0,
+    )
+    action_space = gym.spaces.MultiDiscrete(
+        nvec=(len(action_multipliers),) * len(control_configs)
+    )
+    (net, _) = ppo.policy_and_value_net(
         bottom_layers_fn=policy_and_value_model,
+        observation_space=observation_space,
+        action_space=action_space,
+        vocab_size=vocab_size,
         two_towers=False,
     )
-    obs_dim = len(observation_metrics)
-    if vocab_size is None:
-      shape = (1, 1, obs_dim)
-      dtype = np.float32
-    else:
-      shape = (1, 1)
-      dtype = np.int32
-    input_signature = ShapeDtype(shape, dtype)
+    input_signature = (
+        shapes.ShapeDtype(
+            (1, 2) + observation_space.shape, observation_space.dtype
+        ),
+        shapes.ShapeDtype((1, 1) + action_space.shape, action_space.dtype),
+    )
     (params, state) = net.init(input_signature)
     policy_dir = self.get_temp_dir()
     # Optimizer slots and parameters should not be used for anything.
