@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -74,7 +74,7 @@ class SkippingSerial(tl.Serial):
     for layer, p, s, rng in zip(self.sublayers, weights, state, rngs):
       inputs = _inputs_from_stack(layer, stack)
       # TODO(chowdhery): port to jax.lax.cond once it has a JVP rule.
-      outputs, s = layer._forward_internal(inputs, p, s, rng)  # pylint: disable=protected-access
+      outputs, s = layer.pure_fn(inputs, p, s, rng)
       condition = math.lt(cur_layer_idx, n_forward_layers).astype(np.float32)
       outputs = condition * outputs + (1 - condition) * inputs
       stack = _outputs_onto_stack(layer, outputs, stack)

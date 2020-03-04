@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -77,8 +77,38 @@ def signature(obj):
   Args:
     obj: An object that has `shape` and `dtype` attributes, or a list/tuple
         of such objects.
+
+  Returns:
+    A single `ShapeDtype` instance if the signature has one element, else a
+    tuple of `ShapeDtype` instances.
   """
   if isinstance(obj, (list, tuple)):
-    return tuple(signature(x) for x in obj)
+    output = tuple(signature(x) for x in obj)
+    return output[0] if len(output) == 1 else output
   else:
     return ShapeDtype(obj.shape, obj.dtype)
+
+
+def splice_signatures(*sigs):
+  """Creates a new signature by splicing together any number of signatures.
+
+  The splicing effectively flattens the top level input signatures. For
+  instance, it would perform the following mapping:
+    - *sigs: sd1, (sd2, sd3, sd4), (), sd5
+    - return: (sd1, sd2, sd3, sd4, sd5)
+
+  Args:
+    *sigs: Any number of signatures. A signature is either a `ShapeDtype`
+        instance or a tuple of `ShapeDtype` instances.
+
+  Returns:
+    A single `ShapeDtype` instance if the spliced signature has one element,
+    else a tuple of `ShapeDtype` instances.
+  """
+  result_sigs = []
+  for sig in sigs:
+    if isinstance(sig, (list, tuple)):
+      result_sigs.extend(sig)
+    else:
+      result_sigs.append(sig)
+  return result_sigs[0] if len(result_sigs) == 1 else tuple(result_sigs)

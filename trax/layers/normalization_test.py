@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,21 +13,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Tests for normalization layers."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from absl.testing import absltest
+from absl.testing import parameterized
 import numpy as onp
 
 from trax.layers import base
 from trax.layers import normalization
 from trax.math import numpy as np
+from trax.math import use_backend
 from trax.shapes import ShapeDtype
 
 
-class NormalizationLayerTest(absltest.TestCase):
+class NormalizationLayerTest(parameterized.TestCase):
 
   def test_batch_norm_shape(self):
     input_signature = ShapeDtype((29, 5, 7, 20))
@@ -63,6 +63,22 @@ class NormalizationLayerTest(absltest.TestCase):
     result_shape = base.check_shape_agreement(
         normalization.LayerNorm(), input_signature)
     self.assertEqual(result_shape, input_signature.shape)
+
+  @parameterized.named_parameters(
+      ('jax32', 'jax', np.float32),
+      ('tf32', 'tf', np.float32),
+      ('tf64', 'tf', np.float64),
+      # NOTE: float64 requires more fix in jax
+      # ('jax64', 'jax', np.float64),
+  )
+  def test_layer_norm_dtype(self, backend, dtype):
+    with use_backend(backend):
+      input_shape = (2, 3, 4)
+      input_signature = ShapeDtype(input_shape, dtype)
+      layer = normalization.LayerNorm()
+      layer.init(input_signature)
+      out = layer(onp.empty(input_shape, dtype=dtype))
+      self.assertEqual(out.dtype, dtype)
 
   def test_frn_shape(self):
     B, H, W, C = 64, 5, 7, 3  # pylint: disable=invalid-name

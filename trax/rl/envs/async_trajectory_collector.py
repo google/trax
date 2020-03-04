@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,7 +27,6 @@ import gin
 import jax
 from jax.config import config
 from tensor2tensor.envs import env_problem_utils
-from tensor2tensor.rl.google import atari_utils  # GOOGLE-INTERNAL:
 import tensorflow as tf
 from trax import rl  # pylint: disable=unused-import
 from trax.rl import envs as rl_envs  # pylint: disable=unused-import

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,10 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Tests for dataflow tracer."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import copy
 import itertools
@@ -38,14 +36,13 @@ def shuffled(x):
   return y
 
 
-# TODO(levskaya): switch '<<' to '@' once py2 is EOL and we don't run py2 tests.
 class TracerTest(absltest.TestCase):
 
   def test_tracer_apply(self):
     lyr = cb.Add()
     a = tracer.Tracer('a')
     b = tracer.Tracer('b')
-    c = lyr << (a, b)
+    c = lyr @ (a, b)
     result = tracer.ApplyExpr(lyr, ('a', 'b'))
     self.assertEqual(c.expr, result)
 
@@ -53,7 +50,7 @@ class TracerTest(absltest.TestCase):
     lyr = cb.Parallel(core.Tanh(), core.Tanh())
     a = tracer.Tracer('a')
     b = tracer.Tracer('b')
-    d, e = lyr << (a, b)
+    d, e = lyr @ (a, b)
     result0 = tracer.IndexExpr(0, tracer.ApplyExpr(lyr, ('a', 'b')))
     result1 = tracer.IndexExpr(1, tracer.ApplyExpr(lyr, ('a', 'b')))
     self.assertEqual(d.expr, result0)
@@ -63,7 +60,7 @@ class TracerTest(absltest.TestCase):
     lyr = cb.Add()
     a = tracer.Tracer('a')
     b = tracer.Tracer('b')
-    c = lyr << (a, b)
+    c = lyr @ (a, b)
     eqns, outputs = tracer.traces_to_eqns(c)
     result0 = [tracer.ApplyEqn(lyr, ('a', 'b'), ('var0',))]
     result1 = ('var0',)
@@ -83,7 +80,7 @@ class TracerTest(absltest.TestCase):
     lyr = cb.Parallel(core.Tanh(), core.Tanh())
     a = tracer.Tracer('a')
     b = tracer.Tracer('b')
-    c, d = lyr << (a, b)
+    c, d = lyr @ (a, b)
     eqns, outputs = tracer.traces_to_eqns((c, d))
     result0 = [tracer.ApplyEqn(lyr, ('a', 'b'), ('var2',)),
                tracer.IndexEqn(0, 'var2', 'var0'),
@@ -170,8 +167,8 @@ class TracerTest(absltest.TestCase):
     add_lyr = cb.Add()
     @tracer.symbolic
     def make_layer(a, b, c):
-      d = add_lyr << (a, b)
-      e = add_lyr << (d, c)
+      d = add_lyr @ (a, b)
+      e = add_lyr @ (d, c)
       return e
     layer = make_layer()  # pylint: disable=no-value-for-parameter
     a = onp.random.randint(0, 10, size=(2, 10))
@@ -190,9 +187,9 @@ class TracerTest(absltest.TestCase):
     tanh_lyr = core.Tanh()
     @tracer.symbolic
     def make_layer(a, b, c):
-      a = tanh_lyr << a
-      d = add_lyr << (a, b)
-      e = add_lyr << (d, c)
+      a = tanh_lyr @ a
+      d = add_lyr @ (a, b)
+      e = add_lyr @ (d, c)
       return e
     layer = make_layer()  # pylint: disable=no-value-for-parameter
     a = onp.random.randint(0, 10, size=(2, 10))
@@ -211,9 +208,9 @@ class TracerTest(absltest.TestCase):
     tanh_lyr = cb.Parallel(core.Relu(), core.Tanh())
     @tracer.symbolic
     def make_layer(a, b, c):
-      d = add_lyr << (a, b)
-      e = add_lyr << (d, c)
-      f, g = tanh_lyr << (d, e)
+      d = add_lyr @ (a, b)
+      e = add_lyr @ (d, c)
+      f, g = tanh_lyr @ (d, e)
       return f, g
     layer = make_layer()  # pylint: disable=no-value-for-parameter
     a = onp.random.uniform(-10, 10, size=(2, 10))
@@ -235,7 +232,7 @@ class TracerTest(absltest.TestCase):
     @tracer.symbolic
     def make_layer(a, b, n=1):
       for _ in range(n):
-        a = add_lyr << (a, b)
+        a = add_lyr @ (a, b)
       return a
     layer = make_layer(n=3)  # pylint: disable=no-value-for-parameter
     a = onp.random.randint(0, 10, size=(2, 10))

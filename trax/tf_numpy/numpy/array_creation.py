@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,8 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from numpy import nan as np_nan
-from numpy import sign as np_sign
+import numpy as np
 
 import tensorflow.compat.v2 as tf
 
@@ -73,10 +72,10 @@ def zeros(shape, dtype=float):
     An ndarray.
   """
   if dtype:
-    dtype = utils.to_tf_type(dtype)
+    dtype = utils.result_type(dtype)
   if isinstance(shape, arrays.ndarray):
-    shape = utils.get_shape_from_ndarray(shape)
-  return utils.tensor_to_ndarray(tf.zeros(shape, dtype=dtype))
+    shape = shape.data
+  return arrays.tensor_to_ndarray(tf.zeros(shape, dtype=dtype))
 
 
 def zeros_like(a, dtype=None):
@@ -95,10 +94,14 @@ def zeros_like(a, dtype=None):
   if isinstance(a, arrays.ndarray):
     a = a.data
   if dtype is None:
-    dtype = utils.array_dtype(a)
+    # We need to let utils.result_type decide the dtype, not tf.zeros_like
+    dtype = utils.result_type(a)
   else:
-    dtype = utils.to_tf_type(dtype)
-  return utils.tensor_to_ndarray(tf.zeros_like(a, dtype))
+    # TF and numpy has different interpretations of Python types such as
+    # `float`, so we let `utils.result_type` decide.
+    dtype = utils.result_type(dtype)
+  dtype = tf.as_dtype(dtype)  # Work around b/149877262
+  return arrays.tensor_to_ndarray(tf.zeros_like(a, dtype))
 
 
 def ones(shape, dtype=float):
@@ -115,10 +118,10 @@ def ones(shape, dtype=float):
     An ndarray.
   """
   if dtype:
-    dtype = utils.to_tf_type(dtype)
+    dtype = utils.result_type(dtype)
   if isinstance(shape, arrays.ndarray):
-    shape = utils.get_shape_from_ndarray(shape)
-  return utils.tensor_to_ndarray(tf.ones(shape, dtype=dtype))
+    shape = shape.data
+  return arrays.tensor_to_ndarray(tf.ones(shape, dtype=dtype))
 
 
 def ones_like(a, dtype=None):
@@ -137,63 +140,42 @@ def ones_like(a, dtype=None):
   if isinstance(a, arrays.ndarray):
     a = a.data
   if dtype is None:
-    dtype = utils.array_dtype(a)
+    dtype = utils.result_type(a)
   else:
-    dtype = utils.to_tf_type(dtype)
-  return utils.tensor_to_ndarray(tf.ones_like(a, dtype))
+    dtype = utils.result_type(dtype)
+  return arrays.tensor_to_ndarray(tf.ones_like(a, dtype))
 
 
+@utils.np_doc(np.eye)
 def eye(N, M=None, k=0, dtype=float):  # pylint: disable=invalid-name
-  """Returns a 2-D array with ones on the diagonal and zeros elsewhere.
-
-  Examples:
-
-  ```python
-  eye(2, dtype=int)
-  -> [[1, 0],
-      [0, 1]]
-  eye(2, M=3, dtype=int)
-  -> [[1, 0, 0],
-      [0, 1, 0]]
-  eye(2, M=3, k=1, dtype=int)
-  -> [[0, 1, 0],
-      [0, 0, 1]]
-  eye(3, M=2, k=-1, dtype=int)
-  -> [[0, 0],
-      [1, 0],
-      [0, 1]]
-  ```
-
-  Args:
-    N: integer. Number of rows in output array.
-    M: Optional integer. Number of cols in output array, defaults to N.
-    k: Optional integer. Position of the diagonal. The default 0 refers to the
-      main diagonal. A positive/negative value shifts the diagonal by the
-      corresponding positions to the right/left.
-    dtype: Optional, defaults to float. The type of the resulting ndarray.
-      Could be a python type, a NumPy type or a TensorFlow `DType`.
-
-  Returns:
-    An ndarray with shape (N, M) and requested type.
-  """
   if dtype:
-    dtype = utils.to_tf_type(dtype)
+    dtype = utils.result_type(dtype)
   if not M:
     M = N
+  # Making sure N, M and k are `int`
+  N = int(N)
+  M = int(M)
+  k = int(k)
   if k >= M or -k >= N:
+    # tf.linalg.diag will raise an error in this case
     return zeros([N, M], dtype=dtype)
-  if k:
-    if k > 0:
-      result = tf.eye(N, M, dtype=dtype)
-      zero_cols = tf.zeros([N, abs(k)], dtype=dtype)
-      result = tf.concat([zero_cols, result], axis=1)
-      result = tf.slice(result, [0, 0], [N, M])
-    else:
-      result = tf.eye(N, M - k, dtype=dtype)
-      result = tf.slice(result, [0, -k], [N, M])
-  else:
-    result = tf.eye(N, M, dtype=dtype)
-  return utils.tensor_to_ndarray(result)
+  if k == 0:
+    return arrays.tensor_to_ndarray(tf.eye(N, M, dtype=dtype))
+  # We need the precise length, otherwise tf.linalg.diag will raise an error
+  diag_len = min(N, M)
+  if k > 0:
+    if N >= M:
+      diag_len -= k
+    elif N + k > M:
+      diag_len = M - k
+  elif k <= 0:
+    if M >= N:
+      diag_len += k
+    elif M - k > N:
+      diag_len = N + k
+  diagonal = tf.ones([diag_len], dtype=dtype)
+  return arrays.tensor_to_ndarray(
+      tf.linalg.diag(diagonal=diagonal, num_rows=N, num_cols=M, k=k))
 
 
 def identity(n, dtype=float):
@@ -229,11 +211,9 @@ def full(shape, fill_value, dtype=None):
     ValueError: if `fill_value` can not be broadcast to shape `shape`.
   """
   fill_value = asarray(fill_value, dtype=dtype)
-
   if utils.isscalar(shape):
-    shape = utils.scalar_to_vector(shape)
-
-  return utils.tensor_to_ndarray(tf.broadcast_to(fill_value.data, shape))
+    shape = tf.reshape(shape, [1])
+  return arrays.tensor_to_ndarray(tf.broadcast_to(fill_value.data, shape))
 
 
 def full_like(a, fill_value, dtype=None):
@@ -254,13 +234,14 @@ def full_like(a, fill_value, dtype=None):
   Raises:
     ValueError: if `fill_value` can not be broadcast to shape `shape`.
   """
-  if not isinstance(a, arrays.ndarray):
-    a = array(a, copy=False)
-  dtype = dtype or utils.array_dtype(a)
+  a = asarray(a)
+  dtype = dtype or utils.result_type(a)
   return full(a.shape, fill_value, dtype)
 
 
-# TODO(wangpeng): investigate whether we can make `copy` default to False
+# TODO(wangpeng): investigate whether we can make `copy` default to False.
+# TODO(wangpeng): utils.np_doc can't handle np.array because np.array is a
+#   builtin function. Make utils.np_doc support builtin functions.
 def array(val, dtype=None, copy=True, ndmin=0):
   """Creates an ndarray with the contents of val.
 
@@ -281,69 +262,53 @@ def array(val, dtype=None, copy=True, ndmin=0):
     An ndarray.
   """
   if dtype:
-    dtype = utils.to_tf_type(dtype)
+    dtype = utils.result_type(dtype)
   if isinstance(val, arrays.ndarray):
     result_t = val.data
   else:
     result_t = val
 
-  if isinstance(result_t, tf.Tensor):
-    # Copy only if copy=True and a copy would not otherwise be made to satisfy
-    # dtype or ndmin.
-    if (copy and (dtype is None or dtype == utils.array_dtype(val)) and
-        val.ndim >= ndmin):
-      # Note: In eager mode, a copy of `result_t` is made only if it is not on
-      # the context device.
-      result_t = tf.identity(result_t)
+  if copy and isinstance(result_t, tf.Tensor):
+    # Note: In eager mode, a copy of `result_t` is made only if it is not on
+    # the context device.
+    result_t = tf.identity(result_t)
 
   if not isinstance(result_t, tf.Tensor):
-    # Note: We don't just call tf.convert_to_tensor because, unlike NumPy,
-    # TensorFlow prefers int32 and float32 over int64 and float64. So we compute
-    # the NumPy type of `result_t` and create a tensor of that type instead.
     if not dtype:
-      dtype = utils.array_dtype(result_t)
-    result_t = tf.convert_to_tensor(value=result_t)
+      dtype = utils.result_type(result_t)
+    # We can't call `convert_to_tensor(result_t, dtype=dtype)` here because
+    # convert_to_tensor doesn't allow incompatible arguments such as (5.5, int)
+    # while np.array allows them. We need to convert-then-cast.
+    result_t = arrays.convert_to_tensor(result_t)
     result_t = tf.cast(result_t, dtype=dtype)
   elif dtype:
-    result_t = utils.maybe_cast(result_t, dtype)
+    result_t = tf.cast(result_t, dtype)
   ndims = len(result_t.shape)
   if ndmin > ndims:
     old_shape = list(result_t.shape)
     new_shape = [1 for _ in range(ndmin - ndims)] + old_shape
     result_t = tf.reshape(result_t, new_shape)
-  return utils.tensor_to_ndarray(result_t)
+  return arrays.tensor_to_ndarray(result_t)
 
 
-def asarray(val, dtype=None):
-  """Return ndarray with contents of `val`.
-
-  Args:
-    val: array_like. Could be an ndarray, a Tensor or any object that can
-      be converted to a Tensor using `tf.convert_to_tensor`.
-    dtype: Optional, defaults to dtype of the `val`. The type of the
-      resulting ndarray. Could be a python type, a NumPy type or a TensorFlow
-      `DType`.
-
-  Returns:
-    An ndarray. If `val` is already an ndarray with type matching `dtype` it is
-    returned as is.
-  """
+@utils.np_doc(np.asarray)
+def asarray(a, dtype=None):
   if dtype:
-    dtype = utils.to_tf_type(dtype)
-  if isinstance(val, arrays.ndarray) and (
-      not dtype or utils.to_numpy_type(dtype) == val.dtype):
-    return val
-  return array(val, dtype, copy=False)
+    dtype = utils.result_type(dtype)
+  if isinstance(a, arrays.ndarray) and (
+      not dtype or dtype == a.dtype):
+    return a
+  return array(a, dtype, copy=False)
 
 
-def asanyarray(val, dtype=None):
-  """Same as asarray(val, dtype)."""
-  return asarray(val, dtype)
+@utils.np_doc(np.asanyarray)
+def asanyarray(a, dtype=None):
+  return asarray(a, dtype)
 
 
-def ascontiguousarray(val, dtype=None):
-  """Same as asarray(val, dtype)."""
-  return array(val, dtype, ndmin=1)
+@utils.np_doc(np.ascontiguousarray)
+def ascontiguousarray(a, dtype=None):
+  return array(a, dtype, ndmin=1)
 
 
 # Numerical ranges.
@@ -369,14 +334,12 @@ def arange(start, stop=None, step=1, dtype=None):
   if not step:
     raise ValueError('step must be non-zero.')
   if dtype:
-    dtype = utils.to_tf_type(dtype)
+    dtype = utils.result_type(dtype)
   else:
-    dtype = utils.result_type(
-        utils.array_dtype(start).as_numpy_dtype,
-        utils.array_dtype(step).as_numpy_dtype)
-    if stop is not None:
-      dtype = utils.result_type(dtype, utils.array_dtype(stop).as_numpy_dtype)
-    dtype = utils.to_tf_type(dtype)
+    if stop is None:
+      dtype = utils.result_type(start, step)
+    else:
+      dtype = utils.result_type(start, step, stop)
   if step > 0 and ((stop is not None and start > stop) or
                    (stop is None and start < 0)):
     return array([], dtype=dtype)
@@ -385,128 +348,18 @@ def arange(start, stop=None, step=1, dtype=None):
     return array([], dtype=dtype)
   # TODO(srbs): There are some bugs when start or stop is float type and dtype
   # is integer type.
-  return utils.tensor_to_ndarray(
+  return arrays.tensor_to_ndarray(
       tf.cast(tf.range(start, limit=stop, delta=step), dtype=dtype))
 
 
-# Array methods.
-def linspace(start, stop, num=50, endpoint=True, retstep=False, dtype=float):
-  """Returns `num` uniformly spread values in a range.
-
-  Args:
-    start: Start of the interval. Always included in the output.
-    stop: If `endpoint` is true and num > 1, this is included in the output.
-      If `endpoint` is false, `num` + 1 values are sampled in [start, stop] both
-      inclusive and the last value is ignored.
-    num: Number of values to sample. Defaults to 50.
-    endpoint: When to include `stop` in the output. Defaults to true.
-    retstep: Whether to return the step size alongside the output samples.
-    dtype: Optional, defaults to float. The type of the resulting ndarray.
-      Could be a python type, a NumPy type or a TensorFlow `DType`.
-
-  Returns:
-    An ndarray of output sequence if retstep is False else a 2-tuple of
-    (array, step_size).
-
-  Raises:
-    ValueError: if `num` is negative.
-  """
-  # TODO(srbs): Check whether dtype is handled properly.
-  if dtype:
-    dtype = utils.to_tf_type(dtype)
-
-  start = array(start, copy=False, dtype=dtype)
-  stop = array(stop, copy=False, dtype=dtype)
-
-  if num == 0:
-    return empty(dtype)
-  if num < 0:
-    raise ValueError('Number of samples {} must be non-negative.'.format(num))
-  step = np_nan
-  if endpoint:
-    result = tf.linspace(start.data, stop.data, num)
-    if num > 1:
-      step = (stop - start) / (num - 1)
-  else:
-    # tf.linspace does not support endpoint=False so we manually handle it
-    # here.
-    if num > 1:
-      step = (stop - start) / num
-      result = tf.linspace(start.data, (stop - step).data, num)
-    else:
-      result = tf.linspace(start.data, stop.data, num)
-  result = utils.maybe_cast(result, dtype)
-  if retstep:
-    return utils.tensor_to_ndarray(result), step
-  else:
-    return utils.tensor_to_ndarray(result)
-
-
-def logspace(start, stop, num=50, endpoint=True, base=10.0, dtype=None):
-  """Returns `num` values sampled evenly on a log scale.
-
-  Equivalent to `base ** linspace(start, stop, num, endpoint)`.
-
-  Args:
-    start: base**start is the start of the output sequence.
-    stop: If `endpoint` is true and num > 1, base ** stop is included in the
-      output. If `endpoint` is false, `num` + 1 values are linearly sampled in
-      [start, stop] both inclusive and the last value is ignored before raising
-      to power of `base`.
-    num: Number of values to sample. Defaults to 50.
-    endpoint: When to include `base ** stop` in the output. Defaults to true.
-    base: Base of the log space.
-    dtype: Optional. Type of the resulting ndarray. Could be a python type, a
-      NumPy type or a TensorFlow `DType`. If not provided, it is figured from
-      input args.
-  """
-  # TODO(srbs): Check whether dtype is handled properly.
-  if dtype:
-    dtype = utils.to_tf_type(dtype)
-  result = linspace(start, stop, num=num, endpoint=endpoint)
-  result = tf.pow(base, result.data)
-  if dtype:
-    result = utils.maybe_cast(result, dtype)
-  return utils.tensor_to_ndarray(result)
-
-
+@utils.np_doc(np.geomspace)
 def geomspace(start, stop, num=50, endpoint=True, dtype=float):
-  """Returns `num` values from a geometric progression.
-
-  The ratio of any two consecutive values in the output sequence is constant.
-  This is similar to `logspace`, except the endpoints are specified directly
-  instead of as powers of a base.
-
-  Args:
-    start: start of the geometric progression.
-    stop: end of the geometric progression. This is included in the output
-      if endpoint is true.
-    num: Number of values to sample. Defaults to 50.
-    endpoint: Whether to include `stop` in the output. Defaults to true.
-    dtype: Optional. Type of the resulting ndarray. Could be a python type, a
-      NumPy type or a TensorFlow `DType`. If not provided, it is figured from
-      input args.
-
-  Returns:
-    An ndarray.
-
-  Raises:
-    ValueError: If there is an error in the arguments.
-  """
-  # TODO(srbs): Check whether dtype is handled properly.
   if dtype:
-    dtype = utils.to_tf_type(dtype)
+    dtype = utils.result_type(dtype)
   if num < 0:
     raise ValueError('Number of samples {} must be non-negative.'.format(num))
   if not num:
     return empty([0])
-  if start == 0:
-    raise ValueError('start: {} must be non-zero.'.format(start))
-  if stop == 0:
-    raise ValueError('stop: {} must be non-zero.'.format(stop))
-  if np_sign(start) != np_sign(stop):
-    raise ValueError('start: {} and stop: {} must have same sign.'.format(
-        start, stop))
   step = 1.
   if endpoint:
     if num > 1:
@@ -518,7 +371,7 @@ def geomspace(start, stop, num=50, endpoint=True, dtype=float):
   result = tf.multiply(result, start)
   if dtype:
     result = tf.cast(result, dtype=dtype)
-  return utils.tensor_to_ndarray(result)
+  return arrays.tensor_to_ndarray(result)
 
 
 # Building matrices.
@@ -543,8 +396,7 @@ def diag(v, k=0):
   Raises:
     ValueError: If v is not 1-d or 2-d.
   """
-  if not isinstance(v, arrays.ndarray):
-    v = array(v, copy=False)
+  v = asarray(v)
   if v.ndim == 0 or v.ndim > 2:
     raise ValueError('Input to diag must be 1-d or 2-d only.')
   if v.ndim == 1:
@@ -587,7 +439,7 @@ def diag(v, k=0):
       min_n_m = min(n, m)
       result = tf.slice(result, [0, 0], [min_n_m, min_n_m])
     result = tf.linalg.tensor_diag_part(result)
-  return utils.tensor_to_ndarray(result)
+  return arrays.tensor_to_ndarray(result)
 
 
 def diagflat(v, k=0):
@@ -604,17 +456,10 @@ def diagflat(v, k=0):
   Returns:
     2-d ndarray.
   """
-  if not isinstance(v, arrays.ndarray):
-    v = array(v, copy=False)
+  v = asarray(v)
   return diag(tf.reshape(v.data, [-1]), k)
 
 
-def promote_args_types(a, b):
-  a = asarray(a)
-  b = asarray(b)
-  output_type = utils.result_type(a.dtype, b.dtype)
-  if output_type != a.dtype:
-    a = a.astype(output_type)
-  if output_type != b.dtype:
-    b = b.astype(output_type)
-  return (a, b)
+def _promote_dtype(*arrays):
+  dtype = utils.result_type(*arrays)
+  return [asarray(a, dtype=dtype) for a in arrays]

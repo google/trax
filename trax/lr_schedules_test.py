@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,23 +13,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for trax.learning_rate."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+# Lint as: python3
+"""Tests for trax.lr_schedules."""
 
 import functools
 
+import gym
 import numpy as onp
 from tensorflow import test
 from trax import history as trax_history
-from trax import learning_rate
-from trax.math import numpy as np
+from trax import lr_schedules
+from trax import shapes
 from trax.models import transformer
 from trax.rl import online_tune
-from trax.rl import ppo
-from trax.shapes import ShapeDtype
+from trax.rl import policy_based_utils
 
 
 class PolicyScheduleTest(test.TestCase):
@@ -49,31 +46,37 @@ class PolicyScheduleTest(test.TestCase):
         n_layers=0,
         vocab_size=vocab_size,
     )
-    net = ppo.policy_and_value_net(
-        n_actions=len(action_multipliers),
-        n_controls=len(control_configs),
-        vocab_size=None,
+    observation_space = gym.spaces.Box(
+        shape=(len(observation_metrics),),
+        low=0.0,
+        high=1.0,
+    )
+    action_space = gym.spaces.MultiDiscrete(
+        nvec=(len(action_multipliers),) * len(control_configs)
+    )
+    (net, _) = policy_based_utils.policy_and_value_net(
         bottom_layers_fn=policy_and_value_model,
+        observation_space=observation_space,
+        action_space=action_space,
+        vocab_size=vocab_size,
         two_towers=False,
     )
-    obs_dim = len(observation_metrics)
-    if vocab_size is None:
-      shape = (1, 1, obs_dim)
-      dtype = np.float32
-    else:
-      shape = (1, 1)
-      dtype = np.int32
-    input_signature = ShapeDtype(shape, dtype)
+    input_signature = (
+        shapes.ShapeDtype(
+            (1, 2) + observation_space.shape, observation_space.dtype
+        ),
+        shapes.ShapeDtype((1, 1) + action_space.shape, action_space.dtype),
+    )
     (params, state) = net.init(input_signature)
     policy_dir = self.get_temp_dir()
     # Optimizer slots and parameters should not be used for anything.
     slots = None
     opt_params = None
     opt_state = (params, slots, opt_params)
-    ppo.save_opt_state(
+    policy_based_utils.save_opt_state(
         policy_dir, opt_state, state, epoch=0, total_opt_step=0, history=history
     )
-    return learning_rate.PolicySchedule(
+    return lr_schedules.PolicySchedule(
         history,
         observation_metrics=observation_metrics,
         include_controls_in_observation=False,

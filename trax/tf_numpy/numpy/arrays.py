@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,15 +19,20 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-from numpy import asarray as np_asarray
-from numpy import asscalar as np_asscalar
-from numpy import dtype as np_dtype
-from numpy import ndarray as np_ndarray
-from numpy import prod as np_prod
+import six
 
 import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import dtypes
+
+
+def convert_to_tensor(value, dtype=None):
+  # A safer version of `tf.convert_to_tensor` to work around b/149876037.
+  # TODO(wangpeng): Remove this function once the bug is fixed.
+  if (dtype is None and isinstance(value, six.integer_types)
+      and value >= 2 ** 63):
+    dtype = tf.uint64
+  return tf.convert_to_tensor(value, dtype=dtype)
 
 
 class ndarray(object):  # pylint: disable=invalid-name
@@ -69,16 +74,16 @@ class ndarray(object):  # pylint: disable=invalid-name
        `shape`.
     """
     if dtype and not isinstance(dtype, tf.DType):
-      dtype = tf.as_dtype(np_dtype(dtype))
+      dtype = tf.as_dtype(np.dtype(dtype))
     if buffer is None:
       buffer = tf.zeros(shape, dtype=dtype)
     else:
       if isinstance(buffer, ndarray):
         buffer = buffer.data
-      elif isinstance(buffer, np_ndarray):
+      elif isinstance(buffer, np.ndarray):
         # If `buffer` is a np.ndarray, the Tensor will share the underlying
         # storage of the array.
-        buffer = tf.convert_to_tensor(value=buffer, dtype=dtype)
+        buffer = convert_to_tensor(value=buffer, dtype=dtype)
       elif not isinstance(buffer, tf.Tensor):
         raise ValueError('Unexpected type for `buffer` {}. Must be an ndarray,'
                          ' Tensor or np.ndarray.'.format(type(buffer)))
@@ -125,7 +130,7 @@ class ndarray(object):  # pylint: disable=invalid-name
   @property
   def size(self):
     """Returns the number of elements in the array."""
-    return np_prod(self.shape)
+    return np.prod(self.shape)
 
   @property
   def T(self):  # pylint: disable=invalid-name
@@ -147,126 +152,10 @@ class ndarray(object):  # pylint: disable=invalid-name
   def __neg__(self):
     return tensor_to_ndarray(-self.data)  # pylint: disable=invalid-unary-operand-type
 
-  @staticmethod
-  def _tf_promote_values(a, b):
-    """Promote a and b to the same type.
-
-    Args:
-      a: Something that can be converted to a TF tensor.
-      b: Something that can be converted to a TF tensor.
-
-    Returns:
-      (a', b') which are the promoted version of a and b.
-    """
-    if isinstance(a, ndarray):
-      a = a.data
-    else:
-      a = tf.convert_to_tensor(value=a)
-    if isinstance(b, ndarray):
-      b = b.data
-    else:
-      b = tf.convert_to_tensor(value=b)
-    a_type = a.dtype.as_numpy_dtype
-    b_type = b.dtype.as_numpy_dtype
-    output_type = dtypes.get_result_type(a_type, b_type)
-    if a_type != output_type:
-      a = tf.cast(a, dtype=output_type)
-    if b_type != output_type:
-      b = tf.cast(b, dtype=output_type)
-    return (a, b)
-
-  # Binary operations
-  def __add__(self, other):
-    me, other = self._tf_promote_values(self.data, other)
-    result_t = me + other
-    return tensor_to_ndarray(result_t)
-
-  def __radd__(self, other):
-    return self.__add__(other)
-
-  def __sub__(self, other):
-    me, other = self._tf_promote_values(self.data, other)
-    result_t = me - other
-    return tensor_to_ndarray(result_t)
-
-  def __rsub__(self, other):
-    me, other = self._tf_promote_values(self.data, other)
-    result_t = other - me
-    return tensor_to_ndarray(result_t)
-
-  def __mul__(self, other):
-    me, other = self._tf_promote_values(self.data, other)
-    result_t = me * other
-    return tensor_to_ndarray(result_t)
-
-  def __rmul__(self, other):
-    me, other = self._tf_promote_values(self.data, other)
-    result_t = other * me
-    return tensor_to_ndarray(result_t)
-
-  def __pow__(self, other):
-    me, other = self._tf_promote_values(self.data, other)
-    result_t = me ** other
-    return tensor_to_ndarray(result_t)
-
-  def __rpow__(self, other):
-    me, other = self._tf_promote_values(self.data, other)
-    result_t = other ** me
-    return tensor_to_ndarray(result_t)
-
-  def _truediv_adjust_dtypes(self, me, other):
-    # TF truediv in Python3 produces float64 when both inputs are int32 or
-    # int64. We want to avoid that when is_allow_float64() is False.
-    if (not dtypes.is_allow_float64() and me.dtype == other.dtype and
-        (me.dtype in (tf.int32, tf.int64))):
-      me = tf.cast(me, dtype=tf.float32)
-      other = tf.cast(other, dtype=tf.float32)
-    return me, other
-
-  def __truediv__(self, other):
-    me, other = self._tf_promote_values(self.data, other)
-    me, other = self._truediv_adjust_dtypes(me, other)
-    result_t = me / other
-    return tensor_to_ndarray(result_t)
-
-  def __rtruediv__(self, other):
-    me, other = self._tf_promote_values(self.data, other)
-    me, other = self._truediv_adjust_dtypes(me, other)
-    result_t = other / me
-    return tensor_to_ndarray(result_t)
-
-  # Comparisons
-  def __lt__(self, other):
-    me, other = self._tf_promote_values(self.data, other)
-    result_t = me < other
-    return tensor_to_ndarray(result_t)
-
-  def __le__(self, other):
-    me, other = self._tf_promote_values(self.data, other)
-    result_t = me <= other
-    return tensor_to_ndarray(result_t)
-
-  def __gt__(self, other):
-    me, other = self._tf_promote_values(self.data, other)
-    result_t = me > other
-    return tensor_to_ndarray(result_t)
-
-  def __ge__(self, other):
-    me, other = self._tf_promote_values(self.data, other)
-    result_t = me >= other
-    return tensor_to_ndarray(result_t)
-
-  def __eq__(self, other):
-    me, other = self._tf_promote_values(self.data, other)
-    result_t = tf.equal(me, other)
-    return tensor_to_ndarray(result_t)
+  def __pos__(self):
+    return self
 
   __hash__ = None
-
-  def __ne__(self, other):
-    me, other = self._tf_promote_values(self.data, other)
-    result_t = tf.not_equal(me, other)
-    return tensor_to_ndarray(result_t)
 
   def __int__(self):
     return int(self.data)
@@ -303,7 +192,7 @@ class ndarray(object):  # pylint: disable=invalid-name
     Returns:
       A NumPy ndarray.
     """
-    return np_asarray(self.data, dtype)
+    return np.asarray(self.data, dtype)
 
   __array_priority__ = 110
 
@@ -321,13 +210,17 @@ class ndarray(object):  # pylint: disable=invalid-name
       TypeError: If the array is not of an integer type.
       ValueError: If the array does not have size 1.
     """
-    return np_asscalar(self.data.numpy())
+    # TODO(wangpeng): Handle graph mode
+    return np.asscalar(self.data.numpy())
 
   def tolist(self):
     return self.data.numpy().tolist()
 
   def __str__(self):
     return 'ndarray<{}>'.format(self.data.__str__())
+
+  def __repr__(self):
+    return 'ndarray<{}>'.format(self.data.__repr__())
 
 
 def tensor_to_ndarray(tensor):
@@ -379,6 +272,10 @@ class ShardedNdArray(object):
   @property
   def shape(self):
     return (self.n_devices,) + self.tensors[0]._shape_tuple()  # pylint: disable=protected-access
+
+  @property
+  def dtype(self):
+    return x.tensors[0].dtype
 
 
 def convert_sharded_tensor_to_eager_tensor(value, *args, **kwargs):

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,18 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """RMSProp optimizer class."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from trax.math import numpy as np
 from trax.optimizers import base as opt_base
 
 
 class RMSProp(opt_base.Optimizer):
-  """RMSProp optimizer."""
+  """RMSProp optimizer.
+
+  Uses optimizer weights ("slots") to maintain a root-mean-square exponentially
+  decaying average of gradients from prior training batches.
+  """
 
   def __init__(self, learning_rate, gamma=0.9, eps=1e-8):  # pylint: disable=useless-super-delegation
     super(RMSProp, self).__init__(
@@ -33,15 +34,15 @@ class RMSProp(opt_base.Optimizer):
         eps=eps,
     )
 
-  def init(self, params):
-    return np.ones_like(params)
+  def init(self, weights):
+    return np.ones_like(weights)
 
   def update(self, step, grads, weights, avg_sq_grad, opt_params):
     del step
-    learning_rate = opt_params['learning_rate']
+    lr = opt_params['learning_rate']
     gamma = opt_params['gamma']
     eps = opt_params['eps']
     avg_sq_grad = avg_sq_grad * gamma + grads**2 * (1. - gamma)
-    weights = weights - (learning_rate * grads /
+    weights = weights - (lr * grads /
                          (np.sqrt(avg_sq_grad) + eps)).astype(weights.dtype)
     return weights, avg_sq_grad

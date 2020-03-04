@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,11 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Adam optimizer class."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from trax.math import numpy as np
 from trax.optimizers import base as opt_base
@@ -48,9 +45,9 @@ class Adam(opt_base.Optimizer):
         eps=eps,
     )
 
-  def init(self, params):
-    m = np.zeros_like(params)
-    v = np.zeros_like(params)
+  def init(self, weights):
+    m = np.zeros_like(weights)
+    v = np.zeros_like(weights)
     return m, v
 
   def update(self, step, grads, weights, slots, opt_params):
@@ -64,6 +61,6 @@ class Adam(opt_base.Optimizer):
     v = (1 - b2) * (grads ** 2) + b2 * v  # Second moment estimate.
     mhat = m / (1 - b1 ** (step + 1))  # Bias correction.
     vhat = v / (1 - b2 ** (step + 1))
-    weights = (1 - weight_decay_rate) * weights - (
+    new_weights = (1 - weight_decay_rate) * weights - (
         learning_rate * mhat / (np.sqrt(vhat) + eps)).astype(weights.dtype)
-    return weights, (m, v)
+    return new_weights, (m, v)

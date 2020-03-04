@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,7 +29,11 @@ from trax.tf_numpy.numpy.array_manipulation import *
 from trax.tf_numpy.numpy.array_methods import *
 from trax.tf_numpy.numpy.arrays import ndarray
 from trax.tf_numpy.numpy.dtypes import *
-from trax.tf_numpy.numpy.logic import *
 from trax.tf_numpy.numpy.math import *
 from trax.tf_numpy.numpy.utils import finfo
+from trax.tf_numpy.numpy.utils import promote_types
+from trax.tf_numpy.numpy.utils import result_type
 # pylint: enable=wildcard-import
+
+max = amax
+min = amin

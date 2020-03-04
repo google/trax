@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,11 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Implementations of common recurrent neural network cells (RNNs)."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from trax import math
 from trax.layers import base
@@ -265,15 +262,14 @@ def SRU(n_units, activation=None):
     The SRU layer.
   """
   # pylint: disable=no-value-for-parameter
-  return cb.Serial(                                    # x
-      cb.Branch(core.Dense(3 * n_units), []),          # r_f_y, x
-      cb.Split(n_items=3),                             # r, f, y, x
-      cb.Parallel(core.Sigmoid(), core.Sigmoid()),     # r, f, y, x
+  return cb.Serial(  # x
+      cb.Branch(core.Dense(3 * n_units), []),  # r_f_y, x
+      cb.Split(n_items=3),  # r, f, y, x
+      cb.Parallel(core.Sigmoid(), core.Sigmoid()),  # r, f, y, x
       base.Fn(lambda r, f, y: (y * (1.0 - f), f, r)),  # y * (1 - f), f, r, x
       cb.Parallel([], [], cb.Branch(MakeZeroState(), [])),
       cb.Scan(InnerSRUCell(), axis=1),
-      cb.Select([0], n_in=2),                          # act(c), r, x
+      cb.Select([0], n_in=2),  # act(c), r, x
       activation or [],
-      base.Fn(lambda c, r, x: c * r + x * (1 - r))
-  )
+      base.Fn(lambda c, r, x: c * r + x * (1 - r)))
   # pylint: enable=no-value-for-parameter

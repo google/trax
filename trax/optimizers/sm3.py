@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,11 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """SM3 optimizer class."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from trax.math import numpy as np
 from trax.optimizers import base as opt_base
@@ -41,9 +38,9 @@ class SM3(opt_base.Optimizer):
         momentum=momentum,
     )
 
-  def init(self, params):
-    vs = [np.zeros(sz, dtype=params.dtype) for sz in params.shape]
-    return (np.zeros_like(params), vs)
+  def init(self, weights):
+    vs = [np.zeros(sz, dtype=weights.dtype) for sz in weights.shape]
+    return (np.zeros_like(weights), vs)
 
   def _update_diagonal(self, grads, weights, m, v, opt_params):
     learning_rate = opt_params['learning_rate']

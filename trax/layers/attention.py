@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,10 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Attention Layers."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import jax
 import numpy as onp
@@ -105,7 +103,7 @@ class PositionalEncoding(base.Layer):
       # This positional encoding layer needs to store the index of the current
       # position then and increment it on each call -- that's how state is used
       # and updated below.
-      return (inputs + np.expand_dims(weights[:, state, :], 1), state + 1)
+      return (inputs + np.expand_dims(weights[0, state, :], 1), state + 1)
 
   def new_weights_and_state(self, input_signature):
     d_feature = input_signature.shape[-1]
@@ -117,7 +115,11 @@ class PositionalEncoding(base.Layer):
     pe[:, 1::2] = onp.cos(position * div_term)
     pe = pe[onp.newaxis, :, :]  # [1, self._max_len, d_feature]
     weights = np.array(pe)  # These are trainable parameters, initialized above.
-    state = 0 if self._mode == 'predict' else base.EMPTY_STATE
+    if self._mode == 'predict':
+      batch_size = input_signature.shape[0]
+      state = np.zeros((batch_size,), dtype=np.int32)
+    else:
+      state = base.EMPTY_STATE
     return weights, state
 
 
@@ -155,7 +157,8 @@ class AxialPositionalEncoding(base.Layer):
       assert self._dropout == 0.0
       emb = np.concatenate(embs, -1)
       emb = np.reshape(emb, (inputs.shape[0], -1, emb.shape[-1]))
-      return inputs + emb[:, state, :][:, None, :], state + 1
+      emb = jax.lax.dynamic_slice_in_dim(emb, state, inputs.shape[1], axis=1)
+      return inputs + emb, state + inputs.shape[1]
     elif self._dropout == 0:
       # TODO(kitaev): concat-then-reshape (as is the case with dropout enabled)
       # leads to memory blow-up on TPU.
@@ -455,8 +458,8 @@ def _fast_inference_init_state(input_signature, buffer_length):
   k = zeros_for(batch_size, input_signature[1])
   v = zeros_for(batch_size, input_signature[2])
   mask = np.zeros((batch_size, 1, buffer_length))
-  index = 0
-  return (k, v, mask, index)
+  seq_indices = np.zeros((batch_size,), dtype=np.int32)
+  return (k, v, mask, seq_indices)
 
 
 def _fast_inference_update_state(inputs, state):
@@ -469,11 +472,18 @@ def _fast_inference_update_state(inputs, state):
   # Fast inference: run with only 1 query in each step, storing the sequence
   # of keys and values calculated so far in state.
   (_, new_k, new_v) = inputs
-  (ks, vs, mask, index) = state
-  ks = jax.ops.index_update(ks, jax.ops.index[:, index, :], new_k[:, 0, :])
-  vs = jax.ops.index_update(vs, jax.ops.index[:, index, :], new_v[:, 0, :])
-  mask = jax.ops.index_update(mask, jax.ops.index[:, :, index], 1)
-  return (ks, vs, mask, index + 1)
+  (ks, vs, mask, seq_indices) = state
+  batch_indices = np.arange(ks.shape[0])
+  ks = jax.ops.index_update(
+      ks, jax.ops.index[batch_indices, seq_indices, :], new_k[:, 0, :]
+  )
+  vs = jax.ops.index_update(
+      vs, jax.ops.index[batch_indices, seq_indices, :], new_v[:, 0, :]
+  )
+  mask = jax.ops.index_update(
+      mask, jax.ops.index[batch_indices, :, seq_indices], 1
+  )
+  return (ks, vs, mask, seq_indices + 1)
 
 
 class DotProductCausalAttention(BaseCausalAttention):

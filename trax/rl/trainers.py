@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import gin
 
+from trax.rl import awr_trainer
 from trax.rl import ppo_trainer
 from trax.rl import simple_trainer
 
@@ -33,5 +34,6 @@ def trainer_configure(*args, **kwargs):
 
 
 # pylint: disable=invalid-name
+AwrTrainer = trainer_configure(awr_trainer.AwrTrainer)
 PPO = trainer_configure(ppo_trainer.PPO)
 SimPLe = trainer_configure(simple_trainer.SimPLe)

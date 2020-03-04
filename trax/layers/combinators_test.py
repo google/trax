@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,10 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Tests for combinator layers."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from absl.testing import absltest
 from trax.layers import base
@@ -259,6 +257,50 @@ class CombinatorLayerTest(absltest.TestCase):
     sublayer_0, sublayer_1 = layer.sublayers
     self.assertEqual(sublayer_0.input_signature, ShapeDtype((3, 2)))
     self.assertEqual(sublayer_1.input_signature, ShapeDtype((4, 7)))
+
+  def test_state_parallel(self):
+    model = cb.Parallel(core.Dense(3), core.Dense(5))
+    self.assertIsInstance(model.state, tuple)
+    self.assertLen(model.state, 2)
+
+  def test_state_serial(self):
+    model = cb.Serial(core.Dense(4), core.Dense(5), core.Dense(7))
+    self.assertIsInstance(model.state, tuple)
+    self.assertLen(model.state, 3)
+
+  def test_weights_parallel(self):
+    model = cb.Parallel(core.Dense(3), core.Dense(5))
+    self.assertIsInstance(model.weights, tuple)
+    self.assertLen(model.weights, 2)
+
+  def test_weights_serial(self):
+    model = cb.Serial(core.Dense(4), core.Dense(5), core.Dense(7))
+    self.assertIsInstance(model.weights, tuple)
+    self.assertLen(model.weights, 3)
+
+  def test_set_rng_serial_recurse_two_levels(self):
+    dense_00 = core.Dense(2)
+    dense_01 = core.Dense(2)
+    dense_10 = core.Dense(2)
+    dense_11 = core.Dense(2)
+    layer = cb.Serial(
+        cb.Serial(dense_00, dense_01),
+        cb.Serial(dense_10, dense_11),
+    )
+    input_signature = ShapeDtype((1, 2))
+
+    _, _ = layer.init(input_signature)
+    weights = layer.weights
+    dense_00_w, dense_00_b = weights[0][0]
+    dense_01_w, dense_01_b = weights[0][1]
+    dense_10_w, dense_10_b = weights[1][0]
+    dense_11_w, dense_11_b = weights[1][1]
+
+    # Setting rng's recursively during init should yield differing weights.
+    self.assertFalse(np.array_equal(dense_00_w, dense_01_w))
+    self.assertFalse(np.array_equal(dense_00_b, dense_01_b))
+    self.assertFalse(np.array_equal(dense_10_w, dense_11_w))
+    self.assertFalse(np.array_equal(dense_10_b, dense_11_b))
 
 
 if __name__ == '__main__':

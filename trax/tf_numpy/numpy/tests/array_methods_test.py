@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,11 +21,14 @@ from __future__ import print_function
 
 import itertools
 import numpy as np
+from six.moves import range
+from six.moves import zip
 import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import array_creation
 from trax.tf_numpy.numpy import array_methods
 from trax.tf_numpy.numpy import arrays
+from trax.tf_numpy.numpy import math
 
 
 class ArrayMethodsTest(tf.test.TestCase):
@@ -301,7 +304,7 @@ class ArrayMethodsTest(tf.test.TestCase):
       for fn in self.array_transforms:
         arg = fn(arr)
         self.match(
-            array_methods.ptp(arg, *args, **kwargs), np.ptp(
+            math.ptp(arg, *args, **kwargs), np.ptp(
                 arg, *args, **kwargs))
 
     run_test([1, 2, 3])

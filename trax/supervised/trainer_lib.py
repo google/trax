@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ import tensorflow.compat.v2 as tf
 from trax import history as trax_history
 from trax import jaxboard
 from trax import layers as tl
-from trax import learning_rate as lr
+from trax import lr_schedules as lr
 from trax import math
 from trax import optimizers as trax_opt
 from trax.math import numpy as np
@@ -67,6 +67,7 @@ OptState = collections.namedtuple('_OptState', [
 _DEFAULT_METRICS = {
     'loss': tl.CrossEntropyLoss,
     'accuracy': tl.AccuracyScalar,
+    'sequence_accuracy': tl.SequenceAccuracyScalar,
     'neg_log_perplexity': tl.CrossEntropyLoss,
     'weights_per_batch_per_core': tl.SumOfWeights,
 }
@@ -83,14 +84,16 @@ class Trainer(object):
                output_dir=None, random_seed=None, n_devices=None,
                checkpoints_at=None, should_save_checkpoints=True,
                should_write_summaries=True, has_weights=False,
-               nontrainable_param_map=None, id_to_mask=None, metrics=None):
+               nontrainable_param_map=None, id_to_mask=None,
+               metrics=None, checkpoint_highest=None, checkpoint_lowest=None):
 
     self._is_chief, self._n_devices, rng = (
         self._init_host_and_devices(n_devices, random_seed))
     self._should_save_checkpoints = should_save_checkpoints and self._is_chief
     self._checkpoints_at = checkpoints_at or []
     self._should_write_summaries = should_write_summaries
-
+    self._checkpoint_highest = checkpoint_highest
+    self._checkpoint_lowest = checkpoint_lowest
     self._has_weights = has_weights
     self._id_to_mask = id_to_mask
     self._metrics_dict = metrics if metrics is not None else _DEFAULT_METRICS
@@ -110,15 +113,21 @@ class Trainer(object):
     # Setup state.
     rng, init_rng = jax_random.split(rng)
     self._rngs = np.stack(jax_random.split(rng, self._n_devices))
-    first_shape = self._inputs.input_shape[0]
     # If the inputs are a tuple/list, add [None] (batch) to each element.
-    if isinstance(first_shape, (list, tuple)):
+    if self._inputs.input_shape and isinstance(
+        self._inputs.input_shape[0], (list, tuple)
+    ):
       model_input_shape = tuple(
           tuple([None] + list(shape)) for shape in self._inputs.input_shape)
-      model_target_shape = tuple(
-          tuple([None] + list(shape)) for shape in self._inputs.target_shape)
     else:  # Otherwise just add [None] to the input shape.
       model_input_shape = tuple([None] + list(self._inputs.input_shape))
+    # Same for targets.
+    if self._inputs.target_shape and isinstance(
+        self._inputs.target_shape[0], (list, tuple)
+    ):
+      model_target_shape = tuple(
+          tuple([None] + list(shape)) for shape in self._inputs.target_shape)
+    else:
       model_target_shape = tuple([None] + list(self._inputs.target_shape))
     # Change all None to 1 in input and target shape.
     model_input_shape = math.nested_map(lambda x: x or 1, model_input_shape)
@@ -325,6 +334,10 @@ class Trainer(object):
       self._eval_sw.flush()
     if self._should_save_checkpoints:
       self.save_state(keep=False)
+    if self._should_save_checkpoints and self._current_step_is_best(high=True):
+      self.save_state(keep=False, prefix='highest_' + self._checkpoint_highest)
+    if self._should_save_checkpoints and self._current_step_is_best(high=False):
+      self.save_state(keep=False, prefix='lowest_' + self._checkpoint_lowest)
 
   def train_step(self, batch):
     """Run one training step and update self._opt_state."""
@@ -428,7 +441,7 @@ class Trainer(object):
       pickle.dump(trainer_state_dict, f)
     log('Model saved to %s' % weights_file, stdout=False)
 
-  def save_state(self, keep):
+  def save_state(self, keep, prefix='model'):
     """Save trainer state given a possibly replicated opt_state."""
     opt_state = self._opt_state
     if self.n_devices > 1:
@@ -441,7 +454,7 @@ class Trainer(object):
     step, history, model_state = self._step, self._history, self._model_state
     output_dir = self._output_dir
 
-    weights_file = os.path.join(output_dir, 'model.pkl')
+    weights_file = os.path.join(output_dir, prefix + '.pkl')
 
     # This dict will be stored as the model.
     trainer_state_dict = make_trainer_state_dict(step,
@@ -451,7 +464,7 @@ class Trainer(object):
     self._save_state_dict(trainer_state_dict, weights_file)
 
     if keep:
-      weights_file = os.path.join(output_dir, 'model_{}.pkl'.format(step))
+      weights_file = os.path.join(output_dir, '{}_{}.pkl'.format(prefix, step))
       self._save_state_dict(trainer_state_dict, weights_file)
 
   def save_computation_graphs(self, save_backward_graph):
@@ -562,6 +575,19 @@ class Trainer(object):
   def _should_save_now(self):
     return self._should_save_checkpoints and self._step in self._checkpoints_at
 
+  def _current_step_is_best(self, high):
+    """Is the current step the best (highest if high, else lowest)."""
+    metric = self._checkpoint_highest if high else self._checkpoint_lowest
+    if metric is None:
+      return False
+    # History is a list of pairs (step, value).
+    history = self._history.get('eval', 'metrics/' + metric)
+    sequence = [float(i[1]) for i in history]  # Just the values.
+    best = max(sequence) if high else min(sequence)  # Best value.
+    last_is_best = float(history[-1][1]) == best  # Is last the best?
+    cur_step = history[-1][0] == self._step  # Is last the current step?
+    return cur_step and last_is_best
+
   def _should_log_now(self):
     return (self._train_sw is not None
             and (self._step == 1 or self._step % 10 == 0))
@@ -589,7 +615,9 @@ def train(output_dir,
           has_weights=False,
           nontrainable_param_map=None,
           id_to_mask=None,
-          metrics=None):
+          metrics=None,
+          checkpoint_highest=None,
+          checkpoint_lowest=None):
   """Train the model on the inputs.
 
   Args:
@@ -617,6 +645,8 @@ def train(output_dir,
       names to control names in PolicySchedule.
     id_to_mask: id to mask out (None by default).
     metrics: optionally override the default metrics dictionary.
+    checkpoint_highest: save the checkpoint highest at this metric.
+    checkpoint_lowest: save the checkpoint lowest at this metric.
 
   Returns:
     trax.TrainerState
@@ -629,7 +659,9 @@ def train(output_dir,
                           checkpoints_at=checkpoints_at,
                           has_weights=has_weights,
                           nontrainable_param_map=nontrainable_param_map,
-                          metrics=metrics, id_to_mask=id_to_mask)
+                          metrics=metrics, id_to_mask=id_to_mask,
+                          checkpoint_lowest=checkpoint_lowest,
+                          checkpoint_highest=checkpoint_highest)
 
   epoch_steps = [steps]  # Only training if eval_frequency is 0 or None
   if eval_frequency and eval_steps > 0:
@@ -715,11 +747,10 @@ def _jit_update_fn(predict_fn, loss_fn, optimizer, n_devices, jit=True):
 def _jit_predict_fn(model_predict, metric_fn, n_devices, jit=True):
   """Returns a JIT-compiled predict function (unless jit=False)."""
   model = tl.Serial(model_predict, metric_fn)
-  model_predict = model._forward_internal  # pylint: disable=protected-access
   if not jit:
-    return model_predict
+    return model.pure_fn
 
-  return tl.jit_forward(model_predict, n_devices)
+  return tl.jit_forward(model.pure_fn, n_devices)
 
 
 @gin.configurable

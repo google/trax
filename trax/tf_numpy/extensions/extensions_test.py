@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -88,7 +88,7 @@ class ExtensionsTest(tf.test.TestCase):
 
   def testGrad(self):
     def f(a, b):
-      return math.sum(math.sqrt(math.exp(a)) + b)
+      return array_methods.sum(math.sqrt(math.exp(a)) + b)
     g = extensions.grad(f)
     def compare(a, b):
       with tf.GradientTape() as tape:
@@ -126,7 +126,7 @@ class ExtensionsTest(tf.test.TestCase):
 
   def testJit(self):
     def f(a, b):
-      return math.sum(math.sqrt(math.exp(a)) + b)
+      return array_methods.sum(math.sqrt(math.exp(a)) + b)
     f_jitted = extensions.jit(f)
     shape = [10]
     a = random.randn(*shape)
@@ -156,7 +156,7 @@ class ExtensionsTest(tf.test.TestCase):
 
   def _testEvalOnShapes(self, transformer):
     def f(a, b):
-      return math.sum(math.sqrt(math.exp(a)) + b)
+      return array_methods.sum(math.sqrt(math.exp(a)) + b)
     f_prime = transformer(f)
     shape = [10]
     dtype = np.float16

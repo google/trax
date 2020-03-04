@@ -1,4 +1,4 @@
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,30 +20,28 @@ import trax.supervised.trainer_lib
 
 # Parameters that will vary between experiments:
 # ==============================================================================
-train.model = @trax.models.ReformerLM
-# attn_type = @TimeBinCausalAttention
 attn_type = [
-    @TimeBinCausalAttention,
-    @TimeBinCausalAttention,
-    @LSHCausalAttention,
-    @TimeBinCausalAttention,
+    @SelfAttention,
+    @SelfAttention,
+    @LSHSelfAttention,
+    @SelfAttention,
 ]
-share_qk = False  # LSHCausalAttention ignores this flag and always shares q & k
+share_qk = False  # LSH attention ignores this flag and always shares q & k
 attn_kv = 128
 n_layers = 12
 dropout = 0.2
 
-# MemoryEfficientCausalAttention: full attention
-# (no hparams to vary between experiments)
+# SelfAttention: attend to nearby items
+# Specifying chunk_len restricts an item to attend within its own chunk, as well
+# as the previous `n_chunks_before` chunks.
+SelfAttention.chunk_len = 128
+SelfAttention.n_chunks_before = 1
 
-# TimeBinCausalAttention: attend to nearby items
-TimeBinCausalAttention.n_bins = 512
-
-# LSHCausalAttention: locality-sensitive hashing (LSH) attention
-LSHCausalAttention.n_bins = 256
-LSHCausalAttention.n_buckets = 512  # Always 2 * n_bins
-LSHCausalAttention.n_hashes = 2
-LSHCausalAttention.drop_for_hash_rate = 0.0
+# LSHSelfAttention: locality-sensitive hashing (LSH) attention
+LSHSelfAttention.chunk_len = 256
+LSHSelfAttention.n_buckets = 512
+LSHSelfAttention.n_chunks_before = 1
+LSHSelfAttention.n_hashes = 2
 
 # Parameters for batch_fn:
 # ==============================================================================
@@ -76,7 +74,7 @@ Adam.eps = 1e-9
 train.eval_frequency = 500
 train.eval_steps = 8
 train.inputs = @trax.supervised.inputs.inputs
-# train.model: see top
+train.model = @trax.models.ReformerLM
 train.optimizer = @trax.optimizers.Adam
 train.steps = 100000
 train.save_graphs = False
@@ -84,45 +82,24 @@ train.checkpoints_at = \
     [1000, 5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000,
      55000, 60000, 70000, 80000, 90000, 100000]
 
-# Parameters for MemoryEfficientCausalAttention:
+# Parameters for SelfAttention:
 # ==============================================================================
-MemoryEfficientCausalAttention.dropout = 0.0
-MemoryEfficientCausalAttention.loop_stride = 256
-MemoryEfficientCausalAttention.share_qk = %share_qk
+SelfAttention.attention_dropout = 0.2
+# SelfAttention.chunk_len: see top
+SelfAttention.n_chunks_after = 0
+# SelfAttention.n_chunks_before: see top
 
-# Parameters for TimeBinCausalAttention:
+# Parameters for LSHSelfAttention:
 # ==============================================================================
-TimeBinCausalAttention.dropout = 0.2
-# TimeBinCausalAttention.n_bins: see top
-TimeBinCausalAttention.share_qk = %share_qk
-
-# Parameters for LSHCausalAttention:
-# ==============================================================================
-LSHCausalAttention.allow_duplicate_attention = False
-LSHCausalAttention.attend_across_buckets = True
-LSHCausalAttention.rehash_each_round = True
-# LSHCausalAttention.n_bins: see top
-# LSHCausalAttention.n_buckets: see top
-# LSHCausalAttention.n_hashes: see top
-LSHCausalAttention.one_rng = False
-LSHCausalAttention.hard_k = 0
-LSHCausalAttention.dropout = 0.2
-# LSHCausalAttention.drop_for_hash_rate: see top
-
-# Parameters for TransformerLM:
-# ==============================================================================
-TransformerLM.attention_type = %attn_type
-TransformerLM.d_attention_key = %attn_kv
-TransformerLM.d_attention_value = %attn_kv
-TransformerLM.d_model = 1024
-TransformerLM.d_ff = 4096
-TransformerLM.dropout = %dropout
-TransformerLM.max_len = 65536
-TransformerLM.mode = 'train'
-TransformerLM.n_heads = 8
-TransformerLM.n_layers = %n_layers
-TransformerLM.share_qk = %share_qk
-TransformerLM.vocab_size = 258  # Includes pad token and unused EOS token
+LSHSelfAttention.attention_dropout = 0.2
+# LSHSelfAttention.chunk_len: see top
+# LSHSelfAttention.n_buckets: see top
+LSHSelfAttention.n_chunks_after = 0
+# LSHSelfAttention.n_chunks_before: see top
+# LSHSelfAttention.n_hashes: see top
+LSHSelfAttention.n_parallel_heads = 1
+LSHSelfAttention.predict_drop_len = 256
+LSHSelfAttention.predict_mem_len = 16384
 
 # Parameters for ReformerLM:
 # ==============================================================================

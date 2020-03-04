@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,11 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Base layer class."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import copy
 import inspect
@@ -26,7 +23,6 @@ import traceback
 
 import jax
 import numpy as onp
-import six
 
 from tensorflow.compat.v1.io import gfile
 from trax import math
@@ -110,6 +106,7 @@ class Layer(object):
                     'lineno': int(frame.f_lineno)}
     del frame  # Just in case.
     self._init_finished = False
+    self._jit_cache = {}
 
   def __repr__(self):
     class_str = self.__class__.__name__
@@ -150,19 +147,14 @@ class Layer(object):
     state = kwargs.pop('state', self.state)
     rng = kwargs.pop('rng', self._rng)
     rng = math.random.get_prng(0) if rng is None else rng
-    forward = self._forward_internal
-    # TODO(lukaszkaiser): the following arguments are experimental, decide which
-    #   are really useful after a number of experiments and finalize the API.
+    forward = self.pure_fn
+    # TODO(lukaszkaiser): n_accelerators is experimental, to decide on API
     n_accelerators = kwargs.pop('n_accelerators', 0)
-    replicate = kwargs.pop('replicate', True)
-    if n_accelerators > 1 and replicate:
-      weights = for_n_devices(weights, n_accelerators)
-      state = for_n_devices(state, n_accelerators)
     if n_accelerators:
-      forward = jit_forward(forward, n_accelerators)
+      if n_accelerators not in self._jit_cache:
+        self._jit_cache[n_accelerators] = jit_forward(forward, n_accelerators)
+      forward = self._jit_cache[n_accelerators]
     outputs, new_state = forward(x, weights, state, rng)
-    if n_accelerators > 1 and replicate:  # Unreplicate state if needed.
-      new_state = math.nested_map(new_state, lambda x: x[0])
     self.state = new_state
     self.weights = weights
     return outputs
@@ -348,8 +340,6 @@ class Layer(object):
 
   def new_rng(self):
     """Returns a new single-use random number generator (JAX PRNG key)."""
-    if self._rng is None:
-      self._rng = math.random.get_prng(0)
     self._rng, rng = math.random.split(self._rng)
     return rng
 
@@ -364,8 +354,6 @@ class Layer(object):
     """
     if n < 1:
       raise ValueError('n must be > 0; received value: {}'.format(n))
-    if self._rng is None:
-      self._rng = math.random.get_prng(0)
     rngs = math.random.split(self._rng, n + 1)
     self._rng = rngs[0]
     return tuple(rngs[1:])
@@ -422,12 +410,11 @@ class Layer(object):
   def state(self, state):
     self._state = state
 
-  def _forward_internal(self, x, weights, state, rng):
-    """Applies this layer as part of a forward pass; an internal system method.
+  def pure_fn(self, x, weights, state, rng):
+    """Applies this layer as a pure function.
 
-    This method is reserved for handling plumbing and other internal affairs
-    as needed by the overall library. Trax library users should use or override
-    the `forward` method instead.
+    This method exposes the layer's computation as a pure function. This is
+    esp. useful for JIT compilation. Do not override, use `forward` instead.
 
     Args:
       x: See Layer.forward_with_state inputs.
@@ -460,8 +447,12 @@ class Layer(object):
 
     except Exception:
       name, trace = self.__class__.__name__, _short_traceback()
-      raise LayerError(name, '_forward_internal',
+      raise LayerError(name, 'pure_fn',
                        self._caller, signature(x), trace)
+
+  def output_signature(self, input_signature):
+    """Returns output signature this layer would give for `input_signature`."""
+    return self._forward_abstract(input_signature)[0]  # output only, not state
 
   def _forward_abstract(self, input_signature):
     """Computes shapes and dtypes this layer would produce in a forward pass.
@@ -501,7 +492,7 @@ class Layer(object):
     if sublayers:
       rngs = math.random.split(rng, len(sublayers))
       for sublayer, rng in zip(sublayers, rngs):
-        sublayer._rng = rng
+        sublayer._set_rng_recursive(rng)
 
   def _set_input_signature_recursive(self, input_signature):
     """Sets input_signatures for this layer and sublayers, recursively.
@@ -526,6 +517,18 @@ class Layer(object):
                        'sublayer must override the input_signature property '
                        'setter.')
   # pylint: enable=protected-access
+
+  def replicate(self, n_accelerators):
+    """Replicate weights and state for use on n accelerators. Experimental."""
+    if n_accelerators > 1:
+      self.weights = for_n_devices(self.weights, n_accelerators)
+      self.state = for_n_devices(self.state, n_accelerators)
+
+  def unreplicate(self, unreplicate_state=False):
+    """Unreplicate weights and optionally state. Experimental."""
+    self.weights = math.nested_map(self.weights, lambda x: x[0])
+    if unreplicate_state:
+      self.state = math.nested_map(self.state, lambda x: x[0])
 
   def _do_custom_gradients(self, x, weights, state, **kwargs):
     """Calls this layer for a forward pass, but with custom gradients."""
@@ -553,7 +556,7 @@ class Layer(object):
         res = self.backward(
             y, output, grad, weights, state, new_state, **kwargs)
         return res
-      return (output, state), vjpfun
+      return (output, new_state), vjpfun
 
     jax.defvjp_all(_do_forward, do_forward_vjp)
     output, state = _do_forward(x, weights)
@@ -623,12 +626,8 @@ def Fn(f, n_in=None, n_out=None):  # pylint: disable=invalid-name
     A layer executing the function f.
   """
   # Inspect the function f to restrict to no-defaults and no-kwargs functions.
-  if six.PY2:
-    argspec = inspect.getargspec(f)
-    varkwargs = argspec.keywords
-  else:
-    argspec = inspect.getfullargspec(f)
-    varkwargs = argspec.varkw
+  argspec = inspect.getfullargspec(f)
+  varkwargs = argspec.varkw
   # This layer cannot handle functions with kwargs or defaults.
   if argspec.defaults is not None:
     raise ValueError('function cannot have default arguments')
@@ -770,10 +769,7 @@ def _short_traceback(skip=3):
   counter, res = 0, []
   # Skipping 3 lines by default: the top (useless) and self-call.
   # In python 3, we need to set chain to False (it doesn't exist in python 2).
-  if six.PY2:
-    lines = traceback.format_exc().splitlines()[skip:]
-  else:
-    lines = traceback.format_exc(chain=False).splitlines()[skip:]  # pylint: disable=unexpected-keyword-arg
+  lines = traceback.format_exc(chain=False).splitlines()[skip:]  # pylint: disable=unexpected-keyword-arg
   for l in lines:
     if l.startswith('trax.layers.base.LayerError'):
       l = l[len('trax.layers.base.'):]  # Remove the trax.layers.base prefix.

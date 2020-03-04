@@ -1,4 +1,4 @@
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import trax.learning_rate
+import trax.lr_schedules
 import trax.models
 import trax.optimizers
 import trax.supervised.inputs
@@ -62,5 +62,5 @@ train.inputs = @trax.supervised.inputs.inputs
 train.model = @trax.models.Resnet50
 train.optimizer = @trax.optimizers.Momentum
 train.steps = 300000
-train.lr_schedule = @learning_rate.MultifactorSchedule
+train.lr_schedule = @lr_schedules.MultifactorSchedule
 

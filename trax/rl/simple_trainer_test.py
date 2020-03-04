@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -44,6 +44,7 @@ class SimpleTrainerTest(test.TestCase):
             'rendered_env_resize_to': None,  # Do not resize frames
             'sticky_actions': False,
             'output_dtype': None,
+            'num_actions': None,
         })
 
     return gym_env_problem.GymEnvProblem(base_env_name=name,

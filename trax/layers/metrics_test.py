@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,10 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Tests for metrics layers."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from absl.testing import absltest
 import numpy as onp
@@ -67,6 +65,18 @@ class MetricsLayerTest(absltest.TestCase):
     mean3 = layer((inputs, weights3))
     onp.testing.assert_allclose(mean3, 1.0)
 
+  def test_weighted_sequence_mean_semantics(self):
+    inputs = onp.array([[1, 1, 1], [1, 1, 0]], dtype=onp.float32)
+    weights1 = onp.array([1, 1, 1], dtype=onp.float32)
+    layer = metrics._WeightedSequenceMean()
+    full_signature = (signature(inputs), signature(weights1))
+    layer.init(full_signature)
+    mean1 = layer((inputs, weights1))
+    onp.testing.assert_allclose(mean1, 0.5)
+    weights2 = onp.array([1, 1, 0], dtype=onp.float32)
+    mean2 = layer((inputs, weights2))
+    onp.testing.assert_allclose(mean2, 1.0)
+
   def test_cross_entropy_loss(self):
     input_signature = (ShapeDtype((29, 4, 4, 20)), ShapeDtype((29, 4, 4)))
     result_shape = base.check_shape_agreement(
@@ -78,6 +88,24 @@ class MetricsLayerTest(absltest.TestCase):
     result_shape = base.check_shape_agreement(
         metrics.AccuracyScalar(), input_signature)
     self.assertEqual(result_shape, ())
+
+  def test_l2_loss(self):
+    inputs = onp.array([[1, 1], [1, 1]], dtype=onp.float32)
+    targets = onp.array([[1, 1], [1, 0]], dtype=onp.float32)
+    sig = (signature(inputs), signature(targets))
+    layer = metrics.L2Loss(has_weights=False)
+    layer.init(sig)
+    loss = layer((inputs, targets))
+    onp.testing.assert_allclose(loss, 0.25)
+    weights = onp.array([[1, 1], [1, 0]], dtype=onp.float32)
+    sig = (signature(inputs), signature(targets), signature(weights))
+    layer = metrics.L2Loss(has_weights=True)
+    layer.init(sig)
+    loss = layer((inputs, targets, weights))
+    onp.testing.assert_allclose(loss, 0.0)
+    weights2 = onp.array([[1, 0], [0, 1]], dtype=onp.float32)
+    loss = layer((inputs, targets, weights2))
+    onp.testing.assert_allclose(loss, 0.5)
 
 
 if __name__ == '__main__':

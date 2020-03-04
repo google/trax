@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import numpy as np
 import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import arrays
+from trax.tf_numpy.numpy import math  # for operator overloads
 
 
 t2a = arrays.tensor_to_ndarray

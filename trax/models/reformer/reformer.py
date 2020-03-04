@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Reformer Models."""
 from __future__ import absolute_import
 from __future__ import division
@@ -21,10 +22,11 @@ from __future__ import print_function
 import jax
 
 from trax import layers as tl
-from trax.layers.combinators import _pop_rng_and_split
+from trax.layers import base
+from trax.layers.combinators import (  # pylint: disable=g-multiple-import
+    _pop_rng_and_split, _inputs_from_stack, _outputs_onto_stack)
 from trax.math import numpy as np
 from trax.math import random
-from trax.models import transformer
 
 
 # Layers are always CamelCase, but functions in general are snake_case
@@ -121,21 +123,24 @@ class BroadcastedDropout(tl.Layer):
       return x, state
 
 
-def FeedForward(d_model, d_ff, dropout, activation, mode):
+def FeedForward(d_model, d_ff, dropout, activation, act_dropout, mode):
   """Feed-forward block with layer normalization at start."""
+  if act_dropout is None:
+    act_dropout = dropout
   return [
       tl.LayerNorm(),
       tl.Dense(d_ff),
-      BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
+      BroadcastedDropout(rate=act_dropout, mode=mode),  # pylint: disable=no-value-for-parameter
       activation(),
       tl.Dense(d_model),
       BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
   ]
 
 
-def ChunkedFeedForward(d_model, d_ff, dropout, activation, chunk_size, mode):
+def ChunkedFeedForward(d_model, d_ff, dropout, activation, act_dropout,
+                       chunk_size, mode):
   """Chunked feed-forward block with layer normalization at start."""
-  ff = FeedForward(d_model, d_ff, dropout, activation, mode)
+  ff = FeedForward(d_model, d_ff, dropout, activation, act_dropout, mode)
   if chunk_size < 1:
     return ff
   def reshape_to_chunks(x):
@@ -179,10 +184,15 @@ class SplitForOutput(tl.ReversibleLayer):
     x2_split = np.split(x2, self._n_sections, self._axis)
 
     res = [np.concatenate(ys, -1) for ys in zip(x1_split, x2_split)]
-    return tuple(res)
+    if len(res) == 1:
+      return res[0]
+    else:
+      return tuple(res)
 
   def reverse(self, output, weights=(), state=(), new_state=(), **kwargs):
     del weights, kwargs
+    if not isinstance(output, (list, tuple)):
+      output = [output]
 
     x1_split = []
     x2_split = []
@@ -437,6 +447,175 @@ class ReversibleAttentionHalfResidual(tl.ReversibleLayer, tl.Serial):
     return reconstructed_x, (x_ct, weights_ct)
 
 
+class ReversibleHalfResidualV2(tl.ReversibleLayer):
+  """Half of a RevNet-style residual that optionally performs attention.
+
+  This layer is designed to replace both ReversibleHalfResidual and
+  ReversibleAttentionHalfResidual. When attention_layer is None, this layer has
+  the signature [accumulator, *context] -> [accumulator + f(context), *context].
+  The attention_layer must be an instance of EfficientAttentionBase or one of
+  its subclasses (see efficient_attention_v2.py), or None.
+
+  Attention is special-cased for the following two reasons:
+  - LSH attention needs to save bucket assignments from the forward pass to the
+    backward pass, for training stability. This requires special-casing it.
+  - We can call attention_layer.forward_and_or_backward to compute its output
+    (needed for inverting a reversible residual layer) while simultaneously
+    performing the backward pass. Sharing computation between these two
+    operations improves training speed.
+  """
+
+  def __init__(self, *residual_layers, attention_layer=None):
+    super(ReversibleHalfResidualV2, self).__init__()
+
+    self.compute_residual = tl.Serial(*residual_layers)
+    self.attention_layer = attention_layer
+
+    if self.attention_layer is None:
+      self._sublayers = (self.compute_residual,)
+    else:
+      assert hasattr(attention_layer, 'forward_and_or_backward')
+      self._sublayers = (self.compute_residual, self.attention_layer)
+
+    running_max = 0
+    running_total = 0
+    for layer in self._sublayers:
+      running_total += layer.n_in
+      running_max = max(running_max, running_total)
+      running_total -= layer.n_out
+    self._n_in = self._n_out = running_max + 1
+
+  def forward_with_state(self, xs, weights=base.EMPTY_WEIGHTS,
+                         state=base.EMPTY_STATE, **kwargs):
+    rngs = _pop_rng_and_split(kwargs, len(self.sublayers))
+
+    accumulator, *context = xs
+    stack = context = tuple(context)
+    new_state = []
+    for layer, w, s, rng in zip(self.sublayers, weights, state, rngs):
+      inputs = _inputs_from_stack(layer, stack)
+      outputs, s = layer.pure_fn(inputs, w, s, rng)
+      stack = _outputs_onto_stack(layer, outputs, stack)
+      new_state.append(s)
+    residual = stack[0] if isinstance(stack, (tuple, list)) else stack
+
+    output = accumulator + residual
+    stack = (output,) + context
+    return stack, new_state
+
+  def reverse(self, *args, **kwargs):
+    raise NotImplementedError('Only reverse_and_grad is actually used.')
+
+  def reverse_and_grad(self, output, ct, weights=(), state=(), new_state=(),
+                       **kwargs):
+    rngs = _pop_rng_and_split(kwargs, len(self.sublayers))
+
+    accumulator_output, *context = output
+    context = tuple(context)
+    accumulator_output_ct, *context_ct = ct
+    context_ct = tuple(context_ct)
+
+    # Forward pass through self.compute_residual. Outputs that will not receive
+    # a gradient signal from subsequent layers are moved to aux.
+    def call_compute_residual(x, weights):
+      res, _ = self.compute_residual.pure_fn(
+          x, weights=weights, state=state[0], rng=rngs[0])
+      if not isinstance(res, (tuple, list)):
+        return res, None
+      else:
+        n_differentiable = 1
+        if self.attention_layer is not None:
+          n_differentiable = min(len(res), self.attention_layer.n_in)
+        return res[:n_differentiable], res[n_differentiable:]
+
+    stack = context
+    inputs = _inputs_from_stack(self.compute_residual, stack)
+    outputs, compute_residual_vjpfun, outputs_aux = jax.vjp(
+        call_compute_residual, inputs, weights[0], has_aux=True)
+    if outputs_aux is not None:
+      n_differentiable_outputs = len(outputs)
+      outputs = outputs + outputs_aux
+    stack = _outputs_onto_stack(self.compute_residual, outputs, stack)
+
+    stack_ct = accumulator_output_ct
+    if self.attention_layer is None:
+      residual = stack[0] if isinstance(stack, (tuple, list)) else stack
+    else:
+      inputs = _inputs_from_stack(self.attention_layer, stack)
+      (residual, _, attn_inputs_ct, attn_weights_ct
+      ) = self.attention_layer.forward_and_or_backward(
+          inputs, weights[1], new_state[1], rngs[1],
+          output_grad=accumulator_output_ct,
+          compute_output=True, update_state=False)
+      stack_ct = _outputs_onto_stack(
+          self.attention_layer, attn_inputs_ct, stack_ct,
+          self.attention_layer.n_out, self.attention_layer.n_in)
+
+    compute_residual_ct = _inputs_from_stack(
+        self.compute_residual, stack_ct, self.compute_residual.n_out)
+    if outputs_aux is not None:
+      if not isinstance(compute_residual_ct, (tuple, list)):
+        compute_residual_ct = (compute_residual_ct,)
+      compute_residual_ct = compute_residual_ct[:n_differentiable_outputs]
+      assert len(compute_residual_ct) == n_differentiable_outputs
+    (compute_residual_inputs_ct, compute_residual_weights_ct
+    ) = compute_residual_vjpfun(compute_residual_ct)
+    stack_ct = _outputs_onto_stack(
+        self.compute_residual, compute_residual_inputs_ct, stack_ct,
+        self.compute_residual.n_out, self.compute_residual.n_in)
+    if not isinstance(stack_ct, (tuple, list)):
+      stack_ct = (stack_ct,)
+    stack_ct = (accumulator_output_ct,) + jax.tree_multimap(
+        lambda x, y: x+y, context_ct[:len(stack_ct)], stack_ct
+        ) + context_ct[len(stack_ct):]
+
+    reconstructed_x = accumulator_output - residual
+    stack = (reconstructed_x,) + context
+    if self.attention_layer is None:
+      weights_ct = (compute_residual_weights_ct,)
+    else:
+      weights_ct = (compute_residual_weights_ct, attn_weights_ct)
+    return stack, (stack_ct, weights_ct)
+
+  # pylint: disable=protected-access
+  def new_weights_and_state(self, input_signature):
+    stack = input_signature[1:]
+    if len(stack) == 1:
+      stack = stack[0]
+
+    inputs = _inputs_from_stack(self.compute_residual, stack)
+    weights, state = self.compute_residual.init(inputs)
+    outputs, _ = self.compute_residual._forward_abstract(inputs)
+    stack = _outputs_onto_stack(self.compute_residual, outputs, stack)
+
+    if self.attention_layer is None:
+      return (weights,), (state,)
+    else:
+      inputs = _inputs_from_stack(self.attention_layer, stack)
+      attn_weights, attn_state = self.attention_layer.init(inputs)
+      return (weights, attn_weights), (state, attn_state)
+  # pylint: enable=protected-access
+
+  # pylint: disable=protected-access
+  def _set_input_signature_recursive(self, input_signature):
+    """Sets input signatures for this layer and sublayers, recursively.
+
+    Args:
+      input_signature: A `ShapeDtype` instance (if this layer takes one input)
+          or a list/tuple of `ShapeDtype` instances.
+    """
+    self._input_signature = input_signature
+
+    # Infer shapes and dtypes (signatures) through the successive sublayers.
+    stack = input_signature[1:]
+    for layer in self.sublayers:
+      inputs = _inputs_from_stack(layer, stack)
+      layer._set_input_signature_recursive(inputs)
+      outputs, _ = layer._forward_abstract(inputs)
+      stack = _outputs_onto_stack(layer, outputs, stack)
+  # pylint: enable=protected-access
+
+
 def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
                  n_heads, n_attention_chunks, attention_type,
                  dropout, share_qk, ff_activation, ff_use_sru, ff_chunk_size,
@@ -461,47 +640,61 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
   Returns:
     the layer.
   """
-  if share_qk:
-    pre_attention = [
-        Chunk(n_sections=n_attention_chunks),  # pylint: disable=no-value-for-parameter
-        tl.LayerNorm(),
-        tl.Dup(),
-        tl.Parallel(
-            tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_attention_key),
-            tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_attention_value),
-        ),
-        tl.Dup(),
+  if not hasattr(attention_type, 'forward_unbatched'):
+    if share_qk:
+      pre_attention = [
+          Chunk(n_sections=n_attention_chunks),  # pylint: disable=no-value-for-parameter
+          tl.LayerNorm(),
+          tl.Dup(),
+          tl.Parallel(
+              tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_attention_key),
+              tl.ComputeAttentionHeads(
+                  n_heads=n_heads, d_head=d_attention_value),
+          ),
+          tl.Dup(),
+      ]
+    else:
+      pre_attention = [
+          Chunk(n_sections=n_attention_chunks),  # pylint: disable=no-value-for-parameter
+          tl.LayerNorm(),
+          tl.Dup(), tl.Dup(),
+          tl.Parallel(
+              tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_attention_key),
+              tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_attention_key),
+              tl.ComputeAttentionHeads(
+                  n_heads=n_heads, d_head=d_attention_value),
+          ),
+      ]
+
+    attention = attention_type(mode=mode)
+
+    # ReversibleAttentionHalfResidual requires that post_attention be linear in
+    # its input (so the backward pass can be computed without knowing the input)
+    post_attention = [
+        tl.ComputeAttentionOutput(n_heads=n_heads, d_model=d_model),
+        Unchunk(n_sections=n_attention_chunks),  # pylint: disable=no-value-for-parameter
+        BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
     ]
+
+    attention_half_residual = ReversibleAttentionHalfResidual(
+        pre_attention, attention, post_attention)
   else:
-    pre_attention = [
-        Chunk(n_sections=n_attention_chunks),  # pylint: disable=no-value-for-parameter
+    attention = attention_type(
+        n_heads=n_heads, d_qk=d_attention_key, d_v=d_attention_value,
+        share_qk=share_qk, causal=True, output_dropout=dropout, mode=mode)
+    attention_half_residual = ReversibleHalfResidualV2(
         tl.LayerNorm(),
-        tl.Dup(), tl.Dup(),
-        tl.Parallel(
-            tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_attention_key),
-            tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_attention_key),
-            tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_attention_value),
-        ),
-    ]
-
-  attention = attention_type(mode=mode)
-
-  # ReversibleAttentionHalfResidual requires that post_attention be linear in
-  # its input (so the backward pass can be computed without knowing the input)
-  post_attention = [
-      tl.ComputeAttentionOutput(n_heads=n_heads, d_model=d_model),
-      Unchunk(n_sections=n_attention_chunks),  # pylint: disable=no-value-for-parameter
-      BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
-  ]
+        attention_layer=attention,
+    )
 
   if ff_use_sru:
     feed_forward = [tl.SRU(d_model) for _ in range(ff_use_sru)]
   else:
     feed_forward = [ChunkedFeedForward(d_model, d_ff, dropout, ff_activation,
-                                       ff_chunk_size, mode)]
+                                       dropout, ff_chunk_size, mode)]
 
   return [
-      ReversibleAttentionHalfResidual(pre_attention, attention, post_attention),
+      attention_half_residual,
       tl.ReversibleSwap(),
       ReversibleHalfResidual(feed_forward),
       tl.ReversibleSwap(),
@@ -561,9 +754,13 @@ def ReformerLM(vocab_size,
   else:
     concatenate_input_chunks = tl.Concatenate(n_items=n_chunks)
 
+  d_emb = d_model
   if not axial_pos_shape:
     positional_encoding = tl.PositionalEncoding(
         max_len=max_len, dropout=dropout, mode=mode)
+  elif axial_pos_shape == 'fixed-base':  # TODO(lukaszkaiser): remove this HACK
+    positional_encoding = tl.FixedBasePositionalEncoding(mode=mode)
+    d_emb //= 2
   else:
     assert d_axial_pos_embs is not None
     positional_encoding = tl.AxialPositionalEncoding(
@@ -572,7 +769,7 @@ def ReformerLM(vocab_size,
         dropout=dropout, mode=mode)
 
   positional_embedder = [
-      tl.Embedding(d_model, vocab_size),
+      tl.Embedding(d_emb, vocab_size),
       BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
       positional_encoding,
   ]
@@ -748,7 +945,8 @@ def ReformerShortenLM(vocab_size,
   # pylint: enable=g-long-lambda
 
 
-def EncoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, mode):
+def EncoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, ff_dropout,
+                 mode):
   """Returns a list of layers that implements a Reformer encoder block.
 
   The input to the layer is a pair, (activations, mask), where the mask was
@@ -761,32 +959,41 @@ def EncoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, mode):
     n_heads: int: number of attention heads
     dropout: float: dropout rate (how much to drop out)
     ff_activation: the non-linearity in feed-forward layer
+    ff_dropout: the dropout rate in feed-forward layer
     mode: str: 'train' or 'eval'
 
   Returns:
     A list of layers that maps (activations, mask) to (activations, mask).
   """
-  pre_attention = tl.LayerNorm()
-  attention = tl.Attention(
-      d_model, n_heads=n_heads, dropout=dropout, mode=mode)
-  post_attention = tl.Dropout(
-      rate=dropout, name='dropout_enc_attn', mode=mode)
+  if mode == 'predict':
+    # Mode 'predict' means that the decoder should be run one token at a time.
+    # The encoder only ever runs over full sequences, which is why it's switched
+    # to 'eval' mode instead.
+    mode = 'eval'
 
-  # TODO(kitaev): Switch to FeedForward with BroadcastedDropout?
-  feed_forward = transformer._FeedForwardBlock(  # pylint: disable=protected-access
-      d_model, d_ff, dropout, -1, mode, ff_activation)
-  # feed_forward = FeedForward(d_model, d_ff, dropout, ff_activation, mode)
+  attention = tl.SelfAttention(
+      n_heads=n_heads, d_qk=d_model//n_heads, d_v=d_model//n_heads,
+      masked=True,
+      attention_dropout=dropout, output_dropout=dropout,
+      mode=mode)
+  attention_half_residual = ReversibleHalfResidualV2(
+      tl.LayerNorm(),
+      attention_layer=attention,
+  )
+
+  feed_forward = FeedForward(
+      d_model, d_ff, dropout, ff_activation, ff_dropout, mode)
 
   return [
-      # TODO(kitaev): consider ReversibleAttentionHalfResidual for efficiency
-      ReversibleHalfResidual([pre_attention, attention, post_attention]),
+      attention_half_residual,
       tl.ReversibleSwap(),
-      ReversibleHalfResidual(feed_forward),
+      ReversibleHalfResidualV2(feed_forward),
       tl.ReversibleSwap(),
   ]
 
 
-def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, mode):
+def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, ff_activation,
+                        ff_dropout, mode):
   """Reversible transformer decoder layer.
 
   Args:
@@ -795,38 +1002,41 @@ def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, mode):
     n_heads: int: number of attention heads
     dropout: float: dropout rate (how much to drop out)
     ff_activation: the non-linearity in feed-forward layer
+    ff_dropout: float: (optional) separate dropout rate for feed-forward layer
     mode: str: 'train' or 'eval'
 
   Returns:
     the layer.
   """
-  pre_attention_qkv = [
+  enc_dec_attention = tl.EncDecAttention(
+      n_heads=n_heads, d_qk=d_model//n_heads, d_v=d_model//n_heads,
+      attention_dropout=dropout, output_dropout=dropout,
+      mode=mode)
+  enc_dec_attention_half_residual = ReversibleHalfResidualV2(
       tl.LayerNorm(),
-      tl.Select([0, 2, 2, 1, 2]),  # vec_d vec_e vec_e masks vec_e
-  ]
-  attention_qkv = tl.AttentionQKV(
-      d_model, n_heads=n_heads, dropout=dropout, mode=mode)
-  # TODO(kitaev): BroadcastedDropout?
-  post_attention_qkv = tl.Dropout(rate=dropout, mode=mode)
+      attention_layer=enc_dec_attention,
+  )
 
-  pre_causal_attention = tl.LayerNorm()
-  causal_attention = tl.CausalAttention(
-      d_model, n_heads=n_heads, mode=mode)
-  # TODO(kitaev): BroadcastedDropout?
-  post_causal_attention = tl.Dropout(rate=dropout, mode=mode)
+  causal_attention = tl.SelfAttention(
+      n_heads=n_heads, d_qk=d_model//n_heads, d_v=d_model//n_heads,
+      causal=True,
+      attention_dropout=dropout, output_dropout=dropout,
+      mode=mode)
+  causal_attention_half_residual = ReversibleHalfResidualV2(
+      tl.LayerNorm(),
+      attention_layer=causal_attention,
+  )
 
-  feed_forward = FeedForward(d_model, d_ff, dropout, ff_activation, mode)
+  feed_forward = FeedForward(
+      d_model, d_ff, dropout, ff_activation, ff_dropout, mode)
 
-  return [                             # vec_d1 vec_d2 masks vec_e
-      # TODO(kitaev): consider ReversibleAttentionHalfResidual for efficiency
-      ReversibleHalfResidual(
-          [pre_causal_attention, causal_attention, post_causal_attention]),
+  return [                             # vec_d1 vec_d2 vec_e masks
+      causal_attention_half_residual,
       tl.ReversibleSwap(),
-      ReversibleHalfResidual(
-          [pre_attention_qkv, attention_qkv, post_attention_qkv]),
+      enc_dec_attention_half_residual,
       tl.ReversibleSwap(),
-      ReversibleHalfResidual(feed_forward),
-      tl.ReversibleSwap(),             # vec_d1 vec_d2 masks vec_e
+      ReversibleHalfResidualV2(feed_forward),
+      tl.ReversibleSwap(),
   ]
 
 
@@ -840,6 +1050,7 @@ def Reformer(input_vocab_size,
              dropout=0.1,
              max_len=2048,
              ff_activation=tl.Relu,
+             ff_dropout=None,
              mode='train'):
   """Reversible transformer encoder-decoder model.
 
@@ -860,6 +1071,8 @@ def Reformer(input_vocab_size,
     dropout: float: dropout rate (how much to drop out)
     max_len: int: maximum symbol length for positional encoding
     ff_activation: the non-linearity in feed-forward layer
+    ff_dropout: float: (optional) separate dropout rate at feed-forward
+      nonlinearity. This is called relu_dropout in T2T.
     mode: str: 'train' or 'eval'
 
   Returns:
@@ -873,68 +1086,75 @@ def Reformer(input_vocab_size,
   # TODO(kitaev): remove this hack.
   jax.api._check_inexact_input_vjp = lambda x: None  # pylint: disable=protected-access
 
-  def PositionalEncoder(vocab_size):  # tokens --> vectors
+  def PositionalEncoder(vocab_size, mode):  # tokens --> vectors
     # TODO(kitaev): axial positional encoding is better for very long sequences.
-    # TODO(kitaev): dropout=0.0 for tl.PositionalEncoding matches trax
-    # Transformer, but may not be the right option in general.
     positional_encoding = tl.PositionalEncoding(
-        max_len=max_len, dropout=0.0, mode=mode)
+        max_len=max_len, dropout=dropout, mode=mode)
     return [
         tl.Embedding(d_model, vocab_size),
-        # TODO(kitaev): BroadcastedDropout?
-        tl.Dropout(rate=dropout, mode=mode),
+        BroadcastedDropout(rate=dropout, mode=mode),
         positional_encoding,
     ]
 
-  in_encoder = PositionalEncoder(input_vocab_size)
-  out_encoder = (in_encoder if output_vocab_size is None
-                 else PositionalEncoder(output_vocab_size))
+  # TODO(kitaev): The regular trax Transformer shares vocab embeddings and
+  # position embeddings between the encoder and decoder if output_vocab_size is
+  # None. This isn't supported here because (a) Trax shares weights by sharing
+  # layer instances, but we need two separate instances to have mode == 'eval'
+  # for the encoder but mode == 'predict' for the decoder; and (b) tl.Cache does
+  # not work if its sublayers participate in any weight sharing.
+
+  # Mode 'predict' means that the decoder should be run one token at a time.
+  # The encoder only ever runs over full sequences, which is why it's switched
+  # to 'eval' mode instead.
+  in_encoder = PositionalEncoder(
+      input_vocab_size, mode='eval' if mode == 'predict' else mode)
   if output_vocab_size is None:
     output_vocab_size = input_vocab_size
+  out_encoder = PositionalEncoder(output_vocab_size, mode)
 
   encoder_blocks = [
       EncoderBlock(
-          d_model, d_ff, n_heads, dropout, ff_activation, mode)
+          d_model, d_ff, n_heads, dropout, ff_activation, ff_dropout, mode)
       for _ in range(n_encoder_layers)]
+
+  encoder = tl.Serial([
+      in_encoder,
+      tl.Dup(),
+      tl.ReversibleSerial(encoder_blocks),
+      tl.Fn(lambda x, y: (x+y)/2.0),
+      tl.LayerNorm(),
+  ])
+  if mode == 'predict':
+    encoder = tl.Cache(encoder)
 
   encoder_decoder_blocks = [
       EncoderDecoderBlock(
-          d_model, d_ff, n_heads, dropout, ff_activation, mode)
+          d_model, d_ff, n_heads, dropout, ff_activation, ff_dropout, mode)
       for _ in range(n_decoder_layers)]
 
   # Assemble and return the model.
   return tl.Serial(
       # Input: encoder_side_tokens, decoder_side_tokens
       # Copy decoder tokens for use in loss.
-      tl.Select([0, 1, 1]),               # tok_e tok_d tok_d
+      tl.Select([0, 1, 1]),                 # tok_e tok_d tok_d
+      tl.Branch([], [                       # tok_e mask  tok_d .....
+          tl.PaddingMask(),
+          tl.Fn(lambda x: np.squeeze(x, (1, 2)), n_out=1)]),
 
       # Encode.
-      tl.Branch(
-          in_encoder, tl.PaddingMask()),    # vec_e  masks  tok_d .....
-      tl.Dup(),                             # vec_e1 vec_e2 masks tok_d .....
-      tl.ReversibleSerial(encoder_blocks),  # vec_e1 vec_e2 masks tok_d .....
-      # The two sets of activations need to be reduced to one, in this case by
-      # averaging them. Note that ReformerLM concatenates instead. Various
-      # options (concat, average, add, keep only one, etc.) seem to perform
-      # similarly. We don't concatenate here because we want exact parameter
-      # parity with the standard Transformer.
-      tl.Fn(lambda x, y: (x+y)/2.0),        # vec_e  masks tok_d .....
-      tl.LayerNorm(),                       # vec_e  masks tok_d .....
+      encoder,                              # vec_e  mask tok_d .....
 
       # Decode.
-      tl.Select([2, 1, 0]),                 # tok_d masks vec_e .....
-      tl.ShiftRight(),                      # tok_d masks vec_e .....
-      out_encoder,                          # vec_d masks vec_e .....
-      tl.Branch(
-          [], tl.EncoderDecoderMask()),     # vec_d masks vec_e .....
-      tl.Dup(),                             # vec_d1 vec_d2 masks vec_e .....
+      tl.Select([2, 0, 1]),                 # tok_d vec_e mask .....
+      tl.ShiftRight(mode=mode),             # tok_d vec_e mask .....
+      out_encoder,                          # vec_d vec_e mask .....
+      tl.Dup(),                             # vec_d1 vec_d2 vec_e mask .....
       tl.ReversibleSerial(encoder_decoder_blocks),
-      tl.Fn(lambda x, y: (x+y)/2.0),        # vec_d masks vec_e .....
-      tl.LayerNorm(),                       # vec_d masks vec_e .....
+      tl.Fn(lambda x, y: (x+y)/2.0),        # vec_d vec_e mask .....
+      tl.LayerNorm(),                       # vec_d vec_e mask .....
 
       # Map to output vocab.
       tl.Select([0], n_in=3),               # vec_d .....
       tl.Dense(output_vocab_size),          # vec_d .....
       tl.LogSoftmax(),                      # vec_d .....
   )
-

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 from tensorflow import test
 from tensorflow.compat.v1.io import gfile
-from trax.rl import ppo
+from trax.rl import policy_based_utils
 from trax.rl.envs import async_trajectory_collector_lib as async_lib
 
 
@@ -28,7 +28,9 @@ class AsyncTrajectoryCollectorLibTest(test.TestCase):
     output_dir = self.get_temp_dir()
 
     def write_policy_model_file(epoch):
-      fname = ppo.get_policy_model_file_from_epoch(output_dir, epoch)
+      fname = policy_based_utils.get_policy_model_file_from_epoch(
+          output_dir, epoch
+      )
       with gfile.GFile(fname, 'w') as f:
         f.write('some data')
       return fname

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ from __future__ import print_function
 import functools
 import random
 
+import jax
 import numpy as np
 
 from tensor2tensor.envs import env_problem
@@ -73,6 +74,8 @@ class SimulatedEnvProblem(env_problem.EnvProblem):
       return (output, model_predict.state)
     self._model_predict = math.jit(predict_with_state)
     self._model_initialize = model_predict.init
+    self._init_model_weights = None
+    self._init_model_state = None
 
     self._observation_space = observation_space
     self._action_space = action_space
@@ -108,22 +111,29 @@ class SimulatedEnvProblem(env_problem.EnvProblem):
     """
     del parallelism
 
-    trax_state = trainer_lib.load_trainer_state(self._output_dir)
-    # TODO(lukaszkaiser): both model state and parameters by default include
-    # the loss layer. Currently, we access the pure-model parameters by just
-    # indexing, [0] here. But we should make it more explicit in a better API.
-    model_params = trax_state.opt_state.weights[0]
-    self._model_state = trax_state.model_state[0]
+    if self._output_dir is None:
+      model_weights = self._init_model_weights
+      self._model_state = None
+    else:
+      trax_state = trainer_lib.load_trainer_state(self._output_dir)
+      # TODO(lukaszkaiser): both model state and parameters by default include
+      # the loss layer. Currently, we access the pure-model parameters by just
+      # indexing, [0] here. But we should make it more explicit in a better API.
+      model_weights = self._extract_weights(trax_state.opt_state.weights[0])
+      self._model_state = trax_state.model_state[0]
 
     def predict_fn(inputs, rng):
       (output, self._model_state) = self._model_predict(
-          inputs, weights=model_params, state=self._model_state, rng=rng
+          inputs, weights=model_weights, state=self._model_state, rng=rng
       )
       return output
 
     self._predict_fn = predict_fn
     self._history_stream = history_stream
     self._steps = np.zeros(batch_size, dtype=np.int32)
+
+  def _extract_weights(self, weights):
+    return weights
 
   @property
   def observation_space(self):
@@ -177,14 +187,6 @@ class SimulatedEnvProblem(env_problem.EnvProblem):
   def trajectory_to_training_examples(self, trajectory):
     raise NotImplementedError
 
-  @property
-  def model_input_shape(self):
-    raise NotImplementedError
-
-  @property
-  def model_input_dtype(self):
-    raise NotImplementedError
-
   def _reset(self, indices):
     """Resets environments at the given indices.
 
@@ -215,7 +217,12 @@ class SimulatedEnvProblem(env_problem.EnvProblem):
 
   @property
   def model(self):
-    return self._model
+    return lambda mode: serialization_utils.SerializedModel(  # pylint: disable=g-long-lambda
+        seq_model=self._model(mode=mode),
+        observation_serializer=self._obs_serializer,
+        action_serializer=self._action_serializer,
+        significance_decay=self._significance_decay,
+    )
 
 
 class RawSimulatedEnvProblem(SimulatedEnvProblem):
@@ -368,10 +375,16 @@ class SerializedSequenceSimulatedEnvProblem(SimulatedEnvProblem):
     self._last_observations = np.full(
         (batch_size,) + self._observation_space.shape, np.nan)
     self._last_symbols = np.zeros((batch_size, 1), dtype=np.int32)
+    input_signature = ShapeDtype((batch_size, 1), np.int32)
+    (self._init_model_weights, self._init_model_state) = self._model_initialize(
+        input_signature
+    )
     super(SerializedSequenceSimulatedEnvProblem, self).initialize_environments(
         batch_size=batch_size, **kwargs)
-    input_signature = ShapeDtype((batch_size, 1), np.int32)
-    (_, self._init_model_state) = self._model_initialize(input_signature)
+    self._model_state = self._init_model_state
+
+  def _extract_weights(self, weights):
+    return serialization_utils.extract_inner_model(weights)
 
   def _predict_obs(self, predict_fn, rng):
     obs_repr = np.zeros(
@@ -381,7 +394,7 @@ class SerializedSequenceSimulatedEnvProblem(SimulatedEnvProblem):
       log_probs = predict_fn(self._last_symbols, rng=subrng)
       self._last_symbols = utils.gumbel_sample(log_probs)
       obs_repr[:, i] = self._last_symbols[:, 0]
-    return self._obs_serializer.deserialize(obs_repr)
+    return np.array(self._obs_serializer.deserialize(obs_repr))
 
   def _consume_act(self, actions, predict_fn, rng):
     act_repr = self._action_serializer.serialize(actions)
@@ -395,16 +408,56 @@ class SerializedSequenceSimulatedEnvProblem(SimulatedEnvProblem):
     del history
 
     indices = np.array(indices)
-    assert indices.shape[0] in (0, self._steps.shape[0]), (
-        # TODO(pkozakowski): Lift this requirement.
-        'Only resetting all envs at once is supported.'
-    )
 
+    # During reset, we need to predict the first observation for a subset of
+    # indices, however inference only works for the full set of indices. To
+    # workaround that:
+    # 1. Save prior inference state.
+    old_model_state = self._model_state
+    old_last_symbols = self._last_symbols
+    # 2. Reset the entire inference state.
     self._model_state = self._init_model_state
-    self._last_symbols[indices] = 0
-    self._steps[indices] = 0
+    self._last_symbols[:] = 0
+    # 3. Predict the next observation.
     observation = self._predict_obs(predict_fn, rng)[indices]
     self._last_observations[indices] = observation
+
+    # TODO(pkozakowski): Abstract out this primitive e.g. as
+    # trax.math.nested_zip_with?
+    def reset_recursively(current_state, init_state):
+      """Resets the initial state, assuming it's batched by trajectories."""
+      if isinstance(current_state, (list, tuple)):
+        return [
+            reset_recursively(current, init)
+            for (current, init) in zip(current_state, init_state)
+        ]
+      elif isinstance(current_state, dict):
+        return {
+            key: reset_recursively(current_state[key], init_state[key])
+            for key in current_state
+        }
+      else:
+        # current_state might just be a scalar primitive, check.
+        if (getattr(current_state, 'shape', ()) and
+            current_state.shape[0] == self._batch_size):
+          # If the state component is batched, substitute it on appropriate
+          # indices.
+          # This doesn't work with more than one head in attention layers,
+          # because the batch dimension gets multiplied by the number of heads.
+          # TODO(pkozakowski): Fix that in trax.layes.attention.
+          return jax.ops.index_update(
+              current_state, jax.ops.index[indices], init_state[indices]
+          )
+        else:
+          # Otherwise, leave as it is.
+          return current_state
+
+    # 4. Assign back the old inference state, updated on the appropriate
+    # indices.
+    self._model_state = reset_recursively(old_model_state, self._model_state)
+    old_last_symbols[indices] = self._last_symbols[indices]
+    self._last_symbols = old_last_symbols
+    self._steps[indices] = 0
     return observation
 
   def _step_model(self, predict_fn, actions, rng):
@@ -420,37 +473,15 @@ class SerializedSequenceSimulatedEnvProblem(SimulatedEnvProblem):
     return (observation, reward, done)
 
   def trajectory_to_training_examples(self, trajectory):
-    (repr_length,) = self.model_input_shape
-    seq_mask = np.ones((1, trajectory.num_time_steps - 1))
-    (reprs, repr_mask) = serialization_utils.serialize_observations_and_actions(
-        # Serialization works on batches, so we add a singleton batch dimension.
-        trajectory.observations_np[None, ...],
-        trajectory.actions_np[None, ...],
-        seq_mask,
-        self._obs_serializer,
-        self._action_serializer,
-        repr_length,
-    )
-    reprs = reprs[0, ...].astype(self.model_input_dtype)
-    sig_weights = (
-        self._significance_decay ** serialization_utils.significance_map(
-            self._obs_serializer, self._action_serializer, repr_length
-        )[None, ...]
-    )
-    obs_mask = serialization_utils.observation_mask(
-        self._obs_serializer, self._action_serializer, repr_length
-    )
-    weights = (sig_weights * obs_mask * repr_mask)[0, ...]
-    # (inputs, targets, weights)
-    return [(reprs, reprs, weights)]
-
-  @property
-  def model_input_shape(self):
-    return (self._max_trajectory_length * self._step_repr_length,)
-
-  @property
-  def model_input_dtype(self):
-    return np.int32
+    padding_length = self._max_trajectory_length - trajectory.num_time_steps
+    def pad(x):
+      pad_width = [(0, padding_length)] + [(0, 0)] * (x.ndim - 1)
+      return np.pad(x, pad_width=pad_width, mode='constant')
+    obs = pad(trajectory.observations_np)
+    act = pad(trajectory.actions_np)
+    mask = np.zeros_like(obs)
+    mask[:trajectory.num_time_steps, ...] = 1
+    return [(obs, act, obs, mask)]
 
 
 def cartpole_done_fn(previous_observation, current_observation):

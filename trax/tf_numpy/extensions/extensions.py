@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,12 +19,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import bisect
 import contextlib
+import six
 import threading
 
 import numpy as np
 import tensorflow.compat.v2 as tf
 
+from trax.tf_numpy.numpy import arrays
 from trax.tf_numpy.numpy import random
 from trax.tf_numpy.numpy.array_creation import array
 from trax.tf_numpy.numpy.array_creation import asarray
@@ -32,12 +35,54 @@ from trax.tf_numpy.numpy.arrays import ndarray
 from trax.tf_numpy.numpy.arrays import ShardedNdArray
 
 
+_int_dtype_lower_bounds = [- 2 ** 63, - 2 ** 31, - 2 ** 15, - 2 ** 7, 0, 2 ** 7,
+                           2 ** 15, 2 ** 31, 2 ** 64]
+_int_dtypes = [tf.int64, tf.int32, tf.int16, tf.int8, tf.uint8, tf.uint16,
+               tf.uint32, tf.uint64]
+
+
+def most_precise_int_dtype(x):
+  if not isinstance(x, six.integer_types):
+    return None
+  i = bisect.bisect_right(_int_dtype_lower_bounds, x)
+  if i in (0, len(_int_dtype_lower_bounds)):
+    raise ValueError("Integer %s is out of bounds" % x)
+  assert len (_int_dtype_lower_bounds) == len(_int_dtypes) + 1
+  return _int_dtypes[i - 1]
+
+
 def _canonicalize_jit_arg(x):
   if isinstance(x, ndarray):
     return x.data
   else:
     try:
-      return tf.convert_to_tensor(value=x)
+      # We need to convert `int` to the most precise dtype, otherwise the dtype
+      # of the result may be different from numpy's. For example, when a binary
+      # op takes in a Python integer 5 and an array of uint32, numpy will pick
+      # uint32 as 5's dtype, while tf.convert_to_tensor will choose int32 which
+      # will cause the two arguments to be promoted to int64. We pick uint8
+      # here, which will be promoted to uint32 by the binary op.
+      # Note that we prefer unsigned int to signed int when both are equally
+      # precise. For example, for 5, we pick uint8 instead of int8. There is no
+      # reason to prefer one to the other, because for each there is a case
+      # where the behavior diverges from numpy. If we prefer signed int,
+      # consider the case where the first operand is 5 and the second is
+      # 2**64-1. Numpy picks uint64 as the result dtype, but because we choose a
+      # signed type for 5 such as int8, the result type will be float64. On the
+      # other hand, if we prefer unsigned int, consider the case where the first
+      # operand is 2**31-1 and the second is -1. Numpy will pick int32, but
+      # because we choose uint32 for 2*32-1, the result will be int64. The root
+      # of the problem is that `jit` converts `int` to tensors (hence committing
+      # to a dtype) too early, when we don't have enough information about the
+      # jitted function (e.g. which subset of the arguments should be promoted
+      # together using np.result_type). tf.function doesn't have this problem
+      # because it doesn't convert `int` to tensors. jax.jit doesn't have this
+      # problem because it converts `int` to "int tracer" which doesn't commit
+      # to a dtype.
+      # TODO(wangpeng): Revisit this design and see whether we can improve `jit`
+      #   and tf.function.
+      dtype = most_precise_int_dtype(x)
+      return arrays.convert_to_tensor(value=x, dtype=dtype)
     except (TypeError, ValueError):
       return x
 
@@ -455,7 +500,7 @@ def bernoulli(key, mean=np.float32(0.5), shape=()):
     A random array with the specified shape and boolean dtype.
   """
   # TODO(wangpeng): convert types TF <-> numpy.
-  shape = shape or tf.convert_to_tensor(value=mean).shape
+  shape = shape or arrays.convert_to_tensor(value=mean).shape
   return array(
       tf.less(uniform(key, shape), mean), copy=False)
 

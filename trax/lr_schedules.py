@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Trax learning rate schedules.
 
 The learning rate schedules here all have the signature:
@@ -24,10 +25,6 @@ function that takes a step and returns a dict with entry 'learning_rate'.
 
 # TODO(pkozakowski): Revisit the decision to control nontrainable parameters
 # using LR schedules, or at least rename the module.
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import random
 import time
@@ -220,11 +217,18 @@ def PolicySchedule(
 
   # Build the policy network and load its parameters.
   start_time = time.time()
-  net = ppo.policy_and_value_net(
-      n_controls=len(control_configs),
-      n_actions=len(action_multipliers),
-      vocab_size=policy_and_value_vocab_size,
+  (low, high) = observation_range
+  observation_space = gym.spaces.Box(
+      shape=observations.shape[1:], low=low, high=high
+  )
+  action_space = gym.spaces.MultiDiscrete(
+      nvec=(len(action_multipliers),) * len(control_configs)
+  )
+  (net, _) = policy_based_utils.policy_and_value_net(
       bottom_layers_fn=policy_and_value_model,
+      observation_space=observation_space,
+      action_space=action_space,
+      vocab_size=policy_and_value_vocab_size,
       two_towers=policy_and_value_two_towers,
   )
   logging.vlog(
@@ -232,7 +236,9 @@ def PolicySchedule(
   )
   start_time = time.time()
   # (opt_state, state, epoch, opt_step, history)
-  (opt_state, state, _, _, _) = ppo.maybe_restore_opt_state(policy_dir)
+  (opt_state, state, _, _, _) = policy_based_utils.maybe_restore_opt_state(
+      policy_dir
+  )
   assert opt_state is not None, 'Policy checkpoint not found.'
   (params, _, _) = opt_state
   logging.vlog(
@@ -245,29 +251,16 @@ def PolicySchedule(
   rng = jax_random.get_prng(seed=seed)
   start_time = time.time()
 
-  (low, high) = observation_range
-  observation_space = gym.spaces.Box(
-      shape=observations.shape[1:], low=low, high=high
-  )
-  action_space = gym.spaces.MultiDiscrete(
-      nvec=(len(action_multipliers),) * len(control_configs)
-  )
   n_timesteps = observations.shape[0]
-  rewards_to_actions = ppo.init_rewards_to_actions(
-      policy_and_value_vocab_size, observation_space, action_space, n_timesteps
-  )
   # (log_probs, value_preds, state, rng)
-  (log_probs, _, _, _) = ppo.run_policy(
+  (log_probs, _, _, _) = policy_based_utils.run_policy(
       policy_and_value_net_apply=net,
       observations=np.array([observations]),
       lengths=np.array([n_timesteps]),
       weights=params,
       state=state,
       rng=rng,
-      vocab_size=policy_and_value_vocab_size,
-      observation_space=observation_space,
       action_space=action_space,
-      rewards_to_actions=rewards_to_actions,
   )
 
   logging.vlog(
@@ -281,8 +274,7 @@ def PolicySchedule(
   controls = {
       # name: value
       control_config[0]: online_tune.update_control(  # pylint: disable=g-complex-comprehension
-          control_config, control_action, history, action_multipliers
-      )
+          control_config, control_action, history, action_multipliers)
       for (control_action, control_config) in zip(action, control_configs)
   }
   return lambda _: controls
@@ -290,7 +282,8 @@ def PolicySchedule(
 
 # pylint: disable=g-import-not-at-top
 # These dependencies are here to break the circular dependency from this
-# module, to itself via online_tune/ppo -> trainer_lib -> learning_rate.
+# module, to itself via online_tune/policy_based_utils -> trainer_lib ->
+# lr_schedules.
 from trax.rl import online_tune
-from trax.rl import ppo
+from trax.rl import policy_based_utils
 # pylint: enable=g-import-not-at-top

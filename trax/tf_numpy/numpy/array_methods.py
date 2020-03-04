@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,14 +20,13 @@ from __future__ import print_function
 
 import math
 import numpy as np
-from numpy import iinfo as np_iinfo
-from numpy import promote_types as np_promote_types
 import six
 import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import array_creation
 from trax.tf_numpy.numpy import array_manipulation
 from trax.tf_numpy.numpy import arrays
+from trax.tf_numpy.numpy import dtypes
 from trax.tf_numpy.numpy import utils
 
 
@@ -143,9 +142,9 @@ def clip(a, a_min=None, a_max=None):
   # Unlike np.clip, tf.clip_by_value requires both min and max values to be
   # specified so we set them to the smallest/largest values of the array dtype.
   if a_min is None:
-    a_min = np_iinfo(a.dtype).min
+    a_min = np.iinfo(a.dtype).min
   if a_max is None:
-    a_max = np_iinfo(a.dtype).max
+    a_max = np.iinfo(a.dtype).max
   a_min = array_creation.asarray(a_min, dtype=a.dtype)
   a_max = array_creation.asarray(a_max, dtype=a.dtype)
   return utils.tensor_to_ndarray(
@@ -229,7 +228,7 @@ def cumprod(a, axis=None, dtype=None):
   if dtype is None and tf.as_dtype(a.dtype).is_integer:
     # If a is an integer type and its precision is less than that of `int`,
     # the output type will be `int`.
-    output_type = np_promote_types(a.dtype, int)
+    output_type = np.promote_types(a.dtype, int)
     if output_type != a.dtype:
       a = array_creation.asarray(a, dtype=output_type)
 
@@ -266,7 +265,7 @@ def cumsum(a, axis=None, dtype=None):
   if dtype is None and tf.as_dtype(a.dtype).is_integer:
     # If a is an integer type and its precision is less than that of `int`,
     # the output type will be `int`.
-    output_type = np_promote_types(a.dtype, int)
+    output_type = np.promote_types(a.dtype, int)
     if output_type != a.dtype:
       a = array_creation.asarray(a, dtype=output_type)
 
@@ -298,124 +297,109 @@ def imag(a):
   return utils.tensor_to_ndarray(tf.math.imag(a.data))
 
 
-def amax(a, axis=None, keepdims=None):
-  """Returns the maximum value along the axes or in the entire array.
-
-  Uses `tf.reduce_max`.
-
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can
-      be converted to a Tensor using `tf.convert_to_tensor`.
-    axis: Optional 0-d or 1-d array_like. Axes along which to compute the max.
-      If None, operation is performed on flattened array.
-    keepdims: If true, retains reduced dimensions with length 1.
-  """
-  a = array_creation.asarray(a)
-  return utils.tensor_to_ndarray(tf.reduce_max(input_tensor=a.data, axis=axis,
-                                               keepdims=keepdims))
+_TO_INT64 = 0
+_TO_FLOAT = 1
 
 
-def mean(a, axis=None, dtype=None, keepdims=None):
-  """Computes the mean of elements across dimensions of a tensor.
-
-  Uses `tf.reduce_mean`.
-
-  Note that the output dtype for this is different from tf.reduce_mean.
-  For integer arrays, the output type is float64 whereas for float arrays
-  it is the same as the array type. The output type for tf.reduce_mean is
-  always the same as the input array.
-
-  ```python
-  tf.reduce_mean([1,2,3]) # 2
-  np.mean([1,2,3]) # 2.
-  ```
+def _reduce(tf_fn, a, axis=None, dtype=None, keepdims=None,
+            promote_int=_TO_INT64, tf_bool_fn=None, preserve_bool=False):
+  """A general reduction function.
 
   Args:
-    a: Instance of ndarray or numpy array_like.
-    axis: Optional 0-d or 1-d array_like. Axes along which to compute mean.
-      If None, operation is performed on flattened array.
-    dtype: Optional. Type of the output array. If None, defaults to the dtype
-      of `a`, unless `a` is an integer type in which case this defaults to
-      `float64`.
-    keepdims: If true, retains reduced dimensions with length 1.
+    tf_fn: the TF reduction function.
+    a: the array to be reduced.
+    axis: (optional) the axis along which to do the reduction. If None, all
+      dimensions are reduced.
+    dtype: (optional) the dtype of the result.
+    keepdims: (optional) whether to keep the reduced dimension(s).
+    promote_int: how to promote integer and bool inputs. There are three
+      choices: (1) _TO_INT64: always promote them to int64 or uint64; (2)
+      _TO_FLOAT: always promote them to a float type (determined by
+      dtypes.default_float_type); (3) None: don't promote.
+    tf_bool_fn: (optional) the TF reduction function for bool inputs. It
+      will only be used if `dtype` is explicitly set to `np.bool_` or if `a`'s
+      dtype is `np.bool_` and `preserve_bool` is True.
+    preserve_bool: a flag to control whether to use `tf_bool_fn` if `a`'s dtype
+      is `np.bool_` (some reductions such as np.sum convert bools to
+      integers, while others such as np.max preserve bools.
 
   Returns:
     An ndarray.
   """
-  a = array_creation.asarray(a)
   if dtype:
-    dtype = utils.to_tf_type(dtype)
-  else:
-    tf_dtype = tf.as_dtype(a.dtype)
-    if tf_dtype.is_integer or tf_dtype.is_bool:
-      dtype = tf.float64
-  a_t = utils.maybe_cast(a.data, dtype)
-  return utils.tensor_to_ndarray(tf.reduce_mean(input_tensor=a_t, axis=axis,
-                                                keepdims=keepdims))
-
-
-def amin(a, axis=None, keepdims=None):
-  """Returns the minimum value along the axes or in the entire array.
-
-  Uses `tf.reduce_min`.
-
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can
-      be converted to a Tensor using `tf.convert_to_tensor`.
-    axis: Optional 0-d or 1-d array_like. Axes along which to compute min.
-      If None, operation is performed on flattened array.
-    keepdims: If true, retains reduced dimensions with length 1.
-  """
-  a = array_creation.asarray(a)
-  return utils.tensor_to_ndarray(tf.reduce_min(input_tensor=a.data, axis=axis,
-                                               keepdims=keepdims))
-
-
-def prod(a, axis=None, dtype=None, keepdims=None):
-  """Computes the product of elements across dimensions of a tensor.
-
-  Uses `tf.reduce_prod`.
-
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can
-      be converted to a Tensor using `tf.convert_to_tensor`.
-    axis: Optional 0-d or 1-d array_like. Axes along which to compute products.
-      If None, returns product of all elements in array.
-    dtype: Optional. The type of the output array. If None, defaults to the
-      dtype of `a` unless `a` is an integer type with precision less than `int`
-      in which case the output type is `int.`
-    keepdims: If true, retains reduced dimensions with length 1.
-
-  Returns:
-    An ndarray.
-  """
+    dtype = utils.result_type(dtype)
+  if keepdims is None:
+    keepdims = False
   a = array_creation.asarray(a, dtype=dtype)
-  if dtype is None and tf.as_dtype(a.dtype).is_integer:
-    # If a is an integer type and its precision is less than that of `int`,
-    # the output type will be `int`.
-    output_type = np_promote_types(a.dtype, int)
-    if output_type != a.dtype:
-      a = array_creation.asarray(a, dtype=output_type)
+  if ((dtype == np.bool_ or preserve_bool and a.dtype == np.bool_)
+      and tf_bool_fn is not None):
+    return utils.tensor_to_ndarray(
+        tf_bool_fn(input_tensor=a.data, axis=axis, keepdims=keepdims))
+  if dtype is None:
+    dtype = a.dtype
+    if np.issubdtype(dtype, np.integer) or dtype == np.bool_:
+      if promote_int == _TO_INT64:
+        # If a is an integer/bool type and whose bit width is less than 64,
+        # numpy up-casts it to 64-bit.
+        if dtype == np.bool_:
+          is_signed = True
+          width = 8  # We can use any number here that is less than 64
+        else:
+          is_signed = np.issubdtype(dtype, np.signedinteger)
+          width = np.iinfo(dtype).bits
+        if width < 64:
+          if is_signed:
+            dtype = np.int64
+          else:
+            dtype = np.uint64
+          a = a.astype(dtype)
+      elif promote_int == _TO_FLOAT:
+        a = a.astype(dtypes.default_float_type())
 
-  return utils.tensor_to_ndarray(tf.reduce_prod(input_tensor=a.data, axis=axis,
-                                                keepdims=keepdims))
+  return utils.tensor_to_ndarray(
+      tf_fn(input_tensor=a.data, axis=axis, keepdims=keepdims))
 
 
-def ptp(a, axis=None):
-  """Returns difference between max and min values along an axis.
+@utils.np_doc(np.sum)
+def sum(a, axis=None, dtype=None, keepdims=None):  # pylint: disable=redefined-builtin
+  return _reduce(tf.reduce_sum, a, axis=axis, dtype=dtype, keepdims=keepdims,
+                 tf_bool_fn=tf.reduce_any)
 
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can
-      be converted to a Tensor using `tf.convert_to_tensor`.
-    axis: Optional 0-d or 1-d array_like. Axes along which to compute mean.
-      If None, returns difference between max and min values of the entire
-      array.
 
-  Returns:
-    An ndarray with same shape as `a` with `axis` dimensions reduced or a scalar
-    ndarray if `axis` is None.
-  """
-  return amax(a, axis=axis) - amin(a, axis=axis)
+@utils.np_doc(np.prod)
+def prod(a, axis=None, dtype=None, keepdims=None):
+  return _reduce(tf.reduce_prod, a, axis=axis, dtype=dtype, keepdims=keepdims,
+                 tf_bool_fn=tf.reduce_all)
+
+
+@utils.np_doc(np.mean)
+def mean(a, axis=None, dtype=None, keepdims=None):
+  return _reduce(tf.math.reduce_mean, a, axis=axis, dtype=dtype,
+                 keepdims=keepdims, promote_int=_TO_FLOAT)
+
+
+@utils.np_doc(np.amax)
+def amax(a, axis=None, keepdims=None):
+  return _reduce(tf.reduce_max, a, axis=axis, dtype=None, keepdims=keepdims,
+                 promote_int=None, tf_bool_fn=tf.reduce_any, preserve_bool=True)
+
+
+@utils.np_doc(np.amin)
+def amin(a, axis=None, keepdims=None):
+  return _reduce(tf.reduce_min, a, axis=axis, dtype=None, keepdims=keepdims,
+                 promote_int=None, tf_bool_fn=tf.reduce_all, preserve_bool=True)
+
+
+@utils.np_doc(np.var)
+def var(a, axis=None, keepdims=None):
+  return _reduce(tf.math.reduce_variance, a, axis=axis, dtype=None,
+                 keepdims=keepdims, promote_int=_TO_FLOAT)
+
+
+@utils.np_doc(np.std)
+def std(a, axis=None, keepdims=None):
+  return _reduce(tf.math.reduce_std, a, axis=axis, dtype=None,
+                 keepdims=keepdims, promote_int=_TO_FLOAT)
 
 
 def ravel(a):
@@ -554,9 +538,9 @@ def reshape(a, newshape):
     An ndarray with the contents and dtype of `a` and shape `newshape`.
   """
   a = array_creation.asarray(a)
-  newshape = array_creation.asarray(newshape)
-  return utils.tensor_to_ndarray(
-      tf.reshape(a.data, utils.get_shape_from_ndarray(newshape)))
+  if isinstance(newshape, arrays.ndarray):
+    newshape = newshape.data
+  return utils.tensor_to_ndarray(tf.reshape(a.data, newshape))
 
 
 def expand_dims(a, axis):
@@ -780,7 +764,7 @@ def where(condition, x, y):
     An array.
   """
   condition = array_creation.asarray(condition, dtype=np.bool_)
-  x, y = array_creation.promote_args_types(x, y)
+  x, y = array_creation._promote_dtype(x, y)
   return utils.tensor_to_ndarray(tf.where(condition.data, x.data, y.data))
 
 

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2019 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import time
 from absl import logging
 from tensor2tensor.envs import trajectory
 from tensorflow.compat.v1.io import gfile
-from trax.rl import ppo
+from trax.rl import policy_based_utils
 from trax.rl import trainers as rl_trainers
 
 LARGE_MAX_TRIES_FOR_POLICY_FILE = 100
@@ -43,7 +43,7 @@ def get_newer_policy_model_file(output_dir,
 
   while max_tries or wait_forever:
     max_tries -= 1
-    policy_files = ppo.get_policy_model_files(output_dir)
+    policy_files = policy_based_utils.get_policy_model_files(output_dir)
 
     def do_wait(t):
       time.sleep(t)
@@ -59,7 +59,7 @@ def get_newer_policy_model_file(output_dir,
 
     # Check if we have a newer epoch.
     policy_file = policy_files[0]
-    epoch = ppo.get_epoch_from_policy_model_file(policy_file)
+    epoch = policy_based_utils.get_epoch_from_policy_model_file(policy_file)
 
     # We don't - wait.
     if epoch <= min_epoch:
@@ -70,7 +70,7 @@ def get_newer_policy_model_file(output_dir,
 
     # We do have a new file, return it.
     policy_file = policy_files[0]
-    epoch = ppo.get_epoch_from_policy_model_file(policy_file)
+    epoch = policy_based_utils.get_epoch_from_policy_model_file(policy_file)
     logging.info('Found epoch [%s] and policy file [%s]', epoch, policy_file)
     return policy_file, epoch
 
