@@ -25,6 +25,7 @@ import numpy as np
 import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import arrays
+from trax.tf_numpy.numpy import math  # for operator overloads
 
 
 t2a = arrays.tensor_to_ndarray

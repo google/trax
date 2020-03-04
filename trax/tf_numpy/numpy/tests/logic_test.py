@@ -24,7 +24,7 @@ import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import array_creation
 from trax.tf_numpy.numpy import arrays
-from trax.tf_numpy.numpy import logic
+from trax.tf_numpy.numpy import math
 
 
 class LogicTest(tf.test.TestCase):
@@ -56,7 +56,7 @@ class LogicTest(tf.test.TestCase):
           arg1 = fn1(x1)
           arg2 = fn2(x2)
           self.match(
-              logic.equal(arg1, arg2),
+              math.equal(arg1, arg2),
               np.equal(
                   make_numpy_compatible(arg1), make_numpy_compatible(arg2)))
 

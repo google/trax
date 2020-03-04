@@ -23,6 +23,7 @@ import numpy as np
 import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import array_creation
+from trax.tf_numpy.numpy import array_methods
 from trax.tf_numpy.numpy import arrays
 from trax.tf_numpy.numpy import math
 
@@ -176,10 +177,10 @@ class MathTest(tf.test.TestCase):
     np.testing.assert_almost_equal(actual.tolist(), expected.tolist())
 
   def testSum(self):
-    self._testReduce(math.sum, np.sum, 'sum')
+    self._testReduce(array_methods.sum, np.sum, 'sum')
 
-  def testMax(self):
-    self._testReduce(math.max, np.max, 'max')
+  def testAmax(self):
+    self._testReduce(array_methods.amax, np.amax, 'amax')
 
 
 if __name__ == '__main__':

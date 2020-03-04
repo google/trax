@@ -26,6 +26,7 @@ import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import array_creation
 from trax.tf_numpy.numpy import array_methods
+from trax.tf_numpy.numpy import arrays
 from trax.tf_numpy.numpy import dtypes
 from trax.tf_numpy.numpy import utils
 
@@ -45,7 +46,7 @@ def dot(a, b):
   Returns:
     An ndarray.
   """
-  a, b = array_creation.promote_args_types(a, b)
+  a, b = array_creation._promote_dtype(a, b)
   if utils.isscalar(a) or utils.isscalar(b):
     a = utils.tensor_to_ndarray(tf.expand_dims(a.data, -1))
     b = utils.tensor_to_ndarray(tf.expand_dims(b.data, -1))
@@ -79,10 +80,10 @@ def dot(a, b):
   return utils.tensor_to_ndarray(result_t)
 
 
-# TODO(wangpeng): Make bitwise ops `ufunc`s
+# TODO(wangpeng): Make element-wise ops `ufunc`s
 def _bin_op(tf_fun, a, b, promote=True):
   if promote:
-    a, b = array_creation.promote_args_types(a, b)
+    a, b = array_creation._promote_dtype(a, b)
   else:
     a = array_creation.asarray(a)
     b = array_creation.asarray(b)
@@ -116,12 +117,22 @@ def multiply(x1, x2):
 
 @utils.np_doc(np.true_divide)
 def true_divide(x1, x2):
+  def _avoid_float64(x1, x2):
+    if x1.dtype == x2.dtype and x1.dtype in (tf.int32, tf.int64):
+      x1 = tf.cast(x1, dtype=tf.float32)
+      x2 = tf.cast(x2, dtype=tf.float32)
+    return x1, x2
+
   def f(x1, x2):
     if x1.dtype == tf.bool:
       assert x2.dtype == tf.bool
       float_ = dtypes.default_float_type()
       x1 = tf.cast(x1, float_)
       x2 = tf.cast(x2, float_)
+    if not dtypes.is_allow_float64():
+      # tf.math.truediv in Python3 produces float64 when both inputs are int32
+      # or int64. We want to avoid that when is_allow_float64() is False.
+      x1, x2 = _avoid_float64(x1, x2)
     return tf.math.truediv(x1, x2)
   return _bin_op(f, x1, x2)
 
@@ -224,8 +235,8 @@ def _pad_left_to(n, old_shape):
 
 @utils.np_doc(np.kron)
 def kron(a, b):
-  a, b = array_creation.promote_args_types(a, b)
-  ndim = __builtins__["max"](a.ndim, b.ndim)
+  a, b = array_creation._promote_dtype(a, b)
+  ndim = max(a.ndim, b.ndim)
   if a.ndim < ndim:
     a = array_methods.reshape(a, _pad_left_to(ndim, a.shape))
   if b.ndim < ndim:
@@ -278,6 +289,96 @@ def polyval(p, x):
       y = tf.broadcast_to(y, x.shape)
     return y
   return _bin_op(f, p, x)
+
+
+@utils.np_doc(np.isclose)
+def isclose(a, b, rtol=1e-05, atol=1e-08):
+  def f(a, b):
+    dtype = a.dtype
+    if np.issubdtype(dtype.as_numpy_dtype, np.inexact):
+      rtol_ = tf.convert_to_tensor(rtol, dtype)
+      atol_ = tf.convert_to_tensor(atol, dtype)
+      return tf.math.abs(a - b) <= atol_ + rtol_ * tf.math.abs(b)
+    else:
+      return a == b
+  return _bin_op(f, a, b)
+
+
+def _tf_gcd(x1, x2):
+  def _gcd_cond_fn(x1, x2):
+    return tf.reduce_any(x2 != 0)
+  def _gcd_body_fn(x1, x2):
+    # tf.math.mod will raise an error when any element of x2 is 0. To avoid
+    # that, we change those zeros to ones. Their values don't matter because
+    # they won't be used.
+    x2_safe = tf.where(x2 != 0, x2, tf.constant(1, x2.dtype))
+    x1, x2 = (tf.where(x2 != 0, x2, x1),
+              tf.where(x2 != 0, tf.math.mod(x1, x2_safe),
+                       tf.constant(0, x2.dtype)))
+    return (tf.where(x1 < x2, x2, x1), tf.where(x1 < x2, x1, x2))
+  if (not np.issubdtype(x1.dtype.as_numpy_dtype, np.integer) or
+      not np.issubdtype(x2.dtype.as_numpy_dtype, np.integer)):
+    raise ValueError("Arguments to gcd must be integers.")
+  shape = tf.broadcast_static_shape(x1.shape, x2.shape)
+  x1 = tf.broadcast_to(x1, shape)
+  x2 = tf.broadcast_to(x2, shape)
+  gcd, _ = tf.while_loop(_gcd_cond_fn, _gcd_body_fn,
+                         (tf.math.abs(x1), tf.math.abs(x2)))
+  return gcd
+
+
+@utils.np_doc(np.gcd)
+def gcd(x1, x2):
+  return _bin_op(_tf_gcd, x1, x2)
+
+
+@utils.np_doc(np.lcm)
+def lcm(x1, x2):
+  def f(x1, x2):
+    d = _tf_gcd(x1, x2)
+    # Same as the `x2_safe` trick above
+    d_safe = tf.where(d == 0, tf.constant(1, d.dtype), d)
+    return tf.where(d == 0, tf.constant(0, d.dtype),
+                    tf.math.abs(x1 * x2) // d_safe)
+  return _bin_op(f, x1, x2)
+
+
+def _bitwise_binary_op(tf_fn, x1, x2):
+  def f(x1, x2):
+    is_bool = (x1.dtype == tf.bool)
+    if is_bool:
+      assert x2.dtype == tf.bool
+      x1 = tf.cast(x1, tf.int8)
+      x2 = tf.cast(x2, tf.int8)
+    r = tf_fn(x1, x2)
+    if is_bool:
+      r = tf.cast(r, tf.bool)
+    return r
+  return _bin_op(f, x1, x2)
+
+
+@utils.np_doc(np.bitwise_and)
+def bitwise_and(x1, x2):
+  return _bitwise_binary_op(tf.bitwise.bitwise_and, x1, x2)
+
+
+@utils.np_doc(np.bitwise_or)
+def bitwise_or(x1, x2):
+  return _bitwise_binary_op(tf.bitwise.bitwise_or, x1, x2)
+
+
+@utils.np_doc(np.bitwise_xor)
+def bitwise_xor(x1, x2):
+  return _bitwise_binary_op(tf.bitwise.bitwise_xor, x1, x2)
+
+
+@utils.np_doc(np.bitwise_not)
+def bitwise_not(x):
+  def f(x):
+    if x.dtype == tf.bool:
+      return tf.logical_not(x)
+    return tf.bitwise.invert(x)
+  return _scalar(f, x)
 
 
 def _scalar(tf_fn, x, promote_to_float=False):
@@ -513,6 +614,31 @@ def isnan(x):
   return _scalar(tf.math.is_nan, x, True)
 
 
+def _make_nan_reduction(onp_reduction, reduction, init_val):
+  @utils.np_doc(onp_reduction)
+  def nan_reduction(a, axis=None, dtype=None, keepdims=False):
+    a = array_creation.asarray(a)
+    v = array_creation.asarray(init_val, dtype=a.dtype)
+    return reduction(array_methods.where(isnan(a), v, a),
+                     axis=axis, dtype=dtype, keepdims=keepdims)
+  return nan_reduction
+
+
+nansum = _make_nan_reduction(np.nansum, array_methods.sum, 0)
+nanprod = _make_nan_reduction(np.nanprod, array_methods.prod, 1)
+
+
+@utils.np_doc(np.nanmean)
+def nanmean(a, axis=None, dtype=None, keepdims=None):
+  a = array_creation.asarray(a)
+  if np.issubdtype(a.dtype, np.bool_) or np.issubdtype(a.dtype, np.integer):
+    return array_methods.mean(a, axis=axis, dtype=dtype, keepdims=keepdims)
+  nan_mask = logical_not(isnan(a))
+  normalizer = array_methods.sum(nan_mask, axis=axis, dtype=np.int64,
+                                 keepdims=keepdims)
+  return nansum(a, axis=axis, dtype=dtype, keepdims=keepdims) / normalizer
+
+
 @utils.np_doc(np.isfinite)
 def isfinite(x):
   return _scalar(tf.math.is_finite, x, True)
@@ -634,52 +760,159 @@ def atleast_3d(*arys):
   return _atleast_nd(3, new_shape, *arys)
 
 
-@utils.np_doc(np.sum)
-def sum(a, axis=None, dtype=None, keepdims=None):  # pylint: disable=redefined-builtin
-  """Computes sum of all array elements or along specified axes.
-
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can
-      be converted to a Tensor using `tf.convert_to_tensor`.
-    axis: Optional 0-d or 1-d array_like. Axes along which to compute sum.
-      If None, returns sum of all elements in array.
-    dtype: Optional. The type of the output array. If None, defaults to the
-      dtype of `a` unless `a` is an integer type with precision less than `int`
-      in which case the output type is `int.`
-    keepdims: If true, retains reduced dimensions with length 1.
-
-  Returns:
-    An ndarray.
-  """
-  # TODO(wangpeng): check that we fully match numpy behavior.
-  a = array_creation.asarray(a, dtype=dtype)
-  if dtype is None and tf.as_dtype(a.dtype).is_integer:
-    # If a is an integer type and its precision is less than that of `int`,
-    # the output type will be `int`.
-    output_type = np.promote_types(a.dtype, int)
-    if output_type != a.dtype:
-      a = array_creation.asarray(a, dtype=output_type)
-
-  return utils.tensor_to_ndarray(tf.reduce_sum(input_tensor=a.data, axis=axis,
-                                               keepdims=keepdims))
+def flip(f):
+  def _f(a, b):
+    return f(b, a)
+  return _f
 
 
-@utils.np_doc(np.max)
-def max(a, axis=None, keepdims=None):  # pylint: disable=redefined-builtin
-  """Computes the max of all array elements or along specified axes.
+setattr(arrays.ndarray, '__abs__', absolute)
+setattr(arrays.ndarray, '__floordiv__', floor_divide)
+setattr(arrays.ndarray, '__rfloordiv__', flip(floor_divide))
+setattr(arrays.ndarray, '__mod__', mod)
+setattr(arrays.ndarray, '__rmod__', flip(mod))
+setattr(arrays.ndarray, '__add__', add)
+setattr(arrays.ndarray, '__radd__', flip(add))
+setattr(arrays.ndarray, '__sub__', subtract)
+setattr(arrays.ndarray, '__rsub__', flip(subtract))
+setattr(arrays.ndarray, '__mul__', multiply)
+setattr(arrays.ndarray, '__rmul__', flip(multiply))
+setattr(arrays.ndarray, '__pow__', power)
+setattr(arrays.ndarray, '__rpow__', flip(power))
+setattr(arrays.ndarray, '__truediv__', true_divide)
+setattr(arrays.ndarray, '__rtruediv__', flip(true_divide))
 
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can
-      be converted to a Tensor using `tf.convert_to_tensor`.
-    axis: Optional 0-d or 1-d array_like. Axes along which to compute the max.
-      If None, returns the max of all elements in array.
-    keepdims: If true, retains reduced dimensions with length 1.
 
-  Returns:
-    An ndarray with the same dtype as `a`.
-  """
-  # TODO(wangpeng): check that we fully match numpy behavior.
-  a = array_creation.asarray(a)
+def _comparison(tf_fun, x1, x2, cast_bool_to_int=False):
+  dtype = utils.result_type(x1, x2)
+  # Cast x1 and x2 to the result_type if needed.
+  x1 = array_creation.asarray(x1, dtype=dtype)
+  x2 = array_creation.asarray(x2, dtype=dtype)
+  x1 = x1.data
+  x2 = x2.data
+  if cast_bool_to_int and x1.dtype == tf.bool:
+    x1 = tf.cast(x1, tf.int32)
+    x2 = tf.cast(x2, tf.int32)
+  return utils.tensor_to_ndarray(tf_fun(x1, x2))
 
-  return utils.tensor_to_ndarray(tf.reduce_max(input_tensor=a.data, axis=axis,
-                                               keepdims=keepdims))
+
+@utils.np_doc(np.equal)
+def equal(x1, x2):
+  return _comparison(tf.equal, x1, x2)
+
+
+@utils.np_doc(np.not_equal)
+def not_equal(x1, x2):
+  return _comparison(tf.not_equal, x1, x2)
+
+
+@utils.np_doc(np.greater)
+def greater(x1, x2):
+  return _comparison(tf.greater, x1, x2, True)
+
+
+@utils.np_doc(np.greater_equal)
+def greater_equal(x1, x2):
+  return _comparison(tf.greater_equal, x1, x2, True)
+
+
+@utils.np_doc(np.less)
+def less(x1, x2):
+  return _comparison(tf.less, x1, x2, True)
+
+
+@utils.np_doc(np.less_equal)
+def less_equal(x1, x2):
+  return _comparison(tf.less_equal, x1, x2, True)
+
+
+@utils.np_doc(np.array_equal)
+def array_equal(a1, a2):
+  def f(a1, a2):
+    if a1.shape != a2.shape:
+      return tf.constant(False)
+    return tf.reduce_all(tf.equal(a1, a2))
+  return _comparison(f, a1, a2)
+
+
+def _logical_binary_op(tf_fun, x1, x2):
+  x1 = array_creation.asarray(x1, dtype=np.bool_)
+  x2 = array_creation.asarray(x2, dtype=np.bool_)
+  return utils.tensor_to_ndarray(tf_fun(x1.data, x2.data))
+
+
+@utils.np_doc(np.logical_and)
+def logical_and(x1, x2):
+  return _logical_binary_op(tf.logical_and, x1, x2)
+
+
+@utils.np_doc(np.logical_or)
+def logical_or(x1, x2):
+  return _logical_binary_op(tf.logical_or, x1, x2)
+
+
+@utils.np_doc(np.logical_xor)
+def logical_xor(x1, x2):
+  return _logical_binary_op(tf.math.logical_xor, x1, x2)
+
+
+@utils.np_doc(np.logical_not)
+def logical_not(x):
+  x = array_creation.asarray(x, dtype=np.bool_)
+  return utils.tensor_to_ndarray(tf.logical_not(x.data))
+
+setattr(arrays.ndarray, '__invert__', logical_not)
+setattr(arrays.ndarray, '__lt__', less)
+setattr(arrays.ndarray, '__le__', less_equal)
+setattr(arrays.ndarray, '__gt__', greater)
+setattr(arrays.ndarray, '__ge__', greater_equal)
+setattr(arrays.ndarray, '__eq__', equal)
+setattr(arrays.ndarray, '__ne__', not_equal)
+
+
+@utils.np_doc(np.linspace)
+def linspace(start, stop, num=50, endpoint=True, retstep=False, dtype=float):
+  if dtype:
+    dtype = utils.result_type(dtype)
+  start = array_creation.asarray(start, dtype=dtype)
+  stop = array_creation.asarray(stop, dtype=dtype)
+  if num == 0:
+    return empty(dtype)
+  if num < 0:
+    raise ValueError('Number of samples {} must be non-negative.'.format(num))
+  step = np.nan
+  if endpoint:
+    result = tf.linspace(start.data, stop.data, num)
+    if num > 1:
+      step = (stop - start) / (num - 1)
+  else:
+    # tf.linspace does not support endpoint=False so we manually handle it
+    # here.
+    if num > 1:
+      step = (stop - start) / num
+      result = tf.linspace(start.data, (stop - step).data, num)
+    else:
+      result = tf.linspace(start.data, stop.data, num)
+  if dtype:
+    result = tf.cast(result, dtype)
+  if retstep:
+    return arrays.tensor_to_ndarray(result), step
+  else:
+    return arrays.tensor_to_ndarray(result)
+
+
+@utils.np_doc(np.logspace)
+def logspace(start, stop, num=50, endpoint=True, base=10.0, dtype=None):
+  if dtype:
+    dtype = utils.result_type(dtype)
+  result = linspace(start, stop, num=num, endpoint=endpoint)
+  result = tf.pow(base, result.data)
+  if dtype:
+    result = tf.cast(result, dtype)
+  return arrays.tensor_to_ndarray(result)
+
+
+@utils.np_doc(np.ptp)
+def ptp(a, axis=None, keepdims=None):
+  return (array_methods.amax(a, axis=axis, keepdims=keepdims)
+          - array_methods.amin(a, axis=axis, keepdims=keepdims))

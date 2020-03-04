@@ -23,7 +23,7 @@ import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import array_creation
 # Needed for ndarray.__setitem__
-from trax.tf_numpy.numpy import array_methods  # pylint: disable=unused-import
+from trax.tf_numpy.numpy import array_methods
 from trax.tf_numpy.numpy import math
 
 
@@ -39,7 +39,7 @@ class BackpropTest(tf.test.TestCase):
     with tf.GradientTape() as g:
       g.watch(tensors)
       a[1] = b + c
-      loss = math.sum(a)
+      loss = array_methods.sum(a)
 
     gradients = g.gradient(loss.data, tensors)
     self.assertSequenceEqual(
@@ -56,7 +56,7 @@ class BackpropTest(tf.test.TestCase):
     with tf.GradientTape() as g:
       g.watch(tensors)
       a[(1, 0)] = b
-      loss = math.sum(a)
+      loss = array_methods.sum(a)
 
     gradients = g.gradient(loss.data, tensors)
     self.assertSequenceEqual(

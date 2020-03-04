@@ -27,19 +27,10 @@ from trax.tf_numpy.numpy import arrays
 from trax.tf_numpy.numpy import dtypes
 
 
-def maybe_cast(a, dtype):
-  if not dtype:
-    return a
-  dtype = to_tf_type(dtype)
-  if array_dtype(a) != dtype:
-    return tf.cast(a, dtype)
-  return a
-
-
 tensor_to_ndarray = arrays.tensor_to_ndarray
 
 
-def to_tf_type(dtype):
+def _to_tf_type(dtype):
   """Converts a native python or numpy type to TF DType.
 
   Args:
@@ -48,12 +39,10 @@ def to_tf_type(dtype):
   Returns:
     A tensorflow `DType`.
   """
-  if isinstance(dtype, tf.DType):
-    return dtype
-  return tf.as_dtype(dtypes.canonicalize_dtype(np.dtype(dtype)))
+  return tf.as_dtype(dtype)
 
 
-def to_numpy_type(dtype):
+def _to_numpy_type(dtype):
   """Converts a native python or TF DType to numpy type.
 
   Args:
@@ -64,7 +53,7 @@ def to_numpy_type(dtype):
   """
   if isinstance(dtype, tf.DType):
     return dtype.as_numpy_dtype
-  return dtypes.canonicalize_dtype(np.dtype(dtype))
+  return np.dtype(dtype)
 
 
 def finfo(dtype):
@@ -80,76 +69,39 @@ def finfo(dtype):
     A class describing properties of `dtype`, as described by
     https://docs.scipy.org/doc/numpy/reference/generated/numpy.finfo.html
   """
-  return np.finfo(to_numpy_type(dtype))
-
-
-def array_dtype(a):
-  """Returns the tensorflow `DType` of the array.
-
-  Note: This is similar to doing tf.convert_to_tensor(a).dtype but not
-  exactly the same. When `a` is a python scalar or a python array_like
-  object, Tensorflow attempts to treat it as an int32 or float32 whereas
-  numpy defaults to int64 and float64 respectively.
-
-  Args:
-    a: Could be a numpy ndarray, a Tensor or a python object that can be
-      converted to numpy ndarray.
-
-  Returns:
-    A `DType`.
-  """
-  if isinstance(a, tf.Tensor):
-    return a.dtype
-  elif isinstance(a, tf.IndexedSlices):
-    return a.dtype
-  elif isinstance(a, np.ndarray) or isinstance(a, arrays.ndarray):
-    return tf.as_dtype(a.dtype)
-  elif isinstance(a, arrays.ShardedNdArray):
-    return a.tensors[0].dtype
-  else:
-    # If this is a python object, defer to numpy to decide the dtype.
-    np_dtype = np.array(a, copy=False).dtype
-    np_dtype = dtypes.canonicalize_dtype(np_dtype)
-    return tf.as_dtype(np_dtype)
+  return np.finfo(_to_numpy_type(dtype))
 
 
 def isscalar(val):
   """Returns whether `val` is a scalar value or scalar Tensor."""
-  if hasattr(val, 'shape'):  # Handles xy.ndarray and Tensor.
+  if isinstance(val, (np.ndarray, arrays.ndarray, tf.Tensor)):
     return len(val.shape) == 0  # pylint: disable=g-explicit-length-test
   return np.isscalar(val)
 
 
-def scalar_to_vector(val):
-  """Converts a scalar value to a vector."""
-  if isinstance(val, arrays.ndarray):
-    return tensor_to_ndarray(tf.reshape(val.data, [-1]))
-  elif isinstance(val, np.ndarray):
-    return np.ravel(val)
-  else:
-    return [val]
-
-
+# Can't use np_doc because np.result_type is a builtin function.
 def result_type(*arrays_and_dtypes):
-  """Returns the type resulting from applying NumPy type promotion to `arrays`.
+  """Returns the type resulting from applying NumPy type promotion to arguments.
 
   Args:
     *arrays_and_dtypes: A list of array_like objects or dtypes.
 
   Returns:
-    A TF Dtype.
-
-  Raises:
-    ValueError: If not input arrays are provided.
+    A numpy dtype.
   """
-  def get_dtype(x):
-    """Get the dtype from an array or a dtype."""
-    try:
-      return np.dtype(x)
-    except TypeError:
-      return array_dtype(x).as_numpy_dtype
-  np_dtypes = [get_dtype(x) for x in arrays_and_dtypes]
-  return dtypes.get_result_type(*np_dtypes)
+  def maybe_get_dtype(x):
+    if isinstance(x, (np.ndarray, arrays.ndarray, arrays.ShardedNdArray,
+                      tf.Tensor, tf.IndexedSlices)):
+      return _to_numpy_type(x.dtype)
+    elif isinstance(x, tf.DType):
+      return _to_numpy_type(x)
+    return x
+  arrays_and_dtypes = [maybe_get_dtype(x) for x in
+                       tf.nest.flatten(arrays_and_dtypes)]
+  if not arrays_and_dtypes:
+    # If arrays_and_dtypes is an empty list, let numpy decide what the dtype is.
+    arrays_and_dtypes = [np.asarray([])]
+  return dtypes._result_type(*arrays_and_dtypes)
 
 
 def _has_docstring(f):

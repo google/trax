@@ -81,14 +81,9 @@ def canonicalize_dtype(dtype):
     return dtype
 
 
-# TODO(wangpeng): combine the following two
-def get_result_type(*dtypes):
-  dtype = np.result_type(*dtypes)
+def _result_type(*arrays_and_dtypes):
+  dtype = np.result_type(*arrays_and_dtypes)
   return canonicalize_dtype(dtype)
-
-
-def result_type(*arrays_and_dtypes):
-  return get_result_type(*arrays_and_dtypes)
 
 
 def default_float_type():

@@ -20,12 +20,14 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import sys
 import numpy as np
 from six.moves import range
 import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import array_creation
 from trax.tf_numpy.numpy import arrays
+from trax.tf_numpy.numpy import math
 
 
 class ArrayCreationTest(tf.test.TestCase):
@@ -43,6 +45,13 @@ class ArrayCreationTest(tf.test.TestCase):
     self.all_shapes = []
     for fn in self.shape_transforms:
       self.all_shapes.extend([fn(s) for s in python_shapes])
+
+    if sys.version_info.major == 3:
+      # There is a bug of np.empty (and alike) in Python 3 causing a crash when
+      # the `shape` argument is an arrays.ndarray scalar (or tf.Tensor scalar).
+      def not_ndarray_scalar(s):
+        return not (isinstance(s, arrays.ndarray) and s.ndim == 0)
+      self.all_shapes = list(filter(not_ndarray_scalar, self.all_shapes))
 
     self.all_types = [
         int, float, np.int16, np.int32, np.int64, np.float16, np.float32,
@@ -403,7 +412,7 @@ class ArrayCreationTest(tf.test.TestCase):
           arg1 = fn1(start)
           arg2 = fn2(stop)
           self.match(
-              array_creation.linspace(arg1, arg2, **kwargs),
+              math.linspace(arg1, arg2, **kwargs),
               np.linspace(arg1, arg2, **kwargs),
               msg='linspace({}, {})'.format(arg1, arg2),
               almost=True)
@@ -433,7 +442,7 @@ class ArrayCreationTest(tf.test.TestCase):
           arg1 = fn1(start)
           arg2 = fn2(stop)
           self.match(
-              array_creation.logspace(arg1, arg2, **kwargs),
+              math.logspace(arg1, arg2, **kwargs),
               np.logspace(arg1, arg2, **kwargs),
               msg='logspace({}, {})'.format(arg1, arg2),
               almost=True)
