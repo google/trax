@@ -675,7 +675,6 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
        "shape": shape, "dtype": dtype, "axis": axis}
       for shape in all_shapes for dtype in all_dtypes
       for axis in set(range(-len(shape), len(shape))) | set([None])))
-  @disable
   def testCountNonzero(self, shape, dtype, axis):
     rng = jtu.rand_some_zero()
     onp_fun = lambda x: onp.count_nonzero(x, axis)

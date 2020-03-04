@@ -943,3 +943,9 @@ def tile(a, reps):
   a = tf.reshape(a, a_shape)
 
   return arrays.tensor_to_ndarray(tf.tile(a, reps))
+
+
+@utils.np_doc(np.count_nonzero)
+def count_nonzero(a, axis=None):
+  return arrays.tensor_to_ndarray(
+      tf.math.count_nonzero(array_creation.asarray(a).data, axis))
