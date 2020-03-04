@@ -724,7 +724,8 @@ def wmt_preprocess(dataset, training, shapes,
 def wmt_concat_preprocess(dataset, training, shapes,
                           max_length=-1, max_eval_length=-1):
   """Preprocessing for WMT: filter exceeding maximum length and concatenate."""
-  dataset = wmt_preprocess(dataset, training, max_length, max_eval_length)
+  dataset, shapes = wmt_preprocess(
+      dataset, training, shapes, max_length, max_eval_length)
 
   def concat_and_add_mask(features, targets):
     inp = features['inputs']
