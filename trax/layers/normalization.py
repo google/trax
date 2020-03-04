@@ -118,8 +118,8 @@ class BatchNorm(base.Layer):
 def _layer_norm_weights(input_signature):
   """Helper: create layer norm parameters."""
   features = input_signature.shape[-1]
-  scale = np.ones(features)
-  bias = np.zeros(features)
+  scale = np.ones(features, dtype=input_signature.dtype)
+  bias = np.zeros(features, dtype=input_signature.dtype)
   weights = (scale, bias)
   return weights
 
@@ -128,8 +128,9 @@ def _layer_norm_weights(input_signature):
 def LayerNorm(x, weights, epsilon=1e-6, **unused_kwargs):  # pylint: disable=invalid-name
   (scale, bias) = weights
   mean = np.mean(x, axis=-1, keepdims=True)
-  variance = np.mean((x - mean)**2, axis=-1, keepdims=True)
-  norm_inputs = (x - mean) / np.sqrt(variance + epsilon)
+  sub = x - mean
+  variance = np.mean(sub * sub, axis=-1, keepdims=True)
+  norm_inputs = sub / np.sqrt(variance + epsilon)
   return norm_inputs * scale + bias
 
 
