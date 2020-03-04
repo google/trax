@@ -74,3 +74,6 @@ LSHCausalAttention = layer_configure(LSHCausalAttention, blacklist=['mode'])
 SelfAttention = layer_configure(SelfAttention, blacklist=['mode'])
 LSHSelfAttention = layer_configure(LSHSelfAttention, blacklist=['mode'])
 EncDecAttention = layer_configure(EncDecAttention, blacklist=['mode'])
+
+InfinitePositionalEncoding = layer_configure(
+    InfinitePositionalEncoding, blacklist=['mode'])
