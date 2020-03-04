@@ -914,5 +914,32 @@ def logspace(start, stop, num=50, endpoint=True, base=10.0, dtype=None):
 
 @utils.np_doc(np.ptp)
 def ptp(a, axis=None, keepdims=None):
-  return (array_methods.amax(a, axis=axis, keepdims=keepdims)
-          - array_methods.amin(a, axis=axis, keepdims=keepdims))
+  return (array_methods.amax(a, axis=axis, keepdims=keepdims) -
+          array_methods.amin(a, axis=axis, keepdims=keepdims))
+
+
+@utils.np_doc_only(np.concatenate)
+def concatenate(arys, axis=0):
+  if not arys:
+    raise ValueError('Need at least one array to concatenate.')
+  dtype = utils.result_type(*arys)
+  arys = [array_creation.asarray(array, dtype=dtype).data for array in arys]
+  return arrays.tensor_to_ndarray(tf.concat(arys, axis))
+
+
+@utils.np_doc_only(np.tile)
+def tile(a, reps):
+  a = array_creation.asarray(a).data
+  reps = array_creation.asarray(reps, dtype=tf.int32).reshape([-1]).data
+
+  a_rank = tf.rank(a)
+  reps_size = tf.size(reps)
+  reps = tf.pad(
+      reps, [[tf.math.maximum(a_rank - reps_size, 0), 0]],
+      constant_values=1)
+  a_shape = tf.pad(
+      tf.shape(a), [[tf.math.maximum(reps_size - a_rank, 0), 0]],
+      constant_values=1)
+  a = tf.reshape(a, a_shape)
+
+  return arrays.tensor_to_ndarray(tf.tile(a, reps))

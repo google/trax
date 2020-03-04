@@ -104,6 +104,21 @@ def result_type(*arrays_and_dtypes):
   return dtypes._result_type(*arrays_and_dtypes)
 
 
+def promote_types(type1, type2):
+  """Returns the type resulting from applying NumPy type promotion.
+
+  Args:
+    type1: A numpy type.
+    type2: A numpy type.
+
+  Returns:
+    A numpy type.
+  """
+  type1 = _to_numpy_type(type1)
+  type2 = _to_numpy_type(type2)
+  return dtypes.canonicalize_dtype(np.promote_types(type1, type2))
+
+
 def _has_docstring(f):
   return hasattr(f, '__doc__') and isinstance(f.__doc__, str) and f.__doc__
 
@@ -195,20 +210,43 @@ def np_doc(np_fun):
     for name in np_sig.parameters:
       if name not in sig.parameters:
         unsupported_params.append(name)
-    if not unsupported_params and not _has_docstring(f) and _has_docstring(
-        np_fun):
-      f.__doc__ = np_fun.__doc__
-      return f
-    doc = 'TensorFlow variant of `numpy.%s`.\n\n' % np_fun.__name__
-    if unsupported_params:
-      doc += 'Unsupported arguments: ' + ', '.join(
-          '`' + name + '`' for name in unsupported_params) + '.\n\n'
-    if _has_docstring(f):
-      doc += f.__doc__
-      doc = _add_blank_line(doc)
-    if _has_docstring(np_fun):
-      doc += 'Documentation for `numpy.%s`:\n\n' % np_fun.__name__
-      doc += np_fun.__doc__
-    f.__doc__ = doc
+    f.__doc__ = _np_doc_helper(f, np_fun, unsupported_params)
     return f
+  return decorator
+
+
+def _np_doc_helper(f, np_f, unsupported_params=None):
+  """Helper to get docs."""
+  if not unsupported_params and not _has_docstring(f) and _has_docstring(np_f):
+    return np_f.__doc__
+  doc = 'TensorFlow variant of `numpy.%s`.\n\n' % np_f.__name__
+  if unsupported_params:
+    doc += 'Unsupported arguments: ' + ', '.join(
+        '`' + name + '`' for name in unsupported_params) + '.\n\n'
+  if _has_docstring(f):
+    doc += f.__doc__
+    doc = _add_blank_line(doc)
+  if _has_docstring(np_f):
+    doc += 'Documentation for `numpy.%s`:\n\n' % np_f.__name__
+    doc += np_f.__doc__
+  return doc
+
+
+def np_doc_only(np_f):
+  """Attachs numpy docstring to a function.
+
+  This differs from np_doc in that it doesn't check for a match in signature.
+
+  Args:
+    np_f: the numpy function whose docstring will be used.
+
+  Returns:
+    A function decorator that attaches the docstring from `np_f` to the
+    decorated function.
+  """
+
+  def decorator(f):
+    f.__doc__ = _np_doc_helper(f, np_f)
+    return f
+
   return decorator

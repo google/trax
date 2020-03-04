@@ -1017,7 +1017,6 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
       for reps in [(), (2,), (3, 4), (2, 3, 4)]
       for shape, dtype in _shape_and_dtypes(all_shapes, default_dtypes)
       ))
-  @disable
   def testTile(self, shape, dtype, reps, rng_factory):
     rng = rng_factory()
     onp_fun = lambda arg: onp.tile(arg, reps)
@@ -1039,15 +1038,15 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
       for arg_dtypes in CombosWithReplacement(default_dtypes, num_arrs)
       for base_shape in [(4,), (3, 4), (2, 3, 4)]
       for axis in range(-len(base_shape)+1, len(base_shape))))
-  @disable
   def testConcatenate(self, axis, base_shape, arg_dtypes, rng_factory):
     rng = rng_factory()
     wrapped_axis = axis % len(base_shape)
     shapes = [base_shape[:wrapped_axis] + (size,) + base_shape[wrapped_axis+1:]
               for size, _ in zip(itertools.cycle([3, 1, 4]), arg_dtypes)]
     def onp_fun(*args):
-      args = [x if x.dtype != lnp.bfloat16 else x.astype(onp.float32)
-              for x in args]
+      # TODO(nareshmodi): enable once bfloat16 has better support
+      # args = [x if x.dtype != bfloat16 else x.astype(onp.float32)
+      #         for x in args]
       dtype = functools.reduce(lnp.promote_types, arg_dtypes)
       return onp.concatenate(args, axis=axis).astype(dtype)
     lnp_fun = lambda *args: lnp.concatenate(args, axis=axis)

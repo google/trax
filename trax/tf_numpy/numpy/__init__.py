@@ -31,6 +31,7 @@ from trax.tf_numpy.numpy.arrays import ndarray
 from trax.tf_numpy.numpy.dtypes import *
 from trax.tf_numpy.numpy.math import *
 from trax.tf_numpy.numpy.utils import finfo
+from trax.tf_numpy.numpy.utils import promote_types
 from trax.tf_numpy.numpy.utils import result_type
 # pylint: enable=wildcard-import
 
