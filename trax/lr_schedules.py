@@ -91,7 +91,7 @@ def MultifactorSchedule(history=None,
       elif name == 'cosine_decay':
         progress = np.maximum(
             0.0, (step - warmup_steps) / float(steps_per_cycle))
-        ret *= np.maximum(0.0, 0.5 * (1.0 + np.cos(np.pi * (progress % 1.0))))
+        ret *= (0.5 * (1.0 + np.cos(np.pi * (progress % 1.0))))
       else:
         raise ValueError('Unknown factor %s.' % name)
     ret = np.asarray(ret, dtype=np.float32)
