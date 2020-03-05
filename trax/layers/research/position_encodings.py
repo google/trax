@@ -17,6 +17,8 @@
 """Experimenting with position encodings."""
 
 import jax
+import numpy as onp
+import trax
 from trax import math
 from trax.layers import base as layer_base
 from trax.layers import initializers as init
@@ -78,3 +80,188 @@ class FixedBasePositionalEncoding(layer_base.Layer):
     return [[self._initializer((1, d_weight), rng)
              for rng in self.new_rngs(self._n_digits)]
             for _ in self._bases]
+
+
+def threefry_2x32_prf(key, x: np.ndarray) -> np.ndarray:
+  """Apply the threefry PRF to an array of inputs.
+
+  This function is vectorized over x.
+  For threefry_2x32: K = X = uint32[2]
+
+  Args:
+    key: uint32[2] the key of the PRF
+    x: uint32[..., 2] the inputs
+
+  Returns:
+    y: uint32[..., 2] the outputs
+  """
+  if not (key.shape == (2,) and key.dtype == np.uint32):
+    raise TypeError('key must be uint32[2]', key)
+  if not (x.shape[-1:] == (2,) and x.dtype == np.uint32):
+    raise TypeError('x must be uint32[..., 2]', x)
+  # Threefry-2x32 expects this weird format:
+  x_3f = np.moveaxis(x, source=-1, destination=0).flatten()
+  y_3f = jax.random.threefry_2x32(key, x_3f)
+  y = np.moveaxis(
+      np.reshape(y_3f, (2,) + x.shape[:-1]), source=0, destination=-1)
+  return y
+
+
+def threefry_2x32_prange(key, lo: int = 0, hi: int = 2):
+  """Splits a key into a stream of random keys.
+
+  This uses the little-endian counter mode.
+
+  Args:
+    key: uint32[2] the key to split
+    lo: the range to start extracting from
+    hi: the range to stop extracting from
+
+  Returns:
+    keys: uint32[hi - lo, 2] the split keys
+  """
+  if not (key.shape == (2,) and key.dtype == np.uint32):
+    raise ValueError('key must be uint32[2]')
+  if not hi < 2**32:
+    # You shouldn't really be using more than half the key size anyways.
+    raise NotImplementedError('only 32-bit sizes are supported')
+  # Create a 64-bit counter:
+  i_lo = np.arange(lo, hi, dtype=np.uint32)
+  i_hi = np.zeros_like(i_lo)
+  i = np.stack([i_lo, i_hi], axis=-1)
+  return threefry_2x32_prf(key, i)
+
+
+class InfinitePositionalEncoding(layer_base.Layer):
+  """Infinite positional encoding."""
+
+  def __init__(self, drift=.03, affine=True, transform='any', mode='train'):
+    """Initialize the encoding.
+
+    The encoding tries to roughly evenly traverse the latent space.
+    The recurrence time is dependent on how many bits per dimension you use.
+
+    There are two parameters to control randomization:
+    - randomizing the origin every 1/drift steps by letting it drift
+    - randomizing the origin per call
+
+    Args:
+      drift: variance in position difference per unit of difference
+      affine: whether to randomize the origin every call
+      transform: learnable transform after encoding (any/diag/none)
+      mode: if 'predict', allow evaluating one token at a time
+    """
+    super().__init__()
+    if transform not in ('any', 'diag', 'none'):
+      raise ValueError(transform)
+    # self._noise_rng = self.new_rng()
+    self._noise_rng = jax.random.split(jax.random.PRNGKey(234234535))[0]
+    assert self._noise_rng is not None
+    self._noise = None
+    self._drift = drift
+    self._affine = affine
+    self._transform = transform
+    self._mode = mode
+
+  def _get_noise(self, lo: int, hi: int, depth: int):
+    """Return pseudorandom noise with shape float[length, depth].
+
+    Args:
+      lo: where to start sampling
+      hi: where to stop sampling
+      depth: noise depth
+
+    Returns:
+      noise[lo:hi, :]: the noise, where noise.diff(axis=0) is i.i.d. U(-1,1)
+    """
+    if self._noise is None or self._noise.shape[0] < hi:
+      # Resize the noise:
+      new_length = 1
+      while new_length < hi:
+        new_length *= 2
+      noise = threefry_2x32_prange(self._noise_rng, 0, new_length * depth)
+      noise = noise.reshape((new_length, depth, 2))[:, :, 0]
+      # Normalize to [-sqrt(3), sqrt(3)]:
+      noise = noise.astype(np.float32) / 2**31 - 1
+      noise = noise * 3**.5
+      # TODO(tying): use multiscale noise for memory-efficient sampling
+      noise = noise.cumsum(axis=0)
+      self._noise = noise
+    assert self._noise.shape[0] >= hi
+    assert self._noise.shape[1] == depth
+    return self._noise[lo:hi, :]
+
+  def _get_embeddings(self, lo: int, hi: int, depth, rng=None):
+    """Get embeddings float[length, depth].
+
+    Args:
+      lo: where to start sampling
+      hi: where to stop sampling
+      depth: embedding depth
+      rng: rng for random phase
+
+    Returns:
+      embeddings: float[length, depth]
+    """
+    noise = self._get_noise(lo, hi, (depth + 1) // 2)
+    # Make the stddev around 1 after 1/drift.
+    noise = noise * self._drift**.5
+
+    t, c = onp.mgrid[lo:hi, :depth]
+    # Make even channels cos, odd channels sin:
+    c_div_2, c_mod_2 = divmod(c, 2)
+    # Off-by-one correction for odd depth:
+    drift = self._drift**(((depth+1)//2)/(depth//2))
+    # Spend roughly half the frequencies on noise:
+    freq = np.geomspace(.5, .5 * drift**2, num=(depth + 1) // 2)[c_div_2]
+    cycles = c_mod_2 / 4 + freq * t + noise[:, c_div_2[0, :]] / 4
+    assert cycles.shape == (hi - lo, depth), cycles.shape
+
+    # Get random phases:
+    if self._affine:
+      assert rng is not None
+      cycles = cycles + trax.math.random.uniform(
+          rng, (1, depth,), minval=0, maxval=1)
+
+    # Convert from cycles to radians:
+    embeddings = np.cos(np.pi * 2 * cycles)
+    assert embeddings.shape == (hi - lo, depth), embeddings.shape
+    return embeddings
+
+  def forward_with_state(self, inputs, weights=layer_base.EMPTY_WEIGHTS,
+                         state=layer_base.EMPTY_STATE, rng=None, **kwargs):
+    d_feature = inputs.shape[-1]
+    input_len = inputs.shape[-2]
+
+    if self._mode == 'predict':
+      # Assume all the positions are pretty close to each other.
+      lo = state.min()
+      hi = state.max() + 1
+      pe = self._get_embeddings(lo=lo, hi=hi, depth=d_feature, rng=rng)
+      emb = inputs + pe[np.newaxis, state - lo, np.newaxis, :]
+      state = state + 1
+    else:
+      pe = self._get_embeddings(lo=0, hi=input_len, depth=d_feature, rng=rng)
+      emb = inputs + pe[np.newaxis, :input_len, :]
+    if self._transform == 'diag':
+      emb = emb * jax.nn.softplus(weights)
+    elif self._transform == 'any':
+      emb = emb @ weights
+    return emb, state
+
+  def new_weights_and_state(self, input_signature):
+    d_feature = input_signature.shape[-1]
+    if self._transform == 'diag':
+      scale_isoftplus = np.zeros((d_feature,), dtype=np.float32)
+      weights = scale_isoftplus
+    elif self._transform == 'any':
+      ortho = trax.layers.initializers.OrthogonalInitializer()
+      weights = ortho((d_feature, d_feature), self.new_rng())
+    else:
+      weights = layer_base.EMPTY_WEIGHTS
+    if self._mode == 'predict':
+      batch_size = input_signature.shape[0]
+      state = np.zeros((batch_size,), dtype=np.int32)
+    else:
+      state = layer_base.EMPTY_STATE
+    return weights, state

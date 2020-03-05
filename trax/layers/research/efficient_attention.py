@@ -353,7 +353,8 @@ class TimeBinCausalAttention(attention.BaseCausalAttention):
 
     # Mask out attention to self except when no other targets are available.
     if self._share_qk:
-      self_mask = jax.lax.broadcasted_eye(dots.dtype, dots.shape, (2, 3))
+      self_mask = np.eye(dots.shape[2], dots.shape[3])
+      self_mask = self_mask[np.newaxis, np.newaxis, :, :]
       self_mask = jax.lax.tie_in(dots, self_mask)
       dots = dots - 1e5 * self_mask
 
