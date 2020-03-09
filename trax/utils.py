@@ -23,7 +23,6 @@ import pickle
 import sys
 
 import cloudpickle
-import numpy as np
 
 
 def get_pickle_module():
@@ -34,10 +33,3 @@ def get_pickle_module():
     return cloudpickle
   else:
     return pickle
-
-
-def gumbel_sample(log_probs):
-  """Gumbel sampling from a categorical distribution."""
-  u = np.random.uniform(low=1e-6, high=1.0 - 1e-6, size=log_probs.shape)
-  g = -np.log(-np.log(u))
-  return np.argmax(log_probs + g, axis=-1)

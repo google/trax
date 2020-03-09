@@ -33,8 +33,8 @@ from absl import logging
 import gin
 import gym
 
+from trax import layers as tl
 from trax import models as trax_models
-from trax import utils
 from trax.math import numpy as np
 from trax.math import random as jax_random
 
@@ -268,7 +268,7 @@ def PolicySchedule(
   )
   # Sample from the action distribution for the last timestep.
   assert log_probs.shape == (1, len(control_configs), len(action_multipliers))
-  action = utils.gumbel_sample(log_probs[0] / temperature)
+  action = tl.gumbel_sample(log_probs[0], temperature)
 
   # Get new controls.
   controls = {

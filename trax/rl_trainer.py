@@ -46,7 +46,9 @@ from tensor2tensor.envs import env_problem_utils
 from trax import rl  # pylint: disable=unused-import
 from trax import trainer_flags  # pylint: disable=unused-import
 from trax.rl import envs as rl_envs  # pylint: disable=unused-import
+from trax.rl import task as rl_task
 from trax.rl import trainers as rl_trainers
+from trax.rl import training as light_trainers
 
 
 FLAGS = flags.FLAGS
@@ -70,6 +72,8 @@ def train_rl(
     n_epochs=10000,
     trajectory_dump_dir=None,
     num_actions=None,
+    light_rl=False,
+    light_rl_trainer=light_trainers.RLTrainer,
 ):
   """Train the RL agent.
 
@@ -91,6 +95,8 @@ def train_rl(
     trajectory_dump_dir: Directory to dump trajectories to.
     num_actions: None unless one wants to use the discretization wrapper. Then
       num_actions specifies the number of discrete actions.
+    light_rl: whether to use the light RL setting (experimental).
+    light_rl_trainer: whichh light RL trainer to use (experimental).
   """
 
   if FLAGS.jax_debug_nans:
@@ -101,6 +107,12 @@ def train_rl(
   else:
     config.update('jax_platform_name', 'gpu')
 
+
+  if light_rl:
+    task = rl_task.RLTask()
+    trainer = light_rl_trainer(task=task, output_dir=output_dir)
+    trainer.run(n_epochs)
+    return
 
   # TODO(pkozakowski): Find a better way to determine this.
   train_env_kwargs = {}

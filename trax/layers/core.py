@@ -248,6 +248,14 @@ def multigaussian_loss(preds, targets, ngauss=1):  # pylint: disable=invalid-nam
   return math.logsumexp(loglogits + glogprobs, axis=-1)
 
 
+def gumbel_sample(log_probs, temperature=1.0):  # pylint: disable=invalid-name
+  """Gumbel sampling from a categorical distribution, with temperature."""
+  # This is equivalent to sampling from a softmax with temperature.
+  u = onp.random.uniform(low=1e-6, high=1.0 - 1e-6, size=log_probs.shape)
+  g = -onp.log(-onp.log(u))
+  return onp.argmax(log_probs + g * temperature, axis=-1)
+
+
 class ThresholdedLinearUnit(base.Layer):
   """Thresholded Linear Unit, c.f. https://arxiv.org/pdf/1911.09737.pdf ."""
 

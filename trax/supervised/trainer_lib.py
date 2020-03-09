@@ -92,6 +92,9 @@ class Trainer(object):
     self._should_save_checkpoints = should_save_checkpoints and self._is_chief
     self._checkpoints_at = checkpoints_at or []
     self._should_write_summaries = should_write_summaries
+    if not output_dir:
+      self._should_save_checkpoints = False
+      self._should_write_summaries = False
     self._checkpoint_highest = checkpoint_highest
     self._checkpoint_lowest = checkpoint_lowest
     self._has_weights = has_weights
@@ -212,9 +215,7 @@ class Trainer(object):
     self._opt_state = None
     self._step = None
     self._model_state = None
-
-    if output_dir is not None:
-      self.reset(output_dir)
+    self.reset(output_dir)
 
   @property
   def n_devices(self):
@@ -285,7 +286,11 @@ class Trainer(object):
         self._inputs.train_eval_stream, self._n_devices)
 
     # Restore the training state.
-    state = load_trainer_state(output_dir, init_checkpoint)
+    if output_dir is not None:
+      state = load_trainer_state(output_dir, init_checkpoint)
+    else:
+      state = TrainerState(step=None, opt_state=None,
+                           history=trax_history.History(), model_state=None)
     self._step = state.step or 0
     history = state.history
     self._lr_fn = self._lr_schedule(history)

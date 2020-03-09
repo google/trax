@@ -162,12 +162,6 @@ def collect_trajectories(env,
 
   assert isinstance(env, env_problem.EnvProblem)
 
-  def gumbel_sample(log_probs):
-    """Gumbel sampling."""
-    u = onp.random.uniform(low=1e-6, high=1.0 - 1e-6, size=log_probs.shape)
-    g = -onp.log(-onp.log(u))
-    return onp.argmax((log_probs / temperature) + g, axis=-1)
-
   # We need to reset all environments, if we're coming here the first time.
   if reset or max_timestep is None or max_timestep <= 0:
     env.reset()
@@ -217,7 +211,7 @@ def collect_trajectories(env,
 
     assert B == log_probs.shape[0]
 
-    actions = gumbel_sample(log_probs)
+    actions = tl.gumbel_sample(log_probs, temperature)
     if (isinstance(env.action_space, gym.spaces.Discrete) and
         (actions.shape[1] == 1)):
       actions = onp.squeeze(actions, axis=1)

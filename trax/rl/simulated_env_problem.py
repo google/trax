@@ -26,8 +26,8 @@ import jax
 import numpy as np
 
 from tensor2tensor.envs import env_problem
+from trax import layers as tl
 from trax import math
-from trax import utils
 from trax.math import random as jax_random
 from trax.rl import serialization_utils
 from trax.rl import space_serializer
@@ -392,7 +392,7 @@ class SerializedSequenceSimulatedEnvProblem(SimulatedEnvProblem):
     )
     for (i, subrng) in enumerate(jax_random.split(rng, self._obs_repr_length)):
       log_probs = predict_fn(self._last_symbols, rng=subrng)
-      self._last_symbols = utils.gumbel_sample(log_probs)
+      self._last_symbols = tl.gumbel_sample(log_probs)
       obs_repr[:, i] = self._last_symbols[:, 0]
     return np.array(self._obs_serializer.deserialize(obs_repr))
 

@@ -38,9 +38,9 @@ METRIC = 'metrics/accuracy'
 class MockTrainer(trainer_lib.Trainer):
 
   def __init__(self, metrics_to_report, *args, **kwargs):
+    self.init_metrics_to_report = metrics_to_report
     super(MockTrainer, self).__init__(*args, **kwargs)
     self.controls = []
-    self.init_metrics_to_report = metrics_to_report
     self.metrics_to_report = None
 
   def reset(self, output_dir):
