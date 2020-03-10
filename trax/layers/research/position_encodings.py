@@ -220,7 +220,9 @@ class InfinitePositionalEncoding(layer_base.Layer):
     # Make even channels cos, odd channels sin:
     c_div_2, c_mod_2 = divmod(c, 2)
     # Off-by-one correction for odd depth:
-    drift = self._drift**(((depth+1)//2)/(depth//2))
+    drift = self._drift
+    if depth > 2:
+      drift = drift**(((depth+1)//2)/(depth//2))
     # Spend roughly half the frequencies on noise:
     freq = np.geomspace(.5, .5 * drift**2, num=(depth + 1) // 2)[c_div_2]
     cycles = c_mod_2 / 4 + freq * t + noise[:, c_div_2[0, :]] / 4
