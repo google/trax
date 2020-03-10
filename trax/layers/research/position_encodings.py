@@ -135,7 +135,10 @@ def threefry_2x32_prange(key, lo: int = 0, hi: int = 2):
 class InfinitePositionalEncoding(layer_base.Layer):
   """Infinite positional encoding."""
 
-  def __init__(self, drift=.03, affine=True, transform='any', mode='train'):
+  def __init__(
+      self, drift=.03, affine=True, transform='any',
+      time_bin_length=None,
+      mode='train'):
     """Initialize the encoding.
 
     The encoding tries to roughly evenly traverse the latent space.
@@ -149,6 +152,11 @@ class InfinitePositionalEncoding(layer_base.Layer):
       drift: variance in position difference per unit of difference
       affine: whether to randomize the origin every call
       transform: learnable transform after encoding (any/diag/none)
+      time_bin_length: Add features AxialPositionalEncoding learns if
+        TimeBinCausalAttention is the first layer.
+        bin_length should match TBCA.bin_length
+        If you set transform='diag', this flag increases your model capacity to
+        close to transform='any', though it will still train slower.
       mode: if 'predict', allow evaluating one token at a time
     """
     super().__init__()
@@ -161,6 +169,7 @@ class InfinitePositionalEncoding(layer_base.Layer):
     self._drift = drift
     self._affine = affine
     self._transform = transform
+    self._time_bin_length = time_bin_length
     self._mode = mode
 
   def _get_noise(self, lo: int, hi: int, depth: int):
@@ -225,6 +234,20 @@ class InfinitePositionalEncoding(layer_base.Layer):
 
     # Convert from cycles to radians:
     embeddings = np.cos(np.pi * 2 * cycles)
+
+    # Set the last channel to the time bin feature:
+    if self._time_bin_length is not None:
+      inter_bin_idx, intra_bin_idx = divmod(t[:, -1:], self._time_bin_length)
+      bin_parity = inter_bin_idx % 2
+      bin_fraction = intra_bin_idx / self._time_bin_length
+      embeddings = np.concatenate(
+          [
+              embeddings[:, :-3],
+              1 / (1 + inter_bin_idx),
+              bin_fraction,
+              bin_parity.astype(np.float32),
+          ], -1)
+
     assert embeddings.shape == (hi - lo, depth), embeddings.shape
     return embeddings
 
@@ -235,24 +258,29 @@ class InfinitePositionalEncoding(layer_base.Layer):
 
     if self._mode == 'predict':
       # Assume all the positions are pretty close to each other.
-      lo = state.min()
-      hi = state.max() + 1
-      pe = self._get_embeddings(lo=lo, hi=hi, depth=d_feature, rng=rng)
-      emb = inputs + pe[np.newaxis, state - lo, np.newaxis, :]
-      state = state + 1
+      index, predict_rng = state
+      lo = index.min()
+      hi = index.max() + 1
+      emb = self._get_embeddings(lo=lo, hi=hi, depth=d_feature, rng=predict_rng)
+      emb = emb[np.newaxis, index - lo, np.newaxis, :]
+      index = index + 1
+      state = index, predict_rng
     else:
-      pe = self._get_embeddings(lo=0, hi=input_len, depth=d_feature, rng=rng)
-      emb = inputs + pe[np.newaxis, :input_len, :]
+      emb = self._get_embeddings(lo=0, hi=input_len, depth=d_feature, rng=rng)
+      emb = emb[np.newaxis, :input_len, :]
+    # TODO(tying): check that XLA swaps matmul(slice(x)) -> slice(matmul(x)),
+    # or inline this code into get_embeddings/get_noise
     if self._transform == 'diag':
       emb = emb * jax.nn.softplus(weights)
     elif self._transform == 'any':
       emb = emb @ weights
-    return emb, state
+    return inputs + emb, state
 
   def new_weights_and_state(self, input_signature):
     d_feature = input_signature.shape[-1]
     if self._transform == 'diag':
-      scale_isoftplus = np.zeros((d_feature,), dtype=np.float32)
+      # Initialize it to a small value because JAX has a bug in softplus.
+      scale_isoftplus = np.zeros((d_feature,), dtype=np.float32) + 1e-4
       weights = scale_isoftplus
     elif self._transform == 'any':
       ortho = trax.layers.initializers.OrthogonalInitializer()
@@ -261,7 +289,7 @@ class InfinitePositionalEncoding(layer_base.Layer):
       weights = layer_base.EMPTY_WEIGHTS
     if self._mode == 'predict':
       batch_size = input_signature.shape[0]
-      state = np.zeros((batch_size,), dtype=np.int32)
+      state = np.zeros((batch_size,), dtype=np.int32), self.new_rng()
     else:
       state = layer_base.EMPTY_STATE
     return weights, state
