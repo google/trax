@@ -35,7 +35,7 @@ class Adam(opt_base.Optimizer):
       b2: optional, a positive scalar value for beta_2, the exponential decay
          rate for the second moment estimates (default 0.999).
       eps: optional, a positive scalar value for epsilon, a small constant for
-        numerical stability (default 1e-8).
+        numerical stability (default 1e-5).
     """
     super(Adam, self).__init__(
         learning_rate=learning_rate,
