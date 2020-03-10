@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Tests of functions that produce learning rate schedules."""
+"""Tests of learning rate schedules."""
 
 import math
 
@@ -25,89 +25,71 @@ from trax.supervised import lr_functions
 
 class LRFunctionsTest(absltest.TestCase):
 
-  def test_linear_warmup_and_body(self):
-    lr_schedule = lr_functions.BodyAndTail(.01, body_start=10)
+  def test_warmup(self):
+    lr_fn = lr_functions.warmup(9, .01)
 
     # Linear warm-up.
-    self.assertAlmostEqual(.001, lr_schedule.learning_rate(1))
-    self.assertAlmostEqual(.002, lr_schedule.learning_rate(2))
-    self.assertAlmostEqual(.005, lr_schedule.learning_rate(5))
-    self.assertAlmostEqual(.009, lr_schedule.learning_rate(9))
+    self.assertAlmostEqual(.001, lr_fn(1))
+    self.assertAlmostEqual(.002, lr_fn(2))
+    self.assertAlmostEqual(.005, lr_fn(5))
+    self.assertAlmostEqual(.009, lr_fn(9))
 
-    # Constant body.
-    self.assertAlmostEqual(.01, lr_schedule.learning_rate(10))
-    self.assertAlmostEqual(.01, lr_schedule.learning_rate(11))
-    self.assertAlmostEqual(.01, lr_schedule.learning_rate(20))
-    self.assertAlmostEqual(.01, lr_schedule.learning_rate(300))
-    self.assertAlmostEqual(.01, lr_schedule.learning_rate(4000))
+    # Constant thereafter.
+    self.assertAlmostEqual(.01, lr_fn(10))
+    self.assertAlmostEqual(.01, lr_fn(11))
+    self.assertAlmostEqual(.01, lr_fn(20))
+    self.assertAlmostEqual(.01, lr_fn(300))
+    self.assertAlmostEqual(.01, lr_fn(4000))
 
-  def test_no_warmup(self):
-    lr_schedule = lr_functions.BodyAndTail(.02)
-    self.assertEqual(.02, lr_schedule.learning_rate(1))
-    self.assertEqual(.02, lr_schedule.learning_rate(20))
-    self.assertEqual(.02, lr_schedule.learning_rate(300))
-    self.assertEqual(.02, lr_schedule.learning_rate(4000))
-    self.assertEqual(.02, lr_schedule.learning_rate(50000))
-    self.assertEqual(.02, lr_schedule.learning_rate(600000))
-    self.assertEqual(.02, lr_schedule.learning_rate(7000000))
-    self.assertEqual(.02, lr_schedule.learning_rate(80000000))
-    self.assertEqual(.02, lr_schedule.learning_rate(900000000))
+  def test_constant(self):
+    lr_fn = lr_functions.constant(.02)
+    self.assertEqual(.02, lr_fn(1))
+    self.assertEqual(.02, lr_fn(20))
+    self.assertEqual(.02, lr_fn(300))
+    self.assertEqual(.02, lr_fn(4000))
+    self.assertEqual(.02, lr_fn(50000))
+    self.assertEqual(.02, lr_fn(600000))
+    self.assertEqual(.02, lr_fn(7000000))
+    self.assertEqual(.02, lr_fn(80000000))
+    self.assertEqual(.02, lr_fn(900000000))
 
-  def test_no_body(self):
-    lr_schedule = lr_functions.BodyAndTail(.25,
-                                           body_start=25,
-                                           tail_start=25,
-                                           tail_fn=lr_functions.rsqrt)
+  def test_warmup_and_rsqrt_decay(self):
+    lr_fn = lr_functions.warmup_and_rsqrt_decay(24, .25)
+
     # Warm-up.
-    self.assertAlmostEqual(.01, lr_schedule.learning_rate(1))
-    self.assertAlmostEqual(.02, lr_schedule.learning_rate(2))
-    self.assertAlmostEqual(.23, lr_schedule.learning_rate(23))
-    self.assertAlmostEqual(.24, lr_schedule.learning_rate(24))
+    self.assertAlmostEqual(.01, lr_fn(1))
+    self.assertAlmostEqual(.02, lr_fn(2))
+    self.assertAlmostEqual(.23, lr_fn(23))
+    self.assertAlmostEqual(.24, lr_fn(24))
 
-    # Tail
-    self.assertAlmostEqual(
-        .25 * (5 / math.sqrt(25)), lr_schedule.learning_rate(25))
-    self.assertAlmostEqual(
-        .25 * (5 / math.sqrt(26)), lr_schedule.learning_rate(26))
-    self.assertAlmostEqual(
-        .25 * (5 / math.sqrt(27)), lr_schedule.learning_rate(27))
-    self.assertAlmostEqual(
-        .25 * (5 / math.sqrt(300)), lr_schedule.learning_rate(300))
-    self.assertAlmostEqual(
-        .25 * (5 / math.sqrt(4000)), lr_schedule.learning_rate(4000))
-    self.assertAlmostEqual(
-        .25 * (5 / math.sqrt(50000)), lr_schedule.learning_rate(50000))
+    # Reciprocal square-root decay.
+    self.assertAlmostEqual(.25 * (5 / math.sqrt(25)), lr_fn(25))
+    self.assertAlmostEqual(.25 * (5 / math.sqrt(26)), lr_fn(26))
+    self.assertAlmostEqual(.25 * (5 / math.sqrt(27)), lr_fn(27))
+    self.assertAlmostEqual(.25 * (5 / math.sqrt(300)), lr_fn(300))
+    self.assertAlmostEqual(.25 * (5 / math.sqrt(4000)), lr_fn(4000))
+    self.assertAlmostEqual(.25 * (5 / math.sqrt(50000)), lr_fn(50000))
 
-  def test_cosine_sawtooth_tail(self):
-    steps_per_cycle = 180
-    cosine_sawtooth = lr_functions.CosineSawtoothTail(steps_per_cycle,
-                                                      min_value=.1)
-    lr_schedule = lr_functions.BodyAndTail(.3,
-                                           tail_start=1000,
-                                           tail_fn=cosine_sawtooth.tail_fn)
-    # Body
-    self.assertEqual(.3, lr_schedule.learning_rate(1))
-    self.assertEqual(.3, lr_schedule.learning_rate(2))
-    self.assertEqual(.3, lr_schedule.learning_rate(998))
-    self.assertEqual(.3, lr_schedule.learning_rate(999))
+  def test_cosine_sawtooth(self):
+    tail_fn = lr_functions._CosineSawtoothTail(180, min_value=.1)
+    lr_fn = lr_functions._BodyAndTail(.3, tail_start=0, tail_fn=tail_fn)
 
-    # Tail, first cycle
-    self.assertEqual(.3, lr_schedule.learning_rate(1000))
-    self.assertAlmostEqual(.29998477, lr_schedule.learning_rate(1001))
-    self.assertAlmostEqual(.28660254, lr_schedule.learning_rate(1030))
-    self.assertAlmostEqual(.25, lr_schedule.learning_rate(1060))
-    self.assertAlmostEqual(.20, lr_schedule.learning_rate(1090))
-    self.assertAlmostEqual(.15, lr_schedule.learning_rate(1120))
-    self.assertAlmostEqual(.10001523, lr_schedule.learning_rate(1179))
+    # First cycle
+    self.assertAlmostEqual(.29998477, lr_fn(1))
+    self.assertAlmostEqual(.28660254, lr_fn(30))
+    self.assertAlmostEqual(.25, lr_fn(60))
+    self.assertAlmostEqual(.20, lr_fn(90))
+    self.assertAlmostEqual(.15, lr_fn(120))
+    self.assertAlmostEqual(.10001523, lr_fn(179))
 
     # Second cycle
-    self.assertEqual(.3, lr_schedule.learning_rate(1180))
-    self.assertAlmostEqual(.29998477, lr_schedule.learning_rate(1181))
-    self.assertAlmostEqual(.28660254, lr_schedule.learning_rate(1210))
-    self.assertAlmostEqual(.25, lr_schedule.learning_rate(1240))
-    self.assertAlmostEqual(.20, lr_schedule.learning_rate(1270))
-    self.assertAlmostEqual(.15, lr_schedule.learning_rate(1300))
-    self.assertAlmostEqual(.10001523, lr_schedule.learning_rate(1359))
+    self.assertEqual(.3, lr_fn(180))
+    self.assertAlmostEqual(.29998477, lr_fn(181))
+    self.assertAlmostEqual(.28660254, lr_fn(210))
+    self.assertAlmostEqual(.25, lr_fn(240))
+    self.assertAlmostEqual(.20, lr_fn(270))
+    self.assertAlmostEqual(.15, lr_fn(300))
+    self.assertAlmostEqual(.10001523, lr_fn(359))
 
 
 if __name__ == '__main__':
