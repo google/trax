@@ -17,6 +17,7 @@
 """Classes for RL training in Trax."""
 
 import time
+import numpy as np
 
 from trax import layers as tl
 from trax import lr_schedules as lr
@@ -26,7 +27,7 @@ from trax import supervised
 class RLTrainer:
   """Abstract class for RL Trainers, presenting the required API."""
 
-  def __init__(self, task, output_dir=None):
+  def __init__(self, task, collect_per_epoch=None, output_dir=None):
     """Configures the RL Trainer.
 
     Note that subclasses can have many more arguments, which will be configured
@@ -34,9 +35,11 @@ class RLTrainer:
 
     Args:
       task: RLTask instance, which defines the environment to train on.
+      collect_per_epoch: How many new trajectories to collect in each epoch.
       output_dir: Path telling where to save outputs such as checkpoints.
     """
     self._task = task
+    self._collect_per_epoch = collect_per_epoch
     self._output_dir = output_dir
 
   def policy(self, trajectory):
@@ -51,13 +54,27 @@ class RLTrainer:
     """
     raise NotImplementedError
 
+  def train_epoch(self):
+    """Trains this RL Trainer for one epoch -- main RL logic goes here."""
+    raise NotImplementedError
+
   def run(self, n_epochs=1):
-    """Runs the training loop for this Trainer for n epochs.
+    """Runs this loop for n epochs.
 
     Args:
       n_epochs: Stop training after completing n steps.
     """
-    raise NotImplementedError
+    for _ in range(n_epochs):
+      self._epoch += 1
+      cur_time = time.time()
+      self.train_epoch()
+      print('RL training took %.2f seconds.' % (time.time() - cur_time))
+      cur_time = time.time()
+      avg_return = self._task.collect_trajectories(
+          self.policy, self._collect_per_epoch, self._epoch)
+      print('Collecting %d episodes took %.2f seconds.'
+            % (self._collect_per_epoch, time.time() - cur_time))
+      print('Average return in epoch %d was %.2f.' % (self._epoch, avg_return))
 
 
 class ExamplePolicyTrainer(RLTrainer):
@@ -88,7 +105,8 @@ class ExamplePolicyTrainer(RLTrainer):
       output_dir: Path telling where to save outputs (evals and checkpoints).
           Can be None if both `eval_task` and `checkpoint_at` are None.
     """
-    super(ExamplePolicyTrainer, self).__init__(task, output_dir=output_dir)
+    super(ExamplePolicyTrainer, self).__init__(
+        task, collect_per_epoch=collect_per_epoch, output_dir=output_dir)
     self._batch_size = batch_size
     self._train_steps_per_epoch = train_steps_per_epoch
     self._collect_per_epoch = collect_per_epoch
@@ -118,22 +136,23 @@ class ExamplePolicyTrainer(RLTrainer):
     #     a number -- a factor that can change depending on which policy
     #     gradient algorithms you use; here, we just use the return from
     #     from this state and action, but many other variants can be tried.
-    #  * we use id_to_mask=0
-    #     This is because we reserved 0 for padding actions - so true actions
-    #     start from 1 and we want to remove any loss on the 0 padding.
     self._trainer = supervised.Trainer(
         model=model, optimizer=optimizer, lr_schedule=lr_schedule,
-        loss_fn=tl.CrossEntropyLoss, inputs=self._inputs, output_dir=output_dir,
-        has_weights=True, id_to_mask=0)
+        loss_fn=tl.CrossEntropySum, inputs=self._inputs, output_dir=output_dir,
+        metrics={'loss': tl.CrossEntropySum}, has_weights=True)
 
   def _batches_stream(self):
     """Use the RLTask self._task to create inputs to the policy model."""
-    for (obs, act, logp, rew, ret) in self._task.batches_stream(
-        self._batch_size, max_slice_length=self._max_slice_length):
-      del logp, rew  # We're not using log-probs or rewards here.
-      # We return a triple (observation, action, discounted return) which is
+    for np_trajectory in self._task.trajectory_batch_stream(
+        self._batch_size, epochs=[-1], max_slice_length=self._max_slice_length):
+      masked_returns = np_trajectory.returns * np_trajectory.batch_padding
+      normalized_returns = masked_returns - np.mean(masked_returns)
+      normalized_returns /= np.std(normalized_returns)
+      # We return a triple (observations, actions, normalized returns) which is
       # later used by the model as (inputs, targets, loss weights).
-      yield obs, act, ret
+      yield (np_trajectory.observations,
+             np_trajectory.actions,
+             normalized_returns)
 
   @property
   def current_epoch(self):
@@ -143,22 +162,10 @@ class ExamplePolicyTrainer(RLTrainer):
   def policy(self, trajectory):
     model = self._eval_model
     model.weights = self._trainer.model_weights
-    pred = model(trajectory.last_state[None, ...], n_accelerators=1)
-    sample = tl.gumbel_sample(pred[0, 1:])
-    return sample, pred[0, sample+1]
+    pred = model(trajectory.last_observation[None, ...], n_accelerators=1)
+    sample = tl.gumbel_sample(pred[0, :])
+    return sample, pred[0, sample]
 
-  def run(self, n_epochs=1):
-    """Runs this loop for n epochs.
-
-    Args:
-      n_epochs: Stop training after completing n steps.
-    """
-    for _ in range(n_epochs):
-      self._epoch += 1
-      self._trainer.train_epoch(self._train_steps_per_epoch, 1)
-      cur_time = time.time()
-      avg_return = self._task.collect_trajectories(
-          self.policy, self._collect_per_epoch, self._epoch)
-      print('Collecting %d episodes took %.2f seconds.'
-            % (self._collect_per_epoch, time.time() - cur_time))
-      print('Average return in epoch %d was %.2f.' % (self._epoch, avg_return))
+  def train_epoch(self):
+    """Trains RL for one epoch."""
+    self._trainer.train_epoch(self._train_steps_per_epoch, 1)

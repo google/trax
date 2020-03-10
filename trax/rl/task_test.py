@@ -37,7 +37,7 @@ class TaskTest(absltest.TestCase):
     for _ in range(10):
       next_slice = next(stream)
       assert len(next_slice) == 1
-      slices.append(next_slice.last_state)
+      slices.append(next_slice.last_observation)
     mean_obs = sum(slices) / float(len(slices))
     # Average should be around 1 sampling from 0x100, 101 uniformly.
     assert mean_obs < 31  # Sampling 101 even 3 times is unlikely.

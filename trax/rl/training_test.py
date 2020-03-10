@@ -32,9 +32,9 @@ class TrainingTest(absltest.TestCase):
     task = rl_task.RLTask('CartPole-v0', initial_trajectories=100,
                           max_steps=200)
     model = lambda mode: tl.Serial(  # pylint: disable=g-long-lambda
-        tl.Dense(32), tl.Relu(), tl.Dense(3), tl.LogSoftmax())
+        tl.Dense(32), tl.Relu(), tl.Dense(2), tl.LogSoftmax())
     lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
-        h, constant=1e-3, warmup_steps=100, factors='constant * linear_warmup')
+        h, constant=1e-4, warmup_steps=100, factors='constant * linear_warmup')
     trainer = training.ExamplePolicyTrainer(task, model, opt.Adam, lr)
     trainer.run(1)
     self.assertEqual(1, trainer.current_epoch)

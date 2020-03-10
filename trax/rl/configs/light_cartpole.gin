@@ -21,13 +21,13 @@ import trax.rl
 # ==============================================================================
 MLP.d_hidden = 32
 MLP.n_hidden_layers = 1
-MLP.n_output_classes = 3
+MLP.n_output_classes = 2
 
 # Parameters for MultifactorSchedule:
 # ==============================================================================
-MultifactorSchedule.constant = 0.05
-MultifactorSchedule.factors = 'constant * linear_warmup * rsqrt_decay'
-MultifactorSchedule.warmup_steps = 4000
+MultifactorSchedule.constant = 0.0001
+MultifactorSchedule.factors = 'constant * linear_warmup'
+MultifactorSchedule.warmup_steps = 500
 
 # Parameters for RLTask:
 # ==============================================================================
@@ -41,8 +41,8 @@ RLTask.max_steps = 200
 ExamplePolicyTrainer.model = @trax.models.MLP
 ExamplePolicyTrainer.optimizer = @trax.optimizers.Adam
 ExamplePolicyTrainer.batch_size = 64
-ExamplePolicyTrainer.train_steps_per_epoch = 500
-ExamplePolicyTrainer.collect_per_epoch = 50
+ExamplePolicyTrainer.train_steps_per_epoch = 2000
+ExamplePolicyTrainer.collect_per_epoch = 500
 ExamplePolicyTrainer.max_slice_length = 1
 
 # Parameters for train_rl:
