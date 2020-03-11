@@ -19,20 +19,21 @@ import trax.rl
 
 # Parameters for MLP:
 # ==============================================================================
-MLP.d_hidden = 32
+MLP.d_hidden = 64
 MLP.n_hidden_layers = 1
 MLP.n_output_classes = 2
+MLP.flatten = False
 
 # Parameters for MultifactorSchedule:
 # ==============================================================================
 MultifactorSchedule.constant = 0.0001
 MultifactorSchedule.factors = 'constant * linear_warmup'
-MultifactorSchedule.warmup_steps = 500
+MultifactorSchedule.warmup_steps = 100
 
 # Parameters for RLTask:
 # ==============================================================================
 RLTask.env = "CartPole-v0"
-RLTask.initial_trajectories = 100
+RLTask.initial_trajectories = 1000
 RLTask.gamma = 0.99
 RLTask.max_steps = 200
 
@@ -40,9 +41,9 @@ RLTask.max_steps = 200
 # ==============================================================================
 ExamplePolicyTrainer.model = @trax.models.MLP
 ExamplePolicyTrainer.optimizer = @trax.optimizers.Adam
-ExamplePolicyTrainer.batch_size = 64
-ExamplePolicyTrainer.train_steps_per_epoch = 2000
-ExamplePolicyTrainer.collect_per_epoch = 500
+ExamplePolicyTrainer.batch_size = 128
+ExamplePolicyTrainer.train_steps_per_epoch = 1000
+ExamplePolicyTrainer.collect_per_epoch = 100
 ExamplePolicyTrainer.max_slice_length = 1
 
 # Parameters for train_rl:

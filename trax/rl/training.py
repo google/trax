@@ -22,12 +22,14 @@ import numpy as np
 from trax import layers as tl
 from trax import lr_schedules as lr
 from trax import supervised
+from trax.rl import task as rl_task
 
 
 class RLTrainer:
   """Abstract class for RL Trainers, presenting the required API."""
 
-  def __init__(self, task, collect_per_epoch=None, output_dir=None):
+  def __init__(self, task: rl_task.RLTask, collect_per_epoch=None,
+               output_dir=None):
     """Configures the RL Trainer.
 
     Note that subclasses can have many more arguments, which will be configured
@@ -41,6 +43,11 @@ class RLTrainer:
     self._task = task
     self._collect_per_epoch = collect_per_epoch
     self._output_dir = output_dir
+    self._avg_returns = []
+
+  @property
+  def avg_returns(self):
+    return self._avg_returns
 
   def policy(self, trajectory):
     """Policy function that allows to play using this trainer.
@@ -72,6 +79,7 @@ class RLTrainer:
       cur_time = time.time()
       avg_return = self._task.collect_trajectories(
           self.policy, self._collect_per_epoch, self._epoch)
+      self._avg_returns.append(avg_return)
       print('Collecting %d episodes took %.2f seconds.'
             % (self._collect_per_epoch, time.time() - cur_time))
       print('Average return in epoch %d was %.2f.' % (self._epoch, avg_return))

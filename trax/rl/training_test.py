@@ -29,14 +29,18 @@ class TrainingTest(absltest.TestCase):
 
   def test_policytrainer_cartpole(self):
     """Trains a policy on cartpole."""
-    task = rl_task.RLTask('CartPole-v0', initial_trajectories=100,
+    task = rl_task.RLTask('CartPole-v0', initial_trajectories=750,
                           max_steps=200)
     model = lambda mode: tl.Serial(  # pylint: disable=g-long-lambda
-        tl.Dense(32), tl.Relu(), tl.Dense(2), tl.LogSoftmax())
+        tl.Dense(64), tl.Relu(), tl.Dense(2), tl.LogSoftmax())
     lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
         h, constant=1e-4, warmup_steps=100, factors='constant * linear_warmup')
-    trainer = training.ExamplePolicyTrainer(task, model, opt.Adam, lr)
+    trainer = training.ExamplePolicyTrainer(
+        task, model, opt.Adam, lr_schedule=lr, batch_size=128,
+        train_steps_per_epoch=700, collect_per_epoch=50)
     trainer.run(1)
+    # This should *mostly* pass, this means that this test is flaky.
+    self.assertGreater(trainer.avg_returns[-1], 35.0)
     self.assertEqual(1, trainer.current_epoch)
 
 

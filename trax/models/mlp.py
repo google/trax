@@ -26,6 +26,7 @@ def MLP(d_hidden=512,
         n_hidden_layers=2,
         activation_fn=tl.Relu,
         n_output_classes=10,
+        flatten=True,
         mode='train'):
   """A multi-layer feedforward (perceptron) network."""
   del mode
@@ -36,7 +37,7 @@ def MLP(d_hidden=512,
     return [tl.Dense(d_hidden), activation_fn()]
 
   return tl.Serial(
-      tl.Flatten(),
+      [tl.Flatten()] if flatten else [],
       [DensePlusActivation() for _ in range(n_hidden_layers)],
       tl.Dense(n_output_classes),
       tl.LogSoftmax(),
