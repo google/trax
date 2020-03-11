@@ -78,6 +78,10 @@ class Trajectory(object):
     return t
 
   @property
+  def timesteps(self):
+    return self._timesteps
+
+  @property
   def total_return(self):
     """Sum of all rewards in this trajectory."""
     return sum([t.reward or 0.0 for t in self._timesteps])
@@ -232,6 +236,10 @@ class RLTask:
   @property
   def observation_shape(self):
     return self._env.observation_space.shape
+
+  @property
+  def trajectories(self):
+    return self._trajectories
 
   def play(self, policy):
     """Play an episode in env taking actions according to the given policy."""

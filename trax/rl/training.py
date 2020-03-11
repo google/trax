@@ -16,6 +16,7 @@
 # Lint as: python3
 """Classes for RL training in Trax."""
 
+import random
 import time
 import numpy as np
 
@@ -85,8 +86,8 @@ class RLTrainer:
       print('Average return in epoch %d was %.2f.' % (self._epoch, avg_return))
 
 
-class ExamplePolicyTrainer(RLTrainer):
-  """Trains a policy model using Reinforce on the given RLTask.
+class PolicyGradient(RLTrainer):
+  """Trains a policy model using policy gradient on the given RLTask.
 
   This is meant just as an example for RL loops for other RL algorithms,
   to be used for testing puropses and as an idea for other classes.
@@ -113,7 +114,7 @@ class ExamplePolicyTrainer(RLTrainer):
       output_dir: Path telling where to save outputs (evals and checkpoints).
           Can be None if both `eval_task` and `checkpoint_at` are None.
     """
-    super(ExamplePolicyTrainer, self).__init__(
+    super(PolicyGradient, self).__init__(
         task, collect_per_epoch=collect_per_epoch, output_dir=output_dir)
     self._batch_size = batch_size
     self._train_steps_per_epoch = train_steps_per_epoch
@@ -151,16 +152,22 @@ class ExamplePolicyTrainer(RLTrainer):
 
   def _batches_stream(self):
     """Use the RLTask self._task to create inputs to the policy model."""
-    for np_trajectory in self._task.trajectory_batch_stream(
-        self._batch_size, epochs=[-1], max_slice_length=self._max_slice_length):
-      masked_returns = np_trajectory.returns * np_trajectory.batch_padding
-      normalized_returns = masked_returns - np.mean(masked_returns)
-      normalized_returns /= np.std(normalized_returns)
-      # We return a triple (observations, actions, normalized returns) which is
-      # later used by the model as (inputs, targets, loss weights).
-      yield (np_trajectory.observations,
-             np_trajectory.actions,
-             normalized_returns)
+    def sample_timestep(trajectories):
+      traj = random.choice(trajectories)
+      ts = random.choice(traj.timesteps[:-1])
+      return (ts.observation, ts.action, ts.discounted_return)
+
+    while True:
+      batch = [
+          sample_timestep(  # pylint: disable=g-complex-comprehension
+              self._task.trajectories[len(self._task.trajectories) - 1]
+          )
+          for _ in range(self._batch_size)
+      ]
+      batch = zip(*batch)  # Transpose.
+      (obs, act, ret) = map(np.stack, batch)  # Stack.
+      ret = (ret - np.mean(ret)) / np.std(ret)  # Normalize returns.
+      yield (obs, act, ret)
 
   @property
   def current_epoch(self):
