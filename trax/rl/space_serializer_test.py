@@ -55,7 +55,8 @@ class BoxSpaceSerializerTest(test.TestCase):
     input_array = self._sample_batch(space)
     representation = serializer.serialize(input_array)
     output_array = serializer.deserialize(representation)
-    np.testing.assert_array_almost_equal(input_array, output_array)
+    # Testing till 5 decimals to reduce flakyness.
+    np.testing.assert_array_almost_equal(input_array, output_array, decimal=5)
 
   def test_representation_changes(self):
     (space, serializer) = self._make_space_and_serializer()
