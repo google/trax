@@ -42,13 +42,13 @@ class _TimeStep(object):
 
 
 # Tuple for representing trajectories and batches of them in numpy; immutable.
-NpTrajectory = collections.namedtuple('NpTrajectory', [
+TrajectoryNp = collections.namedtuple('TrajectoryNp', [
     'observations',
     'actions',
     'log_probs',
     'rewards',
     'returns',
-    'batch_padding'
+    'mask'
 ])
 
 
@@ -71,6 +71,10 @@ class Trajectory(object):
   def __str__(self):
     return str([(ts.observation, ts.action, ts.reward)
                 for ts in self._timesteps])
+
+  def __repr__(self):
+    return repr([(ts.observation, ts.action, ts.reward)
+                 for ts in self._timesteps])
 
   def __getitem__(self, key):
     t = Trajectory(None)
@@ -136,7 +140,7 @@ class Trajectory(object):
         rewards.append(rew[None, ...])
         returns.append(ret[None, ...])
     # TODO(lukaszkaiser): use np.stack instead?
-    return NpTrajectory(np.concatenate(observations, axis=0),
+    return TrajectoryNp(np.concatenate(observations, axis=0),
                         np.concatenate(actions, axis=0),
                         np.concatenate(logps, axis=0),
                         np.concatenate(rewards, axis=0),
@@ -185,6 +189,27 @@ def _random_policy(n_actions):
   return lambda _: (np.random.randint(n_actions), np.log(1 / float(n_actions)))
 
 
+def _sample_proportionally(inputs, weights):
+  """Sample an element from the inputs list proportionally to weights.
+
+  Args:
+    inputs: a list, we will return one element of this list.
+    weights: a list of numbers of the same length as inputs; we will sample
+      the k-th input with probability weights[k] / sum(weights).
+
+  Returns:
+    an element from inputs.
+  """
+  l = len(inputs)
+  if l != len(weights):
+    raise ValueError(f'Inputs and weights must have the same length, but do not'
+                     f': {l} != {len(weights)}')
+  weights_sum = float(sum(weights))
+  norm_weights = [w / weights_sum for w in weights]
+  idx = np.random.choice(l, p=norm_weights)
+  return inputs[int(idx)]
+
+
 @gin.configurable()
 class RLTask:
   """A RL task: environment and a collection of trajectories."""
@@ -196,8 +221,8 @@ class RLTask:
     Args:
       env: Environment confirming to the gym.Env interface or a string,
         in which case `gym.make` will be called on this string to create an env.
-      initial_trajectories: either a list of Trajectories to use as at start
-        or an int, in which case that many trajectories are
+      initial_trajectories: either a dict or list of Trajectories to use
+        at start or an int, in which case that many trajectories are
         collected using a random policy to play in env.
       gamma: float: discount factor for calculating returns.
       max_steps: Optional int: stop all trajectories at that many steps.
@@ -217,13 +242,15 @@ class RLTask:
     if isinstance(initial_trajectories, int):
       initial_trajectories = [self.play(_random_policy(self.n_actions))
                               for _ in range(initial_trajectories)]
+    if isinstance(initial_trajectories, list):
+      initial_trajectories = {0: initial_trajectories}
     self._timestep_to_np = timestep_to_np
     # Stored trajectories are indexed by epoch and within each epoch they
     # are stored in the order of generation so we can implement replay buffers.
     # TODO(lukaszkaiser): use dump_trajectories from BaseTrainer to allow
     # saving and reading trajectories from disk.
     self._trajectories = collections.defaultdict(list)
-    self._trajectories[0] = initial_trajectories
+    self._trajectories.update(initial_trajectories)
 
   @property
   def max_steps(self):
@@ -254,52 +281,57 @@ class RLTask:
     returns = [t.total_return for t in new_trajectories]
     return sum(returns) / float(len(returns))
 
-  def trajectory_stream(self, epochs=None, max_slice_length=None):
+  def trajectory_stream(self, epochs=None, max_slice_length=None,
+                        include_final_state=False):
     """Return a stream of random trajectory slices from the specified epochs.
 
     Args:
       epochs: a list of epochs to use; we use all epochs if None
       max_slice_length: maximum length of the slices of trajectories to return
+      include_final_state: whether to include slices with the final state of
+        the trajectory which may have no action and reward
 
     Yields:
       random trajectory slices sampled uniformly from all slices of length
       upto max_slice_length in all specified epochs
     """
     # TODO(lukaszkaiser): add option to sample from n last trajectories.
+    end_offset = 0 if include_final_state else 1
     def n_slices(t):
       """How many slices of length upto max_slice_length in a trajectory."""
       if not max_slice_length:
         return 1
-      # A trajectory [a, b, c, end_state] will have 2 proper slices of length 2:
-      # the slice [a, b] and the one [b, c].
-      return max(1, len(t) - max_slice_length)
+      # A trajectory [a, b, c, end_state] will have 2 slices of length 2:
+      # the slice [a, b] and the one [b, c], with end_offset; 3 without.
+      return max(1, len(t) - max_slice_length + 1 - end_offset)
 
     while True:
       all_epochs = list(self._trajectories.keys())
       max_epoch = max(all_epochs) + 1
       epochs = epochs or all_epochs
       epochs = [ep % max_epoch for ep in epochs]  # So -1 means "last".
-      # TODO(lukaszkaiser): the code below can probably be better using
-      # np.random.choice(..., p=probabilities) and sampling like this.
-      slices = [[n_slices(t) for t in self._trajectories[ep]] for ep in epochs]
-      slices_per_epoch = [sum(s) for s in slices]
-      slice_id = np.random.randint(sum(slices_per_epoch))  # Which slice?
-      # We picked a trajectory slice, which epoch and trajectory is it in?
-      slices_per_epoch_sums = np.array(slices_per_epoch).cumsum()
-      epoch_id = min([i for i in range(len(epochs))
-                      if slices_per_epoch_sums[i] >= slice_id])
-      slice_in_epoch_id = slices_per_epoch_sums[epoch_id] - slice_id
-      slices_in_epoch_sums = np.array(slices[epoch_id]).cumsum()
-      trajectory_id = min([i for i in range(len(self._trajectories[epoch_id]))
-                           if slices_in_epoch_sums[i] >= slice_in_epoch_id])
-      trajectory = self._trajectories[epoch_id][trajectory_id]
-      slice_start = slices_in_epoch_sums[trajectory_id] - slice_in_epoch_id
+
+      # Sample an epoch proportionally to number of slices in each epoch.
+      if len(epochs) == 1:  # Skip this step if there's just 1 epoch.
+        epoch_id = epochs[0]
+      else:
+        slices_per_epoch = [sum([n_slices(t) for t in self._trajectories[ep]])
+                            for ep in epochs]
+        epoch_id = _sample_proportionally(epochs, slices_per_epoch)
+      epoch = self._trajectories[epoch_id]
+
+      # Sample a trajectory proportionally to number of slices in each one.
+      slices_per_trajectory = [n_slices(t) for t in epoch]
+      trajectory = _sample_proportionally(epoch, slices_per_trajectory)
+
+      # Sample a slice from the trajectory.
+      slice_start = np.random.randint(n_slices(trajectory))
       slice_end = slice_start + (max_slice_length or len(trajectory))
-      slice_end = min(slice_end, len(trajectory) - 1)
+      slice_end = min(slice_end, len(trajectory) - end_offset)
       yield trajectory[slice_start:slice_end]
 
   def trajectory_batch_stream(self, batch_size, epochs=None,
-                              max_slice_length=None):
+                              max_slice_length=None, include_final_state=False):
     """Return a stream of trajectory batches from the specified epochs.
 
     This function returns a stream of tuples of numpy arrays (tensors).
@@ -309,6 +341,8 @@ class RLTask:
       batch_size: the size of the batches to return
       epochs: a list of epochs to use; we use all epochs if None
       max_slice_length: maximum length of the slices of trajectories to return
+      include_final_state: whether to include slices with the final state of
+        the trajectory which may have no action and reward
 
     Yields:
       batches of trajectory slices sampled uniformly from all slices of length
@@ -316,11 +350,16 @@ class RLTask:
     """
     def pad(tensor_list):
       max_len = max([t.shape[0] for t in tensor_list])
+      min_len = min([t.shape[0] for t in tensor_list])
+      if max_len == min_len:  # No padding needed.
+        return np.array(tensor_list)
+
       pad_len = 2**int(np.ceil(np.log2(max_len)))
       return np.array([_zero_pad(t, (0, pad_len - t.shape[0]), axis=0)
                        for t in tensor_list])
     cur_batch = []
-    for t in self.trajectory_stream(epochs, max_slice_length):
+    for t in self.trajectory_stream(
+        epochs, max_slice_length, include_final_state):
       cur_batch.append(t)
       if len(cur_batch) == batch_size:
         obs, act, logp, rew, ret, _ = zip(*[t.to_np(self._timestep_to_np)
@@ -329,6 +368,6 @@ class RLTask:
         # [batch_size, trajectory_length-1], which we call [B, L-1].
         # Observations are more complex and will usuall be [B, L] + S where S
         # is the shape of the observation space (self.observation_shape).
-        yield NpTrajectory(pad(obs), pad(act), pad(logp), pad(rew), pad(ret),
+        yield TrajectoryNp(pad(obs), pad(act), pad(logp), pad(rew), pad(ret),
                            pad(np.ones_like(act)))
         cur_batch = []
