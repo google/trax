@@ -28,6 +28,7 @@ from trax.models import resnet
 from trax.models import rnn
 from trax.models import transformer
 from trax.models.reformer import reformer
+from trax.models.research import bert
 from trax.models.research import skipping_transformer
 
 if six.PY3:
@@ -44,6 +45,9 @@ def model_configure(*args, **kwargs):
 # pylint: disable=invalid-name
 AtariCnn = model_configure(atari_cnn.AtariCnn)
 FrameStackMLP = model_configure(atari_cnn.FrameStackMLP)
+BERT = model_configure(bert.BERT)
+BERTClassifierHead = model_configure(bert.BERTClassifierHead)
+BERTRegressionHead = model_configure(bert.BERTRegressionHead)
 MLP = model_configure(mlp.MLP)
 NeuralGPU = model_configure(neural_gpu.NeuralGPU)
 Reformer = model_configure(reformer.Reformer)

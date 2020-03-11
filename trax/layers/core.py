@@ -142,7 +142,7 @@ def Selu(x,
 
 @base.layer()
 def Gelu(x, **unused_kwargs):
-  return x * 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+  return x * 0.5 * (1.0 + math.erf(x / np.sqrt(2.0)))
 
 
 @base.layer()

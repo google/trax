@@ -115,7 +115,7 @@ class BatchNorm(base.Layer):
 
 
 # Layer normalization.
-def _layer_norm_weights(input_signature):
+def _layer_norm_weights(input_signature, **unused_kwargs):
   """Helper: create layer norm parameters."""
   features = input_signature.shape[-1]
   scale = np.ones(features, dtype=input_signature.dtype)

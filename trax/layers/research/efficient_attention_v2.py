@@ -850,6 +850,7 @@ class SelfAttention(EfficientAttentionBase):
                n_heads=2, d_qk=64, d_v=64, share_qk=False,
                causal=False, masked=False,
                chunk_len=None, n_chunks_before=0, n_chunks_after=0,
+               bias=False,
                mode='train',
                predict_mem_len=None, predict_drop_len=None,
                attention_dropout=0.0,
@@ -877,6 +878,7 @@ class SelfAttention(EfficientAttentionBase):
         attention to future tokens will be masked out anyway. However, note that
         cross-chunk attention "wraps around" in both directions, so this option
         is never a strict no-op.
+      bias: bool: Set to True to add bias vectors when computing query/key/value
       mode: 'train', 'eval', or 'predict'
       predict_mem_len: int: Number of input positions to remember in a cache
         when doing fast inference. Whenever the cache fills up, some input
@@ -915,6 +917,7 @@ class SelfAttention(EfficientAttentionBase):
     self.chunk_len = chunk_len
     self.n_chunks_before = n_chunks_before
     self.n_chunks_after = n_chunks_after
+    self.bias = bias
     self.mode = mode
     if mode == 'train':
       self.attention_dropout = attention_dropout
@@ -942,6 +945,16 @@ class SelfAttention(EfficientAttentionBase):
       w_k = self._kernel_initializer((d_model, self.d_qk), rng_k)
     w_v = self._kernel_initializer((d_model, self.d_v), rng_v)
     w_o = np.transpose(self._kernel_initializer((d_model, self.d_v), rng_o))
+
+    if self.bias:
+      b_q = np.zeros(self.d_qk)
+      b_v = np.zeros(self.d_v)
+      if self.share_qk:
+        return (w_q, w_v, w_o, b_q, b_v)
+      else:
+        b_k = np.zeros(self.d_qk)
+        return (w_q, w_k, w_v, w_o, b_q, b_k, b_v)
+
     if self.share_qk:
       return (w_q, w_v, w_o)
     else:
@@ -951,16 +964,28 @@ class SelfAttention(EfficientAttentionBase):
                         weights, state, rng, update_state):
     del update_state
     attend_rng, output_rng = jax.random.split(rng)
-    if self.share_qk:
-      w_q, w_v, w_o = weights
+    if self.bias:
+      if self.share_qk:
+        w_q, w_v, w_o, b_q, b_v = weights
+      else:
+        w_q, w_k, w_v, w_o, b_q, b_k, b_v = weights
     else:
-      w_q, w_k, w_v, w_o = weights
+      if self.share_qk:
+        w_q, w_v, w_o = weights
+      else:
+        w_q, w_k, w_v, w_o = weights
 
     q = np.matmul(x, w_q)
     k = None
     if not self.share_qk:
       k = np.matmul(x, w_k)
     v = np.matmul(x, w_v)
+
+    if self.bias:
+      q = q + b_q
+      if not self.share_qk:
+        k = k + b_k
+      v = v + b_v
 
     mask_fn = functools.partial(
         mask_self_attention,

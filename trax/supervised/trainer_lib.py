@@ -622,7 +622,8 @@ def train(output_dir,
           id_to_mask=None,
           metrics=None,
           checkpoint_highest=None,
-          checkpoint_lowest=None):
+          checkpoint_lowest=None,
+          custom_train_fn=None):
   """Train the model on the inputs.
 
   Args:
@@ -652,10 +653,14 @@ def train(output_dir,
     metrics: optionally override the default metrics dictionary.
     checkpoint_highest: save the checkpoint highest at this metric.
     checkpoint_lowest: save the checkpoint lowest at this metric.
+    custom_train_fn: custom train function to call, entirely bypassing this one
 
   Returns:
     trax.TrainerState
   """
+  if custom_train_fn is not None:
+    return custom_train_fn(output_dir, model=model)
+
   n_devices = num_devices()
   # TODO(lukaszkaiser): remove has_weights and id_to_mask (configure loss).
   trainer = trainer_class(model, loss_fn, optimizer, lr_schedule, inputs,
