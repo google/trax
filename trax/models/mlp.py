@@ -22,23 +22,38 @@ from __future__ import print_function
 from trax import layers as tl
 
 
+def PureMLP(
+    hidden_dims=(128, 64), activation_fn=tl.Relu, flatten=True, mode='train'):
+  """A multi-layer feedforward (perceptron) network."""
+  del mode
+
+  layers = []
+  for hidden_dim in hidden_dims:
+    layers.append(tl.Dense(hidden_dim))
+    layers.append(activation_fn())
+
+  # Don't need the last activation.
+  layers.pop()
+
+  return tl.Serial(
+      [tl.Flatten()] if flatten else [],
+      layers,
+  )
+
+
 def MLP(d_hidden=512,
         n_hidden_layers=2,
         activation_fn=tl.Relu,
         n_output_classes=10,
         flatten=True,
         mode='train'):
-  """A multi-layer feedforward (perceptron) network."""
-  del mode
-
-  # Define a function rather than a variable, so that multiple copies will
-  # each be their own object with their own weights.
-  def DensePlusActivation():
-    return [tl.Dense(d_hidden), activation_fn()]
+  """A multi-layer feedforward network, with a classification head."""
 
   return tl.Serial(
-      [tl.Flatten()] if flatten else [],
-      [DensePlusActivation() for _ in range(n_hidden_layers)],
-      tl.Dense(n_output_classes),
+      PureMLP(
+          hidden_dims=[d_hidden] * n_hidden_layers + [n_output_classes],
+          activation_fn=activation_fn,
+          flatten=flatten,
+          mode=mode),
       tl.LogSoftmax(),
   )

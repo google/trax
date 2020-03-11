@@ -123,6 +123,9 @@ class BaseTrainer(object):
   def save(self):
     raise NotImplementedError
 
+  def maybe_save(self):
+    raise NotImplementedError
+
   def flush_summaries(self):
     raise NotImplementedError
 
@@ -180,6 +183,7 @@ class BaseTrainer(object):
     logging.info('Starting the RL training loop.')
     for _ in range(self.epoch, n_epochs):
       self.train_epoch(evaluate=evaluate)
+      self.maybe_save()
       self.dump_trajectories()
     self.save()
     self.dump_trajectories(force=True)

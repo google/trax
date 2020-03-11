@@ -149,6 +149,9 @@ class SimPLe(base_trainer.BaseTrainer):
   def evaluate(self):
     self.policy_trainer.evaluate()
 
+  def maybe_save(self):
+    return True
+
   def save(self):
     # Nothing to do, as we save stuff continuously.
     pass

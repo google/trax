@@ -18,6 +18,7 @@
 
 from typing import List
 
+from absl import logging
 import numpy as np
 from tensor2tensor.envs import trajectory
 
@@ -152,16 +153,6 @@ class ReplayBuffer:
 
   def store_np(self, n, observations_np, actions_np, rewards_np, info_np_dict):
     """Stores a given trajectory in numpy form in the replay buffer."""
-    if self.buffers is None:
-      # Since obervations_np's shape is (T,) + OBS, similarly for the rest.
-      state_shape = observations_np.shape[1:]
-      state_dtype = observations_np.dtype
-
-      actions_shape = actions_np.shape[1:]
-      actions_dtype = actions_np.dtype
-
-      self.init_buffers(state_shape, state_dtype, actions_shape, actions_dtype)
-
     idx = self._request_idx(n + 1)
     self._store_path(observations_np, actions_np, rewards_np, info_np_dict, idx)
 
@@ -224,31 +215,29 @@ class ReplayBuffer:
     valid_idx = valid_idx[np.logical_not(is_end)]
     return valid_idx
 
-  def init_buffers(self, state_shape, state_dtype, actions_shape,
-                   actions_dtype):
+  def init_buffers(self, observations_np, actions_np, rewards_np, logp_np):
     """Initialize the buffers."""
 
     self.buffers = dict()
-    self.buffers[self.PATH_START_KEY] = self.INVALID_IDX * np.ones(
-        self.buffer_size, dtype=int)
-    self.buffers[self.PATH_END_KEY] = self.INVALID_IDX * np.ones(
-        self.buffer_size, dtype=int)
-    self.buffers[self.TERMINATE_KEY] = np.zeros(
-        shape=[self.buffer_size], dtype=int)
 
-    # states
-    self.buffers[self.OBSERVATIONS_KEY] = np.zeros(
-        [self.buffer_size] + list(state_shape), dtype=state_dtype)
+    # path start, path end, terminate.
+    for key, value in zip(
+        [self.PATH_START_KEY, self.PATH_END_KEY, self.TERMINATE_KEY],
+        [self.INVALID_IDX, self.INVALID_IDX, 0]):
+      self.buffers[key] = np.full(self.buffer_size, value, dtype=np.int32)
 
-    # actions
-    self.buffers[self.ACTIONS_KEY] = np.zeros(
-        [self.buffer_size] + list(actions_shape), dtype=actions_dtype)
-
-    # logps & rewards
-    self.buffers[self.LOGPS_KEY] = np.zeros(self.buffer_size, dtype=np.float32)
-    self.buffers[self.REWARDS_KEY] = np.zeros(
-        self.buffer_size, dtype=np.float32)
-
+    # observations, actions, rewards and log probabilities.
+    for key, value in zip(
+        [self.OBSERVATIONS_KEY, self.ACTIONS_KEY, self.REWARDS_KEY,
+         self.LOGPS_KEY],
+        [observations_np, actions_np, rewards_np, logp_np]
+    ):
+      self.buffers[key] = np.zeros(
+          [self.buffer_size] + list(value.shape[1:]),
+          dtype=value.dtype
+      )
+      logging.info(
+          f'Initialized buffer[{key}] with shape: {self.buffers[key].shape}')
     return
 
   def get_valid_indices(self):
@@ -360,12 +349,28 @@ class ReplayBuffer:
     assert len(rewards_np) == n
     logp_np = info_np_dict[self.LOGPS_KEY_TRAJ]
     assert len(logp_np) == n
-    if len(logp_np.shape) > 1:
-      assert logp_np.shape[1] == 1
+    if (len(logp_np.shape) > 1) and (logp_np.shape[1] == 1):
       # Sometimes we can get something like (n+1, 1, #actions)
       logp_np = np.squeeze(logp_np, axis=1)
       # Then extract logps only for the actions we carried out.
       logp_np = np.squeeze(logp_np[np.arange(n)[None, :], actions_np])
+      # Give this a shape (n + 1, 1) and actions a shape (n, 1)
+      logp_np = logp_np[..., None]
+      # So to with actions.
+      actions_np = actions_np[..., None]
+    elif len(logp_np.shape) > 1:
+      n, h, _ = logp_np.shape
+      if actions_np.shape != (n, h):
+        raise ValueError(
+            f'Shape mismatch, actions_np.shape {actions_np.shape} != ({n}, {h})'
+            f'states_np.shape = {states_np.shape} '
+            f'actions_np.shape = {actions_np.shape} '
+            f'rewards_np.shape = {rewards_np.shape} '
+            f'logp_np.shape = {logp_np.shape} ')
+      logp_np = logp_np[np.arange(n)[:, None], np.arange(h), actions_np]
+
+    if self.buffers is None:
+      self.init_buffers(states_np, actions_np, rewards_np, logp_np)
 
     self.buffers[self.OBSERVATIONS_KEY][idx[:n + 1]] = [x for x in states_np]
     self.buffers[self.ACTIONS_KEY][idx[:n]] = [x for x in actions_np]

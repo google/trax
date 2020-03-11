@@ -29,11 +29,8 @@ from trax.models import rnn
 from trax.models import transformer
 from trax.models.reformer import reformer
 from trax.models.research import bert
+from trax.models.research import position_lookup_transformer
 from trax.models.research import skipping_transformer
-
-if six.PY3:
-  # uses @ notation:
-  from trax.models.research import position_lookup_transformer  # pylint: disable=g-import-not-at-top
 
 
 # Ginify
@@ -49,6 +46,7 @@ BERT = model_configure(bert.BERT)
 BERTClassifierHead = model_configure(bert.BERTClassifierHead)
 BERTRegressionHead = model_configure(bert.BERTRegressionHead)
 MLP = model_configure(mlp.MLP)
+PureMLP = model_configure(mlp.PureMLP)
 NeuralGPU = model_configure(neural_gpu.NeuralGPU)
 Reformer = model_configure(reformer.Reformer)
 ReformerLM = model_configure(reformer.ReformerLM)
@@ -62,8 +60,5 @@ TransformerEncoder = model_configure(transformer.TransformerEncoder)
 TransformerLM = model_configure(transformer.TransformerLM)
 WideResnet = model_configure(resnet.WideResnet)
 RNNLM = model_configure(rnn.RNNLM)
-
-
-if six.PY3:
-  PositionLookupTransformerLM = model_configure(
-      position_lookup_transformer.PositionLookupTransformerLM)
+PositionLookupTransformerLM = model_configure(
+    position_lookup_transformer.PositionLookupTransformerLM)

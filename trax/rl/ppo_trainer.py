@@ -107,7 +107,6 @@ class PPO(policy_based_trainer.PolicyBasedTrainer):
     # Evaluate the policy.
     policy_eval_start_time = time.time()
     if evaluate and (self.epoch + 1) % self._eval_every_n == 0:
-      key = self._get_rng()
       self.evaluate()
 
     policy_eval_time = policy_based_utils.get_time(policy_eval_start_time)
@@ -365,18 +364,6 @@ class PPO(policy_based_trainer.PolicyBasedTrainer):
     last_epoch = self.epoch
     self._epoch += 1
 
-    # Save parameters every time we see the end of at least a fraction of batch
-    # number of trajectories that are done (not completed -- completed includes
-    # truncated and done).
-    # Also don't save too frequently, enforce a minimum gap.
-    policy_save_start_time = time.time()
-    # TODO(afrozm): Refactor to trax.save_trainer_state.
-    if (self._n_trajectories_done_since_last_save >=
-        self._done_frac_for_policy_save * self.train_env.batch_size and
-        self.epoch % self._save_every_n == 0) or self._async_mode:
-      self.save()
-    policy_save_time = policy_based_utils.get_time(policy_save_start_time)
-
     epoch_time = policy_based_utils.get_time(epoch_start_time)
 
     timing_dict = {
@@ -387,7 +374,6 @@ class PPO(policy_based_trainer.PolicyBasedTrainer):
         'log_prob_recompute': log_prob_recompute_time,
         'loss_compute': loss_compute_time,
         'optimization': optimization_time,
-        'policy_save': policy_save_time,
     }
 
     timing_dict.update(timing_info)

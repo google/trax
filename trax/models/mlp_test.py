@@ -28,6 +28,13 @@ from trax.shapes import ShapeDtype
 
 class MLPTest(absltest.TestCase):
 
+  def test_pure_mlp_forward_shape(self):
+    """Run the PureMLP model forward and check output shape."""
+    input_signature = ShapeDtype((7, 28, 28, 3))
+    model = mlp.PureMLP(hidden_dims=(32, 16, 8))
+    final_shape = tl.check_shape_agreement(model, input_signature)
+    self.assertEqual((7, 8), final_shape)
+
   def test_mlp_forward_shape(self):
     """Run the MLP model forward and check output shape."""
     input_signature = ShapeDtype((3, 28, 28, 1))

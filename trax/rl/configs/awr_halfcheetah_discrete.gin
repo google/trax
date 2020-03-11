@@ -1,0 +1,50 @@
+# Copyright 2020 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.models
+import trax.rl.trainers
+
+# Parameters for AwrNet:
+# ==============================================================================
+PureMLP.hidden_dims = (128, 64)
+
+# Parameters for AwrTrainer:
+# ==============================================================================
+MAX_TIMESTEP = 1000
+AwrTrainer.boundary = %MAX_TIMESTEP
+AwrTrainer.max_timestep = %MAX_TIMESTEP
+AwrTrainer.max_timestep_eval = %MAX_TIMESTEP
+AwrTrainer.random_seed = None
+AwrTrainer.eval_every_n = 500
+AwrTrainer.save_every_n = 100
+AwrTrainer.done_frac_for_policy_save = 0.9
+AwrTrainer.n_evals = 16
+AwrTrainer.len_history_for_policy = 1
+AwrTrainer.eval_temperatures = (1.0,)
+AwrTrainer.policy_and_value_model = @trax.models.PureMLP
+AwrTrainer.policy_and_value_optimizer = @trax.optimizers.Momentum
+AwrTrainer.policy_and_value_two_towers = True
+
+# Parameters for Momentum:
+# ==============================================================================
+Momentum.learning_rate=5e-5
+
+# Parameters for train_rl:
+# ==============================================================================
+train_rl.env_name = "DM-HalfCheetah-v2"
+train_rl.clip_rewards = False
+train_rl.n_epochs = 10000
+train_rl.resize = True
+train_rl.num_actions = 7
+train_rl.trainer_class = @trax.rl.trainers.AwrTrainer

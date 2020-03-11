@@ -516,10 +516,9 @@ def write_eval_reward_summaries(reward_stats_by_mode, log_fn, epoch):
           temperature, reward_stats['mean'], reward_stats['std'])
 
 
-def run_policy(
+def run_policy_all_timesteps(
     policy_and_value_net_apply,
     observations,
-    lengths,
     weights,
     state,
     rng,
@@ -537,8 +536,31 @@ def run_policy(
   (log_probs, value_preds) = policy_and_value_net_apply(
       policy_input, weights=weights, state=state, rng=subrng
   )
+  return log_probs, value_preds, state, rng
+
+
+def run_policy(
+    policy_and_value_net_apply,
+    observations,
+    lengths,
+    weights,
+    state,
+    rng,
+    action_space,
+):
+  """Runs the policy network and returns lps, vps for the last timestep."""
+  log_probs, value_preds, state, rng = run_policy_all_timesteps(
+      policy_and_value_net_apply,
+      observations,
+      weights,
+      state,
+      rng,
+      action_space,
+  )
+
   # We need the log_probs of those actions that correspond to the last actual
   # time-step.
+  (B, unused_T_plus_1) = observations.shape[:2]  # pylint: disable=invalid-name
   index = lengths - 1  # Since we want to index using lengths.
   log_probs = log_probs[np.arange(B), index]
   value_preds = value_preds[np.arange(B), index]

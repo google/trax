@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Base class for policy based algorithms."""
 
 from __future__ import absolute_import
@@ -34,9 +35,9 @@ from tensor2tensor.envs import trajectory
 from trax import jaxboard
 from trax.rl import base_trainer
 from trax.rl import policy_based_utils
+from trax.rl import serialization_utils
 from trax.shapes import ShapeDtype
 from trax.supervised import trainer_lib
-
 
 DEBUG_LOGGING = False
 GAMMA = 0.99
@@ -124,8 +125,8 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
       optimizer_batch_size: Batch size of an optimizer step.
       **kwargs: Additional keyword arguments passed to the base class.
     """
-    super(PolicyBasedTrainer, self).__init__(
-        train_env, eval_env, output_dir, **kwargs)
+    super(PolicyBasedTrainer, self).__init__(train_env, eval_env, output_dir,
+                                             **kwargs)
 
     self._rng = trainer_lib.init_random_number_generators(random_seed)
     self._controller = controller
@@ -163,6 +164,10 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
 
     self.init_policy_from_world_model_output_dir = (
         init_policy_from_world_model_output_dir
+    )
+
+    (self._n_controls, self._n_actions) = (
+        serialization_utils.analyze_action_space(train_env.action_space)
     )
 
     self._policy_and_value_net_fn = functools.partial(
@@ -381,8 +386,8 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
     if not self._separate_eval:
       return
 
-    logging.vlog(
-        1, 'PolicyBasedTrainer epoch [% 6d]: evaluating policy.', self.epoch)
+    logging.vlog(1, 'PolicyBasedTrainer epoch [% 6d]: evaluating policy.',
+                 self.epoch)
 
     processed_reward_sums = collections.defaultdict(list)
     raw_reward_sums = collections.defaultdict(list)
@@ -397,12 +402,14 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
 
     # Return the mean and standard deviation for each temperature.
     def compute_stats(reward_dict):
+      # pylint: disable=g-complex-comprehension
       return {
-          temperature: {  # pylint: disable=g-complex-comprehension
+          temperature: {
               'mean': onp.mean(rewards),
               'std': onp.std(rewards)
           } for (temperature, rewards) in reward_dict.items()
       }
+      # pylint: enable=g-complex-comprehension
 
     reward_stats = {
         'processed': compute_stats(processed_reward_sums),
@@ -413,13 +420,26 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
         reward_stats, self._log, epoch=self.epoch
     )
 
+  def maybe_save(self):
+    # Save parameters every time we see the end of at least a fraction of batch
+    # number of trajectories that are done (not completed -- completed includes
+    # truncated and done).
+    # Also don't save too frequently, enforce a minimum gap.
+    min_done_trajs_to_save = (
+        self._done_frac_for_policy_save *
+        getattr(self.train_env, 'batch_size', 10))
+    # TODO(afrozm): Refactor to trax.save_trainer_state.
+    if (self._n_trajectories_done_since_last_save >= min_done_trajs_to_save and
+        self.epoch % self._save_every_n == 0) or self._async_mode:
+      self.save()
+
   def save(self):
     """Save the agent parameters."""
     if not self._should_save_checkpoints:
       return
 
-    logging.vlog(1,
-                 'PolicyBasedTrainer epoch [% 6d]: saving model.', self.epoch)
+    logging.vlog(1, 'PolicyBasedTrainer epoch [% 6d]: saving model.',
+                 self.epoch)
     policy_based_utils.save_opt_state(
         self._output_dir,
         self._policy_and_value_opt_state,
@@ -460,8 +480,7 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
   def _preprocess_trajectories(self, trajectories):
     (_, reward_mask, observations, actions, rewards, infos) = (
         policy_based_utils.pad_trajectories(
-            trajectories, boundary=self._max_timestep
-        )
+            trajectories, boundary=self._max_timestep)
     )
     if actions.ndim == 2:
       # Add the control dimension.
@@ -482,3 +501,34 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
         rng,
         self.train_env.action_space,
     )
+
+  def _policy_fun_all_timesteps(self, observations, lengths, state, rng):
+    return policy_based_utils.run_policy_all_timesteps(
+        self._policy_and_value_net_apply,
+        observations,
+        self._policy_and_value_net_weights,
+        state,
+        rng,
+        self.train_env.action_space,
+    )
+
+  @staticmethod
+  def _log_shape(array_name, array):
+    logging.vlog(1, f'Shape of {array_name} is {array.shape}.')
+
+  @staticmethod
+  def _check_shapes(array_name,
+                    expected_shape_string,
+                    array,
+                    expected_shape,
+                    array_prefix=None):
+    actual_shape = array.shape[:array_prefix]
+    prefix = '' if not array_prefix else f'[:{array_prefix}]'
+    logging.vlog(1, f'Shape of {array_name}{prefix} is {actual_shape}.')
+    if array_prefix:
+      logging.vlog(1, f'Shape of {array_name} is {array.shape}.')
+    if actual_shape != expected_shape:
+      raise ValueError(
+          f'Shape of {array_name}{prefix} is expected to be '
+          f'{expected_shape_string} which is {expected_shape}, but is '
+          f'{actual_shape} instead.')
