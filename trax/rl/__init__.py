@@ -51,5 +51,5 @@ onlinetune_done_fn = configure_rl(simulated_env_problem.onlinetune_done_fn)
 onlinetune_reward_fn = configure_rl(simulated_env_problem.onlinetune_reward_fn)
 
 
-ExamplePolicyTrainer = configure_rl(
-    training.ExamplePolicyTrainer, blacklist=['task', 'output_dir'])
+PolicyGradientTrainer = configure_rl(
+    training.PolicyGradientTrainer, blacklist=['task', 'output_dir'])
