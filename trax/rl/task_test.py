@@ -98,8 +98,8 @@ class TaskTest(absltest.TestCase):
       all_sum += next_slice.last_observation
     self.assertEqual(min(all_sum, 1), 1)  # We've seen the end at least once.
 
-  def test_trajectory_stream_sampling(self):
-    """Test if the trajectory stream samples correctly."""
+  def test_trajectory_stream_sampling_uniform(self):
+    """Test if the trajectory stream samples uniformly."""
     # Long trajectory of 0s.
     tr1 = rl_task.Trajectory(0)
     for _ in range(100):
@@ -121,6 +121,33 @@ class TaskTest(absltest.TestCase):
     mean_obs = sum(slices) / float(len(slices))
     # Average should be around 1 sampling from 0x100, 101 uniformly.
     self.assertLess(mean_obs, 31)  # Sampling 101 even 3 times is unlikely.
+    self.assertLen(slices, 10)
+
+  def test_trajectory_stream_sampling_by_trajectory(self):
+    """Test if the trajectory stream samples by trajectory."""
+    # Long trajectory of 0s.
+    tr1 = rl_task.Trajectory(0)
+    for _ in range(100):
+      tr1.extend(0, 0, 0, 0)
+    tr1.extend(0, 0, 0, 200)
+    # Short trajectory of 101.
+    tr2 = rl_task.Trajectory(101)
+    tr2.extend(0, 0, 0, 200)
+    task = rl_task.RLTask(
+        DummyEnv(), initial_trajectories=[tr1, tr2], max_steps=9)
+
+    # Stream of both. Check that we're sampling by trajectory.
+    stream = task.trajectory_stream(
+        max_slice_length=1, sample_trajectories_uniformly=True)
+    slices = []
+    for _ in range(10):
+      next_slice = next(stream)
+      assert len(next_slice) == 1
+      slices.append(next_slice.last_observation)
+    mean_obs = sum(slices) / float(len(slices))
+    # Average should be around 50, sampling from {0, 101} uniformly.
+    # Sampling 101 < 2 times has low probability (but it possible, flaky test).
+    self.assertGreater(mean_obs, 20)
     self.assertLen(slices, 10)
 
 

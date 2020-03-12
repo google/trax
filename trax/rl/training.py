@@ -16,10 +16,11 @@
 # Lint as: python3
 """Classes for RL training in Trax."""
 
-import random
+import os
 import time
 import numpy as np
 
+from trax import jaxboard
 from trax import layers as tl
 from trax import lr_schedules as lr
 from trax import supervised
@@ -45,6 +46,9 @@ class RLTrainer:
     self._collect_per_epoch = collect_per_epoch
     self._output_dir = output_dir
     self._avg_returns = []
+    self._sw = None
+    if output_dir is not None:
+      self._sw = jaxboard.SummaryWriter(os.path.join(output_dir, 'rl'))
 
   @property
   def avg_returns(self):
@@ -84,6 +88,11 @@ class RLTrainer:
       print('Collecting %d episodes took %.2f seconds.'
             % (self._collect_per_epoch, time.time() - cur_time))
       print('Average return in epoch %d was %.2f.' % (self._epoch, avg_return))
+      if self._sw is not None:
+        self._sw.scalar('timing/collect', time.time() - cur_time,
+                        step=self._epoch)
+        self._sw.scalar('rl/avg_return', avg_return, step=self._epoch)
+        self._sw.flush()
 
 
 class PolicyGradientTrainer(RLTrainer):
@@ -152,22 +161,14 @@ class PolicyGradientTrainer(RLTrainer):
 
   def _batches_stream(self):
     """Use the RLTask self._task to create inputs to the policy model."""
-    def sample_timestep(trajectories):
-      traj = random.choice(trajectories)
-      ts = random.choice(traj.timesteps[:-1])
-      return (ts.observation, ts.action, ts.discounted_return)
-
-    while True:
-      batch = [
-          sample_timestep(  # pylint: disable=g-complex-comprehension
-              self._task.trajectories[len(self._task.trajectories) - 1]
-          )
-          for _ in range(self._batch_size)
-      ]
-      batch = zip(*batch)  # Transpose.
-      (obs, act, ret) = map(np.stack, batch)  # Stack.
+    for np_trajectory in self._task.trajectory_batch_stream(
+        self._batch_size, epochs=[-1], max_slice_length=self._max_slice_length,
+        sample_trajectories_uniformly=True):
+      ret = np_trajectory.returns
       ret = (ret - np.mean(ret)) / np.std(ret)  # Normalize returns.
-      yield (obs, act, ret)
+      # We return a triple (observations, actions, normalized returns) which is
+      # later used by the model as (inputs, targets, loss weights).
+      yield (np_trajectory.observations, np_trajectory.actions, ret)
 
   @property
   def current_epoch(self):

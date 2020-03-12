@@ -282,7 +282,8 @@ class RLTask:
     return sum(returns) / float(len(returns))
 
   def trajectory_stream(self, epochs=None, max_slice_length=None,
-                        include_final_state=False):
+                        include_final_state=False,
+                        sample_trajectories_uniformly=False):
     """Return a stream of random trajectory slices from the specified epochs.
 
     Args:
@@ -290,6 +291,8 @@ class RLTask:
       max_slice_length: maximum length of the slices of trajectories to return
       include_final_state: whether to include slices with the final state of
         the trajectory which may have no action and reward
+      sample_trajectories_uniformly: whether to sample trajectories uniformly,
+       or proportionally to the number of slices in each trajectory (default)
 
     Yields:
       random trajectory slices sampled uniformly from all slices of length
@@ -321,7 +324,10 @@ class RLTask:
       epoch = self._trajectories[epoch_id]
 
       # Sample a trajectory proportionally to number of slices in each one.
-      slices_per_trajectory = [n_slices(t) for t in epoch]
+      if sample_trajectories_uniformly:
+        slices_per_trajectory = [1] * len(epoch)
+      else:
+        slices_per_trajectory = [n_slices(t) for t in epoch]
       trajectory = _sample_proportionally(epoch, slices_per_trajectory)
 
       # Sample a slice from the trajectory.
@@ -331,7 +337,9 @@ class RLTask:
       yield trajectory[slice_start:slice_end]
 
   def trajectory_batch_stream(self, batch_size, epochs=None,
-                              max_slice_length=None, include_final_state=False):
+                              max_slice_length=None,
+                              include_final_state=False,
+                              sample_trajectories_uniformly=False):
     """Return a stream of trajectory batches from the specified epochs.
 
     This function returns a stream of tuples of numpy arrays (tensors).
@@ -343,6 +351,8 @@ class RLTask:
       max_slice_length: maximum length of the slices of trajectories to return
       include_final_state: whether to include slices with the final state of
         the trajectory which may have no action and reward
+      sample_trajectories_uniformly: whether to sample trajectories uniformly,
+       or proportionally to the number of slices in each trajectory (default)
 
     Yields:
       batches of trajectory slices sampled uniformly from all slices of length
@@ -359,7 +369,8 @@ class RLTask:
                        for t in tensor_list])
     cur_batch = []
     for t in self.trajectory_stream(
-        epochs, max_slice_length, include_final_state):
+        epochs, max_slice_length,
+        include_final_state, sample_trajectories_uniformly):
       cur_batch.append(t)
       if len(cur_batch) == batch_size:
         obs, act, logp, rew, ret, _ = zip(*[t.to_np(self._timestep_to_np)
