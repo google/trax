@@ -35,7 +35,7 @@ class TrainingTest(absltest.TestCase):
         tl.Dense(64), tl.Relu(), tl.Dense(2), tl.LogSoftmax())
     lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
         h, constant=1e-4, warmup_steps=100, factors='constant * linear_warmup')
-    trainer = training.PolicyGradient(
+    trainer = training.PolicyGradientTrainer(
         task, model, opt.Adam, lr_schedule=lr, batch_size=128,
         train_steps_per_epoch=700, collect_per_epoch=50)
     trainer.run(1)

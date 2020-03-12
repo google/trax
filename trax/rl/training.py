@@ -86,7 +86,7 @@ class RLTrainer:
       print('Average return in epoch %d was %.2f.' % (self._epoch, avg_return))
 
 
-class PolicyGradient(RLTrainer):
+class PolicyGradientTrainer(RLTrainer):
   """Trains a policy model using policy gradient on the given RLTask.
 
   This is meant just as an example for RL loops for other RL algorithms,
@@ -114,7 +114,7 @@ class PolicyGradient(RLTrainer):
       output_dir: Path telling where to save outputs (evals and checkpoints).
           Can be None if both `eval_task` and `checkpoint_at` are None.
     """
-    super(PolicyGradient, self).__init__(
+    super(PolicyGradientTrainer, self).__init__(
         task, collect_per_epoch=collect_per_epoch, output_dir=output_dir)
     self._batch_size = batch_size
     self._train_steps_per_epoch = train_steps_per_epoch

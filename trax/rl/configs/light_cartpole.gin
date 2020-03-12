@@ -36,17 +36,17 @@ RLTask.initial_trajectories = 1
 RLTask.gamma = 0.9
 RLTask.max_steps = 200
 
-# Parameters for PolicyGradient:
+# Parameters for PolicyGradientTrainer:
 # ==============================================================================
-PolicyGradient.model = @trax.models.MLP
-PolicyGradient.optimizer = @trax.optimizers.Adam
-PolicyGradient.batch_size = 128
-PolicyGradient.train_steps_per_epoch = 1
-PolicyGradient.collect_per_epoch = 1
-PolicyGradient.max_slice_length = 1
+PolicyGradientTrainer.model = @trax.models.MLP
+PolicyGradientTrainer.optimizer = @trax.optimizers.Adam
+PolicyGradientTrainer.batch_size = 128
+PolicyGradientTrainer.train_steps_per_epoch = 1
+PolicyGradientTrainer.collect_per_epoch = 1
+PolicyGradientTrainer.max_slice_length = 1
 
 # Parameters for train_rl:
 # ==============================================================================
 train_rl.light_rl = True
-train_rl.light_rl_trainer = @trax.rl.ExamplePolicyTrainer
+train_rl.light_rl_trainer = @trax.rl.PolicyGradientTrainer
 train_rl.n_epochs = 200
