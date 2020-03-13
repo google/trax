@@ -209,6 +209,11 @@ def Sum(x, axis=-1, keepdims=False, **unused_kwargs):
   return np.sum(x, axis=axis, keepdims=keepdims)
 
 
+@base.layer()
+def Negate(x, **unused_kwargs):
+  return -x
+
+
 def log_gaussian_pdf(x, mu, sigma):  # pylint: disable=invalid-name
   """Compute log N(x | mu, sigma)."""
   a = mu.shape[-1] * np.log(2 * np.pi)

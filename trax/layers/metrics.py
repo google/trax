@@ -86,7 +86,7 @@ def CrossEntropyLoss(id_to_mask=None, has_weights=False):
 def CrossEntropySum(id_to_mask=None, has_weights=False):
   """Computes weighted masked sum of prediction-target cross entropies."""
   return _WeightedMaskedMean(_CrossEntropy(), id_to_mask, has_weights,
-                             final_layer_override=_WeightedSum())
+                             final_layer_override=WeightedSum())
 
 
 def SumOfWeights(id_to_mask=None, has_weights=False):
@@ -140,8 +140,8 @@ def _WeightedMean(inputs, **unused_kwargs):
 
 
 @base.layer(n_in=2, n_out=1)
-def _WeightedSum(inputs, **unused_kwargs):
-  """Returns a layer to compute weighted mean over all values in the input."""
+def WeightedSum(inputs, **unused_kwargs):
+  """Returns a layer to compute weighted sum over all values in the input."""
   values, weights = inputs
   return np.sum(values * weights)
 
