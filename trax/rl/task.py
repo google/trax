@@ -261,6 +261,10 @@ class RLTask:
     return self._max_steps
 
   @property
+  def gamma(self):
+    return self._gamma
+
+  @property
   def n_actions(self):
     return self._env.action_space.n
 
@@ -271,6 +275,14 @@ class RLTask:
   @property
   def trajectories(self):
     return self._trajectories
+
+  @property
+  def timestep_to_np(self):
+    return self._timestep_to_np
+
+  @timestep_to_np.setter
+  def timestep_to_np(self, ts):
+    self._timestep_to_np = ts
 
   def play(self, policy):
     """Play an episode in env taking actions according to the given policy."""

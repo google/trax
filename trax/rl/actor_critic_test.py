@@ -21,25 +21,30 @@ from absl.testing import absltest
 from trax import layers as tl
 from trax import lr_schedules
 from trax import optimizers as opt
+from trax.rl import actor_critic
 from trax.rl import task as rl_task
-from trax.rl import training
 
 
-class TrainingTest(absltest.TestCase):
+class ActorCriticTest(absltest.TestCase):
 
-  def test_policytrainer_cartpole(self):
-    """Trains a policy on cartpole."""
+  def test_awrtrainer_cartpole(self):
+    """Test-runs AWR on cartpole."""
     task = rl_task.RLTask('CartPole-v0', initial_trajectories=1,
                           max_steps=2)
-    # TODO(pkozakowski): Use Distribution.n_inputs to initialize the action
-    # head.
-    model = lambda mode: tl.Serial(  # pylint: disable=g-long-lambda
+    policy_model = lambda mode: tl.Serial(  # pylint: disable=g-long-lambda
         tl.Dense(64), tl.Relu(), tl.Dense(2), tl.LogSoftmax())
+    value_model = lambda mode: tl.Serial(  # pylint: disable=g-long-lambda
+        tl.Dense(64), tl.Relu(), tl.Dense(1))
     lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
         h, constant=1e-4, warmup_steps=100, factors='constant * linear_warmup')
-    trainer = training.PolicyGradientTrainer(
+    trainer = actor_critic.AWRTrainer(
         task,
-        policy_model=model,
+        value_model=value_model,
+        value_optimizer=opt.Adam,
+        value_lr_schedule=lr,
+        value_batch_size=2,
+        value_train_steps_per_epoch=2,
+        policy_model=policy_model,
         policy_optimizer=opt.Adam,
         policy_lr_schedule=lr,
         policy_batch_size=2,

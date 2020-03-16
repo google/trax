@@ -19,7 +19,6 @@
 import functools
 import os
 import time
-
 import numpy as np
 
 from trax import jaxboard
@@ -33,7 +32,7 @@ class RLTrainer:
   """Abstract class for RL Trainers, presenting the required API."""
 
   def __init__(self, task: rl_task.RLTask, collect_per_epoch=None,
-               output_dir=None):
+               output_dir=None, timestep_to_np=None):
     """Configures the RL Trainer.
 
     Note that subclasses can have many more arguments, which will be configured
@@ -43,14 +42,28 @@ class RLTrainer:
       task: RLTask instance, which defines the environment to train on.
       collect_per_epoch: How many new trajectories to collect in each epoch.
       output_dir: Path telling where to save outputs such as checkpoints.
+      timestep_to_np: Timestep-to-numpy function to override in the task.
     """
+    self._epoch = 0
     self._task = task
+    if timestep_to_np is not None:
+      self._task.timestep_to_np = timestep_to_np
     self._collect_per_epoch = collect_per_epoch
     self._output_dir = output_dir
     self._avg_returns = []
     self._sw = None
     if output_dir is not None:
       self._sw = jaxboard.SummaryWriter(os.path.join(output_dir, 'rl'))
+
+  @property
+  def current_epoch(self):
+    """Returns current step number in this training session."""
+    return self._epoch
+
+  @property
+  def task(self):
+    """Returns the task."""
+    return self._task
 
   @property
   def avg_returns(self):
@@ -84,7 +97,7 @@ class RLTrainer:
       self.train_epoch()
       print('RL training took %.2f seconds.' % (time.time() - cur_time))
       cur_time = time.time()
-      avg_return = self._task.collect_trajectories(
+      avg_return = self.task.collect_trajectories(
           self.policy, self._collect_per_epoch, self._epoch)
       self._avg_returns.append(avg_return)
       print('Collecting %d episodes took %.2f seconds.'
@@ -97,100 +110,103 @@ class RLTrainer:
         self._sw.flush()
 
 
-class PolicyGradientTrainer(RLTrainer):
-  """Trains a policy model using policy gradient on the given RLTask.
+class PolicyTrainer(RLTrainer):
+  """Trainer that uses a deep learning model for policy.
 
-  This is meant just as an example for RL loops for other RL algorithms,
-  to be used for testing puropses and as an idea for other classes.
+  Many deep RL methods, such as policy gradeints (reinforce) or actor-critic
+  ones fall into this category, so a lot of classes will be subclasses of this
+  one. But some methods only have a value or Q function, these are different.
   """
 
-  def __init__(self, task, model=None, optimizer=None,
-               lr_schedule=lr.MultifactorSchedule, batch_size=64,
-               train_steps_per_epoch=500, collect_per_epoch=50,
+  def __init__(self, task, policy_model=None, policy_optimizer=None,
+               policy_lr_schedule=lr.MultifactorSchedule, policy_batch_size=64,
+               policy_train_steps_per_epoch=500, collect_per_epoch=50,
                max_slice_length=1, output_dir=None):
-    """Configures the Reinforce loop.
+    """Configures the policy trainer.
 
     Args:
       task: RLTask instance, which defines the environment to train on.
-      model: Trax layer, representing the policy model.
+      policy_model: Trax layer, representing the policy model.
           functions and eval functions (a.k.a. metrics) are considered to be
           outside the core model, taking core model output and data labels as
           their two inputs.
-      optimizer: the optimizer to use to train the model.
-      lr_schedule: learning rate schedule to use to train the model.
-      batch_size: batch size used to train the model.
-      train_steps_per_epoch: how long to train in each RL epoch.
+      policy_optimizer: the optimizer to use to train the policy model.
+      policy_lr_schedule: learning rate schedule to use to train the policy.
+      policy_batch_size: batch size used to train the policy model.
+      policy_train_steps_per_epoch: how long to train policy in each RL epoch.
       collect_per_epoch: how many trajectories to collect per epoch.
       max_slice_length: the maximum length of trajectory slices to use.
       output_dir: Path telling where to save outputs (evals and checkpoints).
-          Can be None if both `eval_task` and `checkpoint_at` are None.
     """
-    super(PolicyGradientTrainer, self).__init__(
+    super(PolicyTrainer, self).__init__(
         task, collect_per_epoch=collect_per_epoch, output_dir=output_dir)
-    self._batch_size = batch_size
-    self._train_steps_per_epoch = train_steps_per_epoch
+    self._policy_batch_size = policy_batch_size
+    self._policy_train_steps_per_epoch = policy_train_steps_per_epoch
     self._collect_per_epoch = collect_per_epoch
     self._max_slice_length = max_slice_length
-    self._epoch = 0
-    self._eval_model = model(mode='eval')
-    example_batch = next(self._batches_stream())
-    self._eval_model.init(example_batch)
     self._policy_dist = distributions.create_distribution(task.env.action_space)
 
-    # Inputs to the policy model are produced by self._batches_stream.
-    # As you can see below, the stream returns (observation, action, return)
-    # from the RLTask, which the model uses as (inputs, targets, loss weights).
-    self._inputs = supervised.Inputs(
-        train_stream=lambda _: self._batches_stream())
+    # Inputs to the policy model are produced by self._policy_batches_stream.
+    self._policy_inputs = supervised.Inputs(
+        train_stream=lambda _: self.policy_batches_stream())
 
-    # This is the main Trainer that will be used to train the policy using
-    # a policy gradient loss. Note a few of the choices here:
-    #
-    # * this is a policy trainer, so:
-    #     inputs are states and targets are actions + loss weights (see below)
-    # * we are using LogLoss
-    #     This is because we are training a policy model, so targets are
-    #     actions and they are points sampled from the policy distribution --
-    #     LogLoss will calculate
-    #     the log probability of each action in the state, log pi(s, a).
-    # * we are using has_weights=True
-    #     We set has_weights = True because pi(s, a) will be multiplied by
-    #     a number -- a factor that can change depending on which policy
-    #     gradient algorithms you use; here, we just use the return from
-    #     from this state and action, but many other variants can be tried.
-    loss = functools.partial(
-        distributions.LogLoss, distribution=self._policy_dist
-    )
-    self._trainer = supervised.Trainer(
-        model=model, optimizer=optimizer, lr_schedule=lr_schedule,
-        loss_fn=loss, inputs=self._inputs, output_dir=output_dir,
-        metrics={'loss': loss}, has_weights=True)
+    # This is the policy Trainer that will be used to train the policy model.
+    # * inputs to the trainer come from self.policy_batches_stream
+    # * we are using has_weights=True to allow inputs to set weights
+    # * outputs, targets and weights are passed to self.policy_loss
+    self._policy_trainer = supervised.Trainer(
+        model=policy_model,
+        optimizer=policy_optimizer,
+        lr_schedule=policy_lr_schedule,
+        loss_fn=self.policy_loss,
+        inputs=self._policy_inputs,
+        output_dir=output_dir,
+        metrics={'policy_loss': self.policy_loss},
+        has_weights=True)
+    self._policy_eval_model = policy_model(mode='eval')
+    policy_batch = next(self.policy_batches_stream())
+    self._policy_eval_model.init(policy_batch)
 
-  def _batches_stream(self):
-    """Use the RLTask self._task to create inputs to the policy model."""
+  @property
+  def policy_loss(self):
+    """Policy loss."""
+    return NotImplementedError
+
+  def policy_batches_stream(self):
+    """Use self.task to create inputs to the policy model."""
+    return NotImplementedError
+
+  def policy(self, trajectory):
+    """Chooses an action to play after a trajectory."""
+    model = self._policy_eval_model
+    model.weights = self._policy_trainer.model_weights
+    pred = model(trajectory.last_observation[None, ...], n_accelerators=1)
+    sample = self._policy_dist.sample(pred)
+    return (int(sample), self._policy_dist.log_prob(pred, sample))
+
+  def train_epoch(self):
+    """Trains RL for one epoch."""
+    self._policy_trainer.train_epoch(self._policy_train_steps_per_epoch, 1)
+
+
+class PolicyGradientTrainer(PolicyTrainer):
+  """Trains a policy model using policy gradient on the given RLTask."""
+
+  @property
+  def policy_loss(self):
+    """Policy loss."""
+    return functools.partial(
+        distributions.LogLoss, distribution=self._policy_dist)
+
+  def policy_batches_stream(self):
+    """Use self.task to create inputs to the policy model."""
     for np_trajectory in self._task.trajectory_batch_stream(
-        self._batch_size, epochs=[-1], max_slice_length=self._max_slice_length,
+        self._policy_batch_size,
+        epochs=[-1],
+        max_slice_length=self._max_slice_length,
         sample_trajectories_uniformly=True):
       ret = np_trajectory.returns
       ret = (ret - np.mean(ret)) / np.std(ret)  # Normalize returns.
       # We return a triple (observations, actions, normalized returns) which is
       # later used by the model as (inputs, targets, loss weights).
       yield (np_trajectory.observations, np_trajectory.actions, ret)
-
-  @property
-  def current_epoch(self):
-    """Returns current step number in this training session."""
-    return self._epoch
-
-  def policy(self, trajectory):
-    model = self._eval_model
-    model.weights = self._trainer.model_weights
-    dist_params = model(
-        trajectory.last_observation[None, ...], n_accelerators=1
-    )[0]
-    sample = self._policy_dist.sample(dist_params)
-    return (sample, self._policy_dist.log_prob(dist_params, sample))
-
-  def train_epoch(self):
-    """Trains RL for one epoch."""
-    self._trainer.train_epoch(self._train_steps_per_epoch, 1)
