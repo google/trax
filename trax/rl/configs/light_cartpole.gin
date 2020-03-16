@@ -20,33 +20,33 @@ import trax.rl
 # Parameters for MLP:
 # ==============================================================================
 MLP.d_hidden = 64
-MLP.n_hidden_layers = 2
+MLP.n_hidden_layers = 1
 MLP.n_output_classes = 2
 MLP.flatten = False
 
 # Parameters for MultifactorSchedule:
 # ==============================================================================
-MultifactorSchedule.constant = 0.001
+MultifactorSchedule.constant = 0.01
 MultifactorSchedule.factors = 'constant'
 
 # Parameters for RLTask:
 # ==============================================================================
 RLTask.env = "CartPole-v0"
-RLTask.initial_trajectories = 100
-RLTask.gamma = 0.9
-RLTask.max_steps = 500
+RLTask.initial_trajectories = 1
+RLTask.gamma = 0.99
+RLTask.max_steps = 200
 
 # Parameters for PolicyGradientTrainer:
 # ==============================================================================
 PolicyGradientTrainer.policy_model = @trax.models.MLP
 PolicyGradientTrainer.policy_optimizer = @trax.optimizers.Adam
-PolicyGradientTrainer.policy_batch_size = 16
-PolicyGradientTrainer.policy_train_steps_per_epoch = 100
-PolicyGradientTrainer.collect_per_epoch = 10
+PolicyGradientTrainer.policy_batch_size = 128
+PolicyGradientTrainer.policy_train_steps_per_epoch = 1
+PolicyGradientTrainer.collect_per_epoch = 2
 PolicyGradientTrainer.max_slice_length = 1
 
 # Parameters for train_rl:
 # ==============================================================================
 train_rl.light_rl = True
 train_rl.light_rl_trainer = @trax.rl.PolicyGradientTrainer
-train_rl.n_epochs = 10
+train_rl.n_epochs = 200

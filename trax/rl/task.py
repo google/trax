@@ -327,16 +327,20 @@ class RLTask:
     while True:
       all_epochs = list(self._trajectories.keys())
       max_epoch = max(all_epochs) + 1
-      epochs = epochs or all_epochs
-      epochs = [ep % max_epoch for ep in epochs]  # So -1 means "last".
+      # Bind the epoch indices to a new name so they can be recalculated every
+      # epoch.
+      epoch_indices = epochs or all_epochs
+      epoch_indices = [
+          ep % max_epoch for ep in epoch_indices
+      ]  # So -1 means "last".
 
       # Sample an epoch proportionally to number of slices in each epoch.
-      if len(epochs) == 1:  # Skip this step if there's just 1 epoch.
-        epoch_id = epochs[0]
+      if len(epoch_indices) == 1:  # Skip this step if there's just 1 epoch.
+        epoch_id = epoch_indices[0]
       else:
         slices_per_epoch = [sum([n_slices(t) for t in self._trajectories[ep]])
-                            for ep in epochs]
-        epoch_id = _sample_proportionally(epochs, slices_per_epoch)
+                            for ep in epoch_indices]
+        epoch_id = _sample_proportionally(epoch_indices, slices_per_epoch)
       epoch = self._trajectories[epoch_id]
 
       # Sample a trajectory proportionally to number of slices in each one.
