@@ -51,6 +51,21 @@ class TaskTest(absltest.TestCase):
     self.assertLen(next_slice, 1)
     self.assertEqual(next_slice.last_observation.shape, (2,))
 
+  def test_task_epochs_index_minusone(self):
+    """Test that the epoch index -1 means last epoch and updates to it."""
+    elem = np.zeros((2,))
+    tr1 = rl_task.Trajectory(elem)
+    tr1.extend(0, 0, 0, elem)
+    task = rl_task.RLTask(DummyEnv(), initial_trajectories=[tr1], max_steps=9)
+    stream = task.trajectory_stream(epochs=[-1], max_slice_length=1)
+    next_slice = next(stream)
+    self.assertLen(next_slice, 1)
+    self.assertEqual(next_slice.last_observation[0], 0)
+    task.collect_trajectories((lambda _: (0, 0)), 1)
+    next_slice = next(stream)
+    self.assertLen(next_slice, 1)
+    self.assertEqual(next_slice.last_observation[0], 1)
+
   def test_trajectory_stream_shape(self):
     """Test the shape yielded by trajectory stream."""
     elem = np.zeros((12, 13))

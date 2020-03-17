@@ -234,6 +234,10 @@ class Trainer(object):
       weights = math.nested_map(unreplicate, weights)
     return weights
 
+  @model_weights.setter
+  def model_weights(self, weights):
+    self._opt_state.weights[0] = self._for_n_devices(weights)
+
   @property
   def state(self):
     return TrainerState(

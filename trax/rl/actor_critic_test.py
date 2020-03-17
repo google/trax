@@ -39,6 +39,7 @@ class ActorCriticTest(absltest.TestCase):
         h, constant=1e-4, warmup_steps=100, factors='constant * linear_warmup')
     trainer = actor_critic.AWRTrainer(
         task,
+        n_shared_layers=1,
         value_model=value_model,
         value_optimizer=opt.Adam,
         value_lr_schedule=lr,
@@ -50,8 +51,8 @@ class ActorCriticTest(absltest.TestCase):
         policy_batch_size=2,
         policy_train_steps_per_epoch=2,
         collect_per_epoch=2)
-    trainer.run(1)
-    self.assertEqual(1, trainer.current_epoch)
+    trainer.run(2)
+    self.assertEqual(2, trainer.current_epoch)
 
 
 if __name__ == '__main__':

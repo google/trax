@@ -36,8 +36,10 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
                value_lr_schedule=lr.MultifactorSchedule,
                value_batch_size=64,
                value_train_steps_per_epoch=500,
+               n_shared_layers=0,
                **kwargs):  # Arguments of PolicyTrainer come here.
     """Configures the actor-critic Trainer."""
+    self._n_shared_layers = n_shared_layers
     self._value_batch_size = value_batch_size
     self._value_train_steps_per_epoch = value_train_steps_per_epoch
 
@@ -95,8 +97,8 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
   def policy_batches_stream(self):
     """Use the RLTask self._task to create inputs to the policy model."""
     for np_trajectory in self._task.trajectory_batch_stream(
-        self._policy_batch_size, max_slice_length=self._max_slice_length + 1):
-      # TODO(lukaszkaiser): try to set include_final_state=True here, debug it.
+        self._policy_batch_size, max_slice_length=self._max_slice_length + 1,
+        include_final_state=True):
       value_model = self._value_eval_model
       value_model.weights = self._value_trainer.model_weights
       values = value_model(np_trajectory.observations, n_accelerators=1)
@@ -105,7 +107,19 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
   def train_epoch(self):
     """Trains RL for one epoch."""
     self._value_trainer.train_epoch(self._value_train_steps_per_epoch, 1)
+    if self._n_shared_layers > 0:  # Copy value weights to policy trainer.
+      value_weights = self._value_trainer.model_weights
+      policy_weights = self._policy_trainer.model_weights
+      shared_weights = value_weights[:self._n_shared_layers]
+      policy_weights[:self._n_shared_layers] = shared_weights
+      self._policy_trainer.model_weights = policy_weights
     self._policy_trainer.train_epoch(self._policy_train_steps_per_epoch, 1)
+    if self._n_shared_layers > 0:  # Copy policy weights to value trainer.
+      value_weights = self._value_trainer.model_weights
+      policy_weights = self._policy_trainer.model_weights
+      shared_weights = policy_weights[:self._n_shared_layers]
+      value_weights[:self._n_shared_layers] = shared_weights
+      self._value_trainer.model_weights = value_weights
 
 
 class AWRTrainer(ActorCriticTrainer):

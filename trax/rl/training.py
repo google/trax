@@ -180,7 +180,7 @@ class PolicyTrainer(RLTrainer):
     """Chooses an action to play after a trajectory."""
     model = self._policy_eval_model
     model.weights = self._policy_trainer.model_weights
-    pred = model(trajectory.last_observation[None, ...], n_accelerators=1)
+    pred = model(trajectory.last_observation[None, ...], n_accelerators=1)[0]
     sample = self._policy_dist.sample(pred)
     return (int(sample), self._policy_dist.log_prob(pred, sample))
 

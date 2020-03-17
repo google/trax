@@ -131,20 +131,19 @@ class Trajectory(object):
     for timestep in self._timesteps:
       if timestep.action is None:
         obs = timestep_to_np(timestep)[0]
-        observations.append(obs[None, ...])
+        observations.append(obs)
       else:
         (obs, act, logp, rew, ret) = timestep_to_np(timestep)
-        observations.append(obs[None, ...])
-        actions.append(act[None, ...])
-        logps.append(logp[None, ...])
-        rewards.append(rew[None, ...])
-        returns.append(ret[None, ...])
-    # TODO(lukaszkaiser): use np.stack instead?
-    return TrajectoryNp(np.concatenate(observations, axis=0),
-                        np.concatenate(actions, axis=0),
-                        np.concatenate(logps, axis=0),
-                        np.concatenate(rewards, axis=0),
-                        np.concatenate(returns, axis=0),
+        observations.append(obs)
+        actions.append(act)
+        logps.append(logp)
+        rewards.append(rew)
+        returns.append(ret)
+    return TrajectoryNp(np.stack(observations, axis=0),
+                        np.stack(actions, axis=0),
+                        np.stack(logps, axis=0),
+                        np.stack(rewards, axis=0),
+                        np.stack(returns, axis=0),
                         None)
 
 
@@ -400,5 +399,5 @@ class RLTask:
         # Observations are more complex and will usuall be [B, L] + S where S
         # is the shape of the observation space (self.observation_shape).
         yield TrajectoryNp(pad(obs), pad(act), pad(logp), pad(rew), pad(ret),
-                           pad(np.ones_like(act)))
+                           pad([np.ones_like(a) for a in act]))
         cur_batch = []

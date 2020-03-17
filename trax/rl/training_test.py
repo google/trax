@@ -29,24 +29,26 @@ class TrainingTest(absltest.TestCase):
 
   def test_policytrainer_cartpole(self):
     """Trains a policy on cartpole."""
-    task = rl_task.RLTask('CartPole-v0', initial_trajectories=1,
-                          max_steps=2)
+    task = rl_task.RLTask('CartPole-v0', initial_trajectories=100,
+                          max_steps=200)
     # TODO(pkozakowski): Use Distribution.n_inputs to initialize the action
     # head.
     model = lambda mode: tl.Serial(  # pylint: disable=g-long-lambda
-        tl.Dense(64), tl.Relu(), tl.Dense(2), tl.LogSoftmax())
+        tl.Dense(64), tl.Relu(), tl.Dense(64), tl.Relu(),
+        tl.Dense(2), tl.LogSoftmax())
     lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
-        h, constant=1e-4, warmup_steps=100, factors='constant * linear_warmup')
+        h, constant=0.001, factors='constant')
     trainer = training.PolicyGradientTrainer(
         task,
         policy_model=model,
         policy_optimizer=opt.Adam,
         policy_lr_schedule=lr,
-        policy_batch_size=2,
-        policy_train_steps_per_epoch=2,
-        collect_per_epoch=2)
-    trainer.run(1)
-    self.assertEqual(1, trainer.current_epoch)
+        policy_batch_size=32,
+        policy_train_steps_per_epoch=100,
+        collect_per_epoch=5)
+    trainer.run(10)
+    self.assertEqual(10, trainer.current_epoch)
+    self.assertGreater(max(trainer.avg_returns), 100.0)
 
 
 if __name__ == '__main__':
