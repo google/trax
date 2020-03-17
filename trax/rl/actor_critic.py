@@ -76,9 +76,11 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
     """Use the RLTask self._task to create inputs to the value model."""
     for np_trajectory in self._task.trajectory_batch_stream(
         self._value_batch_size, max_slice_length=self._max_slice_length):
-      yield (np_trajectory.observations,  # Inputs to the value model.
-             np_trajectory.returns,       # Targets: this is what we predict.
-             np_trajectory.mask)          # Mask to zero-out padding.
+      # Insert an extra depth dimension, so the target shape is consistent with
+      # the network output shape.
+      yield (np_trajectory.observations,         # Inputs to the value model.
+             np_trajectory.returns[:, :, None],  # Targets: regress to returns.
+             np_trajectory.mask[:, :, None])     # Mask to zero-out padding.
 
   def policy_inputs(self, trajectory, values):
     """Create inputs to policy model from a TrajectoryNp and values.

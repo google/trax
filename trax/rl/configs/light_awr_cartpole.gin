@@ -20,18 +20,18 @@ import trax.rl
 # Parameters for PureMLP:
 # ==============================================================================
 PureMLP.flatten = False
-PureMLP.hidden_dims = (128, 64, 1)
+PureMLP.hidden_dims = (128, 1)
 
 # Parameters for MLP:
 # ==============================================================================
 MLP.d_hidden = 128
-MLP.n_hidden_layers = 2
+MLP.n_hidden_layers = 1
 MLP.n_output_classes = 2
 MLP.flatten = False
 
 # Parameters for MultifactorSchedule:
 # ==============================================================================
-value/MultifactorSchedule.constant = 0.001
+value/MultifactorSchedule.constant = 0.01
 value/MultifactorSchedule.factors = 'constant'
 policy/MultifactorSchedule.constant = 0.01
 policy/MultifactorSchedule.factors = 'constant'
@@ -39,28 +39,29 @@ policy/MultifactorSchedule.factors = 'constant'
 # Parameters for RLTask:
 # ==============================================================================
 RLTask.env = "CartPole-v0"
-RLTask.initial_trajectories = 10
-RLTask.gamma = 0.9
-RLTask.max_steps = 500
+RLTask.initial_trajectories = 1000
+RLTask.gamma = 0.999
+RLTask.max_steps = 200
 
 # Parameters for AWRTrainer:
 # ==============================================================================
 AWRTrainer.value_model = @trax.models.PureMLP
 AWRTrainer.value_optimizer = @trax.optimizers.Adam
 AWRTrainer.value_batch_size = 32
-AWRTrainer.value_train_steps_per_epoch = 20
+AWRTrainer.value_train_steps_per_epoch = 1000
 AWRTrainer.value_lr_schedule = @value/MultifactorSchedule
 AWRTrainer.policy_model = @trax.models.MLP
 AWRTrainer.policy_optimizer = @trax.optimizers.Adam
 AWRTrainer.policy_batch_size = 32
-AWRTrainer.policy_train_steps_per_epoch = 100
+AWRTrainer.policy_train_steps_per_epoch = 1000
 AWRTrainer.policy_lr_schedule = @policy/MultifactorSchedule
 AWRTrainer.collect_per_epoch = 10
 AWRTrainer.beta = 1.0
+AWRTrainer.w_max = 20
 AWRTrainer.max_slice_length = 1
 
 # Parameters for train_rl:
 # ==============================================================================
 train_rl.light_rl = True
 train_rl.light_rl_trainer = @trax.rl.AWRTrainer
-train_rl.n_epochs = 20
+train_rl.n_epochs = 1

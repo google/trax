@@ -41,6 +41,7 @@ TODO(jonni): Explain masks and weighting.
 import jax
 
 from trax import math
+from trax import shapes
 from trax.layers import base
 from trax.layers import combinators as cb
 from trax.layers import core
@@ -56,11 +57,14 @@ def L2Loss(id_to_mask=None, has_weights=False):
   @base.layer(n_in=2, n_out=1)
   def RawL2Loss(inputs, **unused_kwargs):
     y_hat, y = inputs
+    shapes.assert_same_shape(y_hat, y)
     return np.mean((y_hat - y)**2)
 
   @base.layer(n_in=3, n_out=1)
   def MaskedL2Loss(inputs, **unused_kwargs):
     y_hat, y, mask = inputs
+    shapes.assert_same_shape(y_hat, y)
+    shapes.assert_same_shape(y, mask)
     l2 = mask * (y_hat - y)**2
     return np.sum(l2) / np.sum(mask)
 
@@ -113,6 +117,8 @@ def _Accuracy(inputs, axis=-1, **unused_kwargs):
   """Returns a layer to score matches of predicted versus target categories."""
   y_hat, target_category = inputs
   predicted_category = np.argmax(y_hat, axis=axis)
+  # TODO(pkozakowski): This assertion breaks some tests. Fix and uncomment.
+  # shapes.assert_same_shape(predicted_category, target_category)
   return np.equal(predicted_category, target_category).astype(np.float32)
 
 
@@ -120,6 +126,8 @@ def _Accuracy(inputs, axis=-1, **unused_kwargs):
 def _CrossEntropy(inputs, **unused_kwargs):
   """Returns a layer to compute prediction-target cross entropies."""
   y_hat, target_category = inputs
+  # TODO(pkozakowski): This assertion breaks some tests. Fix and uncomment.
+  # shapes.assert_shape_equals(target_category, y_hat.shape[:-1])
   return -1.0 * np.sum(y_hat * one_hot(target_category, y_hat.shape[-1]),
                        axis=-1)
 

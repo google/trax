@@ -29,30 +29,31 @@ class ActorCriticTest(absltest.TestCase):
 
   def test_awrtrainer_cartpole(self):
     """Test-runs AWR on cartpole."""
-    task = rl_task.RLTask('CartPole-v0', initial_trajectories=1,
-                          max_steps=2)
+    task = rl_task.RLTask('CartPole-v0', initial_trajectories=1000,
+                          max_steps=200)
     policy_model = lambda mode: tl.Serial(  # pylint: disable=g-long-lambda
         tl.Dense(64), tl.Relu(), tl.Dense(2), tl.LogSoftmax())
     value_model = lambda mode: tl.Serial(  # pylint: disable=g-long-lambda
         tl.Dense(64), tl.Relu(), tl.Dense(1))
     lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
-        h, constant=1e-4, warmup_steps=100, factors='constant * linear_warmup')
+        h, constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
     trainer = actor_critic.AWRTrainer(
         task,
-        n_shared_layers=1,
+        n_shared_layers=0,
         value_model=value_model,
         value_optimizer=opt.Adam,
         value_lr_schedule=lr,
-        value_batch_size=2,
-        value_train_steps_per_epoch=2,
+        value_batch_size=32,
+        value_train_steps_per_epoch=1000,
         policy_model=policy_model,
         policy_optimizer=opt.Adam,
         policy_lr_schedule=lr,
-        policy_batch_size=2,
-        policy_train_steps_per_epoch=2,
-        collect_per_epoch=2)
-    trainer.run(2)
-    self.assertEqual(2, trainer.current_epoch)
+        policy_batch_size=32,
+        policy_train_steps_per_epoch=1000,
+        collect_per_epoch=10)
+    trainer.run(1)
+    self.assertEqual(1, trainer.current_epoch)
+    self.assertGreater(trainer.avg_returns[-1], 180.0)
 
 
 if __name__ == '__main__':

@@ -119,3 +119,8 @@ def assert_shape_equals(array, shape):
   assert array.shape == shape, (
       'Invalid shape {}; expected {}.'.format(array.shape, shape)
   )
+
+
+def assert_same_shape(array1, array2):
+  """Asserts that two arrays have the same shapes."""
+  assert_shape_equals(array1, array2.shape)
