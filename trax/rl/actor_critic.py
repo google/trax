@@ -22,6 +22,7 @@ import numpy as np
 
 from trax import layers as tl
 from trax import lr_schedules as lr
+from trax import shapes
 from trax import supervised
 from trax.rl import distributions
 from trax.rl import training as rl_training
@@ -97,11 +98,14 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
   def policy_batches_stream(self):
     """Use the RLTask self._task to create inputs to the policy model."""
     for np_trajectory in self._task.trajectory_batch_stream(
-        self._policy_batch_size, max_slice_length=self._max_slice_length + 1,
-        include_final_state=True):
+        self._policy_batch_size, max_slice_length=self._max_slice_length + 1):
       value_model = self._value_eval_model
       value_model.weights = self._value_trainer.model_weights
       values = value_model(np_trajectory.observations, n_accelerators=1)
+      shapes.assert_shape_equals(
+          values, (self._policy_batch_size, self._max_slice_length + 1, 1)
+      )
+      values = np.squeeze(values, axis=2)  # Remove the singleton depth dim.
       yield self.policy_inputs(np_trajectory, values)
 
   def train_epoch(self):
@@ -144,8 +148,5 @@ class AWRTrainer(ActorCriticTrainer):
   @property
   def policy_loss(self):
     """Policy loss."""
-    loss = functools.partial(
+    return functools.partial(
         distributions.LogLoss, distribution=self._policy_dist)
-    # TODO(pkozakowski): why does the above not work?
-    loss = tl.CrossEntropyLoss
-    return loss

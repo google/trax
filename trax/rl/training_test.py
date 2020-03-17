@@ -29,7 +29,7 @@ class TrainingTest(absltest.TestCase):
 
   def test_policytrainer_cartpole(self):
     """Trains a policy on cartpole."""
-    task = rl_task.RLTask('CartPole-v0', initial_trajectories=100,
+    task = rl_task.RLTask('CartPole-v0', initial_trajectories=1,
                           max_steps=200)
     # TODO(pkozakowski): Use Distribution.n_inputs to initialize the action
     # head.
@@ -37,18 +37,26 @@ class TrainingTest(absltest.TestCase):
         tl.Dense(64), tl.Relu(), tl.Dense(64), tl.Relu(),
         tl.Dense(2), tl.LogSoftmax())
     lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
-        h, constant=0.001, factors='constant')
+        h, constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
     trainer = training.PolicyGradientTrainer(
         task,
         policy_model=model,
         policy_optimizer=opt.Adam,
         policy_lr_schedule=lr,
-        policy_batch_size=32,
-        policy_train_steps_per_epoch=100,
-        collect_per_epoch=5)
-    trainer.run(10)
-    self.assertEqual(10, trainer.current_epoch)
-    self.assertGreater(max(trainer.avg_returns), 100.0)
+        policy_batch_size=128,
+        policy_train_steps_per_epoch=1,
+        collect_per_epoch=2)
+    # Assert that we get to 200 at some point and then exit so the test is as
+    # fast as possible.
+    for ep in range(200):
+      trainer.run(1)
+      self.assertEqual(trainer.current_epoch, ep + 1)
+      if trainer.avg_returns[-1] == 200.0:
+        return
+    self.fail(
+        'The expected score of 200 has not been reached. '
+        'Maximum was {}.'.format(max(trainer.avg_returns))
+    )
 
 
 if __name__ == '__main__':

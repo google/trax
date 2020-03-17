@@ -112,3 +112,10 @@ def splice_signatures(*sigs):
     else:
       result_sigs.append(sig)
   return result_sigs[0] if len(result_sigs) == 1 else tuple(result_sigs)
+
+
+def assert_shape_equals(array, shape):
+  """Asserts that an array has the given shape."""
+  assert array.shape == shape, (
+      'Invalid shape {}; expected {}.'.format(array.shape, shape)
+  )

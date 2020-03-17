@@ -182,7 +182,7 @@ class PolicyTrainer(RLTrainer):
     model.weights = self._policy_trainer.model_weights
     pred = model(trajectory.last_observation[None, ...], n_accelerators=1)[0]
     sample = self._policy_dist.sample(pred)
-    return (int(sample), self._policy_dist.log_prob(pred, sample))
+    return (sample, self._policy_dist.log_prob(pred, sample))
 
   def train_epoch(self):
     """Trains RL for one epoch."""
