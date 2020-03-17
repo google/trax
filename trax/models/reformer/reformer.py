@@ -766,6 +766,8 @@ def ReformerLM(vocab_size,
   elif axial_pos_shape == 'infinite-affine':
     # TODO(lukaszkaiser): remove this HACK
     positional_encoding = tl.InfinitePositionalEncoding()
+  elif axial_pos_shape == 'time-bin':  # TODO(lukaszkaiser): remove this HACK
+    positional_encoding = tl.TimeBinPositionalEncoding()
   else:
     assert d_axial_pos_embs is not None
     positional_encoding = tl.AxialPositionalEncoding(

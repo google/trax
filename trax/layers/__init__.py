@@ -77,3 +77,5 @@ EncDecAttention = layer_configure(EncDecAttention, blacklist=['mode'])
 
 InfinitePositionalEncoding = layer_configure(
     InfinitePositionalEncoding, blacklist=['mode'])
+TimeBinPositionalEncoding = layer_configure(
+    TimeBinPositionalEncoding, blacklist=['mode'])
