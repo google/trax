@@ -822,7 +822,6 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
           ("tensor-tensor", (5, 3, 4), (5, 4, 1)),
           ("tensor-tensor-broadcast", (3, 1, 3, 4), (5, 4, 1))]
       for lhs_dtype, rhs_dtype in CombosWithReplacement(number_dtypes, 2)))
-  @disable
   def testMatmul(self, lhs_shape, lhs_dtype, rhs_shape, rhs_dtype, rng_factory):
     rng = rng_factory()
     def onp_fun(x, y):

@@ -88,7 +88,7 @@ class ndarray(object):  # pylint: disable=invalid-name
         raise ValueError('Unexpected type for `buffer` {}. Must be an ndarray,'
                          ' Tensor or np.ndarray.'.format(type(buffer)))
 
-      if list(shape) != buffer.shape.as_list():
+      if shape is not None and tuple(shape) != buffer._shape_tuple():  # pylint: disable=protected-access
         # TODO(srbs): NumPy allows this. Investigate if/how to support this.
         raise ValueError('shape arg must match buffer.shape.')
 

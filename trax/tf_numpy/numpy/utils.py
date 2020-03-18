@@ -250,3 +250,14 @@ def np_doc_only(np_f):
     return f
 
   return decorator
+
+
+def cond(pred, true_fn, false_fn):
+  """A version of tf.cond that tries to evaluate the condition."""
+  v = tf.get_static_value(pred)
+  if v is None:
+    return tf.cond(pred, true_fn, false_fn)
+  if v:
+    return true_fn()
+  else:
+    return false_fn()

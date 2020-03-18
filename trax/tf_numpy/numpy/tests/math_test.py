@@ -107,6 +107,14 @@ class MathTest(tf.test.TestCase):
     return self._testBinaryOp(math.matmul, np.matmul, 'matmul',
                               operands=operands)
 
+  def testMatmulError(self):
+    with self.assertRaisesRegex(ValueError, r''):
+      math.matmul(array_creation.ones([], np.int32),
+                  array_creation.ones([2, 3], np.int32))
+    with self.assertRaisesRegex(ValueError, r''):
+      math.matmul(array_creation.ones([2, 3], np.int32),
+                  array_creation.ones([], np.int32))
+
   def _testUnaryOp(self, math_fun, np_fun, name):
 
     def run_test(a):

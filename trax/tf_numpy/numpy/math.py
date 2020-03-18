@@ -190,10 +190,19 @@ def minimum(x1, x2):
   return _bin_op(min_or_and, x1, x2)
 
 
-# TODO(wangpeng): support broadcasting and 1-D case
 @utils.np_doc(np.matmul)
-def matmul(x1, x2):
-  return _bin_op(tf.matmul, x1, x2)
+def matmul(x1, x2):  # pylint: disable=missing-docstring
+  def f(x1, x2):
+    try:
+      return utils.cond(tf.rank(x2) == 1,
+                        lambda: tf.tensordot(x1, x2, axes=1),
+                        lambda: utils.cond(tf.rank(x1) == 1,  # pylint: disable=g-long-lambda
+                                           lambda: tf.tensordot(  # pylint: disable=g-long-lambda
+                                               x1, x2, axes=[[0], [-2]]),
+                                           lambda: tf.matmul(x1, x2)))
+    except tf.errors.InvalidArgumentError as err:
+      raise ValueError(str(err))
+  return _bin_op(f, x1, x2)
 
 
 @utils.np_doc(np.power)
