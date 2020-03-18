@@ -38,8 +38,10 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
                value_batch_size=64,
                value_train_steps_per_epoch=500,
                n_shared_layers=0,
+               on_policy=True,
                **kwargs):  # Arguments of PolicyTrainer come here.
     """Configures the actor-critic Trainer."""
+    self._on_policy = on_policy
     self._n_shared_layers = n_shared_layers
     self._value_batch_size = value_batch_size
     self._value_train_steps_per_epoch = value_train_steps_per_epoch
@@ -99,8 +101,16 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
 
   def policy_batches_stream(self):
     """Use the RLTask self._task to create inputs to the policy model."""
+    if self._on_policy:
+      epochs = [-1]
+    else:
+      epochs = None
     for np_trajectory in self._task.trajectory_batch_stream(
-        self._policy_batch_size, max_slice_length=self._max_slice_length + 1):
+        self._policy_batch_size,
+        epochs=epochs,
+        max_slice_length=self._max_slice_length + 1,
+        include_final_state=True,
+        sample_trajectories_uniformly=True):
       value_model = self._value_eval_model
       value_model.weights = self._value_trainer.model_weights
       values = value_model(np_trajectory.observations, n_accelerators=1)
@@ -129,13 +139,15 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
 
 
 class AWRTrainer(ActorCriticTrainer):
-  """Trains a policy model using AWR."""
+  """Trains policy and value models using AWR."""
 
   def __init__(self, task, beta=1.0, w_max=20.0, **kwargs):
     """Configures the AWR Trainer."""
     self._beta = beta
     self._w_max = w_max
-    super(AWRTrainer, self).__init__(task, **kwargs)
+    super(AWRTrainer, self).__init__(task,
+                                     on_policy=False,
+                                     **kwargs)
 
   def policy_inputs(self, trajectory, values):
     """Create inputs to policy model from a TrajectoryNp and values."""
@@ -143,9 +155,39 @@ class AWRTrainer(ActorCriticTrainer):
     td_advantage = rew + self._task.gamma * values[:, 1:] - values[:, :-1]
     # advantage = trajectory.returns[:, :-1] - values[:, :-1]
     awr_weights = np.minimum(np.exp(td_advantage / self._beta), self._w_max)
-    return (trajectory.observations[:, :-1],
-            trajectory.actions[:, :-1],
-            awr_weights)
+    # Observations should be the same length as awr_weights - so if we are
+    # using td_advantage, we need to cut one (as we need the value of
+    # one more state to subtract.
+    return (
+        trajectory.observations[:, :-1],
+        trajectory.actions[:, :-1],
+        awr_weights)
+
+  @property
+  def policy_loss(self):
+    """Policy loss."""
+    return functools.partial(
+        distributions.LogLoss, distribution=self._policy_dist)
+
+
+class AdvantageActorCriticTrainer(ActorCriticTrainer):
+  """The Advantage Actor Critic Algorithm aka A2C.
+
+  Trains policy and value models using the A2C algortithm.
+  This is a variant with separate value and policy models.
+  """
+
+  def __init__(self, task, **kwargs):
+    """Configures the a2c Trainer."""
+    super(AdvantageActorCriticTrainer, self).__init__(task, **kwargs)
+
+  def policy_inputs(self, trajectory, values):
+    """Create inputs to policy model from a TrajectoryNp and values."""
+    advantages = trajectory.returns[:, :-1] - values[:, :-1]
+    return (
+        trajectory.observations,
+        trajectory.actions,
+        advantages)
 
   @property
   def policy_loss(self):
