@@ -18,9 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
 from absl import logging
 
 import numpy as np
+import six
 
 import tensorflow.compat.v2 as tf
 
@@ -201,7 +203,7 @@ def matmul(x1, x2):  # pylint: disable=missing-docstring
                                                x1, x2, axes=[[0], [-2]]),
                                            lambda: tf.matmul(x1, x2)))
     except tf.errors.InvalidArgumentError as err:
-      raise ValueError(str(err))
+      six.reraise(ValueError, ValueError(str(err)), sys.exc_info()[2])
   return _bin_op(f, x1, x2)
 
 

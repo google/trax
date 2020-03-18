@@ -283,11 +283,12 @@ def array(val, dtype=None, copy=True, ndmin=0):
     result_t = tf.cast(result_t, dtype=dtype)
   elif dtype:
     result_t = tf.cast(result_t, dtype)
-  ndims = len(result_t.shape)
-  if ndmin > ndims:
-    old_shape = list(result_t.shape)
-    new_shape = [1 for _ in range(ndmin - ndims)] + old_shape
-    result_t = tf.reshape(result_t, new_shape)
+  ndims = tf.rank(result_t)
+  def true_fn():
+    old_shape = tf.shape(result_t)
+    new_shape = tf.concat([tf.ones(ndmin - ndims, tf.int32), old_shape], axis=0)
+    return tf.reshape(result_t, new_shape)
+  result_t = utils.cond(utils.greater(ndmin, ndims), true_fn, lambda: result_t)
   return arrays.tensor_to_ndarray(result_t)
 
 

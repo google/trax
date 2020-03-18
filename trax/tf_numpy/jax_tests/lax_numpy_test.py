@@ -456,10 +456,18 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
       return out if onp_arrays else [lnp.asarray(a) for a in out]
     return f
 
+  # TODO(wangpeng): Make check_incomplete_shape default to True.
   def _CompileAndCheck(self, fun, args_maker, check_dtypes,
-                       rtol=None, atol=None):
+                       rtol=None, atol=None, check_incomplete_shape=False):
     """Helper method for running compilation and allclose assertions."""
     args = args_maker()
+
+    for x in args:
+      if not hasattr(x, "dtype"):
+        # If there is a input that doesn't have dtype info, jit and
+        # eval_on_shapes may pick a different dtype for it than numpy, so we
+        # skip the dtype check.
+        check_dtypes = False
 
     # `wrapped_fun` and `python_should_be_executing` are used to check that when
     # the jitted function is called the second time, the original Python
@@ -488,23 +496,50 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
     # Run `cfun` with a different set of arguments to check that changing
     # arguments won't cause recompilation.
 
-    old_args = args
-    args = args_maker()
+    new_args = args_maker()
 
-    for old, new in zip(old_args, args):
+    skip_retracing_test = False
+    for old, new in zip(args, new_args):
       if npe.most_precise_int_dtype(old) != npe.most_precise_int_dtype(new):
         # If the old and new arguments result in different dtypes (because they
         # fall into different value ranges), tf-numpy will retrace, so we skip
         # the no-retrace test.
-        return
+        skip_retracing_test = True
 
-    python_should_be_executing = True
-    python_ans = fun(*args)
+    if not skip_retracing_test:
+      python_should_be_executing = True
+      new_python_ans = fun(*new_args)
+      python_should_be_executing = False
+      compiled_ans = cfun(*new_args)
+      self.assertAllClose(new_python_ans, compiled_ans, check_dtypes, atol,
+                          rtol)
 
-    python_should_be_executing = False
+    # Check that npe.eval_on_shapes can get complete output shapes given
+    # complete input shapes.
+
+    cfun = npe.eval_on_shapes(fun)
     compiled_ans = cfun(*args)
+    flat_python_ans = tf.nest.flatten(python_ans)
+    flat_compiled_ans = tf.nest.flatten(compiled_ans)
+    self.assertEqual(len(flat_python_ans), len(flat_compiled_ans))
+    for a, b in zip(flat_python_ans, flat_compiled_ans):
+      if hasattr(a, "shape"):
+        self.assertEqual(a.shape, b.shape)
+      if check_dtypes and hasattr(a, "dtype"):
+        self.assertEqual(tf.as_dtype(a.dtype), b.dtype)
 
-    self.assertAllClose(python_ans, compiled_ans, check_dtypes, atol, rtol)
+    if check_incomplete_shape:
+      # Check partial shapes with known ranks
+      specs = [tf.TensorSpec([None] * len(x.shape), x.dtype) for x in args]
+      cfun = npe.jit(fun, input_signature=specs)
+      compiled_ans = cfun(*args)
+      self.assertAllClose(python_ans, compiled_ans, check_dtypes, atol, rtol)
+
+      # Check unknown ranks
+      specs = [tf.TensorSpec(None, x.dtype) for x in args]
+      cfun = npe.jit(fun, input_signature=specs)
+      compiled_ans = cfun(*args)
+      self.assertAllClose(python_ans, compiled_ans, check_dtypes, atol, rtol)
 
   @named_parameters(itertools.chain.from_iterable(
       jtu.cases_from_list(
@@ -606,13 +641,18 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
   def testBitwiseOp(self, onp_op, lnp_op, rng_factory, shapes, dtypes):
     rng = rng_factory()
     args_maker = self._GetArgsMaker(rng, shapes, dtypes)
+    has_python_scalar = jtu.PYTHON_SCALAR_SHAPE in shapes
     self._CheckAgainstNumpy(onp_op, lnp_op, args_maker,
-                            check_dtypes=jtu.PYTHON_SCALAR_SHAPE not in shapes)
-    if onp_op == onp.bitwise_not and list(shapes) == [jtu.PYTHON_SCALAR_SHAPE]:
+                            check_dtypes=not has_python_scalar)
+    if onp_op == onp.bitwise_not and has_python_scalar:
       # For bitwise_not with a Python `int`, npe.jit may choose a different
-      # dtype for the `int` from onp's choice, so we skip _CompileAndCheck.
+      # dtype for the `int` from onp's choice, which may result in a different
+      # result value, so we skip _CompileAndCheck.
       return
-    self._CompileAndCheck(lnp_op, args_maker, check_dtypes=True)
+    has_numpy_scalar = jtu.NUMPY_SCALAR_SHAPE in shapes
+    # numpy's bitwise ops seem to ignore the dtype of a numpy scalar, while jit
+    # respects it, so we skip dtype check when there are numpy scalars.
+    self._CompileAndCheck(lnp_op, args_maker, check_dtypes=not has_numpy_scalar)
 
   @named_parameters(itertools.chain.from_iterable(
       jtu.cases_from_list(
@@ -835,7 +875,7 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
     self._CheckAgainstNumpy(onp_fun, lnp.matmul, args_maker,
                             check_dtypes=True, tol=tol)
     self._CompileAndCheck(lnp.matmul, args_maker, check_dtypes=True, atol=tol,
-                          rtol=tol)
+                          rtol=tol, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_{}_{}_{}".format(

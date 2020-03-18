@@ -179,7 +179,8 @@ def _record_result_type(f):
   return wrapper
 
 
-def jit(f, static_argnums=(), xla_forced_compile=False):
+def jit(f, static_argnums=(), xla_forced_compile=False, input_signature=None,
+        autograph=False):
   """Returns a function that runs a trace-compiled version of `f`.
 
   A trace-compiled version of a function `f` has the same behavior as `f` (when
@@ -207,11 +208,19 @@ def jit(f, static_argnums=(), xla_forced_compile=False):
       convertible to tensor will also be static.
     xla_forced_compile: if true, it will use XLA to force-compile the graph.
       This requires that the function only contain ops that are XLA compatible.
+    input_signature: a list of `tf.TensorSpec`, as the input signature to
+      control tracing behavior. See the
+      [doc](https://www.tensorflow.org/api_docs/python/tf/function]) of
+      `tf.function` for details.
+    autograph: whether to use autograph to convert Python constructs such as
+      `if` and `while` to their TensorFlow counterparts. See the
+      [doc](https://www.tensorflow.org/api_docs/python/tf/function]) of
+      `tf.function` for details.
 
   Returns:
     A trace-compiled version of f.
   """
-  @tf.function(autograph=False)
+  @tf.function(input_signature=input_signature, autograph=autograph)
   def _tf_f(*args, **kwargs):
     """Accelerated function with tensor inputs/outputs."""
     np_args = _tf_to_np(args)

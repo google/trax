@@ -261,3 +261,14 @@ def cond(pred, true_fn, false_fn):
     return true_fn()
   else:
     return false_fn()
+
+
+def greater(a, b):
+  """A version of tf.greater that eagerly evaluates if possible."""
+  # It's needed becaues tf.get_static_value doesn't handle tf.greater.
+  v_a = tf.get_static_value(a)
+  v_b = tf.get_static_value(b)
+  if v_a is not None and v_b is not None:
+    return v_a > v_b
+  else:
+    return a > b
