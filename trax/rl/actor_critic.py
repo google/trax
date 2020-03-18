@@ -29,7 +29,14 @@ from trax.rl import training as rl_training
 
 
 class ActorCriticTrainer(rl_training.PolicyTrainer):
-  """Trains policy and value models using actor-critic methods."""
+  """Trains policy and value models using actor-critic methods.
+
+  Attrs:
+    on_policy (bool): Whether the algorithm is on-policy. Used in the data
+      generators. Should be set in derived classes.
+  """
+
+  on_policy = None
 
   def __init__(self, task,
                value_model=None,
@@ -38,10 +45,8 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
                value_batch_size=64,
                value_train_steps_per_epoch=500,
                n_shared_layers=0,
-               on_policy=True,
                **kwargs):  # Arguments of PolicyTrainer come here.
     """Configures the actor-critic Trainer."""
-    self._on_policy = on_policy
     self._n_shared_layers = n_shared_layers
     self._value_batch_size = value_batch_size
     self._value_train_steps_per_epoch = value_train_steps_per_epoch
@@ -101,7 +106,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
 
   def policy_batches_stream(self):
     """Use the RLTask self._task to create inputs to the policy model."""
-    if self._on_policy:
+    if self.on_policy:
       epochs = [-1]
     else:
       epochs = None
@@ -141,13 +146,13 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
 class AWRTrainer(ActorCriticTrainer):
   """Trains policy and value models using AWR."""
 
+  on_policy = False
+
   def __init__(self, task, beta=1.0, w_max=20.0, **kwargs):
     """Configures the AWR Trainer."""
     self._beta = beta
     self._w_max = w_max
-    super(AWRTrainer, self).__init__(task,
-                                     on_policy=False,
-                                     **kwargs)
+    super(AWRTrainer, self).__init__(task, **kwargs)
 
   def policy_inputs(self, trajectory, values):
     """Create inputs to policy model from a TrajectoryNp and values."""
@@ -176,6 +181,8 @@ class AdvantageActorCriticTrainer(ActorCriticTrainer):
   Trains policy and value models using the A2C algortithm.
   This is a variant with separate value and policy models.
   """
+
+  on_policy = True
 
   def __init__(self, task, **kwargs):
     """Configures the a2c Trainer."""
