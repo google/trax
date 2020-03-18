@@ -129,18 +129,33 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
     """Trains RL for one epoch."""
     self._value_trainer.train_epoch(self._value_train_steps_per_epoch, 1)
     if self._n_shared_layers > 0:  # Copy value weights to policy trainer.
-      value_weights = self._value_trainer.model_weights
-      policy_weights = self._policy_trainer.model_weights
-      shared_weights = value_weights[:self._n_shared_layers]
-      policy_weights[:self._n_shared_layers] = shared_weights
-      self._policy_trainer.model_weights = policy_weights
+      _copy_model_weights(0, self._n_shared_layers,
+                          self._value_trainer, self._policy_trainer)
     self._policy_trainer.train_epoch(self._policy_train_steps_per_epoch, 1)
     if self._n_shared_layers > 0:  # Copy policy weights to value trainer.
-      value_weights = self._value_trainer.model_weights
-      policy_weights = self._policy_trainer.model_weights
-      shared_weights = policy_weights[:self._n_shared_layers]
-      value_weights[:self._n_shared_layers] = shared_weights
-      self._value_trainer.model_weights = value_weights
+      _copy_model_weights(0, self._n_shared_layers,
+                          self._policy_trainer, self._value_trainer)
+
+
+def _copy_model_weights(start, end, from_trainer, to_trainer,
+                        copy_optimizer_slots=True):
+  """Copy model weights[start:end] from from_trainer to to_trainer."""
+  from_weights = from_trainer.model_weights
+  to_weights = to_trainer.model_weights
+  shared_weights = from_weights[start:end]
+  to_weights[start:end] = shared_weights
+  to_trainer.model_weights = to_weights
+  if copy_optimizer_slots:
+    # TODO(lukaszkaiser): make a nicer API in Trainer to support this.
+    # Currently we use the hack below. Note [0] since that's the model w/o loss.
+    # pylint: disable=protected-access
+    from_slots = from_trainer._opt_state.slots[0][start:end]
+    to_slots = to_trainer._opt_state.slots[0]
+    # The lines below do to_slots[start:end] = from_slots, but on tuples.
+    new_slots = to_slots[:start] + from_slots[start:end] + to_slots[end:]
+    new_slots = tuple([new_slots] + list(to_trainer._opt_state.slots[1:]))
+    to_trainer._opt_state = to_trainer._opt_state._replace(slots=new_slots)
+    # pylint: enable=protected-access
 
 
 class AWRTrainer(ActorCriticTrainer):
