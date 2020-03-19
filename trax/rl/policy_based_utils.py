@@ -221,8 +221,8 @@ def collect_trajectories(env,
     _, _, dones, env_infos = env.step(
         actions,
         infos={
-            'log_prob_actions': log_probs,
-            'value_predictions': value_preds,
+            'log_prob_actions': log_probs.copy(),
+            'value_predictions': value_preds.copy(),
         })
     env_actions_total_time += (time.time() - t1)
     bare_env_run_time += sum(
