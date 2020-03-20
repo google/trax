@@ -747,7 +747,8 @@ def _jit_update_fn(predict_fn, loss_fn, optimizer, n_devices, jit=True):
     # devices of all hosts (ex: a TPU pod) and we need to be averaging over all
     # of them.
     grads = jax.tree_util.tree_map(
-        lambda g: math.psum(g, 'batch') / math.psum(1.0, 'batch'), grads)
+        lambda g: math.psum(g, 'batch') / math.psum(np.array(1.0), 'batch'),
+        grads)
     return optimizer.tree_update(
         i, grads, weights, slots, opt_params), state, subrng
 
