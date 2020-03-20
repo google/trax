@@ -137,21 +137,10 @@ class Trainer(object):
     model_target_shape = math.nested_map(lambda x: x or 1,
                                          model_target_shape)
 
-    def new_opt_state_and_model_state(input_shape, input_dtype, target_shape,
-                                      target_dtype, rng):
+    def new_opt_state_and_model_state(shape_dtype, rng):
       """Returns optimizer and model states suitable for training a model."""
       # Combine inputs and targets on the stack.
-      if not isinstance(input_dtype, (list, tuple)):
-        input_dtype = [input_dtype]
-        input_shape = [input_shape]
-      if not isinstance(target_dtype, (list, tuple)):
-        target_dtype = [target_dtype]
-        target_shape = [target_shape]
-      dtypes = list(input_dtype) + list(target_dtype)
-      shapes = list(input_shape) + list(target_shape)
-      if self._has_weights:
-        shapes += list(target_shape)
-        dtypes += [np.float32 for _ in target_dtype]
+      shapes, dtypes = shape_dtype
       input_signature = tuple(ShapeDtype(s, d)
                               for (s, d) in zip(shapes, dtypes))
       # We need to create a new model instance and not reuse `model_train` here,
@@ -166,11 +155,10 @@ class Trainer(object):
     if _is_jit_init():
       # JIT parameter initialization to avoid memory fragmentation
       new_opt_state_and_model_state = math.jit(new_opt_state_and_model_state,
-                                               static_argnums=(0, 1, 2, 3))
+                                               static_argnums=(0,))
     self._new_opt_state_and_model_state = (
         lambda: new_opt_state_and_model_state(  # pylint: disable=g-long-lambda
-            model_input_shape, self._inputs.input_dtype,
-            model_target_shape, self._inputs.target_dtype, init_rng))
+            self._inputs.example_shape_dtype, init_rng))
 
     # Arrange and initialize metrics layers.
     self._metrics = list(sorted(self._metrics_dict.keys()))

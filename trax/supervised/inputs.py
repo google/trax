@@ -84,6 +84,8 @@ class Inputs(object):
     self._input_dtype = example_train_batch[0].dtype
     self._target_shape = tuple(example_train_batch[-1].shape)[1:]
     self._target_dtype = example_train_batch[-1].dtype
+    self._example_shape = [x.shape for x in example_train_batch]
+    self._example_dtype = [x.dtype for x in example_train_batch]
 
   def train_stream(self, n_devices):
     return self._train_stream(n_devices)
@@ -113,6 +115,11 @@ class Inputs(object):
   def target_dtype(self):
     """Dtype of the target."""
     return self._target_dtype
+
+  @property
+  def example_shape_dtype(self):
+    """Shape and Dtype of an example batch."""
+    return self._example_shape, self._example_dtype
 
 
 # How many examples from the stream to skip at random during training.
