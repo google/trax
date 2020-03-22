@@ -40,6 +40,7 @@ class ActorCriticTest(absltest.TestCase):
     trainer = actor_critic.AWRTrainer(
         task,
         n_shared_layers=0,
+        added_policy_slice_length=1,
         value_model=value_model,
         value_optimizer=opt.Adam,
         value_lr_schedule=lr,
@@ -68,6 +69,7 @@ class ActorCriticTest(absltest.TestCase):
     trainer = actor_critic.AWRTrainer(
         task,
         n_shared_layers=1,
+        added_policy_slice_length=1,
         value_model=value_model,
         value_optimizer=opt.Adam,
         value_lr_schedule=lr,

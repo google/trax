@@ -24,6 +24,7 @@ from trax import layers as tl
 from trax import lr_schedules as lr
 from trax import shapes
 from trax import supervised
+from trax.rl import computation_utils
 from trax.rl import distributions
 from trax.rl import training as rl_training
 
@@ -45,8 +46,27 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
                value_batch_size=64,
                value_train_steps_per_epoch=500,
                n_shared_layers=0,
+               added_policy_slice_length=0,
                **kwargs):  # Arguments of PolicyTrainer come here.
-    """Configures the actor-critic Trainer."""
+    """Configures the actor-critic Trainer.
+
+    Args:
+      task: RLTask instance to use
+      value_model: the model to use for the value function
+      value_optimizer: the optimizer to train the value model
+      value_lr_schedule: lr schedule for value model training
+      value_batch_size: batch size for value model training
+      value_train_steps_per_epoch: how many steps are we using to
+        train the value model in each epoch
+      n_shared_layers: how many layers to share between value and
+        policy models
+      added_policy_slice_length: how much longer should slices of
+        trajectories be for policy than for value training; this
+        is useful for TD calculations and only affect the length
+        of elements produced for policy batches; value batches
+        have maximum length set by max_slice_length in **kwargs
+     **kwargs: arguments for PolicyTrainer super-class
+    """
     self._n_shared_layers = n_shared_layers
     self._value_batch_size = value_batch_size
     self._value_train_steps_per_epoch = value_train_steps_per_epoch
@@ -56,6 +76,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
     # since policy input creation calls the value model -- hence this code.
     self._task = task
     self._max_slice_length = kwargs.get('max_slice_length', None)
+    self._added_policy_slice_length = added_policy_slice_length
 
     # Initialize training of the value function.
     value_output_dir = kwargs.get('output_dir', None)
@@ -110,18 +131,18 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
       epochs = [-1]
     else:
       epochs = None
+    # Maximum slice length for policy is max_slice_len + the added policy len.
+    max_slice_length = self._max_slice_length + self._added_policy_slice_length
     for np_trajectory in self._task.trajectory_batch_stream(
         self._policy_batch_size,
         epochs=epochs,
-        max_slice_length=self._max_slice_length + 1,
-        include_final_state=True,
-        sample_trajectories_uniformly=True):
+        max_slice_length=max_slice_length,
+        include_final_state=(max_slice_length > 1)):
       value_model = self._value_eval_model
       value_model.weights = self._value_trainer.model_weights
       values = value_model(np_trajectory.observations, n_accelerators=1)
       shapes.assert_shape_equals(
-          values, (self._policy_batch_size, self._max_slice_length + 1, 1)
-      )
+          values, (self._policy_batch_size, max_slice_length, 1))
       values = np.squeeze(values, axis=2)  # Remove the singleton depth dim.
       yield self.policy_inputs(np_trajectory, values)
 
@@ -171,17 +192,22 @@ class AWRTrainer(ActorCriticTrainer):
 
   def policy_inputs(self, trajectory, values):
     """Create inputs to policy model from a TrajectoryNp and values."""
-    rew = trajectory.rewards[:, :-1]
-    td_advantage = rew + self._task.gamma * values[:, 1:] - values[:, :-1]
-    # advantage = trajectory.returns[:, :-1] - values[:, :-1]
-    awr_weights = np.minimum(np.exp(td_advantage / self._beta), self._w_max)
+    # How much TD to use is determined by the added policy slice length,
+    # as the policy batches need to be this much longer to calculate TD.
+    td = self._added_policy_slice_length
+    advantage = computation_utils.calculate_advantage(
+        trajectory.rewards, trajectory.returns, values, self._task.gamma, td)
+    awr_weights = np.minimum(np.exp(advantage / self._beta), self._w_max)
     # Observations should be the same length as awr_weights - so if we are
-    # using td_advantage, we need to cut one (as we need the value of
-    # one more state to subtract.
-    return (
-        trajectory.observations[:, :-1],
-        trajectory.actions[:, :-1],
-        awr_weights)
+    # using td_advantage, we need to cut td-man out from the end.
+    obs = trajectory.observations
+    obs = obs[:, :-td] if td > 0 else obs
+    act = trajectory.actions
+    act = act[:, :-td] if td > 0 else act
+    assert len(awr_weights.shape) == 2  # [batch_size, length]
+    assert act.shape[0:2] == awr_weights.shape
+    assert obs.shape[0:2] == awr_weights.shape
+    return (obs, act, awr_weights)
 
   @property
   def policy_loss(self):
