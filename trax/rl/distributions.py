@@ -16,7 +16,9 @@
 # Lint as: python3
 """Probability distributions for RL training in Trax."""
 
+import gin
 import gym
+import numpy as onp
 
 from trax import layers as tl
 from trax.math import numpy as np
@@ -71,32 +73,91 @@ class Distribution:
 class Categorical(Distribution):
   """Categorical distribution parametrized by logits."""
 
-  def __init__(self, n_categories):
+  def __init__(self, shape, n_categories):
+    """Initializes Categorical distribution.
+
+    Args:
+      shape (tuple): Shape of the sample.
+      n_categories (int): Number of categories.
+    """
+    self._shape = shape
     self._n_categories = n_categories
 
   @property
   def n_inputs(self):
-    return self._n_inputs
+    return np.prod(self._shape, dtype=np.int32) * self._n_categories
+
+  def _unflatten_inputs(self, inputs):
+    return np.reshape(
+        inputs, inputs.shape[:-1] + self._shape + (self._n_categories,)
+    )
 
   def sample(self, inputs):
-    return tl.gumbel_sample(inputs)
+    return tl.gumbel_sample(self._unflatten_inputs(inputs))
 
   def log_prob(self, inputs, point):
-    # Flatten the prefix dimensions for easy indexing.
-    flat_point = np.reshape(point, -1)
-    flat_inputs = np.reshape(inputs, (point.size, -1))
-    flat_log_probs = flat_inputs[np.arange(point.size), flat_point.astype(int)]
-    return np.reshape(flat_log_probs, point.shape)
+    # TODO(pkozakowski): Put log softmax here. For now we assume that the
+    # network output activation is log softmax, preventing the use of the same
+    # architecture across tasks with different action spaces.
+    inputs = self._unflatten_inputs(inputs)
+    return np.sum(
+        # Select the logits specified by point.
+        inputs * tl.one_hot(point, self._n_categories),
+        # Sum over the parameter dimensions.
+        axis=[-a for a in range(1, len(self._shape) + 2)],
+    )
 
 
-# TODO(pkozakowski): Implement GaussianDistribution,
-# GaussianMixtureDistribution.
+@gin.configurable(blacklist=['shape'])
+class Gaussian(Distribution):
+  """Independent multivariate Gaussian distribution parametrized by mean."""
+
+  def __init__(self, shape, std=1.0):
+    """Initializes Gaussian distribution.
+
+    Args:
+      shape (tuple): Shape of the sample.
+      std (float): Standard deviation, shared across the whole sample.
+    """
+    self._shape = shape
+    self._std = std
+
+  @property
+  def n_inputs(self):
+    return np.prod(self._shape)
+
+  def sample(self, inputs):
+    return onp.random.normal(
+        loc=np.reshape(inputs, inputs.shape[:-1] + self._shape),
+        scale=self._std,
+    )
+
+  def log_prob(self, inputs, point):
+    point = point.reshape(inputs.shape[:-1] + (-1,))
+    return (
+        # L2 term.
+        -np.sum((point - inputs) ** 2, axis=-1) / (2 * self._std ** 2) -
+        # Normalizing constant.
+        (np.log(self._std) + np.log(np.sqrt(2 * np.pi))) * np.prod(self._shape)
+    )
+
+
+# TODO(pkozakowski): Implement GaussianMixture.
 
 
 def create_distribution(space):
   """Creates a Distribution for the given Gym space."""
   if isinstance(space, gym.spaces.Discrete):
-    return Categorical(space.n)
+    return Categorical(shape=(), n_categories=space.n)
+  elif isinstance(space, gym.spaces.MultiDiscrete):
+    assert space.nvec.size
+    assert min(space.nvec) == max(space.nvec), (
+        'Every dimension must have the same number of categories, got '
+        '{}.'.format(space.nvec)
+    )
+    return Categorical(shape=(len(space.nvec),), n_categories=space.nvec[0])
+  elif isinstance(space, gym.spaces.Box):
+    return Gaussian(shape=space.shape)
   else:
     raise TypeError('Space {} unavailable as a distribution support.')
 
