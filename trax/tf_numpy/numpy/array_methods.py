@@ -440,70 +440,11 @@ def real(val):
   return utils.tensor_to_ndarray(tf.math.real(val.data))
 
 
+@utils.np_doc(np.repeat)
 def repeat(a, repeats, axis=None):
-  """Repeat elements of the array along specified axes.
-
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can
-      be converted to a Tensor using `tf.convert_to_tensor`.
-    repeats: 0-d or 1-d array_like. The number of times each element along
-      `axis` will be repeated. If this has size 1, each element along the axis
-      is repeated the same number of times.
-    axis: Optional. The axis along which to repeat. If None, the input array
-      is flattened.
-
-  Returns:
-    An ndarray with same type as `a`.
-
-  Raises:
-    ValueError: If `repeats` has rank > 1 or an incompatible shape.
-  """
-  a = array_creation.asarray(a)
-  repeats = array_creation.asarray(repeats)
-  if repeats.ndim > 1:
-    raise ValueError('repeats must be a scalar or 1-d array.')
-  repeats = ravel(repeats)  # Convert to 1-d array.
-  # As per documentation, if axis is None, the input is flattened
-  # and a flattened output is returned.
-  if axis is None:
-    a = ravel(a)
-    axis = 0
-  elif axis < 0:
-    axis += a.ndim
-
-  # Broadcast repeats to match shape of axis.
-  if len(repeats) == 1:
-    repeats = utils.tensor_to_ndarray(tf.tile(repeats.data, [a.shape[axis]]))
-
-  if a.shape[axis] != len(repeats):
-    raise ValueError('Shape mismatch. `repeats` expected to have shape ({},)'
-                     ' but has ({},)'.format(a.shape[axis], len(repeats)))
-
-  # Example:
-  #
-  # a: [[1, 2, 3],
-  #     [4, 5, 6]]
-  # axis: 1
-  # repeats: [3, 1, 2]
-  # Output: [[1, 1, 1, 2, 3, 3],
-  #          [4, 4, 4, 5, 6, 6]]
-  #
-  # Algorithm:
-  # 1. Calculate cumulative sum of repeats.
-  repeats_cumsum = cumsum(repeats)  # [3, 4, 6]
-  # 2. Use `scatter_nd` to generate an indices list for use in `tf.gather`.
-  scatter_indices_t = repeats_cumsum[:-1].data  # [3, 4]
-  scatter_indices_t = tf.expand_dims(scatter_indices_t, 1)  # [[3], [4]]
-  scatter_updates_t = tf.ones([len(repeats) - 1], dtype=tf.int32)  # [1, 1]
-  scatter_shape_t = ravel(repeats_cumsum[-1]).data  # [6]
-  #    `tf.scatter_nd([[3], [4]], [1, 1], [6])` -> `[0, 0, 0, 1, 1, 0]`
-  indices_t = tf.scatter_nd(scatter_indices_t, scatter_updates_t,
-                            scatter_shape_t)
-  indices_t = tf.cumsum(indices_t)  # [0, 0, 0, 1, 2, 2]
-  # 3. Use `tf.gather` to gather indices along `axis`.
-  result_t = tf.gather(a, indices_t, axis=axis)
-
-  return utils.tensor_to_ndarray(result_t)
+  a = array_creation.asarray(a).data
+  repeats = array_creation.asarray(repeats).data
+  return utils.tensor_to_ndarray(tf.repeat(a, repeats, axis))
 
 
 def around(a, decimals=0):
