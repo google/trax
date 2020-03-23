@@ -26,7 +26,6 @@ import os
 
 from absl import logging
 import jax
-from jax import jit
 from jax import numpy as np
 from jax import random as jax_random
 import numpy as onp
@@ -181,7 +180,7 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
     (policy_and_value_net, self._substitute_fn) = (
         self._policy_and_value_net_fn()
     )
-    self._policy_and_value_net_apply = jit(policy_and_value_net)
+    self._policy_and_value_net_apply = jax.jit(policy_and_value_net)
     self._policy_and_value_optimizer = policy_and_value_optimizer()
     self._model_state = None
     self._policy_and_value_opt_state = None

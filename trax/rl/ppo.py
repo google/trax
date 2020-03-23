@@ -49,8 +49,7 @@ function and a value function.
 import functools
 import itertools
 
-from jax import grad
-from jax import jit
+import jax
 from jax import numpy as np
 import numpy as onp
 
@@ -122,7 +121,7 @@ def rewards_to_go(rewards, mask, gamma):
   return np.flip(np.stack(r2gs, axis=1), axis=1)
 
 
-@jit
+@jax.jit
 def value_loss_given_predictions(value_prediction,
                                  rewards,
                                  reward_mask,
@@ -291,7 +290,7 @@ def clipped_objective(probab_ratios, advantages, action_mask, epsilon):
       advantages) * action_mask
 
 
-@jit
+@jax.jit
 def ppo_loss_given_predictions(log_probab_actions_new,
                                log_probab_actions_old,
                                value_predictions_old,
@@ -359,7 +358,7 @@ def ppo_loss_given_predictions(log_probab_actions_new,
   return (ppo_loss, summaries)
 
 
-@jit
+@jax.jit
 def combined_loss_given_predictions(log_probab_actions_new,
                                     log_probab_actions_old,
                                     value_prediction_new,
@@ -404,7 +403,7 @@ def combined_loss_given_predictions(log_probab_actions_new,
   return (combined_loss_, (ppo_loss, value_loss, entropy_bonus), summaries)
 
 
-@functools.partial(jit, static_argnums=(3,))
+@functools.partial(jax.jit, static_argnums=(3,))
 def combined_loss(new_weights,
                   log_probab_actions_old,
                   value_predictions_old,
@@ -454,7 +453,7 @@ def combined_loss(new_weights,
   return (loss, component_losses, summaries, state)
 
 
-@functools.partial(jit, static_argnums=(2, 3, 4))
+@functools.partial(jax.jit, static_argnums=(2, 3, 4))
 def policy_and_value_opt_step(i,
                               opt_state,
                               opt_update,
@@ -489,7 +488,7 @@ def policy_and_value_opt_step(i,
     return loss, state
 
   new_weights = get_params(opt_state)
-  g, state = grad(policy_and_value_loss, has_aux=True)(new_weights, state)
+  g, state = jax.grad(policy_and_value_loss, has_aux=True)(new_weights, state)
   # TODO(afrozm): Maybe clip gradients?
   return opt_update(i, g, opt_state), state
 
