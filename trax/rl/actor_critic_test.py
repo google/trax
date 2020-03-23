@@ -45,16 +45,16 @@ class ActorCriticTest(absltest.TestCase):
         value_optimizer=opt.Adam,
         value_lr_schedule=lr,
         value_batch_size=32,
-        value_train_steps_per_epoch=1000,
+        value_train_steps_per_epoch=200,
         policy_model=policy_model,
         policy_optimizer=opt.Adam,
         policy_lr_schedule=lr,
         policy_batch_size=32,
-        policy_train_steps_per_epoch=1000,
+        policy_train_steps_per_epoch=200,
         collect_per_epoch=10)
     trainer.run(1)
     self.assertEqual(1, trainer.current_epoch)
-    self.assertGreater(trainer.avg_returns[-1], 150.0)
+    self.assertGreater(trainer.avg_returns[-1], 50.0)
 
   def test_awrtrainer_cartpole_shared(self):
     """Test-runs AWR on cartpole with shared layers."""
@@ -74,18 +74,18 @@ class ActorCriticTest(absltest.TestCase):
         value_optimizer=opt.Adam,
         value_lr_schedule=lr,
         value_batch_size=32,
-        value_train_steps_per_epoch=1000,
+        value_train_steps_per_epoch=200,
         policy_model=policy_model,
         policy_optimizer=opt.Adam,
         policy_lr_schedule=lr,
         policy_batch_size=32,
-        policy_train_steps_per_epoch=1000,
+        policy_train_steps_per_epoch=200,
         collect_per_epoch=10)
     trainer.run(1)
     self.assertEqual(1, trainer.current_epoch)
-    self.assertGreater(trainer.avg_returns[-1], 150.0)
+    self.assertGreater(trainer.avg_returns[-1], 50.0)
 
-  def test_a2ctrainer_cartpole(self):
+  def test_sanity_a2ctrainer_cartpole(self):
     """Test-runs a2c on cartpole."""
     task = rl_task.RLTask('CartPole-v0', initial_trajectories=1,
                           max_steps=2)
@@ -112,6 +112,77 @@ class ActorCriticTest(absltest.TestCase):
     trainer.run(2)
     self.assertEqual(2, trainer.current_epoch)
 
+  def test_sanity_ppo_cartpole(self):
+    """Run PPO and check whether it correctly runs for 2 epochs.s."""
+
+    task = rl_task.RLTask(
+        'CartPole-v1', initial_trajectories=750, max_steps=200)
+
+    policy_model = lambda mode: tl.Serial(  # pylint: disable=g-long-lambda
+        tl.Dense(64),
+        tl.Relu(),
+        tl.Dense(2),
+        tl.LogSoftmax())
+
+    lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
+        h, constant=1e-3,
+        warmup_steps=100,
+        factors='constant * linear_warmup')
+
+    value_model = lambda mode: tl.Serial(tl.Dense(64), tl.Relu(), tl.Dense(1))
+    trainer = actor_critic.PPOTrainer(
+        task,
+        n_shared_layers=1,
+        value_model=value_model,
+        value_optimizer=opt.Adam,
+        value_lr_schedule=lr,
+        value_batch_size=128,
+        value_train_steps_per_epoch=10,
+        policy_model=policy_model,
+        policy_optimizer=opt.Adam,
+        policy_lr_schedule=lr,
+        policy_batch_size=128,
+        policy_train_steps_per_epoch=10,
+        collect_per_epoch=10)
+
+    trainer.run(2)
+    self.assertEqual(2, trainer.current_epoch)
+
+  def test_direct_a2c_cartpole(self):
+    """Run a2c and check whether it correctly runs for 2 epochs."""
+
+    task = rl_task.RLTask(
+        'CartPole-v1', initial_trajectories=750, max_steps=200)
+
+    policy_model = lambda mode: tl.Serial(  # pylint: disable=g-long-lambda
+        tl.Dense(64),
+        tl.Relu(),
+        tl.Dense(2),
+        tl.LogSoftmax())
+
+    lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
+        h, constant=1e-3,
+        warmup_steps=100,
+        factors='constant * linear_warmup')
+
+    value_model = lambda mode: tl.Serial(tl.Dense(64), tl.Relu(), tl.Dense(1))
+    trainer = actor_critic.DirectAdvantageActorCriticTrainer(
+        task,
+        n_shared_layers=1,
+        value_model=value_model,
+        value_optimizer=opt.Adam,
+        value_lr_schedule=lr,
+        value_batch_size=128,
+        value_train_steps_per_epoch=10,
+        policy_model=policy_model,
+        policy_optimizer=opt.Adam,
+        policy_lr_schedule=lr,
+        policy_batch_size=128,
+        policy_train_steps_per_epoch=10,
+        collect_per_epoch=10)
+
+    trainer.run(2)
+    self.assertEqual(2, trainer.current_epoch)
 
 if __name__ == '__main__':
   absltest.main()

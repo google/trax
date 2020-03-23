@@ -24,6 +24,7 @@ from trax import layers as tl
 from trax import lr_schedules as lr
 from trax import shapes
 from trax import supervised
+from trax.math import numpy as jnp
 from trax.rl import computation_utils
 from trax.rl import distributions
 from trax.rl import training as rl_training
@@ -158,7 +159,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
                           self._policy_trainer, self._value_trainer)
 
 
-def _copy_model_weights(start, end, from_trainer, to_trainer,
+def _copy_model_weights(start, end, from_trainer, to_trainer,  # pylint: disable=invalid-name
                         copy_optimizer_slots=True):
   """Copy model weights[start:end] from from_trainer to to_trainer."""
   from_weights = from_trainer.model_weights
@@ -220,7 +221,6 @@ class AdvantageActorCriticTrainer(ActorCriticTrainer):
   """The Advantage Actor Critic Algorithm aka A2C.
 
   Trains policy and value models using the A2C algortithm.
-  This is a variant with separate value and policy models.
   """
 
   on_policy = True
@@ -231,14 +231,121 @@ class AdvantageActorCriticTrainer(ActorCriticTrainer):
 
   def policy_inputs(self, trajectory, values):
     """Create inputs to policy model from a TrajectoryNp and values."""
-    advantages = trajectory.returns[:, :-1] - values[:, :-1]
+    td = self._added_policy_slice_length
+    advantage = computation_utils.calculate_advantage(
+        trajectory.rewards, trajectory.returns, values, self._task.gamma, td)
     return (
         trajectory.observations,
         trajectory.actions,
-        advantages)
+        advantage)
 
   @property
   def policy_loss(self):
     """Policy loss."""
     return functools.partial(
         distributions.LogLoss, distribution=self._policy_dist)
+
+
+@tl.layer(n_in=4, n_out=1)
+def PPOLoss(x, epsilon=0.1, **kwargs):
+  """Definition of the Proximal Policy Optimization loss."""
+  del kwargs
+  (new_log_probs, actions, advantages, old_log_probs) = x
+
+  # Old log probs have an undesirable extra dimension which we remove here
+  old_log_probs = old_log_probs.squeeze()
+
+  # Select new_log_probs associated
+  # with the actions batch
+  flat_actions = np.reshape(actions, -1)
+  flat_new_log_probs = np.reshape(new_log_probs, (actions.size, -1))
+  action_probs = flat_new_log_probs[np.arange(actions.size),
+                                    flat_actions.astype(int)]
+
+  # The ratio between new_probs and old_probs expressed
+  # using log_probs and exponentaion
+  probs_ratio = jnp.exp(action_probs - old_log_probs)
+  unclipped_objective = probs_ratio * advantages
+  clipped_objective = jnp.clip(probs_ratio,
+                               1 - epsilon,
+                               1 + epsilon)
+  ppo_objective = jnp.minimum(unclipped_objective, clipped_objective)
+
+  return -ppo_objective.mean()
+
+
+class PPOTrainer(ActorCriticTrainer):
+  """The Proximal Policy Optimization Algorithm aka PPO.
+
+  Trains policy and value models using the PPO algortithm.
+  """
+
+  on_policy = True
+
+  def __init__(self, task, **kwargs):
+    """Configures the PPO Trainer."""
+    super(PPOTrainer, self).__init__(task, **kwargs)
+
+  def policy_inputs(self, trajectory, values):
+    """Create inputs to policy model from a TrajectoryNp and values."""
+    td = self._added_policy_slice_length
+    advantage = computation_utils.calculate_advantage(
+        trajectory.rewards, trajectory.returns, values, self._task.gamma, td)
+
+    return (
+        trajectory.observations,
+        trajectory.actions,
+        advantage,
+        trajectory.log_probs)
+
+  @property
+  def policy_loss(self):
+    """Policy loss."""
+    return PPOLoss
+
+
+# The DirectAdvantageActorCriticTrainerLoss and
+# the following DirectAdvantageActorCriticTrainer are
+# intended to show a direct definiotion of
+# one of the simplest actor-critic losses and trainers
+@tl.layer(n_in=3, n_out=1)
+def DirectAdvantageActorCriticTrainerLoss(x, **kwargs):
+  """Definition of the Advantage Actor Critic loss."""
+  del kwargs
+  (new_log_probs, actions, advantages) = x
+
+  flat_actions = np.reshape(actions, -1)
+  flat_new_log_probs = np.reshape(new_log_probs, (actions.size, -1))
+  action_probs = flat_new_log_probs[np.arange(actions.size),
+                                    flat_actions.astype(int)]
+  return -(action_probs * advantages).mean()
+
+
+class DirectAdvantageActorCriticTrainer(ActorCriticTrainer):
+  """A direct implementation of AdvantageActorCriticTrainer.
+
+  Trains policy and value models using the A2C algortithm.
+  """
+
+  on_policy = True
+
+  def __init__(self, task, **kwargs):
+    """Configures the A2C Trainer."""
+    super(DirectAdvantageActorCriticTrainer, self).__init__(task, **kwargs)
+
+  def policy_inputs(self, trajectory, values):
+    """Create inputs to policy model from a TrajectoryNp and values."""
+    td = self._added_policy_slice_length
+    advantage = computation_utils.calculate_advantage(
+        trajectory.rewards, trajectory.returns, values, self._task.gamma, td)
+
+    return (
+        trajectory.observations,
+        trajectory.actions,
+        advantage)
+
+  @property
+  def policy_loss(self):
+    """Policy loss."""
+    return DirectAdvantageActorCriticTrainerLoss
+
