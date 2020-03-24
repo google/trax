@@ -247,24 +247,17 @@ class AdvantageActorCriticTrainer(ActorCriticTrainer):
 
 
 @tl.layer(n_in=4, n_out=1)
-def PPOLoss(x, epsilon=0.1, **kwargs):
+def PPOLoss(x, distribution, epsilon, **unused_kwargs):
   """Definition of the Proximal Policy Optimization loss."""
-  del kwargs
-  (new_log_probs, actions, advantages, old_log_probs) = x
+  (dist_inputs, actions, advantages, old_log_probs) = x
+  new_log_probs = distribution.log_prob(dist_inputs, actions)
 
   # Old log probs have an undesirable extra dimension which we remove here
-  old_log_probs = old_log_probs.squeeze()
-
-  # Select new_log_probs associated
-  # with the actions batch
-  flat_actions = np.reshape(actions, -1)
-  flat_new_log_probs = np.reshape(new_log_probs, (actions.size, -1))
-  action_probs = flat_new_log_probs[np.arange(actions.size),
-                                    flat_actions.astype(int)]
+  old_log_probs = old_log_probs.squeeze(axis=-1)
 
   # The ratio between new_probs and old_probs expressed
   # using log_probs and exponentaion
-  probs_ratio = jnp.exp(action_probs - old_log_probs)
+  probs_ratio = jnp.exp(new_log_probs - old_log_probs)
   unclipped_objective = probs_ratio * advantages
   clipped_objective = jnp.clip(probs_ratio,
                                1 - epsilon,
@@ -282,8 +275,9 @@ class PPOTrainer(ActorCriticTrainer):
 
   on_policy = True
 
-  def __init__(self, task, **kwargs):
+  def __init__(self, task, epsilon=0.1, **kwargs):
     """Configures the PPO Trainer."""
+    self._epsilon = epsilon
     super(PPOTrainer, self).__init__(task, **kwargs)
 
   def policy_inputs(self, trajectory, values):
@@ -301,13 +295,15 @@ class PPOTrainer(ActorCriticTrainer):
   @property
   def policy_loss(self):
     """Policy loss."""
-    return PPOLoss
+    return functools.partial(
+        PPOLoss, distribution=self._policy_dist, epsilon=self._epsilon
+    )
 
 
 # The DirectAdvantageActorCriticTrainerLoss and
 # the following DirectAdvantageActorCriticTrainer are
-# intended to show a direct definiotion of
-# one of the simplest actor-critic losses and trainers
+# intended to show a direct definition of
+# one of the simplest actor-critic losses and trainers.
 @tl.layer(n_in=3, n_out=1)
 def DirectAdvantageActorCriticTrainerLoss(x, **kwargs):
   """Definition of the Advantage Actor Critic loss."""
@@ -332,6 +328,9 @@ class DirectAdvantageActorCriticTrainer(ActorCriticTrainer):
   def __init__(self, task, **kwargs):
     """Configures the A2C Trainer."""
     super(DirectAdvantageActorCriticTrainer, self).__init__(task, **kwargs)
+    assert isinstance(self._policy_dist, distributions.Categorical), (
+        'This Trainer works only with categorical distributions.'
+    )
 
   def policy_inputs(self, trajectory, values):
     """Create inputs to policy model from a TrajectoryNp and values."""
@@ -348,4 +347,3 @@ class DirectAdvantageActorCriticTrainer(ActorCriticTrainer):
   def policy_loss(self):
     """Policy loss."""
     return DirectAdvantageActorCriticTrainerLoss
-
