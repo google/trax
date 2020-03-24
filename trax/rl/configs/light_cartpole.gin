@@ -17,12 +17,15 @@ import trax.models
 import trax.optimizers
 import trax.rl
 
-# Parameters for MLP:
+# Parameters for Policy:
 # ==============================================================================
-MLP.d_hidden = 64
-MLP.n_hidden_layers = 1
-MLP.n_output_classes = 2
-MLP.flatten = False
+Policy.body = @trax.models.PureMLP
+
+# Parameters for PureMLP:
+# ==============================================================================
+PureMLP.flatten = False
+PureMLP.hidden_dims = (64,)
+PureMLP.out_activation = True
 
 # Parameters for MultifactorSchedule:
 # ==============================================================================
@@ -38,7 +41,7 @@ RLTask.max_steps = 200
 
 # Parameters for PolicyGradientTrainer:
 # ==============================================================================
-PolicyGradientTrainer.policy_model = @trax.models.MLP
+PolicyGradientTrainer.policy_model = @trax.models.Policy
 PolicyGradientTrainer.policy_optimizer = @trax.optimizers.Adam
 PolicyGradientTrainer.policy_batch_size = 128
 PolicyGradientTrainer.policy_train_steps_per_epoch = 1

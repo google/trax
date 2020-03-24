@@ -70,18 +70,22 @@ class Distribution:
     return Layer()  # pylint: disable=no-value-for-parameter
 
 
+@gin.configurable(blacklist=['n_categories', 'shape'])
 class Categorical(Distribution):
   """Categorical distribution parametrized by logits."""
 
-  def __init__(self, shape, n_categories):
+  def __init__(self, n_categories, shape=(), temperature=1.0):
     """Initializes Categorical distribution.
 
     Args:
-      shape (tuple): Shape of the sample.
       n_categories (int): Number of categories.
+      shape (tuple): Shape of the sample.
+      temperature (float): Sampling temperature. During training, logits are
+        divided by this number.
     """
-    self._shape = shape
     self._n_categories = n_categories
+    self._shape = shape
+    self._temperature = temperature
 
   @property
   def n_inputs(self):
@@ -93,13 +97,16 @@ class Categorical(Distribution):
     )
 
   def sample(self, inputs):
-    return tl.gumbel_sample(self._unflatten_inputs(inputs))
+    # No need for LogSoftmax with Gumbel sampling - softmax normalization is
+    # subtracting a constant from every logit, and Gumbel sampling is taking
+    # a max over logits plus noise, so invariant to adding a constant.
+    return tl.gumbel_sample(
+        self._unflatten_inputs(inputs), temperature=self._temperature
+    )
 
   def log_prob(self, inputs, point):
-    # TODO(pkozakowski): Put log softmax here. For now we assume that the
-    # network output activation is log softmax, preventing the use of the same
-    # architecture across tasks with different action spaces.
-    inputs = self._unflatten_inputs(inputs)
+    inputs /= self._temperature
+    inputs = tl.LogSoftmax()(self._unflatten_inputs(inputs))
     return np.sum(
         # Select the logits specified by point.
         inputs * tl.one_hot(point, self._n_categories),
@@ -112,7 +119,7 @@ class Categorical(Distribution):
 class Gaussian(Distribution):
   """Independent multivariate Gaussian distribution parametrized by mean."""
 
-  def __init__(self, shape, std=1.0):
+  def __init__(self, shape=(), std=1.0):
     """Initializes Gaussian distribution.
 
     Args:
@@ -124,7 +131,7 @@ class Gaussian(Distribution):
 
   @property
   def n_inputs(self):
-    return np.prod(self._shape)
+    return np.prod(self._shape, dtype=np.int32)
 
   def sample(self, inputs):
     return onp.random.normal(

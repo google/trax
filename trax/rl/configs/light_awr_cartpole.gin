@@ -17,17 +17,19 @@ import trax.models
 import trax.optimizers
 import trax.rl
 
+# Parameters for Policy:
+# ==============================================================================
+Policy.body = @trax.models.PureMLP
+
+# Parameters for Value:
+# ==============================================================================
+Value.body = @trax.models.PureMLP
+
 # Parameters for PureMLP:
 # ==============================================================================
 PureMLP.flatten = False
-PureMLP.hidden_dims = (128, 1)
-
-# Parameters for MLP:
-# ==============================================================================
-MLP.d_hidden = 128
-MLP.n_hidden_layers = 1
-MLP.n_output_classes = 2
-MLP.flatten = False
+PureMLP.hidden_dims = (128,)
+PureMLP.out_activation = True
 
 # Parameters for MultifactorSchedule:
 # ==============================================================================
@@ -45,12 +47,12 @@ RLTask.max_steps = 200
 
 # Parameters for AWRTrainer:
 # ==============================================================================
-AWRTrainer.value_model = @trax.models.PureMLP
+AWRTrainer.value_model = @trax.models.Value
 AWRTrainer.value_optimizer = @trax.optimizers.Adam
 AWRTrainer.value_batch_size = 32
 AWRTrainer.value_train_steps_per_epoch = 1000
 AWRTrainer.value_lr_schedule = @value/MultifactorSchedule
-AWRTrainer.policy_model = @trax.models.MLP
+AWRTrainer.policy_model = @trax.models.Policy
 AWRTrainer.policy_optimizer = @trax.optimizers.Adam
 AWRTrainer.policy_batch_size = 32
 AWRTrainer.policy_train_steps_per_epoch = 1000

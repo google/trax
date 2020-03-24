@@ -23,7 +23,12 @@ from trax import layers as tl
 
 
 def PureMLP(
-    hidden_dims=(128, 64), activation_fn=tl.Relu, flatten=True, mode='train'):
+    hidden_dims=(128, 64),
+    activation_fn=tl.Relu,
+    out_activation=False,
+    flatten=True,
+    mode='train',
+):
   """A multi-layer feedforward (perceptron) network."""
   del mode
 
@@ -32,8 +37,9 @@ def PureMLP(
     layers.append(tl.Dense(hidden_dim))
     layers.append(activation_fn())
 
-  # Don't need the last activation.
-  layers.pop()
+  if not out_activation:
+    # Don't need the last activation.
+    layers.pop()
 
   return tl.Serial(
       [tl.Flatten()] if flatten else [],

@@ -16,6 +16,8 @@
 # Lint as: python3
 """Classes for RL training in Trax."""
 
+import functools
+
 from trax import layers as tl
 from trax import lr_schedules as lr
 from trax import supervised
@@ -27,7 +29,7 @@ from trax.rl import training as rl_training
 class ActorCriticJointTrainer(rl_training.RLTrainer):
   """Trains a joint policy-and-value model using actor-critic methods."""
 
-  def __init__(self, task, shared_model=None, policy_top=None, value_top=None,
+  def __init__(self, task, joint_model=None,
                optimizer=None, lr_schedule=lr.MultifactorSchedule,
                batch_size=64, train_steps_per_epoch=500, collect_per_epoch=50,
                max_slice_length=1, output_dir=None):
@@ -35,9 +37,7 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
 
     Args:
       task: RLTask instance, which defines the environment to train on.
-      shared_model: Trax layer, representing the shared part of the model.
-      policy_top: Trax layer, the top part over the shared model for policy.
-      value_top: Trax layer, the top part over the shared model for value.
+      joint_model: Trax layer, representing the joint policy and value model.
       optimizer: the optimizer to use to train the joint model.
       lr_schedule: learning rate schedule to use to train the joint model/.
       batch_size: batch size used to train the joint model.
@@ -58,11 +58,10 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
     self._inputs = supervised.Inputs(
         train_stream=lambda _: self.batches_stream())
 
-    # Joint model is created by running both policy_top and value_top on top
-    # of the shared model part.
-    def joint_model(mode):
-      return tl.Serial(shared_model(mode=mode),
-                       tl.Branch(policy_top(mode=mode), value_top(mode=mode)))
+    joint_model = functools.partial(
+        joint_model,
+        policy_distribution=self._policy_dist,
+    )
 
     # This is the joint Trainer that will be used to train the policy model.
     # * inputs to the trainer come from self.batches_stream

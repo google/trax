@@ -16,10 +16,13 @@
 # Lint as: python3
 """Tests for RL training."""
 
+import functools
+
 from absl.testing import absltest
 
 from trax import layers as tl
 from trax import lr_schedules
+from trax import models
 from trax import optimizers as opt
 from trax.rl import actor_critic_joint
 from trax.rl import task as rl_task
@@ -31,16 +34,15 @@ class ActorCriticJointTest(absltest.TestCase):
     """Test-runs joint AWR on cartpole."""
     task = rl_task.RLTask('CartPole-v0', initial_trajectories=1000,
                           max_steps=200)
-    shared_model = lambda mode: tl.Serial(tl.Dense(64), tl.Relu())
-    policy_top = lambda mode: tl.Serial(tl.Dense(2), tl.LogSoftmax())
-    value_top = lambda mode: tl.Dense(1)
+    model = functools.partial(
+        models.PolicyAndValue,
+        body=lambda mode: tl.Serial(tl.Dense(64), tl.Relu()),
+    )
     lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
         h, constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
     trainer = actor_critic_joint.AWRJointTrainer(
         task,
-        shared_model=shared_model,
-        policy_top=policy_top,
-        value_top=value_top,
+        joint_model=model,
         optimizer=opt.Adam,
         lr_schedule=lr,
         batch_size=32,

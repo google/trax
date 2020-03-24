@@ -16,10 +16,13 @@
 # Lint as: python3
 """Tests for RL training."""
 
+import functools
+
 from absl.testing import absltest
 
 from trax import layers as tl
 from trax import lr_schedules
+from trax import models
 from trax import optimizers as opt
 from trax.rl import actor_critic
 from trax.rl import task as rl_task
@@ -31,10 +34,9 @@ class ActorCriticTest(absltest.TestCase):
     """Test-runs AWR on cartpole."""
     task = rl_task.RLTask('CartPole-v0', initial_trajectories=1000,
                           max_steps=200)
-    policy_model = lambda mode: tl.Serial(  # pylint: disable=g-long-lambda
-        tl.Dense(64), tl.Relu(), tl.Dense(2), tl.LogSoftmax())
-    value_model = lambda mode: tl.Serial(  # pylint: disable=g-long-lambda
-        tl.Dense(64), tl.Relu(), tl.Dense(1))
+    body = lambda mode: tl.Serial(tl.Dense(64), tl.Relu())
+    policy_model = functools.partial(models.Policy, body=body)
+    value_model = functools.partial(models.Value, body=body)
     lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
         h, constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
     trainer = actor_critic.AWRTrainer(
@@ -60,10 +62,9 @@ class ActorCriticTest(absltest.TestCase):
     """Test-runs AWR on cartpole with shared layers."""
     task = rl_task.RLTask('CartPole-v0', initial_trajectories=1000,
                           max_steps=200)
-    policy_model = lambda mode: tl.Serial(  # pylint: disable=g-long-lambda
-        tl.Dense(64), tl.Relu(), tl.Dense(2), tl.LogSoftmax())
-    value_model = lambda mode: tl.Serial(  # pylint: disable=g-long-lambda
-        tl.Dense(64), tl.Relu(), tl.Dense(1))
+    body = lambda mode: tl.Serial(tl.Dense(64), tl.Relu())
+    policy_model = functools.partial(models.Policy, body=body)
+    value_model = functools.partial(models.Value, body=body)
     lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
         h, constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
     trainer = actor_critic.AWRTrainer(
@@ -89,10 +90,9 @@ class ActorCriticTest(absltest.TestCase):
     """Test-runs a2c on cartpole."""
     task = rl_task.RLTask('CartPole-v0', initial_trajectories=1,
                           max_steps=2)
-    policy_model = lambda mode: tl.Serial(  # pylint: disable=g-long-lambda
-        tl.Dense(64), tl.Relu(), tl.Dense(2), tl.LogSoftmax())
-    value_model = lambda mode: tl.Serial(  # pylint: disable=g-long-lambda
-        tl.Dense(64), tl.Relu(), tl.Dense(1))
+    body = lambda mode: tl.Serial(tl.Dense(64), tl.Relu())
+    policy_model = functools.partial(models.Policy, body=body)
+    value_model = functools.partial(models.Value, body=body)
     lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
         h, constant=1e-4, warmup_steps=100, factors='constant * linear_warmup')
     trainer = actor_critic.AdvantageActorCriticTrainer(
@@ -118,18 +118,14 @@ class ActorCriticTest(absltest.TestCase):
     task = rl_task.RLTask(
         'CartPole-v1', initial_trajectories=750, max_steps=200)
 
-    policy_model = lambda mode: tl.Serial(  # pylint: disable=g-long-lambda
-        tl.Dense(64),
-        tl.Relu(),
-        tl.Dense(2),
-        tl.LogSoftmax())
-
     lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
         h, constant=1e-3,
         warmup_steps=100,
         factors='constant * linear_warmup')
 
-    value_model = lambda mode: tl.Serial(tl.Dense(64), tl.Relu(), tl.Dense(1))
+    body = lambda mode: tl.Serial(tl.Dense(64), tl.Relu())
+    policy_model = functools.partial(models.Policy, body=body)
+    value_model = functools.partial(models.Value, body=body)
     trainer = actor_critic.PPOTrainer(
         task,
         n_shared_layers=1,
@@ -154,18 +150,15 @@ class ActorCriticTest(absltest.TestCase):
     task = rl_task.RLTask(
         'CartPole-v1', initial_trajectories=750, max_steps=200)
 
-    policy_model = lambda mode: tl.Serial(  # pylint: disable=g-long-lambda
-        tl.Dense(64),
-        tl.Relu(),
-        tl.Dense(2),
-        tl.LogSoftmax())
+    body = lambda mode: tl.Serial(tl.Dense(64), tl.Relu())
+    policy_model = functools.partial(models.Policy, body=body)
+    value_model = functools.partial(models.Value, body=body)
 
     lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
         h, constant=1e-3,
         warmup_steps=100,
         factors='constant * linear_warmup')
 
-    value_model = lambda mode: tl.Serial(tl.Dense(64), tl.Relu(), tl.Dense(1))
     trainer = actor_critic.DirectAdvantageActorCriticTrainer(
         task,
         n_shared_layers=1,

@@ -150,6 +150,11 @@ class PolicyTrainer(RLTrainer):
     self._policy_inputs = supervised.Inputs(
         train_stream=lambda _: self.policy_batches_stream())
 
+    policy_model = functools.partial(
+        policy_model,
+        policy_distribution=self._policy_dist,
+    )
+
     # This is the policy Trainer that will be used to train the policy model.
     # * inputs to the trainer come from self.policy_batches_stream
     # * we are using has_weights=True to allow inputs to set weights

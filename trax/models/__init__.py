@@ -25,6 +25,7 @@ from trax.models import atari_cnn
 from trax.models import mlp
 from trax.models import neural_gpu
 from trax.models import resnet
+from trax.models import rl
 from trax.models import rnn
 from trax.models import transformer
 from trax.models.reformer import reformer
@@ -59,6 +60,9 @@ TransformerDecoder = model_configure(transformer.TransformerDecoder)
 TransformerEncoder = model_configure(transformer.TransformerEncoder)
 TransformerLM = model_configure(transformer.TransformerLM)
 WideResnet = model_configure(resnet.WideResnet)
+Policy = model_configure(rl.Policy)
+PolicyAndValue = model_configure(rl.PolicyAndValue)
+Value = model_configure(rl.Value)
 RNNLM = model_configure(rnn.RNNLM)
 PositionLookupTransformerLM = model_configure(
     position_lookup_transformer.PositionLookupTransformerLM)
