@@ -13,11 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Simple net for playing Atari games using PPO."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from trax import layers as tl
 

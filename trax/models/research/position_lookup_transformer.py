@@ -13,11 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# python3
+# Lint as: python3
 """Deep Lookups for Transformer Positions."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import numpy as onp
 
