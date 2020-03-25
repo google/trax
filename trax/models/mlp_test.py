@@ -13,11 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Tests for MLP."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from absl.testing import absltest
 from trax import layers as tl
@@ -31,7 +28,7 @@ class MLPTest(absltest.TestCase):
   def test_pure_mlp_forward_shape(self):
     """Run the PureMLP model forward and check output shape."""
     input_signature = ShapeDtype((7, 28, 28, 3))
-    model = mlp.PureMLP(hidden_dims=(32, 16, 8))
+    model = mlp.PureMLP(layer_widths=(32, 16, 8))
     final_shape = tl.check_shape_agreement(model, input_signature)
     self.assertEqual((7, 8), final_shape)
 

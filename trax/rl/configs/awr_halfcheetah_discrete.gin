@@ -17,7 +17,7 @@ import trax.rl.trainers
 
 # Parameters for AwrNet:
 # ==============================================================================
-PureMLP.hidden_dims = (128, 64)
+PureMLP.layer_widths = (128, 64)
 
 # Parameters for AwrTrainer:
 # ==============================================================================
