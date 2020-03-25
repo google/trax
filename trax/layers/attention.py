@@ -107,7 +107,14 @@ class PositionalEncoding(base.Layer):
       # This positional encoding layer needs to store the index of the current
       # position then and increment it on each call -- that's how state is used
       # and updated below.
-      return (inputs + np.expand_dims(weights[0, state, :], 1), state + 1)
+      if inputs.shape[1] == 1:
+        return (inputs + np.expand_dims(weights[0, state, :], 1), state + 1)
+      else:
+        emb = []
+        for i in range(inputs.shape[0]):
+          emb.append(jax.lax.dynamic_slice_in_dim(
+              weights[0], state[i], inputs.shape[1], axis=0))
+        return inputs + np.stack(emb, 0), state + inputs.shape[1]
 
   def new_weights_and_state(self, input_signature):
     d_feature = input_signature.shape[-1]
