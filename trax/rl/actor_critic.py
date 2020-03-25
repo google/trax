@@ -82,7 +82,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
     # Initialize training of the value function.
     value_output_dir = kwargs.get('output_dir', None)
     if value_output_dir is not None:
-      value_output_dir = os.path.join(value_output_dir, '/value')
+      value_output_dir = os.path.join(value_output_dir, 'value')
     self._value_inputs = supervised.Inputs(
         train_stream=lambda _: self.value_batches_stream())
     self._value_trainer = supervised.Trainer(
