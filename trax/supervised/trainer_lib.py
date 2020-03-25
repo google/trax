@@ -166,13 +166,13 @@ class Trainer(object):
                                             id_to_mask=self._id_to_mask)
                       for m in self._metrics]
     metrics_in_parallel = tl.Branch(*metrics_layers)
-    # TODO(lukaszkaiser): clean this up once layer API stabilizes.
-    # For now, we need to initialize metric layers somehow, so here we go.
-    # We assume that they do not have any parameters, so this is a dummy.
-    dummy_shapes = ((1, 2), (1,), (1,)) if self._has_weights else ((1, 2), (1,))
-    dummy_signature = tuple(ShapeDtype(s) for s in dummy_shapes)
     metrics_in_parallel._set_rng_recursive(init_rng)  # pylint: disable=protected-access
-    m_weights, m_state = metrics_in_parallel.init(dummy_signature)
+    example_signature = tuple(
+        ShapeDtype(s, d) for (s, d) in zip(*self._inputs.example_shape_dtype)
+    )
+    model_predict_eval.init(example_signature)
+    output_signature = model_predict_eval.output_signature(example_signature)
+    m_weights, m_state = metrics_in_parallel.init(output_signature)
     self._metrics_weights = self._for_n_devices(m_weights)
     self._metrics_state = self._for_n_devices(m_state)
 
