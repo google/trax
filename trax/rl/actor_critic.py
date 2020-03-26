@@ -261,7 +261,7 @@ def PPOLoss(x, distribution, epsilon, **unused_kwargs):
   unclipped_objective = probs_ratio * advantages
   clipped_objective = jnp.clip(probs_ratio,
                                1 - epsilon,
-                               1 + epsilon)
+                               1 + epsilon) * advantages
   ppo_objective = jnp.minimum(unclipped_objective, clipped_objective)
 
   return -ppo_objective.mean()
