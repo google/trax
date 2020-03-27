@@ -22,6 +22,7 @@ import gym
 import numpy as np
 
 
+
 class _TimeStep(object):
   """A single step of interaction with a RL environment.
 
@@ -139,15 +140,19 @@ class Trajectory(object):
         logps.append(logp)
         rewards.append(rew)
         returns.append(ret)
-    return TrajectoryNp(np.stack(observations, axis=0),
-                        np.stack(actions, axis=0),
-                        np.stack(logps, axis=0),
-                        np.stack(rewards, axis=0),
-                        np.stack(returns, axis=0),
+    def stack(x):
+      if not x:
+        return None
+      return np.stack(x, axis=0)
+    return TrajectoryNp(stack(observations),
+                        stack(actions),
+                        stack(logps),
+                        stack(rewards),
+                        stack(returns),
                         None)
 
 
-def play(env, policy, max_steps=None):
+def play(env, policy, dm_suite=False, max_steps=None):
   """Play an episode in env taking actions according to the given policy.
 
   Environment is first reset and an from then on, a game proceeds. At each
@@ -156,10 +161,12 @@ def play(env, policy, max_steps=None):
   finished, which is either when env returns `done` or max_steps is reached.
 
   Args:
-    env: the environment to play in, conforming to gym.Env interface.
+    env: the environment to play in, conforming to gym.Env or
+      DeepMind suite interfaces.
     policy: a function taking a Trajectory and returning a pair consisting
       of an action (int or float) and the confidence in that action (float,
       defined as the log of the probability of taking that action).
+    dm_suite: whether we are using the DeepMind suite or the gym interface
     max_steps: for how many steps to play.
 
   Returns:
@@ -167,12 +174,24 @@ def play(env, policy, max_steps=None):
   """
   terminal = False
   cur_step = 0
-  cur_trajectory = Trajectory(env.reset())
-  while not terminal and (max_steps is None or cur_step < max_steps):
-    action, log_prob = policy(cur_trajectory)
-    observation, reward, terminal, _ = env.step(action)
-    cur_trajectory.extend(action, log_prob, reward, observation)
-    cur_step += 1
+  if dm_suite:
+    cur_trajectory = Trajectory(env.reset().observation)
+    while not terminal and (max_steps is None or cur_step < max_steps):
+      action, log_prob = policy(cur_trajectory)
+      observation = env.step(action)
+      cur_trajectory.extend(action, log_prob,
+                            observation.reward,
+                            observation.observation)
+                            # observation.observation.squeeze())
+      cur_step += 1
+      terminal = observation.step_type.last()
+  else:
+    cur_trajectory = Trajectory(env.reset())
+    while not terminal and (max_steps is None or cur_step < max_steps):
+      action, log_prob = policy(cur_trajectory)
+      observation, reward, terminal, _ = env.step(action)
+      cur_trajectory.extend(action, log_prob, reward, observation)
+      cur_step += 1
   return cur_trajectory
 
 
@@ -214,7 +233,7 @@ class RLTask:
   """A RL task: environment and a collection of trajectories."""
 
   def __init__(self, env=gin.REQUIRED, initial_trajectories=1, gamma=0.99,
-               max_steps=None, timestep_to_np=None):
+               dm_suite=False, max_steps=None, timestep_to_np=None):
     r"""Configures a RL task.
 
     Args:
@@ -224,6 +243,7 @@ class RLTask:
         at start or an int, in which case that many trajectories are
         collected using a random policy to play in env.
       gamma: float: discount factor for calculating returns.
+      dm_suite: whether we are using the DeepMind suite or the gym interface
       max_steps: Optional int: stop all trajectories at that many steps.
       timestep_to_np: a function that turns a timestep into a numpy array
         (ie., a tensor); if None, we just use the state of the timestep to
@@ -232,8 +252,19 @@ class RLTask:
 
     """
     if isinstance(env, str):
-      env = gym.make(env)
+      if dm_suite:
+        env = environments.load_from_settings(
+            platform='atari',
+            settings={
+                'levelName': env,
+                'interleaved_pixels': True,
+                'zero_indexed_actions': True
+            })
+        env = atari_wrapper.AtariWrapper(environment=env, num_stacked_frames=1)
+      else:
+        env = gym.make(env)
     self._env = env
+    self._dm_suite = dm_suite
     self._max_steps = max_steps
     self._gamma = gamma
     # TODO(lukaszkaiser): find a better way to pass initial trajectories,
@@ -264,12 +295,25 @@ class RLTask:
     return self._gamma
 
   @property
+  def action_space(self):
+    if self._dm_suite:
+      return gym.spaces.Discrete(self.n_actions)
+    else:
+      return self._env.action_space
+
+  @property
   def n_actions(self):
-    return self._env.action_space.n
+    if self._dm_suite:
+      return self._env.action_spec().num_values
+    else:
+      return self._env.action_space.n
 
   @property
   def observation_shape(self):
-    return self._env.observation_space.shape
+    if self._dm_suite:
+      return self._env.observation_spec().shape
+    else:
+      return self._env.observation_space.shape
 
   @property
   def trajectories(self):
@@ -285,7 +329,7 @@ class RLTask:
 
   def play(self, policy):
     """Play an episode in env taking actions according to the given policy."""
-    cur_trajectory = play(self._env, policy, self._max_steps)
+    cur_trajectory = play(self._env, policy, self._dm_suite, self._max_steps)
     cur_trajectory.calculate_returns(self._gamma)
     return cur_trajectory
 
@@ -398,6 +442,9 @@ class RLTask:
         # [batch_size, trajectory_length-1], which we call [B, L-1].
         # Observations are more complex and will usuall be [B, L] + S where S
         # is the shape of the observation space (self.observation_shape).
-        yield TrajectoryNp(pad(obs), pad(act), pad(logp), pad(rew), pad(ret),
-                           pad([np.ones_like(a) for a in act]))
+        # yield TrajectoryNp(pad(obs), pad(act), pad(logp), pad(rew), pad(ret),
+        #                    pad([np.ones_like(a) for a in act]))
+        yield TrajectoryNp(
+            pad(obs), pad(act), pad(logp), pad(rew), pad(ret),
+            pad([np.ones(a.shape[:1]) for a in act]))
         cur_batch = []

@@ -19,6 +19,7 @@
 import functools
 import os
 import numpy as np
+import tensorflow as tf
 
 from trax import layers as tl
 from trax import lr_schedules as lr
@@ -82,7 +83,10 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
     # Initialize training of the value function.
     value_output_dir = kwargs.get('output_dir', None)
     if value_output_dir is not None:
-      value_output_dir = os.path.join(value_output_dir, '/value')
+      value_output_dir = os.path.join(value_output_dir, '/tmp/value')
+      # If needed, create value_output_dir and missing parent directories.
+      if not tf.io.gfile.isdir(value_output_dir):
+        tf.io.gfile.makedirs(value_output_dir)
     self._value_inputs = supervised.Inputs(
         train_stream=lambda _: self.value_batches_stream())
     self._value_trainer = supervised.Trainer(
@@ -275,7 +279,7 @@ class PPOTrainer(ActorCriticTrainer):
 
   on_policy = True
 
-  def __init__(self, task, epsilon=0.1, **kwargs):
+  def __init__(self, task, epsilon=0.2, **kwargs):
     """Configures the PPO Trainer."""
     self._epsilon = epsilon
     super(PPOTrainer, self).__init__(task, **kwargs)

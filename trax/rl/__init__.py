@@ -54,5 +54,9 @@ onlinetune_reward_fn = configure_rl(simulated_env_problem.onlinetune_reward_fn)
 
 PolicyGradientTrainer = configure_rl(
     training.PolicyGradientTrainer, blacklist=['task', 'output_dir'])
+ActorCriticTrainer = configure_rl(
+    actor_critic.ActorCriticTrainer, blacklist=['task'])
 AWRTrainer = configure_rl(
     actor_critic.AWRTrainer, blacklist=['task', 'output_dir'])
+PPOTrainer = configure_rl(
+    actor_critic.PPOTrainer, blacklist=['task', 'output_dir'])

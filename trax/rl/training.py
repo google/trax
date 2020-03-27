@@ -144,7 +144,7 @@ class PolicyTrainer(RLTrainer):
     self._policy_train_steps_per_epoch = policy_train_steps_per_epoch
     self._collect_per_epoch = collect_per_epoch
     self._max_slice_length = max_slice_length
-    self._policy_dist = distributions.create_distribution(task.env.action_space)
+    self._policy_dist = distributions.create_distribution(task.action_space)
 
     # Inputs to the policy model are produced by self._policy_batches_stream.
     self._policy_inputs = supervised.Inputs(
@@ -185,7 +185,11 @@ class PolicyTrainer(RLTrainer):
     """Chooses an action to play after a trajectory."""
     model = self._policy_eval_model
     model.weights = self._policy_trainer.model_weights
-    pred = model(trajectory.last_observation[None, ...], n_accelerators=1)[0]
+    trajectory_np = trajectory.to_np(timestep_to_np=self.task.timestep_to_np)
+    # Add batch dimension to trajectory_np and run the model.
+    pred = model(trajectory_np.observations[None, ...], n_accelerators=1)
+    # Pick element 0 from the batch (the only one), last (current) timestep.
+    pred = pred[0, -1, :]
     sample = self._policy_dist.sample(pred)
     return (sample, self._policy_dist.log_prob(pred, sample))
 

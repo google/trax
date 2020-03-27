@@ -42,6 +42,7 @@ def model_configure(*args, **kwargs):
 
 # pylint: disable=invalid-name
 AtariCnn = model_configure(atari_cnn.AtariCnn)
+AtariCnnBody = model_configure(atari_cnn.AtariCnnBody)
 FrameStackMLP = model_configure(atari_cnn.FrameStackMLP)
 BERT = model_configure(bert.BERT)
 BERTClassifierHead = model_configure(bert.BERTClassifierHead)
