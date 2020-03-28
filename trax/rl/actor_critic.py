@@ -83,7 +83,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
     # Initialize training of the value function.
     value_output_dir = kwargs.get('output_dir', None)
     if value_output_dir is not None:
-      value_output_dir = os.path.join(value_output_dir, '/tmp/value')
+      value_output_dir = os.path.join(value_output_dir, 'value')
       # If needed, create value_output_dir and missing parent directories.
       if not tf.io.gfile.isdir(value_output_dir):
         tf.io.gfile.makedirs(value_output_dir)

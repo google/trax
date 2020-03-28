@@ -66,4 +66,4 @@ AWRTrainer.max_slice_length = 1
 # ==============================================================================
 train_rl.light_rl = True
 train_rl.light_rl_trainer = @trax.rl.AWRTrainer
-train_rl.n_epochs = 1
+train_rl.n_epochs = 5
