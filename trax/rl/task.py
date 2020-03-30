@@ -22,7 +22,6 @@ import gym
 import numpy as np
 
 
-
 class _TimeStep(object):
   """A single step of interaction with a RL environment.
 
@@ -182,7 +181,6 @@ def play(env, policy, dm_suite=False, max_steps=None):
       cur_trajectory.extend(action, log_prob,
                             observation.reward,
                             observation.observation)
-                            # observation.observation.squeeze())
       cur_step += 1
       terminal = observation.step_type.last()
   else:
