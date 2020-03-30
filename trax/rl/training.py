@@ -185,13 +185,15 @@ class PolicyTrainer(RLTrainer):
     """Chooses an action to play after a trajectory."""
     model = self._policy_eval_model
     model.weights = self._policy_trainer.model_weights
-    trajectory_np = trajectory.to_np(timestep_to_np=self.task.timestep_to_np)
+    tr_slice = trajectory[-self._max_slice_length:]
+    trajectory_np = tr_slice.to_np(timestep_to_np=self.task.timestep_to_np)
     # Add batch dimension to trajectory_np and run the model.
     pred = model(trajectory_np.observations[None, ...], n_accelerators=1)
     # Pick element 0 from the batch (the only one), last (current) timestep.
     pred = pred[0, -1, :]
     sample = self._policy_dist.sample(pred)
-    return (sample, self._policy_dist.log_prob(pred, sample))
+    log_prob = self._policy_dist.log_prob(pred, sample)
+    return (sample.copy(), log_prob.copy())
 
   def train_epoch(self):
     """Trains RL for one epoch."""

@@ -30,6 +30,64 @@ from trax.rl import task as rl_task
 
 class ActorCriticTest(absltest.TestCase):
 
+  def test_sanity_a2ctrainer_cartpole(self):
+    """Test-runs a2c on cartpole."""
+    task = rl_task.RLTask('CartPole-v0', initial_trajectories=1,
+                          max_steps=2)
+    body = lambda mode: tl.Serial(tl.Dense(64), tl.Relu())
+    policy_model = functools.partial(models.Policy, body=body)
+    value_model = functools.partial(models.Value, body=body)
+    lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
+        h, constant=1e-4, warmup_steps=100, factors='constant * linear_warmup')
+    trainer = actor_critic.A2CTrainer(
+        task,
+        n_shared_layers=1,
+        value_model=value_model,
+        value_optimizer=opt.Adam,
+        value_lr_schedule=lr,
+        value_batch_size=2,
+        value_train_steps_per_epoch=2,
+        policy_model=policy_model,
+        policy_optimizer=opt.Adam,
+        policy_lr_schedule=lr,
+        policy_batch_size=2,
+        policy_train_steps_per_epoch=2,
+        collect_per_epoch=2)
+    trainer.run(2)
+    self.assertEqual(2, trainer.current_epoch)
+
+  def test_sanity_ppo_cartpole(self):
+    """Run PPO and check whether it correctly runs for 2 epochs.s."""
+
+    task = rl_task.RLTask(
+        'CartPole-v1', initial_trajectories=750, max_steps=200)
+
+    lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
+        h, constant=1e-3,
+        warmup_steps=100,
+        factors='constant * linear_warmup')
+
+    body = lambda mode: tl.Serial(tl.Dense(64), tl.Relu())
+    policy_model = functools.partial(models.Policy, body=body)
+    value_model = functools.partial(models.Value, body=body)
+    trainer = actor_critic.PPOTrainer(
+        task,
+        n_shared_layers=1,
+        value_model=value_model,
+        value_optimizer=opt.Adam,
+        value_lr_schedule=lr,
+        value_batch_size=128,
+        value_train_steps_per_epoch=10,
+        policy_model=policy_model,
+        policy_optimizer=opt.Adam,
+        policy_lr_schedule=lr,
+        policy_batch_size=128,
+        policy_train_steps_per_epoch=10,
+        collect_per_epoch=10)
+
+    trainer.run(2)
+    self.assertEqual(2, trainer.current_epoch)
+
   def test_awrtrainer_cartpole(self):
     """Test-runs AWR on cartpole."""
     task = rl_task.RLTask('CartPole-v0', initial_trajectories=1000,
@@ -86,96 +144,6 @@ class ActorCriticTest(absltest.TestCase):
     self.assertEqual(1, trainer.current_epoch)
     self.assertGreater(trainer.avg_returns[-1], 50.0)
 
-  def test_sanity_a2ctrainer_cartpole(self):
-    """Test-runs a2c on cartpole."""
-    task = rl_task.RLTask('CartPole-v0', initial_trajectories=1,
-                          max_steps=2)
-    body = lambda mode: tl.Serial(tl.Dense(64), tl.Relu())
-    policy_model = functools.partial(models.Policy, body=body)
-    value_model = functools.partial(models.Value, body=body)
-    lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
-        h, constant=1e-4, warmup_steps=100, factors='constant * linear_warmup')
-    trainer = actor_critic.AdvantageActorCriticTrainer(
-        task,
-        n_shared_layers=1,
-        value_model=value_model,
-        value_optimizer=opt.Adam,
-        value_lr_schedule=lr,
-        value_batch_size=2,
-        value_train_steps_per_epoch=2,
-        policy_model=policy_model,
-        policy_optimizer=opt.Adam,
-        policy_lr_schedule=lr,
-        policy_batch_size=2,
-        policy_train_steps_per_epoch=2,
-        collect_per_epoch=2)
-    trainer.run(2)
-    self.assertEqual(2, trainer.current_epoch)
-
-  def test_sanity_ppo_cartpole(self):
-    """Run PPO and check whether it correctly runs for 2 epochs.s."""
-
-    task = rl_task.RLTask(
-        'CartPole-v1', initial_trajectories=750, max_steps=200)
-
-    lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
-        h, constant=1e-3,
-        warmup_steps=100,
-        factors='constant * linear_warmup')
-
-    body = lambda mode: tl.Serial(tl.Dense(64), tl.Relu())
-    policy_model = functools.partial(models.Policy, body=body)
-    value_model = functools.partial(models.Value, body=body)
-    trainer = actor_critic.PPOTrainer(
-        task,
-        n_shared_layers=1,
-        value_model=value_model,
-        value_optimizer=opt.Adam,
-        value_lr_schedule=lr,
-        value_batch_size=128,
-        value_train_steps_per_epoch=10,
-        policy_model=policy_model,
-        policy_optimizer=opt.Adam,
-        policy_lr_schedule=lr,
-        policy_batch_size=128,
-        policy_train_steps_per_epoch=10,
-        collect_per_epoch=10)
-
-    trainer.run(2)
-    self.assertEqual(2, trainer.current_epoch)
-
-  def test_direct_a2c_cartpole(self):
-    """Run a2c and check whether it correctly runs for 2 epochs."""
-
-    task = rl_task.RLTask(
-        'CartPole-v1', initial_trajectories=750, max_steps=200)
-
-    body = lambda mode: tl.Serial(tl.Dense(64), tl.Relu())
-    policy_model = functools.partial(models.Policy, body=body)
-    value_model = functools.partial(models.Value, body=body)
-
-    lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
-        h, constant=1e-3,
-        warmup_steps=100,
-        factors='constant * linear_warmup')
-
-    trainer = actor_critic.DirectAdvantageActorCriticTrainer(
-        task,
-        n_shared_layers=1,
-        value_model=value_model,
-        value_optimizer=opt.Adam,
-        value_lr_schedule=lr,
-        value_batch_size=128,
-        value_train_steps_per_epoch=10,
-        policy_model=policy_model,
-        policy_optimizer=opt.Adam,
-        policy_lr_schedule=lr,
-        policy_batch_size=128,
-        policy_train_steps_per_epoch=10,
-        collect_per_epoch=10)
-
-    trainer.run(2)
-    self.assertEqual(2, trainer.current_epoch)
 
 if __name__ == '__main__':
   absltest.main()

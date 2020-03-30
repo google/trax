@@ -27,7 +27,6 @@ from trax import shapes
 from trax import supervised
 from trax.math import numpy as jnp
 from trax.rl import computation_utils
-from trax.rl import distributions
 from trax.rl import training as rl_training
 
 
@@ -184,72 +183,53 @@ def _copy_model_weights(start, end, from_trainer, to_trainer,  # pylint: disable
     # pylint: enable=protected-access
 
 
-class AWRTrainer(ActorCriticTrainer):
-  """Trains policy and value models using AWR."""
+### Implementations of common actor-critic algorithms.
 
-  on_policy = False
 
-  def __init__(self, task, beta=1.0, w_max=20.0, **kwargs):
-    """Configures the AWR Trainer."""
-    self._beta = beta
-    self._w_max = w_max
-    super(AWRTrainer, self).__init__(task, **kwargs)
+# A2C is one of the most basic actor-critic RL algorithms.
+@tl.layer(n_in=4, n_out=1)
+def A2CLoss(x, log_prob_fn, **unused_kwargs):
+  """Definition of the Advantage Actor Critic (A2C) loss."""
+  (predictions, actions, advantages, old_log_probs) = x
+  del old_log_probs  # Not used in A2C.
+  action_log_probs = log_prob_fn(predictions, actions)
+  return -(action_log_probs * advantages).mean()
+
+
+class A2CTrainer(ActorCriticTrainer):
+  """Trains policy and value models using the A2C algortithm."""
+
+  on_policy = True
 
   def policy_inputs(self, trajectory, values):
     """Create inputs to policy model from a TrajectoryNp and values."""
     # How much TD to use is determined by the added policy slice length,
     # as the policy batches need to be this much longer to calculate TD.
     td = self._added_policy_slice_length
-    advantage = computation_utils.calculate_advantage(
+    advantages = computation_utils.calculate_advantage(
         trajectory.rewards, trajectory.returns, values, self._task.gamma, td)
-    awr_weights = np.minimum(np.exp(advantage / self._beta), self._w_max)
-    # Observations should be the same length as awr_weights - so if we are
-    # using td_advantage, we need to cut td-man out from the end.
+    # Observations should be the same length as advantages - so if we are
+    # using td_advantage, we need to cut td-many out from the end.
     obs = trajectory.observations
     obs = obs[:, :-td] if td > 0 else obs
     act = trajectory.actions
     act = act[:, :-td] if td > 0 else act
-    assert len(awr_weights.shape) == 2  # [batch_size, length]
-    assert act.shape[0:2] == awr_weights.shape
-    assert obs.shape[0:2] == awr_weights.shape
-    return (obs, act, awr_weights)
+    old_logps = trajectory.log_probs
+    old_logps = old_logps[:, :-td] if td > 0 else old_logps
+    assert len(advantages.shape) == 2  # [batch_size, length]
+    assert act.shape[0:2] == advantages.shape
+    assert obs.shape[0:2] == advantages.shape
+    assert old_logps.shape == advantages.shape
+    return (obs, act, advantages, old_logps)
 
   @property
   def policy_loss(self):
     """Policy loss."""
     return functools.partial(
-        distributions.LogLoss, distribution=self._policy_dist)
+        A2CLoss, log_prob_fn=self._policy_dist.log_prob)
 
 
-class AdvantageActorCriticTrainer(ActorCriticTrainer):
-  """The Advantage Actor Critic Algorithm aka A2C.
-
-  Trains policy and value models using the A2C algortithm.
-  """
-
-  on_policy = True
-
-  def __init__(self, task, **kwargs):
-    """Configures the a2c Trainer."""
-    super(AdvantageActorCriticTrainer, self).__init__(task, **kwargs)
-
-  def policy_inputs(self, trajectory, values):
-    """Create inputs to policy model from a TrajectoryNp and values."""
-    td = self._added_policy_slice_length
-    advantage = computation_utils.calculate_advantage(
-        trajectory.rewards, trajectory.returns, values, self._task.gamma, td)
-    return (
-        trajectory.observations,
-        trajectory.actions,
-        advantage)
-
-  @property
-  def policy_loss(self):
-    """Policy loss."""
-    return functools.partial(
-        distributions.LogLoss, distribution=self._policy_dist)
-
-
+# PPO is a widely used actor-critic RL algorithm.
 @tl.layer(n_in=4, n_out=1)
 def PPOLoss(x, distribution, epsilon, **unused_kwargs):
   """Definition of the Proximal Policy Optimization loss."""
@@ -271,83 +251,48 @@ def PPOLoss(x, distribution, epsilon, **unused_kwargs):
   return -ppo_objective.mean()
 
 
-class PPOTrainer(ActorCriticTrainer):
+class PPOTrainer(A2CTrainer):
   """The Proximal Policy Optimization Algorithm aka PPO.
 
   Trains policy and value models using the PPO algortithm.
   """
-
-  on_policy = True
 
   def __init__(self, task, epsilon=0.2, **kwargs):
     """Configures the PPO Trainer."""
     self._epsilon = epsilon
     super(PPOTrainer, self).__init__(task, **kwargs)
 
-  def policy_inputs(self, trajectory, values):
-    """Create inputs to policy model from a TrajectoryNp and values."""
-    td = self._added_policy_slice_length
-    advantage = computation_utils.calculate_advantage(
-        trajectory.rewards, trajectory.returns, values, self._task.gamma, td)
+  @property
+  def policy_loss(self):
+    """Policy loss."""
+    return functools.partial(
+        PPOLoss, distribution=self._policy_dist, epsilon=self._epsilon)
 
-    return (
-        trajectory.observations,
-        trajectory.actions,
-        advantage,
-        trajectory.log_probs)
+
+# AWR is an off-policy actor-critic RL algorithms.
+@tl.layer(n_in=4, n_out=1)
+def AWRLoss(x, beta, w_max, log_prob_fn, **unused_kwargs):
+  """Definition of the Advantage Weighted Regression (AWR) loss."""
+  (predictions, actions, advantages, _) = x
+  action_log_probs = log_prob_fn(predictions, actions)
+  awr_weights = jnp.minimum(jnp.exp(advantages / beta), w_max)
+  return -(action_log_probs * awr_weights).mean()
+
+
+class AWRTrainer(A2CTrainer):
+  """Trains policy and value models using AWR."""
+
+  on_policy = False
+
+  def __init__(self, task, beta=1.0, w_max=20.0, **kwargs):
+    """Configures the AWR Trainer."""
+    self._beta = beta
+    self._w_max = w_max
+    super(AWRTrainer, self).__init__(task, **kwargs)
 
   @property
   def policy_loss(self):
     """Policy loss."""
     return functools.partial(
-        PPOLoss, distribution=self._policy_dist, epsilon=self._epsilon
-    )
-
-
-# The DirectAdvantageActorCriticTrainerLoss and
-# the following DirectAdvantageActorCriticTrainer are
-# intended to show a direct definition of
-# one of the simplest actor-critic losses and trainers.
-@tl.layer(n_in=3, n_out=1)
-def DirectAdvantageActorCriticTrainerLoss(x, **kwargs):
-  """Definition of the Advantage Actor Critic loss."""
-  del kwargs
-  (new_log_probs, actions, advantages) = x
-
-  flat_actions = np.reshape(actions, -1)
-  flat_new_log_probs = np.reshape(new_log_probs, (actions.size, -1))
-  action_probs = flat_new_log_probs[np.arange(actions.size),
-                                    flat_actions.astype(int)]
-  return -(action_probs * advantages).mean()
-
-
-class DirectAdvantageActorCriticTrainer(ActorCriticTrainer):
-  """A direct implementation of AdvantageActorCriticTrainer.
-
-  Trains policy and value models using the A2C algortithm.
-  """
-
-  on_policy = True
-
-  def __init__(self, task, **kwargs):
-    """Configures the A2C Trainer."""
-    super(DirectAdvantageActorCriticTrainer, self).__init__(task, **kwargs)
-    assert isinstance(self._policy_dist, distributions.Categorical), (
-        'This Trainer works only with categorical distributions.'
-    )
-
-  def policy_inputs(self, trajectory, values):
-    """Create inputs to policy model from a TrajectoryNp and values."""
-    td = self._added_policy_slice_length
-    advantage = computation_utils.calculate_advantage(
-        trajectory.rewards, trajectory.returns, values, self._task.gamma, td)
-
-    return (
-        trajectory.observations,
-        trajectory.actions,
-        advantage)
-
-  @property
-  def policy_loss(self):
-    """Policy loss."""
-    return DirectAdvantageActorCriticTrainerLoss
+        AWRLoss, beta=self._beta, w_max=self._w_max,
+        log_prob_fn=self._policy_dist.log_prob)
