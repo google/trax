@@ -106,8 +106,13 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
 
   def value_batches_stream(self):
     """Use the RLTask self._task to create inputs to the value model."""
+    if self.on_policy:
+      epochs = [-1]
+    else:
+      epochs = None
     for np_trajectory in self._task.trajectory_batch_stream(
-        self._value_batch_size, max_slice_length=self._max_slice_length):
+        self._value_batch_size, max_slice_length=self._max_slice_length,
+        epochs=epochs):
       # Insert an extra depth dimension, so the target shape is consistent with
       # the network output shape.
       yield (np_trajectory.observations,         # Inputs to the value model.

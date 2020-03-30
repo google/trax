@@ -116,10 +116,10 @@ class Trajectory(object):
   def _default_timestep_to_np(self, ts):
     """Default way to convert timestep to numpy."""
     if ts.action is None:
-      return (np.array(ts.observation, dtype=np.float32),
+      return (np.array(ts.observation),
               None, None, None, None)
-    return (np.array(ts.observation, dtype=np.float32),
-            np.array(ts.action, dtype=np.int32),
+    return (np.array(ts.observation),
+            np.array(ts.action),
             np.array(ts.log_prob, dtype=np.float32),
             np.array(ts.reward, dtype=np.float32),
             np.array(ts.discounted_return, dtype=np.float32))
@@ -201,8 +201,10 @@ def _zero_pad(x, pad, axis):
                 constant_values=x.dtype.type(0))
 
 
-def _random_policy(n_actions):
-  return lambda _: (np.random.randint(n_actions), np.log(1 / float(n_actions)))
+def _random_policy(action_space):
+  # TODO(pkozakowski): Make returning the log probabilities optional.
+  # Returning 1 as a log probability is a temporary hack.
+  return lambda _: (action_space.sample(), 1.0)
 
 
 def _sample_proportionally(inputs, weights):
@@ -268,7 +270,7 @@ class RLTask:
     # TODO(lukaszkaiser): find a better way to pass initial trajectories,
     # whether they are an explicit list, a file, or a number of random ones.
     if isinstance(initial_trajectories, int):
-      initial_trajectories = [self.play(_random_policy(self.n_actions))
+      initial_trajectories = [self.play(_random_policy(self.action_space))
                               for _ in range(initial_trajectories)]
     if isinstance(initial_trajectories, list):
       initial_trajectories = {0: initial_trajectories}
@@ -295,18 +297,10 @@ class RLTask:
   @property
   def action_space(self):
     if self._dm_suite:
-      return gym.spaces.Discrete(self.n_actions)
+      return gym.spaces.Discrete(self._env.action_spec().num_values)
     else:
       return self._env.action_space
 
-  @property
-  def n_actions(self):
-    if self._dm_suite:
-      return self._env.action_spec().num_values
-    else:
-      return self._env.action_space.n
-
-  @property
   def observation_shape(self):
     if self._dm_suite:
       return self._env.observation_spec().shape
@@ -440,8 +434,6 @@ class RLTask:
         # [batch_size, trajectory_length-1], which we call [B, L-1].
         # Observations are more complex and will usuall be [B, L] + S where S
         # is the shape of the observation space (self.observation_shape).
-        # yield TrajectoryNp(pad(obs), pad(act), pad(logp), pad(rew), pad(ret),
-        #                    pad([np.ones_like(a) for a in act]))
         yield TrajectoryNp(
             pad(obs), pad(act), pad(logp), pad(rew), pad(ret),
             pad([np.ones(a.shape[:1]) for a in act]))
