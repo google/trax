@@ -109,6 +109,11 @@ class RLTrainer:
         self._sw.scalar('rl/avg_return', avg_return, step=self._epoch)
         self._sw.flush()
 
+  def close(self):
+    if self._sw is not None:
+      self._sw.close()
+      self._sw = None
+
 
 class PolicyTrainer(RLTrainer):
   """Trainer that uses a deep learning model for policy.
@@ -198,6 +203,10 @@ class PolicyTrainer(RLTrainer):
   def train_epoch(self):
     """Trains RL for one epoch."""
     self._policy_trainer.train_epoch(self._policy_train_steps_per_epoch, 1)
+
+  def close(self):
+    self._policy_trainer.close()
+    super().close()
 
 
 class PolicyGradientTrainer(PolicyTrainer):
