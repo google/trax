@@ -112,6 +112,7 @@ def train_rl(
     task = rl_task.RLTask()
     trainer = light_rl_trainer(task=task, output_dir=output_dir)
     trainer.run(n_epochs)
+    trainer.close()
     return
 
   # TODO(pkozakowski): Find a better way to determine this.

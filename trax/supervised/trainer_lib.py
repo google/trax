@@ -253,6 +253,7 @@ class Trainer(object):
       output_dir: Output directory.
       init_checkpoint: Initial checkpoint to use (default $output_dir/model.pkl)
     """
+    self.close()
     self._output_dir = output_dir
     if output_dir is not None:
       tf.io.gfile.makedirs(output_dir)
@@ -592,6 +593,14 @@ class Trainer(object):
   def _for_n_devices(self, x):
     """Replicates/broadcasts `x` for n devices if `self.n_devicess > 1`."""
     return tl.for_n_devices(x, self.n_devices)  # pylint: disable=protected-access
+
+  def close(self):
+    if self._train_sw is not None:
+      self._train_sw.close()
+      self._train_sw = None
+    if self._eval_sw is not None:
+      self._eval_sw.close()
+      self._eval_sw = None
 
 
 @gin.configurable(blacklist=['output_dir'])

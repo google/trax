@@ -161,6 +161,10 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
       _copy_model_weights(0, self._n_shared_layers,
                           self._policy_trainer, self._value_trainer)
 
+  def close(self):
+    self._value_trainer.close()
+    super().close()
+
 
 def _copy_model_weights(start, end, from_trainer, to_trainer,  # pylint: disable=invalid-name
                         copy_optimizer_slots=True):
