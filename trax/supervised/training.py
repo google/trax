@@ -41,7 +41,7 @@ from trax import shapes
 
 
 class Loop:
-  """Loop that can be run for n steps to train a supervised model.
+  """Loop that can run for a given number of steps to train a supervised model.
 
   The typical supervised training process randomly initializes a model and
   updates its weights via feedback (loss-derived gradients) from a training
@@ -191,7 +191,8 @@ class Loop:
       sums += metric_values
     averages = sums / n_batches
     for name, average_value in zip(eval_task.names, averages):
-      logging.info(f'Eval at step {self._step}: {name} = {average_value}')
+      logging.info('Eval at step %d: %s = %f',
+                   self.current_step(), name, average_value)
 
   def _eval_at(self, step_n):
     """Returns True for training step n if evals should be run for that step."""
@@ -200,7 +201,7 @@ class Loop:
   def _log_step(self, msg):
     """Logs message, labeled with the current training step number."""
     # TODO(jonni): Is direct print() is better for command-line use?
-    logging.info(f'Step {self.current_step()}: {msg}')
+    logging.info('Step %d: %s', self.current_step(), msg)
 
   def _save_checkpoint(self, weights, state, slots):
     """Saves checkpoint to disk for the current training step.
