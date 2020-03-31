@@ -31,8 +31,9 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
 
   def __init__(self, task, joint_model=None,
                optimizer=None, lr_schedule=lr.MultifactorSchedule,
-               batch_size=64, train_steps_per_epoch=500, collect_per_epoch=50,
-               max_slice_length=1, output_dir=None):
+               batch_size=64, train_steps_per_epoch=500,
+               supervised_evals_per_epoch=1, supervised_eval_steps=1,
+               collect_per_epoch=50, max_slice_length=1, output_dir=None):
     """Configures the joint trainer.
 
     Args:
@@ -42,6 +43,10 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
       lr_schedule: learning rate schedule to use to train the joint model/.
       batch_size: batch size used to train the joint model.
       train_steps_per_epoch: how long to train the joint model in each RL epoch.
+      supervised_evals_per_epoch: number of value trainer evaluations per RL
+          epoch - only affects metric reporting.
+      supervised_eval_steps: number of value trainer steps per evaluation -
+          only affects metric reporting.
       collect_per_epoch: how many trajectories to collect per epoch.
       max_slice_length: the maximum length of trajectory slices to use.
       output_dir: Path telling where to save outputs (evals and checkpoints).
@@ -50,6 +55,8 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
         task, collect_per_epoch=collect_per_epoch, output_dir=output_dir)
     self._batch_size = batch_size
     self._train_steps_per_epoch = train_steps_per_epoch
+    self._supervised_evals_per_epoch = supervised_evals_per_epoch
+    self._supervised_eval_steps = supervised_eval_steps
     self._collect_per_epoch = collect_per_epoch
     self._max_slice_length = max_slice_length
     self._policy_dist = distributions.create_distribution(task.env.action_space)
@@ -99,7 +106,11 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
 
   def train_epoch(self):
     """Trains RL for one epoch."""
-    self._trainer.train_epoch(self._train_steps_per_epoch, 1)
+    for _ in range(self._supervised_evals_per_epoch):
+      self._trainer.train_epoch(
+          self._train_steps_per_epoch // self._supervised_evals_per_epoch,
+          self._supervised_eval_steps,
+      )
 
 
 class AWRJointTrainer(ActorCriticJointTrainer):

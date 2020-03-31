@@ -21,6 +21,10 @@ import trax.rl
 # ==============================================================================
 Policy.body = @trax.models.PureMLP
 
+# Parameters for Value:
+# ==============================================================================
+Value.body = @trax.models.PureMLP
+
 # Parameters for PureMLP:
 # ==============================================================================
 PureMLP.flatten = False
@@ -35,7 +39,7 @@ MultifactorSchedule.factors = 'constant'
 # Parameters for RLTask:
 # ==============================================================================
 RLTask.env = "CartPole-v0"
-RLTask.initial_trajectories = 1
+RLTask.initial_trajectories = 1000
 RLTask.gamma = 0.99
 RLTask.max_steps = 200
 
@@ -45,8 +49,52 @@ PolicyGradientTrainer.policy_model = @trax.models.Policy
 PolicyGradientTrainer.policy_optimizer = @trax.optimizers.Adam
 PolicyGradientTrainer.policy_batch_size = 128
 PolicyGradientTrainer.policy_train_steps_per_epoch = 1
+PolicyGradientTrainer.policy_evals_per_epoch = 1
+PolicyGradientTrainer.policy_eval_steps = 1
 PolicyGradientTrainer.collect_per_epoch = 2
 PolicyGradientTrainer.max_slice_length = 1
+
+# Parameters for PPOTrainer:
+# ==============================================================================
+PPOTrainer.value_model = @trax.models.Value
+PPOTrainer.value_optimizer = @trax.optimizers.Adam
+PPOTrainer.value_batch_size = 32
+PPOTrainer.value_train_steps_per_epoch = 10
+PPOTrainer.value_lr_schedule = @value/MultifactorSchedule
+PPOTrainer.value_evals_per_epoch = 1
+PPOTrainer.value_eval_steps = 1
+PPOTrainer.policy_model = @trax.models.Policy
+PPOTrainer.policy_optimizer = @trax.optimizers.Adam
+PPOTrainer.policy_batch_size = 32
+PPOTrainer.policy_train_steps_per_epoch = 10
+PPOTrainer.policy_lr_schedule = @policy/MultifactorSchedule
+PPOTrainer.policy_evals_per_epoch = 1
+PPOTrainer.policy_eval_steps = 1
+PPOTrainer.collect_per_epoch = 50
+# PPOTrainer.max_slice_length = 0
+
+# Parameters for AWRTrainer:
+# ==============================================================================
+AWRTrainer.value_model = @trax.models.Value
+AWRTrainer.value_optimizer = @trax.optimizers.Adam
+AWRTrainer.value_batch_size = 32
+AWRTrainer.value_train_steps_per_epoch = 1000
+AWRTrainer.value_lr_schedule = @value/MultifactorSchedule
+AWRTrainer.value_evals_per_epoch = 10
+AWRTrainer.value_eval_steps = 10
+AWRTrainer.policy_model = @trax.models.Policy
+AWRTrainer.policy_optimizer = @trax.optimizers.Adam
+AWRTrainer.policy_batch_size = 32
+AWRTrainer.policy_train_steps_per_epoch = 1000
+AWRTrainer.policy_lr_schedule = @policy/MultifactorSchedule
+AWRTrainer.policy_evals_per_epoch = 10
+AWRTrainer.policy_eval_steps = 10
+AWRTrainer.supervised_evals_per_epoch = 10
+AWRTrainer.supervised_eval_steps = 10
+AWRTrainer.collect_per_epoch = 10
+AWRTrainer.beta = 1.0
+AWRTrainer.w_max = 20
+AWRTrainer.max_slice_length = 1
 
 # Parameters for train_rl:
 # ==============================================================================

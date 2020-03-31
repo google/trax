@@ -46,6 +46,8 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
                value_lr_schedule=lr.MultifactorSchedule,
                value_batch_size=64,
                value_train_steps_per_epoch=500,
+               value_evals_per_epoch=1,
+               value_eval_steps=1,
                n_shared_layers=0,
                added_policy_slice_length=0,
                **kwargs):  # Arguments of PolicyTrainer come here.
@@ -59,6 +61,10 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
       value_batch_size: batch size for value model training
       value_train_steps_per_epoch: how many steps are we using to
         train the value model in each epoch
+      value_evals_per_epoch: number of value trainer evaluations per RL
+          epoch - only affects metric reporting.
+      value_eval_steps: number of value trainer steps per evaluation -
+          only affects metric reporting.
       n_shared_layers: how many layers to share between value and
         policy models
       added_policy_slice_length: how much longer should slices of
@@ -71,6 +77,8 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
     self._n_shared_layers = n_shared_layers
     self._value_batch_size = value_batch_size
     self._value_train_steps_per_epoch = value_train_steps_per_epoch
+    self._value_evals_per_epoch = value_evals_per_epoch
+    self._value_eval_steps = value_eval_steps
 
     # The 2 below will be initalized in super.__init__ anyway, but are needed
     # to construct value batches which are needed before PolicyTrainer init
@@ -157,11 +165,19 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
 
   def train_epoch(self):
     """Trains RL for one epoch."""
-    self._value_trainer.train_epoch(self._value_train_steps_per_epoch, 1)
+    for _ in range(self._value_evals_per_epoch):
+      self._value_trainer.train_epoch(
+          self._value_train_steps_per_epoch // self._value_evals_per_epoch,
+          self._value_eval_steps,
+      )
     if self._n_shared_layers > 0:  # Copy value weights to policy trainer.
       _copy_model_weights(0, self._n_shared_layers,
                           self._value_trainer, self._policy_trainer)
-    self._policy_trainer.train_epoch(self._policy_train_steps_per_epoch, 1)
+    for _ in range(self._policy_evals_per_epoch):
+      self._policy_trainer.train_epoch(
+          self._policy_train_steps_per_epoch // self._policy_evals_per_epoch,
+          self._policy_eval_steps,
+      )
     if self._n_shared_layers > 0:  # Copy policy weights to value trainer.
       _copy_model_weights(0, self._n_shared_layers,
                           self._policy_trainer, self._value_trainer)

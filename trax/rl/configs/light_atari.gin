@@ -35,11 +35,32 @@ policy/MultifactorSchedule.factors = 'constant'
 
 # Parameters for RLTask:
 # ==============================================================================
-RLTask.env = "boxing"
+RLTask.env = "freeway"
 RLTask.initial_trajectories = 100
 RLTask.gamma = 0.999
 RLTask.max_steps = 200
 RLTask.dm_suite = True
+
+# Parameters for AWRTrainer:
+# ==============================================================================
+AWRTrainer.value_model = @trax.models.Value
+AWRTrainer.value_optimizer = @trax.optimizers.Adam
+AWRTrainer.value_batch_size = 32
+AWRTrainer.value_train_steps_per_epoch = 1000
+AWRTrainer.value_lr_schedule = @value/MultifactorSchedule
+AWRTrainer.value_evals_per_epoch = 10
+AWRTrainer.value_eval_steps = 10
+AWRTrainer.policy_model = @trax.models.Policy
+AWRTrainer.policy_optimizer = @trax.optimizers.Adam
+AWRTrainer.policy_batch_size = 32
+AWRTrainer.policy_train_steps_per_epoch = 1000
+AWRTrainer.policy_lr_schedule = @policy/MultifactorSchedule
+AWRTrainer.policy_evals_per_epoch = 10
+AWRTrainer.policy_eval_steps = 10
+AWRTrainer.collect_per_epoch = 10
+AWRTrainer.beta = 1.0
+AWRTrainer.w_max = 20
+AWRTrainer.max_slice_length = 1
 
 # Parameters for PPOTrainer:
 # ==============================================================================
@@ -48,16 +69,20 @@ PPOTrainer.value_model = @trax.models.Value
 PPOTrainer.value_optimizer = @trax.optimizers.Adam
 PPOTrainer.value_batch_size = 32
 PPOTrainer.value_train_steps_per_epoch = 10
+PPOTrainer.value_evals_per_epoch = 1
+PPOTrainer.value_eval_steps = 1
 PPOTrainer.value_lr_schedule = @value/MultifactorSchedule
 PPOTrainer.policy_model = @trax.models.Policy
 PPOTrainer.policy_optimizer = @trax.optimizers.Adam
 PPOTrainer.policy_batch_size = 32
 PPOTrainer.policy_train_steps_per_epoch = 10
 PPOTrainer.policy_lr_schedule = @policy/MultifactorSchedule
+PPOTrainer.policy_evals_per_epoch = 1
+PPOTrainer.policy_eval_steps = 1
 PPOTrainer.collect_per_epoch = 10
 
 # Parameters for train_rl:
 # ==============================================================================
 train_rl.light_rl = True
-train_rl.light_rl_trainer = @trax.rl.PPOTrainer
+train_rl.light_rl_trainer = @trax.rl.AWRTrainer
 train_rl.n_epochs = 5000
