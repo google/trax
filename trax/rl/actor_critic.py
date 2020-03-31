@@ -211,20 +211,8 @@ def _copy_model_weights(start, end, from_trainer, to_trainer,  # pylint: disable
 ### Implementations of common actor-critic algorithms.
 
 
-# A2C is one of the most basic actor-critic RL algorithms.
-@tl.layer(n_in=4, n_out=1)
-def A2CLoss(x, log_prob_fn, **unused_kwargs):
-  """Definition of the Advantage Actor Critic (A2C) loss."""
-  (predictions, actions, advantages, old_log_probs) = x
-  del old_log_probs  # Not used in A2C.
-  action_log_probs = log_prob_fn(predictions, actions)
-  return -(action_log_probs * advantages).mean()
-
-
-class A2CTrainer(ActorCriticTrainer):
-  """Trains policy and value models using the A2C algortithm."""
-
-  on_policy = True
+class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
+  """Base class for advantage-based actor-critic algorithms."""
 
   def policy_inputs(self, trajectory, values):
     """Create inputs to policy model from a TrajectoryNp and values."""
@@ -248,19 +236,42 @@ class A2CTrainer(ActorCriticTrainer):
     return (obs, act, advantages, old_logps)
 
   @property
-  def policy_loss(self):
+  def policy_loss_given_log_probs(self):
+    """Policy loss given action log-probabilities."""
+    raise NotImplementedError
+
+  def policy_loss(self, **unused_kwargs):
     """Policy loss."""
-    return functools.partial(
-        A2CLoss, log_prob_fn=self._policy_dist.log_prob)
+    return tl.Serial([
+        self._policy_dist.LogProb(),
+        self.policy_loss_given_log_probs(),
+    ])
+
+
+# A2C is one of the most basic actor-critic RL algorithms.
+@tl.layer(n_in=3, n_out=1)
+def A2CLoss(x, **unused_kwargs):
+  """Definition of the Advantage Actor Critic (A2C) loss."""
+  (log_probs, advantages, _) = x
+  return -(log_probs * advantages).mean()
+
+
+class A2CTrainer(AdvantageBasedActorCriticTrainer):
+  """Trains policy and value models using the A2C algortithm."""
+
+  on_policy = True
+
+  @property
+  def policy_loss_given_log_probs(self):
+    """Policy loss."""
+    return A2CLoss
 
 
 # PPO is a widely used actor-critic RL algorithm.
-@tl.layer(n_in=4, n_out=1)
-def PPOLoss(x, distribution, epsilon, **unused_kwargs):
+@tl.layer(n_in=3, n_out=1)
+def PPOLoss(x, epsilon, **unused_kwargs):
   """Definition of the Proximal Policy Optimization loss."""
-  (dist_inputs, actions, advantages, old_log_probs) = x
-  new_log_probs = distribution.log_prob(dist_inputs, actions)
-
+  (new_log_probs, advantages, old_log_probs) = x
   # Old log probs have an undesirable extra dimension which we remove here
   old_log_probs = old_log_probs.squeeze(axis=-1)
 
@@ -276,11 +287,13 @@ def PPOLoss(x, distribution, epsilon, **unused_kwargs):
   return -ppo_objective.mean()
 
 
-class PPOTrainer(A2CTrainer):
+class PPOTrainer(AdvantageBasedActorCriticTrainer):
   """The Proximal Policy Optimization Algorithm aka PPO.
 
   Trains policy and value models using the PPO algortithm.
   """
+
+  on_policy = True
 
   def __init__(self, task, epsilon=0.2, **kwargs):
     """Configures the PPO Trainer."""
@@ -288,23 +301,21 @@ class PPOTrainer(A2CTrainer):
     super(PPOTrainer, self).__init__(task, **kwargs)
 
   @property
-  def policy_loss(self):
+  def policy_loss_given_log_probs(self):
     """Policy loss."""
-    return functools.partial(
-        PPOLoss, distribution=self._policy_dist, epsilon=self._epsilon)
+    return functools.partial(PPOLoss, epsilon=self._epsilon)
 
 
-# AWR is an off-policy actor-critic RL algorithms.
-@tl.layer(n_in=4, n_out=1)
-def AWRLoss(x, beta, w_max, log_prob_fn, **unused_kwargs):
+# AWR is an off-policy actor-critic RL algorithm.
+@tl.layer(n_in=3, n_out=1)
+def AWRLoss(x, beta, w_max, **unused_kwargs):
   """Definition of the Advantage Weighted Regression (AWR) loss."""
-  (predictions, actions, advantages, _) = x
-  action_log_probs = log_prob_fn(predictions, actions)
-  awr_weights = jnp.minimum(jnp.exp(advantages / beta), w_max)
-  return -(action_log_probs * awr_weights).mean()
+  (log_probs, advantages, _) = x
+  weights = jnp.minimum(jnp.exp(advantages / beta), w_max)
+  return -(log_probs * weights).mean()
 
 
-class AWRTrainer(A2CTrainer):
+class AWRTrainer(AdvantageBasedActorCriticTrainer):
   """Trains policy and value models using AWR."""
 
   on_policy = False
@@ -316,8 +327,6 @@ class AWRTrainer(A2CTrainer):
     super(AWRTrainer, self).__init__(task, **kwargs)
 
   @property
-  def policy_loss(self):
+  def policy_loss_given_log_probs(self):
     """Policy loss."""
-    return functools.partial(
-        AWRLoss, beta=self._beta, w_max=self._w_max,
-        log_prob_fn=self._policy_dist.log_prob)
+    return functools.partial(AWRLoss, beta=self._beta, w_max=self._w_max)
