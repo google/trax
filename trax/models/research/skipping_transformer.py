@@ -71,10 +71,13 @@ class SkippingSerial(tl.Serial):
     cur_layer_idx = 0.0
     for layer, p, s, rng in zip(self.sublayers, weights, state, rngs):
       inputs = _inputs_from_stack(layer, stack)
-      # TODO(chowdhery): port to jax.lax.cond once it has a JVP rule.
-      outputs, s = layer.pure_fn(inputs, p, s, rng)
-      condition = math.lt(cur_layer_idx, n_forward_layers).astype(np.float32)
-      outputs = condition * outputs + (1 - condition) * inputs
+      outputs, s = math.cond(  # Skip (do identity) if > n_forward_layers.
+          pred=(math.lt(cur_layer_idx, n_forward_layers)),
+          true_operand=(inputs, p, s, rng),  # This tuple is t below.
+          true_fun=(lambda t: layer.pure_fn(t[0], t[1], t[2], t[3])),  # pylint: disable=cell-var-from-loop
+          false_operand=(inputs, p, s, rng),
+          false_fun=(lambda t: (t[0], t[2])),  # return (inputs, state)
+      )
       stack = _outputs_onto_stack(layer, outputs, stack)
       new_state.append(s)
       cur_layer_idx += 1.0
@@ -130,7 +133,7 @@ def SkippingTransformerLM(vocab_size,
       tl.ShiftRight(mode=mode),
       embedder,
       SkippingSerial([
-          transformer.DecoderBlock(  # pylint: disable=g-complex-comprehension
+          transformer._DecoderBlock(  # pylint: disable=g-complex-comprehension,protected-access
               d_model, d_ff, n_heads, d_attention_key, d_attention_value,
               attention_type, dropout, share_qk, i, mode, ff_activation)
           for i in range(n_layers)], mode=mode),
