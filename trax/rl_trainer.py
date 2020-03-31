@@ -98,6 +98,10 @@ def train_rl(
     light_rl: whether to use the light RL setting (experimental).
     light_rl_trainer: whichh light RL trainer to use (experimental).
   """
+  if light_rl:
+    task = rl_task.RLTask()
+    env_name = task.env_name
+
 
   if FLAGS.jax_debug_nans:
     config.update('jax_debug_nans', True)
@@ -109,7 +113,6 @@ def train_rl(
 
 
   if light_rl:
-    task = rl_task.RLTask()
     trainer = light_rl_trainer(task=task, output_dir=output_dir)
     trainer.run(n_epochs)
     trainer.close()

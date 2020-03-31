@@ -252,6 +252,7 @@ class RLTask:
 
     """
     if isinstance(env, str):
+      self._env_name = env
       if dm_suite:
         env = environments.load_from_settings(
             platform='atari',
@@ -263,6 +264,8 @@ class RLTask:
         env = atari_wrapper.AtariWrapper(environment=env, num_stacked_frames=1)
       else:
         env = gym.make(env)
+    else:
+      self._env_name = type(env).__name__
     self._env = env
     self._dm_suite = dm_suite
     self._max_steps = max_steps
@@ -285,6 +288,10 @@ class RLTask:
   @property
   def env(self):
     return self._env
+
+  @property
+  def env_name(self):
+    return self._env_name
 
   @property
   def max_steps(self):
