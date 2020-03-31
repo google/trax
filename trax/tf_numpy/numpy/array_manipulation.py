@@ -18,10 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import array_creation
-from trax.tf_numpy.numpy.array_creation import asarray
+from trax.tf_numpy.numpy import arrays as arrays_lib
+from trax.tf_numpy.numpy import math as math_lib
+from trax.tf_numpy.numpy import utils
 
 
 def broadcast_to(a, shape):
@@ -37,5 +40,42 @@ def broadcast_to(a, shape):
   return array_creation.full(shape, a)
 
 
+@utils.np_doc(np.stack)
 def stack(arrays, axis=0):
-  return asarray(tf.stack([a.data for a in arrays], axis))
+  arrays = array_creation._promote_dtype(*arrays)  # pylint: disable=protected-access
+  unwrapped_arrays = [
+      a.data if isinstance(a, arrays_lib.ndarray) else a for a in arrays
+  ]
+  return array_creation.asarray(tf.stack(unwrapped_arrays, axis))
+
+
+@utils.np_doc(np.hstack)
+def hstack(tup):
+  arrays = [math_lib.atleast_1d(a) for a in tup]
+  arrays = array_creation._promote_dtype(*arrays)  # pylint: disable=protected-access
+  unwrapped_arrays = [
+      a.data if isinstance(a, arrays_lib.ndarray) else a for a in arrays
+  ]
+  rank = tf.rank(unwrapped_arrays[0])
+  return utils.cond(rank == 1, lambda: tf.concat(unwrapped_arrays, axis=0),
+                    lambda: tf.concat(unwrapped_arrays, axis=1))
+
+
+@utils.np_doc(np.vstack)
+def vstack(tup):
+  arrays = [math_lib.atleast_2d(a) for a in tup]
+  arrays = array_creation._promote_dtype(*arrays)  # pylint: disable=protected-access
+  unwrapped_arrays = [
+      a.data if isinstance(a, arrays_lib.ndarray) else a for a in arrays
+  ]
+  return tf.concat(unwrapped_arrays, axis=0)
+
+
+@utils.np_doc(np.dstack)
+def dstack(tup):
+  arrays = [math_lib.atleast_3d(a) for a in tup]
+  arrays = array_creation._promote_dtype(*arrays)  # pylint: disable=protected-access
+  unwrapped_arrays = [
+      a.data if isinstance(a, arrays_lib.ndarray) else a for a in arrays
+  ]
+  return tf.concat(unwrapped_arrays, axis=2)

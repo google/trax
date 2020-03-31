@@ -218,7 +218,11 @@ def hypot(x1, x2):
 
 
 def _pad_left_to(n, old_shape):
-  return (1,) * (n - len(old_shape)) + old_shape
+  old_shape = array_creation.asarray(old_shape, dtype=np.int32).data
+  new_shape = tf.pad(
+      old_shape, [[tf.math.maximum(n - tf.size(old_shape), 0), 0]],
+      constant_values=1)
+  return array_creation.asarray(new_shape)
 
 
 @utils.np_doc(np.kron)
@@ -715,10 +719,13 @@ def _atleast_nd(n, new_shape, *arys):
     The reshaped array(s).
   """
   def f(x):
+    # pylint: disable=g-long-lambda
     x = array_creation.asarray(x)
-    if x.ndim < n:
-      x = array_methods.reshape(x, new_shape(n, x.shape))
-    return x
+    return array_creation.asarray(
+        utils.cond(
+            utils.greater(n, tf.rank(x)), lambda: array_methods.reshape(
+                x, new_shape(n, tf.shape(x.data))).data, lambda: x.data))
+
   arys = list(map(f, arys))
   if len(arys) == 1:
     return arys[0]
@@ -737,14 +744,17 @@ def atleast_2d(*arys):
 
 
 @utils.np_doc(np.atleast_3d)
-def atleast_3d(*arys):
+def atleast_3d(*arys):  # pylint: disable=missing-docstring
+
   def new_shape(_, old_shape):
-    ndim = len(old_shape)
-    if ndim == 0:
-      return (1, 1, 1)
-    elif ndim == 1:
-      return (1,) + old_shape + (1,)
-    return old_shape + (1,)
+    # pylint: disable=g-long-lambda
+    ndim = tf.size(old_shape)
+    return utils.cond(
+        ndim == 0, lambda: tf.constant([1, 1, 1], dtype=tf.int32),
+        lambda: utils.cond(
+            ndim == 1, lambda: tf.pad(old_shape, [[1, 1]], constant_values=1),
+            lambda: tf.pad(old_shape, [[0, 1]], constant_values=1)))
+
   return _atleast_nd(3, new_shape, *arys)
 
 

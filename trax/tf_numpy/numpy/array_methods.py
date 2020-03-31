@@ -24,7 +24,6 @@ import six
 import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import array_creation
-from trax.tf_numpy.numpy import array_manipulation
 from trax.tf_numpy.numpy import arrays
 from trax.tf_numpy.numpy import dtypes
 from trax.tf_numpy.numpy import utils
@@ -606,7 +605,7 @@ def _setitem(arr, index, value):
     raise ValueError('index must be a scalar or a 1-d array.')
   value = array_creation.asarray(value, dtype=arr.dtype)
   if arr.shape[len(index):] != value.shape:
-    value = array_manipulation.broadcast_to(value, arr.shape[len(index):])
+    value = array_creation.full(arr.shape[len(index):], value)
   prefix_t = arr.data[:index.data[0]]
   postfix_t = arr.data[index.data[0] + 1:]
   if len(index) == 1:
