@@ -272,3 +272,14 @@ def greater(a, b):
     return v_a > v_b
   else:
     return a > b
+
+
+def logical_or(a, b):
+  """A version of tf.logical_or that eagerly evaluates if possible."""
+  # It's needed becaues tf.get_static_value doesn't handle tf.logical_or.
+  v_a = tf.get_static_value(a)
+  v_b = tf.get_static_value(b)
+  if v_a is not None and v_b is not None:
+    return v_a or v_b
+  else:
+    return a | b
