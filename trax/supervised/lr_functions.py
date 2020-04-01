@@ -75,7 +75,7 @@ class _BodyAndTail:
             - body_value (value relative to which the tail should be computed)
     """
     if body_start is None and tail_start is None:
-      raise ValueError(f'Both body start and tail start are None.')
+      raise ValueError('Both body start and tail start are None.')
     if tail_start is not None and tail_fn is None:
       raise ValueError(
           f'Tail start has value ({tail_start}) but tail_fn is None.')
