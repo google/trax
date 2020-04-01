@@ -26,20 +26,20 @@ correspondingly temporary.
 import math
 
 
-def constant(constant_value):
+def constant(value):
   """Returns an LR schedule that is constant from time/step 1 to infinity."""
-  return _BodyAndTail(constant_value, body_start=1)
+  return _BodyAndTail(value, body_start=1)
 
 
-def warmup(n_warmup_steps, constant_value):
+def warmup(n_warmup_steps, max_value):
   """Returns an LR schedule with linear warm-up followed by constant value.
 
   Args:
     n_warmup_steps: Number of steps during which the learning rate rises on
         a line connecting (0, 0) and (n_warmup_steps, constant_value).
-    constant_value: Value for learning rate after warm-up has finshed.
+    max_value: Value for learning rate after warm-up has finshed.
   """
-  return _BodyAndTail(constant_value, body_start=n_warmup_steps + 1)
+  return _BodyAndTail(max_value, body_start=n_warmup_steps + 1)
 
 
 def warmup_and_rsqrt_decay(n_warmup_steps, max_value):

@@ -154,6 +154,12 @@ class PolicyScheduleTest(test.TestCase):
         onp.allclose(new_lr, 5e-5) or onp.allclose(new_lr, 2e-4)
     )
 
+  def test_schedule_from_lr_function(self):
+    history = trax_history.History()
+    schedule = lr_schedules.constant(history, 0.1)
+    value = schedule(10)
+    self.assertEqual(value['learning_rate'], 0.1)
+
 
 if __name__ == '__main__':
   test.main()

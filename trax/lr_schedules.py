@@ -39,10 +39,14 @@ from trax.math import numpy as np
 from trax.math import random as jax_random
 
 
+# We use a mix of CamelCase and not in this module.
+# pylint: disable=invalid-name
+
+
 @gin.configurable(blacklist=['history'])
 def MultifactorSchedule(history=None,
                         factors='constant * linear_warmup * rsqrt_decay',
-                        constant=0.1,
+                        constant=0.1,  # pylint: disable=redefined-outer-name
                         warmup_steps=400,
                         decay_factor=0.5,
                         steps_per_decay=20000,
@@ -73,7 +77,7 @@ def MultifactorSchedule(history=None,
 
   factors = [n.strip() for n in factors.split('*')]
 
-  def learning_rate(step):  # pylint: disable=invalid-name
+  def learning_rate(step):
     """Step to learning rate function."""
     ret = 1.0
     for name in factors:
@@ -102,7 +106,7 @@ def MultifactorSchedule(history=None,
 
 @gin.configurable(blacklist=['history'])
 def EvalAdjustingSchedule(history,
-                          constant=0.1,
+                          constant=0.1,  # pylint: disable=redefined-outer-name
                           steps_to_decrease=20,
                           improvement_margin=0.001,
                           decrease_rate=1.5,
@@ -286,4 +290,31 @@ def PolicySchedule(
 # lr_schedules.
 from trax.rl import online_tune
 from trax.rl import policy_based_utils
+from trax.supervised import lr_functions
 # pylint: enable=g-import-not-at-top
+
+
+def _from_lr_function(lr_fn, *args):
+  """Compatibility layer: creates a learning rate from lr_functions function."""
+  def learning_rate(step):
+    return {'learning_rate': lr_fn(*args)(step)}
+  return learning_rate
+
+
+@gin.configurable(blacklist=['history'])
+def constant(history, value):
+  del history
+  return _from_lr_function(lr_functions.constant, value)
+
+
+@gin.configurable(blacklist=['history'])
+def warmup(history, n_warmup_steps, max_value):
+  del history
+  return _from_lr_function(lr_functions.warmup, n_warmup_steps, max_value)
+
+
+@gin.configurable(blacklist=['history'])
+def warmup_and_rsqrt_decay(history, n_warmup_steps, max_value):
+  del history
+  return _from_lr_function(lr_functions.warmup_and_rsqrt_decay,
+                           n_warmup_steps, max_value)

@@ -34,17 +34,16 @@ MLP.d_hidden = 512
 MLP.n_hidden_layers = 2
 MLP.n_output_classes = 10
 
-# Parameters for MultifactorSchedule:
+# Parameters for lr_schedules.constant
 # ==============================================================================
-MultifactorSchedule.constant = 0.1
-MultifactorSchedule.factors = 'constant * linear_warmup * rsqrt_decay'
-MultifactorSchedule.warmup_steps = 400
+lr_schedules.constant.value = 0.0001
 
 # Parameters for train:
 # ==============================================================================
-train.optimizer = @trax.optimizers.Adafactor
+train.optimizer = @trax.optimizers.Adam
 train.eval_frequency = 200
 train.eval_steps = 10
 train.model = @trax.models.MLP
 train.steps = 2000
 train.checkpoint_highest = 'accuracy'
+train.lr_schedule = @lr_schedules.constant
