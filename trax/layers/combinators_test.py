@@ -17,6 +17,7 @@
 """Tests for combinator layers."""
 
 from absl.testing import absltest
+from trax.layers import activation_fns
 from trax.layers import base
 from trax.layers import combinators as cb
 from trax.layers import core
@@ -235,7 +236,7 @@ class CombinatorLayerTest(absltest.TestCase):
     # Include a layer that actively uses state.
     input_signature = ShapeDtype((3, 28, 28))
     batch_norm = normalization.BatchNorm()
-    relu = core.Relu()
+    relu = activation_fns.Relu()
     batch_norm_and_relu = cb.Serial(batch_norm, relu)
     batch_norm_and_relu.init(input_signature)
 

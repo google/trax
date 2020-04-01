@@ -23,8 +23,8 @@ import random
 from absl.testing import absltest
 import jax
 import numpy as onp
+from trax.layers import activation_fns
 from trax.layers import combinators as cb
-from trax.layers import core
 from trax.layers import tracer
 from trax.shapes import ShapeDtype
 
@@ -47,7 +47,7 @@ class TracerTest(absltest.TestCase):
     self.assertEqual(c.expr, result)
 
   def test_tracer_index(self):
-    lyr = cb.Parallel(core.Tanh(), core.Tanh())
+    lyr = cb.Parallel(activation_fns.Tanh(), activation_fns.Tanh())
     a = tracer.Tracer('a')
     b = tracer.Tracer('b')
     d, e = lyr @ (a, b)
@@ -77,7 +77,7 @@ class TracerTest(absltest.TestCase):
     self.assertEqual(outputs, result1)
 
   def test_apply_index_to_eqn(self):
-    lyr = cb.Parallel(core.Tanh(), core.Tanh())
+    lyr = cb.Parallel(activation_fns.Tanh(), activation_fns.Tanh())
     a = tracer.Tracer('a')
     b = tracer.Tracer('b')
     c, d = lyr @ (a, b)
@@ -90,7 +90,7 @@ class TracerTest(absltest.TestCase):
     self.assertEqual(outputs, result1)
 
   def test_eqns_merge_outputs(self):
-    lyr = cb.Parallel(core.Tanh(), core.Tanh())
+    lyr = cb.Parallel(activation_fns.Tanh(), activation_fns.Tanh())
     eqns = [tracer.ApplyEqn(lyr, ('a', 'b'), ('var2',)),
             tracer.IndexEqn(0, 'var2', 'var0'),
             tracer.IndexEqn(1, 'var2', 'var1')]
@@ -100,7 +100,7 @@ class TracerTest(absltest.TestCase):
 
   def test_eqns_eval_order1(self):
     # exhustive test of all linear order permutations for lists up to 7 long
-    dummy = core.Tanh()
+    dummy = activation_fns.Tanh()
     for n in range(1, 7):
       eqns = [tracer.ApplyEqn(dummy,
                               ('var%d'%i,),
@@ -110,7 +110,7 @@ class TracerTest(absltest.TestCase):
         self.assertEqual(ordered_eqns, eqns)
 
   def test_eqns_eval_order2(self):
-    dummy = core.Tanh()
+    dummy = activation_fns.Tanh()
     eqns = [
         tracer.ApplyEqn(dummy, ('var0',), ('var1',)),
         tracer.ApplyEqn(dummy, ('var2',), ('var3',)),
@@ -122,7 +122,7 @@ class TracerTest(absltest.TestCase):
           tracer.evaluation_order_sort(permuted, ['var6'])[-1], eqns[-1])
 
   def test_eqns_eval_order3(self):
-    dummy = core.Tanh()
+    dummy = activation_fns.Tanh()
     eqns = [
         tracer.ApplyEqn(dummy, ('var0',), ('var1', 'var2', 'var3')),
         tracer.ApplyEqn(dummy, ('var1',), ('var4',)),
@@ -136,7 +136,7 @@ class TracerTest(absltest.TestCase):
 
   def test_recombine(self):
     add_lyr = cb.Add()
-    tanh_lyr = core.Tanh()
+    tanh_lyr = activation_fns.Tanh()
     eqns = [
         tracer.ApplyEqn(add_lyr, ('a', 'b'), ('var1',)),
         tracer.ApplyEqn(tanh_lyr, ('var1',), ('var2',)),
@@ -184,7 +184,7 @@ class TracerTest(absltest.TestCase):
 
   def test_symbolic_decorator2(self):
     add_lyr = cb.Add()
-    tanh_lyr = core.Tanh()
+    tanh_lyr = activation_fns.Tanh()
     @tracer.symbolic
     def make_layer(a, b, c):
       a = tanh_lyr @ a
@@ -205,7 +205,7 @@ class TracerTest(absltest.TestCase):
 
   def test_symbolic_decorator3(self):
     add_lyr = cb.Add()
-    tanh_lyr = cb.Parallel(core.Relu(), core.Tanh())
+    tanh_lyr = cb.Parallel(activation_fns.Relu(), activation_fns.Tanh())
     @tracer.symbolic
     def make_layer(a, b, c):
       d = add_lyr @ (a, b)

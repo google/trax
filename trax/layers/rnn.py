@@ -17,6 +17,7 @@
 """Implementations of common recurrent neural network cells (RNNs)."""
 
 from trax import math
+from trax.layers import activation_fns
 from trax.layers import base
 from trax.layers import combinators as cb
 from trax.layers import convolution
@@ -168,14 +169,14 @@ def ConvGRUCell(n_units, kernel_size=(3, 3)):
   return GeneralGRUCell(
       candidate_transform=BuildConv,
       memory_transform_fn=None,
-      gate_nonlinearity=core.Sigmoid,
-      candidate_nonlinearity=core.Tanh)
+      gate_nonlinearity=activation_fns.Sigmoid,
+      candidate_nonlinearity=activation_fns.Tanh)
 
 
 def GeneralGRUCell(candidate_transform,
                    memory_transform_fn=None,
-                   gate_nonlinearity=core.Sigmoid,
-                   candidate_nonlinearity=core.Tanh,
+                   gate_nonlinearity=activation_fns.Sigmoid,
+                   candidate_nonlinearity=activation_fns.Tanh,
                    dropout_rate_c=0.1,
                    sigmoid_bias=0.5):
   r"""Parametrized Gated Recurrent Unit (GRU) cell construction.
@@ -261,11 +262,12 @@ def SRU(n_units, activation=None):
   Returns:
     The SRU layer.
   """
+  sigmoid_activation = activation_fns.Sigmoid()
   # pylint: disable=no-value-for-parameter
   return cb.Serial(  # x
       cb.Branch(core.Dense(3 * n_units), []),  # r_f_y, x
       cb.Split(n_items=3),  # r, f, y, x
-      cb.Parallel(core.Sigmoid(), core.Sigmoid()),  # r, f, y, x
+      cb.Parallel(sigmoid_activation, sigmoid_activation),  # r, f, y, x
       base.Fn(lambda r, f, y: (y * (1.0 - f), f, r)),  # y * (1 - f), f, r, x
       cb.Parallel([], [], cb.Branch(MakeZeroState(), [])),
       cb.Scan(InnerSRUCell(), axis=1),

@@ -16,7 +16,6 @@
 # Lint as: python3
 """Trax layers library."""
 
-import math
 import numpy as onp
 
 from trax import math
@@ -114,65 +113,6 @@ def Flatten(x, n_axes_to_keep=1, **unused_kwargs):
 
 
 @base.layer()
-def Relu(x, **unused_kwargs):
-  return np.maximum(x, np.zeros_like(x))
-
-
-@base.layer()
-def ParametricRelu(x, a=1., **unused_kwargs):
-  return np.maximum(a * x, np.zeros_like(x))
-
-
-@base.layer()
-def LeakyRelu(x, a=0.01, **unused_kwargs):
-  return np.where(x >= 0, x, a * x)
-
-
-@base.layer()
-def Elu(x, a=1., **unused_kwargs):
-  return np.where(x > 0, x, a * np.expm1(x))
-
-
-@base.layer()
-def Selu(x,
-         alpha=1.6732632423543772848170429916717,
-         lmbda=1.0507009873554804934193349852946):
-  return lmbda * np.where(x > 0, x, alpha * np.expm1(x))
-
-
-@base.layer()
-def Gelu(x, **unused_kwargs):
-  return x * 0.5 * (1.0 + math.erf(x / np.sqrt(2.0)))
-
-
-@base.layer()
-def FastGelu(x, **unused_kwargs):
-  return 0.5 * x * (1 + np.tanh(x * 0.7978845608 * (1 + 0.044715 * x * x)))
-
-
-@base.layer()
-def Sigmoid(x, **unused_kwargs):
-  return math.expit(x)
-
-
-@base.layer()
-def Tanh(x, **unused_kwargs):
-  return np.tanh(x)
-
-
-@base.layer()
-def HardSigmoid(x, **unused_kwargs):
-  """Linear approximation to sigmoid."""
-  return np.maximum(0, np.minimum(1, (1 + x)))
-
-
-@base.layer()
-def HardTanh(x, **unused_kwargs):
-  """Linear approximation to tanh."""
-  return np.maximum(-1, np.minimum(1, x))
-
-
-@base.layer()
 def Exp(x, **unused_kwargs):
   return np.exp(x)
 
@@ -259,15 +199,3 @@ def gumbel_sample(log_probs, temperature=1.0):  # pylint: disable=invalid-name
   u = onp.random.uniform(low=1e-6, high=1.0 - 1e-6, size=log_probs.shape)
   g = -onp.log(-onp.log(u))
   return onp.argmax(log_probs + g * temperature, axis=-1)
-
-
-class ThresholdedLinearUnit(base.Layer):
-  """Thresholded Linear Unit, c.f. https://arxiv.org/pdf/1911.09737.pdf ."""
-
-  def new_weights(self, input_signature):
-    del input_signature
-    return (np.zeros((), dtype=np.float32),)
-
-  def forward(self, inputs, weights):
-    threshold = weights[0]
-    return np.maximum(inputs, threshold)
