@@ -129,10 +129,12 @@ class PPOJointTrainer(ActorCriticJointTrainer):
 
   on_policy = True
 
-  def __init__(self, task, epsilon=0.2, value_loss_coeff=0.1, **kwargs):
+  def __init__(self, task, epsilon=0.2, value_loss_coeff=0.1,
+               entropy_coeff=0.01, **kwargs):
     """Configures the PPO Trainer."""
     self._epsilon = epsilon
     self._value_loss_coeff = value_loss_coeff
+    self._entropy_coeff = entropy_coeff
     super(PPOJointTrainer, self).__init__(task, **kwargs)
 
   def batches_stream(self):
@@ -172,7 +174,11 @@ class PPOJointTrainer(ActorCriticJointTrainer):
                                    1 - self._epsilon,
                                    1 + self._epsilon) * advantages
       ppo_objective = jnp.minimum(unclipped_objective, clipped_objective)
-      return -ppo_objective.mean() + l2_value_loss
+
+      entropy_loss = self._policy_dist.entropy(new_log_probs) *\
+          self._entropy_coeff
+
+      return -ppo_objective.mean() + l2_value_loss + entropy_loss
     return PPOLoss
 
 

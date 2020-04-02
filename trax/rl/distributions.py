@@ -114,6 +114,10 @@ class Categorical(Distribution):
         axis=[-a for a in range(1, len(self._shape) + 2)],
     )
 
+  def entropy(self, log_probs):
+    probs = np.exp(log_probs)
+    return -np.sum(probs * log_probs, axis=-1)
+
 
 @gin.configurable(blacklist=['shape'])
 class Gaussian(Distribution):
@@ -147,6 +151,11 @@ class Gaussian(Distribution):
         # Normalizing constant.
         (np.log(self._std) + np.log(np.sqrt(2 * np.pi))) * np.prod(self._shape)
     )
+
+  # At that point self._std is not learnable, hence
+  # we return a constaent
+  def entropy(self):
+    return np.exp(self._std) + .5 * np.log(2.0 * np.pi * np.e)
 
 
 # TODO(pkozakowski): Implement GaussianMixture.
