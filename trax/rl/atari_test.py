@@ -71,8 +71,10 @@ class AtariTest(absltest.TestCase):
         policy_batch_size=1,
         policy_train_steps_per_epoch=1,
         collect_per_epoch=10)
-    trainer.run(1)
-    self.assertEqual(1, trainer.current_epoch)
+    trainer.run(2)
+    # Make sure that we test everywhere at least for 2 epochs, beucase
+    # the first epoch is different
+    self.assertEqual(2, trainer.current_epoch)
 
 
 if __name__ == '__main__':

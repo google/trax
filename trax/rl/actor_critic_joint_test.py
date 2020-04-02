@@ -28,13 +28,38 @@ from trax.rl import actor_critic_joint
 from trax.rl import task as rl_task
 
 
+
 class ActorCriticJointTest(absltest.TestCase):
+
+
+  def test_jointppotrainer_cartpole(self):
+    """Test-runs joint PPO on CartPole."""
+
+    task = rl_task.RLTask('CartPole-v0', initial_trajectories=100,
+                          max_steps=200)
+    joint_model = functools.partial(
+        models.PolicyAndValue,
+        body=lambda mode: tl.Serial(tl.Dense(64), tl.Relu()),
+    )
+    lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
+        h, constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
+
+    trainer = actor_critic_joint.PPOJointTrainer(
+        task,
+        joint_model=joint_model,
+        optimizer=opt.Adam,
+        lr_schedule=lr,
+        batch_size=4,
+        train_steps_per_epoch=2,
+        collect_per_epoch=5)
+    trainer.run(2)
+    self.assertEqual(2, trainer.current_epoch)
 
   def test_jointawrtrainer_cartpole(self):
     """Test-runs joint AWR on cartpole."""
-    task = rl_task.RLTask('CartPole-v0', initial_trajectories=1000,
+    task = rl_task.RLTask('CartPole-v0', initial_trajectories=100,
                           max_steps=200)
-    model = functools.partial(
+    joint_model = functools.partial(
         models.PolicyAndValue,
         body=lambda mode: tl.Serial(tl.Dense(64), tl.Relu()),
     )
@@ -42,16 +67,14 @@ class ActorCriticJointTest(absltest.TestCase):
         h, constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
     trainer = actor_critic_joint.AWRJointTrainer(
         task,
-        joint_model=model,
+        joint_model=joint_model,
         optimizer=opt.Adam,
         lr_schedule=lr,
-        batch_size=32,
-        train_steps_per_epoch=1000,
-        collect_per_epoch=10)
-    trainer.run(1)
-    self.assertEqual(1, trainer.current_epoch)
-    # TODO(lukaszkaiser): add an assert like the one below when debugged.
-    # self.assertGreater(trainer.avg_returns[-1], 150.0)
+        batch_size=4,
+        train_steps_per_epoch=2,
+        collect_per_epoch=5)
+    trainer.run(2)
+    self.assertEqual(2, trainer.current_epoch)
 
 
 if __name__ == '__main__':

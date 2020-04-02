@@ -59,7 +59,7 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
     self._supervised_eval_steps = supervised_eval_steps
     self._collect_per_epoch = collect_per_epoch
     self._max_slice_length = max_slice_length
-    self._policy_dist = distributions.create_distribution(task.env.action_space)
+    self._policy_dist = distributions.create_distribution(task.action_space)
 
     # Inputs to the joint model are produced by self.batches_stream.
     self._inputs = supervised.Inputs(
@@ -100,9 +100,17 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
     """Chooses an action to play after a trajectory."""
     model = self._eval_model
     model.weights = self._trainer.model_weights
-    pred = model(trajectory.last_observation[None, ...], n_accelerators=1)[0]
+    # The two lines below along with the copying
+    # before return make the TPU happy
+    tr_slice = trajectory[-self._max_slice_length:]
+    trajectory_np = tr_slice.to_np(timestep_to_np=self.task.timestep_to_np)
+    # Add batch dimension to trajectory_np and run the model.
+    pred = model(trajectory_np.observations[None, ...], n_accelerators=1)[0]
+    # Pick element 0 from the batch (the only one), last (current) timestep.
+    pred = pred[0, -1, :]
     sample = self._policy_dist.sample(pred)
-    return (int(sample), self._policy_dist.log_prob(pred, sample))
+    log_prob = self._policy_dist.log_prob(pred, sample)
+    return (sample.copy(), log_prob.copy())
 
   def train_epoch(self):
     """Trains RL for one epoch."""
@@ -111,6 +119,61 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
           self._train_steps_per_epoch // self._supervised_evals_per_epoch,
           self._supervised_eval_steps,
       )
+
+
+class PPOJointTrainer(ActorCriticJointTrainer):
+  """The Proximal Policy Optimization Algorithm aka PPO.
+
+  Trains policy and value models using the PPO algortithm.
+  """
+
+  on_policy = True
+
+  def __init__(self, task, epsilon=0.2, value_loss_coeff=0.1, **kwargs):
+    """Configures the PPO Trainer."""
+    self._epsilon = epsilon
+    self._value_loss_coeff = value_loss_coeff
+    super(PPOJointTrainer, self).__init__(task, **kwargs)
+
+  def batches_stream(self):
+    """Use the RLTask self._task to create inputs to the value model."""
+    for np_trajectory in self._task.trajectory_batch_stream(
+        self._batch_size, max_slice_length=self._max_slice_length, epochs=[-1]):
+      # Insert an extra depth dimension, so the target shape is consistent with
+      # the network output shape.
+      yield (np_trajectory.observations,         # Inputs to the value model.
+             np_trajectory.returns[:, :, None],
+             np_trajectory.actions,
+             np_trajectory.log_probs)  # Targets: regress to returns.
+
+  @property
+  def joint_loss(self):
+    """Joint policy and value loss."""
+    # PPO is a widely used actor-critic RL algorithm.
+    @tl.layer(n_in=5, n_out=1)
+    def PPOLoss(x, **unused_kwargs):
+      """Definition of the Proximal Policy Optimization loss."""
+      dist_inputs, values, returns, actions, old_log_probs = x
+      new_log_probs = self._policy_dist.log_prob(dist_inputs, actions)
+
+      advantages = returns - values
+      l2_value_loss = jnp.sum((returns - values)**2) * self._value_loss_coeff
+
+      # Old log probs have an undesirable extra dimension which we remove here
+      old_log_probs = jnp.array(old_log_probs.squeeze(axis=-1),
+                                dtype=jnp.float32)
+      new_log_probs = jnp.array(new_log_probs.squeeze(axis=-1))
+
+      # The ratio between new_probs and old_probs expressed
+      # using log_probs and exponentaion
+      probs_ratio = jnp.exp(new_log_probs - old_log_probs)
+      unclipped_objective = probs_ratio * advantages
+      clipped_objective = jnp.clip(probs_ratio,
+                                   1 - self._epsilon,
+                                   1 + self._epsilon) * advantages
+      ppo_objective = jnp.minimum(unclipped_objective, clipped_objective)
+      return -ppo_objective.mean() + l2_value_loss
+    return PPOLoss
 
 
 class AWRJointTrainer(ActorCriticJointTrainer):
