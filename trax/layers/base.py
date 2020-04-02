@@ -353,7 +353,7 @@ class Layer(object):
       A tuple of `n` rngs. Successive calls will yield continually new values.
     """
     if n < 1:
-      raise ValueError('n must be > 0; received value: {}'.format(n))
+      raise ValueError(f"Requested number of new rng's ({n}) less than 1.")
     rngs = math.random.split(self._rng, n + 1)
     self._rng = rngs[0]
     return tuple(rngs[1:])
@@ -630,14 +630,14 @@ def Fn(f, n_in=None, n_out=None):  # pylint: disable=invalid-name
   varkwargs = argspec.varkw
   # This layer cannot handle functions with kwargs or defaults.
   if argspec.defaults is not None:
-    raise ValueError('function cannot have default arguments')
+    raise ValueError('Function has default arguments (not allowed).')
   if varkwargs:
-    raise ValueError('function cannot have keyword arguments')
+    raise ValueError('Function has keyword arguments (not allowed).')
 
   # Determine n_in from function signature if not set.
   if n_in is None:
     if argspec.varargs is not None:
-      raise ValueError('n_in is not set and f has variable args')
+      raise ValueError('Argument n_in is not set and f has variable args.')
     n_in = len(argspec.args)
   # Try to determine n_out from function signature.
   if n_out is None:
@@ -646,7 +646,8 @@ def Fn(f, n_in=None, n_out=None):  # pylint: disable=invalid-name
       res = f(*dummy_args)
       n_out = len(res) if isinstance(res, (list, tuple)) else 1
     except Exception as e:
-      raise ValueError('n_out is not set and could not be determined') from e
+      raise ValueError(
+          'Argument n_out is not set and could not be determined.') from e
 
   # Create the layer.
   @layer(n_in=n_in, n_out=n_out)
@@ -723,12 +724,10 @@ def check_shape_agreement(layer_obj, input_signature):
 def _validate_forward_input(x, n_in):
   if n_in != 1:
     if not isinstance(x, tuple):
-      raise TypeError(
-          'expected input to be a tuple; instead received {}'.format(type(x)))
+      raise TypeError(f'Expected input to be a tuple; instead got {type(x)}.')
     if len(x) != n_in:
-      raise ValueError(
-          'input tuple length ({}) does not equal required number of inputs'
-          ' ({})'.format(len(x), n_in))
+      raise ValueError(f'Input tuple length ({len(x)}) does not equal required '
+                       f'number of inputs ({n_in}).')
 
 
 def _find_frame(frame):
@@ -862,9 +861,8 @@ def reshape_by_device(x, n_devices):
     batch_size = x_shape[0]
     batch_size_per_device = batch_size // n_devices
     if batch_size_per_device * n_devices != batch_size:
-      raise ValueError(
-          'We require that n_devices[%d] divides batch_size[%d] evenly.' %
-          (n_devices, batch_size))
+      raise ValueError(f'Number of devices ({n_devices}) does not evenly '
+                       f'divide batch size ({batch_size}).')
     new_shape_prefix = [n_devices, batch_size_per_device]
     return math.numpy.reshape(x, new_shape_prefix + x_shape[1:])
   return math.nested_map(f, x)
