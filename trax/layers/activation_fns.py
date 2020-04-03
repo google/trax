@@ -77,14 +77,19 @@ def Tanh(x, **unused_kwargs):
 
 @base.layer()
 def HardSigmoid(x, **unused_kwargs):
-  """Linear approximation to sigmoid."""
+  """Computes a linear approximation to sigmoid."""
   return np.maximum(0, np.minimum(1, (1 + x)))
 
 
 @base.layer()
 def HardTanh(x, **unused_kwargs):
-  """Linear approximation to tanh."""
+  """Computes a linear approximation to tanh."""
   return np.maximum(-1, np.minimum(1, x))
+
+
+@base.layer()
+def Softplus(x, **unused_kwargs):
+  return np.logaddexp(x, 0.)
 
 
 class ThresholdedLinearUnit(base.Layer):

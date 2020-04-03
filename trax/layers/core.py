@@ -130,11 +130,6 @@ def Softmax(x, axis=-1, **unused_kwargs):
 
 
 @base.layer()
-def Softplus(x, **unused_kwargs):
-  return np.logaddexp(x, 0.)
-
-
-@base.layer()
 def ToFloat(x, **unused_kwargs):
   return x.astype(onp.float32)
 
