@@ -118,6 +118,9 @@ class Categorical(Distribution):
     probs = np.exp(log_probs)
     return -np.sum(probs * log_probs, axis=-1)
 
+  def preferred_move(self, dist_inputs):
+    return np.argmax(dist_inputs, axis=-1)
+
 
 @gin.configurable(blacklist=['shape'])
 class Gaussian(Distribution):
@@ -156,6 +159,9 @@ class Gaussian(Distribution):
   # we return a constaent
   def entropy(self):
     return np.exp(self._std) + .5 * np.log(2.0 * np.pi * np.e)
+
+  def preferred_move(self, dist_inputs):
+    return np.mean(dist_inputs)
 
 
 # TODO(pkozakowski): Implement GaussianMixture.
