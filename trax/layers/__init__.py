@@ -80,3 +80,5 @@ InfinitePositionalEncoding = layer_configure(
     InfinitePositionalEncoding, blacklist=['mode'])
 TimeBinPositionalEncoding = layer_configure(
     TimeBinPositionalEncoding, blacklist=['mode'])
+
+AtariConvInit = layer_configure(AtariConvInit)

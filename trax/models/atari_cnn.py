@@ -44,7 +44,6 @@ def AtariCnn(n_frames=4, hidden_sizes=(32, 32), output_size=128, mode='train'):
   return tl.Serial(
       tl.Fn(lambda x: x / 255.0),  # Convert unsigned bytes to float.
       _FrameStack(n_frames=n_frames),  # (B, T, H, W, 4C)
-
       tl.Conv(hidden_sizes[0], (5, 5), (2, 2), 'SAME'),
       tl.Relu(),
       tl.Conv(hidden_sizes[1], (5, 5), (2, 2), 'SAME'),
@@ -56,7 +55,7 @@ def AtariCnn(n_frames=4, hidden_sizes=(32, 32), output_size=128, mode='train'):
 
 
 def AtariCnnBody(n_frames=4, hidden_sizes=(32, 64, 64),
-                 output_size=512, mode='train'):
+                 output_size=512, mode='train', kernel_initializer=None):
   """An Atari CNN."""
   del mode
 
@@ -66,12 +65,14 @@ def AtariCnnBody(n_frames=4, hidden_sizes=(32, 64, 64),
   return tl.Serial(
       tl.Fn(lambda x: x / 255.0),  # Convert unsigned bytes to float.
       _FrameStack(n_frames=n_frames),  # (B, T, H, W, 4C)
-
-      tl.Conv(hidden_sizes[0], (8, 8), (4, 4), 'SAME'),
+      tl.Conv(hidden_sizes[0], (8, 8), (4, 4), padding='SAME',
+              kernel_initializer=kernel_initializer),
       tl.Relu(),
-      tl.Conv(hidden_sizes[1], (4, 4), (2, 2), 'SAME'),
+      tl.Conv(hidden_sizes[1], (4, 4), (2, 2), 'SAME',
+              kernel_initializer=kernel_initializer),
       tl.Relu(),
-      tl.Conv(hidden_sizes[2], (3, 3), (1, 1), 'SAME'),
+      tl.Conv(hidden_sizes[2], (3, 3), (1, 1), 'SAME',
+              kernel_initializer=kernel_initializer),
       tl.Relu(),
       tl.Flatten(n_axes_to_keep=2),  # B, T and rest.
       tl.Dense(output_size),

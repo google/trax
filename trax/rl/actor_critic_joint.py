@@ -250,7 +250,7 @@ class PPOJointTrainer(ActorCriticJointTrainer):
       entropy_loss = self._policy_dist.entropy(new_log_probs) *\
           self._entropy_coeff
 
-      return -ppo_objective.mean() + l2_value_loss + entropy_loss
+      return -ppo_objective.mean() + l2_value_loss - entropy_loss
     return PPOJointLoss
 
   @property

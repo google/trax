@@ -176,3 +176,10 @@ def OrthogonalInitializer(stddev=1.0):
     return stddev * q
 
   return Init
+
+
+def AtariConvInit(kernel_shape, rng, dtype=np.float32):
+  """The standard init for Conv laters and Atari."""
+  filter_height, filter_width, fan_in, _ = kernel_shape
+  std = 1 / np.sqrt(fan_in * filter_height * filter_width)
+  return random.uniform(rng, kernel_shape, dtype, minval=-std, maxval=std)
