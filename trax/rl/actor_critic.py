@@ -26,7 +26,7 @@ from trax import lr_schedules as lr
 from trax import shapes
 from trax import supervised
 from trax.math import numpy as jnp
-from trax.rl import computation_utils
+from trax.rl import advantages as rl_advantages
 from trax.rl import training as rl_training
 
 
@@ -214,21 +214,26 @@ def _copy_model_weights(start, end, from_trainer, to_trainer,  # pylint: disable
 class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
   """Base class for advantage-based actor-critic algorithms."""
 
+  def __init__(
+      self, task, advantage_estimator=rl_advantages.td_lambda, **kwargs
+  ):
+    self._advantage_estimator = advantage_estimator
+    super(AdvantageBasedActorCriticTrainer, self).__init__(task, **kwargs)
+
   def policy_inputs(self, trajectory, values):
     """Create inputs to policy model from a TrajectoryNp and values."""
     # How much TD to use is determined by the added policy slice length,
     # as the policy batches need to be this much longer to calculate TD.
-    td = self._added_policy_slice_length
-    advantages = computation_utils.calculate_advantage(
-        trajectory.rewards, trajectory.returns, values, self._task.gamma, td)
+    advantages = self._advantage_estimator(
+        trajectory.rewards, trajectory.returns, values,
+        gamma=self._task.gamma,
+        n_extra_steps=self._added_policy_slice_length,
+    )
     # Observations should be the same length as advantages - so if we are
-    # using td_advantage, we need to cut td-many out from the end.
-    obs = trajectory.observations
-    obs = obs[:, :-td] if td > 0 else obs
-    act = trajectory.actions
-    act = act[:, :-td] if td > 0 else act
-    old_logps = trajectory.log_probs
-    old_logps = old_logps[:, :-td] if td > 0 else old_logps
+    # using n_extra_steps, we need to trim the length to match.
+    obs = trajectory.observations[:, :advantages.shape[1]]
+    act = trajectory.actions[:, :advantages.shape[1]]
+    old_logps = trajectory.log_probs[:, :advantages.shape[1]]
     assert len(advantages.shape) == 2  # [batch_size, length]
     assert act.shape[0:2] == advantages.shape
     assert obs.shape[0:2] == advantages.shape

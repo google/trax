@@ -43,6 +43,10 @@ RLTask.initial_trajectories = 1000
 RLTask.gamma = 0.99
 RLTask.max_steps = 200
 
+# Parameters for td_lambda:
+# ==============================================================================
+td_lambda.lambda_ = 0.95
+
 # Parameters for PolicyGradientTrainer:
 # ==============================================================================
 PolicyGradientTrainer.policy_model = @trax.models.Policy
@@ -70,6 +74,7 @@ PPOTrainer.policy_train_steps_per_epoch = 10
 PPOTrainer.policy_lr_schedule = @policy/MultifactorSchedule
 PPOTrainer.policy_evals_per_epoch = 1
 PPOTrainer.policy_eval_steps = 1
+PPOTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
 PPOTrainer.collect_per_epoch = 50
 # PPOTrainer.max_slice_length = 0
 
@@ -92,6 +97,7 @@ AWRTrainer.policy_eval_steps = 10
 AWRTrainer.supervised_evals_per_epoch = 10
 AWRTrainer.supervised_eval_steps = 10
 AWRTrainer.collect_per_epoch = 10
+AWRTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
 AWRTrainer.beta = 1.0
 AWRTrainer.w_max = 20
 AWRTrainer.max_slice_length = 1

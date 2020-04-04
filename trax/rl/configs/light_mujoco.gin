@@ -48,6 +48,10 @@ RLTask.initial_trajectories = 1
 RLTask.gamma = 0.99
 RLTask.max_steps = 1000
 
+# Parameters for td_lambda:
+# ==============================================================================
+td_lambda.lambda_ = 0.95
+
 # Parameters for AWRTrainer:
 # ==============================================================================
 AWRTrainer.value_model = @trax.models.Value
@@ -65,6 +69,7 @@ AWRTrainer.policy_lr_schedule = @MultifactorSchedule
 AWRTrainer.policy_evals_per_epoch = 10
 AWRTrainer.policy_eval_steps = 10
 AWRTrainer.collect_per_epoch = 10
+AWRTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
 AWRTrainer.beta = 0.05
 AWRTrainer.w_max = 20
 AWRTrainer.max_slice_length = 1

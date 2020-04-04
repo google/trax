@@ -25,7 +25,6 @@ Policy.body = @trax.models.AtariCnnBody
 # ==============================================================================
 Value.body = @trax.models.AtariCnnBody
 
-
 # Parameters for MultifactorSchedule:
 # ==============================================================================
 value/MultifactorSchedule.constant = 0.0001
@@ -40,6 +39,10 @@ RLTask.initial_trajectories = 100
 RLTask.gamma = 0.999
 RLTask.max_steps = 200
 RLTask.dm_suite = True
+
+# Parameters for td_lambda:
+# ==============================================================================
+td_lambda.lambda_ = 0.95
 
 # Parameters for AWRTrainer:
 # ==============================================================================
@@ -58,6 +61,7 @@ AWRTrainer.policy_lr_schedule = @policy/MultifactorSchedule
 AWRTrainer.policy_evals_per_epoch = 10
 AWRTrainer.policy_eval_steps = 10
 AWRTrainer.collect_per_epoch = 10
+AWRTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
 AWRTrainer.beta = 1.0
 AWRTrainer.w_max = 20
 AWRTrainer.max_slice_length = 1
@@ -79,6 +83,7 @@ PPOTrainer.policy_train_steps_per_epoch = 10
 PPOTrainer.policy_lr_schedule = @policy/MultifactorSchedule
 PPOTrainer.policy_evals_per_epoch = 1
 PPOTrainer.policy_eval_steps = 1
+PPOTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
 PPOTrainer.collect_per_epoch = 10
 
 # Parameters for train_rl:
