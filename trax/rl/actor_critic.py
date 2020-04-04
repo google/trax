@@ -23,7 +23,6 @@ import tensorflow as tf
 
 from trax import layers as tl
 from trax import lr_schedules as lr
-from trax import shapes
 from trax import supervised
 from trax.math import numpy as jnp
 from trax.rl import advantages as rl_advantages
@@ -154,13 +153,17 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
         self._policy_batch_size,
         epochs=epochs,
         max_slice_length=max_slice_length,
-        include_final_state=(max_slice_length > 1)):
+        include_final_state=False):
       value_model = self._value_eval_model
       value_model.weights = self._value_trainer.model_weights
       values = value_model(np_trajectory.observations, n_accelerators=1)
-      shapes.assert_shape_equals(
-          values, (self._policy_batch_size, max_slice_length, 1))
       values = np.squeeze(values, axis=2)  # Remove the singleton depth dim.
+      if len(values.shape) != 2:
+        raise ValueError('Values are expected to have shape ' +
+                         '[batch_size, length], got: %s' % str(values.shape))
+      if values.shape[0] != self._policy_batch_size:
+        raise ValueError('Values first dimension should = policy batch size, ' +
+                         '%d != %d' %(values.shape[0], self._policy_batch_size))
       yield self.policy_inputs(np_trajectory, values)
 
   def train_epoch(self):
@@ -234,11 +237,26 @@ class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
     obs = trajectory.observations[:, :advantages.shape[1]]
     act = trajectory.actions[:, :advantages.shape[1]]
     old_logps = trajectory.log_probs[:, :advantages.shape[1]]
-    assert len(advantages.shape) == 2  # [batch_size, length]
-    assert act.shape[0:2] == advantages.shape
-    assert obs.shape[0:2] == advantages.shape
-    assert old_logps.shape == advantages.shape
-    return (obs, act, advantages, old_logps)
+    mask = trajectory.mask[:, :advantages.shape[1]]  # Mask to zero-out padding.
+    # Shape checks to help debugging.
+    if len(advantages.shape) != 2:
+      raise ValueError('Advantages are expected to have shape ' +
+                       '[batch_size, length], got: %s' % str(advantages.shape))
+    if act.shape[0:2] != advantages.shape:
+      raise ValueError('First 2 dimensions of actions should be the same as in '
+                       'advantages, %s != %s' % (act.shape[0:2],
+                                                 advantages.shape))
+    if obs.shape[0:2] != advantages.shape:
+      raise ValueError('First 2 dimensions of observations should be the same '
+                       'as in advantages, %s != %s' % (obs.shape[0:2],
+                                                       advantages.shape))
+    if old_logps.shape != advantages.shape:
+      raise ValueError('Old log-probs and advantages shapes should be the same'
+                       ', %s != %s' % (old_logps.shape, advantages.shape))
+    if mask.shape != advantages.shape:
+      raise ValueError('Mask and advantages shapes should be the same'
+                       ', %s != %s' % (mask.shape, advantages.shape))
+    return (obs, act, advantages, old_logps, mask)
 
   @property
   def policy_loss_given_log_probs(self):
@@ -254,11 +272,12 @@ class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
 
 
 # A2C is one of the most basic actor-critic RL algorithms.
-@tl.layer(n_in=3, n_out=1)
+@tl.layer(n_in=4, n_out=1)
 def A2CLoss(x, **unused_kwargs):
   """Definition of the Advantage Actor Critic (A2C) loss."""
-  (log_probs, advantages, _) = x
-  return -(log_probs * advantages).mean()
+  (log_probs, advantages, old_log_probs, mask) = x
+  del old_log_probs  # Not used in A2C.
+  return -np.sum(log_probs * advantages * mask) / np.sum(mask)
 
 
 class A2CTrainer(AdvantageBasedActorCriticTrainer):
@@ -273,10 +292,10 @@ class A2CTrainer(AdvantageBasedActorCriticTrainer):
 
 
 # PPO is a widely used actor-critic RL algorithm.
-@tl.layer(n_in=3, n_out=1)
+@tl.layer(n_in=4, n_out=1)
 def PPOLoss(x, epsilon, **unused_kwargs):
   """Definition of the Proximal Policy Optimization loss."""
-  (new_log_probs, advantages, old_log_probs) = x
+  (new_log_probs, advantages, old_log_probs, mask) = x
   # Old log probs have an undesirable extra dimension which we remove here
   old_log_probs = old_log_probs.squeeze(axis=-1)
 
@@ -288,8 +307,7 @@ def PPOLoss(x, epsilon, **unused_kwargs):
                                1 - epsilon,
                                1 + epsilon) * advantages
   ppo_objective = jnp.minimum(unclipped_objective, clipped_objective)
-
-  return -ppo_objective.mean()
+  return -np.sum(ppo_objective * mask) / np.sum(mask)
 
 
 class PPOTrainer(AdvantageBasedActorCriticTrainer):
@@ -312,12 +330,13 @@ class PPOTrainer(AdvantageBasedActorCriticTrainer):
 
 
 # AWR is an off-policy actor-critic RL algorithm.
-@tl.layer(n_in=3, n_out=1)
+@tl.layer(n_in=4, n_out=1)
 def AWRLoss(x, beta, w_max, **unused_kwargs):
   """Definition of the Advantage Weighted Regression (AWR) loss."""
-  (log_probs, advantages, _) = x
+  (log_probs, advantages, old_log_probs, mask) = x
+  del old_log_probs  # Not used in AWR.
   weights = jnp.minimum(jnp.exp(advantages / beta), w_max)
-  return -(log_probs * weights).mean()
+  return -np.sum(log_probs * weights * mask) / np.sum(mask)
 
 
 class AWRTrainer(AdvantageBasedActorCriticTrainer):

@@ -22,6 +22,7 @@ from trax import layers as tl
 from trax import lr_schedules as lr
 from trax import supervised
 from trax.math import numpy as jnp
+from trax.rl import actor_critic
 from trax.rl import distributions
 from trax.rl import training as rl_training
 
@@ -83,7 +84,6 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
         loss_fn=self.joint_loss,
         inputs=self._inputs,
         output_dir=output_dir,
-        # TODO(lukaszkaiser): log policy and value losses too.
         metrics={'joint_loss': self.joint_loss,
                  'advantage_mean': self.advantage_mean,
                  'value_loss': self.value_loss,
@@ -106,12 +106,12 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
   def advantage_mean(self):
     """Mean of advantages."""
     @tl.layer(n_in=3, n_out=1)
-    def AdvanatageMean(x, **unused_kwargs):
+    def AdvantageMean(x, **unused_kwargs):
       """Definition of the mean of advantages."""
       _, values, returns = x
       advantages = returns - values
       return jnp.mean(advantages)
-    return AdvanatageMean
+    return AdvantageMean
 
   @property
   def value_loss(self):
@@ -143,7 +143,7 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
     def PreferredMove(x, **unused_kwargs):
       """Definition of the preferred move."""
       dist_inputs, _ = x
-      preferred_moves = self._policy_dist.preferred_move(dist_inputs)
+      preferred_moves = self._policy_dist.sample(dist_inputs, temperature=0.0)
       return jnp.mean(preferred_moves)
     return PreferredMove
 
@@ -196,7 +196,6 @@ class PPOJointTrainer(ActorCriticJointTrainer):
         loss_fn=self.joint_loss,
         inputs=self._inputs,
         output_dir=self._output_dir,
-        # TODO(lukaszkaiser): log policy and value losses too.
         metrics={'joint_loss': self.joint_loss,
                  'advantage_mean': self.advantage_mean,
                  'value_loss': self.value_loss,
@@ -217,17 +216,18 @@ class PPOJointTrainer(ActorCriticJointTrainer):
       yield (np_trajectory.observations,         # Inputs to the value model.
              np_trajectory.returns[:, :, None],
              np_trajectory.actions,
-             np_trajectory.log_probs)  # Targets: regress to returns.
+             np_trajectory.log_probs,
+             np_trajectory.mask)
 
   # TODO(henrykm): Use the layers defined above
   @property
   def joint_loss(self):
     """Joint policy and value loss."""
-    # PPO is a widely used actor-critic RL algorithm.
-    @tl.layer(n_in=5, n_out=1)
-    def PPOLoss(x, **unused_kwargs):
+    @tl.layer(n_in=6, n_out=1)
+    def PPOJointLoss(x, **unused_kwargs):
       """Definition of the Proximal Policy Optimization loss."""
-      dist_inputs, values, returns, actions, old_log_probs = x
+      dist_inputs, values, returns, actions, old_log_probs, mask = x
+      del mask  # TODO(lukaszkaiser): make PPO work with Transformer
       new_log_probs = self._policy_dist.log_prob(dist_inputs, actions)
 
       advantages = returns - values
@@ -251,7 +251,7 @@ class PPOJointTrainer(ActorCriticJointTrainer):
           self._entropy_coeff
 
       return -ppo_objective.mean() + l2_value_loss + entropy_loss
-    return PPOLoss
+    return PPOJointLoss
 
   @property
   def probs_ratio_mean(self):
@@ -324,18 +324,19 @@ class AWRJointTrainer(ActorCriticJointTrainer):
       # the network output shape.
       yield (np_trajectory.observations,         # Inputs to the value model.
              np_trajectory.returns[:, :, None],  # Targets: regress to returns.
-             np_trajectory.actions)              # Policy targets: actions.
+             np_trajectory.actions,              # Policy targets: actions.
+             np_trajectory.mask)                 # Padding mask.
 
   @property
   def joint_loss(self):
     """Joint policy and value loss."""
-    @tl.layer(n_in=4, n_out=1)
-    def AWRLoss(x, **unused_kwargs):  # pylint: disable=invalid-name
-      logps, values, returns, actions = x
-      advantage = returns - values
+    @tl.layer(n_in=5, n_out=1)
+    def AWRJointLoss(x, **unused_kwargs):  # pylint: disable=invalid-name
+      preds, values, returns, actions, mask = x
+      advantages = jnp.squeeze(returns - values, axis=-1)
+      logps = self._policy_dist.log_prob(preds, actions)
+      awr_loss = actor_critic.AWRLoss(beta=self._beta, w_max=self._w_max)(
+          (logps, advantages, jnp.zeros_like(logps), mask))
       l2_value_loss = jnp.sum((returns - values)**2) * self._value_loss_coeff
-      awr_weights = jnp.minimum(jnp.exp(advantage / self._beta), self._w_max)
-      log_loss = -1.0 * self._policy_dist.log_prob(logps, actions)
-      policy_loss = jnp.sum(log_loss * awr_weights) / jnp.sum(awr_weights)
-      return policy_loss + l2_value_loss
-    return AWRLoss
+      return awr_loss + l2_value_loss
+    return AWRJointLoss

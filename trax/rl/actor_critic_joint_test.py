@@ -76,6 +76,24 @@ class ActorCriticJointTest(absltest.TestCase):
     trainer.run(2)
     self.assertEqual(2, trainer.current_epoch)
 
+  def test_jointawrtrainer_cartpole_transformer(self):
+    """Test-runs joint AWR on cartpole with Transformer."""
+    task = rl_task.RLTask('CartPole-v0', initial_trajectories=100,
+                          max_steps=200)
+    body = lambda mode: models.TransformerDecoder(  # pylint: disable=g-long-lambda
+        d_model=32, d_ff=32, n_layers=1, n_heads=1, mode=mode)
+    joint_model = functools.partial(models.PolicyAndValue, body=body)
+    trainer = actor_critic_joint.AWRJointTrainer(
+        task,
+        joint_model=joint_model,
+        optimizer=opt.Adam,
+        batch_size=4,
+        train_steps_per_epoch=2,
+        collect_per_epoch=2,
+        max_slice_length=128)
+    trainer.run(2)
+    self.assertEqual(2, trainer.current_epoch)
+
 
 if __name__ == '__main__':
   absltest.main()
