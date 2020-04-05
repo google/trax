@@ -17,9 +17,11 @@
 """Classes for defining RL tasks in Trax."""
 
 import collections
+import pickle
 import gin
 import gym
 import numpy as np
+import tensorflow as tf
 
 
 class _TimeStep(object):
@@ -325,6 +327,20 @@ class RLTask:
   @timestep_to_np.setter
   def timestep_to_np(self, ts):
     self._timestep_to_np = ts
+
+  def init_from_file(self, file_name):
+    with tf.io.gfile.GFile(file_name, 'rb') as f:
+      dictionary = pickle.load(f)
+    self._trajectories = dictionary['trajectories']
+    self._max_steps = dictionary['max_steps']
+    self._gamma = dictionary['gamma']
+
+  def save_to_file(self, file_name):
+    dictionary = {'trajectories': self._trajectories,
+                  'max_steps': self._max_steps,
+                  'gamma': self._gamma}
+    with tf.io.gfile.GFile(file_name, 'wb') as f:
+      pickle.dump(dictionary, f)
 
   def play(self, policy):
     """Play an episode in env taking actions according to the given policy."""

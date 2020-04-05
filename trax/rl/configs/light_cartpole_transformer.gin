@@ -71,4 +71,4 @@ AWRTrainer.added_policy_slice_length = 1
 # ==============================================================================
 train_rl.light_rl = True
 train_rl.light_rl_trainer = @trax.rl.AWRTrainer
-train_rl.n_epochs = 20
+train_rl.n_epochs = 50

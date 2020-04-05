@@ -114,7 +114,7 @@ def train_rl(
 
   if light_rl:
     trainer = light_rl_trainer(task=task, output_dir=output_dir)
-    trainer.run(n_epochs)
+    trainer.run(n_epochs, n_epochs_is_total_epochs=True)
     trainer.close()
     return
 

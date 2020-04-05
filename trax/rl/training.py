@@ -18,8 +18,10 @@
 
 import functools
 import os
+import pickle
 import time
 import numpy as np
+import tensorflow as tf
 
 from trax import jaxboard
 from trax import lr_schedules as lr
@@ -69,6 +71,33 @@ class RLTrainer:
   def avg_returns(self):
     return self._avg_returns
 
+  def save_to_file(self, file_name='rl.pkl',
+                   task_file_name='trajectories.pkl'):
+    """Save current epoch number and average returns to file."""
+    assert self._output_dir is not None
+    task_path = os.path.join(self._output_dir, task_file_name)
+    self._task.save_to_file(task_path)
+    file_path = os.path.join(self._output_dir, file_name)
+    dictionary = {'epoch': self._epoch,
+                  'avg_returns': self._avg_returns}
+    with tf.io.gfile.GFile(file_path, 'wb') as f:
+      pickle.dump(dictionary, f)
+
+  def init_from_file(self, file_name='rl.pkl',
+                     task_file_name='trajectories.pkl'):
+    """Initialize epoch number and average returns from file."""
+    assert self._output_dir is not None
+    task_path = os.path.join(self._output_dir, task_file_name)
+    if tf.io.gfile.exists(task_path):
+      self._task.init_from_file(task_path)
+    file_path = os.path.join(self._output_dir, file_name)
+    if not tf.io.gfile.exists(file_path):
+      return
+    with tf.io.gfile.GFile(file_path, 'rb') as f:
+      dictionary = pickle.load(f)
+    self._epoch = dictionary['epoch']
+    self._avg_returns = dictionary['avg_returns']
+
   def policy(self, trajectory):
     """Policy function that allows to play using this trainer.
 
@@ -85,29 +114,41 @@ class RLTrainer:
     """Trains this RL Trainer for one epoch -- main RL logic goes here."""
     raise NotImplementedError
 
-  def run(self, n_epochs=1):
+  def run(self, n_epochs=1, n_epochs_is_total_epochs=False):
     """Runs this loop for n epochs.
 
     Args:
       n_epochs: Stop training after completing n steps.
+      n_epochs_is_total_epochs: if True, consider n_epochs as the total
+        number of epochs to train, including previously trained ones
     """
-    for _ in range(n_epochs):
+    if self._output_dir is not None:
+      self.init_from_file()
+    n_epochs_to_run = n_epochs
+    if n_epochs_is_total_epochs:
+      n_epochs_to_run -= self._epoch
+    for _ in range(n_epochs_to_run):
       self._epoch += 1
       cur_time = time.time()
       self.train_epoch()
-      print('RL training took %.2f seconds.' % (time.time() - cur_time))
+      supervised.trainer_lib.log(
+          'RL training took %.2f seconds.' % (time.time() - cur_time))
       cur_time = time.time()
       avg_return = self.task.collect_trajectories(
           self.policy, self._collect_per_epoch, self._epoch)
       self._avg_returns.append(avg_return)
-      print('Collecting %d episodes took %.2f seconds.'
-            % (self._collect_per_epoch, time.time() - cur_time))
-      print('Average return in epoch %d was %.2f.' % (self._epoch, avg_return))
+      supervised.trainer_lib.log(
+          'Collecting %d episodes took %.2f seconds.'
+          % (self._collect_per_epoch, time.time() - cur_time))
+      supervised.trainer_lib.log(
+          'Average return in epoch %d was %.2f.' % (self._epoch, avg_return))
       if self._sw is not None:
         self._sw.scalar('timing/collect', time.time() - cur_time,
                         step=self._epoch)
         self._sw.scalar('rl/avg_return', avg_return, step=self._epoch)
         self._sw.flush()
+      if self._output_dir is not None:
+        self.save_to_file()
 
   def close(self):
     if self._sw is not None:
@@ -209,15 +250,49 @@ class PolicyTrainer(RLTrainer):
 
   def train_epoch(self):
     """Trains RL for one epoch."""
-    for _ in range(self._policy_evals_per_epoch):
+    # When restoring, calculate how many evals are remaining.
+    n_evals = remaining_evals(
+        self._policy_trainer.step,
+        self._epoch,
+        self._policy_train_steps_per_epoch,
+        self._policy_evals_per_epoch)
+    for _ in range(n_evals):
       self._policy_trainer.train_epoch(
           self._policy_train_steps_per_epoch // self._policy_evals_per_epoch,
-          self._policy_eval_steps,
-      )
+          self._policy_eval_steps)
 
   def close(self):
     self._policy_trainer.close()
     super().close()
+
+
+def remaining_evals(cur_step, epoch, train_steps_per_epoch, evals_per_epoch):
+  """Helper function to calculate remaining evaluations for a trainer.
+
+  Args:
+    cur_step: current step of the supervised trainer
+    epoch: current epoch of the RL trainer
+    train_steps_per_epoch: supervised trainer steps per RL epoch
+    evals_per_epoch: supervised trainer evals per RL epoch
+
+  Returns:
+    number of remaining evals to do this epoch
+
+  Raises:
+    ValueError if the provided numbers indicate a step mismatch
+  """
+  if epoch < 1:
+    raise ValueError('Epoch must be at least 1, got %d' % epoch)
+  prev_steps = (epoch - 1) * train_steps_per_epoch
+  done_steps_this_epoch = cur_step - prev_steps
+  if done_steps_this_epoch < 0:
+    raise ValueError('Current step (%d) < previously done steps (%d).'
+                     % (cur_step, prev_steps))
+  train_steps_per_eval = train_steps_per_epoch // evals_per_epoch
+  if done_steps_this_epoch % train_steps_per_eval != 0:
+    raise ValueError('Done steps (%d) must divide train steps per eval (%d).'
+                     % (done_steps_this_epoch, train_steps_per_eval))
+  return evals_per_epoch - (done_steps_this_epoch // train_steps_per_eval)
 
 
 class PolicyGradientTrainer(PolicyTrainer):

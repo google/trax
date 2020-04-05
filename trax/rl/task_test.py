@@ -16,6 +16,7 @@
 # Lint as: python3
 """Tests for RL training."""
 
+import os
 from absl.testing import absltest
 import gym
 import numpy as np
@@ -50,6 +51,25 @@ class TaskTest(absltest.TestCase):
     next_slice = next(stream)
     self.assertLen(next_slice, 1)
     self.assertEqual(next_slice.last_observation.shape, (2,))
+
+  def test_task_save_init(self):
+    """Test saving and re-initialization."""
+    task1 = rl_task.RLTask(DummyEnv(), initial_trajectories=13,
+                           max_steps=9, gamma=0.9)
+    self.assertLen(task1.trajectories[0], 13)
+    self.assertEqual(task1.max_steps, 9)
+    self.assertEqual(task1.gamma, 0.9)
+    temp_file = os.path.join(self.create_tempdir().full_path, 'task.pkl')
+    task1.save_to_file(temp_file)
+    task2 = rl_task.RLTask(DummyEnv(), initial_trajectories=3,
+                           max_steps=19, gamma=1.0)
+    self.assertLen(task2.trajectories[0], 3)
+    self.assertEqual(task2.max_steps, 19)
+    self.assertEqual(task2.gamma, 1.0)
+    task2.init_from_file(temp_file)
+    self.assertLen(task2.trajectories[0], 13)
+    self.assertEqual(task2.max_steps, 9)
+    self.assertEqual(task2.gamma, 0.9)
 
   def test_task_epochs_index_minusone(self):
     """Test that the epoch index -1 means last epoch and updates to it."""

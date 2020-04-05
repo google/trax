@@ -698,6 +698,7 @@ def train(output_dir,
       trainer.save_gin()
 
   trainer.log_step('Training done')
+  trainer.close()
   return trainer.state
 
 

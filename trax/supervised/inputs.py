@@ -29,14 +29,14 @@ import gin
 import numpy as onp
 
 from tensor2tensor import problems_colab as t2t_problems
-import tensorflow as tf
+import tensorflow as tf   # pylint: disable=g-explicit-tensorflow-version-import
 import tensorflow_datasets as tfds
 from trax import math
 from trax.math import numpy as np
 
 
 class Inputs(object):
-  """Inputs bundle..
+  """Inputs bundle.
 
   Inputs bundle holds input streams and shapes for a training run.
   It contains stream-creating functions that return python generators
@@ -149,8 +149,8 @@ def download_and_prepare(dataset_name, data_dir):
     if dataset_name.startswith('t2t_'):
       # Download and run dataset generator for T2T problem.
       data_dir = os.path.join(data_dir, dataset_name)
-      tf.compat.v1.gfile.MakeDirs(data_dir)
-      tf.compat.v1.gfile.MakeDirs(dl_dir)
+      tf.io.gfile.makedirs(data_dir)
+      tf.io.gfile.makedirs(dl_dir)
       t2t_problems.problem(
           dataset_name[len('t2t_'):]).generate_data(data_dir, dl_dir)
     else:

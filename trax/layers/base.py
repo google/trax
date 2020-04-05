@@ -23,8 +23,8 @@ import traceback
 
 import jax
 import numpy as onp
+import tensorflow as tf
 
-from tensorflow.compat.v1.io import gfile
 from trax import math
 from trax.math import nested_map
 from trax.math import numpy as np
@@ -332,7 +332,7 @@ class Layer(object):
       file_name: the name of the file to initialize from.
       weights_only: if True, initialize only the weights, not state.
     """
-    with gfile.GFile(file_name, 'rb') as f:
+    with tf.io.gfile.GFile(file_name, 'rb') as f:
       dictionary = pickle.load(f)
     self.weights = dictionary['weights']
     if not weights_only:
