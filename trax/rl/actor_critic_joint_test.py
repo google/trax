@@ -31,6 +31,41 @@ from trax.rl import task as rl_task
 
 class ActorCriticJointTest(absltest.TestCase):
 
+  def test_awrjoint_save_restore(self):
+    """Check save and restore of joint AWR trainer."""
+    task = rl_task.RLTask('CartPole-v0', initial_trajectories=100,
+                          max_steps=200)
+    joint_model = functools.partial(
+        models.PolicyAndValue,
+        body=lambda mode: tl.Serial(tl.Dense(64), tl.Relu()),
+    )
+    tmp_dir = self.create_tempdir().full_path
+    trainer1 = actor_critic_joint.AWRJointTrainer(
+        task,
+        joint_model=joint_model,
+        optimizer=opt.Adam,
+        batch_size=4,
+        train_steps_per_epoch=1,
+        collect_per_epoch=2,
+        output_dir=tmp_dir)
+    trainer1.run(2)
+    self.assertEqual(trainer1.current_epoch, 2)
+    self.assertEqual(trainer1._trainer.step, 2)
+    # Trainer 2 starts where trainer 1 stopped.
+    trainer2 = actor_critic_joint.AWRJointTrainer(
+        task,
+        joint_model=joint_model,
+        optimizer=opt.Adam,
+        batch_size=4,
+        train_steps_per_epoch=1,
+        collect_per_epoch=2,
+        output_dir=tmp_dir)
+    trainer2.run(1)
+    self.assertEqual(trainer2.current_epoch, 3)
+    self.assertEqual(trainer2._trainer.step, 3)
+    trainer1.close()
+    trainer2.close()
+
 
   def test_jointppotrainer_cartpole(self):
     """Test-runs joint PPO on CartPole."""

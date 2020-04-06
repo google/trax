@@ -224,7 +224,12 @@ class Trainer(object):
 
   @model_weights.setter
   def model_weights(self, weights):
-    self._opt_state.weights[0] = self._for_n_devices(weights)
+    new_model_weights = self._for_n_devices(weights)
+    if isinstance(self._opt_state.weights, list):
+      self._opt_state.weights[0] = new_model_weights
+    else:  # weights are a tuple, need to re-create
+      new_weights = [new_model_weights] + list(self._opt_state.weights[1:])
+      self._opt_state = self._opt_state._replace(weights=new_weights)
 
   @property
   def state(self):

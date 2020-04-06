@@ -168,7 +168,12 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
 
   def train_epoch(self):
     """Trains RL for one epoch."""
-    for _ in range(self._value_evals_per_epoch):
+    n_value_evals = rl_training.remaining_evals(
+        self._value_trainer.step,
+        self._epoch,
+        self._value_train_steps_per_epoch,
+        self._value_evals_per_epoch)
+    for _ in range(n_value_evals):
       self._value_trainer.train_epoch(
           self._value_train_steps_per_epoch // self._value_evals_per_epoch,
           self._value_eval_steps,
@@ -176,7 +181,20 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
     if self._n_shared_layers > 0:  # Copy value weights to policy trainer.
       _copy_model_weights(0, self._n_shared_layers,
                           self._value_trainer, self._policy_trainer)
-    for _ in range(self._policy_evals_per_epoch):
+    n_policy_evals = rl_training.remaining_evals(
+        self._policy_trainer.step,
+        self._epoch,
+        self._policy_train_steps_per_epoch,
+        self._policy_evals_per_epoch)
+    # Check if there was a restart after value training finishes and policy not.
+    stopped_after_value = (n_value_evals == 0 and
+                           n_policy_evals < self._policy_evals_per_epoch)
+    should_copy_weights = self._n_shared_layers > 0 and not stopped_after_value
+    if should_copy_weights:
+      _copy_model_weights(0, self._n_shared_layers,
+                          self._value_trainer, self._policy_trainer)
+
+    for _ in range(n_policy_evals):
       self._policy_trainer.train_epoch(
           self._policy_train_steps_per_epoch // self._policy_evals_per_epoch,
           self._policy_eval_steps,

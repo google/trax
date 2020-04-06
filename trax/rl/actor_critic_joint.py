@@ -165,11 +165,15 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
 
   def train_epoch(self):
     """Trains RL for one epoch."""
-    for _ in range(self._supervised_evals_per_epoch):
+    n_evals = rl_training.remaining_evals(
+        self._trainer.step,
+        self._epoch,
+        self._train_steps_per_epoch,
+        self._supervised_evals_per_epoch)
+    for _ in range(n_evals):
       self._trainer.train_epoch(
           self._train_steps_per_epoch // self._supervised_evals_per_epoch,
-          self._supervised_eval_steps,
-      )
+          self._supervised_eval_steps)
 
 
 class PPOJointTrainer(ActorCriticJointTrainer):
