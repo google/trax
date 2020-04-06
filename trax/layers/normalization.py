@@ -107,10 +107,10 @@ class BatchNorm(base.Layer):
       output = gamma * z
     else:
       output = z
-    assert output.dtype == x.dtype, ('The dtype of the output (%s) of batch '
-                                     'norm is not the same as the input (%s). '
-                                     'Batch norm should not change the dtype' %
-                                     (output.dtype, x.dtype))
+    if output.dtype != x.dtype:
+      raise TypeError(f'The dtype of the output ({output.dtype}) of batch '
+                      f'norm is not the same as the input ({x.dtype}). '
+                      f'Batch norm should not change the dtype.')
     return output, state
 
 
@@ -156,6 +156,7 @@ class FilterResponseNorm(base.Layer):
     # NOTE: I (afrozm) haven't been able to train with `learn_epsilon = True`.
     self._learn_epsilon = learn_epsilon
 
+    # TODO(jonni): Replace asserts with ValueError.
     assert init_epsilon > 0
     assert init_learnt_epsilon > 0
 
