@@ -23,7 +23,6 @@ import functools
 import jax
 from jax import lax
 from jax import numpy as jnp
-from jax.interpreters import partial_eval as jax_partial_eval
 import numpy as onp
 
 from trax import layers as tl
@@ -465,10 +464,6 @@ class Search:
     else:
       self._jit_beam_search = jax.pmap(beam_search_partial, axis_name='batch',
                                        static_broadcasted_argnums=(2,))
-
-    # Work around a jax error
-    # Ref: https://github.com/google/jax/issues/1919#issuecomment-569985681
-    jax_partial_eval._thread_local_state.remat = True  # pylint: disable=protected-access
 
   def _get_initial_state(self, inputs, targets_prefix, batch_size):
     """Get initial state for beam search."""
