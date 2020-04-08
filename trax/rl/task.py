@@ -17,7 +17,9 @@
 """Classes for defining RL tasks in Trax."""
 
 import collections
+import gzip
 import pickle
+
 import gin
 import gym
 import numpy as np
@@ -235,7 +237,8 @@ class RLTask:
   """A RL task: environment and a collection of trajectories."""
 
   def __init__(self, env=gin.REQUIRED, initial_trajectories=1, gamma=0.99,
-               dm_suite=False, max_steps=None, timestep_to_np=None):
+               dm_suite=False, max_steps=None,
+               timestep_to_np=None, num_stacked_frames=1):
     r"""Configures a RL task.
 
     Args:
@@ -251,7 +254,7 @@ class RLTask:
         (ie., a tensor); if None, we just use the state of the timestep to
         represent it, but other representations (such as embeddings that include
         actions or serialized representations) can be passed here.
-
+      num_stacked_frames: the number of stacked frames for Atari.
     """
     if isinstance(env, str):
       self._env_name = env
@@ -263,7 +266,8 @@ class RLTask:
                 'interleaved_pixels': True,
                 'zero_indexed_actions': True
             })
-        env = atari_wrapper.AtariWrapper(environment=env, num_stacked_frames=1)
+        env = atari_wrapper.AtariWrapper(environment=env,
+                                         num_stacked_frames=num_stacked_frames)
       else:
         env = gym.make(env)
     else:
@@ -330,7 +334,8 @@ class RLTask:
 
   def init_from_file(self, file_name):
     with tf.io.gfile.GFile(file_name, 'rb') as f:
-      dictionary = pickle.load(f)
+      with gzip.GzipFile(fileobj=f) as gzipf:
+        dictionary = pickle.load(gzipf)
     self._trajectories = dictionary['trajectories']
     self._max_steps = dictionary['max_steps']
     self._gamma = dictionary['gamma']
@@ -340,7 +345,8 @@ class RLTask:
                   'max_steps': self._max_steps,
                   'gamma': self._gamma}
     with tf.io.gfile.GFile(file_name, 'wb') as f:
-      pickle.dump(dictionary, f)
+      with gzip.GzipFile(fileobj=f) as gzipf:
+        pickle.dump(dictionary, gzipf)
 
   def play(self, policy):
     """Play an episode in env taking actions according to the given policy."""
