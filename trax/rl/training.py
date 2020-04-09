@@ -34,7 +34,8 @@ class RLTrainer:
   """Abstract class for RL Trainers, presenting the required API."""
 
   def __init__(self, task: rl_task.RLTask, collect_per_epoch=None,
-               output_dir=None, timestep_to_np=None):
+               output_dir=None, timestep_to_np=None,
+               traj_save_every_n_epoch=1):
     """Configures the RL Trainer.
 
     Note that subclasses can have many more arguments, which will be configured
@@ -45,6 +46,7 @@ class RLTrainer:
       collect_per_epoch: How many new trajectories to collect in each epoch.
       output_dir: Path telling where to save outputs such as checkpoints.
       timestep_to_np: Timestep-to-numpy function to override in the task.
+      traj_save_every_n_epoch: Save trajectories every n epoch.
     """
     self._epoch = 0
     self._task = task
@@ -54,6 +56,7 @@ class RLTrainer:
     self._output_dir = output_dir
     self._avg_returns = []
     self._sw = None
+    self.traj_save_every_n_epoch = traj_save_every_n_epoch
     if output_dir is not None:
       self._sw = jaxboard.SummaryWriter(os.path.join(output_dir, 'rl'))
 
@@ -114,7 +117,8 @@ class RLTrainer:
     """Trains this RL Trainer for one epoch -- main RL logic goes here."""
     raise NotImplementedError
 
-  def run(self, n_epochs=1, n_epochs_is_total_epochs=False):
+  def run(self, n_epochs=1,
+          n_epochs_is_total_epochs=False):
     """Runs this loop for n epochs.
 
     Args:
@@ -127,7 +131,7 @@ class RLTrainer:
     n_epochs_to_run = n_epochs
     if n_epochs_is_total_epochs:
       n_epochs_to_run -= self._epoch
-    for _ in range(n_epochs_to_run):
+    for epoch in range(n_epochs_to_run):
       self._epoch += 1
       cur_time = time.time()
       self.train_epoch()
@@ -147,7 +151,8 @@ class RLTrainer:
                         step=self._epoch)
         self._sw.scalar('rl/avg_return', avg_return, step=self._epoch)
         self._sw.flush()
-      if self._output_dir is not None:
+      if self._output_dir is not None and \
+          epoch % self.traj_save_every_n_epoch == 0:
         self.save_to_file()
 
   def close(self):
