@@ -24,7 +24,10 @@ import tensorflow as tf
 
 
 class ShapeDtype(object):
-  """A NumPy ndarray-like object abstracted as shape and dtype."""
+  """A NumPy ndarray-like object abstracted as shape and dtype.
+
+  Main use is for representing input and output signatures.
+  """
   __slots__ = ['shape', 'dtype']
 
   def __init__(self, shape, dtype=onp.float32):
@@ -60,6 +63,10 @@ class ShapeDtype(object):
 
   def __repr__(self):
     return 'ShapeDtype{{shape:{}, dtype:{}}}'.format(self.shape, self.dtype)
+
+  def __len__(self):
+    """Returns length of 1; relevant to input and output signatures."""
+    return 1
 
   def as_tuple(self):
     return self.shape, self.dtype

@@ -68,6 +68,24 @@ class ShapesTest(absltest.TestCase):
     spliced = shapes.splice_signatures(sig1, sig2, sig3, sig4)
     self.assertEqual(spliced, (sd1, sd2, sd3, sd4, sd5))
 
+  def test_len_signature(self):
+    """Signatures of all sizes should give correct length when asked."""
+    x1 = onp.array([1, 2, 3])
+    x2 = onp.array([10, 20, 30])
+    inputs0 = ()
+    inputs1 = x1  # NOT in a tuple
+    inputs2 = (x1, x2)
+
+    sig0 = shapes.signature(inputs0)
+    sig1 = shapes.signature(inputs1)
+    sig2 = shapes.signature(inputs2)
+
+    # pylint: disable=g-generic-assert
+    self.assertEqual(len(sig0), 0)
+    self.assertEqual(len(sig1), 1)
+    self.assertEqual(len(sig2), 2)
+    # pylint: enable=g-generic-assert
+
 
 if __name__ == '__main__':
   absltest.main()
