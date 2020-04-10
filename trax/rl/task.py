@@ -337,8 +337,9 @@ class RLTask:
 
   def _epoch_filename(self, base_filename, epoch):
     """Helper function: file name for saving the given epoch."""
-    head, tail = os.path.split(base_filename)
-    return os.path.join(head, 'epoch' + str(epoch) + '_' + tail)
+    # If base is /foo/task.pkl, we save epoch 1 under /foo/task_epoch1.pkl.
+    filename, ext = os.path.splitext(base_filename)
+    return filename + '_epoch' + str(epoch) + ext
 
   def init_from_file(self, file_name):
     """Initialize this task from file."""
@@ -354,16 +355,19 @@ class RLTask:
 
   def save_to_file(self, file_name):
     """Save this task to file."""
-    dictionary = {'max_steps': self._max_steps,
-                  'gamma': self._gamma,
-                  'all_epochs': list(self._trajectories.keys())}
-    trainer_lib.pickle_to_file(dictionary, file_name, gzip=False)
+    # Save trajectories from new epochs first.
     epochs_to_save = [e for e in self._trajectories.keys()
                       if e not in self._saved_epochs_unchanged]
     for epoch in epochs_to_save:
       trainer_lib.pickle_to_file(self._trajectories[epoch],
                                  self._epoch_filename(file_name, epoch),
                                  gzip=True)
+    # Now save the list of epochs (so the trajectories are already there,
+    # even in case of preemption).
+    dictionary = {'max_steps': self._max_steps,
+                  'gamma': self._gamma,
+                  'all_epochs': list(self._trajectories.keys())}
+    trainer_lib.pickle_to_file(dictionary, file_name, gzip=False)
 
   def play(self, policy):
     """Play an episode in env taking actions according to the given policy."""
