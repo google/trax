@@ -17,13 +17,13 @@
 """Classes for defining RL tasks in Trax."""
 
 import collections
-import gzip
-import pickle
+import os
 
 import gin
 import gym
 import numpy as np
-import tensorflow as tf
+
+from trax.supervised import trainer_lib
 
 
 class _TimeStep(object):
@@ -290,6 +290,9 @@ class RLTask:
     # saving and reading trajectories from disk.
     self._trajectories = collections.defaultdict(list)
     self._trajectories.update(initial_trajectories)
+    # When we repeatedly save, trajectories for many epochs do not change, so
+    # we don't need to save them again. This keeps track which are unchanged.
+    self._saved_epochs_unchanged = []
 
   @property
   def env(self):
@@ -332,21 +335,35 @@ class RLTask:
   def timestep_to_np(self, ts):
     self._timestep_to_np = ts
 
+  def _epoch_filename(self, base_filename, epoch):
+    """Helper function: file name for saving the given epoch."""
+    head, tail = os.path.split(base_filename)
+    return os.path.join(head, 'epoch' + str(epoch) + '_' + tail)
+
   def init_from_file(self, file_name):
-    with tf.io.gfile.GFile(file_name, 'rb') as f:
-      with gzip.GzipFile(fileobj=f) as gzipf:
-        dictionary = pickle.load(gzipf)
-    self._trajectories = dictionary['trajectories']
+    """Initialize this task from file."""
+    dictionary = trainer_lib.unpickle_from_file(file_name, gzip=False)
     self._max_steps = dictionary['max_steps']
     self._gamma = dictionary['gamma']
+    epochs_to_load = dictionary['all_epochs']
+    for epoch in epochs_to_load:
+      trajectories = trainer_lib.unpickle_from_file(
+          self._epoch_filename(file_name, epoch), gzip=True)
+      self._trajectories[epoch] = trajectories
+    self._saved_epochs_unchanged = epochs_to_load
 
   def save_to_file(self, file_name):
-    dictionary = {'trajectories': self._trajectories,
-                  'max_steps': self._max_steps,
-                  'gamma': self._gamma}
-    with tf.io.gfile.GFile(file_name, 'wb') as f:
-      with gzip.GzipFile(fileobj=f) as gzipf:
-        pickle.dump(dictionary, gzipf)
+    """Save this task to file."""
+    dictionary = {'max_steps': self._max_steps,
+                  'gamma': self._gamma,
+                  'all_epochs': list(self._trajectories.keys())}
+    trainer_lib.pickle_to_file(dictionary, file_name, gzip=False)
+    epochs_to_save = [e for e in self._trajectories.keys()
+                      if e not in self._saved_epochs_unchanged]
+    for epoch in epochs_to_save:
+      trainer_lib.pickle_to_file(self._trajectories[epoch],
+                                 self._epoch_filename(file_name, epoch),
+                                 gzip=True)
 
   def play(self, policy):
     """Play an episode in env taking actions according to the given policy."""
@@ -358,6 +375,11 @@ class RLTask:
     """Collect n trajectories in env playing the given policy."""
     new_trajectories = [self.play(policy) for _ in range(n)]
     self._trajectories[epoch_id].extend(new_trajectories)
+    # Mark that epoch epoch_id has changed.
+    if epoch_id in self._saved_epochs_unchanged:
+      self._saved_epochs_unchanged = [e for e in self._saved_epochs_unchanged
+                                      if e != epoch_id]
+    # Calculate returns.
     returns = [t.total_return for t in new_trajectories]
     return sum(returns) / float(len(returns))
 

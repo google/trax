@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import collections
 import functools
+import gzip as gzip_lib
 import itertools
 import os
 import pickle
@@ -440,8 +441,7 @@ class Trainer(object):
               jaxboard.markdownify_operative_config_str(config_str))
 
   def _save_state_dict(self, trainer_state_dict, weights_file):
-    with tf.io.gfile.GFile(weights_file, 'wb') as f:
-      pickle.dump(trainer_state_dict, f)
+    pickle_to_file(trainer_state_dict, weights_file)
     log('Model saved to %s' % weights_file, stdout=False)
 
   def save_state(self, keep, prefix='model'):
@@ -966,3 +966,28 @@ def _repeat_stream(stream, n_devices):
   while True:
     for example in stream(n_devices):
       yield example
+
+
+def pickle_to_file(obj, file_path, gzip=False):
+  """Pickle obj to file_path with gzipping and failure protection."""
+  # Pickle to tmp file and overwrite to prevent writing partial files.
+  tmp_file_path = file_path + '._tmp_'
+  with tf.io.gfile.GFile(tmp_file_path, 'wb') as f:
+    if not gzip:
+      pickle.dump(obj, f)
+    else:
+      with gzip_lib.GzipFile(fileobj=f, compresslevel=2) as gzipf:
+        pickle.dump(obj, gzipf)
+  # Moving a file is much less error-prone than pickling large files.
+  tf.io.gfile.rename(tmp_file_path, file_path, overwrite=True)
+
+
+def unpickle_from_file(file_path, gzip=False):
+  """Unpickle obj from file_path with gzipping."""
+  with tf.io.gfile.GFile(file_path, 'rb') as f:
+    if not gzip:
+      obj = pickle.load(f)
+    else:
+      with gzip_lib.GzipFile(fileobj=f, compresslevel=2) as gzipf:
+        obj = pickle.load(gzipf)
+  return obj
