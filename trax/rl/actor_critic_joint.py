@@ -308,6 +308,16 @@ class PPOJointTrainer(ActorCriticJointTrainer):
     return NotImplementedError
 
 
+# AWR is an off-policy actor-critic RL algorithm.
+@tl.layer(n_in=4, n_out=1)
+def AWRLoss(x, beta, w_max, **unused_kwargs):
+  """Definition of the Advantage Weighted Regression (AWR) loss."""
+  (log_probs, advantages, old_log_probs, mask) = x
+  del old_log_probs  # Not used in AWR.
+  weights = jnp.minimum(jnp.exp(advantages / beta), w_max)
+  return -jnp.sum(log_probs * weights * mask) / jnp.sum(mask)
+
+
 class AWRJointTrainer(ActorCriticJointTrainer):
   """Trains a joint policy-and-value model using AWR."""
 
@@ -339,7 +349,7 @@ class AWRJointTrainer(ActorCriticJointTrainer):
       preds, values, returns, actions, mask = x
       advantages = jnp.squeeze(returns - values, axis=-1)
       logps = self._policy_dist.log_prob(preds, actions)
-      awr_loss = actor_critic.AWRLoss(beta=self._beta, w_max=self._w_max)(
+      awr_loss = AWRLoss(beta=self._beta, w_max=self._w_max)(
           (logps, advantages, jnp.zeros_like(logps), mask))
       l2_value_loss = jnp.sum((returns - values)**2) * self._value_loss_coeff
       return awr_loss + l2_value_loss
