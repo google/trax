@@ -146,6 +146,10 @@ class RLTrainer:
         self._sw.scalar('timing/collect', time.time() - cur_time,
                         step=self._epoch)
         self._sw.scalar('rl/avg_return', avg_return, step=self._epoch)
+        self._sw.scalar('rl/n_interactions', self.task.n_interactions(),
+                        step=self._epoch)
+        self._sw.scalar('rl/n_trajectories', self.task.n_trajectories(),
+                        step=self._epoch)
         self._sw.flush()
       if self._output_dir is not None:
         self.save_to_file()

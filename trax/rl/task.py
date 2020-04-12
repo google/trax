@@ -387,6 +387,17 @@ class RLTask:
     returns = [t.total_return for t in new_trajectories]
     return sum(returns) / float(len(returns))
 
+  def n_trajectories(self, epochs=None):
+    all_epochs = list(self._trajectories.keys())
+    epoch_indices = epochs or all_epochs
+    return sum([len(self._trajectories[ep]) for ep in epoch_indices])
+
+  def n_interactions(self, epochs=None):
+    all_epochs = list(self._trajectories.keys())
+    epoch_indices = epochs or all_epochs
+    return sum([sum([len(traj) for traj in self._trajectories[ep]])
+                for ep in epoch_indices])
+
   def trajectory_stream(self, epochs=None, max_slice_length=None,
                         include_final_state=False,
                         sample_trajectories_uniformly=False):
