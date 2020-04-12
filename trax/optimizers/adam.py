@@ -24,7 +24,7 @@ class Adam(opt_base.Optimizer):
   """Adam optimizer."""
 
   def __init__(self, learning_rate, weight_decay_rate=1e-5,  # pylint: disable=useless-super-delegation
-               b1=0.9, b2=0.999, eps=1e-5):
+               b1=0.9, b2=0.999, eps=1e-5, clip_gradient=None):
     """Create the Adam optimizer.
 
     Args:
@@ -36,14 +36,16 @@ class Adam(opt_base.Optimizer):
          rate for the second moment estimates (default 0.999).
       eps: optional, a positive scalar value for epsilon, a small constant for
         numerical stability (default 1e-5).
+      clip_gradient: a constant used to clip gradients.
     """
     super(Adam, self).__init__(
         learning_rate=learning_rate,
         weight_decay_rate=weight_decay_rate,
         b1=b1,
         b2=b2,
-        eps=eps,
+        eps=eps
     )
+    self._clip_gradient = clip_gradient
 
   def init(self, weights):
     m = np.zeros_like(weights)
@@ -51,6 +53,8 @@ class Adam(opt_base.Optimizer):
     return m, v
 
   def update(self, step, grads, weights, slots, opt_params):
+    if self._clip_gradient is not None:
+      grads = np.clip(grads, -1 * self._clip_gradient, self._clip_gradient)
     m, v = slots
     learning_rate = opt_params['learning_rate']
     weight_decay_rate = opt_params['weight_decay_rate']
