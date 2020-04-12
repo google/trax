@@ -68,21 +68,21 @@ def PureMLP(
       layers,
   )
 
-
-def MLP(d_hidden=512,
-        n_hidden_layers=2,
-        activation_fn=tl.Relu,
-        n_output_classes=10,
-        flatten=True,
-        mode='train'):
-  """An MLP network, with a final layer for n-way classification."""
+  def MLP(
+      layer_widths=(512,512,10),
+      activation_fn=tl.Relu,
+      out_activation=False,
+      flatten=True,
+      mode='train'):
+   """An MLP network, with a final layer for n-way classification."""
   # TODO(jonni): Revisit naming of PureMLP vs. MLP.
-  # TODO(jonni): Redo params for MLP to align with PureMLP?
+  # TODO(jonni): Redo params for MLP to align with PureMLP? - DONE
 
   return tl.Serial(
       PureMLP(
-          layer_widths=[d_hidden] * n_hidden_layers + [n_output_classes],
+          layer_widths=layer_widths,
           activation_fn=activation_fn,
+          out_activation=out_activation,
           flatten=flatten,
           mode=mode),
       tl.LogSoftmax(),
