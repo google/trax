@@ -17,9 +17,19 @@ import trax.models
 import trax.optimizers
 import trax.rl
 
+# Parameters for Adam:
+# ==============================================================================
+Adam.clip_gradient = 0.5
+
 # Parameters for PolicyAndValue:
 # ==============================================================================
 PolicyAndValue.body = @trax.models.AtariCnnBody
+
+# Parameters for the AtariCnnBody:
+# ==============================================================================
+AtariCnnBody.kernel_initializer = @trax.layers.AtariConvInit
+AtariCnnBody.n_frames = 1
+AtariCnnBody.padding = 'VALID'
 
 # Parameters for MultifactorSchedule:
 # ==============================================================================
@@ -33,6 +43,7 @@ RLTask.initial_trajectories = 50
 RLTask.gamma = 0.99
 RLTask.max_steps = 2000
 RLTask.dm_suite = True
+RLTask.num_stacked_frames = 4
 
 # Parameters for PPOTrainer:
 # ==============================================================================
@@ -42,8 +53,9 @@ PPOJointTrainer.batch_size = 16
 PPOJointTrainer.train_steps_per_epoch = 20
 PPOJointTrainer.lr_schedule = @MultifactorSchedule
 PPOJointTrainer.collect_per_epoch = 25
-PPOJointTrainer.epsilon = 0.2
+PPOJointTrainer.epsilon = 0.1
 PPOJointTrainer.value_loss_coeff = 0.1
+PPOJointTrainer.entropy_coeff = 0.01
 
 # Parameters for train_rl:
 # ==============================================================================
