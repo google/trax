@@ -36,7 +36,8 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
                optimizer=None, lr_schedule=lr.MultifactorSchedule,
                batch_size=64, train_steps_per_epoch=500,
                supervised_evals_per_epoch=1, supervised_eval_steps=1,
-               collect_per_epoch=50, max_slice_length=1, output_dir=None):
+               collect_per_epoch=50, max_slice_length=1,
+               normalize_advantages=True, output_dir=None):
     """Configures the joint trainer.
 
     Args:
@@ -52,6 +53,8 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
           only affects metric reporting.
       collect_per_epoch: how many trajectories to collect per epoch.
       max_slice_length: the maximum length of trajectory slices to use.
+      normalize_advantages: if True, then normalize advantages - currently
+          implemented only in PPO.
       output_dir: Path telling where to save outputs (evals and checkpoints).
     """
     super(ActorCriticJointTrainer, self).__init__(
@@ -65,6 +68,7 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
     self._policy_dist = distributions.create_distribution(task.action_space)
     self._lr_schedule = lr_schedule
     self._optimizer = optimizer
+    self._normalize_advantages = normalize_advantages
 
     # Inputs to the joint model are produced by self.batches_stream.
     self._inputs = supervised.Inputs(
@@ -241,7 +245,9 @@ class PPOJointTrainer(ActorCriticJointTrainer):
 
       ppo_objective = rl_layers.PPOObjective(
           dist_inputs, values, returns, actions, old_log_probs,
-          log_prob_fun=self._policy_dist.log_prob, epsilon=self._epsilon)
+          log_prob_fun=self._policy_dist.log_prob,
+          epsilon=self._epsilon,
+          normalize_advantages=self._normalize_advantages)
 
       entropy_loss = rl_layers.EntropyLoss(
           dist_inputs, actions,
@@ -355,9 +361,9 @@ class PPOJointTrainer(ActorCriticJointTrainer):
         rl_layers.PPOObjective(
             dist_inputs, values, returns, actions, old_log_probs,
             log_prob_fun=self._policy_dist.log_prob,
-            epsilon=self._epsilon),
+            epsilon=self._epsilon,
+            normalize_advantages=self._normalize_advantages),
         n_in=5, n_out=1)
-
     return lambda **unused_kwargs: layer
 
   @property
@@ -368,7 +374,8 @@ class PPOJointTrainer(ActorCriticJointTrainer):
       ppo_objective = rl_layers.PPOObjective(
           dist_inputs, values, returns, actions, old_log_probs,
           log_prob_fun=self._policy_dist.log_prob,
-          epsilon=self._epsilon)
+          epsilon=self._epsilon,
+          normalize_advantages=self._normalize_advantages)
       return jnp.mean(ppo_objective)
     return lambda **unused_kwargs: tl.Fn(PPOObjectiveMean, n_in=5, n_out=1)
 
