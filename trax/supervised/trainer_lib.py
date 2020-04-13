@@ -687,23 +687,27 @@ def train(output_dir,
   trainer.log_step('Starting training using %d devices' % trainer.n_devices)
   trainer.print_n_weights()
 
-  for epoch_steps in epochs(steps, trainer.step, epoch_steps):
-    trainer.train_epoch(epoch_steps, eval_steps)
+  try:
+    for epoch_steps in epochs(steps, trainer.step, epoch_steps):
+      trainer.train_epoch(epoch_steps, eval_steps)
 
-    # Update nontrainable parameters with new history
-    trainer.update_nontrainable_params()
+      # Update nontrainable parameters with new history
+      trainer.update_nontrainable_params()
 
-    # Bookkeeping we do at the first step
-    if trainer.step == 1:
-      # Save computation graph (single-device only for now)
-      if (save_graphs and math.backend_name() == 'jax'):
-        trainer.save_computation_graphs(save_backward_graph)
+      # Bookkeeping we do at the first step
+      if trainer.step == 1:
+        # Save computation graph (single-device only for now)
+        if (save_graphs and math.backend_name() == 'jax'):
+          trainer.save_computation_graphs(save_backward_graph)
 
-      # Save Gin config
-      trainer.save_gin()
+        # Save Gin config
+        trainer.save_gin()
 
-  trainer.log_step('Training done')
-  trainer.close()
+    trainer.log_step('Training done')
+  except Exception as e:
+    raise e
+  finally:
+    trainer.close()
   return trainer.state
 
 
