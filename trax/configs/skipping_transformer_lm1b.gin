@@ -19,7 +19,7 @@ import trax.supervised.trainer_lib
 
 # Parameters for batch_fn:
 # ==============================================================================
-batch_fn.batch_size_per_device = 128
+batch_fn.batch_size_per_device = 64
 batch_fn.eval_batch_size = 128
 batch_fn.max_eval_length = 2048
 
@@ -58,11 +58,11 @@ DotProductCausalAttention.dropout = 0.1
 # Parameters for SkippingTransformerLM:
 # ==============================================================================
 SkippingTransformerLM.attention_type = @trax.layers.DotProductCausalAttention
-SkippingTransformerLM.d_model = 512
-SkippingTransformerLM.d_ff = 2048
-SkippingTransformerLM.dropout = 0.1
+SkippingTransformerLM.d_model = 1024
+SkippingTransformerLM.d_ff = 4096
+SkippingTransformerLM.dropout = 0.2
 SkippingTransformerLM.max_len = 2048
 SkippingTransformerLM.mode = 'train'
 SkippingTransformerLM.n_heads = 8
-SkippingTransformerLM.n_layers = 6
+SkippingTransformerLM.n_layers = 8
 SkippingTransformerLM.vocab_size = 32000
