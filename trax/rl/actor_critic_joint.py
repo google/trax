@@ -93,6 +93,7 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
                  'advantage_mean': self.advantage_mean,
                  'advantage_norm': self.advantage_norm,
                  'value_loss': self.value_loss,
+                 'explained_variance': self.explained_variance,
                  'log_probs_mean': self.log_probs_mean,
                  'preferred_move': self.preferred_move})
     self._eval_model = self._joint_model(mode='eval')
@@ -140,6 +141,13 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
     layer = tl.Fn(lambda dist_inputs, values, returns: rl_layers.ValueLoss(
         values, returns, self._value_loss_coeff),
                   n_in=3, n_out=1)
+    return lambda **unused_kwargs: layer
+
+  @property
+  def explained_variance(self):
+    """Explained variance metric."""
+    layer = tl.Fn(rl_layers.ExplainedVariance,
+                  n_in=2, n_out=1)
     return lambda **unused_kwargs: layer
 
   @property
@@ -213,6 +221,7 @@ class PPOJointTrainer(ActorCriticJointTrainer):
                  'advantage_mean': self.advantage_mean,
                  'advantage_norm': self.advantage_norm,
                  'value_loss': self.value_loss,
+                 'explained_variance': self.explained_variance,
                  'log_probs_mean': self.log_probs_mean,
                  'entropy_loss': self.entropy_loss,
                  'probs_ratio_mean': self.probs_ratio_mean,

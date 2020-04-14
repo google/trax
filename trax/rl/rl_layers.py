@@ -29,6 +29,11 @@ def ValueLoss(values, returns, value_loss_coeff):
   return l2_value_loss
 
 
+def ExplainedVariance(values, returns):
+  """Definition of explained variance."""
+  return jnp.mean(1 - jnp.divide(returns - values, returns + 1e-8))
+
+
 def PreferredMove(dist_inputs, sample):
   """Definition of the preferred move."""
   preferred_moves = sample(dist_inputs, temperature=0.0)
@@ -55,12 +60,9 @@ def EntropyLoss(dist_inputs, actions, log_prob_fun,
 def ProbsRatio(dist_inputs, actions, old_log_probs, log_prob_fun):
   """Probability Ratio from the PPO algorithm."""
   # Old log probs have an undesirable extra dimension which we remove here
-  print("old_log_probs before {}".format(old_log_probs))
   old_log_probs = jnp.array(old_log_probs.squeeze(axis=-1),
                             dtype=jnp.float32)
-  print("old_log_probs after {}".format(old_log_probs))
   new_log_probs = NewLogProbs(dist_inputs, actions, log_prob_fun)
-  print("new_log_probs {}".format(new_log_probs))
   # The ratio between new_probs and old_probs expressed
   # using log_probs and exponentaion
   probs_ratio = jnp.exp(new_log_probs - old_log_probs)
