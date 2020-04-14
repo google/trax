@@ -190,6 +190,14 @@ class MathTest(tf.test.TestCase):
   def testAmax(self):
     self._testReduce(array_methods.amax, np.amax, 'amax')
 
+  def testArgsort(self):
+    self._testUnaryOp(math.argsort, np.argsort, 'argsort')
+
+    # Test stability
+    r = np.arange(100)
+    a = np.zeros(100)
+    np.testing.assert_equal(math.argsort(a, kind='stable'), r)
+
 
 if __name__ == '__main__':
   tf.compat.v1.enable_eager_execution()

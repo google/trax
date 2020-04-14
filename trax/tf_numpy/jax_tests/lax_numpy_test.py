@@ -1911,32 +1911,22 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
     expected = onp.array([[1, 1], [3, 4]])
     self.assertAllClose(expected, ans, check_dtypes=True)
 
-  @disable
   def testArgsortManually(self):
-    x = onp.array([16, 15, 23, 42, 8, 4])
-    ans = lnp.argsort(x)
-    expected = onp.argsort(x)
-    self.assertAllClose(expected, ans, check_dtypes=False)
 
-    x = onp.array([[16, 15, 23], [42, 8, 4]])
-    ans = lnp.argsort(x, axis=0)
-    expected = onp.argsort(x, axis=0)
-    self.assertAllClose(expected, ans, check_dtypes=False)
+    def _test(*args, **kwargs):
 
-    x = onp.array([[16, 15, 23], [42, 8, 4]])
-    ans = lnp.argsort(x, axis=1)
-    expected = onp.argsort(x, axis=1)
-    self.assertAllClose(expected, ans, check_dtypes=False)
+      raw_ans = lnp.argsort(*args, **kwargs)
+      fn_ans = tf.function(lnp.argsort)(*args, **kwargs)
+      expected = onp.argsort(*args, **kwargs)
 
-    x = onp.array([[16, 15, 23], [42, 8, 4]])
-    ans = lnp.argsort(x, axis=None)
-    expected = onp.argsort(x, axis=None)
-    self.assertAllClose(expected, ans, check_dtypes=False)
+      self.assertAllClose(expected, raw_ans, check_dtypes=True)
+      self.assertAllClose(expected, fn_ans, check_dtypes=True)
 
-    x = onp.array([[16, 15, 23], [42, 8, 4]])
-    ans = lnp.argsort(x)
-    expected = onp.argsort(x)
-    self.assertAllClose(expected, ans, check_dtypes=False)
+    _test(onp.array([16, 15, 23, 42, 8, 4]))
+    _test(onp.array([[16, 15, 23], [42, 8, 4]]), axis=0)
+    _test(onp.array([[16, 15, 23], [42, 8, 4]]), axis=1)
+    _test(onp.array([[16, 15, 23], [42, 8, 4]]), axis=None)
+    _test(onp.array([[16, 15, 23], [42, 8, 4]]))
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_{}_shifts={}_axis={}".format(

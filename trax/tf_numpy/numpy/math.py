@@ -947,3 +947,28 @@ def tile(a, reps):
 def count_nonzero(a, axis=None):
   return arrays.tensor_to_ndarray(
       tf.math.count_nonzero(array_creation.asarray(a).data, axis))
+
+
+@utils.np_doc(np.argsort)
+def argsort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missing-docstring
+  # TODO(nareshmodi): make string tensors also work.
+  if kind not in ('quicksort', 'stable'):
+    raise ValueError("Only 'quicksort' and 'stable' arguments are supported.")
+  if order is not None:
+    raise ValueError("'order' argument to sort is not supported.")
+  stable = (kind == 'stable')
+
+  a = array_creation.asarray(a).data
+
+  def _argsort(a, axis, stable):
+    if axis is None:
+      a = tf.reshape(a, [-1])
+      axis = 0
+
+    return tf.argsort(a, axis, stable=stable)
+
+  tf_ans = tf.cond(
+      tf.rank(a) == 0, lambda: tf.constant([0]),
+      lambda: _argsort(a, axis, stable))
+
+  return array_creation.asarray(tf_ans, dtype=np.intp)
