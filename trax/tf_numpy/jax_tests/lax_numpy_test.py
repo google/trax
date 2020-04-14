@@ -790,7 +790,6 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
           [(4, 5, 2), (4, 5, 2), (-1, -1, -1, None)] # same as before
       ]
       for lhs_dtype, rhs_dtype in CombosWithReplacement(number_dtypes, 2)))
-  @disable
   def testCross(self, lhs_shape, lhs_dtype, rhs_shape, rhs_dtype, axes, rng_factory):
     rng = rng_factory()
     args_maker = lambda: [rng(lhs_shape, lhs_dtype), rng(rhs_shape, rhs_dtype)]
@@ -801,13 +800,15 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
       b = b.astype(onp.float32) if rhs_dtype == lnp.bfloat16 else b
       out = onp.cross(a, b, axisa, axisb, axisc, axis)
       return out.astype(lnp.promote_types(lhs_dtype, rhs_dtype))
-    tol_spec = {dtypes.bfloat16: 3e-1, onp.float16: 0.15}
+    tol_spec = {
+        # TODO(wangpeng): dtypes.bfloat16: 3e-1,
+        onp.float16: 0.15}
     tol = max(jtu.tolerance(lhs_dtype, tol_spec),
               jtu.tolerance(rhs_dtype, tol_spec))
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True,
                             tol=tol)
     self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True, atol=tol,
-                          rtol=tol)
+                          rtol=tol, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_{}_{}_{}".format(

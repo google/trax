@@ -263,23 +263,38 @@ def cond(pred, true_fn, false_fn):
     return false_fn()
 
 
+def _maybe_static(x):
+  value = tf.get_static_value(x)
+  if value is None:
+    return x
+  else:
+    return value
+
+
+def add(a, b):
+  """A version of tf.add that eagerly evaluates if possible."""
+  # It's needed becaues tf.get_static_value doesn't handle tf.add
+  return _maybe_static(a) + _maybe_static(b)
+
+
+def subtract(a, b):
+  """A version of tf.subtract that eagerly evaluates if possible."""
+  return _maybe_static(a) - _maybe_static(b)
+
+
 def greater(a, b):
   """A version of tf.greater that eagerly evaluates if possible."""
-  # It's needed becaues tf.get_static_value doesn't handle tf.greater.
-  v_a = tf.get_static_value(a)
-  v_b = tf.get_static_value(b)
-  if v_a is not None and v_b is not None:
-    return v_a > v_b
-  else:
-    return a > b
+  return _maybe_static(a) > _maybe_static(b)
 
 
 def logical_or(a, b):
   """A version of tf.logical_or that eagerly evaluates if possible."""
-  # It's needed becaues tf.get_static_value doesn't handle tf.logical_or.
-  v_a = tf.get_static_value(a)
-  v_b = tf.get_static_value(b)
-  if v_a is not None and v_b is not None:
-    return v_a or v_b
-  else:
-    return a | b
+  # Because TF overloads `|` as logical_or, we need to use `|` here. It's OK if
+  # both `a` and `b` are evaluated, since `a | b` == `a or b` when a and b are
+  # bools.
+  return _maybe_static(a) | _maybe_static(b)
+
+
+def getitem(a, slice_spec):
+  """A version of __getitem__ that eagerly evaluates if possible."""
+  return _maybe_static(a)[slice_spec]
