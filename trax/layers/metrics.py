@@ -49,67 +49,45 @@ from trax.math import numpy as np
 
 
 # pylint: disable=no-value-for-parameter
-def L2Loss(id_to_mask=None, has_weights=False):
-  """Returns a layer to compute L2 loss."""
-  if id_to_mask is not None:
-    raise ValueError('L2Loss cannot mask by ID, provide weights if needed.')
-
-  @base.layer(n_in=2, n_out=1)
-  def RawL2Loss(inputs, **unused_kwargs):
-    y_hat, y = inputs
-    shapes.assert_same_shape(y_hat, y)
-    return np.mean((y_hat - y)**2)
-
-  @base.layer(n_in=3, n_out=1)
-  def MaskedL2Loss(inputs, **unused_kwargs):
-    y_hat, y, mask = inputs
-    shapes.assert_same_shape(y_hat, y)
-    shapes.assert_same_shape(y, mask)
-    l2 = mask * (y_hat - y)**2
-    return np.sum(l2) / np.sum(mask)
-
-  return MaskedL2Loss() if has_weights else RawL2Loss()
+@base.layer(n_in=3, n_out=1)
+def L2Loss(inputs, **unused_kwargs):
+  y_hat, y, mask = inputs
+  shapes.assert_same_shape(y_hat, y)
+  shapes.assert_same_shape(y, mask)
+  l2 = mask * (y_hat - y)**2
+  return np.sum(l2) / np.sum(mask)
 
 
-def AccuracyScalar(id_to_mask=None, has_weights=False):
+def AccuracyScalar():
   """Computes weighted masked mean of category prediction accuracy."""
-  return _WeightedMaskedMean(_Accuracy(), id_to_mask, has_weights)
+  return _WeightedMaskedMean(_Accuracy())
 
 
-def SequenceAccuracyScalar(id_to_mask=None, has_weights=False):
+def SequenceAccuracyScalar():
   """Computes weighted masked mean of sequence prediction accuracy."""
-  return _WeightedMaskedMean(_Accuracy(), id_to_mask, has_weights,
+  return _WeightedMaskedMean(_Accuracy(),
                              final_layer_override=_WeightedSequenceMean())
 
 
-def CrossEntropyLoss(id_to_mask=None, has_weights=False):
+def CrossEntropyLoss():
   """Computes weighted masked mean of prediction-target cross entropies."""
-  return _WeightedMaskedMean(_CrossEntropy(), id_to_mask, has_weights)
+  return _WeightedMaskedMean(_CrossEntropy())
 
 
-def CrossEntropySum(id_to_mask=None, has_weights=False):
+def CrossEntropySum():
   """Computes weighted masked sum of prediction-target cross entropies."""
-  return _WeightedMaskedMean(_CrossEntropy(), id_to_mask, has_weights,
+  return _WeightedMaskedMean(_CrossEntropy(),
                              final_layer_override=WeightedSum())
 
 
-def SumOfWeights(id_to_mask=None, has_weights=False):
+def SumOfWeights():
   """Returns a layer to compute sum of weights of all non-masked elements."""
-  multiply_by_weights = cb.Multiply() if has_weights else []
   return cb.Serial(
       cb.Drop(),  # Drop inputs.
-      _ElementMask(id_to_mask=id_to_mask),
-      multiply_by_weights,
-      core.Sum(axis=None)  # Sum all.
+      cb.Drop(),  # Drop targets.
+      core.Sum(axis=None)  # Sum weights.
   )
 # pylint: enable=no-value-for-parameter
-
-
-@base.layer(n_in=2, n_out=1)
-def _L2(inputs, **unused_kwargs):
-  """Returns a layer to compute L2 norms of predicted minus target vectors."""
-  y_hat, y = inputs
-  return np.sum((y_hat - y)**2, axis=-1)
 
 
 @base.layer(n_in=2, n_out=1)
@@ -130,14 +108,6 @@ def _CrossEntropy(inputs, **unused_kwargs):
   # shapes.assert_shape_equals(target_category, y_hat.shape[:-1])
   return -1.0 * np.sum(y_hat * one_hot(target_category, y_hat.shape[-1]),
                        axis=-1)
-
-
-@base.layer()
-def _ElementMask(target, id_to_mask=0, **unused_kwargs):
-  """Returns a mask with zeros marking elements to exclude from calculations."""
-  if id_to_mask is None:
-    return np.ones_like(target)
-  return 1.0 - np.equal(target, id_to_mask).astype(np.float32)
 
 
 @base.layer(n_in=2, n_out=1)
@@ -169,19 +139,11 @@ def _WeightedSequenceMean(inputs, **unused_kwargs):
 
 
 # pylint: disable=no-value-for-parameter
-def _WeightedMaskedMean(metric_layer, id_to_mask, has_weights,
-                        final_layer_override=None):
+def _WeightedMaskedMean(metric_layer, final_layer_override=None):
   """Computes weighted masked mean of metric_layer(predictions, targets)."""
-  multiply_by_weights = cb.Multiply() if has_weights else []
   final_layer = final_layer_override or _WeightedMean()  # For sequence acc.
-  # Create a layer with 2 or 3 inputs:
-  #   - predictions targets (weights)
-  # that applies the specified metric to a batch and gathers the results into
-  # a single scalar.
   return cb.Serial(
-      cb.Select([0, 1, 1]),
-      cb.Parallel(metric_layer, _ElementMask(id_to_mask=id_to_mask)),
-      cb.Parallel([], multiply_by_weights),  # Stack now: metric_values weights
+      metric_layer,
       final_layer
   )
 # pylint: enable=no-value-for-parameter

@@ -72,7 +72,6 @@ train.inputs = @trax.supervised.inputs.inputs
 train.optimizer = @trax.optimizers.Adam
 train.steps = 100000
 train.save_graphs = False
-train.has_weights = True
 
 # Parameters for TimeBinCausalAttention:
 # ==============================================================================

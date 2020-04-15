@@ -273,19 +273,19 @@ def finetune(output_dir, model=gin.REQUIRED, dataset_name=gin.REQUIRED,
 
   if is_regression_task:
     # Regression task
-    loss_fn = tl.L2Loss
+    loss_fn = tl.L2Loss()
     metrics = {
-        'loss': tl.L2Loss,
-        'weights_per_batch_per_core': tl.SumOfWeights,
+        'loss': tl.L2Loss(),
+        'weights_per_batch_per_core': tl.SumOfWeights(),
     }
     model = functools.partial(model, head=trax.models.BERTRegressionHead)
   else:
     # Classification task
-    loss_fn = tl.CrossEntropyLoss
+    loss_fn = tl.CrossEntropyLoss()
     metrics = {
-        'loss': tl.CrossEntropyLoss,
-        'accuracy': tl.AccuracyScalar,
-        'weights_per_batch_per_core': tl.SumOfWeights,
+        'loss': tl.CrossEntropyLoss(),
+        'accuracy': tl.AccuracyScalar(),
+        'weights_per_batch_per_core': tl.SumOfWeights(),
     }
     n_classes = ds_info.features['label'].num_classes
     with gin.unlock_config():
@@ -325,7 +325,6 @@ def finetune(output_dir, model=gin.REQUIRED, dataset_name=gin.REQUIRED,
       random_seed=None,
       n_devices=None,  # Use all available.
       checkpoints_at=None,
-      has_weights=False,
       nontrainable_param_map=None,
       metrics=metrics,
       id_to_mask=None,

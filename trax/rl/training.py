@@ -214,7 +214,6 @@ class PolicyTrainer(RLTrainer):
 
     # This is the policy Trainer that will be used to train the policy model.
     # * inputs to the trainer come from self.policy_batches_stream
-    # * we are using has_weights=True to allow inputs to set weights
     # * outputs, targets and weights are passed to self.policy_loss
     self._policy_trainer = supervised.Trainer(
         model=policy_model,
@@ -223,8 +222,7 @@ class PolicyTrainer(RLTrainer):
         loss_fn=self.policy_loss,
         inputs=self._policy_inputs,
         output_dir=output_dir,
-        metrics={'policy_loss': self.policy_loss},
-        has_weights=True)
+        metrics={'policy_loss': self.policy_loss})
     self._policy_eval_model = policy_model(mode='eval')
     policy_batch = next(self.policy_batches_stream())
     self._policy_eval_model.init(policy_batch)
@@ -305,8 +303,7 @@ class PolicyGradientTrainer(PolicyTrainer):
   @property
   def policy_loss(self):
     """Policy loss."""
-    return functools.partial(
-        distributions.LogLoss, distribution=self._policy_dist)
+    return distributions.LogLoss(distribution=self._policy_dist)
 
   def policy_batches_stream(self):
     """Use self.task to create inputs to the policy model."""

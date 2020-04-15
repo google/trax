@@ -21,6 +21,7 @@ import itertools
 from absl.testing import absltest
 
 import gin
+import numpy as np
 
 from trax import layers as tl
 from trax.optimizers import adafactor
@@ -51,11 +52,11 @@ class MnistTest(absltest.TestCase):
         tl.LogSoftmax(),
     )
     task = training.TrainTask(
-        itertools.cycle(inputs.inputs('mnist').train_stream(1)),
+        itertools.cycle(_mnist_dataset().train_stream(1)),
         tl.CrossEntropyLoss(),
         adafactor.Adafactor(.02))
     eval_task = training.EvalTask(
-        itertools.cycle(inputs.inputs('mnist').eval_stream(1)),
+        itertools.cycle(_mnist_dataset().eval_stream(1)),
         [tl.CrossEntropyLoss(), tl.AccuracyScalar()],
         names=['CrossEntropyLoss', 'AccuracyScalar'],
         eval_at=lambda step_n: step_n % 50 == 0,
@@ -68,7 +69,22 @@ class MnistTest(absltest.TestCase):
 
 def _mnist_dataset():
   """Loads (and caches) the standard MNIST data set."""
-  return inputs.inputs('mnist')
+  return _add_weights(inputs.inputs('mnist'))
+
+
+def _add_weights(trax_inputs):
+  """Add weights to inputs."""
+  def _weight_stream(input_stream):
+    """Add weights to the given stream."""
+    for example in input_stream:
+      inp, targets = example
+      weights = np.ones_like(targets).astype(np.float32)
+      yield (inp, targets, weights)
+  return inputs.Inputs(
+      train_stream=lambda n: _weight_stream(trax_inputs.train_stream(n)),
+      eval_stream=lambda n: _weight_stream(trax_inputs.eval_stream(n)),
+      train_eval_stream=lambda n: _weight_stream(  # pylint: disable=g-long-lambda
+          trax_inputs.train_eval_stream(n)))
 
 
 if __name__ == '__main__':

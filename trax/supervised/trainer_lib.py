@@ -66,11 +66,11 @@ OptState = collections.namedtuple('_OptState', [
 
 
 _DEFAULT_METRICS = {
-    'loss': tl.CrossEntropyLoss,
-    'accuracy': tl.AccuracyScalar,
-    'sequence_accuracy': tl.SequenceAccuracyScalar,
-    'neg_log_perplexity': tl.CrossEntropyLoss,
-    'weights_per_batch_per_core': tl.SumOfWeights,
+    'loss': tl.CrossEntropyLoss(),
+    'accuracy': tl.AccuracyScalar(),
+    'sequence_accuracy': tl.SequenceAccuracyScalar(),
+    'neg_log_perplexity': tl.Serial(tl.CrossEntropyLoss(), tl.Negate()),
+    'weights_per_batch_per_core': tl.SumOfWeights(),
 }
 
 
@@ -84,8 +84,8 @@ class Trainer(object):
   def __init__(self, model, loss_fn, optimizer, lr_schedule, inputs,
                output_dir=None, random_seed=None, n_devices=None,
                checkpoints_at=None, should_save_checkpoints=True,
-               should_write_summaries=True, has_weights=False,
-               nontrainable_param_map=None, id_to_mask=None,
+               should_write_summaries=True, nontrainable_param_map=None,
+               id_to_mask=None,
                metrics=None, checkpoint_highest=None, checkpoint_lowest=None):
 
     self._is_chief, self._n_devices, rng = (
@@ -98,15 +98,15 @@ class Trainer(object):
       self._should_write_summaries = False
     self._checkpoint_highest = checkpoint_highest
     self._checkpoint_lowest = checkpoint_lowest
-    self._has_weights = has_weights
     self._id_to_mask = id_to_mask
     self._metrics_dict = metrics if metrics is not None else _DEFAULT_METRICS
-    loss_fn = loss_fn(has_weights=has_weights, id_to_mask=id_to_mask)
     # Inputs is either an Inputs instance or a function that returns it.
     self._inputs = inputs
     if callable(inputs):  # If we pass a function, e.g., through gin, call it.
       self._inputs = inputs()
-
+    # Mask id_to_mask and add weights if needed.
+    # TODO(lukaszkaiser, jonni): move this out of Trainer to input processing.
+    self._inputs = _add_weights_and_mask(self._inputs, id_to_mask)
     # Initialize the learning rate to a dummy value. It will be set in reset().
     opt = optimizer(learning_rate=0.0)
 
@@ -117,26 +117,6 @@ class Trainer(object):
     # Setup state.
     rng, init_rng = jax_random.split(rng)
     self._rngs = np.stack(jax_random.split(rng, self._n_devices))
-    # If the inputs are a tuple/list, add [None] (batch) to each element.
-    if self._inputs.input_shape and isinstance(
-        self._inputs.input_shape[0], (list, tuple)
-    ):
-      model_input_shape = tuple(
-          tuple([None] + list(shape)) for shape in self._inputs.input_shape)
-    else:  # Otherwise just add [None] to the input shape.
-      model_input_shape = tuple([None] + list(self._inputs.input_shape))
-    # Same for targets.
-    if self._inputs.target_shape and isinstance(
-        self._inputs.target_shape[0], (list, tuple)
-    ):
-      model_target_shape = tuple(
-          tuple([None] + list(shape)) for shape in self._inputs.target_shape)
-    else:
-      model_target_shape = tuple([None] + list(self._inputs.target_shape))
-    # Change all None to 1 in input and target shape.
-    model_input_shape = math.nested_map(lambda x: x or 1, model_input_shape)
-    model_target_shape = math.nested_map(lambda x: x or 1,
-                                         model_target_shape)
 
     def new_opt_state_and_model_state(shape_dtype, rng):
       """Returns optimizer and model states suitable for training a model."""
@@ -163,9 +143,7 @@ class Trainer(object):
 
     # Arrange and initialize metrics layers.
     self._metrics = list(sorted(self._metrics_dict.keys()))
-    metrics_layers = [self._metrics_dict[m](has_weights=self._has_weights,
-                                            id_to_mask=self._id_to_mask)
-                      for m in self._metrics]
+    metrics_layers = [self._metrics_dict[m] for m in self._metrics]
     metrics_in_parallel = tl.Branch(*metrics_layers)
     metrics_in_parallel._set_rng_recursive(init_rng)  # pylint: disable=protected-access
     example_signature = tuple(
@@ -611,7 +589,7 @@ class Trainer(object):
 @gin.configurable(blacklist=['output_dir'])
 def train(output_dir,
           model=gin.REQUIRED,
-          loss_fn=tl.CrossEntropyLoss,
+          loss_fn=tl.CrossEntropyLoss(),
           inputs=trax_inputs.inputs,
           optimizer=trax_opt.Adafactor,
           lr_schedule=lr.MultifactorSchedule,
@@ -623,7 +601,6 @@ def train(output_dir,
           random_seed=None,
           save_graphs=True,
           save_backward_graph=False,
-          has_weights=False,
           nontrainable_param_map=None,
           id_to_mask=None,
           metrics=None,
@@ -652,7 +629,6 @@ def train(output_dir,
     random_seed: the random seed to use; time/os dependent if None (default).
     save_graphs: bool, if True, save computation graph to file.
     save_backward_graph: bool, if True, save backward graph to file too.
-    has_weights: bool, whether weights are included in the inputs.
     nontrainable_param_map: dict, mapping from model nontrainable parameter
       names to control names in PolicySchedule.
     id_to_mask: id to mask out (None by default).
@@ -673,7 +649,6 @@ def train(output_dir,
                           output_dir,
                           random_seed=random_seed, n_devices=n_devices,
                           checkpoints_at=checkpoints_at,
-                          has_weights=has_weights,
                           nontrainable_param_map=nontrainable_param_map,
                           metrics=metrics, id_to_mask=id_to_mask,
                           checkpoint_lowest=checkpoint_lowest,
@@ -912,8 +887,6 @@ def load_trainer_state(output_dir, weights_file=None):
   return trainer_state
 
 
-
-
 def init_random_number_generators(seed=None):
   """Initializes random generators for Python, NumPy, TensorFlow, and JAX."""
   # Seed Python random (None as seed is okay), then use it to seed the others.
@@ -923,22 +896,6 @@ def init_random_number_generators(seed=None):
   numpy.random.seed(seed)
   tf.random.set_seed(seed)
   return jax_random.get_prng(seed)
-
-
-def _stack_inputs_targets_and_get_predictions(inputs_and_targets):
-  """Helper to stack inputs and targets and retrieve predictions from output."""
-  # Inputs and targets can be lists - we build a flat one to input to the model.
-  model_inp = []
-  for x in inputs_and_targets:
-    if not isinstance(x, (list, tuple)):
-      model_inp.append(x)
-    else:
-      model_inp.extend(x)
-  # We retrieve as many predictions from model output as many there were inputs.
-  inp = inputs_and_targets[0]
-  inp_len = len(inp) if isinstance(inp, (list, tuple)) else 1
-  get_pred = lambda x: x[0] if inp_len == 1 else x[:inp_len]
-  return tuple(model_inp), get_pred
 
 
 def _reshape_by_device(x, n_devices):
@@ -995,3 +952,41 @@ def unpickle_from_file(file_path, gzip=False):
       with gzip_lib.GzipFile(fileobj=f, compresslevel=2) as gzipf:
         obj = pickle.load(gzipf)
   return obj
+
+
+def _add_weights_and_mask(inputs, id_to_mask):
+  """Add weights to inputs without weights and masks by id if requested.
+
+  Each of the (train, eval, train_eval) streams of inputs is augmented in
+  the following way:
+  * if the stream consists of pairs (inputs, targets), a loss mask is added
+    that is creates as a tensor of ones of the same shape as targets
+  * if id_to_mask is not None, and the stream (after the previous point) has
+    triples (inputs, targets, weights), the weights are multipled by a 0/1 mask
+    that is 0 iff targets is equal to id_to_mask (1 otherwise).
+
+  Args:
+    inputs: a trax_inputs.Inputs object to operate on
+    id_to_mask: int or None, id to pad in targets if not None
+
+  Returns:
+    a trax_inputs.Inputs object with augmented streams
+  """
+  def _with_masks(input_stream):
+    """Create masks for the given stream."""
+    for example in input_stream:
+      if len(example) > 3 or len(example) < 2:
+        assert id_to_mask is None, 'Cannot automatically mask this stream.'
+        yield example
+      else:
+        if len(example) == 2:
+          weights = numpy.ones_like(example[1]).astype(numpy.float32)
+        else:
+          weights = example[2].astype(numpy.float32)
+        mask = 1.0 - numpy.equal(example[1], id_to_mask).astype(np.float32)
+        weights *= mask
+        yield (example[0], example[1], weights)
+  return trax_inputs.Inputs(
+      train_stream=lambda n: _with_masks(inputs.train_stream(n)),
+      eval_stream=lambda n: _with_masks(inputs.eval_stream(n)),
+      train_eval_stream=lambda n: _with_masks(inputs.train_eval_stream(n)))

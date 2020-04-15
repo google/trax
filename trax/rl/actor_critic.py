@@ -16,7 +16,6 @@
 # Lint as: python3
 """Classes for RL training in Trax."""
 
-import functools
 import os
 import numpy as np
 import tensorflow as tf
@@ -99,11 +98,10 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
         model=value_model,
         optimizer=value_optimizer,
         lr_schedule=value_lr_schedule,
-        loss_fn=tl.L2Loss,
+        loss_fn=tl.L2Loss(),
         inputs=self._value_inputs,
         output_dir=value_output_dir,
-        metrics={'value_loss': tl.L2Loss},
-        has_weights=True)
+        metrics={'value_loss': tl.L2Loss()})
     self._value_eval_model = value_model(mode='eval')
     value_batch = next(self.value_batches_stream())
     self._value_eval_model.init(value_batch)
@@ -281,12 +279,13 @@ class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
     """Policy loss given action log-probabilities."""
     raise NotImplementedError
 
+  @property
   def policy_loss(self, **unused_kwargs):
     """Policy loss."""
-    return tl.Serial([
+    return tl.Serial(
         self._policy_dist.LogProb(),
-        self.policy_loss_given_log_probs(),
-    ])
+        self.policy_loss_given_log_probs,
+    )
 
 
 # A2C is one of the most basic actor-critic RL algorithms.
@@ -306,7 +305,7 @@ class A2CTrainer(AdvantageBasedActorCriticTrainer):
   @property
   def policy_loss_given_log_probs(self):
     """Policy loss."""
-    return A2CLoss
+    return A2CLoss()  # pylint: disable=no-value-for-parameter
 
 
 # PPO is a widely used actor-critic RL algorithm.
@@ -344,7 +343,7 @@ class PPOTrainer(AdvantageBasedActorCriticTrainer):
   @property
   def policy_loss_given_log_probs(self):
     """Policy loss."""
-    return functools.partial(PPOLoss, epsilon=self._epsilon)
+    return PPOLoss(epsilon=self._epsilon)  # pylint: disable=no-value-for-parameter
 
 
 # AWR is an off-policy actor-critic RL algorithm.
@@ -371,4 +370,4 @@ class AWRTrainer(AdvantageBasedActorCriticTrainer):
   @property
   def policy_loss_given_log_probs(self):
     """Policy loss."""
-    return functools.partial(AWRLoss, beta=self._beta, w_max=self._w_max)
+    return AWRLoss(beta=self._beta, w_max=self._w_max)  # pylint: disable=no-value-for-parameter

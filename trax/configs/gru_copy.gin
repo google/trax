@@ -48,7 +48,6 @@ train.inputs = @trax.supervised.inputs.sequence_copy_inputs
 train.model = @trax.models.RNNLM
 train.optimizer = @trax.optimizers.Adam
 train.steps = 500000
-train.has_weights = True
 
 # Parameters for RNNLM:
 # ==============================================================================

@@ -61,7 +61,6 @@ OnlineTuneEnv.optimizer = @trax.optimizers.Adafactor
 OnlineTuneEnv.train_steps = 500
 OnlineTuneEnv.eval_steps = 1
 OnlineTuneEnv.env_steps = 100
-OnlineTuneEnv.has_weights = True
 OnlineTuneEnv.control_configs = (
     ("learning_rate", 1e-3, (1e-9, 1e-2), False),
     ("weight_decay_rate", 1e-5, (1e-9, 1e-3), False),

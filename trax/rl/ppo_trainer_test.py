@@ -36,6 +36,7 @@ from tensorflow import test
 from tensorflow.compat.v1.io import gfile
 from trax import layers
 from trax import lr_schedules as lr
+from trax import math
 from trax import models
 from trax import optimizers as trax_opt
 from trax.rl import envs  # pylint: disable=unused-import
@@ -76,8 +77,7 @@ class PpoTrainerTest(parameterized.TestCase):
     gfile.rmtree(tmp)
 
   def _make_trainer(
-      self, train_env, eval_env, output_dir, model=None, **kwargs
-  ):
+      self, train_env, eval_env, output_dir, model=None, **kwargs):
     if model is None:
       model = lambda: layers.Serial(layers.Dense(1))
     return ppo_trainer.PPO(
@@ -179,15 +179,19 @@ class PpoTrainerTest(parameterized.TestCase):
     inp._target_dtype = (np.float32, np.float32)
     inputs = inp
 
-    def loss(id_to_mask=None, has_weights=False):
+    def loss():
       """Cross-entropy loss as scalar compatible with Trax masking."""
+      ones = layers.Fn(lambda x: math.numpy.ones_like(x))  # pylint: disable=unnecessary-lambda
       return layers.Serial(
           # Swap from (pred-obs, pred-reward, target-obs, target-reward)
           # to (pred-obs, target-obs, pred-reward, target-reward).
           layers.Parallel([], layers.Swap()),
+          # Duplicate target-obs and target-reward and make 1 to add weights.
+          layers.Parallel([], layers.Branch([], ones)),
+          layers.Parallel([], [], [], [], layers.Branch([], ones)),
           # Cross-entropy loss for obs, L2 loss on reward.
-          layers.Parallel(layers.CrossEntropyLoss(id_to_mask, has_weights),
-                          layers.L2Loss(id_to_mask, has_weights)),
+          layers.Parallel(layers.CrossEntropyLoss(),
+                          layers.L2Loss()),
           # Add both losses.
           layers.Add(),
           # Zero out in this test.
@@ -198,7 +202,7 @@ class PpoTrainerTest(parameterized.TestCase):
       # Run fake training just to save the parameters.
       trainer = trainer_lib.Trainer(
           model=model,
-          loss_fn=loss,
+          loss_fn=loss(),
           inputs=inputs,
           optimizer=trax_opt.SM3,
           lr_schedule=lr.MultifactorSchedule,
@@ -342,7 +346,6 @@ class PpoTrainerTest(parameterized.TestCase):
           inputs=inputs,
           steps=1,
           eval_steps=1,
-          has_weights=True,
       )
 
       policy_dir = os.path.join(output_dir, 'policy')

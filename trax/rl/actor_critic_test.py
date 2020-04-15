@@ -104,7 +104,6 @@ class ActorCriticTest(absltest.TestCase):
 
   def test_sanity_ppo_cartpole(self):
     """Run PPO and check whether it correctly runs for 2 epochs.s."""
-
     task = rl_task.RLTask(
         'CartPole-v1', initial_trajectories=750, max_steps=200)
 

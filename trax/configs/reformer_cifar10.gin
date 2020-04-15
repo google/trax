@@ -60,7 +60,6 @@ shuffle_and_batch_data.preprocess_fun=@trax.supervised.inputs.cifar10_augmentati
 
 # Parameters for train:
 # ==============================================================================
-train.has_weights = True
 train.eval_frequency = 500
 train.eval_steps = 64
 train.inputs = @trax.supervised.inputs.inputs

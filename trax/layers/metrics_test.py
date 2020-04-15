@@ -38,12 +38,6 @@ class MetricsLayerTest(absltest.TestCase):
         metrics._Accuracy(), input_signature)
     self.assertEqual(result_shape, (29, 4, 4))
 
-  def test_element_mask(self):
-    input_signature = ShapeDtype((29, 4, 4, 20))
-    result_shape = base.check_shape_agreement(
-        metrics._ElementMask(), input_signature)
-    self.assertEqual(result_shape, (29, 4, 4, 20))
-
   def test_weighted_mean_shape(self):
     input_signature = (ShapeDtype((29, 4, 4, 20)), ShapeDtype((29, 4, 4, 20)))
     result_shape = base.check_shape_agreement(
@@ -78,13 +72,15 @@ class MetricsLayerTest(absltest.TestCase):
     onp.testing.assert_allclose(mean2, 1.0)
 
   def test_cross_entropy_loss(self):
-    input_signature = (ShapeDtype((29, 4, 4, 20)), ShapeDtype((29, 4, 4)))
+    input_signature = (ShapeDtype((29, 4, 4, 20)), ShapeDtype((29, 4, 4)),
+                       ShapeDtype((29, 4, 4)))
     result_shape = base.check_shape_agreement(
         metrics.CrossEntropyLoss(), input_signature)
     self.assertEqual(result_shape, ())
 
   def test_accuracy_scalar(self):
-    input_signature = (ShapeDtype((29, 4, 4, 20)), ShapeDtype((29, 4, 4)))
+    input_signature = (ShapeDtype((29, 4, 4, 20)), ShapeDtype((29, 4, 4)),
+                       ShapeDtype((29, 4, 4)))
     result_shape = base.check_shape_agreement(
         metrics.AccuracyScalar(), input_signature)
     self.assertEqual(result_shape, ())
@@ -92,14 +88,9 @@ class MetricsLayerTest(absltest.TestCase):
   def test_l2_loss(self):
     inputs = onp.array([[1, 1], [1, 1]], dtype=onp.float32)
     targets = onp.array([[1, 1], [1, 0]], dtype=onp.float32)
-    sig = (signature(inputs), signature(targets))
-    layer = metrics.L2Loss(has_weights=False)
-    layer.init(sig)
-    loss = layer((inputs, targets))
-    onp.testing.assert_allclose(loss, 0.25)
     weights = onp.array([[1, 1], [1, 0]], dtype=onp.float32)
     sig = (signature(inputs), signature(targets), signature(weights))
-    layer = metrics.L2Loss(has_weights=True)
+    layer = metrics.L2Loss()
     layer.init(sig)
     loss = layer((inputs, targets, weights))
     onp.testing.assert_allclose(loss, 0.0)

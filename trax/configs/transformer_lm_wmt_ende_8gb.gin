@@ -60,7 +60,6 @@ train.inputs = @trax.supervised.inputs.inputs
 train.model = @trax.models.TransformerLM
 train.steps = 500000
 train.optimizer = @trax.optimizers.Adafactor
-train.has_weights = True
 train.id_to_mask = 0
 
 # Parameters for TransformerLM:

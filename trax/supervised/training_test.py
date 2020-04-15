@@ -32,7 +32,7 @@ class TrainingTest(test.TestCase):
 
   def test_train_dense_layer(self):
     """Trains a very simple network on a very simple task."""
-    model = tl.Dense(1)
+    model = tl.Serial(tl.Dense(1))
     task = training.TrainTask(
         _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01))
     eval_task = training.EvalTask(
@@ -48,7 +48,7 @@ class TrainingTest(test.TestCase):
 
   def test_train_dense_layer_with_momentum(self):
     """Trains with an optimizer that has slots / requires initialization."""
-    model = tl.Dense(1)
+    model = tl.Serial(tl.Dense(1))
     task = training.TrainTask(
         _very_simple_data(), tl.L2Loss(), optimizers.Momentum(.01))
     eval_task = training.EvalTask(
@@ -67,7 +67,7 @@ def _very_simple_data():
   """"Returns stream of labeled data that maps small integers to constant pi."""
   inputs_batch = np.arange(7).reshape((7, 1))  # 7 items per batch
   targets_batch = np.pi * np.ones_like(inputs_batch)
-  labeled_batch = (inputs_batch, targets_batch)
+  labeled_batch = (inputs_batch, targets_batch, np.ones_like(targets_batch))
   while True:
     yield labeled_batch
 

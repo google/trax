@@ -51,7 +51,7 @@ class OnlineTuneEnv(gym.Env):
                output_dir,
                model=trax_models.TransformerLM,
                trainer_class=trainer_lib.Trainer,
-               loss_fn=layers.CrossEntropyLoss,
+               loss_fn=layers.CrossEntropyLoss(),
                optimizer=trax_opt.Adafactor,
                inputs=trax_inputs.inputs,
                action_multipliers=None,
@@ -79,7 +79,6 @@ class OnlineTuneEnv(gym.Env):
                should_save_checkpoints=False,
                # Same here.
                should_write_summaries=False,
-               has_weights=False,
                id_to_mask=None):
     if action_multipliers is None:
       action_multipliers = self.DEFAULT_ACTION_MULTIPLIERS
@@ -97,7 +96,6 @@ class OnlineTuneEnv(gym.Env):
         should_save_checkpoints=should_save_checkpoints,
         should_write_summaries=should_write_summaries,
         nontrainable_param_map=nontrainable_param_map,
-        has_weights=has_weights,
         id_to_mask=id_to_mask,
     )
     self._trainer = None

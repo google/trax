@@ -203,7 +203,6 @@ class SimPLe(base_trainer.BaseTrainer):
           inputs=inputs,
           steps=self._model_train_step,
           output_dir=self._model_dir,
-          has_weights=True,
       )
 
     logging.vlog(

@@ -42,8 +42,9 @@ MultifactorSchedule.warmup_steps = 8000
 # ==============================================================================
 sequence_copy_inputs.vocab_size = %n_symbols
 sequence_copy_inputs.batch_size = %batch
-sequence_copy_inputs.train_lengths = [%length]
-sequence_copy_inputs.eval_lengths = [%length]
+sequence_copy_inputs.train_length = %length
+sequence_copy_inputs.eval_min_length = %length
+sequence_copy_inputs.eval_max_length = %length
 sequence_copy_inputs.reverse = False
 
 # Parameters for train:
@@ -54,7 +55,6 @@ train.inputs = @trax.supervised.inputs.sequence_copy_inputs
 train.model = @trax.models.TransformerLM
 train.optimizer = @trax.optimizers.Adafactor
 train.steps = 50000
-train.has_weights = True
 
 # Parameters for MemoryEfficientCausalAttention:
 # ==============================================================================
@@ -77,7 +77,7 @@ LSHCausalAttention.factorize_hash = True
 
 # Parameters for TransformerLM:
 # ==============================================================================
-TransformerLM.attention_type = @trax.layers.LSHCausalAttention
+# TransformerLM.attention_type = @trax.layers.LSHCausalAttention
 TransformerLM.d_attention_key = 64
 TransformerLM.d_attention_value = 64
 TransformerLM.d_model = 256

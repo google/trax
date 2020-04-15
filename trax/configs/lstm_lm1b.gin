@@ -50,7 +50,6 @@ train.model = @trax.models.RNNLM
 train.optimizer = @trax.optimizers.Adam
 train.steps = 500000
 train.id_to_mask = 0
-train.has_weights = False
 
 # Parameters for RNNLM:
 # ==============================================================================

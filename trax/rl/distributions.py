@@ -176,10 +176,10 @@ def create_distribution(space):
     raise TypeError('Space {} unavailable as a distribution support.')
 
 
-def LogLoss(distribution, has_weights, **unused_kwargs):  # pylint: disable=invalid-name
+def LogLoss(distribution, **unused_kwargs):  # pylint: disable=invalid-name
   """Builds a log loss layer for a Distribution."""
-  return tl.Serial([
+  return tl.Serial(
       distribution.LogProb(),
       tl.Negate(),
-      tl.WeightedSum() if has_weights else tl.Sum(),
-  ])
+      tl.WeightedSum()
+  )

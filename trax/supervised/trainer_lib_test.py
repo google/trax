@@ -218,8 +218,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
           model=model_fn,
           inputs=inputs,
           steps=steps,
-          eval_steps=eval_steps,
-          has_weights=True)
+          eval_steps=eval_steps)
 
       # Assert total train steps
       self.assertEqual(state.step, steps)
@@ -237,7 +236,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
 
       trainer = trainer_lib.Trainer(
           model=model_fn,
-          loss_fn=layers.CrossEntropyLoss,
+          loss_fn=layers.CrossEntropyLoss(),
           optimizer=trax_opt.SM3,
           lr_schedule=lr.MultifactorSchedule,
           inputs=inputs,
@@ -272,7 +271,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       inputs = test_inputs(n_classes, input_shape=(224, 224, 3))
       trainer = trainer_lib.Trainer(
           model=model_fn,
-          loss_fn=layers.CrossEntropyLoss,
+          loss_fn=layers.CrossEntropyLoss(),
           optimizer=trax_opt.SM3,
           lr_schedule=lr.MultifactorSchedule,
           inputs=inputs,
