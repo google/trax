@@ -1,0 +1,130 @@
+# Copyright 2020 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.layers
+import trax.models
+import trax.optimizers
+import trax.supervised.inputs
+import trax.supervised.trainer_lib
+
+MAX_EVAL_LENGTH = 65536
+BUCKETS = ([65537], [8, 1])
+
+# Parameters that will vary between experiments:
+# ==============================================================================
+attn_type = [
+    @SelfAttention,
+    @SelfAttention,
+    @LSHSelfAttention,
+    @SelfAttention,
+]
+share_qk = False  # LSH attention ignores this flag and always shares q & k
+attn_kv = 128
+n_layers = 4
+dropout = 0.2
+
+# SelfAttention: attend to nearby items
+# Specifying chunk_len restricts an item to attend within its own chunk, as well
+# as the previous `n_chunks_before` chunks.
+SelfAttention.chunk_len = 128
+SelfAttention.n_chunks_before = 1
+
+# LSHSelfAttention: locality-sensitive hashing (LSH) attention
+LSHSelfAttention.chunk_len = 256
+LSHSelfAttention.n_buckets = 512
+LSHSelfAttention.n_chunks_before = 1
+LSHSelfAttention.n_hashes = 2
+
+# Parameters for batch_fn:
+# ==============================================================================
+batch_fn.batch_size_per_device = 8
+batch_fn.eval_batch_size = 8
+batch_fn.max_eval_length = %MAX_EVAL_LENGTH
+batch_fn.buckets =%BUCKETS
+
+# Parameters for inputs:
+# ==============================================================================
+inputs.data_dir = None
+inputs.dataset_name = 'c4'
+inputs.input_name = 'targets'
+inputs.target_name = 'text'
+
+# Parameters for preprocess_fun:
+# ==============================================================================
+shuffle_and_batch_data.preprocess_fun=@trax.supervised.inputs.c4_preprocess
+c4_preprocess.max_target_length = %MAX_EVAL_LENGTH
+
+# Parameters for MultifactorSchedule:
+# ==============================================================================
+# 0.03125 ~= 1024^-0.5 = d_model^-0.5
+MultifactorSchedule.constant = 0.03125
+MultifactorSchedule.factors = 'constant * linear_warmup * rsqrt_decay'
+MultifactorSchedule.warmup_steps = 2000
+
+# Parameters for Adam:
+# ==============================================================================
+Adam.weight_decay_rate=0.0
+Adam.b1 = 0.9
+Adam.b2 = 0.98
+Adam.eps = 1e-9
+
+# Parameters for train:
+# ==============================================================================
+train.eval_frequency = 500
+train.eval_steps = 8
+train.inputs = @trax.supervised.inputs.inputs
+train.model = @trax.models.ReformerLM
+train.optimizer = @trax.optimizers.Adam
+train.steps = 100000
+train.save_graphs = False
+train.checkpoints_at = \
+    [1000, 5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000,
+     55000, 60000, 70000, 80000, 90000, 100000]
+
+# Parameters for SelfAttention:
+# ==============================================================================
+SelfAttention.attention_dropout = 0.2
+# SelfAttention.chunk_len: see top
+SelfAttention.n_chunks_after = 0
+# SelfAttention.n_chunks_before: see top
+
+# Parameters for LSHSelfAttention:
+# ==============================================================================
+LSHSelfAttention.attention_dropout = 0.2
+# LSHSelfAttention.chunk_len: see top
+# LSHSelfAttention.n_buckets: see top
+LSHSelfAttention.n_chunks_after = 0
+# LSHSelfAttention.n_chunks_before: see top
+# LSHSelfAttention.n_hashes: see top
+LSHSelfAttention.n_parallel_heads = 1
+LSHSelfAttention.predict_drop_len = 256
+LSHSelfAttention.predict_mem_len = 16384
+
+# Parameters for ReformerLM:
+# ==============================================================================
+ReformerLM.attention_type = %attn_type
+ReformerLM.d_attention_key = %attn_kv
+ReformerLM.d_attention_value = %attn_kv
+ReformerLM.d_model = 1024
+ReformerLM.d_ff = 4096
+ReformerLM.dropout = %dropout
+ReformerLM.ff_activation = @trax.layers.Relu
+ReformerLM.max_len = 65536
+ReformerLM.mode = 'train'
+ReformerLM.n_heads = 8
+ReformerLM.n_layers = %n_layers
+ReformerLM.vocab_size = 258  # Includes pad token and unused EOS token
+ReformerLM.share_qk = %share_qk
+ReformerLM.axial_pos_shape = (128, 512)
+ReformerLM.d_axial_pos_embs= (256, 768)

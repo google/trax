@@ -1,0 +1,30 @@
+{
+  "citation": "\n@article{2019t5,\n  author = {Colin Raffel and Noam Shazeer and Adam Roberts and Katherine Lee and Sharan Narang and Michael Matena and Yanqi Zhou and Wei Li and Peter J. Liu},\n  title = {Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer},\n  journal = {arXiv e-prints},\n  year = {2019},\n  archivePrefix = {arXiv},\n  eprint = {1910.10683},\n}\n",
+  "description": "A colossal, cleaned version of Common Crawl's web crawl corpus.\n\nBased on Common Crawl dataset: \"https://commoncrawl.org\"\n\nDue to the overhead of cleaning the dataset, it is recommend you prepare it with\na distributed service like Cloud Dataflow. More info at\nhttps://www.tensorflow.org/datasets/beam_datasets.\n",
+  "downloadSize": "7650623283551",
+  "location": {
+    "urls": [
+      "https://github.com/google-research/text-to-text-transfer-transformer#datasets"
+    ]
+  },
+  "name": "c4",
+  "splits": [
+    {
+      "name": "train",
+      "numBytes": "10603",
+      "numShards": "1",
+      "shardLengths": [
+        "10"
+      ]
+    },
+    {
+      "name": "validation",
+      "numBytes": "16851",
+      "numShards": "1",
+      "shardLengths": [
+        "10"
+      ]
+    }
+  ],
+  "version": "2.3.0"
+}

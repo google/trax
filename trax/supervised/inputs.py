@@ -163,7 +163,7 @@ def download_and_prepare(dataset_name, data_dir):
 
 
 @gin.configurable()
-def inputs(dataset_name, data_dir=None, input_name=None):
+def inputs(dataset_name, data_dir=None, input_name=None, target_name=None):
   """Make Inputs for built-in datasets.
 
   Args:
@@ -171,6 +171,8 @@ def inputs(dataset_name, data_dir=None, input_name=None):
       with 't2t_'.
     data_dir: data directory.
     input_name: optional, name of the inputs from the dictionary.
+    target_name: optional, name of the outputs either from the dictionary or as
+      a result of post-processing.
 
   Returns:
     trax.inputs.Inputs
@@ -182,7 +184,7 @@ def inputs(dataset_name, data_dir=None, input_name=None):
     """Create the stream, cache TF streams if needed."""
     if n_devices not in cache:
       cache[n_devices] = _train_and_eval_batches(
-          dataset_name, data_dir, input_name, n_devices)
+          dataset_name, data_dir, input_name, target_name, n_devices)
 
     (train_batches, train_eval_batches, eval_batches,
      input_name_c) = cache[n_devices]
@@ -514,15 +516,13 @@ def _train_and_eval_dataset_v1(problem_name, data_dir,
   return train_dataset, eval_dataset, info, supervised_keys
 
 
-@gin.configurable(blacklist=['dataset', 'training', 'shapes',
-                             'target_names', 'n_devices'])
-def batch_fn(dataset, training, shapes, target_names, n_devices,
+@gin.configurable(blacklist=['dataset', 'training', 'shapes', 'n_devices'])
+def batch_fn(dataset, training, shapes, n_devices,
              batch_size_per_device=32, batch_size=None, eval_batch_size=32,
              bucket_length=32, buckets=None,
              buckets_include_inputs_in_length=False,
              batch_shuffle_size=128, max_eval_length=None):
   """Batching function."""
-  del target_names
   # Batch size is batch_size_per_device * n_devices unless given directly.
   batch_size = batch_size or batch_size_per_device * n_devices
   # If bucketing is not specified, check if target shapes are variable.
@@ -822,15 +822,19 @@ def shuffle_and_batch_data(dataset,
   shapes = (shapes, shapes[target_names[0]])
   dataset, shapes = preprocess_fun(dataset, training, shapes)
   dataset = dataset.shuffle(shuffle_buffer_size)
-  dataset = batch_fn(dataset, training, shapes, target_names, n_devices)
+  dataset = batch_fn(dataset, training, shapes, n_devices)
   return dataset.prefetch(2)
 
 
-def _train_and_eval_batches(dataset, data_dir, input_name, n_devices):
+def _train_and_eval_batches(
+    dataset, data_dir, input_name, target_name, n_devices):
   """Return train and eval batches with input name and shape."""
   (train_data, eval_data, features_info, keys) = train_and_eval_dataset(
       dataset, data_dir)
-  input_names, target_names = keys[0], keys[1]
+  if keys is not None:
+    input_names, target_names = keys[0], keys[1]
+  else:
+    input_names, target_names = [input_name], [target_name]
   train_batches = shuffle_and_batch_data(
       train_data, target_names, features_info, training=True,
       n_devices=n_devices)
@@ -842,3 +846,28 @@ def _train_and_eval_batches(dataset, data_dir, input_name, n_devices):
       n_devices=n_devices)
   input_name = input_name or input_names[0]
   return (train_batches, train_eval_batches, eval_batches, input_name)
+
+
+@gin.configurable(blacklist=['dataset', 'training', 'shapes'])
+def c4_preprocess(dataset, training, shapes, max_target_length=-1):
+  """Pre-processing function for C4 dataset."""
+  del training
+  def unicode_decode_chars(features, targets):
+    targets = tf.strings.unicode_decode(features['text'], 'UTF-8')
+    targets = tf.cast(targets, tf.int64)
+    features['targets'] = targets
+    features['inputs'] = targets
+    return (features, targets)
+
+  dataset = dataset.map(unicode_decode_chars)
+
+  def target_right_length(_, target):
+    return tf.less(tf.shape(target)[0], max_target_length + 1)
+
+  if max_target_length > 0:
+    dataset = dataset.filter(target_right_length)
+
+  new_shapes = shapes[0]
+  new_shapes['inputs'] = (None,)
+  new_shapes['targets'] = (None,)
+  return dataset, (new_shapes, new_shapes['targets'])
