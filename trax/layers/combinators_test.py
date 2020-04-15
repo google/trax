@@ -78,6 +78,13 @@ class CombinatorLayerTest(absltest.TestCase):
     output_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual(output_shape, expected_shape)
 
+  def test_serial_custom_name(self):
+    layer = cb.Serial(cb.Dup(), cb.Dup())  # pylint: disable=no-value-for-parameter
+    self.assertIn('Serial', str(layer))
+
+    layer = cb.Serial(cb.Dup(), cb.Dup(), name='Branch')  # pylint: disable=no-value-for-parameter
+    self.assertIn('Branch', str(layer))
+
   def test_branch_noop_dup(self):
     layer = cb.Branch([], cb.Dup())
     input_signature = ShapeDtype((3, 2))
@@ -98,6 +105,10 @@ class CombinatorLayerTest(absltest.TestCase):
     expected_shape = (3, 2)
     output_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual(output_shape, expected_shape)
+
+  def test_branch_name(self):
+    layer = cb.Branch(cb.Add(), divide_by(0.5))  # pylint: disable=no-value-for-parameter
+    self.assertIn('Branch', str(layer))
 
   def test_select_computes_n_in(self):
     layer = cb.Select([0, 0])
@@ -149,6 +160,13 @@ class CombinatorLayerTest(absltest.TestCase):
     expected_shape = ((3, 2), (4, 7))
     output_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual(output_shape, expected_shape)
+
+  def test_parallel_custom_name(self):
+    layer = cb.Parallel(cb.Dup(), cb.Dup())  # pylint: disable=no-value-for-parameter
+    self.assertIn('Parallel', str(layer))
+
+    layer = cb.Parallel(cb.Dup(), cb.Dup(), name='DupDup')  # pylint: disable=no-value-for-parameter
+    self.assertIn('DupDup', str(layer))
 
   def test_drop(self):
     layer = cb.Drop()

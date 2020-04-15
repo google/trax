@@ -195,6 +195,28 @@ class BaseLayerTest(absltest.TestCase):
     layer(0, n_accelerators=1)
     layer(0, n_accelerators=1)
 
+  def test_custom_name(self):
+    layer = base.Layer()
+    self.assertIn('Layer', str(layer))
+    self.assertNotIn('CustomLayer', str(layer))
+
+    layer = base.Layer(name='CustomLayer')
+    self.assertIn('CustomLayer', str(layer))
+
+    @base.layer()
+    def DefaultDecoratorLayer(x, **unused_kwargs):
+      return x
+
+    layer = DefaultDecoratorLayer()  # pylint: disable=no-value-for-parameter
+    self.assertIn('DefaultDecoratorLayer', str(layer))
+
+    @base.layer(name='CustomDecoratorLayer')
+    def NotDefaultDecoratorLayer(x, **unused_kwargs):
+      return x
+
+    layer = NotDefaultDecoratorLayer()  # pylint: disable=no-value-for-parameter
+    self.assertIn('CustomDecoratorLayer', str(layer))
+
 
 if __name__ == '__main__':
   absltest.main()

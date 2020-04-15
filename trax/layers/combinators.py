@@ -41,8 +41,8 @@ class Serial(base.Layer):
   1-input 1-output no-op.
   """
 
-  def __init__(self, *sublayers):
-    super(Serial, self).__init__()
+  def __init__(self, *sublayers, name=None):
+    super(Serial, self).__init__(name=name)
 
     sublayers = _ensure_flat(sublayers)
     self._sublayers = sublayers
@@ -191,17 +191,18 @@ class Parallel(base.Layer):
   following input(s).
   """
 
-  def __init__(self, *sublayers):
+  def __init__(self, *sublayers, name=None):
     """The constructor.
 
     Args:
       *sublayers: A list of sublayers.
+      name: Descriptive name for this layer.
 
     Returns:
       A new layer in which each of the given sublayers applies to its
       corresponding span of elements in the dataflow stack.
     """
-    super(Parallel, self).__init__()
+    super(Parallel, self).__init__(name=name)
     sublayers = self._validate(sublayers)
     self._n_layers = len(sublayers)
     self._sublayers = sublayers
@@ -437,7 +438,7 @@ class Scan(base.Layer):
     return self.sublayer.init(layer_signature)
 
 
-def Branch(*layers):
+def Branch(*layers, name='Branch'):
   """Combinator that applies a list of layers in parallel to copies of inputs.
 
   Each layer in the input list is applied to as many inputs from the stack
@@ -459,6 +460,7 @@ def Branch(*layers):
 
   Args:
     *layers: list of layers
+    name: Descriptive name for this layer.
 
   Returns:
     the branch layer
@@ -467,7 +469,7 @@ def Branch(*layers):
     return layers[0]
   parallel_layer = Parallel(*layers)
   indices = [list(range(layer.n_in)) for layer in parallel_layer.sublayers]
-  return Serial(Select(_deep_flatten(indices)), parallel_layer)
+  return Serial(Select(_deep_flatten(indices)), parallel_layer, name=name)
 
 
 def Residual(*layers, **kwargs):
@@ -513,7 +515,7 @@ def Swap(xs, **unused_kwargs):
   return (xs[1], xs[0])
 
 
-def Select(indices, n_in=None):
+def Select(indices, n_in=None, name=None):
   """Copies, reorders, or deletes stack elements according to `indices`.
 
   Args:
@@ -522,6 +524,7 @@ def Select(indices, n_in=None):
     n_in: Number of input elements to pop from the stack, and replace with
         those specified by `indices`. If not specified, its value will be
         calculated as `max(indices) + 1`.
+    name: Descriptive name for this layer.
 
   Returns:
     Tensors, matching the number selected (`n_out = len(indices)`).
@@ -533,7 +536,7 @@ def Select(indices, n_in=None):
   if n_in is None:
     n_in = max(indices) + 1
 
-  @base.layer(n_in=n_in, n_out=len(indices))
+  @base.layer(n_in=n_in, n_out=len(indices), name=name)
   def Selection(xs, **unused_kwargs):  # pylint: disable=invalid-name
     if not isinstance(xs, (tuple, list)):
       xs = (xs,)

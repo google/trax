@@ -85,15 +85,17 @@ class Layer(object):
   outputs are spliced back into the stack.
   """
 
-  def __init__(self, n_in=1, n_out=1):
+  def __init__(self, n_in=1, n_out=1, name=None):
     """Creates a partially initialized, unconnected layer instance.
 
     Args:
       n_in: Number of inputs expected by this layer.
       n_out: Number of outputs promised by this layer.
+      name: Descriptive name for this layer.
     """
     self._n_in = n_in
     self._n_out = n_out
+    self._name = name or self.__class__.__name__
     self._sublayers = ()  # Default is no sublayers.
     self._input_signature = None
     self._rng = None
@@ -109,7 +111,7 @@ class Layer(object):
     self._jit_cache = {}
 
   def __repr__(self):
-    class_str = self.__class__.__name__
+    class_str = self._name
     fields_str = 'in={},out={}'.format(self.n_in, self.n_out)
     objs = self.sublayers
     if objs:
@@ -316,7 +318,7 @@ class Layer(object):
       else:
         return (EMPTY_WEIGHTS, state)
     except Exception as e:
-      name, trace = self.__class__.__name__, _short_traceback(skip=3)
+      name, trace = self._name, _short_traceback(skip=3)
       raise LayerError(name, 'init', self._caller,
                        input_signature, trace) from e
 
@@ -446,7 +448,7 @@ class Layer(object):
       return outputs, s
 
     except Exception as e:
-      name, trace = self.__class__.__name__, _short_traceback()
+      name, trace = self._name, _short_traceback()
       raise LayerError(name, 'pure_fn',
                        self._caller, signature(x), trace) from e
 
@@ -480,7 +482,7 @@ class Layer(object):
           input_signature, weight_signature, self.state, rng)
       return s
     except Exception as e:
-      name, trace = self.__class__.__name__, _short_traceback(skip=3)
+      name, trace = self._name, _short_traceback(skip=3)
       raise LayerError(name, '_forward_abstract', self._caller, input_signature,
                        trace) from e
 
@@ -564,7 +566,7 @@ class Layer(object):
     return output, state
 
 
-def layer(n_in=1, n_out=1, new_weights_fn=None):
+def layer(n_in=1, n_out=1, new_weights_fn=None, name=None):
   """Returns a decorator that converts a function into a Layer class builder."""
 
   def _build_layer_class(raw_fn):
@@ -572,7 +574,7 @@ def layer(n_in=1, n_out=1, new_weights_fn=None):
 
     def _init(self, **kwargs):
       self._kwargs = kwargs  # pylint: disable=protected-access
-      Layer.__init__(self, n_in=n_in, n_out=n_out)
+      Layer.__init__(self, n_in=n_in, n_out=n_out, name=name)
 
     def _forward(self, x, weights):
       """Uses this layer as part of a forward pass through the model."""
