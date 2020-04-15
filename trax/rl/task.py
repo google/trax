@@ -37,11 +37,13 @@ class _TimeStep(object):
   * discounted return from that state (includes the reward from this step)
   """
 
-  def __init__(self, observation, action=None, reward=None, log_prob=None):
+  def __init__(self, observation, action=None, reward=None,
+               log_prob=None, value=None):
     self.observation = observation
     self.action = action
     self.reward = reward
     self.log_prob = log_prob
+    self.value = value
     self.discounted_return = None
 
 
@@ -50,6 +52,7 @@ TrajectoryNp = collections.namedtuple('TrajectoryNp', [
     'observations',
     'actions',
     'log_probs',
+    'values',
     'rewards',
     'returns',
     'mask'
@@ -100,11 +103,12 @@ class Trajectory(object):
     last_timestep = self._timesteps[-1]
     return last_timestep.observation
 
-  def extend(self, action, log_prob, reward, new_observation):
+  def extend(self, action, log_prob, value, reward, new_observation):
     """Take action in the last state, getting reward and going to new state."""
     last_timestep = self._timesteps[-1]
     last_timestep.action = action
     last_timestep.log_prob = log_prob
+    last_timestep.value = value
     last_timestep.reward = reward
     new_timestep = _TimeStep(new_observation)
     self._timesteps.append(new_timestep)
@@ -125,22 +129,25 @@ class Trajectory(object):
     return (np.array(ts.observation),
             np.array(ts.action),
             np.array(ts.log_prob, dtype=np.float32),
+            np.array(ts.value, dtype=np.float32),
             np.array(ts.reward, dtype=np.float32),
             np.array(ts.discounted_return, dtype=np.float32))
 
   def to_np(self, timestep_to_np=None):
     """Create a tuple of numpy arrays from a given trajectory."""
-    observations, actions, logps, rewards, returns = [], [], [], [], []
+    observations, actions, logps, \
+        values, rewards, returns = [], [], [], [], [], []
     timestep_to_np = timestep_to_np or self._default_timestep_to_np
     for timestep in self._timesteps:
       if timestep.action is None:
         obs = timestep_to_np(timestep)[0]
         observations.append(obs)
       else:
-        (obs, act, logp, rew, ret) = timestep_to_np(timestep)
+        (obs, act, logp, value, rew, ret) = timestep_to_np(timestep)
         observations.append(obs)
         actions.append(act)
         logps.append(logp)
+        values.append(value)
         rewards.append(rew)
         returns.append(ret)
     def stack(x):
@@ -150,12 +157,13 @@ class Trajectory(object):
     return TrajectoryNp(stack(observations),
                         stack(actions),
                         stack(logps),
+                        stack(values),
                         stack(rewards),
                         stack(returns),
                         None)
 
 
-def play(env, policy, dm_suite=False, max_steps=None):
+def play(env, policy, dm_suite=False, max_steps=None, value_fun=None):
   """Play an episode in env taking actions according to the given policy.
 
   Environment is first reset and an from then on, a game proceeds. At each
@@ -171,6 +179,8 @@ def play(env, policy, dm_suite=False, max_steps=None):
       defined as the log of the probability of taking that action).
     dm_suite: whether we are using the DeepMind suite or the gym interface
     max_steps: for how many steps to play.
+    value_fun: a function taking a Trajectory and returning an estimated
+      (float) value of the state. consisting.
 
   Returns:
     a completed trajectory that was just played.
@@ -181,8 +191,12 @@ def play(env, policy, dm_suite=False, max_steps=None):
     cur_trajectory = Trajectory(env.reset().observation)
     while not terminal and (max_steps is None or cur_step < max_steps):
       action, log_prob = policy(cur_trajectory)
+      if value_fun is not None:
+        value = value(cur_trajectory)
+      else:
+        value = None
       observation = env.step(action)
-      cur_trajectory.extend(action, log_prob,
+      cur_trajectory.extend(action, log_prob, value,
                             observation.reward,
                             observation.observation)
       cur_step += 1
@@ -191,8 +205,12 @@ def play(env, policy, dm_suite=False, max_steps=None):
     cur_trajectory = Trajectory(env.reset())
     while not terminal and (max_steps is None or cur_step < max_steps):
       action, log_prob = policy(cur_trajectory)
+      if value_fun is not None:
+        value = value(cur_trajectory)
+      else:
+        value = None
       observation, reward, terminal, _ = env.step(action)
-      cur_trajectory.extend(action, log_prob, reward, observation)
+      cur_trajectory.extend(action, log_prob, value, reward, observation)
       cur_step += 1
   return cur_trajectory
 
@@ -205,10 +223,13 @@ def _zero_pad(x, pad, axis):
                 constant_values=x.dtype.type(0))
 
 
-def _random_policy(action_space):
+def _random_policy(action_space, n_actions=0):
   # TODO(pkozakowski): Make returning the log probabilities optional.
   # Returning 1 as a log probability is a temporary hack.
-  return lambda _: (action_space.sample(), 1.0)
+  if n_actions != 0:
+    return lambda _: (action_space.sample(), 1.0 / n_actions)
+  else:
+    return lambda _: (action_space.sample(), 1.0)
 
 
 def _sample_proportionally(inputs, weights):
@@ -278,8 +299,13 @@ class RLTask:
     self._gamma = gamma
     # TODO(lukaszkaiser): find a better way to pass initial trajectories,
     # whether they are an explicit list, a file, or a number of random ones.
+    if dm_suite:
+      n_actions = self._env.action_spec().num_values
+    else:
+      n_actions = 0
     if isinstance(initial_trajectories, int):
-      initial_trajectories = [self.play(_random_policy(self.action_space))
+      initial_trajectories = [self.play(
+          _random_policy(self.action_space, n_actions=n_actions))
                               for _ in range(initial_trajectories)]
     if isinstance(initial_trajectories, list):
       initial_trajectories = {0: initial_trajectories}
@@ -369,15 +395,17 @@ class RLTask:
                   'all_epochs': list(self._trajectories.keys())}
     trainer_lib.pickle_to_file(dictionary, file_name, gzip=False)
 
-  def play(self, policy):
+  def play(self, policy, value_fun=None):
     """Play an episode in env taking actions according to the given policy."""
-    cur_trajectory = play(self._env, policy, self._dm_suite, self._max_steps)
+    cur_trajectory = play(self._env, policy, self._dm_suite,
+                          self._max_steps, value_fun=value_fun)
     cur_trajectory.calculate_returns(self._gamma)
     return cur_trajectory
 
-  def collect_trajectories(self, policy, n, epoch_id=1):
+  def collect_trajectories(self, policy, n, epoch_id=1, value_fun=None):
     """Collect n trajectories in env playing the given policy."""
-    new_trajectories = [self.play(policy) for _ in range(n)]
+    new_trajectories = [self.play(policy,
+                                  value_fun=value_fun) for _ in range(n)]
     self._trajectories[epoch_id].extend(new_trajectories)
     # Mark that epoch epoch_id has changed.
     if epoch_id in self._saved_epochs_unchanged:
@@ -494,13 +522,13 @@ class RLTask:
         include_final_state, sample_trajectories_uniformly):
       cur_batch.append(t)
       if len(cur_batch) == batch_size:
-        obs, act, logp, rew, ret, _ = zip(*[t.to_np(self._timestep_to_np)
-                                            for t in cur_batch])
+        obs, act, logp, value, rew, ret, _ = \
+            zip(*[t.to_np(self._timestep_to_np) for t in cur_batch])
         # Where act, logp, rew and ret will usually have the following shape:
         # [batch_size, trajectory_length-1], which we call [B, L-1].
         # Observations are more complex and will usuall be [B, L] + S where S
         # is the shape of the observation space (self.observation_shape).
         yield TrajectoryNp(
-            pad(obs), pad(act), pad(logp), pad(rew), pad(ret),
+            pad(obs), pad(act), pad(logp), pad(value), pad(rew), pad(ret),
             pad([np.ones(a.shape[:1]) for a in act]))
         cur_batch = []

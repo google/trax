@@ -54,6 +54,7 @@ class RLTrainer:
     self._output_dir = output_dir
     self._avg_returns = []
     self._sw = None
+    self.value_fun = None
     if output_dir is not None:
       self._sw = jaxboard.SummaryWriter(os.path.join(output_dir, 'rl'))
 
@@ -135,7 +136,8 @@ class RLTrainer:
           'RL training took %.2f seconds.' % (time.time() - cur_time))
       cur_time = time.time()
       avg_return = self.task.collect_trajectories(
-          self.policy, self._collect_per_epoch, self._epoch)
+          self.policy, self._collect_per_epoch, self._epoch,
+          value_fun=self.value_fun)
       self._avg_returns.append(avg_return)
       supervised.trainer_lib.log(
           'Collecting %d episodes took %.2f seconds.'

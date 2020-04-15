@@ -24,6 +24,7 @@ from trax import supervised
 from trax.math import numpy as jnp
 from trax.math import stop_gradient
 from trax.rl import actor_critic
+from trax.rl import advantages as rl_advantages
 from trax.rl import distributions
 from trax.rl import rl_layers
 from trax.rl import training as rl_training
@@ -71,14 +72,15 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
     self._optimizer = optimizer
     self._normalize_advantages = normalize_advantages
 
-    # Inputs to the joint model are produced by self.batches_stream.
-    self._inputs = supervised.Inputs(
-        train_stream=lambda _: self.batches_stream())
-
     self._joint_model = functools.partial(
         joint_model,
         policy_distribution=self._policy_dist,
     )
+
+    self._eval_model = self._joint_model(mode='eval')
+    # Inputs to the joint model are produced by self.batches_stream.
+    self._inputs = supervised.Inputs(
+        train_stream=lambda _: self.batches_stream())
 
     # This is the joint Trainer that will be used to train the policy model.
     # * inputs to the trainer come from self.batches_stream
@@ -97,7 +99,7 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
                  'explained_variance': self.explained_variance,
                  'log_probs_mean': self.log_probs_mean,
                  'preferred_move': self.preferred_move})
-    self._eval_model = self._joint_model(mode='eval')
+
     example_batch = next(self.batches_stream())
     self._eval_model.init(example_batch)
 
@@ -114,14 +116,15 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
   def advantage_mean(self):
     """Mean of advantages."""
     return tl.Fn(
-        lambda dist_inputs, values, returns: jnp.mean(returns - values),
+        lambda dist_inputs, values, returns, advantages: jnp.mean(advantages),
         n_out=1)
 
   @property
   def advantage_norm(self):
     """Mean of advantages."""
     return tl.Fn(
-        lambda dist_inputs, values, returns: jnp.linalg.norm(returns - values),
+        lambda dist_inputs, values, returns, advantages: jnp.linalg.norm(
+            advantages),
         n_out=1)
 
   @property
@@ -133,7 +136,10 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
   @property
   def explained_variance(self):
     """Explained variance metric."""
-    return tl.Fn(rl_layers.ExplainedVariance, n_out=1)
+    return tl.Fn(
+        lambda dist_inputs, values, returns: rl_layers.ExplainedVariance(
+            values, returns),
+        n_out=1)
 
   @property
   def log_probs_mean(self):
@@ -146,7 +152,7 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
     return tl.Fn(lambda dist_inputs, values: rl_layers.PreferredMove(
         dist_inputs, self._policy_dist.sample), n_out=1)
 
-  def policy(self, trajectory):
+  def policy_and_value(self, trajectory):
     """Chooses an action to play after a trajectory."""
     model = self._eval_model
     model.weights = self._trainer.model_weights
@@ -155,12 +161,25 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
     tr_slice = trajectory[-self._max_slice_length:]
     trajectory_np = tr_slice.to_np(timestep_to_np=self.task.timestep_to_np)
     # Add batch dimension to trajectory_np and run the model.
-    pred = model(trajectory_np.observations[None, ...], n_accelerators=1)[0]
+    pred, value = model(trajectory_np.observations[None, ...], n_accelerators=1)
+    # print('pred before {}'.format(pred))
+    # print('value before {}'.format(value))
     # Pick element 0 from the batch (the only one), last (current) timestep.
     pred = pred[0, -1, :]
+    value = value[0, -1, :]
+    # print('pred after {}'.format(pred))
+    # print('value after {}'.format(value))
     sample = self._policy_dist.sample(pred)
     log_prob = self._policy_dist.log_prob(pred, sample)
-    return (sample.copy(), log_prob.copy())
+    return (sample.copy(), log_prob.copy(), value.copy())
+
+  def policy(self, trajectory):
+    sample, log_prob, _ = self.policy_and_value(trajectory)
+    return (sample, log_prob)
+
+  def value_fun(self, trajectory):
+    _, _, value = self.policy_and_value(trajectory)
+    return value
 
   def train_epoch(self):
     """Trains RL for one epoch."""
@@ -186,11 +205,16 @@ class PPOJointTrainer(ActorCriticJointTrainer):
   on_policy = True
 
   def __init__(self, task, epsilon=0.2, value_loss_coeff=0.1,
-               entropy_coeff=0.01, **kwargs):
+               entropy_coeff=0.01, gae_lambda=0.95,
+               added_policy_slice_length=128,
+               advantage_estimator=rl_advantages.discount_gae, **kwargs):
     """Configures the PPO Trainer."""
     self._epsilon = epsilon
     self._value_loss_coeff = value_loss_coeff
     self._entropy_coeff = entropy_coeff
+    self._gae_lambda = gae_lambda
+    self._added_policy_slice_length = added_policy_slice_length
+    self._advantage_estimator = advantage_estimator
     super(PPOJointTrainer, self).__init__(task, **kwargs)
     self._trainer = supervised.Trainer(
         model=self._joint_model,
@@ -215,13 +239,21 @@ class PPOJointTrainer(ActorCriticJointTrainer):
                  'preferred_move': self.preferred_move})
 
   def batches_stream(self):
-    """Use the RLTask self._task to create inputs to the value model."""
+    """Use the RLTask self._task to create inputs to the joint model."""
     for np_trajectory in self._task.trajectory_batch_stream(
         self._batch_size, max_slice_length=self._max_slice_length, epochs=[-1]):
+      advantages = self._advantage_estimator(
+          np_trajectory.rewards,
+          np_trajectory.values,
+          gamma=self._task.gamma,
+          n_extra_steps=self._added_policy_slice_length,
+          gae_lambda=self._gae_lambda
+      )
       # Insert an extra depth dimension, so the target shape is consistent with
       # the network output shape.
-      yield (np_trajectory.observations,         # Inputs to the value model.
+      yield (np_trajectory.observations,
              np_trajectory.returns[:, :, None],
+             advantages[:, :, None],
              np_trajectory.actions,
              np_trajectory.log_probs,
              np_trajectory.mask)
@@ -229,13 +261,15 @@ class PPOJointTrainer(ActorCriticJointTrainer):
   @property
   def joint_loss(self):
     """Joint policy and value loss."""
-    def PPOJointLoss(dist_inputs, values, returns, actions, old_log_probs,
+    def PPOJointLoss(dist_inputs, values, returns, advantages,
+                     actions, old_log_probs,
                      mask):
       """Definition of the Proximal Policy Optimization loss."""
       del mask  # TODO(lukaszkaiser): make PPO work with Transformer
 
       ppo_objective = rl_layers.PPOObjective(
-          dist_inputs, stop_gradient(values), returns, actions, old_log_probs,
+          dist_inputs, stop_gradient(values), returns,
+          advantages, actions, old_log_probs,
           log_prob_fun=self._policy_dist.log_prob,
           epsilon=self._epsilon,
           normalize_advantages=self._normalize_advantages)
@@ -263,7 +297,7 @@ class PPOJointTrainer(ActorCriticJointTrainer):
           log_prob_fun=self._policy_dist.log_prob)
       return jnp.mean(probs_ratio)
     return tl.Fn(
-        lambda dist_inputs, values, returns, actions, old_log_probs:
+        lambda dist_inputs, values, returns, advantages, actions, old_log_probs:
         ProbsRatioMean(dist_inputs, actions, old_log_probs), n_out=1)
 
   @property
@@ -276,14 +310,14 @@ class PPOJointTrainer(ActorCriticJointTrainer):
           log_prob_fun=self._policy_dist.log_prob)
       return jnp.mean(jnp.abs(probs_ratio - 1) > self._epsilon)
     return tl.Fn(
-        lambda dist_inputs, values, returns, actions, old_log_probs:
+        lambda dist_inputs, values, returns, advantages, actions, old_log_probs:
         ClipFraction(dist_inputs, actions, old_log_probs), n_out=1)
 
   @property
   def entropy_loss(self):
     """Entropy layer."""
     return tl.Fn(
-        lambda dist_inputs, values, returns, actions:
+        lambda dist_inputs, values, returns, advantages, actions:
         rl_layers.EntropyLoss(
             dist_inputs, actions, log_prob_fun=self._policy_dist.log_prob,
             entropy_coeff=self._entropy_coeff,
@@ -294,7 +328,7 @@ class PPOJointTrainer(ActorCriticJointTrainer):
   def approximate_kl_divergence(self):
     """Entropy layer."""
     return tl.Fn(
-        lambda dist_inputs, actions, old_log_probs:
+        lambda dist_inputs, values, returns, advantages, actions, old_log_probs:
         rl_layers.ApproximateKLDivergence(
             dist_inputs,
             actions,
@@ -305,9 +339,9 @@ class PPOJointTrainer(ActorCriticJointTrainer):
   @property
   def unclipped_objective_mean(self):
     def UnclippedObjectiveMean(dist_inputs, values,
-                               returns, actions, old_log_probs):
+                               returns, advantages, actions, old_log_probs):
       """Unclipped objective Mean from the PPO algorithm."""
-      advantages = returns - values
+      del values, returns
       probs_ratio = rl_layers.ProbsRatio(
           dist_inputs, actions, old_log_probs,
           log_prob_fun=self._policy_dist.log_prob)
@@ -320,9 +354,9 @@ class PPOJointTrainer(ActorCriticJointTrainer):
   @property
   def clipped_objective_mean(self):
     def ClippedObjectiveMean(
-        dist_inputs, values, returns, actions, old_log_probs):
+        dist_inputs, values, returns, advantages, actions, old_log_probs):
       """Clipped objective from the PPO algorithm."""
-      advantages = returns - values
+      del values, returns
       probs_ratio = rl_layers.ProbsRatio(
           dist_inputs, actions, old_log_probs,
           log_prob_fun=self._policy_dist.log_prob)
@@ -336,9 +370,9 @@ class PPOJointTrainer(ActorCriticJointTrainer):
   def ppo_objective(self):
     """PPO objective with local parameters."""
     return tl.Fn(
-        lambda dist_inputs, values, returns, actions, old_log_probs:
+        lambda dist_inputs, values, returns, advantages, actions, old_log_probs:
         rl_layers.PPOObjective(
-            dist_inputs, values, returns, actions, old_log_probs,
+            dist_inputs, values, returns, advantages, actions, old_log_probs,
             log_prob_fun=self._policy_dist.log_prob,
             epsilon=self._epsilon,
             normalize_advantages=self._normalize_advantages),
@@ -347,10 +381,11 @@ class PPOJointTrainer(ActorCriticJointTrainer):
   @property
   def ppo_objective_mean(self):
     """PPO objective mean."""
-    def PPOObjectiveMean(dist_inputs, values, returns, actions, old_log_probs):
+    def PPOObjectiveMean(dist_inputs, values, returns,
+                         advantages, actions, old_log_probs):
       """Clipped objective from the PPO algorithm."""
       ppo_objective = rl_layers.PPOObjective(
-          dist_inputs, values, returns, actions, old_log_probs,
+          dist_inputs, values, returns, advantages, actions, old_log_probs,
           log_prob_fun=self._policy_dist.log_prob,
           epsilon=self._epsilon,
           normalize_advantages=self._normalize_advantages)

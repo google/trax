@@ -24,8 +24,7 @@ from trax.math import numpy as jnp
 
 def ValueLoss(values, returns, value_loss_coeff):
   """Definition of the loss of the value function."""
-  advantages = returns - values
-  l2_value_loss = jnp.mean(advantages**2) * value_loss_coeff
+  l2_value_loss = jnp.mean((returns - values)**2) * value_loss_coeff
   return l2_value_loss
 
 
@@ -96,19 +95,26 @@ def ClippedObjective(probs_ratio, advantages, epsilon):
   return clipped_objective
 
 
-def PPOObjective(dist_inputs, values, returns, actions, old_log_probs,
-                 log_prob_fun, epsilon, normalize_advantages):
+def PPOObjective(dist_inputs, values, returns, advantages,
+                 actions, old_log_probs, log_prob_fun,
+                 epsilon, normalize_advantages):
   """PPO Objective."""
   # Returns and values are arriving with two extra dimensions
   # TODO(henrykm): remove these dimensions at an earlier stage?
   returns = returns.squeeze()
   values = values.squeeze()
   probs_ratio = ProbsRatio(dist_inputs, actions, old_log_probs, log_prob_fun)
-  advantages = returns - values
+  # print("probs_ratio {}".format(probs_ratio))
+  # advantages = returns - values
+  # print("advantages in ppoobjective {}".format(advantages))
   if normalize_advantages:
     advantages = advantages - jnp.mean(advantages)
     advantages /= jnp.std(advantages) + 1e-8
+  # print("normalized advantages {}".format(advantages))
   unclipped_objective = UnclippedObjective(probs_ratio, advantages)
   clipped_objective = ClippedObjective(probs_ratio, advantages, epsilon)
+  # print("unclipped_objective {}".format(unclipped_objective))
+  # print("clipped_objective {}".format(clipped_objective))
   ppo_objective = jnp.minimum(unclipped_objective, clipped_objective)
+  # print("ppo_objective {}".format(ppo_objective))
   return ppo_objective
