@@ -47,6 +47,7 @@ def estimate_advantage_bias_and_variance(
     length=5,
     gamma=0.9,
     n_extra_steps=0,
+    gae=False,
     **advantage_kwargs
 ):
   rewards = np.random.normal(
@@ -54,10 +55,16 @@ def estimate_advantage_bias_and_variance(
   )
   returns = calc_returns(rewards, gamma=gamma)
   values = np.zeros_like(returns)
-  adv = advantage_fn(
-      rewards, returns, values, gamma=gamma, n_extra_steps=n_extra_steps,
-      **advantage_kwargs
-  )
+  if gae:
+    adv = advantage_fn(
+        rewards, values, gamma=gamma, n_extra_steps=n_extra_steps,
+        **advantage_kwargs
+    )
+  else:
+    adv = advantage_fn(
+        rewards, returns, values, gamma=gamma, n_extra_steps=n_extra_steps,
+        **advantage_kwargs
+    )
   mean_return = calc_returns(
       np.full((1, length), fill_value=mean_reward), gamma=gamma
   )[0, 0]
@@ -78,6 +85,14 @@ class AdvantagesTest(parameterized.TestCase):
     adv1 = advantage_fn(rewards, returns, values, gamma=1, n_extra_steps=1)
     self.assertEqual(adv1.shape, (1, 2))
     adv2 = advantage_fn(rewards, returns, values, gamma=1, n_extra_steps=2)
+    self.assertEqual(adv2.shape, (1, 1))
+
+  def test_shapes_gae(self):
+    rewards = np.array([[1, 1, 1]], dtype=np.float32)
+    values = np.array([[2, 2, 2]], dtype=np.float32)
+    adv1 = advantages.discount_gae(rewards, values, gamma=1, n_extra_steps=1)
+    self.assertEqual(adv1.shape, (1, 2))
+    adv2 = advantages.discount_gae(rewards, values, gamma=1, n_extra_steps=2)
     self.assertEqual(adv2.shape, (1, 1))
 
   def test_monte_carlo_bias_is_zero(self):
@@ -140,6 +155,26 @@ class AdvantagesTest(parameterized.TestCase):
     )
     self.assertLess(var1, var2)
 
+  @parameterized.named_parameters(('0.5_0.7', 0.5, 0.7), ('0.7_0.9', 0.7, 0.9))
+  def test_gae_bias_decreases_with_gae_lambda(self, gae_lambda1, gae_lambda2):
+    (bias1, _) = estimate_advantage_bias_and_variance(
+        advantages.discount_gae, gae_lambda=gae_lambda1, gae=True,
+    )
+    (bias2, _) = estimate_advantage_bias_and_variance(
+        advantages.discount_gae, gae_lambda=gae_lambda2, gae=True,
+    )
+    self.assertGreater(bias1, bias2)
+
+  @parameterized.named_parameters(('0.5_0.7', 0.5, 0.7), ('0.7_0.9', 0.7, 0.9))
+  def test_gae_variance_increases_with_gae_lambda(self, gae_lambda1,
+                                                  gae_lambda2):
+    (_, var1) = estimate_advantage_bias_and_variance(
+        advantages.discount_gae, gae_lambda=gae_lambda1, gae=True,
+    )
+    (_, var2) = estimate_advantage_bias_and_variance(
+        advantages.discount_gae, gae_lambda=gae_lambda2, gae=True,
+    )
+    self.assertLess(var1, var2)
 
 if __name__ == '__main__':
   absltest.main()

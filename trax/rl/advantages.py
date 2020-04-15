@@ -108,3 +108,39 @@ def td_lambda(rewards, returns, values, gamma, n_extra_steps, lambda_=0.95):
         (1 - lambda_) * values[:, i + 1] + lambda_ * td_returns[:, i + 1]
     )
   return (td_returns - values)[:, :(returns.shape[1] - n_extra_steps)]
+
+
+common_args = ['rewards', 'values', 'gamma', 'gae_lambda', 'n_extra_steps']
+
+
+@gin.configurable(blacklist=common_args)
+def discount_gae(rewards, values, gamma, n_extra_steps, gae_lambda=0.95):
+  """Calculate Generalized Advantage Estimation.
+
+  Calculate state values bootstrapping off the following state values -
+  Generalized Advantage Estimation https://arxiv.org/abs/1506.02438
+
+  Args:
+    rewards: the rewards, tensor of shape [batch_size, length]
+    values: the value function computed for this trajectory (shape as above)
+    gamma: float, gamma parameter for TD from the underlying task
+    n_extra_steps: number of extra steps in the sequence
+    gae_lambda: discount parameter of the exponentially-weighted average
+
+  Returns:
+    the advantages, a tensor of shape [batch_size, length - n_extra_steps].
+  """
+
+  advantages = np.zeros_like(rewards)
+  (_, length) = rewards.shape
+
+  # Accmulate sums
+  sum_accumulator = 0
+
+  for i in reversed(range(length-1)):
+    bellman_delta = (rewards[:, i] + gamma * values[:, i + 1] - values[:, i])
+
+    advantages[:, i] = sum_accumulator = (
+        bellman_delta + gamma * gae_lambda * sum_accumulator)
+
+  return advantages[:, :(rewards.shape[1] - n_extra_steps)]
