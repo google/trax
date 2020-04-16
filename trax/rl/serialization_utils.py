@@ -13,11 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Utilities for serializing trajectories into discrete sequences."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import functools
 
@@ -140,32 +137,32 @@ def SerializedModel(
     representation, obs_repr is the target observation representation and
     weights are the target weights.
   """
-  weigh_by_significance = [     # (mask,)
-      RepresentationMask(  # pylint: disable=no-value-for-parameter
-          serializer=observation_serializer,
-      ),                        # (repr_mask)
-      SignificanceWeights(  # pylint: disable=no-value-for-parameter
-          serializer=observation_serializer,
-          decay=significance_decay,
-      ),                        # (mask, sig_weights)
+  # pylint: disable=no-value-for-parameter
+  weigh_by_significance = [
+      # (mask,)
+      RepresentationMask(serializer=observation_serializer),
+      # (repr_mask)
+      SignificanceWeights(serializer=observation_serializer,
+                          decay=significance_decay),
+      # (mask, sig_weights)
   ]
-  return tl.Serial([            # (obs, act, obs, mask)
-      tl.Parallel(
-          Serialize(serializer=observation_serializer),  # pylint: disable=no-value-for-parameter
-          Serialize(serializer=action_serializer),  # pylint: disable=no-value-for-parameter
-          Serialize(serializer=observation_serializer),  # pylint: disable=no-value-for-parameter
-      ),                        # (obs_repr, act_repr, obs_repr, mask)
-      Interleave(  # pylint: disable=no-value-for-parameter
-      ),                        # (obs_act_repr, obs_repr, mask)
-      seq_model,                # (obs_act_logits, obs_repr, mask)
-      Deinterleave(  # pylint: disable=no-value-for-parameter
-          x_size=observation_serializer.representation_length,
-          y_size=action_serializer.representation_length,
-      ),                        # (obs_logits, act_logits, obs_repr, mask)
-      tl.Parallel(
-          None, tl.Drop(), None, weigh_by_significance
-      ),                        # (obs_logits, obs_repr, weights)
-  ])
+  return tl.Serial(
+      # (obs, act, obs, mask)
+      tl.Parallel(Serialize(serializer=observation_serializer),
+                  Serialize(serializer=action_serializer),
+                  Serialize(serializer=observation_serializer)),
+      # (obs_repr, act_repr, obs_repr, mask)
+      Interleave(),
+      # (obs_act_repr, obs_repr, mask)
+      seq_model,
+      # (obs_act_logits, obs_repr, mask)
+      Deinterleave(x_size=observation_serializer.representation_length,
+                   y_size=action_serializer.representation_length),
+      # (obs_logits, act_logits, obs_repr, mask)
+      tl.Parallel(None, tl.Drop(), None, weigh_by_significance),
+      # (obs_logits, obs_repr, weights)
+  )
+  # pylint: enable=no-value-for-parameter
 
 
 # TODO(pkozakowski): Figure out a more generic way to do this (submodel tags
@@ -207,15 +204,13 @@ def RawPolicy(seq_model, n_controls, n_actions):
       SplitControls(),  # pylint: disable=no-value-for-parameter
       tl.LogSoftmax(),
   ]
-  return tl.Serial([            # (obs, act)
-      tl.Select([0], n_in=2),   # (obs,)
-      seq_model,                # (obs_hidden,)
-      tl.Dup(),                 # (obs_hidden, obs_hidden)
-      tl.Parallel(
-          action_head,
-          [tl.Dense(1), tl.Flatten()],
-      )                         # (act_logits, values)
-  ])
+  return tl.Serial(                             # (obs, act)
+      tl.Select([0], n_in=2),                   # (obs,)
+      seq_model,                                # (obs_hidden,)
+      tl.Dup(),                                 # (obs_hidden, obs_hidden)
+      tl.Parallel(action_head, [tl.Dense(1),
+                                tl.Flatten()])  # (act_logits, values)
+  )
 
 
 def substitute_inner_policy_raw(raw_policy, inner_policy):  # pylint: disable=invalid-name
@@ -276,30 +271,33 @@ def SerializedPolicy(
       # Get rid of the singleton dimension.
       tl.Flatten(),
   ]
-  return tl.Serial([            # (obs, act)
-      tl.Parallel(
-          Serialize(serializer=observation_serializer),  # pylint: disable=no-value-for-parameter
-          Serialize(serializer=action_serializer),  # pylint: disable=no-value-for-parameter
-      ),                        # (obs_repr, act_repr)
-      Interleave(  # pylint: disable=no-value-for-parameter
-      ),                        # (obs_act_repr,)
+  # pylint: disable=no-value-for-parameter
+  return tl.Serial(
+      # (obs, act)
+      tl.Parallel(Serialize(serializer=observation_serializer),
+                  Serialize(serializer=action_serializer)),
+      # (obs_repr, act_repr)
+      Interleave(),
+      # (obs_act_repr,)
+
       # Add one dummy action to the right - we'll use the output at its first
       # symbol to predict the value for the last observation.
-      PadRight(n_to_pad=action_serializer.representation_length),  # pylint: disable=no-value-for-parameter
+      PadRight(n_to_pad=action_serializer.representation_length),
+
       # Shift one symbol to the right, so we predict the n-th action symbol
       # based on action symbols 1..n-1 instead of 1..n.
       tl.ShiftRight(),
-      seq_model,                # (obs_act_hidden,)
-      Deinterleave(  # pylint: disable=no-value-for-parameter
-          x_size=observation_serializer.representation_length,
-          y_size=action_serializer.representation_length,
-      ),                        # (obs_hidden, act_hidden)
-      tl.Select([1]),           # (act_hidden,)
-      tl.Dup(),                 # (act_hidden, act_hidden)
-      tl.Parallel(
-          action_head, value_head
-      )                         # (act_logits, values)
-  ])
+      seq_model,
+      # (obs_act_hidden,)
+      Deinterleave(x_size=observation_serializer.representation_length,
+                   y_size=action_serializer.representation_length),
+      # (obs_hidden, act_hidden)
+      tl.Select([1, 1]),
+      # (act_hidden, act_hidden)
+      tl.Parallel(action_head, value_head)
+      # (act_logits, values)
+  )
+  # pylint: enable=no-value-for-parameter
 
 
 def substitute_inner_policy_serialized(serialized_policy, inner_policy):  # pylint: disable=invalid-name
@@ -345,11 +343,9 @@ def wrap_policy(seq_model, observation_space, action_space, vocab_size):  # pyli
   else:
     obs_serializer = space_serializer.create(observation_space, vocab_size)
     act_serializer = space_serializer.create(action_space, vocab_size)
-    policy_wrapper = functools.partial(
-        SerializedPolicy,
-        observation_serializer=obs_serializer,
-        action_serializer=act_serializer,
-    )
+    policy_wrapper = functools.partial(SerializedPolicy,
+                                       observation_serializer=obs_serializer,
+                                       action_serializer=act_serializer)
   return policy_wrapper(seq_model, n_controls, n_actions)
 
 
