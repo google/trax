@@ -22,6 +22,7 @@ from trax import layers as tl
 from trax import lr_schedules as lr
 from trax import supervised
 from trax.math import numpy as jnp
+from trax.math import stop_gradient
 from trax.rl import actor_critic
 from trax.rl import distributions
 from trax.rl import rl_layers
@@ -234,7 +235,7 @@ class PPOJointTrainer(ActorCriticJointTrainer):
       del mask  # TODO(lukaszkaiser): make PPO work with Transformer
 
       ppo_objective = rl_layers.PPOObjective(
-          dist_inputs, values, returns, actions, old_log_probs,
+          dist_inputs, stop_gradient(values), returns, actions, old_log_probs,
           log_prob_fun=self._policy_dist.log_prob,
           epsilon=self._epsilon,
           normalize_advantages=self._normalize_advantages)
@@ -386,7 +387,7 @@ class AWRJointTrainer(ActorCriticJointTrainer):
     @tl.layer(n_in=5, n_out=1)
     def AWRJointLoss(x, **unused_kwargs):  # pylint: disable=invalid-name
       preds, values, returns, actions, mask = x
-      advantages = jnp.squeeze(returns - values, axis=-1)
+      advantages = jnp.squeeze(returns - stop_gradient(values), axis=-1)
       logps = self._policy_dist.log_prob(preds, actions)
       awr_loss = actor_critic.AWRLoss(beta=self._beta, w_max=self._w_max)(
           (logps, advantages, jnp.zeros_like(logps), mask))
