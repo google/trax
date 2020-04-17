@@ -752,7 +752,6 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
       for rec in JAX_ARGMINMAX_RECORDS
       for shape, dtype in _shape_and_dtypes(rec.shapes, rec.dtypes)
       for axis in range(-len(shape), len(shape))))
-  @disable
   def testArgMinMax(self, onp_op, lnp_op, rng_factory, shape, dtype, axis):
     rng = rng_factory()
     if dtype == onp.complex128 and jtu.device_under_test() == "gpu":
@@ -766,7 +765,8 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
 
     args_maker = lambda: [rng(shape, dtype)]
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_{}_{}_{}".format(
@@ -1290,13 +1290,13 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
        "dtype": dtype, "n": n}
       for dtype in default_dtypes
       for n in list(range(4))))
-  @disable
   def testIdentity(self, n, dtype):
     onp_fun = lambda: onp.identity(n, dtype)
     lnp_fun = lambda: lnp.identity(n, dtype)
     args_maker = lambda: []
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_shape={}_dtype_{}_offset={}_axis1={}_axis2={}".format(
@@ -1379,14 +1379,14 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
       for shape in array_shapes + [3, onp.array(7, dtype=onp.int32)]
       for fill_value_dtype in default_dtypes
       for out_dtype in [None] + default_dtypes))
-  @disable
   def testFull(self, shape, fill_value_dtype, out_dtype, rng_factory):
     rng = rng_factory()
     onp_fun = lambda fill_value: onp.full(shape, fill_value, dtype=out_dtype)
     lnp_fun = lambda fill_value: lnp.full(shape, fill_value, dtype=out_dtype)
     args_maker = lambda: [rng((), fill_value_dtype)]
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(
     jtu.cases_from_list(
@@ -1397,14 +1397,14 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
       for shape in [2, (), (2,), (3, 0), onp.array((4, 5, 6), dtype=onp.int32),
                     onp.array(4, dtype=onp.int32)]
       for dtype in all_dtypes))
-  @disable
   def testZerosOnes(self, onp_op, lnp_op, shape, dtype):
     rng = jtu.rand_default()
     def args_maker(): return []
     onp_op = partial(onp_op, shape, dtype)
     lnp_op = partial(lnp_op, shape, dtype)
     self._CheckAgainstNumpy(onp_op, lnp_op, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_op, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_op, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_inshape={}_filldtype={}_outdtype={}".format(
@@ -2727,14 +2727,14 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
           [(1,), (3,)],
       ]
       for rng_factory in [jtu.rand_default])
-  @disable
   def testBroadcastTo(self, from_shape, to_shape, rng_factory):
     rng = rng_factory()
     args_maker = self._GetArgsMaker(rng, [from_shape], [onp.float32])
     onp_op = lambda x: onp.broadcast_to(x, to_shape)
     lnp_op = lambda x: lnp.broadcast_to(x, to_shape)
     self._CheckAgainstNumpy(onp_op, lnp_op, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_op, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_op, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @disable
   def testBroadcastToIssue1522(self):

@@ -73,49 +73,6 @@ def any(a, axis=None, keepdims=None):  # pylint: disable=redefined-builtin
       tf.reduce_any(input_tensor=a.data, axis=axis, keepdims=keepdims))
 
 
-def argmax(a, axis=None):
-  """Returns the indices of the maximum values along an array axis.
-
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can
-      be converted to a Tensor using `tf.convert_to_tensor`.
-    axis: Optional. The axis along which to compute argmax. If None, index of
-      the max element in the flattened array is returned.
-  Returns:
-    An ndarray with the same shape as `a` with `axis` removed if not None.
-    If `axis` is None, a scalar array is returned.
-  """
-  a = array_creation.asarray(a)
-  if axis is None or utils.isscalar(a):
-    # When axis is None or the array is a scalar, numpy flattens the array.
-    a_t = tf.reshape(a.data, [-1])
-  else:
-    a_t = a.data
-  return utils.tensor_to_ndarray(tf.argmax(input=a_t, axis=axis))
-
-
-def argmin(a, axis=None):
-  """Returns the indices of the minimum values along an array axis.
-
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can
-      be converted to a Tensor using `tf.convert_to_tensor`.
-    axis: Optional. The axis along which to compute argmin. If None, index of
-      the min element in the flattened array is returned.
-
-  Returns:
-    An ndarray with the same shape as `a` with `axis` removed if not None.
-    If `axis` is None, a scalar array is returned.
-  """
-  a = array_creation.asarray(a)
-  if axis is None or utils.isscalar(a):
-    # When axis is None or the array is a scalar, numpy flattens the array.
-    a_t = tf.reshape(a.data, [-1])
-  else:
-    a_t = a.data
-  return utils.tensor_to_ndarray(tf.argmin(input=a_t, axis=axis))
-
-
 def clip(a, a_min=None, a_max=None):
   """Clips array values to lie within a given range.
 

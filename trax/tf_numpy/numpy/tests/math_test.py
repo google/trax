@@ -19,7 +19,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
 import numpy as np
+from six.moves import range
 import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import array_creation
@@ -197,6 +199,34 @@ class MathTest(tf.test.TestCase):
     r = np.arange(100)
     a = np.zeros(100)
     np.testing.assert_equal(math.argsort(a, kind='stable'), r)
+
+  def testArgMaxArgMin(self):
+    data = [
+        0,
+        5,
+        [1],
+        [1, 2, 3],
+        [[1, 2, 3]],
+        [[4, 6], [7, 8]],
+        [[[4, 6], [9, 10]], [[7, 8], [12, 34]]],
+    ]
+    for fn, d in itertools.product(self.array_transforms, data):
+      arr = fn(d)
+      self.match(math.argmax(arr), np.argmax(arr))
+      self.match(math.argmin(arr), np.argmin(arr))
+      if hasattr(arr, 'shape'):
+        ndims = len(arr.shape)
+      else:
+        ndims = array_creation.array(arr, copy=False).ndim
+      if ndims == 0:
+        # Numpy flattens the scalar ndarray and treats it as a 1-d array of
+        # size 1.
+        ndims = 1
+      for axis in range(-ndims, ndims):
+        self.match(
+            math.argmax(arr, axis=axis), np.argmax(arr, axis=axis))
+        self.match(
+            math.argmin(arr, axis=axis), np.argmin(arr, axis=axis))
 
 
 if __name__ == '__main__':
