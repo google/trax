@@ -82,7 +82,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
     # to construct value batches which are needed before PolicyTrainer init
     # since policy input creation calls the value model -- hence this code.
     self._task = task
-    self._max_slice_length = kwargs.get('max_slice_length', None)
+    self._max_slice_length = kwargs.get('max_slice_length', 1)
     self._added_policy_slice_length = added_policy_slice_length
 
     # Initialize training of the value function.
