@@ -24,7 +24,6 @@ from six.moves import zip
 import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import array_creation
-from trax.tf_numpy.numpy import array_methods
 from trax.tf_numpy.numpy import arrays
 from trax.tf_numpy.numpy import math
 
@@ -46,10 +45,10 @@ class ArrayMethodsTest(tf.test.TestCase):
       for fn in self.array_transforms:
         arr = fn(arr)
         self.match(
-            array_methods.all(arr, *args, **kwargs), np.all(
+            math.all(arr, *args, **kwargs), np.all(
                 arr, *args, **kwargs))
         self.match(
-            array_methods.any(arr, *args, **kwargs), np.any(
+            math.any(arr, *args, **kwargs), np.any(
                 arr, *args, **kwargs))
 
     run_test(0)
@@ -72,7 +71,7 @@ class ArrayMethodsTest(tf.test.TestCase):
       for fn in self.array_transforms:
         arr = fn(arr)
         self.match(
-            array_methods.clip(arr, *args, **kwargs),
+            math.clip(arr, *args, **kwargs),
             np.clip(arr, *args, **kwargs),
             check_dtype=check_dtype)
 
@@ -109,7 +108,7 @@ class ArrayMethodsTest(tf.test.TestCase):
           arg1 = fn1(condition)
           arg2 = fn2(arr)
           self.match(
-              array_methods.compress(arg1, arg2, *args, **kwargs),
+              math.compress(arg1, arg2, *args, **kwargs),
               np.compress(
                   np.asarray(arg1).astype(np.bool), arg2, *args, **kwargs))
 
@@ -134,7 +133,7 @@ class ArrayMethodsTest(tf.test.TestCase):
       for fn in self.array_transforms:
         arg = fn(arr)
         self.match(
-            array_methods.copy(arg, *args, **kwargs),
+            math.copy(arg, *args, **kwargs),
             np.copy(arg, *args, **kwargs))
 
     run_test([])
@@ -149,10 +148,10 @@ class ArrayMethodsTest(tf.test.TestCase):
       for fn in self.array_transforms:
         arg = fn(arr)
         self.match(
-            array_methods.cumprod(arg, *args, **kwargs),
+            math.cumprod(arg, *args, **kwargs),
             np.cumprod(arg, *args, **kwargs))
         self.match(
-            array_methods.cumsum(arg, *args, **kwargs),
+            math.cumsum(arg, *args, **kwargs),
             np.cumsum(arg, *args, **kwargs))
 
     run_test([])
@@ -175,7 +174,7 @@ class ArrayMethodsTest(tf.test.TestCase):
       for fn in self.array_transforms:
         arg = fn(arr)
         self.match(
-            array_methods.imag(arg, *args, **kwargs),
+            math.imag(arg, *args, **kwargs),
             # np.imag may return a scalar so we convert to a np.ndarray.
             np.array(np.imag(arg, *args, **kwargs)))
 
@@ -197,10 +196,10 @@ class ArrayMethodsTest(tf.test.TestCase):
           arr_arg = fn1(arr)
           axis_arg = fn2(axis) if axis is not None else None
           self.match(
-              array_methods.amax(arr_arg, axis=axis_arg, *args, **kwargs),
+              math.amax(arr_arg, axis=axis_arg, *args, **kwargs),
               np.amax(arr_arg, axis=axis, *args, **kwargs))
           self.match(
-              array_methods.amin(arr_arg, axis=axis_arg, *args, **kwargs),
+              math.amin(arr_arg, axis=axis_arg, *args, **kwargs),
               np.amin(arr_arg, axis=axis, *args, **kwargs))
 
     run_test([1, 2, 3])
@@ -226,7 +225,7 @@ class ArrayMethodsTest(tf.test.TestCase):
           arr_arg = fn1(arr)
           axis_arg = fn2(axis) if axis is not None else None
           self.match(
-              array_methods.mean(arr_arg, axis=axis_arg, *args, **kwargs),
+              math.mean(arr_arg, axis=axis_arg, *args, **kwargs),
               np.mean(arr_arg, axis=axis, *args, **kwargs))
 
     run_test([1, 2, 1])
@@ -250,7 +249,7 @@ class ArrayMethodsTest(tf.test.TestCase):
       for fn in self.array_transforms:
         arg = fn(arr)
         self.match(
-            array_methods.prod(arg, *args, **kwargs),
+            math.prod(arg, *args, **kwargs),
             np.prod(arg, *args, **kwargs))
 
     run_test([1, 2, 3])
@@ -290,7 +289,7 @@ class ArrayMethodsTest(tf.test.TestCase):
       for fn in self.array_transforms:
         arg = fn(arr)
         self.match(
-            array_methods.ravel(arg, *args, **kwargs),
+            math.ravel(arg, *args, **kwargs),
             np.ravel(arg, *args, **kwargs))
 
     run_test(5)
@@ -309,7 +308,7 @@ class ArrayMethodsTest(tf.test.TestCase):
       for fn in self.array_transforms:
         arg = fn(arr)
         self.match(
-            array_methods.real(arg, *args, **kwargs),
+            math.real(arg, *args, **kwargs),
             np.array(np.real(arg, *args, **kwargs)))
 
     run_test(1)
@@ -329,7 +328,7 @@ class ArrayMethodsTest(tf.test.TestCase):
           arr_arg = fn1(arr)
           repeats_arg = fn2(repeats)
           self.match(
-              array_methods.repeat(arr_arg, repeats_arg, *args, **kwargs),
+              math.repeat(arr_arg, repeats_arg, *args, **kwargs),
               np.repeat(arr_arg, repeats_arg, *args, **kwargs))
 
     run_test(1, 2)
@@ -351,7 +350,7 @@ class ArrayMethodsTest(tf.test.TestCase):
       for fn in self.array_transforms:
         arg = fn(arr)
         self.match(
-            array_methods.around(arg, *args, **kwargs),
+            math.around(arg, *args, **kwargs),
             np.around(arg, *args, **kwargs))
 
     run_test(5.5)
@@ -368,7 +367,7 @@ class ArrayMethodsTest(tf.test.TestCase):
           arr_arg = fn1(arr)
           newshape_arg = fn2(newshape)
           self.match(
-              array_methods.reshape(arr_arg, newshape_arg, *args, **kwargs),
+              math.reshape(arr_arg, newshape_arg, *args, **kwargs),
               np.reshape(arr_arg, newshape, *args, **kwargs))
 
     run_test(5, [-1])
@@ -382,7 +381,7 @@ class ArrayMethodsTest(tf.test.TestCase):
 
     def run_test(arr, axis):
       self.match(
-          array_methods.expand_dims(arr, axis),
+          math.expand_dims(arr, axis),
           np.expand_dims(arr, axis))
 
     run_test([1, 2, 3], 0)
@@ -397,7 +396,7 @@ class ArrayMethodsTest(tf.test.TestCase):
         # This looks like a bug: https://github.com/numpy/numpy/issues/8201
         # So we convert the arg to np.ndarray before passing to np.squeeze.
         self.match(
-            array_methods.squeeze(arg, *args, **kwargs),
+            math.squeeze(arg, *args, **kwargs),
             np.squeeze(np.array(arg), *args, **kwargs))
 
     run_test(5)
@@ -419,7 +418,7 @@ class ArrayMethodsTest(tf.test.TestCase):
           arr_arg = fn1(arr)
           axes_arg = fn2(axes) if axes is not None else None
           self.match(
-              array_methods.transpose(arr_arg, axes_arg),
+              math.transpose(arr_arg, axes_arg),
               np.transpose(arr_arg, axes))
 
     run_test(5)
@@ -487,19 +486,19 @@ class ArrayMethodsTest(tf.test.TestCase):
   def testPad(self):
     t = [[1, 2, 3], [4, 5, 6]]
     paddings = [[1, 1,], [2, 2]]
-    self.assertAllEqual(array_methods.pad(t, paddings, 'constant'),
+    self.assertAllEqual(math.pad(t, paddings, 'constant'),
                         [[0, 0, 0, 0, 0, 0, 0],
                          [0, 0, 1, 2, 3, 0, 0],
                          [0, 0, 4, 5, 6, 0, 0],
                          [0, 0, 0, 0, 0, 0, 0]])
 
-    self.assertAllEqual(array_methods.pad(t, paddings, 'reflect'),
+    self.assertAllEqual(math.pad(t, paddings, 'reflect'),
                         [[6, 5, 4, 5, 6, 5, 4],
                          [3, 2, 1, 2, 3, 2, 1],
                          [6, 5, 4, 5, 6, 5, 4],
                          [3, 2, 1, 2, 3, 2, 1]])
 
-    self.assertAllEqual(array_methods.pad(t, paddings, 'symmetric'),
+    self.assertAllEqual(math.pad(t, paddings, 'symmetric'),
                         [[2, 1, 1, 2, 3, 3, 2],
                          [2, 1, 1, 2, 3, 3, 2],
                          [5, 4, 4, 5, 6, 6, 5],
@@ -508,43 +507,43 @@ class ArrayMethodsTest(tf.test.TestCase):
   def testTake(self):
     a = [4, 3, 5, 7, 6, 8]
     indices = [0, 1, 4]
-    self.assertAllEqual([4, 3, 6], array_methods.take(a, indices))
+    self.assertAllEqual([4, 3, 6], math.take(a, indices))
     indices = [[0, 1], [2, 3]]
-    self.assertAllEqual([[4, 3], [5, 7]], array_methods.take(a, indices))
+    self.assertAllEqual([[4, 3], [5, 7]], math.take(a, indices))
     a = [[4, 3, 5], [7, 6, 8]]
-    self.assertAllEqual([[4, 3], [5, 7]], array_methods.take(a, indices))
+    self.assertAllEqual([[4, 3], [5, 7]], math.take(a, indices))
     a = np.random.rand(2, 16, 3)
     axis = 1
     self.assertAllEqual(np.take(a, indices, axis=axis),
-                        array_methods.take(a, indices, axis=axis))
+                        math.take(a, indices, axis=axis))
 
   def testWhere(self):
     self.assertAllEqual([[1.0, 1.0], [1.0, 1.0]],
-                        array_methods.where([True], [1.0, 1.0],
+                        math.where([True], [1.0, 1.0],
                                             [[0, 0], [0, 0]]))
 
   def testShape(self):
-    self.assertAllEqual((1, 2), array_methods.shape([[0, 0]]))
+    self.assertAllEqual((1, 2), math.shape([[0, 0]]))
 
   def testSwapaxes(self):
     x = [[1, 2, 3]]
-    self.assertAllEqual([[1], [2], [3]], array_methods.swapaxes(x, 0, 1))
-    self.assertAllEqual([[1], [2], [3]], array_methods.swapaxes(x, -2, -1))
+    self.assertAllEqual([[1], [2], [3]], math.swapaxes(x, 0, 1))
+    self.assertAllEqual([[1], [2], [3]], math.swapaxes(x, -2, -1))
     x = [[[0, 1], [2, 3]], [[4, 5], [6, 7]]]
     self.assertAllEqual([[[0, 4], [2, 6]], [[1, 5], [3, 7]]],
-                        array_methods.swapaxes(x, 0, 2))
+                        math.swapaxes(x, 0, 2))
     self.assertAllEqual([[[0, 4], [2, 6]], [[1, 5], [3, 7]]],
-                        array_methods.swapaxes(x, -3, -1))
+                        math.swapaxes(x, -3, -1))
 
   def testNdim(self):
-    self.assertAllEqual(0, array_methods.ndim(0.5))
-    self.assertAllEqual(1, array_methods.ndim([1, 2]))
+    self.assertAllEqual(0, math.ndim(0.5))
+    self.assertAllEqual(1, math.ndim([1, 2]))
 
   def testIsscalar(self):
-    self.assertTrue(array_methods.isscalar(0.5))
-    self.assertTrue(array_methods.isscalar(5))
-    self.assertTrue(array_methods.isscalar(False))
-    self.assertFalse(array_methods.isscalar([1, 2]))
+    self.assertTrue(math.isscalar(0.5))
+    self.assertTrue(math.isscalar(5))
+    self.assertTrue(math.isscalar(False))
+    self.assertFalse(math.isscalar([1, 2]))
 
   def assertListEqual(self, a, b):
     self.assertAllEqual(len(a), len(b))
@@ -553,13 +552,13 @@ class ArrayMethodsTest(tf.test.TestCase):
 
   def testSplit(self):
     x = array_creation.arange(9)
-    y = array_methods.split(x, 3)
+    y = math.split(x, 3)
     self.assertListEqual([([0, 1, 2]),
                           ([3, 4, 5]),
                           ([6, 7, 8])], y)
 
     x = array_creation.arange(8)
-    y = array_methods.split(x, [3, 5, 6, 10])
+    y = math.split(x, [3, 5, 6, 10])
     self.assertListEqual([([0, 1, 2]),
                           ([3, 4]),
                           ([5]),

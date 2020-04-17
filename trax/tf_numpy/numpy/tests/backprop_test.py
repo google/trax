@@ -21,9 +21,7 @@ from __future__ import print_function
 
 import tensorflow.compat.v2 as tf
 
-from trax.tf_numpy.numpy import array_creation
 # Needed for ndarray.__setitem__
-from trax.tf_numpy.numpy import array_methods
 from trax.tf_numpy.numpy import math
 
 
@@ -31,38 +29,38 @@ class BackpropTest(tf.test.TestCase):
 
   def test_setitem(self):
     # Single integer index.
-    a = array_creation.array([1., 2., 3.])
-    b = array_creation.array(5.)
-    c = array_creation.array(10.)
+    a = math.array([1., 2., 3.])
+    b = math.array(5.)
+    c = math.array(10.)
 
     tensors = [arr.data for arr in [a, b, c]]
     with tf.GradientTape() as g:
       g.watch(tensors)
       a[1] = b + c
-      loss = array_methods.sum(a)
+      loss = math.sum(a)
 
     gradients = g.gradient(loss.data, tensors)
     self.assertSequenceEqual(
-        array_creation.array(gradients[0]).tolist(), [1., 0., 1.])
-    self.assertEqual(array_creation.array(gradients[1]).tolist(), 1.)
-    self.assertEqual(array_creation.array(gradients[2]).tolist(), 1.)
+        math.array(gradients[0]).tolist(), [1., 0., 1.])
+    self.assertEqual(math.array(gradients[1]).tolist(), 1.)
+    self.assertEqual(math.array(gradients[2]).tolist(), 1.)
 
     # Tuple index.
-    a = array_creation.array([[[1., 2.], [3., 4.]],
+    a = math.array([[[1., 2.], [3., 4.]],
                               [[5., 6.], [7., 8.]]])  # 2x2x2 array.
-    b = array_creation.array([10., 11.])
+    b = math.array([10., 11.])
 
     tensors = [arr.data for arr in [a, b]]
     with tf.GradientTape() as g:
       g.watch(tensors)
       a[(1, 0)] = b
-      loss = array_methods.sum(a)
+      loss = math.sum(a)
 
     gradients = g.gradient(loss.data, tensors)
     self.assertSequenceEqual(
-        array_creation.array(gradients[0]).tolist(),
+        math.array(gradients[0]).tolist(),
         [[[1., 1.], [1., 1.]], [[0., 0.], [1., 1.]]])
-    self.assertEqual(array_creation.array(gradients[1]).tolist(), [1., 1.])
+    self.assertEqual(math.array(gradients[1]).tolist(), [1., 1.])
 
 
 if __name__ == '__main__':

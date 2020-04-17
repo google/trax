@@ -24,8 +24,6 @@ import numpy as np
 from six.moves import range
 import tensorflow.compat.v2 as tf
 
-from trax.tf_numpy.numpy import array_creation
-from trax.tf_numpy.numpy import array_methods
 from trax.tf_numpy.numpy import arrays
 from trax.tf_numpy.numpy import math
 
@@ -40,9 +38,9 @@ class MathTest(tf.test.TestCase):
         np.array,
         lambda x: np.array(x, dtype=np.float32),
         lambda x: np.array(x, dtype=np.float64),
-        array_creation.array,
-        lambda x: array_creation.array(x, dtype=np.float32),
-        lambda x: array_creation.array(x, dtype=np.float64),
+        math.array,
+        lambda x: math.array(x, dtype=np.float32),
+        lambda x: math.array(x, dtype=np.float64),
     ]
     self.types = [np.int32, np.int64, np.float32, np.float64]
 
@@ -64,8 +62,8 @@ class MathTest(tf.test.TestCase):
         for type_b in self.types:
           if not check_promotion and type_a != type_b:
             continue
-          arg1 = array_creation.array(a, dtype=type_a)
-          arg2 = array_creation.array(b, dtype=type_b)
+          arg1 = math.array(a, dtype=type_a)
+          arg2 = math.array(b, dtype=type_b)
           self.match(
               math_fun(arg1, arg2),
               np_fun(arg1, arg2),
@@ -111,11 +109,11 @@ class MathTest(tf.test.TestCase):
 
   def testMatmulError(self):
     with self.assertRaisesRegex(ValueError, r''):
-      math.matmul(array_creation.ones([], np.int32),
-                  array_creation.ones([2, 3], np.int32))
+      math.matmul(math.ones([], np.int32),
+                  math.ones([2, 3], np.int32))
     with self.assertRaisesRegex(ValueError, r''):
-      math.matmul(array_creation.ones([2, 3], np.int32),
-                  array_creation.ones([], np.int32))
+      math.matmul(math.ones([2, 3], np.int32),
+                  math.ones([], np.int32))
 
   def _testUnaryOp(self, math_fun, np_fun, name):
 
@@ -146,9 +144,9 @@ class MathTest(tf.test.TestCase):
         lambda x: x,  # Identity,
         tf.convert_to_tensor,
         np.array,
-        array_creation.array,
-        lambda x: array_creation.array(x, dtype=np.float32),
-        lambda x: array_creation.array(x, dtype=np.float64),
+        math.array,
+        lambda x: math.array(x, dtype=np.float32),
+        lambda x: math.array(x, dtype=np.float64),
     ]
 
     def run_test(a, **kwargs):
@@ -187,10 +185,10 @@ class MathTest(tf.test.TestCase):
     np.testing.assert_almost_equal(actual.tolist(), expected.tolist())
 
   def testSum(self):
-    self._testReduce(array_methods.sum, np.sum, 'sum')
+    self._testReduce(math.sum, np.sum, 'sum')
 
   def testAmax(self):
-    self._testReduce(array_methods.amax, np.amax, 'amax')
+    self._testReduce(math.amax, np.amax, 'amax')
 
   def testArgsort(self):
     self._testUnaryOp(math.argsort, np.argsort, 'argsort')
@@ -217,7 +215,7 @@ class MathTest(tf.test.TestCase):
       if hasattr(arr, 'shape'):
         ndims = len(arr.shape)
       else:
-        ndims = array_creation.array(arr, copy=False).ndim
+        ndims = math.array(arr, copy=False).ndim
       if ndims == 0:
         # Numpy flattens the scalar ndarray and treats it as a 1-d array of
         # size 1.

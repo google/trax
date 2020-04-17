@@ -22,7 +22,6 @@ from __future__ import print_function
 import numpy as np
 import tensorflow.compat.v2 as tf
 
-from trax.tf_numpy.numpy import array_creation
 from trax.tf_numpy.numpy import arrays
 from trax.tf_numpy.numpy import math
 
@@ -39,11 +38,11 @@ class LogicTest(tf.test.TestCase):
         lambda x: np.array(x, dtype=np.int64),
         lambda x: np.array(x, dtype=np.float32),
         lambda x: np.array(x, dtype=np.float64),
-        array_creation.array,
-        lambda x: array_creation.array(x, dtype=tf.int32),
-        lambda x: array_creation.array(x, dtype=tf.int64),
-        lambda x: array_creation.array(x, dtype=tf.float32),
-        lambda x: array_creation.array(x, dtype=tf.float64),
+        math.array,
+        lambda x: math.array(x, dtype=tf.int32),
+        lambda x: math.array(x, dtype=tf.int64),
+        lambda x: math.array(x, dtype=tf.float32),
+        lambda x: math.array(x, dtype=tf.float64),
     ]
 
   def testEqual(self):

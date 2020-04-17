@@ -25,7 +25,6 @@ import numpy as np
 from six.moves import range
 import tensorflow.compat.v2 as tf
 
-from trax.tf_numpy.numpy import array_creation
 from trax.tf_numpy.numpy import arrays
 from trax.tf_numpy.numpy import math
 
@@ -39,7 +38,7 @@ class ArrayCreationTest(tf.test.TestCase):
     ]
     self.shape_transforms = [
         lambda x: x, lambda x: np.array(x, dtype=int),
-        lambda x: array_creation.array(x, dtype=int), tf.TensorShape
+        lambda x: math.array(x, dtype=int), tf.TensorShape
     ]
 
     self.all_shapes = []
@@ -81,7 +80,7 @@ class ArrayCreationTest(tf.test.TestCase):
         lambda x: x,
         tf.convert_to_tensor,
         np.array,
-        array_creation.array,
+        math.array,
     ]
     self.all_arrays = []
     for fn in self.array_transforms:
@@ -89,14 +88,14 @@ class ArrayCreationTest(tf.test.TestCase):
 
   def testEmpty(self):
     for s in self.all_shapes:
-      actual = array_creation.empty(s)
+      actual = math.empty(s)
       expected = np.empty(s)
       msg = 'shape: {}'.format(s)
       self.match_shape(actual, expected, msg)
       self.match_dtype(actual, expected, msg)
 
     for s, t in itertools.product(self.all_shapes, self.all_types):
-      actual = array_creation.empty(s, t)
+      actual = math.empty(s, t)
       expected = np.empty(s, t)
       msg = 'shape: {}, dtype: {}'.format(s, t)
       self.match_shape(actual, expected, msg)
@@ -104,14 +103,14 @@ class ArrayCreationTest(tf.test.TestCase):
 
   def testEmptyLike(self):
     for a in self.all_arrays:
-      actual = array_creation.empty_like(a)
+      actual = math.empty_like(a)
       expected = np.empty_like(a)
       msg = 'array: {}'.format(a)
       self.match_shape(actual, expected, msg)
       self.match_dtype(actual, expected, msg)
 
     for a, t in itertools.product(self.all_arrays, self.all_types):
-      actual = array_creation.empty_like(a, t)
+      actual = math.empty_like(a, t)
       expected = np.empty_like(a, t)
       msg = 'array: {} type: {}'.format(a, t)
       self.match_shape(actual, expected, msg)
@@ -119,52 +118,52 @@ class ArrayCreationTest(tf.test.TestCase):
 
   def testZeros(self):
     for s in self.all_shapes:
-      actual = array_creation.zeros(s)
+      actual = math.zeros(s)
       expected = np.zeros(s)
       msg = 'shape: {}'.format(s)
       self.match(actual, expected, msg)
 
     for s, t in itertools.product(self.all_shapes, self.all_types):
-      actual = array_creation.zeros(s, t)
+      actual = math.zeros(s, t)
       expected = np.zeros(s, t)
       msg = 'shape: {}, dtype: {}'.format(s, t)
       self.match(actual, expected, msg)
 
   def testZerosLike(self):
     for a in self.all_arrays:
-      actual = array_creation.zeros_like(a)
+      actual = math.zeros_like(a)
       expected = np.zeros_like(a)
       msg = 'array: {}'.format(a)
       self.match(actual, expected, msg)
 
     for a, t in itertools.product(self.all_arrays, self.all_types):
-      actual = array_creation.zeros_like(a, t)
+      actual = math.zeros_like(a, t)
       expected = np.zeros_like(a, t)
       msg = 'array: {} type: {}'.format(a, t)
       self.match(actual, expected, msg)
 
   def testOnes(self):
     for s in self.all_shapes:
-      actual = array_creation.ones(s)
+      actual = math.ones(s)
       expected = np.ones(s)
       msg = 'shape: {}'.format(s)
       self.match(actual, expected, msg)
 
     for s, t in itertools.product(self.all_shapes, self.all_types):
-      actual = array_creation.ones(s, t)
+      actual = math.ones(s, t)
       expected = np.ones(s, t)
       msg = 'shape: {}, dtype: {}'.format(s, t)
       self.match(actual, expected, msg)
 
   def testOnesLike(self):
     for a in self.all_arrays:
-      actual = array_creation.ones_like(a)
+      actual = math.ones_like(a)
       expected = np.ones_like(a)
       msg = 'array: {}'.format(a)
       self.match(actual, expected, msg)
 
     for a, t in itertools.product(self.all_arrays, self.all_types):
-      actual = array_creation.ones_like(a, t)
+      actual = math.ones_like(a, t)
       expected = np.ones_like(a, t)
       msg = 'array: {} type: {}'.format(a, t)
       self.match(actual, expected, msg)
@@ -174,43 +173,43 @@ class ArrayCreationTest(tf.test.TestCase):
     m_max = 3
 
     for n in range(1, n_max + 1):
-      self.match(array_creation.eye(n), np.eye(n))
+      self.match(math.eye(n), np.eye(n))
       for k in range(-n, n + 1):
-        self.match(array_creation.eye(n, k=k), np.eye(n, k=k))
+        self.match(math.eye(n, k=k), np.eye(n, k=k))
       for m in range(1, m_max + 1):
-        self.match(array_creation.eye(n, m), np.eye(n, m))
+        self.match(math.eye(n, m), np.eye(n, m))
         for k in range(-n, m):
-          self.match(array_creation.eye(n, k=k), np.eye(n, k=k))
-          self.match(array_creation.eye(n, m, k), np.eye(n, m, k))
+          self.match(math.eye(n, k=k), np.eye(n, k=k))
+          self.match(math.eye(n, m, k), np.eye(n, m, k))
 
     for dtype in self.all_types:
       for n in range(1, n_max + 1):
-        self.match(array_creation.eye(n, dtype=dtype), np.eye(n, dtype=dtype))
+        self.match(math.eye(n, dtype=dtype), np.eye(n, dtype=dtype))
         for k in range(-n, n + 1):
           self.match(
-              array_creation.eye(n, k=k, dtype=dtype),
+              math.eye(n, k=k, dtype=dtype),
               np.eye(n, k=k, dtype=dtype))
         for m in range(1, m_max + 1):
           self.match(
-              array_creation.eye(n, m, dtype=dtype), np.eye(n, m, dtype=dtype))
+              math.eye(n, m, dtype=dtype), np.eye(n, m, dtype=dtype))
           for k in range(-n, m):
             self.match(
-                array_creation.eye(n, k=k, dtype=dtype),
+                math.eye(n, k=k, dtype=dtype),
                 np.eye(n, k=k, dtype=dtype))
             self.match(
-                array_creation.eye(n, m, k, dtype=dtype),
+                math.eye(n, m, k, dtype=dtype),
                 np.eye(n, m, k, dtype=dtype))
 
   def testIdentity(self):
     n_max = 3
 
     for n in range(1, n_max + 1):
-      self.match(array_creation.identity(n), np.identity(n))
+      self.match(math.identity(n), np.identity(n))
 
     for dtype in self.all_types:
       for n in range(1, n_max + 1):
         self.match(
-            array_creation.identity(n, dtype=dtype), np.identity(
+            math.identity(n, dtype=dtype), np.identity(
                 n, dtype=dtype))
 
   def testFull(self):
@@ -232,10 +231,10 @@ class ArrayCreationTest(tf.test.TestCase):
         fill_value = fn1(f)
         shape = fn2(s)
         self.match(
-            array_creation.full(shape, fill_value), np.full(shape, fill_value))
+            math.full(shape, fill_value), np.full(shape, fill_value))
         for dtype in self.all_types:
           self.match(
-              array_creation.full(shape, fill_value, dtype=dtype),
+              math.full(shape, fill_value, dtype=dtype),
               np.full(shape, fill_value, dtype=dtype))
 
   def testFullLike(self):
@@ -250,18 +249,18 @@ class ArrayCreationTest(tf.test.TestCase):
         ([[5], [8]], (3, 2, 5)),
         ([[5.], [8.]], (3, 2, 5)),
     ]
-    zeros_builders = [array_creation.zeros, np.zeros]
+    zeros_builders = [math.zeros, np.zeros]
     for f, s in data:
       for fn1, fn2, arr_dtype in itertools.product(
           self.array_transforms, zeros_builders, self.all_types):
         fill_value = fn1(f)
         arr = fn2(s, arr_dtype)
         self.match(
-            array_creation.full_like(arr, fill_value),
+            math.full_like(arr, fill_value),
             np.full_like(arr, fill_value))
         for dtype in self.all_types:
           self.match(
-              array_creation.full_like(arr, fill_value, dtype=dtype),
+              math.full_like(arr, fill_value, dtype=dtype),
               np.full_like(arr, fill_value, dtype=dtype))
 
   def testArray(self):
@@ -269,75 +268,75 @@ class ArrayCreationTest(tf.test.TestCase):
     for a, dtype, ndmin, copy in itertools.product(
         self.all_arrays, self.all_types, ndmins, [True, False]):
       self.match(
-          array_creation.array(a, dtype=dtype, ndmin=ndmin, copy=copy),
+          math.array(a, dtype=dtype, ndmin=ndmin, copy=copy),
           np.array(a, dtype=dtype, ndmin=ndmin, copy=copy))
 
-    zeros_list = array_creation.zeros(5)
+    zeros_list = math.zeros(5)
 
     # TODO(srbs): Test that copy=True when context.device is different from
     # tensor device copies the tensor.
 
     # Backing tensor is the same if copy=False, other attributes being None.
     self.assertIs(
-        array_creation.array(zeros_list, copy=False).data, zeros_list.data)
+        math.array(zeros_list, copy=False).data, zeros_list.data)
     self.assertIs(
-        array_creation.array(zeros_list.data, copy=False).data, zeros_list.data)
+        math.array(zeros_list.data, copy=False).data, zeros_list.data)
 
     # Backing tensor is different if ndmin is not satisfied.
     self.assertIsNot(
-        array_creation.array(zeros_list, copy=False, ndmin=2).data,
+        math.array(zeros_list, copy=False, ndmin=2).data,
         zeros_list.data)
     self.assertIsNot(
-        array_creation.array(zeros_list.data, copy=False, ndmin=2).data,
+        math.array(zeros_list.data, copy=False, ndmin=2).data,
         zeros_list.data)
     self.assertIs(
-        array_creation.array(zeros_list, copy=False, ndmin=1).data,
+        math.array(zeros_list, copy=False, ndmin=1).data,
         zeros_list.data)
     self.assertIs(
-        array_creation.array(zeros_list.data, copy=False, ndmin=1).data,
+        math.array(zeros_list.data, copy=False, ndmin=1).data,
         zeros_list.data)
 
     # Backing tensor is different if dtype is not satisfied.
     self.assertIsNot(
-        array_creation.array(zeros_list, copy=False, dtype=int).data,
+        math.array(zeros_list, copy=False, dtype=int).data,
         zeros_list.data)
     self.assertIsNot(
-        array_creation.array(zeros_list.data, copy=False, dtype=int).data,
+        math.array(zeros_list.data, copy=False, dtype=int).data,
         zeros_list.data)
     self.assertIs(
-        array_creation.array(zeros_list, copy=False, dtype=float).data,
+        math.array(zeros_list, copy=False, dtype=float).data,
         zeros_list.data)
     self.assertIs(
-        array_creation.array(zeros_list.data, copy=False, dtype=float).data,
+        math.array(zeros_list.data, copy=False, dtype=float).data,
         zeros_list.data)
 
   def testAsArray(self):
     for a, dtype in itertools.product(self.all_arrays, self.all_types):
       self.match(
-          array_creation.asarray(a, dtype=dtype), np.asarray(a, dtype=dtype))
+          math.asarray(a, dtype=dtype), np.asarray(a, dtype=dtype))
 
-    zeros_list = array_creation.zeros(5)
+    zeros_list = math.zeros(5)
     # Same instance is returned if no dtype is specified and input is ndarray.
-    self.assertIs(array_creation.asarray(zeros_list), zeros_list)
+    self.assertIs(math.asarray(zeros_list), zeros_list)
     # Different instance is returned if dtype is specified and input is ndarray.
-    self.assertIsNot(array_creation.asarray(zeros_list, dtype=int), zeros_list)
+    self.assertIsNot(math.asarray(zeros_list, dtype=int), zeros_list)
 
   def testAsAnyArray(self):
     for a, dtype in itertools.product(self.all_arrays, self.all_types):
       self.match(
-          array_creation.asanyarray(a, dtype=dtype),
+          math.asanyarray(a, dtype=dtype),
           np.asanyarray(a, dtype=dtype))
-    zeros_list = array_creation.zeros(5)
+    zeros_list = math.zeros(5)
     # Same instance is returned if no dtype is specified and input is ndarray.
-    self.assertIs(array_creation.asanyarray(zeros_list), zeros_list)
+    self.assertIs(math.asanyarray(zeros_list), zeros_list)
     # Different instance is returned if dtype is specified and input is ndarray.
     self.assertIsNot(
-        array_creation.asanyarray(zeros_list, dtype=int), zeros_list)
+        math.asanyarray(zeros_list, dtype=int), zeros_list)
 
   def testAsContiguousArray(self):
     for a, dtype in itertools.product(self.all_arrays, self.all_types):
       self.match(
-          array_creation.ascontiguousarray(a, dtype=dtype),
+          math.ascontiguousarray(a, dtype=dtype),
           np.ascontiguousarray(a, dtype=dtype))
 
   def testARange(self):
@@ -347,22 +346,22 @@ class ArrayCreationTest(tf.test.TestCase):
     for dtype in self.all_types:
       for start in all_values:
         msg = 'dtype:{} start:{}'.format(dtype, start)
-        self.match(array_creation.arange(start), np.arange(start), msg=msg)
+        self.match(math.arange(start), np.arange(start), msg=msg)
         self.match(
-            array_creation.arange(start, dtype=dtype),
+            math.arange(start, dtype=dtype),
             np.arange(start, dtype=dtype),
             msg=msg)
         for stop in all_values:
           msg = 'dtype:{} start:{} stop:{}'.format(dtype, start, stop)
           self.match(
-              array_creation.arange(start, stop),
+              math.arange(start, stop),
               np.arange(start, stop),
               msg=msg)
           # TODO(srbs): Investigate and remove check.
           # There are some bugs when start or stop is float and dtype is int.
           if not isinstance(start, float) and not isinstance(stop, float):
             self.match(
-                array_creation.arange(start, stop, dtype=dtype),
+                math.arange(start, stop, dtype=dtype),
                 np.arange(start, stop, dtype=dtype),
                 msg=msg)
           # Note: We intentionally do not test with float values for step
@@ -375,22 +374,22 @@ class ArrayCreationTest(tf.test.TestCase):
             if not step:
               with self.assertRaises(ValueError):
                 self.match(
-                    array_creation.arange(start, stop, step),
+                    math.arange(start, stop, step),
                     np.arange(start, stop, step),
                     msg=msg)
                 if not isinstance(start, float) and not isinstance(stop, float):
                   self.match(
-                      array_creation.arange(start, stop, step, dtype=dtype),
+                      math.arange(start, stop, step, dtype=dtype),
                       np.arange(start, stop, step, dtype=dtype),
                       msg=msg)
             else:
               self.match(
-                  array_creation.arange(start, stop, step),
+                  math.arange(start, stop, step),
                   np.arange(start, stop, step),
                   msg=msg)
               if not isinstance(start, float) and not isinstance(stop, float):
                 self.match(
-                    array_creation.arange(start, stop, step, dtype=dtype),
+                    math.arange(start, stop, step, dtype=dtype),
                     np.arange(start, stop, step, dtype=dtype),
                     msg=msg)
 
@@ -401,9 +400,9 @@ class ArrayCreationTest(tf.test.TestCase):
         np.array,
         lambda x: np.array(x, dtype=np.float32),
         lambda x: np.array(x, dtype=np.float64),
-        array_creation.array,
-        lambda x: array_creation.array(x, dtype=np.float32),
-        lambda x: array_creation.array(x, dtype=np.float64)
+        math.array,
+        lambda x: math.array(x, dtype=np.float32),
+        lambda x: math.array(x, dtype=np.float64)
     ]
 
     def run_test(start, stop, **kwargs):
@@ -431,9 +430,9 @@ class ArrayCreationTest(tf.test.TestCase):
         np.array,
         lambda x: np.array(x, dtype=np.float32),
         lambda x: np.array(x, dtype=np.float64),
-        array_creation.array,
-        lambda x: array_creation.array(x, dtype=np.float32),
-        lambda x: array_creation.array(x, dtype=np.float64)
+        math.array,
+        lambda x: math.array(x, dtype=np.float32),
+        lambda x: math.array(x, dtype=np.float64)
     ]
 
     def run_test(start, stop, **kwargs):
@@ -462,7 +461,7 @@ class ArrayCreationTest(tf.test.TestCase):
       arg1 = start
       arg2 = stop
       self.match(
-          array_creation.geomspace(arg1, arg2, **kwargs),
+          math.geomspace(arg1, arg2, **kwargs),
           np.geomspace(arg1, arg2, **kwargs),
           msg='geomspace({}, {})'.format(arg1, arg2),
           almost=True,
@@ -480,19 +479,19 @@ class ArrayCreationTest(tf.test.TestCase):
         np.array,
         lambda x: np.array(x, dtype=np.float32),
         lambda x: np.array(x, dtype=np.float64),
-        array_creation.array,
-        lambda x: array_creation.array(x, dtype=np.float32),
-        lambda x: array_creation.array(x, dtype=np.float64)
+        math.array,
+        lambda x: math.array(x, dtype=np.float32),
+        lambda x: math.array(x, dtype=np.float64)
     ]
 
     def run_test(arr):
       for fn in array_transforms:
         arr = fn(arr)
         self.match(
-            array_creation.diag(arr), np.diag(arr), msg='diag({})'.format(arr))
+            math.diag(arr), np.diag(arr), msg='diag({})'.format(arr))
         for k in range(-3, 3):
           self.match(
-              array_creation.diag(arr, k),
+              math.diag(arr, k),
               np.diag(arr, k),
               msg='diag({}, k={})'.format(arr, k))
 
@@ -518,21 +517,21 @@ class ArrayCreationTest(tf.test.TestCase):
         np.array,
         lambda x: np.array(x, dtype=np.float32),
         lambda x: np.array(x, dtype=np.float64),
-        array_creation.array,
-        lambda x: array_creation.array(x, dtype=np.float32),
-        lambda x: array_creation.array(x, dtype=np.float64)
+        math.array,
+        lambda x: math.array(x, dtype=np.float32),
+        lambda x: math.array(x, dtype=np.float64)
     ]
 
     def run_test(arr):
       for fn in array_transforms:
         arr = fn(arr)
         self.match(
-            array_creation.diagflat(arr),
+            math.diagflat(arr),
             np.diagflat(arr),
             msg='diagflat({})'.format(arr))
         for k in range(-3, 3):
           self.match(
-              array_creation.diagflat(arr, k),
+              math.diagflat(arr, k),
               np.diagflat(arr, k),
               msg='diagflat({}, k={})'.format(arr, k))
 
@@ -588,7 +587,7 @@ class ArrayCreationTest(tf.test.TestCase):
     iss = tf.IndexedSlices(values=tf.ones([2, 3], dtype=dtype),
                            indices=tf.constant([1, 9]),
                            dense_shape=[10, 3])
-    a = array_creation.array(iss, copy=False)
+    a = math.array(iss, copy=False)
     expected = tf.scatter_nd([[1], [9]], tf.ones([2, 3], dtype=dtype), [10, 3])
     self.assertAllEqual(expected, a)
 
