@@ -21,10 +21,9 @@ Sample invocation:
 
 TRAIN_BATCH_SIZE=32
 python trax/rl_trainer.py \
-  --config_file=trax/rl/configs/acrobot.gin \
+  --config_file=trax/rl/configs/ppo_acrobot.gin \
   --train_batch_size=${TRAIN_BATCH_SIZE} \
   --output_dir=${HOME}/ppo_acrobot \
-  --vmodule=*/trax/*=1 \
   --alsologtostderr
 """
 
