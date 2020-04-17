@@ -234,8 +234,7 @@ class ReversibleHalfResidual(tl.ReversibleLayer, tl.Serial):
 
   def __init__(self, residual_layers):
     self.compute_residual = tl.Serial(         # x1_or_y1, x2,           ...
-        tl.Parallel([], tl.Dup()),             # x1_or_y1, x2, x2,       ...
-        tl.Swap(),                             # x2, x1_or_y1, x2,       ...
+        tl.Select([1, 0, 1]),                  # x2, x1_or_y1, x2,       ...
         tl.Parallel([], [], residual_layers),  # x2, x1_or_y1, residual, ...
         tl.Select([2, 1, 0]),                  # residual, x1_or_y1, x2, ...
     )
@@ -642,8 +641,7 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
       pre_attention = [
           Chunk(n_sections=n_attention_chunks),  # pylint: disable=no-value-for-parameter
           tl.LayerNorm(),
-          tl.Dup(),
-          tl.Parallel(
+          tl.Branch(
               tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_attention_key),
               tl.ComputeAttentionHeads(
                   n_heads=n_heads, d_head=d_attention_value),
@@ -654,8 +652,7 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
       pre_attention = [
           Chunk(n_sections=n_attention_chunks),  # pylint: disable=no-value-for-parameter
           tl.LayerNorm(),
-          tl.Dup(), tl.Dup(),
-          tl.Parallel(
+          tl.Branch(
               tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_attention_key),
               tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_attention_key),
               tl.ComputeAttentionHeads(
@@ -1140,10 +1137,10 @@ def Reformer(input_vocab_size,
   return tl.Serial(
       # Input: encoder_side_tokens, decoder_side_tokens
       # Copy decoder tokens for use in loss.
-      tl.Select([0, 1, 1]),                 # tok_e tok_d tok_d
-      tl.Branch([], [                       # tok_e mask  tok_d .....
-          tl.PaddingMask(),
-          tl.Fn(lambda x: np.squeeze(x, (1, 2)), n_out=1)]),
+      tl.Branch([], [tl.Dup(),              # tok_e tok_d tok_d
+                     tl.PaddingMask(),
+                     tl.Fn(lambda x: np.squeeze(x, (1, 2)), n_out=1)]),
+      #                                     # tok_e mask  tok_d .....
 
       # Encode.
       encoder,                              # vec_e  mask tok_d .....
