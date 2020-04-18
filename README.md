@@ -64,7 +64,7 @@ The main steps needed to understand deep learning correspond to sub-directories
 in Trax code:
 
 * [math/](https://github.com/google/trax/tree/master/trax/math) &mdash; basic math operations and ways to accelerate them on GPUs and TPUs (through [JAX](https://github.com/google/jax) and [TensorFlow](https://www.tensorflow.org/))
-* [layers/](https://github.com/google/trax/tree/master/trax/layers) are the basic building blocks of neural networks and here you'll find how they are build and all the needed ones
+* [layers/](https://github.com/google/trax/tree/master/trax/layers) are the basic building blocks of neural networks and here you'll find how they are built and all the needed ones
 * [models/](https://github.com/google/trax/tree/master/trax/models) contains all basic models (MLP, ResNet, Transformer, ...) and a number of new research models
 * [optimizers/](https://github.com/google/trax/tree/master/trax/optimizers) is a directory with optimizers needed for deep learning
 * [supervised/](https://github.com/google/trax/tree/master/trax/supervised) contains the utilities needed to run supervised learning and the Trainer class
