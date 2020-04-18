@@ -86,7 +86,7 @@ def update_jax_config():
   if FLAGS.use_tpu:
     config.update('jax_platform_name', 'tpu')
   else:
-    config.update('jax_platform_name', 'gpu')
+    config.update('jax_platform_name', '')
 
 
 @gin.configurable(blacklist=[
