@@ -31,9 +31,8 @@ _POSITIONS = onp.random.uniform(size=[_ABSOLUTE_MAX_LEN, POS_VECTOR_SIZE])
 
 
 @tl.layer()
-def NewPositionalEncoding(x, positions=None, **kwargs):
+def NewPositionalEncoding(x, positions=None):
   """Implements new positional encoding."""
-  del kwargs
   x_length = np.shape(x)[1]
   pos = np.array(positions)[np.newaxis, :x_length, :]
   pos += np.zeros((np.shape(x)[0], 1, 1))  # Broadcast on batch.
@@ -41,7 +40,7 @@ def NewPositionalEncoding(x, positions=None, **kwargs):
 
 
 @tl.layer(n_in=1, n_out=2)
-def CombineHeadsPos(x, n_heads=1, **unused_kwargs):
+def CombineHeadsPos(x, n_heads=1):
   """Mix x = (x0, p0, ..., xH, pH) into (x0, ...., xH), p_combined.
 
   The positions are averaged as vectors.
@@ -70,7 +69,7 @@ def CombineHeadsPos(x, n_heads=1, **unused_kwargs):
 
 
 @tl.layer()
-def QueryPositionKV(x, keys=None, values=None, binary=False, **unused_kwargs):
+def QueryPositionKV(x, keys=None, values=None, binary=False):
   """Query a table with a position vector."""
   if keys is None:
     return x
@@ -83,7 +82,7 @@ def QueryPositionKV(x, keys=None, values=None, binary=False, **unused_kwargs):
 
 
 @tl.layer(n_in=10, n_out=1)
-def Softmax5Branches(x_list, **unused_kwargs):
+def Softmax5Branches(x_list):
   """Softmax qs.
 
   The input xs is a list of weights and embedded queries of the form

@@ -20,7 +20,7 @@ from trax import layers as tl
 from trax import math
 from trax.layers.combinators import _inputs_from_stack
 from trax.layers.combinators import _outputs_onto_stack
-from trax.layers.combinators import _pop_rng_and_split
+from trax.layers.combinators import _split_rngs
 from trax.math import numpy as np
 from trax.math import random
 from trax.models import transformer
@@ -61,11 +61,11 @@ class SkippingSerial(tl.Serial):
       layer.state = sublayer_state
 
   def forward_with_state(self, xs, weights=tl.EMPTY_WEIGHTS,
-                         state=tl.EMPTY_STATE, **kwargs):
+                         state=tl.EMPTY_STATE, rng=None):
     self._validate_forward_inputs(xs)
     (step, layers_state) = state
     # Get N+1 rngs, N for running layers and one extra.
-    rngs = _pop_rng_and_split(kwargs, self._n_layers + 1)
+    rngs = _split_rngs(rng, self._n_layers + 1)
     rng0, rngs = rngs[0], rngs[1:]
     if not self.sublayers:  # No-op: leave args unchanged.
       return (xs, (step + 1, layers_state))

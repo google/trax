@@ -76,7 +76,7 @@ class LSTMCell(base.Layer):
 
 
 @base.layer()
-def MakeZeroState(x, depth_multiplier=1, **unused_kwargs):
+def MakeZeroState(x, depth_multiplier=1):
   """Makes zeros of shape like x but removing the length (axis 1)."""
   assert len(x.shape) == 3, 'Expecting x of shape [batch, length, depth].'
   return np.zeros((x.shape[0], depth_multiplier * x.shape[-1]),
@@ -234,7 +234,7 @@ def GeneralGRUCell(candidate_transform,
 
 
 @base.layer(n_in=3, n_out=2)
-def InnerSRUCell(x, **unused_kwargs):
+def InnerSRUCell(x):
   """The inner (non-parallel) computation of an SRU."""
   cur_x_times_one_minus_f, cur_f, cur_state = x
   res = cur_f * cur_state + cur_x_times_one_minus_f

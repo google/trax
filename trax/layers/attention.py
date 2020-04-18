@@ -40,7 +40,7 @@ def zero_pad(x, pad, axis):
 
 
 @base.layer()
-def ShiftRight(x, n_shifts=1, mode='train', **unused_kwargs):
+def ShiftRight(x, n_shifts=1, mode='train'):
   """Layer to shift the tensor to the right by padding on axis 1."""
   if mode == 'predict':
     # Do nothing in predict mode, as then the sequence length is 1.
@@ -50,13 +50,12 @@ def ShiftRight(x, n_shifts=1, mode='train', **unused_kwargs):
 
 
 @base.layer()
-def PaddingMask(x, weights, pad=0, **kwargs):
-  del weights, kwargs
+def PaddingMask(x, pad=0):
   return np.reshape(x != pad, (x.shape[0], 1, 1, x.shape[-1]))
 
 
 @base.layer(n_in=2)
-def EncoderDecoderMask(x, **unused_kwargs):
+def EncoderDecoderMask(x):
   """Makes encoder-decoder mask from decoder input and a padding mask."""
   decoder_input, padding_mask = x
   padding_mask = np.reshape(
@@ -82,7 +81,7 @@ class PositionalEncoding(base.Layer):
     self._mode = mode
 
   def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
-                         state=base.EMPTY_STATE, rng=None, **kwargs):
+                         state=base.EMPTY_STATE, rng=None):
     if self._mode in ('train', 'eval'):
       x = inputs
       symbol_size = np.shape(x)[1]
@@ -157,7 +156,7 @@ class AxialPositionalEncoding(base.Layer):
     self._mode = mode
 
   def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
-                         state=base.EMPTY_STATE, rng=None, **kwargs):
+                         state=base.EMPTY_STATE, rng=None):
     embs = []
     for ax_emb in weights:
       ax_emb = np.broadcast_to(
@@ -220,7 +219,7 @@ def DotProductAttention(query, key, value, mask, dropout, mode, rng):
     mask: attention-mask, gates attention
     dropout: float: dropout rate
     mode: 'eval' or 'train': whether to use dropout
-    rng: JAX PRNGKey: subkey for disposable use
+    rng: Single-use random number generator (JAX PRNG key).
 
   Returns:
     Self attention for q, k, v arrays.
@@ -263,7 +262,7 @@ class PureAttention(base.Layer):
       x: inputs (q, k, v, mask)
       weights: parameters (none)
       state: parameters (none)
-      rng: random number generator
+      rng: Single-use random number generator (JAX PRNG key).
 
     Returns:
       Pure Multi-headed attention result, and the mask.
@@ -428,11 +427,11 @@ class BaseCausalAttention(base.Layer):
     super(BaseCausalAttention, self).__init__(n_in=3)
 
   def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
-                         state=base.EMPTY_STATE, rng=None, **kwargs):
+                         state=base.EMPTY_STATE, rng=None):
     """Forward pass for the attention layer."""
     raise NotImplementedError()
 
-  def forward_and_backward(self, inputs, grad, state, new_state, **kwargs):
+  def forward_and_backward(self, inputs, grad, state, new_state, rng):
     """Performs both forward and backward pass for the attention layer.
 
     This is used in reversible models: for the backward pass of a reversible
@@ -444,12 +443,12 @@ class BaseCausalAttention(base.Layer):
     This method assumes that the layer is stateless and has no parameters.
 
     Args:
-      inputs: A tuple (q, k, v), where each element has shape
-          n_batch*n_heads, seqlen, d_head
-      grad: gradient signal for the layer output.
-      state: start state
-      new_state: updated state computed by the forward pass
-      **kwargs: kwargs for the layer
+      inputs: Tuple (q, k, v), where each element has shape
+          (n_batch*n_heads, seqlen, d_head).
+      grad: Gradient signal for the layer output.
+      state: Start state.
+      new_state: Updated state computed by the forward pass.
+      rng: Single-use random number generator (JAX PRNG key).
 
     Returns:
       A nested-tuple structure (output, (q_grad, k_grad, v_grad)) that contains
@@ -506,7 +505,7 @@ class DotProductCausalAttention(BaseCausalAttention):
     self._mode = mode
 
   def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
-                         state=base.EMPTY_STATE, rng=None, **kwargs):
+                         state=base.EMPTY_STATE, rng=None):
     del weights
     q, k, v = inputs
     if self._mode in ('train', 'eval'):
@@ -529,17 +528,17 @@ class DotProductCausalAttention(BaseCausalAttention):
         q, k, v, mask, dropout=self._dropout, mode=self._mode, rng=rng)
     return res, state
 
-  def forward_and_backward(self, inputs, ct, state=base.EMPTY_STATE,
-                           new_state=base.EMPTY_STATE, **kwargs):
+  def forward_and_backward(self, inputs, grad, state=base.EMPTY_STATE,
+                           new_state=base.EMPTY_STATE, rng=None):
     del new_state
     assert math.backend_name() == 'jax', (
         'JAX backend is required to use forward_and_backward.')
     # Simultaneous forward pass and backprop through the attention mechanism.
     def _do_forward(x):  # pylint: disable=invalid-name
-      res, _ = self.forward_with_state(x, state=state, **kwargs)
+      res, _ = self.forward_with_state(x, state=state, rng=rng)
       return res
     output, vjpfun = jax.vjp(_do_forward, inputs)
-    return output, vjpfun(ct)[0]
+    return output, vjpfun(grad)[0]
 
   def new_weights_and_state(self, input_signature):
     if self._mode in ('train', 'eval'):

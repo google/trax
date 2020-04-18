@@ -32,25 +32,25 @@ def divide_by(val):
 class CoreLayerTest(absltest.TestCase):
 
   def test_flatten_n(self):
-    input_signature = ShapeDtype((29, 87, 10, 20, 30))
+    input_signature = ShapeDtype((1, 2, 3, 4, 5))
 
     layer = core.Flatten()
-    expected_shape = (29, 87 * 10 * 20 * 30)
+    expected_shape = (1, 2 * 3 * 4 * 5)
     actual_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual(actual_shape, expected_shape)
 
     layer = core.Flatten(n_axes_to_keep=2)
-    expected_shape = (29, 87, 10 * 20 * 30)
+    expected_shape = (1, 2, 3 * 4 * 5)
     actual_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual(actual_shape, expected_shape)
 
     layer = core.Flatten(n_axes_to_keep=3)
-    expected_shape = (29, 87, 10, 20 * 30)
+    expected_shape = (1, 2, 3, 4 * 5)
     actual_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual(actual_shape, expected_shape)
 
     layer = core.Flatten(n_axes_to_keep=4)
-    expected_shape = (29, 87, 10, 20, 30)
+    expected_shape = (1, 2, 3, 4, 5)
     actual_shape = base.check_shape_agreement(layer, input_signature)
     self.assertEqual(actual_shape, expected_shape)
 
@@ -125,6 +125,7 @@ class CoreLayerTest(absltest.TestCase):
     self.assertEqual(prob.shape, (2,))
     self.assertEqual(int(prob[0]), -4)
     self.assertEqual(int(prob[1]), -6)
+
 
 if __name__ == '__main__':
   absltest.main()

@@ -29,22 +29,22 @@ from trax.math import numpy as np
 
 
 @base.layer()
-def Relu(x, **unused_kwargs):
+def Relu(x):
   return np.maximum(x, np.zeros_like(x))
 
 
 @base.layer()
-def ParametricRelu(x, a=1., **unused_kwargs):
+def ParametricRelu(x, a=1.):
   return np.maximum(a * x, np.zeros_like(x))
 
 
 @base.layer()
-def LeakyRelu(x, a=0.01, **unused_kwargs):
+def LeakyRelu(x, a=0.01):
   return np.where(x >= 0, x, a * x)
 
 
 @base.layer()
-def Elu(x, a=1., **unused_kwargs):
+def Elu(x, a=1.):
   return np.where(x > 0, x, a * np.expm1(x))
 
 
@@ -56,39 +56,39 @@ def Selu(x,
 
 
 @base.layer()
-def Gelu(x, **unused_kwargs):
+def Gelu(x):
   return x * 0.5 * (1.0 + math.erf(x / np.sqrt(2.0)))
 
 
 @base.layer()
-def FastGelu(x, **unused_kwargs):
+def FastGelu(x):
   return 0.5 * x * (1 + np.tanh(x * 0.7978845608 * (1 + 0.044715 * x * x)))
 
 
 @base.layer()
-def Sigmoid(x, **unused_kwargs):
+def Sigmoid(x):
   return math.expit(x)
 
 
 @base.layer()
-def Tanh(x, **unused_kwargs):
+def Tanh(x):
   return np.tanh(x)
 
 
 @base.layer()
-def HardSigmoid(x, **unused_kwargs):
+def HardSigmoid(x):
   """Computes a linear approximation to sigmoid."""
   return np.maximum(0, np.minimum(1, (1 + x)))
 
 
 @base.layer()
-def HardTanh(x, **unused_kwargs):
+def HardTanh(x):
   """Computes a linear approximation to tanh."""
   return np.maximum(-1, np.minimum(1, x))
 
 
 @base.layer()
-def Softplus(x, **unused_kwargs):
+def Softplus(x):
   return np.logaddexp(x, 0.)
 
 

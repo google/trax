@@ -21,21 +21,18 @@ from trax.layers import base
 
 
 @base.layer()
-def MaxPool(x, weights, pool_size=(2, 2), strides=None, padding='VALID', **kw):
-  del weights, kw
+def MaxPool(x, pool_size=(2, 2), strides=None, padding='VALID'):
   return math.max_pool(x, pool_size=pool_size, strides=strides,
                        padding=padding)
 
 
 @base.layer()
-def SumPool(x, weights, pool_size=(2, 2), strides=None, padding='VALID', **kw):
-  del weights, kw
+def SumPool(x, pool_size=(2, 2), strides=None, padding='VALID'):
   return math.sum_pool(x, pool_size=pool_size, strides=strides,
                        padding=padding)
 
 
 @base.layer()
-def AvgPool(x, weights, pool_size=(2, 2), strides=None, padding='VALID', **kw):
-  del weights, kw
+def AvgPool(x, pool_size=(2, 2), strides=None, padding='VALID'):
   return math.avg_pool(x, pool_size=pool_size, strides=strides,
                        padding=padding)

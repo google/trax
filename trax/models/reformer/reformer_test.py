@@ -35,12 +35,11 @@ class PoisonOnRNGMismatchAttention(tl.BaseCausalAttention):
     state = math.random.get_prng(1)
     return self.new_weights(input_signature), state
 
-  def forward_and_backward(self, inputs, ct, state, new_state, rng=None,
-                           **kwargs):
+  def forward_and_backward(self, inputs, grad, state, new_state, rng=None):
     assert math.backend_name() == 'jax', (
         'JAX backend is required to use forward_and_backward.')
 
-    if ct is not None and new_state is not tl.EMPTY_STATE:
+    if grad is not None and new_state is not tl.EMPTY_STATE:
       recovered_rng = new_state
       is_same = (rng[0] == recovered_rng[0]) & (rng[1] == recovered_rng[1])
       is_same = is_same.astype(np.float32)
@@ -48,13 +47,12 @@ class PoisonOnRNGMismatchAttention(tl.BaseCausalAttention):
       inputs = (inputs[0] / is_same, inputs[1] / is_same, inputs[2] / is_same)
 
     def _do_forward(x):  # pylint: disable=invalid-name
-      res, _ = self.forward_with_state(x, state=state, rng=rng, **kwargs)
+      res, _ = self.forward_with_state(x, state=state, rng=rng)
       return res
     output, vjpfun = jax.vjp(_do_forward, inputs)
-    return output, vjpfun(ct)[0]
+    return output, vjpfun(grad)[0]
 
-  def forward_with_state(self, inputs, weights=(), state=(),
-                         rng=None, **kwargs):
+  def forward_with_state(self, inputs, weights=(), state=(), rng=None):
     return inputs[2], rng
 
 

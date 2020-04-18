@@ -25,13 +25,15 @@ from trax.math import numpy as np
 # pylint: disable=invalid-name
 
 
-def _add_bias_weights(input_signature, **unused_wargs):
-  return np.zeros(input_signature.shape[-1])
+class AddBias(tl.Layer):
 
+  def forward(self, inputs, weights):
+    x = inputs
+    return x + weights
 
-@tl.layer(new_weights_fn=_add_bias_weights)
-def AddBias(x, weights, **unused_kwargs):
-  return x + weights
+  def new_weights(self, input_signature, rng):
+    del rng
+    return np.zeros(input_signature.shape[-1])
 
 
 def BERTClassifierHead(n_classes):

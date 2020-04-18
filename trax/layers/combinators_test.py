@@ -191,7 +191,7 @@ class CombinatorLayerTest(absltest.TestCase):
 
   def test_scan_basic(self):
     @base.layer(n_in=2, n_out=2)
-    def add(x, **unused_kwargs):
+    def add(x):
       res = x[0] + x[1]
       return res, res
     scan_layer = cb.Scan(add())  # pylint: disable=no-value-for-parameter
@@ -206,7 +206,7 @@ class CombinatorLayerTest(absltest.TestCase):
 
   def test_scan_axis1(self):
     @base.layer(n_in=2, n_out=2)
-    def add(x, **unused_kwargs):
+    def add(x):
       res = x[0] + x[1]
       return res, res
     scan = cb.Scan(add(), axis=1)  # pylint: disable=no-value-for-parameter
@@ -217,7 +217,7 @@ class CombinatorLayerTest(absltest.TestCase):
 
   def test_scan_multiinput(self):
     @base.layer(n_in=3, n_out=2)
-    def foo(x, **unused_kwargs):
+    def foo(x):
       a, b, carry = x
       return a + b, b, carry + 1
     scan = cb.Scan(foo(), axis=1)  # pylint: disable=no-value-for-parameter
@@ -229,7 +229,7 @@ class CombinatorLayerTest(absltest.TestCase):
 
   def test_scan_nocarry(self):
     @base.layer(n_in=1, n_out=1)
-    def addone(x, **unused_kwargs):
+    def addone(x):
       return x + 1
     scan_layer = cb.Scan(addone(), n_carry=0)  # pylint: disable=no-value-for-parameter
     input_signature = ShapeDtype((3, 2, 7))

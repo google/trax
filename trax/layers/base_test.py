@@ -121,7 +121,7 @@ class BaseLayerTest(absltest.TestCase):
 
   def test_layer_decorator_and_shape_agreement(self):
     @base.layer()
-    def add_one(x, **unused_kwargs):
+    def add_one(x):
       return x + 1
 
     output_shape = base.check_shape_agreement(
@@ -139,9 +139,8 @@ class BaseLayerTest(absltest.TestCase):
       def has_backward(self):
         return True
 
-      def backward(self, inputs, output, ct, weights, state, new_state,
-                   **kwargs):
-        return (np.zeros_like(ct), ())
+      def backward(self, inputs, output, grad, weights, state, new_state, rng):
+        return (np.zeros_like(grad), ())
 
     layer = IdWithZeroGrad()
     rng = math.random.get_prng(0)
@@ -165,8 +164,7 @@ class BaseLayerTest(absltest.TestCase):
       def has_backward(self):
         return True
 
-      def backward(self, inputs, output, ct, weights, state, new_state,
-                   **kwargs):
+      def backward(self, inputs, output, grad, weights, state, new_state, rng):
         return (inputs, ())
 
     layer = IdWithIdGrad()
@@ -187,7 +185,7 @@ class BaseLayerTest(absltest.TestCase):
       def new_weights(self, input_signature):
         return 123
 
-      def forward(self, inputs, weights, **kwargs):
+      def forward(self, inputs, weights):
         return weights
 
     layer = Constant()
@@ -205,14 +203,14 @@ class BaseLayerTest(absltest.TestCase):
 
     # pylint: disable=no-value-for-parameter,invalid-name
     @base.layer()
-    def DefaultDecoratorLayer(x, **unused_kwargs):
+    def DefaultDecoratorLayer(x):
       return x
 
     layer = DefaultDecoratorLayer()
     self.assertIn('DefaultDecoratorLayer', str(layer))
 
     @base.layer(name='CustomDecoratorLayer')
-    def NotDefaultDecoratorLayer(x, **unused_kwargs):
+    def NotDefaultDecoratorLayer(x):
       return x
 
     layer = NotDefaultDecoratorLayer()

@@ -114,24 +114,26 @@ class BatchNorm(base.Layer):
     return output, state
 
 
-# Layer normalization.
-def _layer_norm_weights(input_signature, **unused_kwargs):
-  """Helper: create layer norm parameters."""
-  features = input_signature.shape[-1]
-  scale = np.ones(features, dtype=input_signature.dtype)
-  bias = np.zeros(features, dtype=input_signature.dtype)
-  weights = (scale, bias)
-  return weights
+class LayerNorm(base.Layer):
+  """Layer normalization."""
 
+  def __init__(self, epsilon=1e-6):
+    super().__init__()
+    self._epsilon = epsilon
 
-@base.layer(new_weights_fn=_layer_norm_weights)
-def LayerNorm(x, weights, epsilon=1e-6, **unused_kwargs):  # pylint: disable=invalid-name
-  (scale, bias) = weights
-  mean = np.mean(x, axis=-1, keepdims=True)
-  sub = x - mean
-  variance = np.mean(sub * sub, axis=-1, keepdims=True)
-  norm_inputs = sub / np.sqrt(variance + epsilon)
-  return norm_inputs * scale + bias
+  def forward(self, x, weights):
+    scale, bias = weights
+    mean = np.mean(x, axis=-1, keepdims=True)
+    sub = x - mean
+    variance = np.mean(sub * sub, axis=-1, keepdims=True)
+    norm_inputs = sub / np.sqrt(variance + self._epsilon)
+    return norm_inputs * scale + bias
+
+  def new_weights(self, input_signature):
+    features = input_signature.shape[-1]
+    scale = np.ones(features, dtype=input_signature.dtype)
+    bias = np.zeros(features, dtype=input_signature.dtype)
+    return scale, bias
 
 
 class FilterResponseNorm(base.Layer):

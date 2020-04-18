@@ -50,7 +50,7 @@ from trax.math import numpy as np
 
 # pylint: disable=no-value-for-parameter
 @base.layer(n_in=3, n_out=1)
-def L2Loss(inputs, **unused_kwargs):
+def L2Loss(inputs):
   y_hat, y, mask = inputs
   shapes.assert_same_shape(y_hat, y)
   shapes.assert_same_shape(y, mask)
@@ -91,7 +91,7 @@ def SumOfWeights():
 
 
 @base.layer(n_in=2, n_out=1)
-def _Accuracy(inputs, axis=-1, **unused_kwargs):
+def _Accuracy(inputs, axis=-1):
   """Returns a layer to score matches of predicted versus target categories."""
   y_hat, target_category = inputs
   predicted_category = np.argmax(y_hat, axis=axis)
@@ -101,7 +101,7 @@ def _Accuracy(inputs, axis=-1, **unused_kwargs):
 
 
 @base.layer(n_in=2, n_out=1)
-def _CrossEntropy(inputs, **unused_kwargs):
+def _CrossEntropy(inputs):
   """Returns a layer to compute prediction-target cross entropies."""
   y_hat, target_category = inputs
   # TODO(pkozakowski): This assertion breaks some tests. Fix and uncomment.
@@ -111,21 +111,21 @@ def _CrossEntropy(inputs, **unused_kwargs):
 
 
 @base.layer(n_in=2, n_out=1)
-def _WeightedMean(inputs, **unused_kwargs):
+def _WeightedMean(inputs):
   """Returns a layer to compute weighted mean over all values in the input."""
   values, weights = inputs
   return np.sum(values * weights) / np.sum(weights)
 
 
 @base.layer(n_in=2, n_out=1)
-def WeightedSum(inputs, **unused_kwargs):
+def WeightedSum(inputs):
   """Returns a layer to compute weighted sum over all values in the input."""
   values, weights = inputs
   return np.sum(values * weights)
 
 
 @base.layer(n_in=2, n_out=1)
-def _WeightedSequenceMean(inputs, **unused_kwargs):
+def _WeightedSequenceMean(inputs):
   """Returns a layer to compute weighted seqeunce accuracy mean."""
   values, weights = inputs  # This function assumes weights are 0 or 1.
   not_correct = (1.0 - values) * weights  # 1: not-correct, 0: correct or masked

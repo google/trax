@@ -87,9 +87,8 @@ class Dropout(base.Layer):
     return base.EMPTY_WEIGHTS, state
 
   def forward_with_state(self, x, weights=base.EMPTY_WEIGHTS,
-                         state=base.EMPTY_STATE, rng=None, **kwargs):
+                         state=base.EMPTY_STATE, rng=None):
     """Execute dropout."""
-    del kwargs
     if self._mode != 'train':
       return x, state
     rate = self._initial_rate
@@ -105,47 +104,48 @@ class Dropout(base.Layer):
 
 
 @base.layer()
-def Flatten(x, n_axes_to_keep=1, **unused_kwargs):
-  if n_axes_to_keep >= len(x.shape):
-    raise ValueError("n_axes_to_keep[%d] should be less than input's rank[%d]" %
-                     (n_axes_to_keep, len(x.shape)))
+def Flatten(x, n_axes_to_keep=1):
+  in_rank = len(x.shape)
+  if in_rank <= n_axes_to_keep:
+    raise ValueError(f'Input rank ({in_rank}) must exceed the number of '
+                     f'axes to keep ({n_axes_to_keep}) after flattening.')
   return np.reshape(x, (x.shape[:n_axes_to_keep] + (-1,)))
 
 
 @base.layer()
-def Exp(x, **unused_kwargs):
+def Exp(x):
   return np.exp(x)
 
 
 @base.layer()
-def LogSoftmax(x, axis=-1, **unused_kwargs):
+def LogSoftmax(x, axis=-1):
   """Apply log softmax to x: log-normalize along the given axis."""
   return x - math.logsumexp(x, axis, keepdims=True)
 
 
 @base.layer()
-def Softmax(x, axis=-1, **unused_kwargs):
+def Softmax(x, axis=-1):
   """Apply softmax to x: exponentiate and normalize along the given axis."""
   return np.exp(x - math.logsumexp(x, axis, keepdims=True))
 
 
 @base.layer()
-def ToFloat(x, **unused_kwargs):
+def ToFloat(x):
   return x.astype(onp.float32)
 
 
 @base.layer()
-def Mean(x, axis=-1, keepdims=False, **unused_kwargs):
+def Mean(x, axis=-1, keepdims=False):
   return np.mean(x, axis=axis, keepdims=keepdims)
 
 
 @base.layer()
-def Sum(x, axis=-1, keepdims=False, **unused_kwargs):
+def Sum(x, axis=-1, keepdims=False):
   return np.sum(x, axis=axis, keepdims=keepdims)
 
 
 @base.layer()
-def Negate(x, **unused_kwargs):
+def Negate(x):
   return -x
 
 

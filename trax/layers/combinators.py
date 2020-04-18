@@ -54,9 +54,9 @@ class Serial(base.Layer):
       self._state = tuple(l.state for l in sublayers)
 
   def forward_with_state(self, xs, weights=base.EMPTY_WEIGHTS,
-                         state=base.EMPTY_STATE, **kwargs):
+                         state=base.EMPTY_STATE, rng=None):
     self._validate_forward_inputs(xs)
-    rngs = _pop_rng_and_split(kwargs, self._n_layers)
+    rngs = _split_rngs(rng, self._n_layers)
     if not self.sublayers:  # No-op: leave args unchanged.
       return (xs, state)
 
@@ -212,10 +212,10 @@ class Parallel(base.Layer):
     self._state = tuple(l.state for l in sublayers)
 
   def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
-                         state=base.EMPTY_STATE, **kwargs):
+                         state=base.EMPTY_STATE, rng=None):
     n_layers, layers = self._n_layers, self.sublayers
     sublayer_inputs = self._allot_to_sublayers(inputs)
-    rngs = _pop_rng_and_split(kwargs, n_layers)
+    rngs = _split_rngs(rng, n_layers)
     if len(sublayer_inputs) != n_layers:
       raise ValueError(
           f'Number of inputs for sublayers ({len(sublayer_inputs)}) does not equal '
@@ -397,13 +397,13 @@ class Scan(base.Layer):
     return self._sublayers[0]
 
   def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
-                         state=base.EMPTY_STATE, **kwargs):
+                         state=base.EMPTY_STATE, rng=None):
     n_carry = self._n_carry
     def scannable_fn(x, carry_and_state):  # pylint: disable=invalid-name
       carry, state = carry_and_state
       x_and_carry = x + carry if n_carry > 0 else x
       res, new_state = self.sublayer.forward_with_state(
-          x_and_carry, weights=weights, state=state, **kwargs)
+          x_and_carry, weights=weights, state=state, rng=rng)
       if n_carry > 0:
         return (res[:-n_carry], (res[-n_carry:], new_state))
       else:
@@ -472,21 +472,20 @@ def Branch(*layers, name='Branch'):
   return Serial(Select(_deep_flatten(indices)), parallel_layer, name=name)
 
 
-def Residual(*layers, **kwargs):
+def Residual(*layers, shortcut=None):
   """Wraps a series of layers with a residual connection.
 
   Args:
     *layers: One or more layers, to be applied in series.
-    **kwargs: If empty (the usual case), the Residual layer computes the
+    shortcut: If None (the usual case), the Residual layer computes the
         element-wise sum of the stack-top input with the output of the layer
-        series. If non-empty, the only key should be 'shortcut', whose value is
-        a layer that applies to a copy of the inputs and (elementwise) adds its
-        output to the output from the main layer series.
+        series. If specified, the `shortcut` layer applies to a copy of the
+        inputs and (elementwise) adds its output to the output from the main
+        layer series.
 
   Returns:
       A layer representing a residual connection paired with a layer series.
   """
-  shortcut = kwargs.get('shortcut')  # default None signals no-op (copy inputs)
   layers = _ensure_flat(layers)
   layer = layers[0] if len(layers) == 1 else Serial(layers)
   # TODO(jonni): Should we require layer.n_out = 1 and shortcut.n_out = 1?
@@ -497,20 +496,20 @@ def Residual(*layers, **kwargs):
 
 
 @base.layer(n_out=0)
-def Drop(x, **unused_kwargs):
+def Drop(x):
   """Drops the top stack element."""
   del x  # Just for the compiler.
   return ()
 
 
 @base.layer(n_out=2)
-def Dup(x, **unused_kwargs):
+def Dup(x):
   """Duplicates (copies) the top element on the data stack."""
   return (x, x)
 
 
 @base.layer(n_in=2, n_out=2)
-def Swap(xs, **unused_kwargs):
+def Swap(xs):
   """Swaps the top two stack elements."""
   return (xs[1], xs[0])
 
@@ -537,7 +536,7 @@ def Select(indices, n_in=None, name=None):
     n_in = max(indices) + 1
 
   @base.layer(n_in=n_in, n_out=len(indices), name=name)
-  def Selection(xs, **unused_kwargs):  # pylint: disable=invalid-name
+  def Selection(xs):  # pylint: disable=invalid-name
     if not isinstance(xs, (tuple, list)):
       xs = (xs,)
     selected = tuple(xs[i] for i in indices)
@@ -609,36 +608,36 @@ def SerialWithSideOutputs(layers, n_side_outputs=1):
   return Serial(serial_layers)
 
 
-@base.layer(n_in=0)
-def FlattenList(xs, **unused_kwargs):
+@base.layer()
+def FlattenList(x):
   """Flatten lists."""
   # TODO(jonni): Consider renaming layer to DeepFlatten.
-  return tuple(_deep_flatten(xs))
+  return tuple(_deep_flatten(x))
 
 
 @base.layer(n_in=2)
-def Add(xs, **unused_kwargs):
+def Add(xs):
   """Adds two tensors."""
   return xs[0] + xs[1]
 
 
 @base.layer(n_in=2)
-def SubtractTop(xs, **unused_kwargs):
+def SubtractTop(xs):
   """Subtracts the first tensor from the second."""
   return xs[1] - xs[0]
 
 
 @base.layer(n_in=2)
-def Multiply(xs, **unused_kwargs):
+def Multiply(xs):
   """Multiplies two tensors."""
   return xs[0] * xs[1]
 
 
 @base.layer(n_in=3)
-def Gate(xs, **unused_kwargs):
+def Gate(xs):
   """Implements a gating function on a (memory, gate, candidate) tuple.
 
-  Final update is memory * gate + (1-gate) * candidate
+  Final update is memory * gate + (1 - gate) * candidate
 
   This gating equation may also be referred to as Highway Network.
   Highway Networks: https://arxiv.org/abs/1505.00387
@@ -649,8 +648,8 @@ def Gate(xs, **unused_kwargs):
   Returns:
     The result of applying gating.
   """
-  state, gate, candidate = xs
-  return gate * state + (1.0 - gate) * candidate
+  memory, gate, candidate = xs
+  return gate * memory + (1.0 - gate) * candidate
 
 
 class Cache(base.Layer):
@@ -666,10 +665,10 @@ class Cache(base.Layer):
     return self._sublayers[0]
 
   def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
-                         state=base.EMPTY_STATE, **kwargs):
+                         state=base.EMPTY_STATE, rng=None):
     if state[0] is ():  # pylint: disable=literal-comparison
       res, layer_state = self.sublayer.forward_with_state(
-          inputs, weights=weights, state=state[1], **kwargs)
+          inputs, weights=weights, state=state[1], rng=rng)
       return res, (res, layer_state)
     else:
       return state[0], state
@@ -730,8 +729,7 @@ def _ensure_sublayers(layers):
     raise TypeError(type(layers))
 
 
-def _pop_rng_and_split(args_dict, n_copies):
-  rng = args_dict.pop('rng', None)
+def _split_rngs(rng, n_copies):
   if rng is None:
     return (None,) * n_copies
   return math.random.split(rng, n_copies)

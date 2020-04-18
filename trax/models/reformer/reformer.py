@@ -21,7 +21,7 @@ import jax
 from trax import layers as tl
 from trax.layers import base
 from trax.layers.combinators import (  # pylint: disable=g-multiple-import
-    _pop_rng_and_split, _inputs_from_stack, _outputs_onto_stack)
+    _split_rngs, _inputs_from_stack, _outputs_onto_stack)
 from trax.math import numpy as np
 from trax.math import random
 
@@ -56,12 +56,12 @@ class Map(tl.Layer):
     self._check_shapes = check_shapes
     self._n_sections = n_sections
 
-  def forward_with_state(self, inputs, weights=(), state=(), **kwargs):
+  def forward_with_state(self, inputs, weights=(), state=(), rng=None):
     if self._n_sections == 1:
-      results = self._layer(inputs, weights=weights, state=state, **kwargs)
+      results = self._layer(inputs, weights=weights, state=state, rng=rng)
     else:
-      rngs = _pop_rng_and_split(kwargs, len(inputs))
-      results = [self._layer(x, weights=weights, state=state, rng=r, **kwargs)
+      rngs = _split_rngs(rng, len(inputs))
+      results = [self._layer(x, weights=weights, state=state, rng=r)
                  for x, r in zip(inputs, rngs)]
       results = tuple(results)
     # TODO(kitaev): think about how to merge state across copies in the map.
@@ -103,7 +103,7 @@ class BroadcastedDropout(tl.Layer):
     self._broadcast_dims = broadcast_dims
     self._mode = mode
 
-  def forward_with_state(self, x, weights, state, rng):
+  def forward_with_state(self, x, weights=(), state=(), rng=None):
     """Dropout, with broadcasting to save memory."""
     del weights
     if rng is None:
@@ -186,8 +186,8 @@ class SplitForOutput(tl.ReversibleLayer):
     else:
       return tuple(res)
 
-  def reverse(self, output, weights=(), state=(), new_state=(), **kwargs):
-    del weights, kwargs
+  def reverse(self, output, weights=(), state=(), new_state=(), rng=None):
+    del weights
     if not isinstance(output, (list, tuple)):
       output = [output]
 
@@ -204,14 +204,13 @@ class SplitForOutput(tl.ReversibleLayer):
     return (x1, x2)
 
   def reverse_and_grad(self, output, ct, weights=(), state=(), new_state=(),
-                       **kwargs):
-    del weights, kwargs
+                       rng=None):
+    del weights
     return self.reverse(output), (self.reverse(ct), ())
 
 
 @tl.layer()
-def Chunk(x, weights, n_sections=2, **kwargs):
-  del weights, kwargs
+def Chunk(x, n_sections=2):
   assert x.shape[1] % n_sections == 0
   return np.reshape(x, (
       x.shape[0] * n_sections,
@@ -220,8 +219,7 @@ def Chunk(x, weights, n_sections=2, **kwargs):
 
 
 @tl.layer()
-def Unchunk(x, weights, n_sections=2, **kwargs):
-  del weights, kwargs
+def Unchunk(x, n_sections=2):
   assert x.shape[0] % n_sections == 0
   return np.reshape(x, (
       x.shape[0] // n_sections,
@@ -251,9 +249,8 @@ class ReversibleHalfResidual(tl.ReversibleLayer, tl.Serial):
     self.subtract_top = tl.Parallel(tl.SubtractTop(), *parallel_preserve)
     self.reverse_layers = [self.compute_residual, self.subtract_top]
 
-  def reverse(self, output, weights=(), state=(), new_state=(), **kwargs):
+  def reverse(self, output, weights=(), state=(), new_state=(), rng=None):
     reconstructed_x = output
-    rng = kwargs.pop('rng', None)
     rngs = (None,) * self._n_layers
     if rng is not None:
       rngs = random.split(rng, self._n_layers)
@@ -262,19 +259,18 @@ class ReversibleHalfResidual(tl.ReversibleLayer, tl.Serial):
     for layer, p, s, ns, rng in zip(
         self.reverse_layers, weights, state, new_state, rngs):
       reconstructed_x = layer(reconstructed_x, weights=p,
-                              state=s, new_state=ns, rng=rng, **kwargs)
+                              state=s, new_state=ns, rng=rng)
     return reconstructed_x
 
   def reverse_and_grad(self, output, ct, weights=(), state=(), new_state=(),
-                       **kwargs):
-    rng = kwargs.pop('rng', None)
+                       rng=None):
     rngs = (None,) * self._n_layers
     if rng is not None:
       rngs = random.split(rng, self._n_layers)
 
     def call_compute_residual(x, weights):
       res = self.compute_residual(x, weights=weights, state=state[0],
-                                  rng=rngs[0], **kwargs)
+                                  rng=rngs[0])
       return res
 
     assert len(ct) == self.n_preserve + 1
@@ -283,8 +279,7 @@ class ReversibleHalfResidual(tl.ReversibleLayer, tl.Serial):
     stack_with_residual, vjpfun = jax.vjp(
         call_compute_residual, output, weights[0])
     reconstructed_x = self.subtract_top(
-        stack_with_residual, weights=weights[-1], state=state[-1], rng=rngs[-1],
-        **kwargs)
+        stack_with_residual, weights=weights[-1], state=state[-1], rng=rngs[-1])
 
     x_ct, residual_weights_ct = vjpfun(ct)
     assert not jax.tree_util.tree_leaves(weights[-1])
@@ -300,8 +295,7 @@ class ApplyAttentionWrapper(tl.Parallel):
     super(ApplyAttentionWrapper, self).__init__(attention, [], [])
     self.attention = attention
 
-  def forward_and_backward(self, inputs, ct, state, new_state, rng=None,
-                           **kwargs):
+  def forward_and_backward(self, inputs, ct, state, new_state, rng=None):
     # Simultaneous forward pass and backprop through the attention mechanism.
     qkv = inputs[:3]
     passthrough = inputs[3:]
@@ -312,7 +306,7 @@ class ApplyAttentionWrapper(tl.Parallel):
       rng = random.split(rng, self._n_layers)[0]
 
     out, qkv_ct = self.attention.forward_and_backward(
-        qkv, out_ct, rng=rng, state=state[0], new_state=new_state[0], **kwargs)
+        qkv, out_ct, rng=rng, state=state[0], new_state=new_state[0])
     return (out,) + passthrough, qkv_ct + passthrough_ct
 
 
@@ -362,8 +356,7 @@ class ReversibleAttentionHalfResidual(tl.ReversibleLayer, tl.Serial):
         self.subtract_top,
     ]
 
-  def reverse(self, output, weights=(), state=(), new_state=(), **kwargs):
-    rng = kwargs.pop('rng', None)
+  def reverse(self, output, weights=(), state=(), new_state=(), rng=None):
     rngs = (None,) * self._n_layers
     if rng is not None:
       rngs = random.split(rng, self._n_layers)
@@ -374,12 +367,11 @@ class ReversibleAttentionHalfResidual(tl.ReversibleLayer, tl.Serial):
     for layer, p, s, ns, rng in zip(self.reverse_layers, weights,
                                     state, new_state, rngs):
       reconstructed_x = layer.reverse(reconstructed_x, weights=p,
-                                      state=s, new_state=ns, rng=rng, **kwargs)
+                                      state=s, new_state=ns, rng=rng)
     return reconstructed_x
 
   def reverse_and_grad(self, output, ct, weights=(), state=(), new_state=(),
-                       **kwargs):
-    rng = kwargs.pop('rng', None)
+                       rng=None):
     rngs = (None,) * self._n_layers
     if rng is not None:
       rngs = random.split(rng, self._n_layers)
@@ -387,8 +379,7 @@ class ReversibleAttentionHalfResidual(tl.ReversibleLayer, tl.Serial):
     # Forward pass through self.pre_attention, while preparing for
     # later backprop.
     def call_pre_attention(x, weights):
-      res = self.pre_attention(x, weights=weights, state=state[0], rng=rngs[0],
-                               **kwargs)
+      res = self.pre_attention(x, weights=weights, state=state[0], rng=rngs[0])
       return res
     stack, pre_attention_vjpfun = jax.vjp(call_pre_attention,
                                           output, weights[0])
@@ -400,7 +391,7 @@ class ReversibleAttentionHalfResidual(tl.ReversibleLayer, tl.Serial):
     # Backprop through self.post_attention with respect to the inputs only
     def call_post_attention(x):
       res = self.post_attention(x, weights=weights[2], state=state[2],
-                                rng=rngs[2], **kwargs)
+                                rng=rngs[2])
       return res
     # Note: these are *not* the actual inputs to self.post_attention.
     # If self.post_attention is not linear, we will get incorrect gradients.
@@ -410,8 +401,7 @@ class ReversibleAttentionHalfResidual(tl.ReversibleLayer, tl.Serial):
 
     # Simultaneous forward pass and backprop through the attention mechanism
     stack, ct = self.attention.forward_and_backward(
-        stack, ct, rng=rngs[1], state=state[1], new_state=new_state[1],
-        **kwargs)
+        stack, ct, state=state[1], new_state=new_state[1], rng=rngs[1])
     assert not jax.tree_util.tree_leaves(weights[1])
     attention_weights_ct = weights[1]  # This is valid when weights is empty.
 
@@ -422,14 +412,14 @@ class ReversibleAttentionHalfResidual(tl.ReversibleLayer, tl.Serial):
     # parameters only
     def call_post_attention2(weights):
       res = self.post_attention(stack, weights=weights, state=state[2],
-                                rng=rngs[2], **kwargs)
+                                rng=rngs[2])
       return res
     stack, post_attention_vjpfun = jax.vjp(call_post_attention2, weights[2])
     (post_attention_weights_ct,) = post_attention_vjpfun(saved_ct)
 
     # Forward pass through subtracting the residual
     reconstructed_x = self.subtract_top(
-        stack, weights=weights[-1], state=state[-1], rng=rngs[-1], **kwargs)
+        stack, weights=weights[-1], state=state[-1], rng=rngs[-1])
 
     assert not jax.tree_util.tree_leaves(weights[-1])
     add_top_weights_ct = weights[-1]
@@ -482,8 +472,8 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
     self._n_in = self._n_out = running_max + 1
 
   def forward_with_state(self, xs, weights=base.EMPTY_WEIGHTS,
-                         state=base.EMPTY_STATE, **kwargs):
-    rngs = _pop_rng_and_split(kwargs, len(self.sublayers))
+                         state=base.EMPTY_STATE, rng=None):
+    rngs = _split_rngs(rng, len(self.sublayers))
 
     accumulator, *context = xs
     stack = context = tuple(context)
@@ -499,12 +489,12 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
     stack = (output,) + context
     return stack, new_state
 
-  def reverse(self, *args, **kwargs):
+  def reverse(self, output, weights=(), state=(), new_state=(), rng=None):
     raise NotImplementedError('Only reverse_and_grad is actually used.')
 
   def reverse_and_grad(self, output, ct, weights=(), state=(), new_state=(),
-                       **kwargs):
-    rngs = _pop_rng_and_split(kwargs, len(self.sublayers))
+                       rng=None):
+    rngs = _split_rngs(rng, len(self.sublayers))
 
     accumulator_output, *context = output
     context = tuple(context)
