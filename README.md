@@ -36,7 +36,7 @@ which explains how to:
 1. Train it and run inference.
 
 With Colab, you can select a CPU or GPU runtime, or even get a free 8-core TPU as
-runtime. Please not, with TPUs in colab you need to set extra flags as demonstrated in these
+runtime. Please note, with TPUs in colab you need to set extra flags as demonstrated in these
 [training](https://colab.research.google.com/github/google/trax/blob/master/trax/models/reformer/text_generation.ipynb)
 and [inference](https://colab.research.google.com/github/google/trax/blob/master/trax/models/reformer/image_generation.ipynb) colabs.
 
