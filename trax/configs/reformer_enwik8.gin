@@ -26,7 +26,6 @@ attn_type = [
     @LSHSelfAttention,
     @SelfAttention,
 ]
-share_qk = False  # LSH attention ignores this flag and always shares q & k
 attn_kv = 128
 n_layers = 12
 dropout = 0.2
@@ -115,6 +114,5 @@ ReformerLM.mode = 'train'
 ReformerLM.n_heads = 8
 ReformerLM.n_layers = %n_layers
 ReformerLM.vocab_size = 258  # Includes pad token and unused EOS token
-ReformerLM.share_qk = %share_qk
 ReformerLM.axial_pos_shape = (128, 512)
 ReformerLM.d_axial_pos_embs= (256, 768)

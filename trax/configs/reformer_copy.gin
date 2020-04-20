@@ -52,40 +52,32 @@ sequence_copy_inputs.reverse = False
 train.eval_frequency = 500
 train.eval_steps = 64
 train.inputs = @trax.supervised.inputs.sequence_copy_inputs
-train.model = @trax.models.TransformerLM
+train.model = @trax.models.ReformerLM
 train.optimizer = @trax.optimizers.Adafactor
 train.steps = 50000
 
-# Parameters for MemoryEfficientCausalAttention:
+# Parameters for LSHSelfAttention:
 # ==============================================================================
-MemoryEfficientCausalAttention.dropout = 0.0
-MemoryEfficientCausalAttention.loop_stride = 512
+LSHSelfAttention.attention_dropout = 0.1
+LSHSelfAttention.chunk_len = 128
+LSHSelfAttention.n_buckets = 192
+LSHSelfAttention.n_chunks_after = 0
+LSHSelfAttention.n_chunks_before = 1
+LSHSelfAttention.n_hashes = 2
+LSHSelfAttention.n_parallel_heads = 1
+LSHSelfAttention.predict_drop_len = 256
+LSHSelfAttention.predict_mem_len = 12288
 
-# Parameters for LSHCausalAttention:
+# Parameters for ReformerLM:
 # ==============================================================================
-LSHCausalAttention.allow_duplicate_attention = False
-LSHCausalAttention.attend_across_buckets = True
-LSHCausalAttention.rehash_each_round = True
-LSHCausalAttention.n_bins = 64
-LSHCausalAttention.n_buckets = 128
-LSHCausalAttention.n_hashes = 8
-LSHCausalAttention.one_rng = False
-LSHCausalAttention.hard_k = 0
-LSHCausalAttention.dropout = 0.0
-LSHCausalAttention.drop_for_hash_rate = 0.1
-LSHCausalAttention.factorize_hash = True
-
-# Parameters for TransformerLM:
-# ==============================================================================
-# TransformerLM.attention_type = @trax.layers.LSHCausalAttention
-TransformerLM.d_attention_key = 64
-TransformerLM.d_attention_value = 64
-TransformerLM.d_model = 256
-TransformerLM.d_ff = 256
-TransformerLM.dropout = 0.0
-TransformerLM.max_len = %length
-TransformerLM.mode = 'train'
-TransformerLM.n_heads = 4
-TransformerLM.n_layers = 1
-TransformerLM.share_qk = True
-TransformerLM.vocab_size = %n_symbols
+# ReformerLM.attention_type = @trax.layers.LSHSelfAttention
+ReformerLM.d_attention_key = 64
+ReformerLM.d_attention_value = 64
+ReformerLM.d_model = 256
+ReformerLM.d_ff = 256
+ReformerLM.dropout = 0.0
+ReformerLM.max_len = %length
+ReformerLM.mode = 'train'
+ReformerLM.n_heads = 4
+ReformerLM.n_layers = 1
+ReformerLM.vocab_size = %n_symbols

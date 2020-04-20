@@ -94,9 +94,6 @@ class TransformerTest(parameterized.TestCase):
   def test_dot_product_causal_attention_fast_inference(self):
     self._test_fast_inference(tl.DotProductCausalAttention, length=5)
 
-  def test_time_bin_causal_attention_fast_inference(self):
-    attention = functools.partial(tl.TimeBinCausalAttention, bin_length=2)
-    self._test_fast_inference(attention, length=7)
 
 if __name__ == '__main__':
   absltest.main()

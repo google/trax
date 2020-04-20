@@ -21,22 +21,9 @@ import trax.supervised.trainer_lib
 # Parameters that will vary between experiments:
 # ==============================================================================
 train.model = @trax.models.ReformerShortenLM
-attn_type = @LSHCausalAttention
-share_qk = True  # Required when using LSHCausalAttention
+attn_type = @LSHSelfAttention
 attn_kv = 64
 n_layers = 6
-
-# MemoryEfficientCausalAttention: full attention
-# (no hparams to vary between experiments)
-
-# TimeBinCausalAttention: attend to nearby items
-TimeBinCausalAttention.n_bins = 64
-
-# LSHCausalAttention: locality-sensitive hashing (LSH) attention
-LSHCausalAttention.n_bins = 32  # 96
-LSHCausalAttention.n_buckets = 64  # 192  # Always 2 * n_bins
-LSHCausalAttention.n_hashes = 2
-LSHCausalAttention.drop_for_hash_rate = 0.0
 
 # Parameters for batch_fn:
 # ==============================================================================
@@ -77,48 +64,17 @@ train.checkpoints_at = \
     [1000, 5000, 10000, 20000, 40000, 60000, 80000,
      100000, 200000, 300000, 400000, 500000]
 
-# Parameters for MemoryEfficientCausalAttention:
+# Parameters for LSHSelfAttention:
 # ==============================================================================
-MemoryEfficientCausalAttention.dropout = 0.0
-MemoryEfficientCausalAttention.loop_stride = 512
-MemoryEfficientCausalAttention.share_qk = %share_qk
-
-# Parameters for TimeBinCausalAttention:
-# ==============================================================================
-TimeBinCausalAttention.dropout = 0.0
-# TimeBinCausalAttention.n_bins: see top
-TimeBinCausalAttention.share_qk = %share_qk
-
-# Parameters for LSHCausalAttention:
-# ==============================================================================
-LSHCausalAttention.allow_duplicate_attention = False
-LSHCausalAttention.attend_across_buckets = True
-LSHCausalAttention.rehash_each_round = True
-LSHCausalAttention.data_rotation = True
-LSHCausalAttention.data_rotation_farthest = True
-LSHCausalAttention.data_rotation_farthest_num = 8
-# LSHCausalAttention.n_bins: see top
-# LSHCausalAttention.n_buckets: see top
-# LSHCausalAttention.n_hashes: see top
-LSHCausalAttention.one_rng = False
-LSHCausalAttention.hard_k = 0
-LSHCausalAttention.dropout = 0.0
-# LSHCausalAttention.drop_for_hash_rate: see top
-
-# Parameters for TransformerLM:
-# ==============================================================================
-TransformerLM.attention_type = %attn_type
-TransformerLM.d_attention_key = %attn_kv
-TransformerLM.d_attention_value = %attn_kv
-TransformerLM.d_model = 1024
-TransformerLM.d_ff = 4096
-TransformerLM.dropout = 0.0
-TransformerLM.max_len = 12288  # 64 * 64 * 3
-TransformerLM.mode = 'train'
-TransformerLM.n_heads = 8
-TransformerLM.n_layers = %n_layers
-TransformerLM.share_qk = %share_qk
-TransformerLM.vocab_size = 256
+LSHSelfAttention.attention_dropout = 0.2
+LSHSelfAttention.chunk_len = 128
+LSHSelfAttention.n_buckets = 192
+LSHSelfAttention.n_chunks_after = 0
+LSHSelfAttention.n_chunks_before = 1
+LSHSelfAttention.n_hashes = 2
+LSHSelfAttention.n_parallel_heads = 1
+LSHSelfAttention.predict_drop_len = 256
+LSHSelfAttention.predict_mem_len = 12288
 
 # Parameters for ReformerLM:
 # ==============================================================================
@@ -134,7 +90,6 @@ ReformerLM.mode = 'train'
 ReformerLM.n_heads = 8
 ReformerLM.n_layers = %n_layers
 ReformerLM.vocab_size = 256
-ReformerLM.share_qk = %share_qk
 ReformerLM.axial_pos_shape = (64, 64, 3)
 ReformerLM.d_axial_pos_embs= (384, 384, 256)
 
@@ -154,6 +109,5 @@ ReformerShortenLM.mode = 'train'
 ReformerShortenLM.n_heads = 8
 ReformerShortenLM.n_layers = %n_layers
 ReformerShortenLM.vocab_size = 256
-ReformerShortenLM.share_qk = %share_qk
 ReformerShortenLM.axial_pos_shape = (64, 64, 3)
 ReformerShortenLM.d_axial_pos_embs= (96, 96, 64)

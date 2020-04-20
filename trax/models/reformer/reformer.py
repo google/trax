@@ -603,9 +603,8 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
 
 
 def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
-                 n_heads, n_attention_chunks, attention_type,
-                 dropout, share_qk, ff_activation, ff_use_sru, ff_chunk_size,
-                 mode):
+                 n_heads, attention_type,
+                 dropout, ff_activation, ff_use_sru, ff_chunk_size, mode):
   """Reversible transformer decoder layer.
 
   Args:
@@ -614,10 +613,8 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
     d_attention_key: int: depth of key vector for each attention head
     d_attention_value: int: depth of value vector for each attention head
     n_heads: int: number of attention heads
-    n_attention_chunks: int: number of chunks for attention
     attention_type: subclass of tl.BaseCausalAttention: attention class to use
     dropout: float: dropout rate (how much to drop out)
-    share_qk: string, whether to share queries and keys
     ff_activation: the non-linearity in feed-forward layer
     ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
@@ -626,50 +623,13 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
   Returns:
     the layer.
   """
-  if not hasattr(attention_type, 'forward_unbatched'):
-    if share_qk:
-      pre_attention = [
-          Chunk(n_sections=n_attention_chunks),  # pylint: disable=no-value-for-parameter
-          tl.LayerNorm(),
-          tl.Branch(
-              tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_attention_key),
-              tl.ComputeAttentionHeads(
-                  n_heads=n_heads, d_head=d_attention_value),
-          ),
-          tl.Dup(),
-      ]
-    else:
-      pre_attention = [
-          Chunk(n_sections=n_attention_chunks),  # pylint: disable=no-value-for-parameter
-          tl.LayerNorm(),
-          tl.Branch(
-              tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_attention_key),
-              tl.ComputeAttentionHeads(n_heads=n_heads, d_head=d_attention_key),
-              tl.ComputeAttentionHeads(
-                  n_heads=n_heads, d_head=d_attention_value),
-          ),
-      ]
-
-    attention = attention_type(mode=mode)
-
-    # ReversibleAttentionHalfResidual requires that post_attention be linear in
-    # its input (so the backward pass can be computed without knowing the input)
-    post_attention = [
-        tl.ComputeAttentionOutput(n_heads=n_heads, d_model=d_model),
-        Unchunk(n_sections=n_attention_chunks),  # pylint: disable=no-value-for-parameter
-        BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
-    ]
-
-    attention_half_residual = ReversibleAttentionHalfResidual(
-        pre_attention, attention, post_attention)
-  else:
-    attention = attention_type(
-        n_heads=n_heads, d_qk=d_attention_key, d_v=d_attention_value,
-        share_qk=share_qk, causal=True, output_dropout=dropout, mode=mode)
-    attention_half_residual = ReversibleHalfResidualV2(
-        tl.LayerNorm(),
-        attention_layer=attention,
-    )
+  attention = attention_type(
+      n_heads=n_heads, d_qk=d_attention_key, d_v=d_attention_value,
+      causal=True, output_dropout=dropout, mode=mode)
+  attention_half_residual = ReversibleHalfResidualV2(
+      tl.LayerNorm(),
+      attention_layer=attention,
+  )
 
   if ff_use_sru:
     feed_forward = [tl.SRU(d_model) for _ in range(ff_use_sru)]
@@ -695,9 +655,7 @@ def ReformerLM(vocab_size,
                dropout=0.1,
                max_len=2048,
                n_chunks=0,
-               n_attention_chunks=1,
-               attention_type=tl.DotProductCausalAttention,
-               share_qk=False,
+               attention_type=tl.SelfAttention,
                axial_pos_shape=(),
                d_axial_pos_embs=None,
                ff_activation=tl.FastGelu,
@@ -717,9 +675,7 @@ def ReformerLM(vocab_size,
     dropout: float: dropout rate (how much to drop out)
     max_len: int: maximum symbol length for positional encoding
     n_chunks: int: number of chunks (must match input pipeline)
-    n_attention_chunks: int: number of chunks for attention
-    attention_type: class: attention class to use, such as DotProductAttention.
-    share_qk: bool, whether to share queries and keys.
+    attention_type: class: attention class to use, such as SelfAttention.
     axial_pos_shape: tuple of ints: input shape to use for the axial position
       encoding. If unset, axial position encoding is disabled.
     d_axial_pos_embs: tuple of ints: depth of position embedding for each axis.
@@ -775,11 +731,8 @@ def ReformerLM(vocab_size,
     layer_attention_type = attention_type[layer_idx % len(attention_type)]
     decoder_block = DecoderBlock(
         d_model, d_ff, d_attention_key, d_attention_value, n_heads,
-        n_attention_chunks,
         attention_type=layer_attention_type,
         dropout=dropout,
-        share_qk=(share_qk or issubclass(layer_attention_type,
-                                         tl.LSHCausalAttention)),
         ff_activation=ff_activation,
         ff_use_sru=ff_use_sru,
         ff_chunk_size=ff_chunk_size,
@@ -816,9 +769,7 @@ def ReformerShortenLM(vocab_size,
                       n_heads=8,
                       dropout=0.1,
                       max_len=2048,
-                      n_attention_chunks=1,
-                      attention_type=tl.DotProductCausalAttention,
-                      share_qk=False,
+                      attention_type=tl.SelfAttention,
                       axial_pos_shape=(),
                       d_axial_pos_embs=None,
                       ff_activation=tl.FastGelu,
@@ -847,9 +798,7 @@ def ReformerShortenLM(vocab_size,
     n_heads: int: number of attention heads
     dropout: float: dropout rate (how much to drop out)
     max_len: int: maximum symbol length for positional encoding
-    n_attention_chunks: int: number of chunks for attention
-    attention_type: class: attention class to use, such as DotProductAttention.
-    share_qk: bool, whether to share queries and keys.
+    attention_type: class: attention class to use, such as SelfAttention.
     axial_pos_shape: tuple of ints: input shape to use for the axial position
       encoding. If unset, axial position encoding is disabled.
     d_axial_pos_embs: tuple of ints: depth of position embedding for each axis.
@@ -890,11 +839,8 @@ def ReformerShortenLM(vocab_size,
     layer_attention_type = attention_type[layer_idx % len(attention_type)]
     decoder_block = DecoderBlock(
         d_model, d_ff, d_attention_key, d_attention_value, n_heads,
-        n_attention_chunks,
         attention_type=layer_attention_type,
         dropout=dropout,
-        share_qk=(share_qk or issubclass(layer_attention_type,
-                                         tl.LSHCausalAttention)),
         ff_activation=ff_activation,
         ff_use_sru=ff_use_sru,
         ff_chunk_size=ff_chunk_size,

@@ -30,7 +30,6 @@ from trax.layers.initializers import *
 from trax.layers.metrics import *
 from trax.layers.normalization import *
 from trax.layers.pooling import *
-from trax.layers.research.efficient_attention import *
 from trax.layers.research.efficient_attention_v2 import *
 from trax.layers.research.position_encodings import *
 from trax.layers.reversible import *
@@ -66,12 +65,6 @@ ThresholdedLinearUnit = layer_configure(ThresholdedLinearUnit)
 
 DotProductCausalAttention = layer_configure(
     DotProductCausalAttention, blacklist=['mode'])
-MemoryEfficientCausalAttention = layer_configure(
-    MemoryEfficientCausalAttention, blacklist=['mode'])
-TimeBinCausalAttention = layer_configure(
-    TimeBinCausalAttention, blacklist=['mode'])
-LSHCausalAttention = layer_configure(LSHCausalAttention, blacklist=['mode'])
-
 SelfAttention = layer_configure(SelfAttention, blacklist=['mode'])
 LSHSelfAttention = layer_configure(LSHSelfAttention, blacklist=['mode'])
 EncDecAttention = layer_configure(EncDecAttention, blacklist=['mode'])
