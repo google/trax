@@ -461,27 +461,30 @@ class Layer(object):
     """Computes shapes and dtypes this layer would produce in a forward pass.
 
     Args:
-      input_signature: A ShapeDtype instance (if this layer takes one input)
-          or a list/tuple of ShapeDtype instances; signatures of inputs.
+      input_signature: ShapeDtype instance (if this layer takes one input)
+          or list/tuple of ShapeDtype instances.
 
     Returns:
-      A tuple of (output, state).
+      Tuple of (output, state).
 
       The output part of the tuple is a ShapeDtype instance representing the
       shape and type of the output (if this layer has one output) or a tuple
       of ShapeDtype instances (if this layer has more than one output).
     """
     try:
-      # Beware: using an actual RNG (as opposed to this ShapeDtype stub) would
-      # cause a large number of dropout masks to be computed and permanently
-      # stored in global memory.
-      rng = ShapeDtype((2,), onp.uint32)
-      def call_on_input(x, weights, state, rng):
-        return self.forward_with_state(x, weights=weights, state=state, rng=rng)
+      # Note: By using rng_signature in place of an rng, we avoid computing and
+      # permanently storing in global memory a large number of dropout masks.
+      # TODO(jonni): Check if using an rng still carries this cost.
+      rng_signature = ShapeDtype((2,), onp.uint32)
       weight_signature = nested_map(signature, self.weights)
-      s = math.abstract_eval(call_on_input)(
-          input_signature, weight_signature, self.state, rng)
-      return s
+
+      # Wrap forward_with_state so as to use only positional args.
+      def _forward_with_state(x, weights, state, rng):
+        return self.forward_with_state(x, weights=weights, state=state, rng=rng)
+
+      forward_infer_shapes = math.abstract_eval(_forward_with_state)
+      return forward_infer_shapes(
+          input_signature, weight_signature, self.state, rng_signature)
     except Exception as e:
       name, trace = self._name, _short_traceback(skip=3)
       raise LayerError(name, '_forward_abstract', self._caller, input_signature,
