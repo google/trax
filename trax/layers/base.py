@@ -735,7 +735,11 @@ def _find_frame(frame):
   while frame.f_code.co_name in ['__init__', 'gin_wrapper', '_validate',
                                  '_validate_forward_inputs', '_init']:
     # We only skip __init__ in internal layers, return otherwise.
-    dirname = frame.f_code.co_filename.split('/')[-2]
+    try:
+      dirname = frame.f_code.co_filename.split('/')[-2]
+    except IndexError:
+      # Notebook cells have dummy filenames that do not contain any slashes
+      dirname = frame.f_code.co_filename
     if dirname != 'layers' and frame.f_code.co_name == '__init__':
       return frame
     # If we are in an init, move up.
