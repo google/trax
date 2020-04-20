@@ -1127,8 +1127,8 @@ def Reformer(input_vocab_size,
   return tl.Serial(
       # Input: encoder_side_tokens, decoder_side_tokens
       # Copy decoder tokens for use in loss.
-      tl.Branch([], [tl.Dup(),              # tok_e tok_d tok_d
-                     tl.PaddingMask(),
+      tl.Select([0, 1, 1]),                 # tok_e tok_d tok_d
+      tl.Branch([], [tl.PaddingMask(),
                      tl.Fn(lambda x: np.squeeze(x, (1, 2)), n_out=1)]),
       #                                     # tok_e mask  tok_d .....
 

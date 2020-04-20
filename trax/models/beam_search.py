@@ -459,11 +459,8 @@ class Search:
         eos_token=eos_id if eos_id is not None else -1,
         max_decode_len=max_decode_len + 1)  # Add 1 to account for start token.
 
-    if trax.math.device_count() == 1:
-      self._jit_beam_search = jax.jit(beam_search_partial, static_argnums=(2,))
-    else:
-      self._jit_beam_search = jax.pmap(beam_search_partial, axis_name='batch',
-                                       static_broadcasted_argnums=(2,))
+    self._jit_beam_search = jax.pmap(beam_search_partial, axis_name='batch',
+                                     static_broadcasted_argnums=(2,))
 
   def _get_initial_state(self, inputs, targets_prefix, batch_size):
     """Get initial state for beam search."""
@@ -511,8 +508,9 @@ class Search:
     def tokens_to_logits(flat_ids, flat_cache, rng):
       """Autoregressive decoding step: map from previous tokens to logits."""
       rng, subrng = jax.random.split(rng)
+      tiled_inputs = flatten_beam_dim(add_beam_dim(inputs, beam_size))
       flat_logits, new_flat_cache = self.model_infer.pure_fn(
-          flat_ids if inputs is None else (inputs, flat_ids),
+          flat_ids if tiled_inputs is None else (tiled_inputs, flat_ids),
           self.model_weights,
           flat_cache,
           rng)
