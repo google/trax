@@ -19,13 +19,20 @@
 from trax import layers as tl
 
 
-def Policy(policy_distribution, body=None, mode='train'):
+def Policy(policy_distribution, body=None, head_init_range=None, mode='train'):
   """Attaches a policy head to a model body."""
   if body is None:
     body = lambda mode: []
+
+  head_kwargs = {}
+  if head_init_range is not None:
+    head_kwargs['kernel_initializer'] = tl.RandomUniformInitializer(
+        lim=head_init_range
+    )
+
   return tl.Serial(
       body(mode=mode),
-      tl.Dense(policy_distribution.n_inputs),
+      tl.Dense(policy_distribution.n_inputs, **head_kwargs),
   )
 
 
