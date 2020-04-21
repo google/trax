@@ -70,7 +70,7 @@ class ActorCriticJointTest(absltest.TestCase):
   def test_jointppotrainer_cartpole(self):
     """Test-runs joint PPO on CartPole."""
 
-    task = rl_task.RLTask('CartPole-v0', initial_trajectories=100,
+    task = rl_task.RLTask('CartPole-v0', initial_trajectories=0,
                           max_steps=200)
     joint_model = functools.partial(
         models.PolicyAndValue,

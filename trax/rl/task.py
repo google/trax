@@ -276,11 +276,22 @@ class RLTask:
     self._dm_suite = dm_suite
     self._max_steps = max_steps
     self._gamma = gamma
+    self._initial_trajectories = initial_trajectories
     # TODO(lukaszkaiser): find a better way to pass initial trajectories,
     # whether they are an explicit list, a file, or a number of random ones.
     if isinstance(initial_trajectories, int):
-      initial_trajectories = [self.play(_random_policy(self.action_space))
-                              for _ in range(initial_trajectories)]
+      if self._initial_trajectories > 0:
+        initial_trajectories = [
+            self.play(_random_policy(self.action_space))
+            for _ in range(initial_trajectories)
+        ]
+      else:
+        initial_trajectories = [
+            # Whatever we gather here is intended to be removed
+            # in PolicyTrainer. Here we just gather some example inputs.
+            self.play(_random_policy(self.action_space), max_steps=2)
+        ]
+
     if isinstance(initial_trajectories, list):
       initial_trajectories = {0: initial_trajectories}
     self._timestep_to_np = timestep_to_np
@@ -369,9 +380,11 @@ class RLTask:
                   'all_epochs': list(self._trajectories.keys())}
     trainer_lib.pickle_to_file(dictionary, file_name, gzip=False)
 
-  def play(self, policy):
+  def play(self, policy, max_steps=None):
     """Play an episode in env taking actions according to the given policy."""
-    cur_trajectory = play(self._env, policy, self._dm_suite, self._max_steps)
+    if max_steps is None:
+      max_steps = self._max_steps
+    cur_trajectory = play(self._env, policy, self._dm_suite, max_steps)
     cur_trajectory.calculate_returns(self._gamma)
     return cur_trajectory
 
@@ -397,6 +410,11 @@ class RLTask:
     epoch_indices = epochs or all_epochs
     return sum([sum([len(traj) for traj in self._trajectories[ep]])
                 for ep in epoch_indices])
+
+  def remove_epoch(self, epoch):
+    """Useful when we need to remove an unwanted trajectory."""
+    if epoch in self._trajectories.keys():
+      self._trajectories.pop(epoch)
 
   def trajectory_stream(self, epochs=None, max_slice_length=None,
                         include_final_state=False,

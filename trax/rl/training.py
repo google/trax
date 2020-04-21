@@ -232,6 +232,10 @@ class PolicyTrainer(RLTrainer):
     self._policy_eval_model = policy_model(mode='eval')
     policy_batch = next(self.policy_batches_stream())
     self._policy_eval_model.init(policy_batch)
+    if self._task._initial_trajectories == 0:
+      self._task.remove_epoch(0)
+      self.task.collect_trajectories(
+          self.policy, self._collect_per_epoch, self._epoch)
 
   @property
   def policy_loss(self):
