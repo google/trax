@@ -1037,25 +1037,21 @@ def argsort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missin
   return array_creation.asarray(tf_ans, dtype=np.intp)
 
 
-@utils.np_doc(np.argmax)
-def argmax(a, axis=None):
+def _argminmax(fn, a, axis=None):
   a = array_creation.asarray(a)
-  a = atleast_1d(a)
   if axis is None:
     # When axis is None numpy flattens the array.
     a_t = tf.reshape(a.data, [-1])
   else:
-    a_t = a.data
-  return utils.tensor_to_ndarray(tf.argmax(input=a_t, axis=axis))
+    a_t = atleast_1d(a).data
+  return utils.tensor_to_ndarray(fn(input=a_t, axis=axis))
+
+
+@utils.np_doc(np.argmax)
+def argmax(a, axis=None):
+  return _argminmax(tf.argmax, a, axis)
 
 
 @utils.np_doc(np.argmin)
 def argmin(a, axis=None):
-  a = array_creation.asarray(a)
-  a = atleast_1d(a)
-  if axis is None:
-    # When axis is None numpy flattens the array.
-    a_t = tf.reshape(a.data, [-1])
-  else:
-    a_t = a.data
-  return utils.tensor_to_ndarray(tf.argmin(input=a_t, axis=axis))
+  return _argminmax(tf.argmin, a, axis)
