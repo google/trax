@@ -534,6 +534,8 @@ def Select(indices, n_in=None, name=None):
   """
   if n_in is None:
     n_in = max(indices) + 1
+  if name is None:
+    name = f'Select{indices}'.replace(' ', '')
 
   @base.layer(n_in=n_in, n_out=len(indices), name=name)
   def Selection(xs):  # pylint: disable=invalid-name

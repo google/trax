@@ -111,14 +111,16 @@ class Layer(object):
     self._jit_cache = {}
 
   def __repr__(self):
-    class_str = self._name
-    fields_str = 'in={},out={}'.format(self.n_in, self.n_out)
+    name_str = self._name
+    n_in, n_out = self.n_in, self.n_out
+    if n_in != 1: name_str += f'_in{n_in}'
+    if n_out != 1: name_str += f'_out{n_out}'
     objs = self.sublayers
     if objs:
-      objs_str = ', '.join(str(x) for x in objs)
-      return '{}{{{},sublayers=[{}]}}'.format(class_str, fields_str, objs_str)
+      objs_str = ' '.join(str(x) for x in objs)
+      return f'{name_str}[ {objs_str} ]'
     else:
-      return '{}{{{}}}'.format(class_str, fields_str)
+      return name_str
 
   def __call__(self, x, weights=None, state=None, rng=None, n_accelerators=0):
     """Makes Layer instances callable; for use in tests or interactive settings.
