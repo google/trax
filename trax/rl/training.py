@@ -130,6 +130,7 @@ class RLTrainer:
     for _ in range(n_epochs_to_run):
       self._epoch += 1
       cur_time = time.time()
+      cur_n_interactions = 0
       self.train_epoch()
       supervised.trainer_lib.log(
           'RL training took %.2f seconds.' % (time.time() - cur_time))
@@ -148,6 +149,11 @@ class RLTrainer:
         self._sw.scalar('rl/avg_return', avg_return, step=self._epoch)
         self._sw.scalar('rl/n_interactions', self.task.n_interactions(),
                         step=self._epoch)
+        self._sw.scalar('rl/n_interactions_per_second',
+                        (self.task.n_interactions() - cur_n_interactions)/ \
+                        (time.time() - cur_time),
+                        step=self._epoch)
+        cur_n_interactions = self.task.n_interactions()
         self._sw.scalar('rl/n_trajectories', self.task.n_trajectories(),
                         step=self._epoch)
         self._sw.flush()
