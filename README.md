@@ -89,5 +89,7 @@ problems with those, please report it and contribute a solution.
 We are still improving a few smaller parts of [layers](https://github.com/google/trax/tree/master/trax/layers),
 planning to update the [supervised](https://github.com/google/trax/tree/master/trax/supervised) API and
 heavily working on the [rl](https://github.com/google/trax/tree/master/trax/rl) part,
-so expect these parts to change over the next few months. We are also working hard
-to improve our documentation and examples and we welcome help with that.
+so expect these parts to change over the next few months.
+
+We are also working hard to improve our documentation and examples and we
+welcome help with that.
