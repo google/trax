@@ -73,40 +73,6 @@ def any(a, axis=None, keepdims=None):  # pylint: disable=redefined-builtin
       tf.reduce_any(input_tensor=a.data, axis=axis, keepdims=keepdims))
 
 
-def clip(a, a_min=None, a_max=None):
-  """Clips array values to lie within a given range.
-
-  Uses `tf.clip_by_value`.
-
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can
-      be converted to a Tensor using `tf.convert_to_tensor`.
-    a_min: array_like. Must be a scalar or a shape that can be broadcast to
-      `a.shape`. At least one of `a_min` or `a_max` should be non-None.
-    a_max: array_like. Must be a scalar or a shape that can be broadcast to
-      `a.shape`. At least one of `a_min` or `a_max` should be non-None.
-
-  Returns:
-    An ndarray with trimmed values with the same shape and dtype as `a`.
-
-  Raises:
-    ValueError: if both a_min and a_max are None.
-  """
-  if a_min is None and a_max is None:
-    raise ValueError('Both a_min and a_max cannot be None.')
-  a = array_creation.asarray(a)
-  # Unlike np.clip, tf.clip_by_value requires both min and max values to be
-  # specified so we set them to the smallest/largest values of the array dtype.
-  if a_min is None:
-    a_min = np.iinfo(a.dtype).min
-  if a_max is None:
-    a_max = np.iinfo(a.dtype).max
-  a_min = array_creation.asarray(a_min, dtype=a.dtype)
-  a_max = array_creation.asarray(a_max, dtype=a.dtype)
-  return utils.tensor_to_ndarray(
-      tf.clip_by_value(a.data, a_min.data, a_max.data))
-
-
 def compress(condition, a, axis=None):
   """Compresses `a` by selecting values along `axis` with `condition` true.
 

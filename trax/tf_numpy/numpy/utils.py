@@ -298,3 +298,20 @@ def logical_or(a, b):
 def getitem(a, slice_spec):
   """A version of __getitem__ that eagerly evaluates if possible."""
   return _maybe_static(a)[slice_spec]
+
+
+def tf_broadcast(*args):
+  """Broadcast tensors.
+
+  Args:
+    *args: a list of tensors whose shapes are broadcastable against each other.
+
+  Returns:
+    Tensors broadcasted to the common shape.
+  """
+  if len(args) <= 1:
+    return args
+  sh = tf.shape(args[0])
+  for arg in args[1:]:
+    sh = tf.broadcast_dynamic_shape(sh, tf.shape(arg))
+  return [tf.broadcast_to(arg, sh) for arg in args]

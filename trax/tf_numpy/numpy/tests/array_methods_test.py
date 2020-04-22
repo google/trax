@@ -72,7 +72,7 @@ class ArrayMethodsTest(tf.test.TestCase):
       for fn in self.array_transforms:
         arr = fn(arr)
         self.match(
-            array_methods.clip(arr, *args, **kwargs),
+            math.clip(arr, *args, **kwargs),
             np.clip(arr, *args, **kwargs),
             check_dtype=check_dtype)
 

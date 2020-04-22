@@ -155,6 +155,20 @@ def minimum(x1, x2):
   return _bin_op(min_or_and, x1, x2)
 
 
+@utils.np_doc(np.clip)
+def clip(a, a_min, a_max):  # pylint: disable=missing-docstring
+  if a_min is None and a_max is None:
+    raise ValueError('Not more than one of `a_min` and `a_max` may be `None`.')
+  if a_min is None:
+    return minimum(a, a_max)
+  elif a_max is None:
+    return maximum(a, a_min)
+  else:
+    a, a_min, a_max = array_creation._promote_dtype(a, a_min, a_max)  # pylint: disable=protected-access
+    return utils.tensor_to_ndarray(
+        tf.clip_by_value(*utils.tf_broadcast(a.data, a_min.data, a_max.data)))
+
+
 @utils.np_doc(np.matmul)
 def matmul(x1, x2):  # pylint: disable=missing-docstring
   def f(x1, x2):
@@ -222,13 +236,7 @@ def cross(a, b, axisa=-1, axisb=-1, axisc=-1, axis=None):  # pylint: disable=mis
                         lambda: a)
     a = maybe_pad_0(a, a_dim)
     b = maybe_pad_0(b, b_dim)
-    def tf_cross(a, b):
-      # A version of tf.cross that supports broadcasting
-      sh = tf.broadcast_dynamic_shape(tf.shape(a), tf.shape(b))
-      a = tf.broadcast_to(a, sh)
-      b = tf.broadcast_to(b, sh)
-      return tf.linalg.cross(a, b)
-    c = tf_cross(a, b)
+    c = tf.linalg.cross(*utils.tf_broadcast(a, b))
     if axis_c < 0:
       axis_c = utils.add(axis_c, tf.rank(c))
     def move_last_to_axis(a, axis):

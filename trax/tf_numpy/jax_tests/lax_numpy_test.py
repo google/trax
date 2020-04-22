@@ -961,7 +961,6 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
                            (-onp.ones(1), None),
                            (None, onp.ones(1)),
                            (-onp.ones(1), onp.ones(1))]))
-  @disable
   def testClipStaticBounds(self, shape, dtype, a_min, a_max, rng_factory):
     rng = rng_factory()
     onp_fun = lambda x: onp.clip(x, a_min=a_min, a_max=a_max)
@@ -969,7 +968,17 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
     args_maker = lambda: [rng(shape, dtype)]
     # TODO(phawkins): the promotion behavior changed in Numpy 1.17.
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=False)
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+    is_float32_numpy_scalar = (dtype == onp.float32 and
+                               shape == jtu.NUMPY_SCALAR_SHAPE)
+    # Turns check_dtypes off if is_float32_numpy_scalar is True because there is
+    # a weird promotion inconsistency in numpy:
+    #   np.result_type(np.float32(1.2), 1)
+    #   >> float64
+    #   np.result_type(np.float32, 1)
+    #   >> float32
+    self._CompileAndCheck(lnp_fun, args_maker,
+                          check_dtypes=not is_float32_numpy_scalar,
+                          check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_{}_decimals={}".format(
