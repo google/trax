@@ -450,8 +450,11 @@ class RLTask:
       # epoch.
       epoch_indices = epochs or all_epochs
       epoch_indices = [
+          # So -1 means "last".
           ep % max_epoch for ep in epoch_indices
-      ]  # So -1 means "last".
+      ]
+      # Remove duplicates.
+      epoch_indices = list(set(epoch_indices))
 
       # Sample an epoch proportionally to number of slices in each epoch.
       if len(epoch_indices) == 1:  # Skip this step if there's just 1 epoch.

@@ -48,6 +48,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
                value_eval_steps=1,
                n_shared_layers=0,
                added_policy_slice_length=0,
+               n_replay_epochs=1,
                **kwargs):  # Arguments of PolicyTrainer come here.
     """Configures the actor-critic Trainer.
 
@@ -70,6 +71,8 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
         is useful for TD calculations and only affect the length
         of elements produced for policy batches; value batches
         have maximum length set by max_slice_length in **kwargs
+     n_replay_epochs: how many last epochs to take into the replay buffer;
+        only makes sense for off-policy algorithms
      **kwargs: arguments for PolicyTrainer super-class
     """
     self._n_shared_layers = n_shared_layers
@@ -84,6 +87,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
     self._task = task
     self._max_slice_length = kwargs.get('max_slice_length', 1)
     self._added_policy_slice_length = added_policy_slice_length
+    self._n_replay_epochs = n_replay_epochs
 
     # Initialize training of the value function.
     value_output_dir = kwargs.get('output_dir', None)
@@ -109,15 +113,20 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
     # Initialize policy training.
     super(ActorCriticTrainer, self).__init__(task, **kwargs)
 
+  @property
+  def _replay_epochs(self):
+    if self.on_policy:
+      assert self._n_replay_epochs == 1, (
+          'Non-unit replay buffer size only makes sense for off-policy '
+          'algorithms.'
+      )
+    return [-(ep + 1) for ep in range(self._n_replay_epochs)]
+
   def value_batches_stream(self):
     """Use the RLTask self._task to create inputs to the value model."""
-    if self.on_policy:
-      epochs = [-1]
-    else:
-      epochs = None
     for np_trajectory in self._task.trajectory_batch_stream(
         self._value_batch_size, max_slice_length=self._max_slice_length,
-        epochs=epochs):
+        epochs=self._replay_epochs):
       # Insert an extra depth dimension, so the target shape is consistent with
       # the network output shape.
       yield (np_trajectory.observations,         # Inputs to the value model.
@@ -141,15 +150,11 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
 
   def policy_batches_stream(self):
     """Use the RLTask self._task to create inputs to the policy model."""
-    if self.on_policy:
-      epochs = [-1]
-    else:
-      epochs = None
     # Maximum slice length for policy is max_slice_len + the added policy len.
     max_slice_length = self._max_slice_length + self._added_policy_slice_length
     for np_trajectory in self._task.trajectory_batch_stream(
         self._policy_batch_size,
-        epochs=epochs,
+        epochs=self._replay_epochs,
         max_slice_length=max_slice_length,
         include_final_state=False):
       value_model = self._value_eval_model
