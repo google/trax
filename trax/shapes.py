@@ -19,7 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as onp
+import numpy as np
 import tensorflow as tf
 
 
@@ -30,7 +30,7 @@ class ShapeDtype(object):
   """
   __slots__ = ['shape', 'dtype']
 
-  def __init__(self, shape, dtype=onp.float32):
+  def __init__(self, shape, dtype=np.float32):
     """Creates a `ShapeDtype` instance, with canonicalized `shape` and `dtype`.
 
     Args:

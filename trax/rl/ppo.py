@@ -50,8 +50,8 @@ import functools
 import itertools
 
 import jax
-from jax import numpy as np
-import numpy as onp
+from jax import numpy as jnp
+import numpy as np
 
 
 def rewards_to_go(rewards, mask, gamma):
@@ -63,12 +63,12 @@ def rewards_to_go(rewards, mask, gamma):
   r2g_t = \sum_{l=0}^{\infty} (\gamma^{l} * reward_{t+l})
 
   Args:
-    rewards: np.ndarray of shape (B, T) of rewards.
-    mask: np.ndarray of shape (B, T) of mask for the rewards.
+    rewards: jnp.ndarray of shape (B, T) of rewards.
+    mask: jnp.ndarray of shape (B, T) of mask for the rewards.
     gamma: float, discount factor.
 
   Returns:
-    rewards to go, np.ndarray of shape (B, T).
+    rewards to go, jnp.ndarray of shape (B, T).
   """
   B, T = rewards.shape  # pylint: disable=invalid-name,unused-variable
 
@@ -76,19 +76,19 @@ def rewards_to_go(rewards, mask, gamma):
 
   # The lax.scan version of this is slow, but we still show it here for
   # completeness.
-  #   rewards_rev = np.flip(masked_rewards, axis=1)  # (B, T) flipped on time.
-  #   rrt = np.transpose(rewards_rev)  # (T, B) transpose to scan over time.
+  #   rewards_rev = jnp.flip(masked_rewards, axis=1)  # (B, T) flipped on time.
+  #   rrt = jnp.transpose(rewards_rev)  # (T, B) transpose to scan over time.
   #
   #   def discounting_add(carry, reward):
   #     x = reward + (gamma * carry)
   #     return x, x
   #
   #   _, ys = lax.scan(discounting_add,
-  #                    np.zeros_like(rrt[0], dtype=np.float32),
-  #                    rrt.astype(np.float32))
+  #                    jnp.zeros_like(rrt[0], dtype=jnp.float32),
+  #                    rrt.astype(jnp.float32))
   #
   #   # ys is (T, B) and T is in reverse order.
-  #   return np.flip(np.transpose(ys), axis=1)
+  #   return jnp.flip(jnp.transpose(ys), axis=1)
 
   # We use the following recurrence relation, derived from the equation above:
   #
@@ -118,7 +118,7 @@ def rewards_to_go(rewards, mask, gamma):
 
   # First we stack them in the correct way to make it (B, T), but these are
   # still from newest (T-1) to oldest (0), so then we flip it on time axis.
-  return np.flip(np.stack(r2gs, axis=1), axis=1)
+  return jnp.flip(jnp.stack(r2gs, axis=1), axis=1)
 
 
 @jax.jit
@@ -131,12 +131,12 @@ def value_loss_given_predictions(value_prediction,
   """Computes the value loss given the prediction of the value function.
 
   Args:
-    value_prediction: np.ndarray of shape (B, T+1, 1)
-    rewards: np.ndarray of shape (B, T) of rewards.
-    reward_mask: np.ndarray of shape (B, T), the mask over rewards.
+    value_prediction: jnp.ndarray of shape (B, T+1, 1)
+    rewards: jnp.ndarray of shape (B, T) of rewards.
+    reward_mask: jnp.ndarray of shape (B, T), the mask over rewards.
     gamma: float, discount factor.
     epsilon: float, clip-fraction, used if value_value_prediction_old isn't None
-    value_prediction_old: np.ndarray of shape (B, T+1, 1) of value predictions
+    value_prediction_old: jnp.ndarray of shape (B, T+1, 1) of value predictions
       using the old parameters. If provided, we incorporate this in the loss as
       well. This is from the OpenAI baselines implementation.
 
@@ -158,13 +158,13 @@ def value_loss_given_predictions(value_prediction,
   if value_prediction_old is not None:
     value_prediction_old = value_prediction_old[:, :-1] * reward_mask  # (B, T)
 
-    v_clipped = value_prediction_old + np.clip(
+    v_clipped = value_prediction_old + jnp.clip(
         value_prediction - value_prediction_old, -epsilon, epsilon)
     v_clipped_loss = (v_clipped - r2g)**2
-    loss = np.maximum(v_clipped_loss, loss)
+    loss = jnp.maximum(v_clipped_loss, loss)
 
   # Take an average on only the points where mask != 0.
-  value_loss = np.sum(loss) / np.sum(reward_mask)
+  value_loss = jnp.sum(loss) / jnp.sum(reward_mask)
 
   summaries = {
       'value_loss': value_loss,
@@ -210,8 +210,8 @@ def gae_advantages(td_deltas, mask, lambda_, gamma):
   Internally we just call rewards_to_go, since it is the same computation.
 
   Args:
-    td_deltas: np.ndarray of shape (B, T) of one step TD-residuals.
-    mask: np.ndarray of shape (B, T) of mask for the residuals. It maybe the
+    td_deltas: jnp.ndarray of shape (B, T) of one step TD-residuals.
+    mask: jnp.ndarray of shape (B, T) of mask for the residuals. It maybe the
       case that the `td_deltas` are already masked correctly since they are
       produced by `deltas(...)`
     lambda_: float, lambda parameter for GAE estimators.
@@ -239,9 +239,10 @@ def chosen_probabs(probab_actions, actions):
   """
   B, T, C = actions.shape  # pylint: disable=invalid-name
   assert (B, T, C) == probab_actions.shape[:3]
-  return probab_actions[
-      np.arange(B)[:, None, None], np.arange(T)[:, None], np.arange(C), actions
-  ]
+  return probab_actions[jnp.arange(B)[:, None, None],
+                        jnp.arange(T)[:, None],
+                        jnp.arange(C),
+                        actions]
 
 
 def compute_probab_ratios(p_new, p_old, actions, action_mask):
@@ -273,18 +274,18 @@ def compute_probab_ratios(p_new, p_old, actions, action_mask):
   assert (B, T, C) == logp_new.shape
 
   # Since these are log-probabilities, we just subtract them.
-  probab_ratios = np.exp(logp_new - logp_old) * action_mask
+  probab_ratios = jnp.exp(logp_new - logp_old) * action_mask
   assert (B, T, C) == probab_ratios.shape
   return probab_ratios
 
 
 def clipped_probab_ratios(probab_ratios, epsilon):
-  return np.clip(probab_ratios, 1 - epsilon, 1 + epsilon)
+  return jnp.clip(probab_ratios, 1 - epsilon, 1 + epsilon)
 
 
 def clipped_objective(probab_ratios, advantages, action_mask, epsilon):
   advantages = advantages
-  return np.minimum(
+  return jnp.minimum(
       probab_ratios * advantages,
       clipped_probab_ratios(probab_ratios, epsilon=epsilon) *
       advantages) * action_mask
@@ -325,8 +326,8 @@ def ppo_loss_given_predictions(log_probab_actions_new,
       td_deltas, reward_mask, lambda_=lambda_, gamma=gamma)
 
   # Normalize the advantages.
-  advantage_mean = np.mean(advantages)
-  advantage_std = np.std(advantages)
+  advantage_mean = jnp.mean(advantages)
+  advantage_std = jnp.std(advantages)
   advantages = (advantages - advantage_mean) / (advantage_std + 1e-8)
 
   # Broadcast advantages and reward action over controls.
@@ -344,7 +345,7 @@ def ppo_loss_given_predictions(log_probab_actions_new,
   assert (B, T, C) == objective.shape
 
   # ()
-  average_objective = np.sum(objective) / np.sum(reward_mask)
+  average_objective = jnp.sum(objective) / jnp.sum(reward_mask)
 
   # Loss is negative objective.
   ppo_loss = -average_objective
@@ -424,7 +425,7 @@ def combined_loss(new_weights,
 
   # TODO(pkozakowski): Pass the actual actions here, to enable autoregressive
   # action sampling.
-  dummy_actions = np.zeros_like(padded_actions)
+  dummy_actions = jnp.zeros_like(padded_actions)
   (log_probab_actions_new, value_predictions_new) = (
       policy_and_value_net_apply(
           (padded_observations, dummy_actions),
@@ -508,7 +509,7 @@ def approximate_kl(log_prob_new, log_prob_old, mask):
   # Mask out the irrelevant part.
   diff *= mask[:, :, None, None]  # make mask (B, T, 1, 1)
   # Average on non-masked part.
-  return np.sum(diff) / np.sum(mask)
+  return jnp.sum(diff) / jnp.sum(mask)
 
 
 def masked_entropy(log_probs, mask):
@@ -523,19 +524,19 @@ def masked_entropy(log_probs, mask):
   """
   # Mask out the irrelevant part.
   lp = log_probs * mask[:, :, None, None]  # make mask (B, T, 1, 1)
-  p = np.exp(lp) * mask[:, :, None, None]  # (B, T, 1, 1)
+  p = jnp.exp(lp) * mask[:, :, None, None]  # (B, T, 1, 1)
   # Average on non-masked part and take negative.
-  return -(np.sum(lp * p) / np.sum(mask))
+  return -(jnp.sum(lp * p) / jnp.sum(mask))
 
 
 def shuffled_index_batches(dataset_size, batch_size):
   """Generates batches of shuffled indices over a dataset."""
   def shuffled_indices():
     while True:
-      perm = onp.random.permutation(dataset_size)
+      perm = np.random.permutation(dataset_size)
       for x in perm:
         yield x
 
   indices = shuffled_indices()
   while True:
-    yield onp.array(list(itertools.islice(indices, int(batch_size))))
+    yield np.array(list(itertools.islice(indices, int(batch_size))))

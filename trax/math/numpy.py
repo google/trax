@@ -19,14 +19,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as onp
+import numpy as np
 
 
 NUMPY_BACKEND = {
     'name': 'numpy',
-    'np': onp,
+    'np': np,
     'jit': lambda f: f,
     'random_get_prng': lambda seed: None,
     'random_split': lambda prng, num=2: (None,) * num,
-    'expit': lambda x: 1. / (1. + onp.exp(-x)),
+    'expit': lambda x: 1. / (1. + np.exp(-x)),
 }

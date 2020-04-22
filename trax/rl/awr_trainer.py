@@ -22,10 +22,10 @@ import time
 from absl import logging
 from jax.api import grad
 from jax.api import jit
-import numpy as onp
+import numpy as np
 from tensor2tensor.envs import env_problem
 from trax import jaxboard
-from trax.math import numpy as np
+from trax.math import numpy as jnp
 from trax.rl import awr_utils
 from trax.rl import policy_based_trainer
 from trax.rl import policy_based_utils
@@ -178,11 +178,11 @@ class AwrTrainer(policy_based_trainer.PolicyBasedTrainer):
     for traj in trajs:
       _ = self._replay_buffer.store(traj)
 
-    rewards = np.array([np.sum(traj[2]) for traj in trajs_np])
-    avg_reward = np.mean(rewards)
-    std_reward = np.std(rewards)
-    max_reward = np.max(rewards)
-    min_reward = np.min(rewards)
+    rewards = jnp.array([jnp.sum(traj[2]) for traj in trajs_np])
+    avg_reward = jnp.mean(rewards)
+    std_reward = jnp.std(rewards)
+    max_reward = jnp.max(rewards)
+    min_reward = jnp.min(rewards)
 
     self._log('train', 'train/reward_mean_truncated', avg_reward)
     if evaluate and not self._separate_eval and self._should_write_summaries:
@@ -253,12 +253,12 @@ class AwrTrainer(policy_based_trainer.PolicyBasedTrainer):
 
     # Shapes:
     # lengths = (B,)
-    lengths = np.sum(padded_rewards_mask, axis=1, dtype=np.int32)
+    lengths = jnp.sum(padded_rewards_mask, axis=1, dtype=jnp.int32)
     self._check_shapes('lengths', '(batch,)', lengths, (batch,))
 
     # TODO(pkozakowski): Pass the actual actions here, to enable autoregressive
     # action sampling.
-    dummy_actions = np.zeros(
+    dummy_actions = jnp.zeros(
         (batch, t_final + 1) + self._action_shape,
         self._action_dtype,
     )
@@ -295,7 +295,7 @@ class AwrTrainer(policy_based_trainer.PolicyBasedTrainer):
 
     # pad an extra 0 for each to match lengths of value predictions.
     list_target_values = [
-        onp.pad(l, (0, 1), 'constant') for l in list_td_lambda_returns
+        np.pad(l, (0, 1), 'constant') for l in list_td_lambda_returns
     ]
 
     if batch != len(list_target_values):
@@ -303,7 +303,7 @@ class AwrTrainer(policy_based_trainer.PolicyBasedTrainer):
                        f'{batch} vs {len(list_target_values)}')
 
     # Shape: (len(idx),)
-    target_values = onp.concatenate(list_target_values)
+    target_values = np.concatenate(list_target_values)
     self._check_shapes('target_values', '(len(idx),)',
                        target_values, (len(idx),))
 
@@ -325,8 +325,8 @@ class AwrTrainer(policy_based_trainer.PolicyBasedTrainer):
     del adv_weights_min, adv_weights_max, adv_weights_mean
 
     combined_steps = int(
-        np.ceil(self._optimization_steps * new_sample_count /
-                self._num_samples_to_collect))
+        jnp.ceil(self._optimization_steps * new_sample_count /
+                 self._num_samples_to_collect))
     optimization_start_time = time.time()
     combined_losses = self._update_combined(combined_steps, valid_idx,
                                             target_values, adv_weights)
@@ -367,8 +367,8 @@ class AwrTrainer(policy_based_trainer.PolicyBasedTrainer):
 
   def flatten_vals(self, value_predictions_traj, padded_observations_mask):
     batch = len(padded_observations_mask)
-    lens = np.sum(padded_observations_mask, axis=1)
-    return np.concatenate(
+    lens = jnp.sum(padded_observations_mask, axis=1)
+    return jnp.concatenate(
         [value_predictions_traj[b][:int(lens[b])] for b in range(batch)])
 
   def _step_combined(self, observations, actions, critic_target,
@@ -454,37 +454,37 @@ class AwrTrainer(policy_based_trainer.PolicyBasedTrainer):
     adv = new_vals - vals
 
     valid_adv = adv[valid_mask]
-    adv_mean = np.mean(valid_adv)
-    adv_std = np.std(valid_adv)
+    adv_mean = jnp.mean(valid_adv)
+    adv_std = jnp.std(valid_adv)
 
     norm_adv = (adv - adv_mean) / (adv_std + self.ADV_EPS)
     return adv, norm_adv, adv_mean, adv_std
 
   def _calc_adv_weights(self, adv, valid_mask):
-    weights = np.exp(adv / self._temperature)
+    weights = jnp.exp(adv / self._temperature)
 
     valid_weights = weights[valid_mask]
-    weights_mean = np.mean(valid_weights)
-    weights_min = np.min(valid_weights)
-    weights_max = np.max(valid_weights)
+    weights_mean = jnp.mean(valid_weights)
+    weights_min = jnp.min(valid_weights)
+    weights_max = jnp.max(valid_weights)
 
-    weights = np.minimum(weights, self._weight_clip)
+    weights = jnp.minimum(weights, self._weight_clip)
     return weights, weights_mean, weights_min, weights_max
 
   def _update_combined(self, steps, valid_idx, target_val_preds, adv_weights):
     num_idx = valid_idx.shape[0]
-    steps_per_shuffle = int(onp.ceil(num_idx / self._optimization_batch_size))
+    steps_per_shuffle = int(np.ceil(num_idx / self._optimization_batch_size))
     losses = None
 
     for b in range(steps):
       if b % steps_per_shuffle == 0:
-        onp.random.shuffle(valid_idx)
+        np.random.shuffle(valid_idx)
 
       batch_idx_beg = b * self._optimization_batch_size
       batch_idx_end = batch_idx_beg + self._optimization_batch_size
-      batch_idx = onp.array(
-          range(batch_idx_beg, batch_idx_end), dtype=onp.int32)
-      batch_idx = onp.mod(batch_idx, num_idx)
+      batch_idx = np.array(
+          range(batch_idx_beg, batch_idx_end), dtype=np.int32)
+      batch_idx = np.mod(batch_idx, num_idx)
 
       batch = valid_idx[batch_idx]
       critic_batch_vals = target_val_preds[batch[:, 1]]
@@ -531,7 +531,7 @@ def combined_loss(new_weights,
   #  the observation as is, for transformer like policies, we should also get
   #  all the earlier observations as well, and then the extra dimension will
   #  just be time. For now we reshape as (batch, 1, *obs_shape).
-  observations = np.expand_dims(observations, axis=1)
+  observations = jnp.expand_dims(observations, axis=1)
 
   (log_probab_actions_new, value_predictions_new, state_new, unused_rng_new) = (
       policy_based_utils.run_policy_all_timesteps(
@@ -564,8 +564,8 @@ def entropy(log_probab_actions_new):
   """Entropy."""
   # log_probab_actions_new's shape is (B, 1, A)
   lp = log_probab_actions_new
-  p = np.exp(lp)
-  return -np.mean(lp * p)
+  p = jnp.exp(lp)
+  return -jnp.mean(lp * p)
 
 
 @jit
@@ -576,13 +576,13 @@ def actor_loss(actions,
   """Actor loss."""
 
   # log_probab_actions_new's shape is (AB, 1, #C, #A), AB is actor batch.
-  lp = np.squeeze(log_probab_actions_new, axis=1)
+  lp = jnp.squeeze(log_probab_actions_new, axis=1)
   AB, NC = actions.shape  # pylint: disable=invalid-name
-  log_probs = lp[np.arange(AB)[:, None], np.arange(NC)[None, :], actions]
+  log_probs = lp[jnp.arange(AB)[:, None], jnp.arange(NC)[None, :], actions]
 
   # TODO(afrozm): Clarify this.
   #   log_probs are shaped (AB, #C), however advantage_weights are (AB,)
-  return -1.0 * np.mean(log_probs * advantage_weights[:, None]), state
+  return -1.0 * jnp.mean(log_probs * advantage_weights[:, None]), state
 
 
 @jit
@@ -601,7 +601,7 @@ def critic_loss(observations,
   # TODO(afrozm): In the reference implementation, they pass the target through
   #  a trained normalizer before subtracting.
 
-  loss = 0.5 * np.mean(np.square(target_values - value_predictions_new))
+  loss = 0.5 * jnp.mean(jnp.square(target_values - value_predictions_new))
   return loss, state
 
 

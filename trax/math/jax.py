@@ -24,7 +24,7 @@ from jax import lax
 from jax import random as jax_random
 import jax.numpy as jnp
 import jax.scipy.special as jax_special
-import numpy as onp
+import numpy as np
 import tensorflow_datasets as tfds
 
 from trax.shapes import signature
@@ -178,7 +178,7 @@ def jax_abstract_eval(f):
 
 
 # The default value of dtype is different from jax_random.randint
-def jax_randint(key, shape, minval, maxval, dtype=onp.int32):
+def jax_randint(key, shape, minval, maxval, dtype=np.int32):
   """Sample uniform random values in [minval, maxval) with given shape/dtype.
 
   Args:

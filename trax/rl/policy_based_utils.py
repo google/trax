@@ -24,7 +24,7 @@ import time
 from absl import logging
 import gym
 from jax import lax
-import numpy as onp
+import numpy as np
 from tensor2tensor.envs import env_problem
 from tensor2tensor.envs import env_problem_utils
 import tensorflow as tf
@@ -32,7 +32,7 @@ import tensorflow as tf
 from trax import history as trax_history
 from trax import layers as tl
 from trax import utils
-from trax.math import numpy as np
+from trax.math import numpy as jnp
 from trax.math import random as trax_random
 from trax.rl import serialization_utils
 
@@ -214,7 +214,7 @@ def collect_trajectories(env,
     actions = tl.gumbel_sample(log_probs, temperature)
     if (isinstance(env.action_space, gym.spaces.Discrete) and
         (actions.shape[1] == 1)):
-      actions = onp.squeeze(actions, axis=1)
+      actions = np.squeeze(actions, axis=1)
 
     # Step through the env.
     t1 = time.time()
@@ -230,7 +230,7 @@ def collect_trajectories(env,
 
     # Count the number of done trajectories, the others could just have been
     # truncated.
-    num_done_trajectories += onp.sum(dones)
+    num_done_trajectories += np.sum(dones)
 
     # Get the indices where we are done ...
     done_idxs = env_problem_utils.done_indices(dones)
@@ -276,18 +276,18 @@ def collect_trajectories(env,
 
 
 # This function can probably be simplified, ask how?
-# Can we do something much simpler than lax.pad, maybe np.pad?
+# Can we do something much simpler than lax.pad, maybe jnp.pad?
 # Others?
 
 
 def get_padding_value(dtype):
   """Returns the padding value given a dtype."""
   padding_value = None
-  if dtype == np.uint8:
-    padding_value = np.uint8(0)
-  elif dtype == np.uint16:
-    padding_value = np.uint16(0)
-  elif dtype == np.float32 or dtype == np.float64:
+  if dtype == jnp.uint8:
+    padding_value = jnp.uint8(0)
+  elif dtype == jnp.uint16:
+    padding_value = jnp.uint16(0)
+  elif dtype == jnp.float32 or dtype == jnp.float64:
     padding_value = 0.0
   else:
     padding_value = 0
@@ -295,7 +295,7 @@ def get_padding_value(dtype):
   return padding_value
 
 
-# TODO(afrozm): Use np.pad instead and make jittable?
+# TODO(afrozm): Use jnp.pad instead and make jittable?
 def pad_trajectories(trajectories, boundary=20):
   """Pad trajectories to a bucket length that is a multiple of boundary.
 
@@ -320,7 +320,7 @@ def pad_trajectories(trajectories, boundary=20):
 
   # t_max is rounded to the next multiple of `boundary`
   boundary = int(boundary)
-  bucket_length = boundary * int(np.ceil(float(t_max) / boundary))
+  bucket_length = boundary * int(jnp.ceil(float(t_max) / boundary))
 
   # So all obs will be padded to t_max + 1 and actions and rewards to t_max.
   padded_observations = []
@@ -338,7 +338,7 @@ def pad_trajectories(trajectories, boundary=20):
       padded_observations.append(o)
       padded_actions.append(a)
       padded_rewards.append(r)
-      reward_masks.append(onp.ones_like(r, dtype=np.int32))
+      reward_masks.append(np.ones_like(r, dtype=jnp.int32))
       if i:
         for k, v in i.items():
           padded_infos[k].append(v)
@@ -365,7 +365,7 @@ def pad_trajectories(trajectories, boundary=20):
     padded_rewards.append(padded_reward)
 
     # Also create the mask to use later.
-    reward_mask = onp.ones_like(r, dtype=np.int64)
+    reward_mask = np.ones_like(r, dtype=jnp.int64)
     reward_masks.append(lax.pad(reward_mask, 0, padding_config))
 
     if i:
@@ -377,10 +377,10 @@ def pad_trajectories(trajectories, boundary=20):
   # Now stack these padded_infos if they exist.
   stacked_padded_infos = None
   if padded_infos:
-    stacked_padded_infos = {k: np.stack(v) for k, v in padded_infos.items()}
+    stacked_padded_infos = {k: jnp.stack(v) for k, v in padded_infos.items()}
 
-  return padded_lengths, np.stack(reward_masks), np.stack(
-      padded_observations), np.stack(padded_actions), np.stack(
+  return padded_lengths, jnp.stack(reward_masks), jnp.stack(
+      padded_observations), jnp.stack(padded_actions), jnp.stack(
           padded_rewards), stacked_padded_infos
 
 
@@ -528,7 +528,7 @@ def run_policy_all_timesteps(
   # TODO(pkozakowski): Pass the actual actions here, to enable autoregressive
   # action sampling.
   (B, T_plus_1) = observations.shape[:2]  # pylint: disable=invalid-name
-  dummy_actions = onp.zeros(
+  dummy_actions = np.zeros(
       (B, T_plus_1 - 1) + action_space.shape, dtype=action_space.dtype
   )
   policy_input = (observations, dummy_actions)
@@ -562,6 +562,6 @@ def run_policy(
   # time-step.
   (B, unused_T_plus_1) = observations.shape[:2]  # pylint: disable=invalid-name
   index = lengths - 1  # Since we want to index using lengths.
-  log_probs = log_probs[np.arange(B), index]
-  value_preds = value_preds[np.arange(B), index]
+  log_probs = log_probs[jnp.arange(B), index]
+  value_preds = value_preds[jnp.arange(B), index]
   return (log_probs, value_preds, state, rng)

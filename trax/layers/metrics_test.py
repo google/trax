@@ -17,7 +17,7 @@
 """Tests for metrics layers."""
 
 from absl.testing import absltest
-import numpy as onp
+import numpy as np
 from trax.layers import base
 from trax.layers import metrics
 from trax.shapes import ShapeDtype
@@ -45,31 +45,31 @@ class MetricsLayerTest(absltest.TestCase):
     self.assertEqual(result_shape, ())
 
   def test_weighted_mean_semantics(self):
-    inputs = onp.array([1, 2, 3], dtype=onp.float32)
-    weights1 = onp.array([1, 1, 1], dtype=onp.float32)
+    inputs = np.array([1, 2, 3], dtype=np.float32)
+    weights1 = np.array([1, 1, 1], dtype=np.float32)
     layer = metrics._WeightedMean()
     full_signature = (signature(inputs), signature(weights1))
     layer.init(full_signature)
     mean1 = layer((inputs, weights1))
-    onp.testing.assert_allclose(mean1, 2.0)
-    weights2 = onp.array([0, 0, 1], dtype=onp.float32)
+    np.testing.assert_allclose(mean1, 2.0)
+    weights2 = np.array([0, 0, 1], dtype=np.float32)
     mean2 = layer((inputs, weights2))
-    onp.testing.assert_allclose(mean2, 3.0)
-    weights3 = onp.array([1, 0, 0], dtype=onp.float32)
+    np.testing.assert_allclose(mean2, 3.0)
+    weights3 = np.array([1, 0, 0], dtype=np.float32)
     mean3 = layer((inputs, weights3))
-    onp.testing.assert_allclose(mean3, 1.0)
+    np.testing.assert_allclose(mean3, 1.0)
 
   def test_weighted_sequence_mean_semantics(self):
-    inputs = onp.array([[1, 1, 1], [1, 1, 0]], dtype=onp.float32)
-    weights1 = onp.array([1, 1, 1], dtype=onp.float32)
+    inputs = np.array([[1, 1, 1], [1, 1, 0]], dtype=np.float32)
+    weights1 = np.array([1, 1, 1], dtype=np.float32)
     layer = metrics._WeightedSequenceMean()
     full_signature = (signature(inputs), signature(weights1))
     layer.init(full_signature)
     mean1 = layer((inputs, weights1))
-    onp.testing.assert_allclose(mean1, 0.5)
-    weights2 = onp.array([1, 1, 0], dtype=onp.float32)
+    np.testing.assert_allclose(mean1, 0.5)
+    weights2 = np.array([1, 1, 0], dtype=np.float32)
     mean2 = layer((inputs, weights2))
-    onp.testing.assert_allclose(mean2, 1.0)
+    np.testing.assert_allclose(mean2, 1.0)
 
   def test_cross_entropy_loss(self):
     input_signature = (ShapeDtype((29, 4, 4, 20)), ShapeDtype((29, 4, 4)),
@@ -86,17 +86,17 @@ class MetricsLayerTest(absltest.TestCase):
     self.assertEqual(result_shape, ())
 
   def test_l2_loss(self):
-    inputs = onp.array([[1, 1], [1, 1]], dtype=onp.float32)
-    targets = onp.array([[1, 1], [1, 0]], dtype=onp.float32)
-    weights = onp.array([[1, 1], [1, 0]], dtype=onp.float32)
+    inputs = np.array([[1, 1], [1, 1]], dtype=np.float32)
+    targets = np.array([[1, 1], [1, 0]], dtype=np.float32)
+    weights = np.array([[1, 1], [1, 0]], dtype=np.float32)
     sig = (signature(inputs), signature(targets), signature(weights))
     layer = metrics.L2Loss()
     layer.init(sig)
     loss = layer((inputs, targets, weights))
-    onp.testing.assert_allclose(loss, 0.0)
-    weights2 = onp.array([[1, 0], [0, 1]], dtype=onp.float32)
+    np.testing.assert_allclose(loss, 0.0)
+    weights2 = np.array([[1, 0], [0, 1]], dtype=np.float32)
     loss = layer((inputs, targets, weights2))
-    onp.testing.assert_allclose(loss, 0.5)
+    np.testing.assert_allclose(loss, 0.5)
 
 
 if __name__ == '__main__':

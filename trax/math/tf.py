@@ -19,7 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as onp
+import numpy as np
 import tensorflow.compat.v2 as tf
 
 from trax.shapes import ShapeDtype
@@ -56,7 +56,7 @@ def tf_abstract_eval(f):
         raise ValueError("The output shapes (%s) of the dry-run'ed function are"
                          ' not fully defined.' % s)
     def to_numpy_dtype(t):
-      return onp.dtype(t.as_numpy_dtype)
+      return np.dtype(t.as_numpy_dtype)
     if isinstance(x, tf.TensorSpec):
       return ShapeDtype(to_numpy_shape(x.shape), to_numpy_dtype(x.dtype))
     else:
@@ -69,7 +69,7 @@ def tf_abstract_eval(f):
 
 
 # The arguments order is different from tf_np_extensions.uniform
-def tf_randint(key, shape, minval, maxval, dtype=onp.int32):
+def tf_randint(key, shape, minval, maxval, dtype=np.int32):
   """Sample uniform random values in [minval, maxval) with given shape/dtype.
 
   Args:

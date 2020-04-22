@@ -33,7 +33,7 @@ with warnings.catch_warnings():
   mpl.use('Agg')
 # pylint: disable=g-import-not-at-top
 import matplotlib.pyplot as plt
-import numpy as onp
+import numpy as np
 import tensorflow as tf
 
 # pylint: disable=g-direct-tensorflow-import
@@ -54,16 +54,16 @@ def _pack_images(images, rows, cols):
     A tiled image of shape [W * rows, H * cols, C].
     Truncates incomplete rows.
   """
-  shape = onp.shape(images)
+  shape = np.shape(images)
   width, height, depth = shape[-3:]
-  images = onp.reshape(images, (-1, width, height, depth))
-  batch = onp.shape(images)[0]
-  rows = onp.minimum(rows, batch)
-  cols = onp.minimum(batch // rows, cols)
+  images = np.reshape(images, (-1, width, height, depth))
+  batch = np.shape(images)[0]
+  rows = np.minimum(rows, batch)
+  cols = np.minimum(batch // rows, cols)
   images = images[:rows * cols]
-  images = onp.reshape(images, (rows, cols, width, height, depth))
-  images = onp.transpose(images, [0, 2, 1, 3, 4])
-  images = onp.reshape(images, [rows * width, cols * height, depth])
+  images = np.reshape(images, (rows, cols, width, height, depth))
+  images = np.transpose(images, [0, 2, 1, 3, 4])
+  images = np.reshape(images, [rows * width, cols * height, depth])
   return images
 
 
@@ -119,7 +119,7 @@ class SummaryWriter(object):
       value: int/float: number to log
       step: int: training step
     """
-    value = float(onp.array(value))
+    value = float(np.array(value))
     if step is None:
       step = self._step
     else:
@@ -129,22 +129,22 @@ class SummaryWriter(object):
     self.add_summary(summary, step)
 
   def image(self, tag, image, step=None):
-    """Saves RGB image summary from onp.ndarray [H,W], [H,W,1], or [H,W,3].
+    """Saves RGB image summary from np.ndarray [H,W], [H,W,1], or [H,W,3].
 
     Args:
       tag: str: label for this data
       image: ndarray: [H,W], [H,W,1], [H,W,3] save image in greyscale or colors/
       step: int: training step
     """
-    image = onp.array(image)
+    image = np.array(image)
     if step is None:
       step = self._step
     else:
       self._step = step
-    if len(onp.shape(image)) == 2:
-      image = image[:, :, onp.newaxis]
-    if onp.shape(image)[-1] == 1:
-      image = onp.repeat(image, 3, axis=-1)
+    if len(np.shape(image)) == 2:
+      image = image[:, :, np.newaxis]
+    if np.shape(image)[-1] == 1:
+      image = np.repeat(image, 3, axis=-1)
     image_strio = io.BytesIO()
     plt.imsave(image_strio, image, format='png')
     image_summary = tf.compat.v1.Summary.Image(
@@ -157,7 +157,7 @@ class SummaryWriter(object):
     self.add_summary(summary, step)
 
   def images(self, tag, images, step=None, rows=None, cols=None):
-    """Saves (rows, cols) tiled images from onp.ndarray.
+    """Saves (rows, cols) tiled images from np.ndarray.
 
     If either rows or cols aren't given, they are determined automatically
     from the size of the image batch, if neither are given a long column
@@ -171,12 +171,12 @@ class SummaryWriter(object):
       rows: int: number of rows in tile
       cols: int: number of columns in tile
     """
-    images = onp.array(images)
+    images = np.array(images)
     if step is None:
       step = self._step
     else:
       self._step = step
-    n_images = onp.shape(images)[0]
+    n_images = np.shape(images)[0]
     if rows is None and cols is None:
       rows = 1
       cols = n_images
@@ -226,12 +226,12 @@ class SummaryWriter(object):
       step: int: training step
       sample_rate: sample rate of passed in audio buffer
     """
-    audiodata = onp.array(audiodata)
+    audiodata = np.array(audiodata)
     if step is None:
       step = self._step
     else:
       self._step = step
-    audiodata = onp.clip(onp.squeeze(audiodata), -1, 1)
+    audiodata = np.clip(np.squeeze(audiodata), -1, 1)
     if audiodata.ndim != 1:
       raise ValueError('Audio data must be 1D.')
     sample_list = (32767.0 * audiodata).astype(int).tolist()
@@ -261,25 +261,25 @@ class SummaryWriter(object):
     Args:
       tag: str: label for this data
       values: ndarray: will be flattened by this routine
-      bins: number of bins in histogram, or array of bins for onp.histogram
+      bins: number of bins in histogram, or array of bins for np.histogram
       step: int: training step
     """
     if step is None:
       step = self._step
     else:
       self._step = step
-    values = onp.array(values)
-    bins = onp.array(bins)
-    values = onp.reshape(values, -1)
-    counts, limits = onp.histogram(values, bins=bins)
+    values = np.array(values)
+    bins = np.array(bins)
+    values = np.reshape(values, -1)
+    counts, limits = np.histogram(values, bins=bins)
     # boundary logic
-    cum_counts = onp.cumsum(onp.greater(counts, 0, dtype=onp.int32))
-    start, end = onp.searchsorted(
+    cum_counts = np.cumsum(np.greater(counts, 0, dtype=np.int32))
+    start, end = np.searchsorted(
         cum_counts, [0, cum_counts[-1] - 1], side='right')
     start, end = int(start), int(end) + 1
     counts = (
         counts[start -
-               1:end] if start > 0 else onp.concatenate([[0], counts[:end]]))
+               1:end] if start > 0 else np.concatenate([[0], counts[:end]]))
     limits = limits[start:end + 1]
     sum_sq = values.dot(values)
     histo = tf.compat.v1.HistogramProto(
@@ -313,8 +313,8 @@ class SummaryWriter(object):
       tensor = tf.make_tensor_proto(
           values=[textdata.encode(encoding='utf_8')], shape=(1,))
     else:
-      textdata = onp.array(textdata)  # convert lists, jax arrays, etc.
-      datashape = onp.shape(textdata)
+      textdata = np.array(textdata)  # convert lists, jax arrays, etc.
+      datashape = np.shape(textdata)
       if len(datashape) == 1:
         tensor = tf.make_tensor_proto(
             values=[td.encode(encoding='utf_8') for td in textdata],
@@ -322,7 +322,7 @@ class SummaryWriter(object):
       elif len(datashape) == 2:
         tensor = tf.make_tensor_proto(
             values=[
-                td.encode(encoding='utf_8') for td in onp.reshape(textdata, -1)
+                td.encode(encoding='utf_8') for td in np.reshape(textdata, -1)
             ],
             shape=(datashape[0], datashape[1]))
     summary = tf.compat.v1.Summary(

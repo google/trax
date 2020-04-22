@@ -18,10 +18,10 @@
 
 import gin
 import gym
-import numpy as onp
+import numpy as np
 
 from trax import layers as tl
-from trax.math import numpy as np
+from trax.math import numpy as jnp
 
 
 class Distribution:
@@ -36,7 +36,7 @@ class Distribution:
     """Samples a point from the distribution.
 
     Args:
-      inputs (np.ndarray): Distribution inputs. Shape is subclass-specific.
+      inputs (jnp.ndarray): Distribution inputs. Shape is subclass-specific.
         Broadcasts along the first dimensions. For example, in the categorical
         distribution parameter shape is (C,), where C is the number of
         categories. If (B, C) is passed, the object will represent a batch of B
@@ -54,8 +54,8 @@ class Distribution:
     """Retrieves log probability (or log probability density) of a point.
 
     Args:
-      inputs (np.ndarray): Distribution parameters.
-      point (np.ndarray): Point from the distribution. Shape should be
+      inputs (jnp.ndarray): Distribution parameters.
+      point (jnp.ndarray): Point from the distribution. Shape should be
         consistent with inputs.
 
     Returns:
@@ -85,10 +85,10 @@ class Categorical(Distribution):
 
   @property
   def n_inputs(self):
-    return np.prod(self._shape, dtype=np.int32) * self._n_categories
+    return jnp.prod(self._shape, dtype=jnp.int32) * self._n_categories
 
   def _unflatten_inputs(self, inputs):
-    return np.reshape(
+    return jnp.reshape(
         inputs, inputs.shape[:-1] + self._shape + (self._n_categories,)
     )
 
@@ -97,12 +97,12 @@ class Categorical(Distribution):
     # subtracting a constant from every logit, and Gumbel sampling is taking
     # a max over logits plus noise, so invariant to adding a constant.
     if temperature == 0.0:
-      return np.argmax(self._unflatten_inputs(inputs), axis=-1)
+      return jnp.argmax(self._unflatten_inputs(inputs), axis=-1)
     return tl.gumbel_sample(self._unflatten_inputs(inputs), temperature)
 
   def log_prob(self, inputs, point):
     inputs = tl.LogSoftmax()(self._unflatten_inputs(inputs))
-    return np.sum(
+    return jnp.sum(
         # Select the logits specified by point.
         inputs * tl.one_hot(point, self._n_categories),
         # Sum over the parameter dimensions.
@@ -110,8 +110,8 @@ class Categorical(Distribution):
     )
 
   def entropy(self, log_probs):
-    probs = np.exp(log_probs)
-    return -np.sum(probs * log_probs, axis=-1)
+    probs = jnp.exp(log_probs)
+    return -jnp.sum(probs * log_probs, axis=-1)
 
 
 @gin.configurable(blacklist=['shape'])
@@ -130,11 +130,11 @@ class Gaussian(Distribution):
 
   @property
   def n_inputs(self):
-    return np.prod(self._shape, dtype=np.int32)
+    return jnp.prod(self._shape, dtype=jnp.int32)
 
   def sample(self, inputs, temperature=1.0):
-    return onp.random.normal(
-        loc=np.reshape(inputs, inputs.shape[:-1] + self._shape),
+    return np.random.normal(
+        loc=jnp.reshape(inputs, inputs.shape[:-1] + self._shape),
         scale=self._std * temperature,
     )
 
@@ -142,15 +142,16 @@ class Gaussian(Distribution):
     point = point.reshape(inputs.shape[:-1] + (-1,))
     return (
         # L2 term.
-        -np.sum((point - inputs) ** 2, axis=-1) / (2 * self._std ** 2) -
+        -jnp.sum((point - inputs) ** 2, axis=-1) / (2 * self._std ** 2) -
         # Normalizing constant.
-        (np.log(self._std) + np.log(np.sqrt(2 * np.pi))) * np.prod(self._shape)
+        ((jnp.log(self._std) + jnp.log(jnp.sqrt(2 * jnp.pi)))
+         * jnp.prod(self._shape))
     )
 
   # At that point self._std is not learnable, hence
   # we return a constaent
   def entropy(self):
-    return np.exp(self._std) + .5 * np.log(2.0 * np.pi * np.e)
+    return jnp.exp(self._std) + .5 * jnp.log(2.0 * jnp.pi * jnp.e)
 
 
 # TODO(pkozakowski): Implement GaussianMixture.

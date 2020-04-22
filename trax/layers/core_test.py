@@ -17,7 +17,7 @@
 """Tests for core layers."""
 
 from absl.testing import absltest
-import numpy as onp
+import numpy as np
 from trax.layers import base
 from trax.layers import combinators
 from trax.layers import core
@@ -65,13 +65,13 @@ class CoreLayerTest(absltest.TestCase):
 
   def test_div(self):
     layer = divide_by(2.0)
-    input_np = onp.array([[1, 2, 3], [4, 5, 6]], dtype=onp.float32)
+    input_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
     output_np = layer(input_np)
     # absltest doesn't have ndarray equalities.
     expected_output_np = input_np / 2.0
     self.assertAlmostEqual(
         0.0,
-        onp.sum((output_np - expected_output_np) ** 2),
+        np.sum((output_np - expected_output_np) ** 2),
         delta=1e-6)
 
   def test_div_shapes(self):
@@ -107,20 +107,20 @@ class CoreLayerTest(absltest.TestCase):
     self.assertEqual(final_shape, output_shape)
 
   def test_log_gaussian_pdf(self):
-    x = onp.zeros((2, 5), dtype=onp.float32)
+    x = np.zeros((2, 5), dtype=np.float32)
     mu = x
-    dsigma = onp.eye(5)[None, :, :]
-    sigma = onp.concatenate([dsigma, 2*dsigma], axis=0)
+    dsigma = np.eye(5)[None, :, :]
+    sigma = np.concatenate([dsigma, 2*dsigma], axis=0)
     prob = core.log_gaussian_pdf(x, mu, sigma)
     self.assertEqual(prob.shape, (2,))
     self.assertEqual(int(prob[0]), -4)
     self.assertEqual(int(prob[1]), -6)
 
   def test_log_gaussian_diag_pdf(self):
-    x = onp.zeros((2, 5), dtype=onp.float32)
+    x = np.zeros((2, 5), dtype=np.float32)
     mu = x
-    sigma = onp.ones((5,))[None, :]
-    sigma = onp.concatenate([sigma, 2*sigma], axis=0)
+    sigma = np.ones((5,))[None, :]
+    sigma = np.concatenate([sigma, 2*sigma], axis=0)
     prob = core.log_gaussian_diag_pdf(x, mu, sigma)
     self.assertEqual(prob.shape, (2,))
     self.assertEqual(int(prob[0]), -4)

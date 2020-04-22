@@ -18,11 +18,11 @@
 
 from typing import List, Optional, Union
 
-import numpy as onp
+import numpy as np
 from trax.rl.trajectory import replay_buffer
 
 
-def pad_array_to_length(list_of_ndarrays: List[onp.ndarray],
+def pad_array_to_length(list_of_ndarrays: List[np.ndarray],
                         t_final: int,
                         back: bool = True):
   """Pad list of (t_variable, *SHAPE) elements to (t_final, *SHAPE)."""
@@ -30,13 +30,13 @@ def pad_array_to_length(list_of_ndarrays: List[onp.ndarray],
   # where `t` changes but `underlying_shape` doesn't.
   underlying_shape = list_of_ndarrays[0].shape[1:]
   batch = len(list_of_ndarrays)
-  padded_objs = onp.zeros(shape=(batch, t_final, *underlying_shape))
-  mask = onp.ones(shape=(batch, t_final))
+  padded_objs = np.zeros(shape=(batch, t_final, *underlying_shape))
+  mask = np.ones(shape=(batch, t_final))
   padding_config = [(0, 0)] * len(list_of_ndarrays[0].shape)
   for i, obs in enumerate(list_of_ndarrays):
     cfg = (0, t_final - obs.shape[0]) if back else (t_final - obs.shape[0], 0)
     padding_config[0] = cfg
-    padded_objs[i] = onp.pad(obs, padding_config, 'constant')
+    padded_objs[i] = np.pad(obs, padding_config, 'constant')
     if back:
       mask[i, obs.shape[0]:] = 0
     else:
@@ -47,13 +47,13 @@ def pad_array_to_length(list_of_ndarrays: List[onp.ndarray],
 
 def replay_buffer_to_padded_observations(rb: replay_buffer.ReplayBuffer,
                                          idx: Union[List[int],
-                                                    onp.ndarray] = None,
+                                                    np.ndarray] = None,
                                          boundary: Optional[int] = None):
   """Gets the trajectories in the buffer at indices pads them."""
   if idx is None:
     idx = rb.get_unrolled_indices()
 
-  idx = onp.asarray(idx)
+  idx = np.asarray(idx)
   assert len(idx.shape) == 1
 
   observations = [
@@ -66,12 +66,12 @@ def replay_buffer_to_padded_observations(rb: replay_buffer.ReplayBuffer,
   t_max = max(len(o) for o in observations)  # ex: t_max: 1500
   if boundary is None:
     # e such that 10^e <= t_max < 10^(e+1)
-    e = onp.floor(onp.log10(t_max))  # ex: e: 3
+    e = np.floor(np.log10(t_max))  # ex: e: 3
     # we will deal in integer multiples of boundary
     boundary = 10**e  # ex: boundary: 1000
 
   # m (int) such that (m-1) * boundary < t_max <= m * boundary
-  m = onp.ceil(t_max / boundary).astype(onp.int32)  # ex: m: 2
+  m = np.ceil(t_max / boundary).astype(np.int32)  # ex: m: 2
   t_final = int(m * boundary)  # t_final: 2000
 
   # observations[0]'s shape is (t,) + OBS, where OBS is the core observation's
@@ -85,12 +85,12 @@ def padding_length(observations, boundary=None):
   t_max = max(len(o) for o in observations)  # ex: t_max: 1500
   if boundary is None:
     # e such that 10^e <= t_max < 10^(e+1)
-    e = onp.floor(onp.log10(t_max))  # ex: e: 3
+    e = np.floor(np.log10(t_max))  # ex: e: 3
     # we will deal in integer multiples of boundary
     boundary = 10**e  # ex: boundary: 1000
 
   # m (int) such that (m-1) * boundary < t_max <= m * boundary
-  m = onp.ceil(t_max / boundary).astype(onp.int32)  # ex: m: 2
+  m = np.ceil(t_max / boundary).astype(np.int32)  # ex: m: 2
   t_final = int(m * boundary)  # t_final: 2000
   return t_final
 
@@ -104,8 +104,8 @@ def replay_buffer_to_padded_rewards(rb, idx, t_final):
   return pad_array_to_length(rewards, t_final)
 
 
-def compute_td_lambda_return(rewards: onp.ndarray, value_preds: onp.ndarray,
-                             gamma: float, td_lambda: float) -> onp.ndarray:
+def compute_td_lambda_return(rewards: np.ndarray, value_preds: np.ndarray,
+                             gamma: float, td_lambda: float) -> np.ndarray:
   """Computes td-lambda returns."""
   (t_final,) = rewards.shape
   if value_preds.shape != (t_final + 1,):
@@ -114,7 +114,7 @@ def compute_td_lambda_return(rewards: onp.ndarray, value_preds: onp.ndarray,
         f'value_preds.shape = {value_preds.shape}'
     )
 
-  td_lambda_return = onp.zeros_like(rewards)
+  td_lambda_return = np.zeros_like(rewards)
   td_lambda_return[-1] = rewards[-1] + (gamma * value_preds[-1])
 
   for i in reversed(range(0, t_final - 1)):
@@ -125,10 +125,10 @@ def compute_td_lambda_return(rewards: onp.ndarray, value_preds: onp.ndarray,
   return td_lambda_return
 
 
-def batched_compute_td_lambda_return(padded_rewards: onp.ndarray,
-                                     padded_rewards_mask: onp.ndarray,
-                                     value_preds: onp.ndarray,
-                                     value_preds_mask: onp.ndarray,
+def batched_compute_td_lambda_return(padded_rewards: np.ndarray,
+                                     padded_rewards_mask: np.ndarray,
+                                     value_preds: np.ndarray,
+                                     value_preds_mask: np.ndarray,
                                      gamma: float, td_lambda: float):
   """Computes td-lambda returns, in a batched manner."""
   batch, t = padded_rewards.shape

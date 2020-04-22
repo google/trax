@@ -20,7 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import absltest
-import numpy as onp
+import numpy as np
 
 from trax import shapes
 from trax.shapes import ShapeDtype
@@ -29,22 +29,22 @@ from trax.shapes import ShapeDtype
 class ShapesTest(absltest.TestCase):
 
   def test_constructor_and_read_properties(self):
-    sd = ShapeDtype((2, 3), onp.int32)
+    sd = ShapeDtype((2, 3), np.int32)
     self.assertEqual(sd.shape, (2, 3))
-    self.assertEqual(sd.dtype, onp.int32)
+    self.assertEqual(sd.dtype, np.int32)
 
   def test_default_dtype_is_float32(self):
     sd = ShapeDtype((2, 3))
     self.assertEqual(sd.shape, (2, 3))
-    self.assertEqual(sd.dtype, onp.float32)
+    self.assertEqual(sd.dtype, np.float32)
 
   def test_signature_on_ndarray(self):
-    array = onp.array([[2, 3, 5, 7],
-                       [11, 13, 17, 19]],
-                      dtype=onp.int16)
+    array = np.array([[2, 3, 5, 7],
+                      [11, 13, 17, 19]],
+                     dtype=np.int16)
     sd = shapes.signature(array)
     self.assertEqual(sd.shape, (2, 4))
-    self.assertEqual(sd.dtype, onp.int16)
+    self.assertEqual(sd.dtype, np.int16)
 
   def test_shape_dtype_repr(self):
     sd = ShapeDtype((2, 3))
@@ -70,8 +70,8 @@ class ShapesTest(absltest.TestCase):
 
   def test_len_signature(self):
     """Signatures of all sizes should give correct length when asked."""
-    x1 = onp.array([1, 2, 3])
-    x2 = onp.array([10, 20, 30])
+    x1 = np.array([1, 2, 3])
+    x2 = np.array([10, 20, 30])
     inputs0 = ()
     inputs1 = x1  # NOT in a tuple
     inputs2 = (x1, x2)

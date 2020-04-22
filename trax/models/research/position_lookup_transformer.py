@@ -16,10 +16,10 @@
 # Lint as: python3
 """Deep Lookups for Transformer Positions."""
 
-import numpy as onp
+import numpy as np
 
 from trax import layers as tl
-from trax.math import numpy as np
+from trax.math import numpy as jnp
 
 
 # pylint: disable=g-complex-comprehension
@@ -27,15 +27,15 @@ from trax.math import numpy as np
 
 POS_VECTOR_SIZE = 32
 _ABSOLUTE_MAX_LEN = 10000
-_POSITIONS = onp.random.uniform(size=[_ABSOLUTE_MAX_LEN, POS_VECTOR_SIZE])
+_POSITIONS = np.random.uniform(size=[_ABSOLUTE_MAX_LEN, POS_VECTOR_SIZE])
 
 
 def NewPositionalEncoding(positions=None):
   """Implements new positional encoding."""
   def f(x):  # pylint: disable=invalid-name
-    x_length = np.shape(x)[1]
-    pos = np.array(positions)[np.newaxis, :x_length, :]
-    pos += np.zeros((np.shape(x)[0], 1, 1))  # Broadcast on batch.
+    x_length = jnp.shape(x)[1]
+    pos = jnp.array(positions)[jnp.newaxis, :x_length, :]
+    pos += jnp.zeros((jnp.shape(x)[0], 1, 1))  # Broadcast on batch.
     return pos
   return tl.Fn('NewPositionalEncoding', f)
 
@@ -56,9 +56,9 @@ def CombineHeadsPos(n_heads=1):
     """
     seqlen = x.shape[1]
     d_head = x.shape[2]
-    x = np.reshape(x, (-1, n_heads, seqlen, d_head))
-    x = np.transpose(x, (0, 2, 1, 3))  # -> n_batch, seqlen, n_heads, d_head
-    x = np.reshape(x, (-1, seqlen, n_heads * d_head))
+    x = jnp.reshape(x, (-1, n_heads, seqlen, d_head))
+    x = jnp.transpose(x, (0, 2, 1, 3))  # -> n_batch, seqlen, n_heads, d_head
+    x = jnp.reshape(x, (-1, seqlen, n_heads * d_head))
     head_size = int(d_head) - POS_VECTOR_SIZE
     res, positions, idx = [], [], 0
     for _ in range(n_heads):
@@ -67,7 +67,7 @@ def CombineHeadsPos(n_heads=1):
       positions.append(x[:, :, idx:idx+POS_VECTOR_SIZE])
       idx += POS_VECTOR_SIZE
     combined_position = sum(positions) / float(len(positions))
-    return np.concatenate(res, axis=-1), combined_position
+    return jnp.concatenate(res, axis=-1), combined_position
 
   return tl.Fn('CombineHeadsPos', f, n_out=2)
 
@@ -77,11 +77,11 @@ def QueryPositionKV(keys=None, values=None, binary=False):
   def f(x):  # pylint: disable=invalid-name
     if keys is None:
       return x
-    k = np.array(keys)
-    v = np.array(values)
+    k = jnp.array(keys)
+    v = jnp.array(values)
     q = x
     if binary:
-      q = np.concatenate([x, x], axis=-1)
+      q = jnp.concatenate([x, x], axis=-1)
     return tl.DotProductAttention(q, k, v, None, 0.0, None, None)
   return tl.Fn('QueryPositionKV', f)
 
@@ -98,9 +98,9 @@ def Softmax5Branches():
 
     max_sa = softmax_activations[0]
     for x in softmax_activations:
-      max_sa = np.maximum(max_sa, x)
+      max_sa = jnp.maximum(max_sa, x)
     softmax_activations = [x - max_sa for x in softmax_activations]
-    softmax_activations = [np.exp(x) for x in softmax_activations]
+    softmax_activations = [jnp.exp(x) for x in softmax_activations]
     sum_sa = sum(softmax_activations)
     softmax_activations = [x / sum_sa for x in softmax_activations]
     res = sum(s * q for s, q in zip(softmax_activations, query_embeddings))
@@ -116,15 +116,15 @@ def PerformPositionOperations(pos, positions=None):
   subtract_1_keys = positions[1:, :]
   subtract_1_values = positions[:-1, :]
   l = int(positions.shape[0]) // 2
-  add_keys = np.array([np.concatenate([positions[i, :], positions[j, :]])
-                       for i in range(l) for j in range(l)])
-  add_values = np.array([positions[i + j, :]
-                         for i in range(l) for j in range(l)])
+  add_keys = jnp.array([jnp.concatenate([positions[i, :], positions[j, :]])
+                        for i in range(l) for j in range(l)])
+  add_values = jnp.array([positions[i + j, :]
+                          for i in range(l) for j in range(l)])
   # TODO(lukaszkaiser): try this below: "for j in range(i) for i in range(2*l)"
-  sub_keys = np.array([np.concatenate([positions[i, :], positions[j, :]])
-                       for j in range(l) for i in range(l)])
-  sub_values = np.array([positions[max(i - j, 0), :]
-                         for j in range(l) for i in range(l)])
+  sub_keys = jnp.array([jnp.concatenate([positions[i, :], positions[j, :]])
+                        for j in range(l) for i in range(l)])
+  sub_values = jnp.array([positions[max(i - j, 0), :]
+                          for j in range(l) for i in range(l)])
   query_types = [
       QueryPositionKV(),
       QueryPositionKV(keys=succ_keys, values=succ_values),
@@ -193,17 +193,17 @@ class CopyPosToHeads(tl.Layer):
     x = inp[0]
     n_batches, seqlen = x.shape[0], x.shape[1]
     d_head = x.shape[-1] // self._n_heads
-    res = np.reshape(x, (n_batches, seqlen, self._n_heads, d_head))
-    res = np.transpose(res, (0, 2, 1, 3))  # (batch, heads, len, depth)
+    res = jnp.reshape(x, (n_batches, seqlen, self._n_heads, d_head))
+    res = jnp.transpose(res, (0, 2, 1, 3))  # (batch, heads, len, depth)
     if self._n_pos == 1:  # Just one position given, tile into each head.
       pos_shape = list(res.shape)[:-1] + [inp[1].shape[-1]]
-      pos = inp[1][:, None, :, :] + np.zeros(pos_shape)  # Add 0 to broadcast.
+      pos = inp[1][:, None, :, :] + jnp.zeros(pos_shape)  # Add 0 to broadcast.
     else:  # As many positions as heads, concatenate them in.
       pos = [p[:, None, :, :] for p in inp[1:]]
-      pos = np.concatenate(pos, axis=1)
-    res = np.concatenate([res, pos], axis=-1)
+      pos = jnp.concatenate(pos, axis=1)
+    res = jnp.concatenate([res, pos], axis=-1)
     # n_batch, n_heads, seqlen, d_head -> n_batch*n_heads, seqlen, d_head
-    res = np.reshape(res, (-1, seqlen, d_head + POS_VECTOR_SIZE))
+    res = jnp.reshape(res, (-1, seqlen, d_head + POS_VECTOR_SIZE))
     return res
 
 

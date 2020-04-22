@@ -26,13 +26,13 @@ import random
 from absl import logging
 
 import gin
-import numpy as onp
+import numpy as np
 
 from tensor2tensor import problems_colab as t2t_problems
 import tensorflow as tf   # pylint: disable=g-explicit-tensorflow-version-import
 import tensorflow_datasets as tfds
 from trax import math
-from trax.math import numpy as np
+from trax.math import numpy as jnp
 
 
 class Inputs(object):
@@ -202,8 +202,8 @@ def inputs(dataset_name, data_dir=None, input_name=None, target_name=None):
 
 @gin.configurable()
 def random_inputs(
-    input_shape=gin.REQUIRED, input_dtype=np.int32, input_range=(0, 255),
-    output_shape=gin.REQUIRED, output_dtype=np.int32, output_range=(0, 9)):
+    input_shape=gin.REQUIRED, input_dtype=jnp.int32, input_range=(0, 255),
+    output_shape=gin.REQUIRED, output_dtype=jnp.int32, output_range=(0, 9)):
   """Make random Inputs for debugging.
 
   Args:
@@ -220,10 +220,10 @@ def random_inputs(
   def random_minibatches(n_devices):
     """Generate a stream of random mini-batches."""
     assert input_range[0] % n_devices == 0
-    if input_dtype in [np.float16, np.float32, np.float64]:
-      rand = onp.random.uniform
+    if input_dtype in [jnp.float16, jnp.float32, jnp.float64]:
+      rand = np.random.uniform
     else:
-      rand = onp.random.random_integers
+      rand = np.random.random_integers
     while True:
       inp = rand(input_range[0], input_range[1], input_shape)
       inp = inp.astype(input_dtype)
@@ -236,11 +236,11 @@ def random_inputs(
 
 def _pad_to_multiple_of(x, y, axis):
   """Pads x to multiple of y on the given axis."""
-  pad_len = onp.ceil(x.shape[axis] / float(y)) * y
+  pad_len = np.ceil(x.shape[axis] / float(y)) * y
   pad_widths = [(0, 0)] * len(x.shape)
   pad_widths[axis] = (0, int(pad_len - x.shape[axis]))
-  return onp.pad(x, pad_widths, mode='constant',
-                 constant_values=x.dtype.type(0))
+  return np.pad(x, pad_widths, mode='constant',
+                constant_values=x.dtype.type(0))
 
 
 @gin.configurable()
@@ -268,15 +268,15 @@ def sequence_copy_inputs(
       length = random.choice(length_list)
       assert length % 2 == 0
       w_length = (length // 2) - 1
-      w = onp.random.randint(low=1, high=vocab_size-1,
-                             size=(batch_size, w_length))
-      zero = onp.zeros([batch_size, 1], onp.int32)
-      loss_weights = onp.concatenate([onp.zeros((batch_size, w_length+2)),
-                                      onp.ones((batch_size, w_length))], axis=1)
+      w = np.random.randint(low=1, high=vocab_size-1,
+                            size=(batch_size, w_length))
+      zero = np.zeros([batch_size, 1], np.int32)
+      loss_weights = np.concatenate([np.zeros((batch_size, w_length+2)),
+                                     np.ones((batch_size, w_length))], axis=1)
       if reverse:
-        x = onp.concatenate([zero, w, zero, np.flip(w, axis=1)], axis=1)
+        x = np.concatenate([zero, w, zero, jnp.flip(w, axis=1)], axis=1)
       else:
-        x = onp.concatenate([zero, w, zero, w], axis=1)
+        x = np.concatenate([zero, w, zero, w], axis=1)
       x = _pad_to_multiple_of(x, pad_to_multiple, 1)
       loss_weights = _pad_to_multiple_of(loss_weights, pad_to_multiple, 1)
       yield (x, x, loss_weights)  # Here inputs and targets are the same.
@@ -304,9 +304,9 @@ def number_to_lower_endian(n, base):
 def random_number_lower_endian(length, base):
   """Helper function: generate a random number as a lower-endian digits list."""
   if length == 1:  # Last digit can be 0 only if length is 1.
-    return [onp.random.randint(base)]
-  prefix = [onp.random.randint(base) for _ in range(length - 1)]
-  return prefix + [onp.random.randint(base - 1) + 1]  # Last digit is not 0.
+    return [np.random.randint(base)]
+  prefix = [np.random.randint(base) for _ in range(length - 1)]
+  return prefix + [np.random.randint(base - 1) + 1]  # Last digit is not 0.
 
 
 @gin.configurable()
@@ -331,8 +331,8 @@ def addition_inputs(
   def single_example(max_length, min_length):
     """Generate a stream of random mini-batches."""
     add_len = (min_length - 1) // 2
-    l1 = onp.random.randint((max_length - add_len + 1) // 2) + add_len
-    l2 = onp.random.randint(max_length - l1 - 1) + 1
+    l1 = np.random.randint((max_length - add_len + 1) // 2) + add_len
+    l2 = np.random.randint(max_length - l1 - 1) + 1
     n1 = random_number_lower_endian(l1, base)
     n2 = random_number_lower_endian(l2, base)
     result = lower_endian_to_number(n1, base) + lower_endian_to_number(
@@ -350,9 +350,9 @@ def addition_inputs(
     while True:
       res = [single_example(max_length, min_length) for _ in range(batch_size)]
       l = max([len(x[0]) for x in res])
-      xs = onp.array([x[0] + [0] * (l - len(x[0])) for x in res])
-      ws = onp.array([x[1] + [0] * (l - len(x[1])) for x in res],
-                     dtype=onp.float32)
+      xs = np.array([x[0] + [0] * (l - len(x[0])) for x in res])
+      ws = np.array([x[1] + [0] * (l - len(x[1])) for x in res],
+                    dtype=np.float32)
       xs = _pad_to_multiple_of(xs, pad_to_multiple, 1)
       ws = _pad_to_multiple_of(ws, pad_to_multiple, 1)
       yield (xs, xs, ws)
@@ -372,12 +372,12 @@ def dataset_to_stream(dataset, input_name):
     # All input-pipeline processing should be on CPU.
     with tf.device('cpu:0'):
       # Some accelerators don't handle uint8 well, cast to int.
-      if isinstance(inp, np.uint8):
-        inp = inp.astype(np.int32)
-      if isinstance(out, np.uint8):
-        out = out.astype(np.int32)
+      if isinstance(inp, jnp.uint8):
+        inp = inp.astype(jnp.int32)
+      if isinstance(out, jnp.uint8):
+        out = out.astype(jnp.int32)
       if len(out.shape) > 1 and out.shape[-1] == 1:
-        out = np.squeeze(out, axis=-1)
+        out = jnp.squeeze(out, axis=-1)
     yield (inp, out) if mask is None else (inp, out, mask)
 
 

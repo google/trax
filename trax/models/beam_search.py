@@ -27,7 +27,7 @@ import numpy as onp
 
 from trax import layers as tl
 import trax.math
-from trax.math import numpy as np
+from trax.math import numpy as np  # TODO(jonni): Avoid 3 numpy's: jnp, onp, np
 from trax.shapes import ShapeDtype
 
 # Constants

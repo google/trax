@@ -21,12 +21,12 @@ from __future__ import division
 from __future__ import print_function
 
 import jax
-import numpy as onp
+import numpy as np
 from tensorflow import test
 from trax import math
 from trax.layers import base
 from trax.layers.research import efficient_attention_v2
-from trax.math import numpy as np
+from trax.math import numpy as jnp
 from trax.shapes import ShapeDtype
 
 
@@ -58,7 +58,7 @@ class EfficientAttentionTest(test.TestCase):
       return model.pure_fn(
           inp, weights, state, rng=jax.random.PRNGKey(0))
     out, vjpfun, new_state = jax.vjp(forward, inp, weights, has_aux=True)
-    inp_grad, weights_grad = vjpfun(onp.ones_like(inp))
+    inp_grad, weights_grad = vjpfun(np.ones_like(inp))
     return out, new_state, inp_grad, weights_grad
 
   def _test_equivalence_to_reference_code(
@@ -104,8 +104,8 @@ class EfficientAttentionTest(test.TestCase):
                                   use_python_loop=use_python_loop))
 
       inp = jax.random.uniform(
-          jax.random.PRNGKey(0), (2, 10, 13), dtype=np.float32)
-      input_signature = ShapeDtype((2, 10, 13), dtype=np.float32)
+          jax.random.PRNGKey(0), (2, 10, 13), dtype=jnp.float32)
+      input_signature = ShapeDtype((2, 10, 13), dtype=jnp.float32)
       self._test_equivalence_to_reference_code(
           efficient_attention_v2.SelfAttention,
           inp, input_signature,
@@ -126,8 +126,8 @@ class EfficientAttentionTest(test.TestCase):
                                   use_python_loop=use_python_loop))
 
       inp = jax.random.uniform(
-          jax.random.PRNGKey(0), (2, 10, 13), dtype=np.float32)
-      input_signature = ShapeDtype((2, 10, 13), dtype=np.float32)
+          jax.random.PRNGKey(0), (2, 10, 13), dtype=jnp.float32)
+      input_signature = ShapeDtype((2, 10, 13), dtype=jnp.float32)
       self._test_equivalence_to_reference_code(
           efficient_attention_v2.LSHSelfAttention,
           inp, input_signature,
@@ -160,7 +160,7 @@ class EfficientAttentionTest(test.TestCase):
         cur_out, cur_state = test_model.pure_fn(
             get_slice(inp, i), weights, cur_state, jax.random.PRNGKey(0))
         out.append(cur_out)
-      out = np.concatenate(out, axis=1)
+      out = jnp.concatenate(out, axis=1)
 
       self.assertAllClose(out, ref_out, rtol=1e-3, atol=1e-3)
 
@@ -178,8 +178,8 @@ class EfficientAttentionTest(test.TestCase):
                                   use_python_loop=use_python_loop))
 
       inp = jax.random.uniform(
-          jax.random.PRNGKey(0), (2, 10, 13), dtype=np.float32)
-      input_signature = ShapeDtype((2, 10, 13), dtype=np.float32)
+          jax.random.PRNGKey(0), (2, 10, 13), dtype=jnp.float32)
+      input_signature = ShapeDtype((2, 10, 13), dtype=jnp.float32)
       self._test_fast_inference(
           efficient_attention_v2.SelfAttention,
           inp, input_signature,

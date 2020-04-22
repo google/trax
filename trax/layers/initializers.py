@@ -18,9 +18,9 @@
 
 from absl import logging
 
-import numpy as onp
+import numpy as np
 import tensorflow.compat.v2 as tf
-from trax.math import numpy as np
+from trax.math import numpy as jnp
 from trax.math import random
 
 
@@ -32,7 +32,7 @@ def _GetFans(shape, out_dim=-1, in_dim=-2):
   if in_dim < 0:
     in_dim += len(shape)
 
-  receptive_field = np.prod(onp.delete(shape, [in_dim, out_dim]))
+  receptive_field = jnp.prod(np.delete(shape, [in_dim, out_dim]))
   if len(shape) >= 2:
     fan_in, fan_out = shape[in_dim], shape[out_dim]
   elif len(shape) == 1:
@@ -53,9 +53,9 @@ def InitializerFromFile(path):
     del rng
     logging.info('Loading pretrained embeddings from %s', path)
     with tf.io.gfile.GFile(path, 'rb') as f:
-      parameters = np.load(f)
-    assert np.shape(parameters) == shape, (
-        'Expected shape %s, got %s' % (shape, np.shape(parameters)))
+      parameters = jnp.load(f)
+    assert jnp.shape(parameters) == shape, (
+        'Expected shape %s, got %s' % (shape, jnp.shape(parameters)))
     return parameters
 
   return Initializer
@@ -70,7 +70,7 @@ def RandomNormalInitializer(stddev=1e-2):
 
 def RandomUniformInitializer(lim=1.0):
   """Returns an initializer for random uniform coefficients."""
-  return lambda shape, rng: random.uniform(rng, shape, np.float32, -lim, lim)
+  return lambda shape, rng: random.uniform(rng, shape, jnp.float32, -lim, lim)
 
 
 def ScaledInitializer(out_dim, in_dim, scale, mode, distribution):
@@ -94,15 +94,15 @@ def ScaledInitializer(out_dim, in_dim, scale, mode, distribution):
       gain /= (fan_in + fan_out) / 2
     if distribution == 'truncated_normal':
       # constant from scipy.stats.truncnorm.std(a=-2, b=2, loc=0., scale=1.)
-      stddev = np.sqrt(gain) / .87962566103423978
+      stddev = jnp.sqrt(gain) / .87962566103423978
       new_weights = random.truncated_normal(rng, -2, 2, shape) * stddev
       return new_weights.astype('float32')
     elif distribution == 'normal':
-      new_weights = random.normal(rng, shape) * np.sqrt(gain)
+      new_weights = random.normal(rng, shape) * jnp.sqrt(gain)
       return new_weights.astype('float32')
     elif distribution == 'uniform':
-      lim = np.sqrt(3. * gain)
-      return random.uniform(rng, shape, np.float32, -lim, lim)
+      lim = jnp.sqrt(3. * gain)
+      return random.uniform(rng, shape, jnp.float32, -lim, lim)
     else:
       raise ValueError('invalid distribution for ScaleInitializer')
 
@@ -132,13 +132,13 @@ def LeCunUniformInitializer(out_dim=-1, in_dim=-2, scale=1.):
 def KaimingNormalInitializer(out_dim=-1, in_dim=-2, param=0.):
   """Returns an initializer for random Kaiming-scaled coefficients."""
   return ScaledInitializer(
-      out_dim, in_dim, 2.0 / np.sqrt(1 + param**2), 'fan_in', 'normal')
+      out_dim, in_dim, 2.0 / jnp.sqrt(1 + param**2), 'fan_in', 'normal')
 
 
 def KaimingUniformInitializer(out_dim=-1, in_dim=-2, param=0.):
   """Returns an initializer for random uniform Kaiming-scaled coefficients."""
   return ScaledInitializer(
-      out_dim, in_dim, 2.0 / np.sqrt(1 + param**2), 'fan_in', 'uniform')
+      out_dim, in_dim, 2.0 / jnp.sqrt(1 + param**2), 'fan_in', 'uniform')
 
 
 def OrthogonalInitializer(stddev=1.0):
@@ -158,19 +158,19 @@ def OrthogonalInitializer(stddev=1.0):
     flat_shape = (n_cols, n_rows) if n_rows < n_cols else (n_rows, n_cols)
 
     # Generate a random matrix
-    a = random.normal(rng, flat_shape, dtype=np.float32)
+    a = random.normal(rng, flat_shape, dtype=jnp.float32)
 
     # Compute the qr factorization
-    q, r = np.linalg.qr(a)
+    q, r = jnp.linalg.qr(a)
 
     # Make Q uniform
-    d = np.diag(r)
-    q *= np.sign(d)
+    d = jnp.diag(r)
+    q *= jnp.sign(d)
 
     # Transpose and reshape back q if needed.
     if n_rows < n_cols:
-      q = np.transpose(q)
-    q = np.reshape(q, shape)
+      q = jnp.transpose(q)
+    q = jnp.reshape(q, shape)
 
     # Return scaled as requested.
     return stddev * q
@@ -178,8 +178,8 @@ def OrthogonalInitializer(stddev=1.0):
   return Init
 
 
-def AtariConvInit(kernel_shape, rng, dtype=np.float32):
+def AtariConvInit(kernel_shape, rng, dtype=jnp.float32):
   """The standard init for Conv laters and Atari."""
   filter_height, filter_width, fan_in, _ = kernel_shape
-  std = 1 / np.sqrt(fan_in * filter_height * filter_width)
+  std = 1 / jnp.sqrt(fan_in * filter_height * filter_width)
   return random.uniform(rng, kernel_shape, dtype, minval=-std, maxval=std)

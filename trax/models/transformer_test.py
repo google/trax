@@ -20,10 +20,10 @@ import functools
 
 from absl.testing import absltest
 from absl.testing import parameterized
-import numpy as onp
+import numpy as np
 from trax import layers as tl
 from trax import math
-from trax.math import numpy as np
+from trax.math import numpy as jnp
 from trax.models import transformer
 from trax.shapes import ShapeDtype
 
@@ -33,7 +33,7 @@ class TransformerTest(parameterized.TestCase):
   def test_transformer_lm_forward_shape(self):
     """Run the Transformer LM forward and check output shape."""
     vocab_size = 16
-    input_signature = ShapeDtype((3, 5), onp.int32)
+    input_signature = ShapeDtype((3, 5), np.int32)
     model = transformer.TransformerLM(
         vocab_size, d_model=32, d_ff=64, n_layers=2, n_heads=2)
     final_shape = tl.check_shape_agreement(model, input_signature)
@@ -42,7 +42,7 @@ class TransformerTest(parameterized.TestCase):
   def _test_transformer_forward_shape(self, input_vocab_size,
                                       output_vocab_size):
     """Run the Transformer forward and check output shape."""
-    input_sd = ShapeDtype((3, 5), onp.int32)
+    input_sd = ShapeDtype((3, 5), np.int32)
     input_signature = (input_sd, input_sd)
     model = transformer.Transformer(
         input_vocab_size, output_vocab_size, d_model=32, d_ff=64,
@@ -73,22 +73,22 @@ class TransformerTest(parameterized.TestCase):
       model_fast = model_fn(mode='predict')
       rng = math.random.get_prng(0)
       batch_size = 2
-      input_signature = ShapeDtype((batch_size, 1), np.int32)
+      input_signature = ShapeDtype((batch_size, 1), jnp.int32)
       # Given the same rng, both models initialize with the same parameters.
       model_slow.init(input_signature)
       model_fast.init(input_signature)
 
-      buf = onp.zeros((batch_size, length), dtype=np.int32)
-      next_sym = onp.zeros((batch_size, 1), dtype=onp.int32)
+      buf = np.zeros((batch_size, length), dtype=jnp.int32)
+      next_sym = np.zeros((batch_size, 1), dtype=np.int32)
 
       for index in range(length):
         logits_slow = model_slow(buf, rng=rng)
         logits_fast = model_fast(next_sym, rng=rng)
-        onp.testing.assert_array_almost_equal(
+        np.testing.assert_array_almost_equal(
             logits_slow[:, index, :], logits_fast[:, 0, :],
             decimal=5,
         )
-        next_sym = onp.random.randint(vocab_size, size=(batch_size, 1))
+        next_sym = np.random.randint(vocab_size, size=(batch_size, 1))
         buf[:, index] = next_sym[:, 0]
 
   def test_dot_product_causal_attention_fast_inference(self):

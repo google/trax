@@ -17,7 +17,7 @@
 """Tests for trax.rl.trajectory.replay_buffer."""
 
 from absl.testing import absltest
-import numpy as onp
+import numpy as np
 from tensor2tensor.envs import trajectory
 from trax.rl.trajectory import replay_buffer
 
@@ -28,18 +28,18 @@ class ReplayBufferTest(absltest.TestCase):
                             max_time_step=None,
                             obs_shape=(2, 2)) -> trajectory.Trajectory:
     t = trajectory.Trajectory()
-    max_time_step = max_time_step or onp.random.randint(2, 10)
+    max_time_step = max_time_step or np.random.randint(2, 10)
     for _ in range(max_time_step):
-      r = float(onp.random.uniform(size=()))
+      r = float(np.random.uniform(size=()))
       t.add_time_step(
-          observation=onp.random.uniform(size=obs_shape),
+          observation=np.random.uniform(size=obs_shape),
           done=False,
           raw_reward=r,
           processed_reward=r,
-          action=int(onp.random.choice(10, ())),
+          action=int(np.random.choice(10, ())),
           info={
               replay_buffer.ReplayBuffer.LOGPS_KEY_TRAJ:
-                  float(onp.random.uniform(low=-10, high=0))
+                  float(np.random.uniform(low=-10, high=0))
           })
     t.change_last_time_step(done=True)
     return t
@@ -92,15 +92,14 @@ class ReplayBufferTest(absltest.TestCase):
     # be 0, the next n1 - n3 will be -1, and the rest will be start_index_t2.
     path_start_array = ([0] * n3) + ([-1] * (n1 - n3)) + ([start_index_t2] * n2)
 
-    onp.testing.assert_array_equal(
+    np.testing.assert_array_equal(
         path_start_array, rb.buffers[replay_buffer.ReplayBuffer.PATH_START_KEY])
 
     # The unrolled indices will be first t2s indices, then t3s.
     unrolled_indices = [start_index_t2 + x for x in range(n2)
                        ] + [start_index_t3 + x for x in range(n3)]
 
-    onp.testing.assert_array_equal(unrolled_indices,
-                                   rb.get_unrolled_indices())
+    np.testing.assert_array_equal(unrolled_indices, rb.get_unrolled_indices())
 
     invalid_indices = [start_index_t3 + n3 - 1, start_index_t2 + n2 - 1]
 
@@ -128,17 +127,17 @@ class ReplayBufferTest(absltest.TestCase):
 
     idx, valid_mask, valid_idx = rb.get_valid_indices()
 
-    onp.testing.assert_array_equal(
-        idx, onp.array([10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6]))
+    np.testing.assert_array_equal(
+        idx, np.array([10, 11, 12, 13, 14, 0, 1, 2, 3, 4, 5, 6]))
 
-    onp.testing.assert_array_equal(
+    np.testing.assert_array_equal(
         valid_idx,
-        onp.array([[10, 0], [11, 1], [12, 2], [13, 3], [0, 5], [1, 6], [2, 7],
-                   [3, 8], [4, 9], [5, 10]],))
+        np.array([[10, 0], [11, 1], [12, 2], [13, 3], [0, 5], [1, 6], [2, 7],
+                  [3, 8], [4, 9], [5, 10]],))
 
-    onp.testing.assert_array_equal(
+    np.testing.assert_array_equal(
         valid_mask,
-        onp.array([
+        np.array([
             True, True, True, True, False, True, True, True, True, True, True,
             False
         ]))

@@ -19,10 +19,10 @@
 import functools
 
 import gym
-import numpy as onp
+import numpy as np
 
 from trax import layers as tl
-from trax.math import numpy as np
+from trax.math import numpy as jnp
 from trax.rl import space_serializer
 
 
@@ -33,9 +33,9 @@ def Serialize(serializer):
   def serialize(x):
     (batch_size, length) = x.shape[:2]
     shape_suffix = x.shape[2:]
-    x = np.reshape(x, (batch_size * length,) + shape_suffix)
+    x = jnp.reshape(x, (batch_size * length,) + shape_suffix)
     x = serializer.serialize(x)
-    return np.reshape(x, (batch_size, -1, serializer.representation_length,))
+    return jnp.reshape(x, (batch_size, -1, serializer.representation_length,))
   return tl.Fn('Serialize', serialize)
 
 
@@ -64,10 +64,10 @@ def Interleave():
     (_, length, _) = y.shape
     assert x.shape[1] in (length, length + 1)
 
-    reprs = np.concatenate((x[:, :length], y), axis=2)
-    reprs = np.reshape(reprs, (batch_size, -1))
-    remainder = np.reshape(x[:, length:], (batch_size, -1))
-    return np.concatenate((reprs, remainder), axis=1)
+    reprs = jnp.concatenate((x[:, :length], y), axis=2)
+    reprs = jnp.reshape(reprs, (batch_size, -1))
+    remainder = jnp.reshape(x[:, length:], (batch_size, -1))
+    return jnp.concatenate((reprs, remainder), axis=1)
   return tl.Fn('Interleave', interleave)
 
 
@@ -81,11 +81,11 @@ def Deinterleave(x_size, y_size):
     if remainder_length > 0:
       remainder = reprs[:, None, -remainder_length:]
       reprs = reprs[:, :-remainder_length]
-    reprs = np.reshape(reprs, (batch_size, -1, x_size + y_size) + shape_suffix)
+    reprs = jnp.reshape(reprs, (batch_size, -1, x_size + y_size) + shape_suffix)
     x_reprs = reprs[:, :, :x_size]
     y_reprs = reprs[:, :, x_size:]
     if remainder_length > 0:
-      x_reprs = np.concatenate((x_reprs, remainder), axis=1)
+      x_reprs = jnp.concatenate((x_reprs, remainder), axis=1)
     return (x_reprs, y_reprs)
   return tl.Fn('Deinterleave', deinterleave, n_out=2)
 
@@ -95,8 +95,8 @@ def RepresentationMask(serializer):
   # Trax enforces the mask to be of the same size as the target. Get rid of the
   # extra dimensions.
   def representation_mask(mask):
-    mask = np.amax(mask, axis=tuple(range(2, mask.ndim)))
-    return np.broadcast_to(
+    mask = jnp.amax(mask, axis=tuple(range(2, mask.ndim)))
+    return jnp.broadcast_to(
         mask[:, :, None], mask.shape + (serializer.representation_length,)
     )
   return tl.Fn('RepresentationMask', representation_mask)
@@ -107,7 +107,7 @@ def SignificanceWeights(serializer, decay):
   def significance_weights(mask):
     # (repr,) -> (batch, length, repr)
     significance = serializer.significance_map[None, None]
-    return mask * decay ** np.broadcast_to(significance, mask.shape)
+    return mask * decay ** jnp.broadcast_to(significance, mask.shape)
   return tl.Fn('SignificanceWeights', significance_weights)
 
 
@@ -198,7 +198,7 @@ def RawPolicy(seq_model, n_controls, n_actions):
   def SplitControls():  # pylint: disable=invalid-name
     """Splits logits for actions in different controls."""
     def f(x):
-      return np.reshape(x, x.shape[:2] + (n_controls, n_actions))
+      return jnp.reshape(x, x.shape[:2] + (n_controls, n_actions))
     return tl.Fn('SplitControls', f)
 
   action_head = [
@@ -258,7 +258,7 @@ def SerializedPolicy(
   def PadRight(n_to_pad):
     def pad_right(x):
       pad_widths = [(0, 0), (0, n_to_pad)] + [(0, 0)] * (x.ndim - 2)
-      return np.pad(
+      return jnp.pad(
           x, pad_widths, mode='constant', constant_values=x.dtype.type(0))
     return tl.Fn(f'PadRight({n_to_pad})', pad_right)
 
@@ -319,7 +319,7 @@ def analyze_action_space(action_space):  # pylint: disable=invalid-name
   else:
     (n_controls,) = action_space.nvec.shape
     assert n_controls > 0
-    assert onp.min(action_space.nvec) == onp.max(action_space.nvec), (
+    assert np.min(action_space.nvec) == np.max(action_space.nvec), (
         'Every control must have the same number of actions.'
     )
     n_actions = action_space.nvec[0]

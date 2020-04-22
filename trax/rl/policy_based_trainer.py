@@ -26,9 +26,9 @@ import os
 
 from absl import logging
 import jax
-from jax import numpy as np
+from jax import numpy as jnp
 from jax import random as jax_random
-import numpy as onp
+import numpy as np
 from tensor2tensor.envs import env_problem_utils
 from tensor2tensor.envs import trajectory
 from trax import jaxboard
@@ -404,8 +404,8 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
       # pylint: disable=g-complex-comprehension
       return {
           temperature: {
-              'mean': onp.mean(rewards),
-              'std': onp.std(rewards)
+              'mean': np.mean(rewards),
+              'std': np.std(rewards)
           } for (temperature, rewards) in reward_dict.items()
       }
       # pylint: enable=g-complex-comprehension
@@ -485,7 +485,7 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
       # Add the control dimension.
       actions = actions[:, :, None]
     (low, high) = self.train_env.reward_range
-    outside = np.logical_or(rewards < low, rewards > high)
+    outside = jnp.logical_or(rewards < low, rewards > high)
     rewards = jax.ops.index_update(rewards, jax.ops.index[outside], 0)
     assert self.train_env.observation_space.shape == observations.shape[2:]
     return (observations, actions, rewards, reward_mask, infos)

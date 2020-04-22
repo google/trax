@@ -19,7 +19,7 @@
 import functools
 
 import gym
-import numpy as onp
+import numpy as np
 from tensorflow import test
 from trax import history as trax_history
 from trax import lr_schedules
@@ -111,7 +111,7 @@ class PolicyScheduleTest(test.TestCase):
     )
     new_lr = schedule(123)['learning_rate']
     self.assertTrue(
-        onp.allclose(new_lr, 5e-5) or onp.allclose(new_lr, 2e-4)
+        np.allclose(new_lr, 5e-5) or np.allclose(new_lr, 2e-4)
     )
 
   def test_works_with_multiple_controls(self):
@@ -151,7 +151,7 @@ class PolicyScheduleTest(test.TestCase):
     )
     new_lr = schedule(123)['learning_rate']
     self.assertTrue(
-        onp.allclose(new_lr, 5e-5) or onp.allclose(new_lr, 2e-4)
+        np.allclose(new_lr, 5e-5) or np.allclose(new_lr, 2e-4)
     )
 
   def test_schedule_from_lr_function(self):

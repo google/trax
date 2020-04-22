@@ -22,7 +22,7 @@ import random
 
 from absl.testing import absltest
 import jax
-import numpy as onp
+import numpy as np
 from trax.layers import activation_fns
 from trax.layers import combinators as cb
 from trax.layers import tracer
@@ -171,16 +171,16 @@ class TracerTest(absltest.TestCase):
       e = add_lyr @ (d, c)
       return e
     layer = make_layer()  # pylint: disable=no-value-for-parameter
-    a = onp.random.randint(0, 10, size=(2, 10))
-    b = onp.random.randint(0, 10, size=(2, 10))
-    c = onp.random.randint(0, 10, size=(2, 10))
-    input_sd = ShapeDtype((2, 10), onp.int32)
+    a = np.random.randint(0, 10, size=(2, 10))
+    b = np.random.randint(0, 10, size=(2, 10))
+    c = np.random.randint(0, 10, size=(2, 10))
+    input_sd = ShapeDtype((2, 10), np.int32)
     input_signature = (input_sd, input_sd, input_sd)
     p, s = layer.new_weights_and_state(input_signature)
     res = layer((a, b, c), weights=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
-    result = onp.array(res)
+    result = np.array(res)
     expected = a + b + c
-    onp.testing.assert_allclose(result, expected)
+    np.testing.assert_allclose(result, expected)
 
   def test_symbolic_decorator2(self):
     add_lyr = cb.Add()
@@ -192,16 +192,16 @@ class TracerTest(absltest.TestCase):
       e = add_lyr @ (d, c)
       return e
     layer = make_layer()  # pylint: disable=no-value-for-parameter
-    a = onp.random.randint(0, 10, size=(2, 10))
-    b = onp.random.randint(0, 10, size=(2, 10))
-    c = onp.random.randint(0, 10, size=(2, 10))
-    input_sd = ShapeDtype((2, 10), onp.int32)
+    a = np.random.randint(0, 10, size=(2, 10))
+    b = np.random.randint(0, 10, size=(2, 10))
+    c = np.random.randint(0, 10, size=(2, 10))
+    input_sd = ShapeDtype((2, 10), np.int32)
     input_signature = (input_sd, input_sd, input_sd)
     p, s = layer.new_weights_and_state(input_signature)
     res = layer((a, b, c), weights=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
-    result = onp.array(res)
-    expected = onp.tanh(a) + b + c
-    onp.testing.assert_allclose(result, expected)
+    result = np.array(res)
+    expected = np.tanh(a) + b + c
+    np.testing.assert_allclose(result, expected)
 
   def test_symbolic_decorator3(self):
     add_lyr = cb.Add()
@@ -213,19 +213,19 @@ class TracerTest(absltest.TestCase):
       f, g = tanh_lyr @ (d, e)
       return f, g
     layer = make_layer()  # pylint: disable=no-value-for-parameter
-    a = onp.random.uniform(-10, 10, size=(2, 10))
-    b = onp.random.uniform(-10, 10, size=(2, 10))
-    c = onp.random.uniform(-10, 10, size=(2, 10))
-    input_sd = ShapeDtype((2, 10), onp.int32)
+    a = np.random.uniform(-10, 10, size=(2, 10))
+    b = np.random.uniform(-10, 10, size=(2, 10))
+    c = np.random.uniform(-10, 10, size=(2, 10))
+    input_sd = ShapeDtype((2, 10), np.int32)
     input_signature = (input_sd, input_sd, input_sd)
     p, s = layer.new_weights_and_state(input_signature)
     res = layer((a, b, c), weights=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg,no-value-for-parameter,not-callable
-    result0 = onp.array(res[0])
-    expected0 = onp.where(a + b > 0, a + b, 0.0)
-    onp.testing.assert_allclose(result0, expected0, rtol=1e-5)
-    result1 = onp.array(res[1])
-    expected1 = onp.tanh(a + b + c)
-    onp.testing.assert_allclose(result1, expected1, rtol=1e-5)
+    result0 = np.array(res[0])
+    expected0 = np.where(a + b > 0, a + b, 0.0)
+    np.testing.assert_allclose(result0, expected0, rtol=1e-5)
+    result1 = np.array(res[1])
+    expected1 = np.tanh(a + b + c)
+    np.testing.assert_allclose(result1, expected1, rtol=1e-5)
 
   def test_symbolic_decorator4(self):
     add_lyr = cb.Add()
@@ -235,24 +235,24 @@ class TracerTest(absltest.TestCase):
         a = add_lyr @ (a, b)
       return a
     layer = make_layer(n=3)  # pylint: disable=no-value-for-parameter
-    a = onp.random.randint(0, 10, size=(2, 10))
-    b = onp.random.randint(0, 10, size=(2, 10))
-    input_sd = ShapeDtype((2, 10), onp.int32)
+    a = np.random.randint(0, 10, size=(2, 10))
+    b = np.random.randint(0, 10, size=(2, 10))
+    input_sd = ShapeDtype((2, 10), np.int32)
     input_signature = (input_sd, input_sd)
     p, s = layer.new_weights_and_state(input_signature)
     res = layer((a, b), weights=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg,no-value-for-parameter,not-callable
-    result = onp.array(res)
+    result = np.array(res)
     expected = a + 3 * b
-    onp.testing.assert_allclose(result, expected)
+    np.testing.assert_allclose(result, expected)
 
     layer = make_layer(n=5)  # pylint: disable=no-value-for-parameter
-    input_sd = ShapeDtype((2, 10), onp.int32)
+    input_sd = ShapeDtype((2, 10), np.int32)
     input_signature = (input_sd, input_sd)
     p, s = layer.new_weights_and_state(input_signature)
     res = layer((a, b), weights=p, state=s, rng=jax.random.PRNGKey(0))  # pylint: disable=unexpected-keyword-arg,no-value-for-parameter,not-callable
-    result = onp.array(res)
+    result = np.array(res)
     expected = a + 5 * b
-    onp.testing.assert_allclose(result, expected)
+    np.testing.assert_allclose(result, expected)
 
 if __name__ == '__main__':
   absltest.main()

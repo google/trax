@@ -18,11 +18,11 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
-import numpy as onp
+import numpy as np
 
 from trax.layers import base
 from trax.layers import normalization
-from trax.math import numpy as np
+from trax.math import numpy as jnp
 from trax.math import use_backend
 from trax.shapes import ShapeDtype
 
@@ -37,26 +37,25 @@ class NormalizationLayerTest(parameterized.TestCase):
 
   def test_batch_norm(self):
     input_shape = (2, 3, 4)
-    input_dtype = np.float32
+    input_dtype = jnp.float32
     input_signature = ShapeDtype(input_shape, input_dtype)
     eps = 1e-5
-    inp1 = np.reshape(np.arange(np.prod(input_shape), dtype=input_dtype),
-                      input_shape)
+    inp1 = jnp.reshape(jnp.arange(jnp.prod(input_shape), dtype=input_dtype),
+                       input_shape)
     m1 = 11.5  # Mean of this random input.
     v1 = 47.9167  # Variance of this random input.
     layer = normalization.BatchNorm(axis=(0, 1, 2))
     _, _ = layer.init(input_signature)
     state = layer.state
-    onp.testing.assert_allclose(state[0], 0)
-    onp.testing.assert_allclose(state[1], 1)
+    np.testing.assert_allclose(state[0], 0)
+    np.testing.assert_allclose(state[1], 1)
     self.assertEqual(state[2], 0)
     out = layer(inp1)
     state = layer.state
-    onp.testing.assert_allclose(state[0], m1 * 0.001)
-    onp.testing.assert_allclose(state[1], 0.999 + v1 * 0.001, rtol=1e-6)
+    np.testing.assert_allclose(state[0], m1 * 0.001)
+    np.testing.assert_allclose(state[1], 0.999 + v1 * 0.001, rtol=1e-6)
     self.assertEqual(state[2], 1)
-    onp.testing.assert_allclose(out, (inp1 - m1) / np.sqrt(v1 + eps),
-                                rtol=1e-6)
+    np.testing.assert_allclose(out, (inp1 - m1) / jnp.sqrt(v1 + eps), rtol=1e-6)
 
   def test_layer_norm_shape(self):
     input_signature = ShapeDtype((29, 5, 7, 20))
@@ -65,11 +64,11 @@ class NormalizationLayerTest(parameterized.TestCase):
     self.assertEqual(result_shape, input_signature.shape)
 
   @parameterized.named_parameters(
-      ('jax32', 'jax', np.float32),
-      ('tf32', 'tf', np.float32),
-      ('tf64', 'tf', np.float64),
+      ('jax32', 'jax', jnp.float32),
+      ('tf32', 'tf', jnp.float32),
+      ('tf64', 'tf', jnp.float64),
       # NOTE: float64 requires more fix in jax
-      # ('jax64', 'jax', np.float64),
+      # ('jax64', 'jax', jnp.float64),
   )
   def test_layer_norm_dtype(self, backend, dtype):
     with use_backend(backend):
@@ -77,7 +76,7 @@ class NormalizationLayerTest(parameterized.TestCase):
       input_signature = ShapeDtype(input_shape, dtype)
       layer = normalization.LayerNorm()
       layer.init(input_signature)
-      out = layer(onp.empty(input_shape, dtype=dtype))
+      out = layer(np.empty(input_shape, dtype=dtype))
       self.assertEqual(out.dtype, dtype)
 
   def test_frn_shape(self):

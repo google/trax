@@ -23,13 +23,13 @@ import os
 
 import gin
 import jax
-import numpy as onp
+import numpy as np
 
 import tensorflow.compat.v2 as tf
 import tensorflow_datasets as tfds
 import trax.layers as tl
 import trax.layers.base
-from trax.math import numpy as np
+from trax.math import numpy as jnp
 import trax.models
 import trax.optimizers
 from trax.supervised.inputs import Inputs
@@ -189,8 +189,8 @@ def glue_inputs(dataset_name, batch_size, eval_batch_size=None, data_dir=None,
     def preprocess(batch):
       """Tokenize and convert text to model inputs."""
       batch_size = batch['idx'].shape[0]
-      input_ids = onp.zeros((batch_size, max_len), dtype=onp.int32)
-      type_ids = onp.zeros((batch_size, max_len), dtype=onp.int32)
+      input_ids = np.zeros((batch_size, max_len), dtype=np.int32)
+      type_ids = np.zeros((batch_size, max_len), dtype=np.int32)
 
       for i in range(batch_size):
         sentence_a = batch[key_a][i]
@@ -198,13 +198,13 @@ def glue_inputs(dataset_name, batch_size, eval_batch_size=None, data_dir=None,
             tokenizer.tokenize(sentence_a)) + [102]
         input_ids[i, :len(tokens_a)] = tokens_a[:max_len]
 
-      return input_ids, type_ids, batch['idx'].astype(np.int32), batch['label']
+      return input_ids, type_ids, batch['idx'].astype(jnp.int32), batch['label']
   else:
     def preprocess(batch):
       """Tokenize and convert text to model inputs."""
       batch_size = batch['idx'].shape[0]
-      input_ids = onp.zeros((batch_size, max_len), dtype=onp.int32)
-      type_ids = onp.zeros((batch_size, max_len), dtype=onp.int32)
+      input_ids = np.zeros((batch_size, max_len), dtype=np.int32)
+      type_ids = np.zeros((batch_size, max_len), dtype=np.int32)
 
       for i in range(batch_size):
         sentence_a = batch[key_a][i]
@@ -220,7 +220,7 @@ def glue_inputs(dataset_name, batch_size, eval_batch_size=None, data_dir=None,
         input_ids[i, :len(ex_input_ids)] = ex_input_ids
         type_ids[i, :len(ex_type_ids)] = ex_type_ids
 
-      return input_ids, type_ids, batch['idx'].astype(np.int32), batch['label']
+      return input_ids, type_ids, batch['idx'].astype(jnp.int32), batch['label']
 
   return tfds_inputs(
       dataset_name=dataset_name,
@@ -243,7 +243,7 @@ def get_mcc(guess, gold):
   tn = ((guess == 0) & (gold == 0)).sum()
   fp = ((guess == 1) & (gold == 0)).sum()
   fn = ((guess == 0) & (gold == 1)).sum()
-  mcc_denom = onp.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
+  mcc_denom = np.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
   mcc = (tp * tn - fp * fn) / (mcc_denom + 1e-6)
   return mcc
 
@@ -261,7 +261,7 @@ def get_f1_accuracy_mean(guess, gold):
 
 
 def get_pearsonr(x, y):
-  return onp.corrcoef(x, y)[0, 1]
+  return np.corrcoef(x, y)[0, 1]
 
 
 @gin.configurable(blacklist=['output_dir'])
@@ -269,7 +269,7 @@ def finetune(output_dir, model=gin.REQUIRED, dataset_name=gin.REQUIRED,
              batch_size=16, num_train_epochs=3.0):
   """Fine-tuning loop for GLUE, largely following the BERT recipe."""
   ds_info = tfds.builder(dataset_name).info
-  is_regression_task = (ds_info.features.dtype['label'] == onp.float32)
+  is_regression_task = (ds_info.features.dtype['label'] == np.float32)
 
   if is_regression_task:
     # Regression task
@@ -359,7 +359,7 @@ def finetune(output_dir, model=gin.REQUIRED, dataset_name=gin.REQUIRED,
           trax.layers.base.reshape_by_device(x, n_devices),
           weights,
           state,
-          np.broadcast_to(jax.random.PRNGKey(0)[None, :], (8, 2))))
+          jnp.broadcast_to(jax.random.PRNGKey(0)[None, :], (8, 2))))
       return res
 
     return predict
@@ -378,21 +378,21 @@ def finetune(output_dir, model=gin.REQUIRED, dataset_name=gin.REQUIRED,
       remainder = labels.shape[0] % trainer._n_devices
       if remainder:
         pad_amount = trainer._n_devices - remainder
-        input_ids = onp.pad(
+        input_ids = np.pad(
             input_ids, ((0, pad_amount), (0, 0)), mode='constant')
-        type_ids = onp.pad(type_ids, ((0, pad_amount), (0, 0)), mode='constant')
-        padded_idx = onp.pad(idx, ((0, pad_amount),), mode='constant')
+        type_ids = np.pad(type_ids, ((0, pad_amount), (0, 0)), mode='constant')
+        padded_idx = np.pad(idx, ((0, pad_amount),), mode='constant')
       else:
         padded_idx = idx
-      out = onp.array(fwd((input_ids, type_ids, padded_idx)))
+      out = np.array(fwd((input_ids, type_ids, padded_idx)))
       if remainder:
         out = out[:-pad_amount]
       all_out.append(out)
       all_idx.append(idx)
       all_labels.append(labels)
-    all_out = onp.concatenate(all_out, axis=0)
-    all_idx = onp.concatenate(all_idx, axis=0)
-    all_labels = onp.concatenate(all_labels, axis=0)
+    all_out = np.concatenate(all_out, axis=0)
+    all_idx = np.concatenate(all_idx, axis=0)
+    all_labels = np.concatenate(all_labels, axis=0)
 
     return all_out, all_labels, all_idx
 

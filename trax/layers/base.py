@@ -22,12 +22,12 @@ import pickle
 import traceback
 
 import jax
-import numpy as onp
+import numpy as np
 import tensorflow as tf
 
 from trax import math
 from trax.math import nested_map
-from trax.math import numpy as np
+from trax.math import numpy as jnp
 from trax.shapes import ShapeDtype
 from trax.shapes import signature
 
@@ -476,7 +476,7 @@ class Layer(object):
       # Note: By using rng_signature in place of an rng, we avoid computing and
       # permanently storing in global memory a large number of dropout masks.
       # TODO(jonni): Check if using an rng still carries this cost.
-      rng_signature = ShapeDtype((2,), onp.uint32)
+      rng_signature = ShapeDtype((2,), np.uint32)
       weight_signature = nested_map(signature, self.weights)
 
       # Wrap forward_with_state so as to use only positional args.
@@ -646,7 +646,7 @@ def Fn(name, f, n_in=None, n_out=1):  # pylint: disable=invalid-name
 
   A layer that takes 2 arguments and returns sum and concatenation on stack:
 
-    Fn(lambda x, y: (x + y, np.concatenate([x, y], axis=0)))
+    Fn(lambda x, y: (x + y, jnp.concatenate([x, y], axis=0)))
 
   Args:
     name: Class-like name for the resulting layer; for use in debugging.
@@ -835,8 +835,8 @@ def _random_values(input_signature, rng):
   """
   if isinstance(input_signature, ShapeDtype):
     shape, dtype = input_signature.shape, input_signature.dtype
-    if onp.issubdtype(dtype, onp.integer):
-      return math.random.bernoulli(rng, 0.5, shape).astype(onp.int32)
+    if np.issubdtype(dtype, np.integer):
+      return math.random.bernoulli(rng, 0.5, shape).astype(np.int32)
     else:
       return math.random.uniform(rng, shape, minval=-1.0, maxval=1.0)
   elif isinstance(input_signature, (list, tuple)):
@@ -867,8 +867,8 @@ def jit_forward(forward, n_devices):
         reshape_by_device(x, n_devices),
         weights,
         state,
-        np.stack(math.random.split(rng, n_devices))))
-    return math.nested_map(lambda y: np.mean(y, axis=0), res), state
+        jnp.stack(math.random.split(rng, n_devices))))
+    return math.nested_map(lambda y: jnp.mean(y, axis=0), res), state
 
   return predict
 
@@ -911,7 +911,7 @@ def for_n_devices(x, n_devices):
     if n_devices > 1 and math.backend_name() == 'jax':
       return _multi_device_put(x)
     elif n_devices > 1:
-      return np.broadcast_to(x, (n_devices,) + x.shape)
+      return jnp.broadcast_to(x, (n_devices,) + x.shape)
     else:
       return x
   return math.nested_map(f, x)
@@ -940,7 +940,7 @@ def _multi_device_put(x, devices=None):
   """
   # Convert _FilledConstants that don't have device_buffer, etc.
   if type(x) != jax.xla.DeviceArray:  # pylint: disable=unidiomatic-typecheck
-    x = np.array(x)
+    x = jnp.array(x)
   # Calculate the abstract shape of the replicated array.
   if not devices:
     devices = jax.local_devices()
