@@ -48,7 +48,7 @@ def ShiftRight(n_shifts=1, mode='train'):
       return x
     padded = zero_pad(x, (n_shifts, 0), 1)
     return padded[:, :-n_shifts]
-  return Fn('ShiftRight({n_shifts})', f)
+  return Fn(f'ShiftRight({n_shifts})', f)
 
 
 def PaddingMask(pad=0):
