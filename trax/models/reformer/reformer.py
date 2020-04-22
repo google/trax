@@ -147,9 +147,9 @@ def ChunkedFeedForward(d_model, d_ff, dropout, activation, act_dropout,
     return np.reshape(x, [n_chunks, 1, chunk_size] + list(x.shape[2:]))
   return [
       tl.Dup(),  # Just to have shape for later after scan.
-      tl.Fn(reshape_to_chunks, n_out=1),
+      tl.Fn('ReshapeToChunks', reshape_to_chunks, n_out=1),
       tl.Scan(tl.Serial(ff), axis=0, n_carry=0, remat=True),
-      tl.Fn(lambda x, y: np.reshape(x, y.shape))
+      tl.Fn('ReshapeXToY', lambda x, y: np.reshape(x, y.shape))
   ]
 
 
@@ -209,22 +209,20 @@ class SplitForOutput(tl.ReversibleLayer):
     return self.reverse(output), (self.reverse(ct), ())
 
 
-@tl.layer()
-def Chunk(x, n_sections=2):
-  assert x.shape[1] % n_sections == 0
-  return np.reshape(x, (
-      x.shape[0] * n_sections,
-      x.shape[1] // n_sections,
-      ) + x.shape[2:])
+def Chunk(n_sections=2):
+  def f(x):
+    s = x.shape
+    assert s[1] % n_sections == 0
+    return np.reshape(x, (s[0] * n_sections, s[1] // n_sections) + s[2:])
+  return tl.Fn('Chunk', f)
 
 
-@tl.layer()
-def Unchunk(x, n_sections=2):
-  assert x.shape[0] % n_sections == 0
-  return np.reshape(x, (
-      x.shape[0] // n_sections,
-      x.shape[1] * n_sections,
-      ) + x.shape[2:])
+def Unchunk(n_sections=2):
+  def f(x):
+    s = x.shape
+    assert s[0] % n_sections == 0
+    return np.reshape(x, (s[0] // n_sections, s[1] * n_sections) + s[2:])
+  return tl.Fn('Unchunk', f)
 
 
 class ReversibleHalfResidual(tl.ReversibleLayer, tl.Serial):
@@ -306,7 +304,7 @@ class ApplyAttentionWrapper(tl.Parallel):
       rng = random.split(rng, self._n_layers)[0]
 
     out, qkv_ct = self.attention.forward_and_backward(
-        qkv, out_ct, rng=rng, state=state[0], new_state=new_state[0])
+        qkv, out_ct, state[0], new_state[0], rng)
     return (out,) + passthrough, qkv_ct + passthrough_ct
 
 
@@ -861,7 +859,7 @@ def ReformerShortenLM(vocab_size,
       # the future. Shifting twice to [00][AB] solves the problem as the first
       # "big" symbol becomes all-0 and the rest is shifted enough.
       tl.ShiftRight(n_shifts=shorten_factor - 1),
-      tl.Fn(lambda x: np.reshape(  # Shorten -- move to depth.
+      tl.Fn('Shorten', lambda x: np.reshape(  # Shorten -- move to depth.
           x, (x.shape[0], x.shape[1] // shorten_factor, -1)), n_out=1),
       tl.Dense(d_model),
       tl.Dup(),  # Stack has (short_x, short_x, x)
@@ -870,7 +868,7 @@ def ReformerShortenLM(vocab_size,
       tl.LayerNorm(),
       BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
       tl.Dense(shorten_factor * d_embedding),
-      tl.Fn(lambda x: np.reshape(  # Prolong back.
+      tl.Fn('ProlongBack', lambda x: np.reshape(  # Prolong back.
           x, (x.shape[0], x.shape[1] * shorten_factor, -1)), n_out=1),
       tl.Concatenate(),  # Concatenate with just the embeddings.
       tl.CausalConv(d_embedding),
@@ -1058,7 +1056,7 @@ def Reformer(input_vocab_size,
       in_encoder,
       tl.Dup(),
       tl.ReversibleSerial(encoder_blocks),
-      tl.Fn(lambda x, y: (x+y)/2.0),
+      tl.Fn('XYAvg', lambda x, y: (x + y) / 2.0),
       tl.LayerNorm(),
   ])
   if mode == 'predict':
@@ -1075,7 +1073,8 @@ def Reformer(input_vocab_size,
       # Copy decoder tokens for use in loss.
       tl.Select([0, 1, 1]),                 # tok_e tok_d tok_d
       tl.Branch([], [tl.PaddingMask(),
-                     tl.Fn(lambda x: np.squeeze(x, (1, 2)), n_out=1)]),
+                     tl.Fn('Squeeze',
+                           lambda x: np.squeeze(x, (1, 2)), n_out=1)]),
       #                                     # tok_e mask  tok_d .....
 
       # Encode.
@@ -1087,7 +1086,8 @@ def Reformer(input_vocab_size,
       out_encoder,                          # vec_d vec_e mask .....
       tl.Dup(),                             # vec_d1 vec_d2 vec_e mask .....
       tl.ReversibleSerial(encoder_decoder_blocks),
-      tl.Fn(lambda x, y: (x+y)/2.0),        # vec_d vec_e mask .....
+      tl.Fn('XYAvg',
+            lambda x, y: (x + y) / 2.0),    # vec_d vec_e mask .....
       tl.LayerNorm(),                       # vec_d vec_e mask .....
 
       # Map to output vocab.

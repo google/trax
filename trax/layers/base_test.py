@@ -19,6 +19,7 @@
 from absl.testing import absltest
 from trax import math
 from trax.layers import base
+from trax.layers.base import Fn
 from trax.math import numpy as np
 from trax.shapes import ShapeDtype
 
@@ -70,19 +71,38 @@ class BaseLayerTest(absltest.TestCase):
 
   def test_output_signature(self):
     input_signature = (ShapeDtype((2, 3, 5)), ShapeDtype((2, 3, 5)))
-    layer = base.Fn(lambda x, y: x + y)  # n_in = 2, n_out = 1
+    layer = Fn('2in1out', lambda x, y: x + y)
     output_signature = layer.output_signature(input_signature)
     self.assertEqual(output_signature, ShapeDtype((2, 3, 5)))
 
     input_signature = ShapeDtype((5, 7))
-    layer = base.Fn(lambda x: (x, 2 * x, 3 * x))  # n_in = 1, n_out = 3
+    layer = Fn('1in3out', lambda x: (x, 2 * x, 3 * x), n_out=3)
     output_signature = layer.output_signature(input_signature)
     self.assertEqual(output_signature, (ShapeDtype((5, 7)),) * 3)
     self.assertNotEqual(output_signature, (ShapeDtype((4, 7)),) * 3)
     self.assertNotEqual(output_signature, (ShapeDtype((5, 7)),) * 2)
 
+  def test_pure_layer_value_forward(self):
+    layer = base.PureLayer(lambda x: 2 * x)
+
+    # Use Layer.__call__.
+    in_0 = np.array([1, 2])
+    out_0 = layer(in_0)
+    self.assertEqual(out_0.tolist(), [2, 4])
+
+    # Use PureLayer.forward.
+    in_1 = np.array([3, 4])
+    out_1 = layer.forward(in_1, base.EMPTY_WEIGHTS)
+    self.assertEqual(out_1.tolist(), [6, 8])
+
+    # Use Layer.forward_with_state.
+    in_2 = np.array([5, 6])
+    out_2, _ = layer.forward_with_state(in_2)
+    self.assertEqual(out_2.tolist(), [10, 12])
+
   def test_fn_layer_example(self):
-    layer = base.Fn(lambda x, y: (x + y, np.concatenate([x, y], axis=0)))
+    layer = Fn('2in2out',
+               lambda x, y: (x + y, np.concatenate([x, y], axis=0)), n_out=2)
     input_signature = (ShapeDtype((2, 7)), ShapeDtype((2, 7)))
     expected_shape = ((2, 7), (4, 7))
     output_shape = base.check_shape_agreement(layer, input_signature)
@@ -92,41 +112,31 @@ class BaseLayerTest(absltest.TestCase):
     self.assertEqual(int(x), 5)
     self.assertEqual([int(y) for y in xs], [2, 3])
 
+  def test_fn_layer_weights_state(self):
+    layer = Fn('2in2out',
+               lambda x, y: (x + y, np.concatenate([x, y], axis=0)), n_out=2)
+    input_signature = None
+    weights, state = layer.new_weights_and_state(input_signature)
+    self.assertIsNotNone(weights)
+    self.assertIsNotNone(state)
+    self.assertEmpty(weights)
+    self.assertEmpty(state)
+
   def test_fn_layer_fails_wrong_f(self):
     with self.assertRaisesRegex(ValueError, 'default arg'):
-      base.Fn(lambda x, sth=None: x)
+      Fn('', lambda x, sth=None: x)
     with self.assertRaisesRegex(ValueError, 'keyword arg'):
-      base.Fn(lambda x, **kwargs: x)
+      Fn('', lambda x, **kwargs: x)
 
   def test_fn_layer_varargs_n_in(self):
     with self.assertRaisesRegex(ValueError, 'variable arg'):
-      base.Fn(lambda *args: args[0])
+      Fn('', lambda *args: args[0])
     # Check that varargs work when n_in is set.
-    id_layer = base.Fn(lambda *args: args[0], n_in=1)
+    id_layer = Fn('', lambda *args: args[0], n_in=1)
     input_signature = ShapeDtype((2, 7))
     expected_shape = (2, 7)
     output_shape = base.check_shape_agreement(id_layer, input_signature)
     self.assertEqual(output_shape, expected_shape)
-
-  def test_fn_layer_difficult_n_out(self):
-    with self.assertRaisesRegex(ValueError, 'n_out'):
-      # Determining the output of this layer is hard with dummies.
-      base.Fn(lambda x: np.concatencate([x, x], axis=4))
-    # Check that this layer works when n_out is set.
-    layer = base.Fn(lambda x: np.concatenate([x, x], axis=4), n_out=1)
-    input_signature = ShapeDtype((2, 1, 2, 2, 3))
-    expected_shape = (2, 1, 2, 2, 6)
-    output_shape = base.check_shape_agreement(layer, input_signature)
-    self.assertEqual(output_shape, expected_shape)
-
-  def test_layer_decorator_and_shape_agreement(self):
-    @base.layer()
-    def add_one(x):
-      return x + 1
-
-    output_shape = base.check_shape_agreement(
-        add_one(), ShapeDtype((12, 17)))  # pylint: disable=no-value-for-parameter
-    self.assertEqual(output_shape, (12, 17))
 
   def test_custom_zero_grad(self):
 
@@ -200,22 +210,6 @@ class BaseLayerTest(absltest.TestCase):
 
     layer = base.Layer(name='CustomLayer')
     self.assertIn('CustomLayer', str(layer))
-
-    # pylint: disable=no-value-for-parameter,invalid-name
-    @base.layer()
-    def DefaultDecoratorLayer(x):
-      return x
-
-    layer = DefaultDecoratorLayer()
-    self.assertIn('DefaultDecoratorLayer', str(layer))
-
-    @base.layer(name='CustomDecoratorLayer')
-    def NotDefaultDecoratorLayer(x):
-      return x
-
-    layer = NotDefaultDecoratorLayer()
-    self.assertIn('CustomDecoratorLayer', str(layer))
-    # pylint: enable=no-value-for-parameter,invalid-name
 
 
 if __name__ == '__main__':

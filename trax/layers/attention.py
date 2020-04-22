@@ -24,6 +24,7 @@ from trax.layers import base
 from trax.layers import combinators as cb
 from trax.layers import core
 from trax.layers import initializers as init
+from trax.layers.base import Fn
 from trax.math import numpy as np
 
 
@@ -39,29 +40,31 @@ def zero_pad(x, pad, axis):
                 constant_values=x.dtype.type(0))
 
 
-@base.layer()
-def ShiftRight(x, n_shifts=1, mode='train'):
+def ShiftRight(n_shifts=1, mode='train'):
   """Layer to shift the tensor to the right by padding on axis 1."""
-  if mode == 'predict':
-    # Do nothing in predict mode, as then the sequence length is 1.
-    return x
-  padded = zero_pad(x, (n_shifts, 0), 1)
-  return padded[:, :-n_shifts]
+  def f(x):
+    if mode == 'predict':
+      # Do nothing in predict mode, as then the sequence length is 1.
+      return x
+    padded = zero_pad(x, (n_shifts, 0), 1)
+    return padded[:, :-n_shifts]
+  return Fn('ShiftRight({n_shifts})', f)
 
 
-@base.layer()
-def PaddingMask(x, pad=0):
-  return np.reshape(x != pad, (x.shape[0], 1, 1, x.shape[-1]))
+def PaddingMask(pad=0):
+  def f(x):
+    return np.reshape(x != pad, (x.shape[0], 1, 1, x.shape[-1]))
+  return Fn(f'PaddingMask({pad})', f)
 
 
-@base.layer(n_in=2)
-def EncoderDecoderMask(x):
+def EncoderDecoderMask():
   """Makes encoder-decoder mask from decoder input and a padding mask."""
-  decoder_input, padding_mask = x
-  padding_mask = np.reshape(
-      padding_mask, (padding_mask.shape[0], 1, 1, padding_mask.shape[-1]))
-  # Final mask shape is [batch, 1 for heads, decoder-len, encoder-len].
-  return padding_mask + np.zeros((1, 1, decoder_input.shape[1], 1))
+  def f(decoder_input, padding_mask):
+    padding_mask = np.reshape(
+        padding_mask, (padding_mask.shape[0], 1, 1, padding_mask.shape[-1]))
+    # Final mask shape is [batch, 1 for heads, decoder-len, encoder-len].
+    return padding_mask + np.zeros((1, 1, decoder_input.shape[1], 1))
+  return Fn('EncoderDecoderMask', f)
 
 
 class PositionalEncoding(base.Layer):

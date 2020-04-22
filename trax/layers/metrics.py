@@ -42,20 +42,19 @@ import jax
 
 from trax import math
 from trax import shapes
-from trax.layers import base
 from trax.layers import combinators as cb
 from trax.layers import core
+from trax.layers.base import Fn
 from trax.math import numpy as np
 
 
-# pylint: disable=no-value-for-parameter
-@base.layer(n_in=3, n_out=1)
-def L2Loss(inputs):
-  y_hat, y, mask = inputs
-  shapes.assert_same_shape(y_hat, y)
-  shapes.assert_same_shape(y, mask)
-  l2 = mask * (y_hat - y)**2
-  return np.sum(l2) / np.sum(mask)
+def L2Loss():
+  def f(y_hat, y, mask):  # pylint: disable=invalid-name
+    shapes.assert_same_shape(y_hat, y)
+    shapes.assert_same_shape(y, mask)
+    l2 = mask * (y_hat - y)**2
+    return np.sum(l2) / np.sum(mask)
+  return Fn('L2Loss', f)
 
 
 def AccuracyScalar():
@@ -90,52 +89,54 @@ def SumOfWeights():
 # pylint: enable=no-value-for-parameter
 
 
-@base.layer(n_in=2, n_out=1)
-def _Accuracy(inputs, axis=-1):
+def _Accuracy(axis=-1):
   """Returns a layer to score matches of predicted versus target categories."""
-  y_hat, target_category = inputs
-  predicted_category = np.argmax(y_hat, axis=axis)
-  # TODO(pkozakowski): This assertion breaks some tests. Fix and uncomment.
-  # shapes.assert_same_shape(predicted_category, target_category)
-  return np.equal(predicted_category, target_category).astype(np.float32)
+  def f(y_hat, target_category):  # pylint: disable=invalid-name
+    predicted_category = np.argmax(y_hat, axis=axis)
+    # TODO(pkozakowski): This assertion breaks some tests. Fix and uncomment.
+    # shapes.assert_same_shape(predicted_category, target_category)
+    return np.equal(predicted_category, target_category).astype(np.float32)
+  return Fn('_Accuracy', f)
 
 
-@base.layer(n_in=2, n_out=1)
-def _CrossEntropy(inputs):
+def _CrossEntropy():
   """Returns a layer to compute prediction-target cross entropies."""
-  y_hat, target_category = inputs
-  # TODO(pkozakowski): This assertion breaks some tests. Fix and uncomment.
-  # shapes.assert_shape_equals(target_category, y_hat.shape[:-1])
-  return -1.0 * np.sum(y_hat * one_hot(target_category, y_hat.shape[-1]),
-                       axis=-1)
+  def f(y_hat, target_category):  # pylint: disable=invalid-name
+    # TODO(pkozakowski): This assertion breaks some tests. Fix and uncomment.
+    # shapes.assert_shape_equals(target_category, y_hat.shape[:-1])
+    return -1.0 * np.sum(y_hat * one_hot(target_category, y_hat.shape[-1]),
+                         axis=-1)
+  return Fn('_CrossEntropy', f)
 
 
-@base.layer(n_in=2, n_out=1)
-def _WeightedMean(inputs):
+def _WeightedMean():
   """Returns a layer to compute weighted mean over all values in the input."""
-  values, weights = inputs
-  return np.sum(values * weights) / np.sum(weights)
+  def f(values, weights):  # pylint: disable=invalid-name
+    return np.sum(values * weights) / np.sum(weights)
+  return Fn('_WeightedMean', f)
 
 
-@base.layer(n_in=2, n_out=1)
-def WeightedSum(inputs):
+def WeightedSum():
   """Returns a layer to compute weighted sum over all values in the input."""
-  values, weights = inputs
-  return np.sum(values * weights)
+  def f(values, weights):  # pylint: disable=invalid-name
+    return np.sum(values * weights)
+  return Fn('WeightedSum', f)
 
 
-@base.layer(n_in=2, n_out=1)
-def _WeightedSequenceMean(inputs):
+def _WeightedSequenceMean():
   """Returns a layer to compute weighted seqeunce accuracy mean."""
-  values, weights = inputs  # This function assumes weights are 0 or 1.
-  not_correct = (1.0 - values) * weights  # 1: not-correct, 0: correct or masked
-  axis_to_sum = list(range(1, len(not_correct.shape)))
-  # Summing not-correct on all axes but batch. We're summing 0s and 1s,
-  # so the sum is 0 if it's all 0 and >=1 in all other cases.
-  not_correct_seq = np.sum(not_correct, axis=axis_to_sum)
-  # Sequence is correct if not_correct_seq is 0, reverting here.
-  correct_seq = 1.0 - np.minimum(1.0, not_correct_seq)
-  return np.mean(correct_seq)  # Mean over batch.
+  def f(values, weights):  # pylint: disable=invalid-name
+    # This function assumes weights are 0 or 1.
+    # Then compute 1: not-correct, 0: correct or masked
+    not_correct = (1.0 - values) * weights
+    axis_to_sum = list(range(1, len(not_correct.shape)))
+    # Summing not-correct on all axes but batch. We're summing 0s and 1s,
+    # so the sum is 0 if it's all 0 and >=1 in all other cases.
+    not_correct_seq = np.sum(not_correct, axis=axis_to_sum)
+    # Sequence is correct if not_correct_seq is 0, reverting here.
+    correct_seq = 1.0 - np.minimum(1.0, not_correct_seq)
+    return np.mean(correct_seq)  # Mean over batch.
+  return Fn('_WeightedSequenceMean', f)
 
 
 # pylint: disable=no-value-for-parameter

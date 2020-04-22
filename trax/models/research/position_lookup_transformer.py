@@ -30,82 +30,82 @@ _ABSOLUTE_MAX_LEN = 10000
 _POSITIONS = onp.random.uniform(size=[_ABSOLUTE_MAX_LEN, POS_VECTOR_SIZE])
 
 
-@tl.layer()
-def NewPositionalEncoding(x, positions=None):
+def NewPositionalEncoding(positions=None):
   """Implements new positional encoding."""
-  x_length = np.shape(x)[1]
-  pos = np.array(positions)[np.newaxis, :x_length, :]
-  pos += np.zeros((np.shape(x)[0], 1, 1))  # Broadcast on batch.
-  return pos
+  def f(x):  # pylint: disable=invalid-name
+    x_length = np.shape(x)[1]
+    pos = np.array(positions)[np.newaxis, :x_length, :]
+    pos += np.zeros((np.shape(x)[0], 1, 1))  # Broadcast on batch.
+    return pos
+  return tl.Fn('NewPositionalEncoding', f)
 
 
-@tl.layer(n_in=1, n_out=2)
-def CombineHeadsPos(x, n_heads=1):
-  """Mix x = (x0, p0, ..., xH, pH) into (x0, ...., xH), p_combined.
+def CombineHeadsPos(n_heads=1):
+  """Layer that extracts/combines position information."""
 
-  The positions are averaged as vectors.
+  def f(x):  # pylint: disable=invalid-name
+    """Mix x = (x0, p0, ..., xH, pH) into (x0, ...., xH), p_combined.
 
-  Args:
-    x: input vector, concatenated (x0, p0, ..., xH, pH).
-    n_heads: number of heads.
+    The positions are averaged as vectors.
 
-  Returns:
-    the vector with combined xs and one with combined positions.
-  """
-  seqlen = x.shape[1]
-  d_head = x.shape[2]
-  x = np.reshape(x, (-1, n_heads, seqlen, d_head))
-  x = np.transpose(x, (0, 2, 1, 3))  # -> n_batch, seqlen, n_heads, d_head
-  x = np.reshape(x, (-1, seqlen, n_heads * d_head))
-  head_size = int(d_head) - POS_VECTOR_SIZE
-  res, positions, idx = [], [], 0
-  for _ in range(n_heads):
-    res.append(x[:, :, idx:idx+head_size])
-    idx += head_size
-    positions.append(x[:, :, idx:idx+POS_VECTOR_SIZE])
-    idx += POS_VECTOR_SIZE
-  combined_position = sum(positions) / float(len(positions))
-  return np.concatenate(res, axis=-1), combined_position
+    Args:
+      x: input vector, concatenated (x0, p0, ..., xH, pH).
+
+    Returns:
+      the vector with combined xs and one with combined positions.
+    """
+    seqlen = x.shape[1]
+    d_head = x.shape[2]
+    x = np.reshape(x, (-1, n_heads, seqlen, d_head))
+    x = np.transpose(x, (0, 2, 1, 3))  # -> n_batch, seqlen, n_heads, d_head
+    x = np.reshape(x, (-1, seqlen, n_heads * d_head))
+    head_size = int(d_head) - POS_VECTOR_SIZE
+    res, positions, idx = [], [], 0
+    for _ in range(n_heads):
+      res.append(x[:, :, idx:idx+head_size])
+      idx += head_size
+      positions.append(x[:, :, idx:idx+POS_VECTOR_SIZE])
+      idx += POS_VECTOR_SIZE
+    combined_position = sum(positions) / float(len(positions))
+    return np.concatenate(res, axis=-1), combined_position
+
+  return tl.Fn('CombineHeadsPos', f, n_out=2)
 
 
-@tl.layer()
-def QueryPositionKV(x, keys=None, values=None, binary=False):
+def QueryPositionKV(keys=None, values=None, binary=False):
   """Query a table with a position vector."""
-  if keys is None:
-    return x
-  k = np.array(keys)
-  v = np.array(values)
-  q = x
-  if binary:
-    q = np.concatenate([x, x], axis=-1)
-  return tl.DotProductAttention(q, k, v, None, 0.0, None, None)
+  def f(x):  # pylint: disable=invalid-name
+    if keys is None:
+      return x
+    k = np.array(keys)
+    v = np.array(values)
+    q = x
+    if binary:
+      q = np.concatenate([x, x], axis=-1)
+    return tl.DotProductAttention(q, k, v, None, 0.0, None, None)
+  return tl.Fn('QueryPositionKV', f)
 
 
-@tl.layer(n_in=10, n_out=1)
-def Softmax5Branches(x_list):
-  """Softmax qs.
+def Softmax5Branches():
+  """Returns layer that computes softmax-weighted average of 5 query embeddings.
 
-  The input xs is a list of weights and embedded queries of the form
-  w_1 ... w_n q_1 ... q_n. The q_1 ... q_n will be kept, result appended.
-
-  Args:
-    x_list: the input weights and embeddings.
-
-  Returns:
-    the weighted average of q_1 ... q_n according to softmax(w).
+  The layer has 10 inputs representing 5 computed weights and 5 queries.
+  The layer returns the the softmax-weighted average of q1, ..., q5.
   """
-  n_branches = 5
-  softmax_activations = x_list[:n_branches]
-  max_sa = softmax_activations[0]
-  for x in softmax_activations:
-    max_sa = np.maximum(max_sa, x)
-  softmax_activations = [x - max_sa for x in softmax_activations]
-  softmax_activations = [np.exp(x) for x in softmax_activations]
-  sum_sa = sum(softmax_activations)
-  softmax_activations = [x / sum_sa for x in softmax_activations]
-  res = sum([x_list[i + n_branches] * softmax_activations[i]
-             for i in range(n_branches)])
-  return res
+  def f(w1, w2, w3, w4, w5, q1, q2, q3, q4, q5):  # pylint: disable=invalid-name
+    softmax_activations = [w1, w2, w3, w4, w5]
+    query_embeddings = [q1, q2, q3, q4, q5]
+
+    max_sa = softmax_activations[0]
+    for x in softmax_activations:
+      max_sa = np.maximum(max_sa, x)
+    softmax_activations = [x - max_sa for x in softmax_activations]
+    softmax_activations = [np.exp(x) for x in softmax_activations]
+    sum_sa = sum(softmax_activations)
+    softmax_activations = [x / sum_sa for x in softmax_activations]
+    res = sum(s * q for s, q in zip(softmax_activations, query_embeddings))
+    return res
+  return tl.Fn('Softmax5Branches', f)
 
 
 @tl.symbolic

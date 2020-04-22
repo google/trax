@@ -84,7 +84,7 @@ def BERT(d_model=768,
           word_embeddings,
           type_embeddings,
           [tl.PaddingMask(),
-           tl.Fn(lambda x: np.squeeze(x, (1, 2)), n_out=1)]
+           tl.Fn('Squeeze', lambda x: np.squeeze(x, (1, 2)), n_out=1)]
       ),
       tl.Add(),
       position_embeddings,
@@ -111,7 +111,7 @@ def BERT(d_model=768,
   encoder += [tl.Select([0], n_in=2)]  # Drop the mask
 
   pooler = [
-      tl.Fn(lambda x: (x[:, 0, :], x), n_in=1, n_out=2),
+      tl.Fn('', lambda x: (x[:, 0, :], x), n_out=2),
       tl.Dense(d_model),
       tl.Tanh(),
   ]

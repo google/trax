@@ -49,7 +49,7 @@ class ReversibleLayer(base.Layer):
       weights: layer weights
       state: start state
       new_state: updated state computed by the forward pass
-      rng: Single-use random number generator (JAX PRNG key)
+      rng: Single-use random number generator (JAX PRNG key).
 
     Returns:
       A tuple (x, (x_grad, weights_grad)), where x is the reconstructed input,
@@ -76,8 +76,16 @@ class ReversibleLayer(base.Layer):
     return inputs_weights_grad
 
 
-class ReversibleSwap(ReversibleLayer, cb.Swap):
+class ReversibleSwap(ReversibleLayer):
   """Swap the first two element on the stack."""
+
+  def __init__(self):
+    super().__init__(n_in=2, n_out=2)
+
+  def forward(self, inputs, weights):
+    del weights
+    x0, x1 = inputs
+    return x1, x0
 
   def reverse(self, output, weights=(), state=(), new_state=(), rng=None):
     # Swap is its own inverse, except that reverse doesn't return the state.
@@ -89,7 +97,9 @@ class ReversibleSerial(ReversibleLayer, cb.Serial):
   """A reversible version of tl.Serial (requires reversible sub-layers)."""
 
   def __init__(self, *layers):
-    super(ReversibleSerial, self).__init__(*layers)
+    super().__init__(*layers)
+  # def __init__(self, *layers):  # pylint: disable=super-init-not-called
+  #   cb.Serial.__init__(self, layers)
 
     # Note that sublayers has already been flattened to remove nested lists.
     for i, layer in enumerate(self.sublayers):

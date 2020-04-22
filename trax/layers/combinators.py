@@ -18,6 +18,7 @@
 
 from trax import math
 from trax.layers import base
+from trax.layers.base import Fn
 from trax.math import numpy as np
 from trax.shapes import ShapeDtype
 
@@ -375,11 +376,11 @@ class Scan(base.Layer):
   at the given axis as if they were a list. For example, to calculate all
   sums of prefixes of a tensor, we can do this:
 
-  @base.layer(n_in=2, n_out=2)
-  def add(x)
-      input, carry = x
+  def add(x, carry):
+    def f(input, carry):
       res = input + carry
       return res, res  # output and carry are the same
+    return tl.Fn('add', f, n_out=2)
 
   Scan(add)([1, 2, 3], 0) = [1, 3, 6], 6
   """
@@ -495,23 +496,19 @@ def Residual(*layers, shortcut=None):
   )
 
 
-@base.layer(n_out=0)
-def Drop(x):
+def Drop():
   """Drops the top stack element."""
-  del x  # Just for the compiler.
-  return ()
+  return Fn('Drop', lambda x: (), n_out=0)
 
 
-@base.layer(n_out=2)
-def Dup(x):
+def Dup():
   """Duplicates (copies) the top element on the data stack."""
-  return (x, x)
+  return Fn('Dup', lambda x: (x, x), n_out=2)
 
 
-@base.layer(n_in=2, n_out=2)
-def Swap(xs):
+def Swap():
   """Swaps the top two stack elements."""
-  return (xs[1], xs[0])
+  return Fn('Swap', lambda x0, x1: (x1, x0), n_out=2)
 
 
 def Select(indices, n_in=None, name=None):
@@ -537,14 +534,12 @@ def Select(indices, n_in=None, name=None):
   if name is None:
     name = f'Select{indices}'.replace(' ', '')
 
-  @base.layer(n_in=n_in, n_out=len(indices), name=name)
-  def Selection(xs):  # pylint: disable=invalid-name
+  def select(*xs):  # pylint: disable=invalid-name
     if not isinstance(xs, (tuple, list)):
       xs = (xs,)
     selected = tuple(xs[i] for i in indices)
     return selected[0] if len(selected) == 1 else selected
-
-  return Selection()  # pylint: disable=no-value-for-parameter
+  return Fn(name, select, n_in=n_in, n_out=len(indices))
 
 
 def SerialWithSideOutputs(layers, n_side_outputs=1):
@@ -610,48 +605,36 @@ def SerialWithSideOutputs(layers, n_side_outputs=1):
   return Serial(serial_layers)
 
 
-@base.layer()
-def FlattenList(x):
+def FlattenList():
   """Flatten lists."""
   # TODO(jonni): Consider renaming layer to DeepFlatten.
-  return tuple(_deep_flatten(x))
+  return Fn('FlattenList', lambda x: tuple(_deep_flatten(x)))
 
 
-@base.layer(n_in=2)
-def Add(xs):
+def Add():
   """Adds two tensors."""
-  return xs[0] + xs[1]
+  return Fn('Add', lambda x0, x1: x0 + x1)
 
 
-@base.layer(n_in=2)
-def SubtractTop(xs):
+def SubtractTop():
   """Subtracts the first tensor from the second."""
-  return xs[1] - xs[0]
+  return Fn('SubtractTop', lambda x0, x1: x1 - x0)
 
 
-@base.layer(n_in=2)
-def Multiply(xs):
+def Multiply():
   """Multiplies two tensors."""
-  return xs[0] * xs[1]
+  return Fn('Multiply', lambda x0, x1: x0 * x1)
 
 
-@base.layer(n_in=3)
-def Gate(xs):
-  """Implements a gating function on a (memory, gate, candidate) tuple.
+def Gate():
+  """Returns a gating layer on a (memory, gate, candidate) tuple.
 
   Final update is memory * gate + (1 - gate) * candidate
 
   This gating equation may also be referred to as Highway Network.
   Highway Networks: https://arxiv.org/abs/1505.00387
-
-  Args:
-    xs: A tuple of memory, gate, candidate
-
-  Returns:
-    The result of applying gating.
   """
-  memory, gate, candidate = xs
-  return gate * memory + (1.0 - gate) * candidate
+  return Fn('Gate', lambda m, g, c: g * m + (1.0 - g) * c)
 
 
 class Cache(base.Layer):

@@ -91,7 +91,7 @@ class Layer(object):
     Args:
       n_in: Number of inputs expected by this layer.
       n_out: Number of outputs promised by this layer.
-      name: Descriptive name for this layer.
+      name: Class-like name for this layer; for use in debugging.
     """
     self._n_in = n_in
     self._n_out = n_out
@@ -174,7 +174,7 @@ class Layer(object):
 
     Args:
       inputs: Input tensors, matching the number (n_in) expected by this
-          layer. Specifically:
+          layer, packaged as single positional arg. Specifically:
             - n_in = 0: an empty tuple ()
             - n_in = 1: a tensor (NOT wrapped in a tuple)
             - n_in > 1: a tuple of tensors, with n_in items
@@ -220,7 +220,6 @@ class Layer(object):
         - n_out = 1: one tensor (NOT wrapped in a tuple)
         - n_out > 1: a tuple of tensors, with n_out items
     """
-    # Default implementation only computes with inputs and weights.
     del rng
     return self.forward(inputs, weights), state
 
@@ -570,7 +569,7 @@ class Layer(object):
 
 
 def layer(n_in=1, n_out=1, name=None):
-  """Returns a decorator that converts a function into a Layer class builder."""
+  """Decorator for creating simple layers.  DEPRECATED; use base.Fn instead."""
 
   def _build_layer_class(raw_fn):
     """Returns a Layer class whose callable instances execute the function."""
@@ -587,10 +586,6 @@ def layer(n_in=1, n_out=1, name=None):
       output = () if _is_empty(raw_output) else raw_output
       return output
 
-    def _is_empty(raw_output):
-      return raw_output is None or (isinstance(raw_output, (list, tuple))
-                                    and len(raw_output) == 0)  # pylint: disable=g-explicit-length-test
-
     # Set docstrings and create the class.
     _forward.__doc__ = raw_fn.__doc__
     # Note: None.__doc__ is None
@@ -602,7 +597,48 @@ def layer(n_in=1, n_out=1, name=None):
   return _build_layer_class
 
 
-def Fn(f, n_in=None, n_out=None):  # pylint: disable=invalid-name
+class PureLayer(Layer):
+  """Pure function from inputs to outputs, packaged as neural network layer.
+
+  The `PureLayer` class represents the simplest kinds of layers: layers with
+  no trainable weights and no randomness, hence pure functions from inputs to
+  outputs.
+  """
+
+  def __init__(self, forward_fn, n_in=1, n_out=1, name='PureLayer'):
+    """Creates an unconnected PureLayer instance.
+
+    Args:
+      forward_fn: Pure function from input tensors to output tensors, where
+          inputs and outputs are packaged as specified for `forward`.
+      n_in: Number of inputs expected by this layer.
+      n_out: Number of outputs promised by this layer.
+      name: Class-like name for this layer; for use only in debugging.
+    """
+    super().__init__(n_in, n_out, name)
+    self._forward_fn = forward_fn
+
+  def forward(self, inputs, weights):
+    """Overrides `Layer.forward`.
+
+    Args:
+      inputs: Input tensors, matching the number (n_in) expected by this layer.
+      weights: Trainable weights in general, but this subclass doesn't use
+          weights, so the only acceptable value is an empty tuple/list.
+
+    Returns:
+      Tensors, matching the number (n_out) promised by this layer.
+
+    Raises:
+      ValueError: If weights is other than an empty tuple/list.
+    """
+    _validate_forward_input(inputs, self.n_in)
+    raw_output = self._forward_fn(inputs)
+    output = () if _is_empty(raw_output) else raw_output
+    return output
+
+
+def Fn(name, f, n_in=None, n_out=1):  # pylint: disable=invalid-name
   """Returns a layer with no weights that applies the function f.
 
   The function f can take and return any number of arguments, but it cannot
@@ -612,16 +648,17 @@ def Fn(f, n_in=None, n_out=None):  # pylint: disable=invalid-name
 
     Fn(lambda x, y: (x + y, np.concatenate([x, y], axis=0)))
 
-  Sometimes determining the number of outputs automatically fails,
-  in such cases specify n_in and n_out.
-
   Args:
-    f: the function to execute
-    n_in: optional, number of inputs
-    n_out: optional, number of outputs
+    name: Class-like name for the resulting layer; for use in debugging.
+    f: Pure function from input tensors to output tensors, where each input
+        tensor is a separate positional arg, e.g.:
+            f(x0, x1) --> x0 + x1
+        Output tensors must be packaged as specified for `Layer.forward`.
+    n_in: Number of inputs expected by the layer.
+    n_out: Number of outputs promised by the layer.
 
   Returns:
-    A layer executing the function f.
+    Layer executing the function f.
   """
   # Inspect the function f to restrict to no-defaults and no-kwargs functions.
   argspec = inspect.getfullargspec(f)
@@ -637,23 +674,15 @@ def Fn(f, n_in=None, n_out=None):  # pylint: disable=invalid-name
     if argspec.varargs is not None:
       raise ValueError('Argument n_in is not set and f has variable args.')
     n_in = len(argspec.args)
-  # Try to determine n_out from function signature.
-  if n_out is None:
-    try:
-      dummy_args = [np.array([[0.0]]) for _ in range(n_in)]
-      res = f(*dummy_args)
-      n_out = len(res) if isinstance(res, (list, tuple)) else 1
-    except Exception as e:
-      raise ValueError(
-          'Argument n_out is not set and could not be determined.') from e
 
   # Create the layer.
-  @layer(n_in=n_in, n_out=n_out)
-  def F(xs, **unused_kwargs):  # pylint: disable=invalid-name
+  def _forward(xs):  # pylint: disable=invalid-name
     if not isinstance(xs, (tuple, list)):
       xs = (xs,)
     return f(*xs)
-  return F()  # pylint: disable=no-value-for-parameter
+
+  name = name or 'Fn'
+  return PureLayer(_forward, n_in=n_in, n_out=n_out, name=name)
 
 
 class LayerError(Exception):
@@ -726,6 +755,12 @@ def _validate_forward_input(x, n_in):
     if len(x) != n_in:
       raise ValueError(f'Input tuple length ({len(x)}) does not equal required '
                        f'number of inputs ({n_in}).')
+
+
+def _is_empty(container):
+  if container is None:
+    raise ValueError('Argument "container" is None.')
+  return isinstance(container, (list, tuple)) and len(container) == 0  # pylint: disable=g-explicit-length-test
 
 
 def _find_frame(frame):

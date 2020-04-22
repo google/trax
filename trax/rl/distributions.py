@@ -64,12 +64,9 @@ class Distribution:
     raise NotImplementedError
 
   def LogProb(self):  # pylint: disable=invalid-name
-    @tl.layer(n_in=2, n_out=1)
-    def Layer(x, **unused_kwargs):  # pylint: disable=invalid-name
-      """Builds a log probability layer for this distribution."""
-      (inputs, point) = x
-      return self.log_prob(inputs, point)
-    return Layer()  # pylint: disable=no-value-for-parameter
+    """Builds a log probability layer for this distribution."""
+    return tl.Fn('LogProb',
+                 lambda inputs, point: self.log_prob(inputs, point))  # pylint: disable=unnecessary-lambda
 
 
 @gin.configurable(blacklist=['n_categories', 'shape'])

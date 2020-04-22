@@ -113,38 +113,47 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
   @property
   def advantage_mean(self):
     """Mean of advantages."""
-    return tl.Fn(
-        lambda dist_inputs, values, returns: jnp.mean(returns - values),
-        n_out=1)
+    def f(dist_inputs, values, returns):
+      del dist_inputs
+      return jnp.mean(returns - values)
+    return tl.Fn('AdvantageMean', f)
 
   @property
   def advantage_norm(self):
-    """Mean of advantages."""
-    return tl.Fn(
-        lambda dist_inputs, values, returns: jnp.linalg.norm(returns - values),
-        n_out=1)
+    """Norm of advantages."""
+    def f(dist_inputs, values, returns):
+      del dist_inputs
+      return jnp.linalg.norm(returns - values)
+    return tl.Fn('AdvantageNorm', f)
 
   @property
   def value_loss(self):
     """Value loss - so far generic for all A2C."""
-    return tl.Fn(lambda dist_inputs, values, returns: rl_layers.ValueLoss(
-        values, returns, self._value_loss_coeff), n_out=1)
+    def f(dist_inputs, values, returns):
+      del dist_inputs
+      return rl_layers.ValueLoss(values, returns, self._value_loss_coeff)
+    return tl.Fn('ValueLoss', f)
 
   @property
   def explained_variance(self):
     """Explained variance metric."""
-    return tl.Fn(rl_layers.ExplainedVariance, n_out=1)
+    return tl.Fn('ExplainedVariance', rl_layers.ExplainedVariance)
 
   @property
   def log_probs_mean(self):
     """Mean of log_probs aka dist_inputs."""
-    return tl.Fn(lambda dist_inputs, values: jnp.mean(dist_inputs), n_out=1)
+    def f(dist_inputs, values):
+      del values
+      return jnp.mean(dist_inputs)
+    return tl.Fn('LogProbsMean', f)
 
   @property
   def preferred_move(self):
     """Preferred move - the mean of selected moves."""
-    return tl.Fn(lambda dist_inputs, values: rl_layers.PreferredMove(
-        dist_inputs, self._policy_dist.sample), n_out=1)
+    def f(dist_inputs, values):
+      del values
+      return rl_layers.PreferredMove(dist_inputs, self._policy_dist.sample)
+    return tl.Fn('PreferredMove', f)
 
   def policy(self, trajectory):
     """Chooses an action to play after a trajectory."""
@@ -229,8 +238,7 @@ class PPOJointTrainer(ActorCriticJointTrainer):
   @property
   def joint_loss(self):
     """Joint policy and value loss."""
-    def PPOJointLoss(dist_inputs, values, returns, actions, old_log_probs,
-                     mask):
+    def f(dist_inputs, values, returns, actions, old_log_probs, mask):
       """Definition of the Proximal Policy Optimization loss."""
       del mask  # TODO(lukaszkaiser): make PPO work with Transformer
 
@@ -251,8 +259,9 @@ class PPOJointTrainer(ActorCriticJointTrainer):
 
       return -ppo_objective.mean() + l2_value_loss - entropy_loss
 
-    return tl.Fn(PPOJointLoss, n_out=1)
+    return tl.Fn('PPOJointLoss', f)
 
+  # pylint: disable=invalid-name
   @property
   def probs_ratio_mean(self):
     """Joint policy and value loss layer."""
@@ -262,9 +271,11 @@ class PPOJointTrainer(ActorCriticJointTrainer):
           dist_inputs, actions, old_log_probs,
           log_prob_fun=self._policy_dist.log_prob)
       return jnp.mean(probs_ratio)
-    return tl.Fn(
-        lambda dist_inputs, values, returns, actions, old_log_probs:
-        ProbsRatioMean(dist_inputs, actions, old_log_probs), n_out=1)
+
+    def f(dist_inputs, values, returns, actions, old_log_probs):
+      del values, returns
+      return ProbsRatioMean(dist_inputs, actions, old_log_probs)
+    return tl.Fn('ProbsRatioMean', f)
 
   @property
   def clip_fraction(self):
@@ -275,37 +286,38 @@ class PPOJointTrainer(ActorCriticJointTrainer):
           dist_inputs, actions, old_log_probs,
           log_prob_fun=self._policy_dist.log_prob)
       return jnp.mean(jnp.abs(probs_ratio - 1) > self._epsilon)
-    return tl.Fn(
-        lambda dist_inputs, values, returns, actions, old_log_probs:
-        ClipFraction(dist_inputs, actions, old_log_probs), n_out=1)
+
+    def f(dist_inputs, values, returns, actions, old_log_probs):
+      del values, returns
+      return ClipFraction(dist_inputs, actions, old_log_probs)
+    return tl.Fn('ClipFraction', f)
+  # pylint: enable=invalid-name
 
   @property
   def entropy_loss(self):
     """Entropy layer."""
-    return tl.Fn(
-        lambda dist_inputs, values, returns, actions:
-        rl_layers.EntropyLoss(
-            dist_inputs, actions, log_prob_fun=self._policy_dist.log_prob,
-            entropy_coeff=self._entropy_coeff,
-            entropy_fun=self._policy_dist.entropy),
-        n_out=1)
+    def f(dist_inputs, values, returns, actions):
+      del values, returns
+      return rl_layers.EntropyLoss(
+          dist_inputs, actions, log_prob_fun=self._policy_dist.log_prob,
+          entropy_coeff=self._entropy_coeff,
+          entropy_fun=self._policy_dist.entropy)
+    return tl.Fn('EntropyLoss', f)
 
   @property
   def approximate_kl_divergence(self):
     """Entropy layer."""
-    return tl.Fn(
-        lambda dist_inputs, actions, old_log_probs:
-        rl_layers.ApproximateKLDivergence(
-            dist_inputs,
-            actions,
-            old_log_probs,
-            log_prob_fun=self._policy_dist.log_prob),
-        n_out=1)
+    def f(dist_inputs, actions, old_log_probs):
+      return rl_layers.ApproximateKLDivergence(
+          dist_inputs,
+          actions,
+          old_log_probs,
+          log_prob_fun=self._policy_dist.log_prob)
+    return tl.Fn('ApproximateKLDivergence', f)
 
   @property
   def unclipped_objective_mean(self):
-    def UnclippedObjectiveMean(dist_inputs, values,
-                               returns, actions, old_log_probs):
+    def f(dist_inputs, values, returns, actions, old_log_probs):
       """Unclipped objective Mean from the PPO algorithm."""
       advantages = returns - values
       probs_ratio = rl_layers.ProbsRatio(
@@ -315,12 +327,11 @@ class PPOJointTrainer(ActorCriticJointTrainer):
           probs_ratio, advantages)
       return jnp.mean(unclipped_objective)
 
-    return tl.Fn(UnclippedObjectiveMean, n_out=1)
+    return tl.Fn('UnclippedObjectiveMean', f)
 
   @property
   def clipped_objective_mean(self):
-    def ClippedObjectiveMean(
-        dist_inputs, values, returns, actions, old_log_probs):
+    def f(dist_inputs, values, returns, actions, old_log_probs):
       """Clipped objective from the PPO algorithm."""
       advantages = returns - values
       probs_ratio = rl_layers.ProbsRatio(
@@ -330,24 +341,23 @@ class PPOJointTrainer(ActorCriticJointTrainer):
           probs_ratio, advantages, epsilon=self._epsilon)
       return jnp.mean(clipped_objective)
 
-    return tl.Fn(ClippedObjectiveMean, n_out=1)
+    return tl.Fn('ClippedObjectiveMean', f)
 
   @property
   def ppo_objective(self):
     """PPO objective with local parameters."""
-    return tl.Fn(
-        lambda dist_inputs, values, returns, actions, old_log_probs:
-        rl_layers.PPOObjective(
-            dist_inputs, values, returns, actions, old_log_probs,
-            log_prob_fun=self._policy_dist.log_prob,
-            epsilon=self._epsilon,
-            normalize_advantages=self._normalize_advantages),
-        n_out=1)
+    def f(dist_inputs, values, returns, actions, old_log_probs):
+      return rl_layers.PPOObjective(
+          dist_inputs, values, returns, actions, old_log_probs,
+          log_prob_fun=self._policy_dist.log_prob,
+          epsilon=self._epsilon,
+          normalize_advantages=self._normalize_advantages)
+    return tl.Fn('PPOObjective', f)
 
   @property
   def ppo_objective_mean(self):
     """PPO objective mean."""
-    def PPOObjectiveMean(dist_inputs, values, returns, actions, old_log_probs):
+    def f(dist_inputs, values, returns, actions, old_log_probs):
       """Clipped objective from the PPO algorithm."""
       ppo_objective = rl_layers.PPOObjective(
           dist_inputs, values, returns, actions, old_log_probs,
@@ -355,7 +365,7 @@ class PPOJointTrainer(ActorCriticJointTrainer):
           epsilon=self._epsilon,
           normalize_advantages=self._normalize_advantages)
       return jnp.mean(ppo_objective)
-    return tl.Fn(PPOObjectiveMean, n_out=1)
+    return tl.Fn('PPOObjectiveMean', f)
 
 
 class AWRJointTrainer(ActorCriticJointTrainer):
@@ -384,13 +394,12 @@ class AWRJointTrainer(ActorCriticJointTrainer):
   @property
   def joint_loss(self):
     """Joint policy and value loss."""
-    @tl.layer(n_in=5, n_out=1)
-    def AWRJointLoss(x, **unused_kwargs):  # pylint: disable=invalid-name
-      preds, values, returns, actions, mask = x
+
+    def f(preds, values, returns, actions, mask):
       advantages = jnp.squeeze(returns - stop_gradient(values), axis=-1)
       logps = self._policy_dist.log_prob(preds, actions)
       awr_loss = actor_critic.AWRLoss(beta=self._beta, w_max=self._w_max)(
           (logps, advantages, jnp.zeros_like(logps), mask))
       l2_value_loss = jnp.mean((returns - values)**2) * self._value_loss_coeff
       return awr_loss + l2_value_loss
-    return AWRJointLoss()  # pylint: disable=no-value-for-parameter
+    return tl.Fn('AWRJointLoss', f)

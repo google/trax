@@ -17,22 +17,29 @@
 """Trax pooling layers."""
 
 from trax import math
-from trax.layers import base
+from trax.layers.base import Fn
 
 
-@base.layer()
-def MaxPool(x, pool_size=(2, 2), strides=None, padding='VALID'):
-  return math.max_pool(x, pool_size=pool_size, strides=strides,
-                       padding=padding)
+# pylint: disable=invalid-name
+def MaxPool(pool_size=(2, 2), strides=None, padding='VALID'):
+  layer_name = f'MaxPool{pool_size}'.replace(' ', '')
+  def f(x):
+    return math.max_pool(
+        x, pool_size=pool_size, strides=strides, padding=padding)
+  return Fn(layer_name, f)
 
 
-@base.layer()
-def SumPool(x, pool_size=(2, 2), strides=None, padding='VALID'):
-  return math.sum_pool(x, pool_size=pool_size, strides=strides,
-                       padding=padding)
+def SumPool(pool_size=(2, 2), strides=None, padding='VALID'):
+  layer_name = f'SumPool{pool_size}'.replace(' ', '')
+  def f(x):
+    return math.sum_pool(
+        x, pool_size=pool_size, strides=strides, padding=padding)
+  return Fn(layer_name, f)
 
 
-@base.layer()
-def AvgPool(x, pool_size=(2, 2), strides=None, padding='VALID'):
-  return math.avg_pool(x, pool_size=pool_size, strides=strides,
-                       padding=padding)
+def AvgPool(pool_size=(2, 2), strides=None, padding='VALID'):
+  layer_name = f'AvgPool{pool_size}'.replace(' ', '')
+  def f(x):
+    return math.avg_pool(
+        x, pool_size=pool_size, strides=strides, padding=padding)
+  return Fn(layer_name, f)

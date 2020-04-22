@@ -75,12 +75,13 @@ class LSTMCell(base.Layer):
     return (w, b)
 
 
-@base.layer()
-def MakeZeroState(x, depth_multiplier=1):
+def MakeZeroState(depth_multiplier=1):
   """Makes zeros of shape like x but removing the length (axis 1)."""
-  assert len(x.shape) == 3, 'Expecting x of shape [batch, length, depth].'
-  return np.zeros((x.shape[0], depth_multiplier * x.shape[-1]),
-                  dtype=np.float32)
+  def f(x):  # pylint: disable=invalid-name
+    assert len(x.shape) == 3, 'Expecting x of shape [batch, length, depth].'
+    return np.zeros((x.shape[0], depth_multiplier * x.shape[-1]),
+                    dtype=np.float32)
+  return base.Fn('MakeZeroState', f)
 
 
 def LSTM(n_units):
@@ -208,12 +209,12 @@ def GeneralGRUCell(candidate_transform,
   """
   gate_block = [  # u_t
       candidate_transform(),
-      base.Fn(lambda x: x + sigmoid_bias),
+      _AddSigmoidBias(sigmoid_bias),
       gate_nonlinearity(),
   ]
   reset_block = [  # r_t
       candidate_transform(),
-      base.Fn(lambda x: x + sigmoid_bias),  # Want bias to start positive.
+      _AddSigmoidBias(sigmoid_bias),  # Want bias to start positive.
       gate_nonlinearity(),
   ]
   candidate_block = [
@@ -233,12 +234,12 @@ def GeneralGRUCell(candidate_transform,
   )
 
 
-@base.layer(n_in=3, n_out=2)
-def InnerSRUCell(x):
+def InnerSRUCell():
   """The inner (non-parallel) computation of an SRU."""
-  cur_x_times_one_minus_f, cur_f, cur_state = x
-  res = cur_f * cur_state + cur_x_times_one_minus_f
-  return res, res
+  def f(cur_x_times_one_minus_f, cur_f, cur_state):  # pylint: disable=invalid-name
+    res = cur_f * cur_state + cur_x_times_one_minus_f
+    return res, res
+  return base.Fn('InnerSRUCell', f, n_out=2)
 
 
 def SRU(n_units, activation=None):
@@ -263,15 +264,20 @@ def SRU(n_units, activation=None):
     The SRU layer.
   """
   sigmoid_activation = activation_fns.Sigmoid()
-  # pylint: disable=no-value-for-parameter
-  return cb.Serial(  # x
-      cb.Branch(core.Dense(3 * n_units), []),  # r_f_y, x
-      cb.Split(n_items=3),  # r, f, y, x
+  return cb.Serial(                                         # x
+      cb.Branch(core.Dense(3 * n_units), []),               # r_f_y, x
+      cb.Split(n_items=3),                                  # r, f, y, x
       cb.Parallel(sigmoid_activation, sigmoid_activation),  # r, f, y, x
-      base.Fn(lambda r, f, y: (y * (1.0 - f), f, r)),  # y * (1 - f), f, r, x
+      base.Fn('',
+              lambda r, f, y: (y * (1.0 - f), f, r),    # y * (1 - f), f, r, x
+              n_out=3),
       cb.Parallel([], [], cb.Branch(MakeZeroState(), [])),
       cb.Scan(InnerSRUCell(), axis=1),
-      cb.Select([0], n_in=2),  # act(c), r, x
+      cb.Select([0], n_in=2),                               # act(c), r, x
       activation or [],
-      base.Fn(lambda c, r, x: c * r + x * (1 - r)))
-  # pylint: enable=no-value-for-parameter
+      base.Fn('FinalSRUGate', lambda c, r, x: c * r + x * (1 - r)))
+
+
+def _AddSigmoidBias(sigmoid_bias):
+  return base.Fn('AddSigmoidBias({sigmoid_bias})',
+                 lambda x: x + sigmoid_bias)

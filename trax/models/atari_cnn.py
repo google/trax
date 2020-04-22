@@ -34,6 +34,11 @@ def _FrameStack(n_frames):
   ]
 
 
+def _BytesToFloats():
+  """Layer that converts unsigned bytes to floats."""
+  return tl.Fn('BytesToFloats', lambda x: x / 255.0)
+
+
 def AtariCnn(n_frames=4, hidden_sizes=(32, 32), output_size=128, mode='train'):
   """An Atari CNN."""
   del mode
@@ -42,7 +47,7 @@ def AtariCnn(n_frames=4, hidden_sizes=(32, 32), output_size=128, mode='train'):
   # Input shape: (B, T, H, W, C)
   # Output shape: (B, T, output_size)
   return tl.Serial(
-      tl.Fn(lambda x: x / 255.0),  # Convert unsigned bytes to float.
+      _BytesToFloats(),
       _FrameStack(n_frames=n_frames),  # (B, T, H, W, 4C)
       tl.Conv(hidden_sizes[0], (5, 5), (2, 2), 'SAME'),
       tl.Relu(),
@@ -64,7 +69,7 @@ def AtariCnnBody(n_frames=4, hidden_sizes=(32, 64, 64),
   # Input shape: (B, T, H, W, C)
   # Output shape: (B, T, output_size)
   return tl.Serial(
-      tl.Fn(lambda x: x / 255.0),  # Convert unsigned bytes to float.
+      _BytesToFloats(),
       _FrameStack(n_frames=n_frames),  # (B, T, H, W, 4C)
       tl.Conv(hidden_sizes[0], (8, 8), (4, 4), padding=padding,
               kernel_initializer=kernel_initializer),

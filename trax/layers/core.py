@@ -21,6 +21,7 @@ import numpy as onp
 from trax import math
 from trax.layers import base
 from trax.layers import initializers as init
+from trax.layers.base import Fn
 from trax.math import numpy as np
 
 
@@ -103,50 +104,47 @@ class Dropout(base.Layer):
     return np.where(keep, x / (1.0 - rate), np.zeros_like(x)), state
 
 
-@base.layer()
-def Flatten(x, n_axes_to_keep=1):
-  in_rank = len(x.shape)
-  if in_rank <= n_axes_to_keep:
-    raise ValueError(f'Input rank ({in_rank}) must exceed the number of '
-                     f'axes to keep ({n_axes_to_keep}) after flattening.')
-  return np.reshape(x, (x.shape[:n_axes_to_keep] + (-1,)))
+def Flatten(n_axes_to_keep=1):
+  layer_name = f'Flatten_keep{n_axes_to_keep}'
+  def f(x):  # pylint: disable=invalid-name
+    in_rank = len(x.shape)
+    if in_rank <= n_axes_to_keep:
+      raise ValueError(f'Input rank ({in_rank}) must exceed the number of '
+                       f'axes to keep ({n_axes_to_keep}) after flattening.')
+    return np.reshape(x, (x.shape[:n_axes_to_keep] + (-1,)))
+  return Fn(layer_name, f)
 
 
-@base.layer()
-def Exp(x):
-  return np.exp(x)
+def Exp():
+  return Fn('Exp', lambda x: np.exp(x))  # pylint: disable=unnecessary-lambda
 
 
-@base.layer()
-def LogSoftmax(x, axis=-1):
-  """Apply log softmax to x: log-normalize along the given axis."""
-  return x - math.logsumexp(x, axis, keepdims=True)
+def LogSoftmax(axis=-1):
+  """Layer that applies log softmax: log-normalize along the given axis."""
+  return Fn('LogSoftmax',
+            lambda x: x - math.logsumexp(x, axis, keepdims=True))
 
 
-@base.layer()
-def Softmax(x, axis=-1):
-  """Apply softmax to x: exponentiate and normalize along the given axis."""
-  return np.exp(x - math.logsumexp(x, axis, keepdims=True))
+def Softmax(axis=-1):
+  """Layer that applies softmax: exponentiate and normalize along given axis."""
+  return Fn('Softmax',
+            lambda x: np.exp(x - math.logsumexp(x, axis, keepdims=True)))
 
 
-@base.layer()
-def ToFloat(x):
-  return x.astype(onp.float32)
+def ToFloat():
+  return Fn('ToFloat', lambda x: x.astype(onp.float32))
 
 
-@base.layer()
-def Mean(x, axis=-1, keepdims=False):
-  return np.mean(x, axis=axis, keepdims=keepdims)
+def Mean(axis=-1, keepdims=False):
+  return Fn('Mean', lambda x: np.mean(x, axis=axis, keepdims=keepdims))
 
 
-@base.layer()
-def Sum(x, axis=-1, keepdims=False):
-  return np.sum(x, axis=axis, keepdims=keepdims)
+def Sum(axis=-1, keepdims=False):
+  return Fn('Sum', lambda x: np.sum(x, axis=axis, keepdims=keepdims))
 
 
-@base.layer()
-def Negate(x):
-  return -x
+def Negate():
+  return Fn('Negate', lambda x: -x)
 
 
 def log_gaussian_pdf(x, mu, sigma):  # pylint: disable=invalid-name

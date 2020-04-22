@@ -33,17 +33,20 @@ from trax.rl import serialization_utils
 from trax.rl import space_serializer
 
 
-@layers_base.layer()
-def TestModel(inputs, extra_dim, **unused_kwargs):  # pylint: disable=invalid-name
+# pylint: disable=invalid-name
+def TestModel(extra_dim):
   """Dummy sequence model for testing."""
-  # Cast the input to float32 - this is for simulating discrete-input models.
-  inputs = inputs.astype(onp.float32)
-  # Add an extra dimension if requested, e.g. the logit dimension for output
-  # symbols.
-  if extra_dim is not None:
-    return np.broadcast_to(inputs[:, :, None], inputs.shape + (extra_dim,))
-  else:
-    return inputs
+  def f(inputs):
+    # Cast the input to float32 - this is for simulating discrete-input models.
+    inputs = inputs.astype(onp.float32)
+    # Add an extra dimension if requested, e.g. the logit dimension for output
+    # symbols.
+    if extra_dim is not None:
+      return np.broadcast_to(inputs[:, :, None], inputs.shape + (extra_dim,))
+    else:
+      return inputs
+  return layers_base.Fn('TestModel', f)
+  # pylint: enable=invalid-name
 
 
 class SerializationTest(parameterized.TestCase):
@@ -68,14 +71,17 @@ class SerializationTest(parameterized.TestCase):
 
     test_model_inputs = []
 
-    @layers_base.layer()
-    def TestModelSavingInputs(inputs, **unused_kwargs):  # pylint: disable=invalid-name
-      # Save the inputs for a later check.
-      test_model_inputs.append(inputs)
-      # Change type to onp.float32 and add the logit dimension.
-      return np.broadcast_to(
-          inputs.astype(onp.float32)[:, :, None], inputs.shape + (vocab_size,)
-      )
+    # pylint: disable=invalid-name
+    def TestModelSavingInputs():
+      def f(inputs):
+        # Save the inputs for a later check.
+        test_model_inputs.append(inputs)
+        # Change type to onp.float32 and add the logit dimension.
+        return np.broadcast_to(
+            inputs.astype(onp.float32)[:, :, None], inputs.shape + (vocab_size,)
+        )
+      return layers_base.Fn('TestModelSavingInputs', f)
+      # pylint: enable=invalid-name
 
     obs_serializer = space_serializer.create(
         gym.spaces.MultiDiscrete([2, 2]), vocab_size=vocab_size

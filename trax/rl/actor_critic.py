@@ -289,12 +289,12 @@ class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
 
 
 # A2C is one of the most basic actor-critic RL algorithms.
-@tl.layer(n_in=4, n_out=1)
-def A2CLoss(x, **unused_kwargs):
+def A2CLoss():  # pylint: disable=invalid-name
   """Definition of the Advantage Actor Critic (A2C) loss."""
-  (log_probs, advantages, old_log_probs, mask) = x
-  del old_log_probs  # Not used in A2C.
-  return -np.sum(log_probs * advantages * mask) / np.sum(mask)
+  def f(log_probs, advantages, old_log_probs, mask):
+    del old_log_probs  # Not used in A2C.
+    return -np.sum(log_probs * advantages * mask) / np.sum(mask)
+  return tl.Fn('A2CLoss', f)
 
 
 class A2CTrainer(AdvantageBasedActorCriticTrainer):
@@ -309,22 +309,22 @@ class A2CTrainer(AdvantageBasedActorCriticTrainer):
 
 
 # PPO is a widely used actor-critic RL algorithm.
-@tl.layer(n_in=4, n_out=1)
-def PPOLoss(x, epsilon, **unused_kwargs):
+def PPOLoss(epsilon):  # pylint: disable=invalid-name
   """Definition of the Proximal Policy Optimization loss."""
-  (new_log_probs, advantages, old_log_probs, mask) = x
-  # Old log probs have an undesirable extra dimension which we remove here
-  old_log_probs = old_log_probs.squeeze(axis=-1)
+  def f(new_log_probs, advantages, old_log_probs, mask):
+    # Old log probs have an undesirable extra dimension which we remove here
+    old_log_probs = old_log_probs.squeeze(axis=-1)
 
-  # The ratio between new_probs and old_probs expressed
-  # using log_probs and exponentaion
-  probs_ratio = jnp.exp(new_log_probs - old_log_probs)
-  unclipped_objective = probs_ratio * advantages
-  clipped_objective = jnp.clip(probs_ratio,
-                               1 - epsilon,
-                               1 + epsilon) * advantages
-  ppo_objective = jnp.minimum(unclipped_objective, clipped_objective)
-  return -np.sum(ppo_objective * mask) / np.sum(mask)
+    # The ratio between new_probs and old_probs expressed
+    # using log_probs and exponentaion
+    probs_ratio = jnp.exp(new_log_probs - old_log_probs)
+    unclipped_objective = probs_ratio * advantages
+    clipped_objective = jnp.clip(probs_ratio,
+                                 1 - epsilon,
+                                 1 + epsilon) * advantages
+    ppo_objective = jnp.minimum(unclipped_objective, clipped_objective)
+    return -np.sum(ppo_objective * mask) / np.sum(mask)
+  return tl.Fn('PPOLoss', f)
 
 
 class PPOTrainer(AdvantageBasedActorCriticTrainer):
@@ -347,13 +347,13 @@ class PPOTrainer(AdvantageBasedActorCriticTrainer):
 
 
 # AWR is an off-policy actor-critic RL algorithm.
-@tl.layer(n_in=4, n_out=1)
-def AWRLoss(x, beta, w_max, **unused_kwargs):
+def AWRLoss(beta, w_max):  # pylint: disable=invalid-name
   """Definition of the Advantage Weighted Regression (AWR) loss."""
-  (log_probs, advantages, old_log_probs, mask) = x
-  del old_log_probs  # Not used in AWR.
-  weights = jnp.minimum(jnp.exp(advantages / beta), w_max)
-  return -np.sum(log_probs * weights * mask) / np.sum(mask)
+  def f(log_probs, advantages, old_log_probs, mask):
+    del old_log_probs  # Not used in AWR.
+    weights = jnp.minimum(jnp.exp(advantages / beta), w_max)
+    return -np.sum(log_probs * weights * mask) / np.sum(mask)
+  return tl.Fn('AWRLoss', f)
 
 
 class AWRTrainer(AdvantageBasedActorCriticTrainer):

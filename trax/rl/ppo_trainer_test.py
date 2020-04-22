@@ -181,7 +181,7 @@ class PpoTrainerTest(parameterized.TestCase):
 
     def loss():
       """Cross-entropy loss as scalar compatible with Trax masking."""
-      ones = layers.Fn(lambda x: math.numpy.ones_like(x))  # pylint: disable=unnecessary-lambda
+      ones = layers.Fn('Ones', lambda x: math.numpy.ones_like(x))  # pylint: disable=unnecessary-lambda
       return layers.Serial(
           # Swap from (pred-obs, pred-reward, target-obs, target-reward)
           # to (pred-obs, target-obs, pred-reward, target-reward).
@@ -195,7 +195,7 @@ class PpoTrainerTest(parameterized.TestCase):
           # Add both losses.
           layers.Add(),
           # Zero out in this test.
-          layers.Fn(lambda x: x * 0.0),
+          layers.Fn('TimesZero', lambda x: x * 0.0),
       )
 
     with self.tmp_dir() as output_dir:

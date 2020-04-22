@@ -28,7 +28,7 @@ from trax.shapes import ShapeDtype
 
 def divide_by(val):
   """Returns a simple division layer with n_in == 1 and n_out == 1."""
-  return base.Fn(lambda x: x / val)
+  return base.Fn('divide_by', lambda x: x / val)
 
 
 class CombinatorLayerTest(absltest.TestCase):
@@ -79,10 +79,10 @@ class CombinatorLayerTest(absltest.TestCase):
     self.assertEqual(output_shape, expected_shape)
 
   def test_serial_custom_name(self):
-    layer = cb.Serial(cb.Dup(), cb.Dup())  # pylint: disable=no-value-for-parameter
+    layer = cb.Serial(cb.Dup(), cb.Dup())
     self.assertIn('Serial', str(layer))
 
-    layer = cb.Serial(cb.Dup(), cb.Dup(), name='Branch')  # pylint: disable=no-value-for-parameter
+    layer = cb.Serial(cb.Dup(), cb.Dup(), name='Branch')
     self.assertIn('Branch', str(layer))
 
   def test_branch_noop_dup(self):
@@ -107,7 +107,7 @@ class CombinatorLayerTest(absltest.TestCase):
     self.assertEqual(output_shape, expected_shape)
 
   def test_branch_name(self):
-    layer = cb.Branch(cb.Add(), divide_by(0.5))  # pylint: disable=no-value-for-parameter
+    layer = cb.Branch(cb.Add(), divide_by(0.5))
     self.assertIn('Branch', str(layer))
 
   def test_select_computes_n_in(self):
@@ -190,11 +190,13 @@ class CombinatorLayerTest(absltest.TestCase):
     self.assertEqual(output_shape, expected_shape)
 
   def test_scan_basic(self):
-    @base.layer(n_in=2, n_out=2)
-    def add(x):
-      res = x[0] + x[1]
-      return res, res
-    scan_layer = cb.Scan(add())  # pylint: disable=no-value-for-parameter
+    def add():  # pylint: disable=invalid-name
+      def f(x, carry):
+        res = x + carry
+        return res, res  # output and carry are the same
+      return base.Fn('add', f, n_out=2)
+
+    scan_layer = cb.Scan(add())
     input_signature = (ShapeDtype((3, 2, 7)), ShapeDtype((2, 7)))
     expected_shape = ((3, 2, 7), (2, 7))
     output_shape = base.check_shape_agreement(scan_layer, input_signature)
@@ -205,22 +207,25 @@ class CombinatorLayerTest(absltest.TestCase):
     self.assertEqual([int(x) for x in o], [1, 3, 6])
 
   def test_scan_axis1(self):
-    @base.layer(n_in=2, n_out=2)
-    def add(x):
-      res = x[0] + x[1]
-      return res, res
-    scan = cb.Scan(add(), axis=1)  # pylint: disable=no-value-for-parameter
+    def add():  # pylint: disable=invalid-name
+      def f(x, carry):
+        res = x + carry
+        return res, res  # output and carry are the same
+      return base.Fn('add', f, n_out=2)
+
+    scan = cb.Scan(add(), axis=1)
     input_signature = (ShapeDtype((3, 2, 7)), ShapeDtype((3, 7)))
     expected_shape = ((3, 2, 7), (3, 7))
     output_shape = base.check_shape_agreement(scan, input_signature)
     self.assertEqual(output_shape, expected_shape)
 
   def test_scan_multiinput(self):
-    @base.layer(n_in=3, n_out=2)
-    def foo(x):
-      a, b, carry = x
-      return a + b, b, carry + 1
-    scan = cb.Scan(foo(), axis=1)  # pylint: disable=no-value-for-parameter
+    def foo():  # pylint: disable=invalid-name
+      def f(a, b, carry):
+        return a + b, b, carry + 1
+      return base.Fn('foo', f, n_out=2)
+
+    scan = cb.Scan(foo(), axis=1)
     input_signature = (ShapeDtype((3, 2, 7)), ShapeDtype((3, 2, 7)),
                        ShapeDtype((3, 7)))
     expected_shape = ((3, 2, 7), (3, 2, 7), (3, 7))
@@ -228,10 +233,10 @@ class CombinatorLayerTest(absltest.TestCase):
     self.assertEqual(output_shape, expected_shape)
 
   def test_scan_nocarry(self):
-    @base.layer(n_in=1, n_out=1)
-    def addone(x):
-      return x + 1
-    scan_layer = cb.Scan(addone(), n_carry=0)  # pylint: disable=no-value-for-parameter
+    def addone():  # pylint: disable=invalid-name
+      return base.Fn('addone', lambda x: x + 1)
+
+    scan_layer = cb.Scan(addone(), n_carry=0)
     input_signature = ShapeDtype((3, 2, 7))
     expected_shape = (3, 2, 7)
     output_shape = base.check_shape_agreement(scan_layer, input_signature)

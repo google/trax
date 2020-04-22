@@ -25,71 +25,63 @@ easier experimentation across different activation functions.
 
 from trax import math
 from trax.layers import base
+from trax.layers.base import Fn
 from trax.math import numpy as np
 
 
-@base.layer()
-def Relu(x):
-  return np.maximum(x, np.zeros_like(x))
+def Relu():
+  return Fn('Relu', lambda x: np.maximum(x, np.zeros_like(x)))
 
 
-@base.layer()
-def ParametricRelu(x, a=1.):
-  return np.maximum(a * x, np.zeros_like(x))
+def ParametricRelu(a=1.):
+  return Fn('ParametricRelu', lambda x: np.maximum(a * x, np.zeros_like(x)))
 
 
-@base.layer()
-def LeakyRelu(x, a=0.01):
-  return np.where(x >= 0, x, a * x)
+def LeakyRelu(a=0.01):
+  return Fn('LeakyRelu', lambda x: np.where(x >= 0, x, a * x))
 
 
-@base.layer()
-def Elu(x, a=1.):
-  return np.where(x > 0, x, a * np.expm1(x))
+def Elu(a=1.):
+  return Fn('Elu', lambda x: np.where(x > 0, x, a * np.expm1(x)))
 
 
-@base.layer()
-def Selu(x,
-         alpha=1.6732632423543772848170429916717,
+def Selu(alpha=1.6732632423543772848170429916717,
          lmbda=1.0507009873554804934193349852946):
-  return lmbda * np.where(x > 0, x, alpha * np.expm1(x))
+  return Fn('Selu', lambda x: lmbda * np.where(x > 0, x, alpha * np.expm1(x)))
 
 
-@base.layer()
-def Gelu(x):
-  return x * 0.5 * (1.0 + math.erf(x / np.sqrt(2.0)))
+def Gelu():
+  return Fn('Gelu', lambda x: x * 0.5 * (1.0 + math.erf(x / np.sqrt(2.0))))
 
 
-@base.layer()
-def FastGelu(x):
-  return 0.5 * x * (1 + np.tanh(x * 0.7978845608 * (1 + 0.044715 * x * x)))
+def FastGelu():
+  def f(x):  # pylint: disable=invalid-name
+    return 0.5 * x * (1 + np.tanh(x * 0.7978845608 * (1 + 0.044715 * x * x)))
+  return Fn('FastGelu', f)
 
 
-@base.layer()
-def Sigmoid(x):
-  return math.expit(x)
+# pylint: disable=unnecessary-lambda
+def Sigmoid():
+  return Fn('Sigmoid', lambda x: math.expit(x))
 
 
-@base.layer()
-def Tanh(x):
-  return np.tanh(x)
+def Tanh():
+  return Fn('Tanh', lambda x: np.tanh(x))
+# pylint: enable=unnecessary-lambda
 
 
-@base.layer()
-def HardSigmoid(x):
+def HardSigmoid():
   """Computes a linear approximation to sigmoid."""
-  return np.maximum(0, np.minimum(1, (1 + x)))
+  return Fn('HardSigmoid', lambda x: np.maximum(0, np.minimum(1, (1 + x))))
 
 
-@base.layer()
-def HardTanh(x):
+def HardTanh():
   """Computes a linear approximation to tanh."""
-  return np.maximum(-1, np.minimum(1, x))
+  return Fn('HardTanh', lambda x: np.maximum(-1, np.minimum(1, x)))
 
 
-@base.layer()
-def Softplus(x):
-  return np.logaddexp(x, 0.)
+def Softplus():
+  return Fn('Softplus', lambda x: np.logaddexp(x, 0.))
 
 
 class ThresholdedLinearUnit(base.Layer):

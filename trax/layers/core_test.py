@@ -24,9 +24,9 @@ from trax.layers import core
 from trax.shapes import ShapeDtype
 
 
-def divide_by(val):
+def divide_by(val):  # pylint: disable=invalid-name
   """Returns a simple division layer with n_in == 1 and n_out == 1."""
-  return base.Fn(lambda x: x / val)
+  return base.Fn('DivideBy', lambda x: x / val)
 
 
 class CoreLayerTest(absltest.TestCase):
