@@ -44,7 +44,7 @@ MultifactorSchedule.factors = 'constant'
 # Parameters for RLTask:
 # ==============================================================================
 RLTask.env = "DM-Ant-v2"
-RLTask.initial_trajectories = 1
+RLTask.initial_trajectories = 0
 RLTask.gamma = 0.99
 RLTask.max_steps = 1000
 
@@ -74,6 +74,7 @@ AWRTrainer.beta = 0.05
 AWRTrainer.w_max = 20
 AWRTrainer.max_slice_length = 1
 AWRTrainer.added_policy_slice_length = 3
+AWRTrainer.observation_normalization_sample_limit = 100
 
 # Parameters for train_rl:
 # ==============================================================================

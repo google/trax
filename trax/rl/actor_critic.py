@@ -89,6 +89,10 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
     self._added_policy_slice_length = added_policy_slice_length
     self._n_replay_epochs = n_replay_epochs
 
+    # Prepopulate so it's available to the input streams (defined properly in
+    # super()).
+    self._obs_normalizer = None
+
     # Initialize training of the value function.
     value_output_dir = kwargs.get('output_dir', None)
     if value_output_dir is not None:
@@ -129,9 +133,12 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
         epochs=self._replay_epochs):
       # Insert an extra depth dimension, so the target shape is consistent with
       # the network output shape.
-      yield (np_trajectory.observations,         # Inputs to the value model.
-             np_trajectory.returns[:, :, None],  # Targets: regress to returns.
-             np_trajectory.mask[:, :, None])     # Mask to zero-out padding.
+      yield (
+          # Inputs to the value model.
+          self._maybe_normalize_obs(np_trajectory.observations),  
+          np_trajectory.returns[:, :, None],  # Targets: regress to returns.
+          np_trajectory.mask[:, :, None],     # Mask to zero-out padding.
+      )
 
   def policy_inputs(self, trajectory, values):
     """Create inputs to policy model from a TrajectoryNp and values.
@@ -157,6 +164,9 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
         epochs=self._replay_epochs,
         max_slice_length=max_slice_length,
         include_final_state=False):
+      np_trajectory = np_trajectory._replace(
+          observations=self._maybe_normalize_obs(np_trajectory.observations),
+      )
       value_model = self._value_eval_model
       value_model.weights = self._value_trainer.model_weights
       values = value_model(np_trajectory.observations, n_accelerators=1)

@@ -27,6 +27,7 @@ from trax import jaxboard
 from trax import lr_schedules as lr
 from trax import supervised
 from trax.rl import distributions
+from trax.rl import normalization
 from trax.rl import task as rl_task
 
 
@@ -178,7 +179,8 @@ class PolicyTrainer(RLTrainer):
                policy_lr_schedule=lr.MultifactorSchedule, policy_batch_size=64,
                policy_train_steps_per_epoch=500, policy_evals_per_epoch=1,
                policy_eval_steps=1, collect_per_epoch=50,
-               max_slice_length=1, output_dir=None):
+               max_slice_length=1, observation_normalization_sample_limit=None,
+               observation_normalization_epsilon=1e-5, output_dir=None):
     """Configures the policy trainer.
 
     Args:
@@ -197,6 +199,10 @@ class PolicyTrainer(RLTrainer):
           affects metric reporting.
       collect_per_epoch: how many trajectories to collect per epoch.
       max_slice_length: the maximum length of trajectory slices to use.
+      observation_normalization_sample_limit: number of samples to collect to
+          calculate statistics for observation normalization; None turns it off
+      observation_normalization_epsilon: epsilon to use for observation
+          normalization
       output_dir: Path telling where to save outputs (evals and checkpoints).
     """
     super(PolicyTrainer, self).__init__(
@@ -208,6 +214,13 @@ class PolicyTrainer(RLTrainer):
     self._collect_per_epoch = collect_per_epoch
     self._max_slice_length = max_slice_length
     self._policy_dist = distributions.create_distribution(task.action_space)
+    if observation_normalization_sample_limit:
+      self._obs_normalizer = normalization.Normalizer(
+          sample_limit=observation_normalization_sample_limit,
+          epsilon=observation_normalization_epsilon,
+      )
+    else:
+      self._obs_normalizer = None
 
     # Inputs to the policy model are produced by self._policy_batches_stream.
     self._policy_inputs = supervised.Inputs(
@@ -252,13 +265,28 @@ class PolicyTrainer(RLTrainer):
     model.weights = self._policy_trainer.model_weights
     tr_slice = trajectory[-self._max_slice_length:]
     trajectory_np = tr_slice.to_np(timestep_to_np=self.task.timestep_to_np)
+
+    obs = trajectory_np.observations
+    if self._obs_normalizer:
+      # Update the normalizer with the last observation.
+      self._obs_normalizer.update(obs[-1, ...])
+
+    # Normalize all observations.
+    obs = self._maybe_normalize_obs(obs)
+
     # Add batch dimension to trajectory_np and run the model.
-    pred = model(trajectory_np.observations[None, ...], n_accelerators=1)
+    pred = model(obs[None, ...], n_accelerators=1)
     # Pick element 0 from the batch (the only one), last (current) timestep.
     pred = pred[0, -1, :]
     sample = self._policy_dist.sample(pred)
     log_prob = self._policy_dist.log_prob(pred, sample)
     return (sample.copy(), log_prob.copy())
+
+  def _maybe_normalize_obs(self, obs):
+    if self._obs_normalizer:
+      return self._obs_normalizer.normalize(obs)
+    else:
+      return obs
 
   def train_epoch(self):
     """Trains RL for one epoch."""
@@ -326,4 +354,8 @@ class PolicyGradientTrainer(PolicyTrainer):
       ret = (ret - np.mean(ret)) / np.std(ret)  # Normalize returns.
       # We return a triple (observations, actions, normalized returns) which is
       # later used by the model as (inputs, targets, loss weights).
-      yield (np_trajectory.observations, np_trajectory.actions, ret)
+      yield (
+          self._maybe_normalize_obs(np_trajectory.observations),
+          np_trajectory.actions,
+          ret,
+      )
