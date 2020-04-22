@@ -234,9 +234,16 @@ class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
   """Base class for advantage-based actor-critic algorithms."""
 
   def __init__(
-      self, task, advantage_estimator=rl_advantages.td_lambda, **kwargs
+      self,
+      task,
+      advantage_estimator=rl_advantages.td_lambda,
+      advantage_normalization=True,
+      advantage_normalization_epsilon=1e-5,
+      **kwargs
   ):
     self._advantage_estimator = advantage_estimator
+    self._advantage_normalization = advantage_normalization
+    self._advantage_normalization_epsilon = advantage_normalization_epsilon
     super(AdvantageBasedActorCriticTrainer, self).__init__(task, **kwargs)
 
   def policy_inputs(self, trajectory, values):
@@ -248,6 +255,11 @@ class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
         gamma=self._task.gamma,
         n_extra_steps=self._added_policy_slice_length,
     )
+    if self._advantage_normalization:
+      advantages = (
+          (advantages - jnp.mean(advantages)) /
+          (jnp.std(advantages) + self._advantage_normalization_epsilon)
+      )
     # Observations should be the same length as advantages - so if we are
     # using n_extra_steps, we need to trim the length to match.
     obs = trajectory.observations[:, :advantages.shape[1]]
