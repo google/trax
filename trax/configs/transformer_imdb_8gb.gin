@@ -50,13 +50,8 @@ train.inputs = @trax.supervised.inputs.inputs
 train.model = @trax.models.TransformerEncoder
 train.steps = 1000
 
-# Parameters for DotProductCausalAttention:
-# ==============================================================================
-DotProductCausalAttention.dropout = 0.1
-
 # Parameters for TransformerLM:
 # ==============================================================================
-TransformerLM.attention_type = @trax.layers.DotProductCausalAttention
 TransformerEncoder.d_model = 512
 TransformerEncoder.d_ff = 2048
 TransformerEncoder.dropout = 0.1

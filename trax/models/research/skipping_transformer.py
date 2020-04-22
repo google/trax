@@ -123,11 +123,7 @@ def SkippingTransformerLM(vocab_size,
                           d_ff=2048,
                           n_layers=6,
                           n_heads=8,
-                          d_attention_key=None,
-                          d_attention_value=None,
-                          attention_type=tl.DotProductCausalAttention,
                           dropout=0.1,
-                          share_qk=False,
                           max_len=2048,
                           mode='train',
                           ff_activation=tl.Relu):
@@ -142,13 +138,7 @@ def SkippingTransformerLM(vocab_size,
     d_ff: int: depth of feed-forward layer
     n_layers: int: number of encoder/decoder layers
     n_heads: int: number of attention heads
-    d_attention_key: int: depth of key vector for each attention head (default
-      is d_model // n_heads)
-    d_attention_value: int: depth of value vector for each attention head
-      (default is d_model // n_heads)
-    attention_type: subclass of tl.BaseCausalAttention: attention class to use
     dropout: float: dropout rate (how much to drop out)
-    share_qk: bool, whether to share queries and keys in decoder attention
     max_len: int: maximum symbol length for positional encoding
     mode: str: 'train', 'eval' or 'predict', predict mode is for fast inference
     ff_activation: the non-linearity in feed-forward layer
@@ -168,8 +158,7 @@ def SkippingTransformerLM(vocab_size,
       embedder,
       SkippingSerial([
           transformer._DecoderBlock(  # pylint: disable=g-complex-comprehension,protected-access
-              d_model, d_ff, n_heads, d_attention_key, d_attention_value,
-              attention_type, dropout, share_qk, i, mode, ff_activation)
+              d_model, d_ff, n_heads, dropout, i, mode, ff_activation)
           for i in range(n_layers)], mode=mode),
       tl.LayerNorm(),
       tl.Dense(vocab_size),

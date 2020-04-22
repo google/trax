@@ -79,11 +79,7 @@ def TransformerDecoder(vocab_size=None,
                        d_ff=2048,
                        n_layers=6,
                        n_heads=8,
-                       d_attention_key=None,
-                       d_attention_value=None,
-                       attention_type=tl.DotProductCausalAttention,
                        dropout=0.1,
-                       share_qk=False,
                        max_len=2048,
                        mode='train',
                        ff_activation=tl.Relu):
@@ -100,13 +96,7 @@ def TransformerDecoder(vocab_size=None,
     d_ff: int: depth of feed-forward layer
     n_layers: int: number of encoder/decoder layers
     n_heads: int: number of attention heads
-    d_attention_key: int: depth of key vector for each attention head (default
-      is d_model // n_heads)
-    d_attention_value: int: depth of value vector for each attention head
-      (default is d_model // n_heads)
-    attention_type: subclass of tl.BaseCausalAttention: attention class to use
     dropout: float: dropout rate (how much to drop out)
-    share_qk: bool, whether to share queries and keys in decoder attention
     max_len: int: maximum symbol length for positional encoding
     mode: str: 'train' or 'eval'
     ff_activation: the non-linearity in feed-forward layer
@@ -124,8 +114,7 @@ def TransformerDecoder(vocab_size=None,
   decoder_blocks = [
       # pylint: disable=g-complex-comprehension
       _DecoderBlock(d_model, d_ff, n_heads,
-                    d_attention_key, d_attention_value, attention_type,
-                    dropout, share_qk, i, mode, ff_activation)
+                    dropout, i, mode, ff_activation)
       for i in range(n_layers)]
 
   # Assemble and return the model.
@@ -141,13 +130,8 @@ def TransformerLM(vocab_size,
                   d_ff=2048,
                   n_layers=6,
                   n_heads=8,
-                  d_attention_key=None,
-                  d_attention_value=None,
-                  attention_type=tl.DotProductCausalAttention,
                   dropout=0.1,
-                  share_qk=False,
                   max_len=2048,
-                  n_chunks=0,
                   mode='train',
                   ff_activation=tl.Relu):
   """Returns a Transformer language model.
@@ -161,15 +145,8 @@ def TransformerLM(vocab_size,
     d_ff: int: depth of feed-forward layer
     n_layers: int: number of encoder/decoder layers
     n_heads: int: number of attention heads
-    d_attention_key: int: depth of key vector for each attention head (default
-      is d_model // n_heads)
-    d_attention_value: int: depth of value vector for each attention head
-      (default is d_model // n_heads)
-    attention_type: subclass of tl.BaseCausalAttention: attention class to use
     dropout: float: dropout rate (how much to drop out)
-    share_qk: bool, whether to share queries and keys in decoder attention
     max_len: int: maximum symbol length for positional encoding
-    n_chunks: int: number of chunks (must match input pipeline)
     mode: str: 'train', 'eval' or 'predict', predict mode is for fast inference
     ff_activation: the non-linearity in feed-forward layer
 
@@ -177,14 +154,6 @@ def TransformerLM(vocab_size,
     A Transformer language model as a layer that maps from a tensor of tokens
     to activations over a vocab set.
   """
-
-  if n_chunks == 0:
-    concatenate_chunks = []
-    split_chunks = []
-  else:
-    concatenate_chunks = tl.Concatenate(n_items=n_chunks)
-    split_chunks = tl.Split(n_items=n_chunks, axis=-2)
-
   positional_encoder = [
       tl.Embedding(d_model, vocab_size),
       tl.Dropout(rate=dropout, name='embedding', mode=mode),
@@ -193,20 +162,17 @@ def TransformerLM(vocab_size,
   decoder_blocks = [
       # pylint: disable=g-complex-comprehension
       _DecoderBlock(d_model, d_ff, n_heads,
-                    d_attention_key, d_attention_value, attention_type,
-                    dropout, share_qk, i, mode, ff_activation)
+                    dropout, i, mode, ff_activation)
       for i in range(n_layers)]
 
   # Assemble and return the model.
   return tl.Serial(              # tokens (or chunked tuple of tokens)
-      concatenate_chunks,        # toks
       tl.ShiftRight(mode=mode),  # toks
       positional_encoder,        # vecs
       decoder_blocks,            # vecs
       tl.LayerNorm(),            # vecs
       tl.Dense(vocab_size),      # vecs
       tl.LogSoftmax(),           # vecs
-      split_chunks,              # vecs (or chunked tuple of vecs)
   )
 
 
@@ -341,8 +307,8 @@ def _EncoderBlock(d_model, d_ff, n_heads, dropout, layer_idx, mode,
   ]
 
 
-def _DecoderBlock(d_model, d_ff, n_heads, d_attn_key, d_attn_value, attn_type,
-                  dropout, share_qk, layer_idx, mode, ff_activation):
+def _DecoderBlock(d_model, d_ff, n_heads,
+                  dropout, layer_idx, mode, ff_activation):
   """Returns a list of layers that implements a Transformer decoder block.
 
   The input is an activation tensor.
@@ -351,11 +317,7 @@ def _DecoderBlock(d_model, d_ff, n_heads, d_attn_key, d_attn_value, attn_type,
     d_model: int:  depth of embedding
     d_ff: int: depth of feed-forward layer
     n_heads: int: number of attention heads
-    d_attn_key: int: depth of key vector for each attention head
-    d_attn_value: int: depth of value vector for each attention head
-    attn_type: subclass of tl.BaseCausalAttention: attention class to use
     dropout: float: dropout rate (how much to drop out)
-    share_qk: bool, whether to share queries and keys
     layer_idx: which layer are we at (for bookkeeping)
     mode: str: 'train' or 'eval'
     ff_activation: the non-linearity in feed-forward layer
@@ -364,9 +326,7 @@ def _DecoderBlock(d_model, d_ff, n_heads, d_attn_key, d_attn_value, attn_type,
     A list of layers that maps an activation tensor to an activation tensor.
   """
   causal_attention = tl.CausalAttention(
-      d_model, n_heads=n_heads, d_attention_key=d_attn_key,
-      d_attention_value=d_attn_value, attention_type=attn_type,
-      share_qk=share_qk, mode=mode),
+      d_model, n_heads=n_heads, dropout=dropout, mode=mode),
 
   dropout_ = tl.Dropout(
       rate=dropout, name='attention_%d' % layer_idx, mode=mode)

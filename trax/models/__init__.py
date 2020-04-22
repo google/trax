@@ -30,7 +30,6 @@ from trax.models import rnn
 from trax.models import transformer
 from trax.models.reformer import reformer
 from trax.models.research import bert
-from trax.models.research import position_lookup_transformer
 from trax.models.research import skipping_transformer
 
 
@@ -65,5 +64,3 @@ Policy = model_configure(rl.Policy)
 PolicyAndValue = model_configure(rl.PolicyAndValue)
 Value = model_configure(rl.Value)
 RNNLM = model_configure(rnn.RNNLM)
-PositionLookupTransformerLM = model_configure(
-    position_lookup_transformer.PositionLookupTransformerLM)

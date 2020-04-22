@@ -61,13 +61,12 @@ class TransformerTest(parameterized.TestCase):
     self._test_transformer_forward_shape(input_vocab_size, output_vocab_size)
 
 
-  def _test_fast_inference(self, attention_type, length):
+  def _test_fast_inference(self, length):
     with math.use_backend('jax'):
       vocab_size = 16
       model_fn = functools.partial(
           transformer.TransformerLM,
           vocab_size=vocab_size, d_model=4, d_ff=8, n_layers=2, n_heads=2,
-          attention_type=attention_type,
       )
       model_slow = model_fn(mode='eval')
       model_fast = model_fn(mode='predict')
@@ -92,7 +91,7 @@ class TransformerTest(parameterized.TestCase):
         buf[:, index] = next_sym[:, 0]
 
   def test_dot_product_causal_attention_fast_inference(self):
-    self._test_fast_inference(tl.DotProductCausalAttention, length=5)
+    self._test_fast_inference(length=5)
 
 
 if __name__ == '__main__':

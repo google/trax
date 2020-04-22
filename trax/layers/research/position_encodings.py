@@ -26,6 +26,82 @@ from trax.layers import initializers as init
 from trax.math import numpy as jnp
 
 
+class AxialPositionalEncoding(layer_base.Layer):
+  """Axial positional encoding."""
+  # TODO(kitaev): support variable-length sequences.
+
+  def __init__(self, shape=(64, 64, 3), d_embs=(384, 384, 256),
+               kernel_initializer=init.RandomNormalInitializer(1.0),
+               dropout=0.0, dropout_broadcast_dims=(), mode='train'):
+    super(AxialPositionalEncoding, self).__init__()
+    self._kernel_initializer = kernel_initializer
+    assert len(shape) == len(d_embs)
+    self._shape = shape
+    self._d_embs = d_embs
+
+    if dropout >= 1.0:
+      raise ValueError('Dropout rates must be lower than 1.')
+    if mode == 'train':
+      self._dropout = dropout
+    else:
+      self._dropout = 0.0
+    self._dropout_broadcast_dims = dropout_broadcast_dims
+    self._mode = mode
+
+  def forward_with_state(self, inputs, weights=layer_base.EMPTY_WEIGHTS,
+                         state=layer_base.EMPTY_STATE, rng=None):
+    embs = []
+    for ax_emb in weights:
+      ax_emb = jnp.broadcast_to(
+          ax_emb, (inputs.shape[0],) + self._shape + (ax_emb.shape[-1],))
+      embs.append(ax_emb)
+
+    if self._mode == 'predict':
+      assert self._dropout == 0.0
+      emb = jnp.concatenate(embs, -1)
+      emb = jnp.reshape(emb, (inputs.shape[0], -1, emb.shape[-1]))
+      emb = jax.lax.dynamic_slice_in_dim(emb, state, inputs.shape[1], axis=1)
+      return inputs + emb, state + inputs.shape[1]
+    elif self._dropout == 0:
+      # TODO(kitaev): concat-then-reshape (as is the case with dropout enabled)
+      # leads to memory blow-up on TPU.
+      # emb = jnp.concatenate(embs, -1)
+      # return inputs + jnp.reshape(emb, inputs.shape), state
+      return inputs + jnp.concatenate(
+          [jnp.reshape(emb, inputs.shape[:-1] + (emb.shape[-1],))
+           for emb in embs
+          ], -1), state
+    else:
+      emb = jnp.concatenate(embs, -1)
+      noise_shape = list(emb.shape)
+      for dim in self._dropout_broadcast_dims:
+        noise_shape[dim] = 1
+      keep_prob = 1.0 - self._dropout
+      if math.backend_name() == 'jax':
+        keep_prob = jax.lax.tie_in(
+            inputs, jnp.full((), keep_prob, dtype=inputs.dtype))
+      keep = math.random.bernoulli(rng, keep_prob, tuple(noise_shape))
+      multiplier = keep.astype(inputs.dtype) / keep_prob
+
+      return inputs + jnp.reshape(emb * multiplier, inputs.shape), state
+
+  def new_weights_and_state(self, input_signature):
+    d_feature = input_signature.shape[-1]
+    assert sum(self._d_embs) == d_feature
+
+    rngs = self.new_rngs(len(self._d_embs))
+    weights = []
+    for ax, (ax_rng, d_emb) in enumerate(zip(rngs, self._d_embs)):
+      ax_shape = [1] * len(self._shape)
+      ax_shape[ax] = self._shape[ax]
+      ax_shape = (1,) + tuple(ax_shape) + (d_emb,)
+      ax_emb = self._kernel_initializer(ax_shape, ax_rng)
+      weights.append(ax_emb)
+
+    state = 0 if self._mode == 'predict' else layer_base.EMPTY_STATE
+    return tuple(weights), state
+
+
 class FixedBasePositionalEncoding(layer_base.Layer):
   """Implements fixed-base positional encoding."""
 

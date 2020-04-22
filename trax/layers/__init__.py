@@ -34,7 +34,6 @@ from trax.layers.research.efficient_attention_v2 import *
 from trax.layers.research.position_encodings import *
 from trax.layers.reversible import *
 from trax.layers.rnn import *
-from trax.layers.tracer import symbolic
 
 
 # Ginify
