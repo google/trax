@@ -1045,6 +1045,22 @@ def argsort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missin
   return array_creation.asarray(tf_ans, dtype=np.intp)
 
 
+@utils.np_doc(np.sort)
+def sort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missing-docstring
+  if kind != 'quicksort':
+    raise ValueError("Only 'quicksort' is supported.")
+  if order is not None:
+    raise ValueError("'order' argument to sort is not supported.")
+
+  a = array_creation.asarray(a)
+
+  if axis is None:
+    result_t = tf.sort(tf.reshape(a.data, [-1]), 0)
+    return utils.tensor_to_ndarray(result_t)
+  else:
+    return utils.tensor_to_ndarray(tf.sort(a.data, axis))
+
+
 def _argminmax(fn, a, axis=None):
   a = array_creation.asarray(a)
   if axis is None:

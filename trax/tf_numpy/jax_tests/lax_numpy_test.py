@@ -1898,44 +1898,39 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
     ans = lnp.arange(0.0, 1.0, 0.1)
     self.assertAllClose(expected, ans, check_dtypes=True)
 
-  @disable
   def testSortManually(self):
+
+    def _test(*args, **kwargs):
+
+      raw_ans = lnp.sort(*args, **kwargs)
+      fn_ans = npe.jit(lnp.sort, static_argnums=(1,))(*args, **kwargs)
+      expected = onp.sort(*args, **kwargs)
+
+      self.assertAllClose(expected, raw_ans, check_dtypes=True)
+      self.assertAllClose(expected, fn_ans, check_dtypes=True)
+
     # manual tests for sort are nice because we don't have to worry about ties.
     # lax.sort is tested combinatorially.
-    ans = lnp.sort(onp.array([16, 15, 23, 42, 8, 4]))
-    expected = onp.array([4, 8, 15, 16, 23, 42])
-    self.assertAllClose(expected, ans, check_dtypes=True)
-
-    a = onp.array([[1, 4], [3, 1]])
-    ans = lnp.sort(a, axis=None)
-    expected = onp.array([1, 1, 3, 4])
-    self.assertAllClose(expected, ans, check_dtypes=True)
-
-    a = onp.array([[1, 4], [3, 1]])
-    ans = lnp.sort(a)  # last axis
-    expected = onp.array([[1, 4], [1, 3]])
-    self.assertAllClose(expected, ans, check_dtypes=True)
-
-    a = onp.array([[1, 4], [3, 1]])
-    ans = lnp.sort(a, axis=0)
-    expected = onp.array([[1, 1], [3, 4]])
-    self.assertAllClose(expected, ans, check_dtypes=True)
+    _test(onp.array([16, 15, 23, 42, 8, 4]))
+    _test(onp.array([[1, 4], [3, 1]]), None)
+    _test(onp.array([[1, 4], [3, 1]]))
+    _test(onp.array([[1, 4], [3, 1]]), 0)
 
   def testArgsortManually(self):
 
     def _test(*args, **kwargs):
 
       raw_ans = lnp.argsort(*args, **kwargs)
-      fn_ans = tf.function(lnp.argsort)(*args, **kwargs)
+      fn_ans = npe.jit(lnp.argsort, static_argnums=(1,))(*args, **kwargs)
       expected = onp.argsort(*args, **kwargs)
 
       self.assertAllClose(expected, raw_ans, check_dtypes=True)
       self.assertAllClose(expected, fn_ans, check_dtypes=True)
 
     _test(onp.array([16, 15, 23, 42, 8, 4]))
-    _test(onp.array([[16, 15, 23], [42, 8, 4]]), axis=0)
-    _test(onp.array([[16, 15, 23], [42, 8, 4]]), axis=1)
-    _test(onp.array([[16, 15, 23], [42, 8, 4]]), axis=None)
+    _test(onp.array([[16, 15, 23], [42, 8, 4]]), 0)
+    _test(onp.array([[16, 15, 23], [42, 8, 4]]), 1)
+    _test(onp.array([[16, 15, 23], [42, 8, 4]]), None)
     _test(onp.array([[16, 15, 23], [42, 8, 4]]))
 
   @named_parameters(jtu.cases_from_list(
