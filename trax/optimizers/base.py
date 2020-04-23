@@ -35,7 +35,7 @@ class Optimizer(object):
   and slot updates for the whole tree of layers in the model.
   """
 
-  def __init__(self, learning_rate, **init_opt_params):
+  def __init__(self, learning_rate, clip_grad_norm=None, **init_opt_params):
     """Sets initial hyperparameter values for this optimizer.
 
     Takes initial optimizer parameters as keyword arguments. These values can
@@ -47,6 +47,7 @@ class Optimizer(object):
 
     Args:
       learning_rate: The initial learning rate.
+      clip_grad_norm: float; the value to which gradients will be clipped.
       **init_opt_params: Initial values of any additional optimizer parameters.
     """
     init_opt_params['learning_rate'] = learning_rate
@@ -54,6 +55,10 @@ class Optimizer(object):
         name: np.array(value) for (name, value) in init_opt_params.items()
     }
     self._slots = None
+    # Gradient clipping happens with respect to the norm of the whole gradient
+    # tree, so it is not passed to single-slot updates, but done in this class
+    # for the whole gradient tree.
+    self._clip_grad_norm = clip_grad_norm
 
   def init(self, weights):
     """Creates optimizer slots for the given parameters.
@@ -116,6 +121,11 @@ class Optimizer(object):
   def tree_update(self, step, grad_tree, weight_tree, slots, opt_params):
     """Assembles node-local weight and slot updates for the full layer tree."""
     grads_flat = _tree_flatten(grad_tree)
+    if self._clip_grad_norm is not None:
+      max_norm = self._clip_grad_norm
+      norm = np.sqrt(sum(np.vdot(x, x) for x in grads_flat))
+      grads_flat = [np.where(norm < max_norm, g, g * (max_norm / norm))
+                    for g in grads_flat]
     weights_flat = _tree_flatten(weight_tree)
     updated_pairs = [
         self._update_and_check(step, grad, weight, slot, opt_params)
