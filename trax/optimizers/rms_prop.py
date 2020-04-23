@@ -27,11 +27,13 @@ class RMSProp(opt_base.Optimizer):
   decaying average of gradients from prior training batches.
   """
 
-  def __init__(self, learning_rate, gamma=0.9, eps=1e-8):  # pylint: disable=useless-super-delegation
+  def __init__(self, learning_rate, gamma=0.9,
+               eps=1e-8, clip_grad_norm=None):  # pylint: disable=useless-super-delegation
     super(RMSProp, self).__init__(
         learning_rate=learning_rate,
         gamma=gamma,
         eps=eps,
+        clip_grad_norm=clip_grad_norm
     )
 
   def init(self, weights):

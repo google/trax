@@ -30,8 +30,14 @@ def ValueLoss(values, returns, value_loss_coeff):
 
 
 def ExplainedVariance(values, returns):
-  """Definition of explained variance."""
-  return jnp.mean(1 - jnp.divide(returns - values, returns + 1e-8))
+  """Definition of explained variance - an approach from OpenAI baselines."""
+  values = values.squeeze()
+  returns = returns.squeeze()
+  assert values.shape[0] == returns.shape[0]
+  # TODO(henrykm): it would be good to explain the relation with the time dim.
+  returns_variance = jnp.var(returns)
+  explained_variance = 1 - jnp.var(returns-values)/returns_variance
+  return explained_variance
 
 
 def PreferredMove(dist_inputs, sample):
@@ -112,3 +118,16 @@ def PPOObjective(dist_inputs, values, returns, actions, old_log_probs,
   clipped_objective = ClippedObjective(probs_ratio, advantages, epsilon)
   ppo_objective = jnp.minimum(unclipped_objective, clipped_objective)
   return ppo_objective
+
+
+def A2CObjective(dist_inputs, values, returns,
+                 actions, mask, log_prob_fun, normalize_advantages):
+  """Definition of the Advantage Actor Critic (A2C) loss."""
+  returns = returns.squeeze()
+  values = values.squeeze()
+  new_log_probs = NewLogProbs(dist_inputs, actions, log_prob_fun)
+  advantages = returns - values
+  if normalize_advantages:
+    advantages = advantages - jnp.mean(advantages)
+    advantages /= jnp.std(advantages) + 1e-8
+  return -jnp.sum(new_log_probs * advantages * mask) / jnp.sum(mask)

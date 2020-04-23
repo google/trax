@@ -127,10 +127,10 @@ class RLTrainer:
     n_epochs_to_run = n_epochs
     if n_epochs_is_total_epochs:
       n_epochs_to_run -= self._epoch
+    cur_n_interactions = 0
     for _ in range(n_epochs_to_run):
       self._epoch += 1
       cur_time = time.time()
-      cur_n_interactions = 0
       self.train_epoch()
       supervised.trainer_lib.log(
           'RL training took %.2f seconds.' % (time.time() - cur_time))

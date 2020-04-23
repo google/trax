@@ -137,7 +137,10 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
   @property
   def explained_variance(self):
     """Explained variance metric."""
-    return tl.Fn('ExplainedVariance', rl_layers.ExplainedVariance)
+    def f(dist_inputs, values, returns):
+      del dist_inputs
+      return rl_layers.ExplainedVariance(values, returns)
+    return tl.Fn('ExplainedVariance', f)
 
   @property
   def log_probs_mean(self):
@@ -306,8 +309,9 @@ class PPOJointTrainer(ActorCriticJointTrainer):
 
   @property
   def approximate_kl_divergence(self):
-    """Entropy layer."""
-    def f(dist_inputs, actions, old_log_probs):
+    """Approximate KL divergence."""
+    def f(dist_inputs, values, returns, actions, old_log_probs):
+      del values, returns
       return rl_layers.ApproximateKLDivergence(
           dist_inputs,
           actions,
@@ -368,6 +372,126 @@ class PPOJointTrainer(ActorCriticJointTrainer):
     return tl.Fn('PPOObjectiveMean', f)
 
 
+class A2CJointTrainer(ActorCriticJointTrainer):
+  """The A2C algorithm.
+
+  Trains policy and value models using the A2C algortithm.
+  """
+
+  on_policy = True
+
+  def __init__(self, task, value_loss_coeff=0.1,
+               entropy_coeff=0.01, **kwargs):
+    """Configures the A2C Trainer."""
+    self._value_loss_coeff = value_loss_coeff
+    self._entropy_coeff = entropy_coeff
+    super(A2CJointTrainer, self).__init__(task, **kwargs)
+    self._trainer = supervised.Trainer(
+        model=self._joint_model,
+        optimizer=self._optimizer,
+        lr_schedule=self._lr_schedule,
+        loss_fn=self.joint_loss,
+        inputs=self._inputs,
+        output_dir=self._output_dir,
+        metrics={'joint_loss': self.joint_loss,
+                 'advantage_mean': self.advantage_mean,
+                 'advantage_norm': self.advantage_norm,
+                 'value_loss': self.value_loss,
+                 'explained_variance': self.explained_variance,
+                 'log_probs_mean': self.log_probs_mean,
+                 'entropy_loss': self.entropy_loss,
+                 'a2c_objective_mean': self.a2c_objective_mean,
+                 'approximate_kl_divergence': self.approximate_kl_divergence,
+                 'preferred_move': self.preferred_move})
+
+  def batches_stream(self):
+    """Use the RLTask self._task to create inputs to the value model."""
+    for np_trajectory in self._task.trajectory_batch_stream(
+        self._batch_size, max_slice_length=self._max_slice_length, epochs=[-1]):
+      # Insert an extra depth dimension, so the target shape is consistent with
+      # the network output shape.
+      yield (np_trajectory.observations,         # Inputs to the value model.
+             np_trajectory.returns[:, :, None],
+             np_trajectory.actions,
+             np_trajectory.log_probs,
+             np_trajectory.mask)
+
+  @property
+  def joint_loss(self):
+    """Joint policy and value loss."""
+    def f(dist_inputs, values, returns, actions, old_log_probs, mask):
+      """Definition of the A2C loss."""
+      del old_log_probs
+
+      a2c_objective = rl_layers.A2CObjective(
+          dist_inputs,
+          stop_gradient(values),
+          returns, actions, mask,
+          log_prob_fun=self._policy_dist.log_prob,
+          normalize_advantages=self._normalize_advantages)
+
+      entropy_loss = rl_layers.EntropyLoss(
+          dist_inputs, actions,
+          log_prob_fun=self._policy_dist.log_prob,
+          entropy_coeff=self._entropy_coeff,
+          entropy_fun=self._policy_dist.entropy)
+
+      l2_value_loss = rl_layers.ValueLoss(
+          values, returns,
+          value_loss_coeff=self._value_loss_coeff)
+
+      return a2c_objective.mean() + l2_value_loss - entropy_loss
+
+    return tl.Fn('A2CJointLoss', f, n_out=1)
+
+  @property
+  def entropy_loss(self):
+    """Entropy layer."""
+    def f(dist_inputs, values, returns, actions):
+      del values, returns
+      return rl_layers.EntropyLoss(
+          dist_inputs, actions, log_prob_fun=self._policy_dist.log_prob,
+          entropy_coeff=self._entropy_coeff,
+          entropy_fun=self._policy_dist.entropy)
+    return tl.Fn('EntropyLoss', f)
+
+  @property
+  def approximate_kl_divergence(self):
+    """Approximate KL divergence."""
+    def f(dist_inputs, values, returns, actions, old_log_probs):
+      del values, returns
+      return rl_layers.ApproximateKLDivergence(
+          dist_inputs,
+          actions,
+          old_log_probs,
+          log_prob_fun=self._policy_dist.log_prob)
+    return tl.Fn('ApproximateKLDivergence', f)
+
+  @property
+  def a2c_objective(self):
+    """A2C objective with local parameters."""
+    return tl.Fn(
+        lambda dist_inputs, values, returns, actions, old_log_probs, mask:
+        rl_layers.A2CObjective(
+            dist_inputs, values, returns, actions, mask,
+            log_prob_fun=self._policy_dist.log_prob,
+            normalize_advantages=self._normalize_advantages),
+        n_out=1)
+
+  @property
+  def a2c_objective_mean(self):
+    """PPO objective mean."""
+    def f(dist_inputs, values, returns, actions, old_log_probs, mask):
+      """A2C objective mean."""
+      del old_log_probs
+      a2c_objective = rl_layers.A2CObjective(
+          dist_inputs, values, returns, actions, mask,
+          log_prob_fun=self._policy_dist.log_prob,
+          normalize_advantages=self._normalize_advantages)
+      return jnp.mean(a2c_objective)
+    return tl.Fn('A2CObjectiveMean', f, n_out=1)
+
+
 class AWRJointTrainer(ActorCriticJointTrainer):
   """Trains a joint policy-and-value model using AWR."""
 
@@ -403,3 +527,4 @@ class AWRJointTrainer(ActorCriticJointTrainer):
       l2_value_loss = jnp.mean((returns - values)**2) * self._value_loss_coeff
       return awr_loss + l2_value_loss
     return tl.Fn('AWRJointLoss', f)
+

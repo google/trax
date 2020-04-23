@@ -68,3 +68,5 @@ PPOTrainer = configure_rl(
     actor_critic.PPOTrainer, blacklist=['task', 'output_dir'])
 PPOJointTrainer = configure_rl(
     actor_critic_joint.PPOJointTrainer, blacklist=['task', 'output_dir'])
+A2CJointTrainer = configure_rl(
+    actor_critic_joint.A2CJointTrainer, blacklist=['task', 'output_dir'])
