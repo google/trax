@@ -1,4 +1,4 @@
-## Trax &mdash; your path to advanced deep learning
+## Trax &mdash; Deep Learning with Clear Code and Speed
 
 ![train tracks](https://images.pexels.com/photos/461772/pexels-photo-461772.jpeg?dl&fit=crop&crop=entropy&w=32&h=21)
 [![PyPI
@@ -11,9 +11,15 @@ welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)](CO
 [![Gitter](https://img.shields.io/gitter/room/nwjs/nw.js.svg)](https://gitter.im/trax-ml/community)
 
 
-[Trax](https://github.com/google/trax) helps you understand and explore advanced deep learning.
-We [focus](#structure) on making Trax code clear while pushing advanced models like
-[Reformer](https://github.com/google/trax/tree/master/trax/models/reformer) to their limits.
+[Trax](https://github.com/google/trax) is a library for deep learning that
+focuses on sequence models and reinforcement learning. It combines performance
+with code clarity and maintained documentation and tests.
+
+Trax includes basic models (like ResNet, LSTM, Transformer) and RL algorithms
+(like REINFORCE, A2C, PPO). It is also actively used for research and includes
+new models like the [Reformer](https://github.com/google/trax/tree/master/trax/models/reformer)
+and RL algorithms like [AWR](https://arxiv.org/abs/1910.00177).
+
 Trax is actively used and maintained in the [Google Brain team](https://research.google.com/teams/brain/).
 Give it a try, [talk to us](https://gitter.im/trax-ml/community)
 or [open an issue](https://github.com/google/trax/issues) if needed.
