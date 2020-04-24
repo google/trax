@@ -22,6 +22,7 @@ import numpy as np
 
 from trax import layers as tl
 from trax.math import numpy as jnp
+from jax import random
 
 
 class Distribution:
@@ -133,10 +134,11 @@ class Gaussian(Distribution):
     return jnp.prod(self._shape, dtype=jnp.int32)
 
   def sample(self, inputs, temperature=1.0):
-    return np.random.normal(
-        loc=jnp.reshape(inputs, inputs.shape[:-1] + self._shape),
-        scale=self._std * temperature,
+    key = random.PRNGKey(0)
+    sample_normal = random.normal(
+        key=key, shape=inputs.shape[:-1] + self._shape
     )
+    return sample_normal * self._std * temperature
 
   def log_prob(self, inputs, point):
     point = point.reshape(inputs.shape[:-1] + (-1,))
@@ -150,7 +152,8 @@ class Gaussian(Distribution):
 
   # At that point self._std is not learnable, hence
   # we return a constaent
-  def entropy(self):
+  def entropy(self, log_probs):
+    del log_probs  # they will be passed automatically but are not needed
     return jnp.exp(self._std) + .5 * jnp.log(2.0 * jnp.pi * jnp.e)
 
 
