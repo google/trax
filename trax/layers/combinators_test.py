@@ -168,6 +168,33 @@ class CombinatorLayerTest(absltest.TestCase):
     layer = cb.Parallel(cb.Dup(), cb.Dup(), name='DupDup')  # pylint: disable=no-value-for-parameter
     self.assertIn('DupDup', str(layer))
 
+  def test_concatenate(self):
+    x0 = np.array([[1, 2, 3],
+                   [4, 5, 6]])
+    x1 = np.array([[10, 20, 30],
+                   [40, 50, 60]])
+
+    layer0 = cb.Concatenate(axis=0)
+    y = layer0([x0, x1])
+    self.assertEqual(y.tolist(), [[1, 2, 3],
+                                  [4, 5, 6],
+                                  [10, 20, 30],
+                                  [40, 50, 60]])
+
+    layer1 = cb.Concatenate(axis=1)
+    y = layer1([x0, x1])
+    self.assertEqual(y.tolist(), [[1, 2, 3, 10, 20, 30],
+                                  [4, 5, 6, 40, 50, 60]])
+
+    layer2 = cb.Concatenate(n_items=3)
+    y = layer2([x0, x1, x0])
+    self.assertEqual(y.tolist(), [[1, 2, 3, 10, 20, 30, 1, 2, 3],
+                                  [4, 5, 6, 40, 50, 60, 4, 5, 6]])
+
+    self.assertEqual(repr(layer0), 'Concatenate_axis0_in2')
+    self.assertEqual(repr(layer1), 'Concatenate_axis1_in2')
+    self.assertEqual(repr(layer2), 'Concatenate_axis-1_in3')
+
   def test_drop(self):
     layer = cb.Drop()
     input_signature = ShapeDtype((3, 2))
