@@ -193,7 +193,7 @@ class CombinatorLayerTest(absltest.TestCase):
 
     self.assertEqual(repr(layer0), 'Concatenate_axis0_in2')
     self.assertEqual(repr(layer1), 'Concatenate_axis1_in2')
-    self.assertEqual(repr(layer2), 'Concatenate_axis-1_in3')
+    self.assertEqual(repr(layer2), 'Concatenate_in3')
 
   def test_drop(self):
     layer = cb.Drop()

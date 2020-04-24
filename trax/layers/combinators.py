@@ -335,8 +335,8 @@ class Concatenate(base.Layer):
   """Concatenates n tensors into a single tensor."""
 
   def __init__(self, n_items=2, axis=-1):
-    super(Concatenate, self).__init__(n_in=n_items,
-                                      name=f'Concatenate_axis{axis}')
+    name = 'Concatenate' if axis == -1 else f'Concatenate_axis{axis}'
+    super(Concatenate, self).__init__(n_in=n_items, name=name)
     self._n_items = n_items
     self._axis = axis
 
