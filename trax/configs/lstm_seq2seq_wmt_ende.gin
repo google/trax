@@ -1,0 +1,68 @@
+# Copyright 2020 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.lr_schedules
+import trax.models
+import trax.optimizers
+import trax.supervised.inputs
+import trax.supervised.trainer_lib
+
+# Parameters for batch_fn:
+# ==============================================================================
+batch_fn.batch_size_per_device = 64
+batch_fn.eval_batch_size = 64
+batch_fn.max_eval_length = 512
+batch_fn.bucket_length = 32
+batch_fn.buckets_include_inputs_in_length=True
+
+# Parameters for inputs:
+# ==============================================================================
+inputs.data_dir = None
+inputs.dataset_name = 't2t_translate_ende_wmt32k'
+
+# Parameters for preprocess_fun:
+# ==============================================================================
+shuffle_and_batch_data.preprocess_fun=@trax.supervised.inputs.wmt_preprocess
+wmt_preprocess.max_length = 256
+wmt_preprocess.max_eval_length = 512
+
+# Parameters for lr_schedules.warmup:
+# ==============================================================================
+lr_schedules.warmup.max_value = 0.001
+lr_schedules.warmup.n_warmup_steps = 1000
+
+# Parameters for Adam:
+# ==============================================================================
+Adam.weight_decay_rate = 0.0
+
+# Parameters for train:
+# ==============================================================================
+train.eval_frequency = 1000
+train.eval_steps = 10
+train.id_to_mask = 0
+train.inputs = @trax.supervised.inputs.inputs
+train.model = @trax.models.LSTMSeq2SeqAttn
+train.optimizer = @trax.optimizers.Adam
+train.lr_schedule = @lr_schedules.warmup
+train.steps = 250000
+
+# Parameters for LSTMSeq2SeqAttn:
+# ==============================================================================
+LSTMSeq2SeqAttn.d_model= 1024
+LSTMSeq2SeqAttn.n_encoder_layers = 2
+LSTMSeq2SeqAttn.n_decoder_layers = 2
+LSTMSeq2SeqAttn.attention_dropout = 0.2
+LSTMSeq2SeqAttn.n_attention_heads = 8
+LSTMSeq2SeqAttn.input_vocab_size = 33300
+LSTMSeq2SeqAttn.target_vocab_size = 33300

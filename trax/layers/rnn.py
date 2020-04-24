@@ -23,7 +23,7 @@ from trax.layers import combinators as cb
 from trax.layers import convolution
 from trax.layers import core
 from trax.layers import initializers
-from trax.math import numpy as np
+from trax.math import numpy as jnp
 
 
 class LSTMCell(base.Layer):
@@ -51,18 +51,18 @@ class LSTMCell(base.Layer):
     x, lstm_state = inputs
 
     # LSTM state consists of c and h.
-    c, h = np.split(lstm_state, 2, axis=-1)
+    c, h = jnp.split(lstm_state, 2, axis=-1)
 
     # Dense layer on the concatenation of x and h.
     w, b = weights
-    y = np.dot(np.concatenate([x, h], axis=-1), w) + b
+    y = jnp.dot(jnp.concatenate([x, h], axis=-1), w) + b
 
     # i = input_gate, j = new_input, f = forget_gate, o = output_gate
-    i, j, f, o = np.split(y, 4, axis=-1)
+    i, j, f, o = jnp.split(y, 4, axis=-1)
 
-    new_c = c * math.sigmoid(f) + math.sigmoid(i) * np.tanh(j)
-    new_h = np.tanh(new_c) * math.sigmoid(o)
-    return new_h, np.concatenate([new_c, new_h], axis=-1)
+    new_c = c * math.sigmoid(f) + math.sigmoid(i) * jnp.tanh(j)
+    new_h = jnp.tanh(new_c) * math.sigmoid(o)
+    return new_h, jnp.concatenate([new_c, new_h], axis=-1)
 
   def new_weights(self, input_signature):
     # LSTM state last dimension must be twice n_units.
@@ -79,8 +79,8 @@ def MakeZeroState(depth_multiplier=1):
   """Makes zeros of shape like x but removing the length (axis 1)."""
   def f(x):  # pylint: disable=invalid-name
     assert len(x.shape) == 3, 'Expecting x of shape [batch, length, depth].'
-    return np.zeros((x.shape[0], depth_multiplier * x.shape[-1]),
-                    dtype=np.float32)
+    return jnp.zeros((x.shape[0], depth_multiplier * x.shape[-1]),
+                     dtype=jnp.float32)
   return base.Fn('MakeZeroState', f)
 
 
@@ -116,15 +116,15 @@ class GRUCell(base.Layer):
 
     # Dense layer on the concatenation of x and h.
     w1, b1, w2, b2 = weights
-    y = np.dot(np.concatenate([x, gru_state], axis=-1), w1) + b1
+    y = jnp.dot(jnp.concatenate([x, gru_state], axis=-1), w1) + b1
 
     # Update and reset gates.
-    u, r = np.split(math.sigmoid(y), 2, axis=-1)
+    u, r = jnp.split(math.sigmoid(y), 2, axis=-1)
 
     # Candidate.
-    c = np.dot(np.concatenate([x, r * gru_state], axis=-1), w2) + b2
+    c = jnp.dot(jnp.concatenate([x, r * gru_state], axis=-1), w2) + b2
 
-    new_gru_state = u * gru_state + (1 - u) * np.tanh(c)
+    new_gru_state = u * gru_state + (1 - u) * jnp.tanh(c)
     return new_gru_state, new_gru_state
 
   def new_weights(self, input_signature):
@@ -275,7 +275,8 @@ def SRU(n_units, activation=None):
       cb.Scan(InnerSRUCell(), axis=1),
       cb.Select([0], n_in=2),                               # act(c), r, x
       activation or [],
-      base.Fn('FinalSRUGate', lambda c, r, x: c * r + x * (1 - r)))
+      base.Fn('FinalSRUGate', lambda c, r, x: c * r + x * (1 - r) * (3**0.5))
+  )
 
 
 def _AddSigmoidBias(sigmoid_bias):
