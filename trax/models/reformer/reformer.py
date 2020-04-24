@@ -481,6 +481,7 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
       outputs, s = layer.pure_fn(inputs, w, s, rng)
       stack = _outputs_onto_stack(layer, outputs, stack)
       new_state.append(s)
+    new_state = tuple(new_state)
     residual = stack[0] if isinstance(stack, (tuple, list)) else stack
 
     output = accumulator + residual
