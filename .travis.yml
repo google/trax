@@ -1,0 +1,23 @@
+sudo: required
+language: python
+cache: pip
+git:
+  depth: 3
+  quiet: true
+services:
+  - docker
+python:
+  - "3.6"
+env:
+  global:
+    - TF_LATEST="2.1.*"
+  matrix:
+    - TF_VERSION="2.1.*"
+install:
+  - ./oss_scripts/oss_pip_install.sh
+script:
+  - ./oss_scripts/oss_tests.sh
+
+# - if [[ "$TRAVIS_PYTHON_VERSION" == "2.7" ]]; then
+#       pylint -j 2 trax;
+#   fi

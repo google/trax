@@ -17,7 +17,7 @@
 """BERT."""
 
 import jax
-from tensorflow.train import load_checkpoint
+import tensorflow as tf
 
 from trax import layers as tl
 from trax.math import numpy as np
@@ -144,7 +144,7 @@ class PretrainedBERT(tl.Serial):
       return weights, state
 
     print('Loading pre-trained weights from', self.init_checkpoint)
-    ckpt = load_checkpoint(self.init_checkpoint)
+    ckpt = tf.train.load_checkpoint(self.init_checkpoint)
 
     def reshape_qkv(name):
       x = ckpt.get_tensor(name)
