@@ -641,12 +641,12 @@ class PureLayer(Layer):
 def Fn(name, f, n_in=None, n_out=1):  # pylint: disable=invalid-name
   """Returns a layer with no weights that applies the function f.
 
-  The function f can take and return any number of arguments, but it cannot
-  have default arguments or keywords arguments. It can use numpy though, e.g:
+  `f` can take and return any number of arguments, and takes only positional
+  arguments -- no default or keyword arguments. It often uses JAX-numpy (jnp).
+  The following, for example, would create a layer that takes two inputs and
+  returns two outputs -- element-wise sums and maxima:
 
-  A layer that takes 2 arguments and returns sum and concatenation on stack:
-
-    Fn(lambda x, y: (x + y, jnp.concatenate([x, y], axis=0)))
+      Fn('SumAndMax', lambda x0, x1: (x0 + x1, jnp.maximum(x0, x1)), n_out=2)
 
   Args:
     name: Class-like name for the resulting layer; for use in debugging.

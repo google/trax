@@ -17,10 +17,13 @@
 """Tests for base layer."""
 
 from absl.testing import absltest
+
+import numpy as np
+
 from trax import math
 from trax.layers import base
 from trax.layers.base import Fn
-from trax.math import numpy as np
+from trax.math import numpy as jnp
 from trax.shapes import ShapeDtype
 
 
@@ -100,21 +103,20 @@ class BaseLayerTest(absltest.TestCase):
     out_2, _ = layer.forward_with_state(in_2)
     self.assertEqual(out_2.tolist(), [10, 12])
 
-  def test_fn_layer_example(self):
-    layer = Fn('2in2out',
-               lambda x, y: (x + y, np.concatenate([x, y], axis=0)), n_out=2)
-    input_signature = (ShapeDtype((2, 7)), ShapeDtype((2, 7)))
-    expected_shape = ((2, 7), (4, 7))
-    output_shape = base.check_shape_agreement(layer, input_signature)
-    self.assertEqual(output_shape, expected_shape)
-    inp = (np.array([2]), np.array([3]))
-    x, xs = layer(inp)
-    self.assertEqual(int(x), 5)
-    self.assertEqual([int(y) for y in xs], [2, 3])
+  def test_fn_sum_and_max(self):
+    layer = Fn('SumAndMax',
+               lambda x0, x1: (x0 + x1, jnp.maximum(x0, x1)),
+               n_out=2)
+
+    x0 = np.array([1, 2, 3, 4, 5])
+    x1 = np.array([10, 20, 30, 40, 50])
+    y0, y1 = layer((x0, x1))
+    self.assertEqual(y0.tolist(), [11, 22, 33, 44, 55])
+    self.assertEqual(y1.tolist(), [10, 20, 30, 40, 50])
 
   def test_fn_layer_weights_state(self):
     layer = Fn('2in2out',
-               lambda x, y: (x + y, np.concatenate([x, y], axis=0)), n_out=2)
+               lambda x, y: (x + y, jnp.concatenate([x, y], axis=0)), n_out=2)
     input_signature = None
     weights, state = layer.new_weights_and_state(input_signature)
     self.assertIsNotNone(weights)
@@ -150,7 +152,7 @@ class BaseLayerTest(absltest.TestCase):
         return True
 
       def backward(self, inputs, output, grad, weights, state, new_state, rng):
-        return (np.zeros_like(grad), ())
+        return (jnp.zeros_like(grad), ())
 
     layer = IdWithZeroGrad()
     rng = math.random.get_prng(0)
@@ -158,7 +160,7 @@ class BaseLayerTest(absltest.TestCase):
     random_input = math.random.uniform(rng, input_signature.shape,
                                        minval=-1.0, maxval=1.0)
     layer.init(input_signature)
-    f = lambda x: np.mean(layer(x))
+    f = lambda x: jnp.mean(layer(x))
     grad = math.grad(f)(random_input)
     self.assertEqual(grad.shape, (9, 17))  # Gradient for each input.
     self.assertEqual(sum(sum(grad * grad)), 0.0)  # Each one is 0.
@@ -183,7 +185,7 @@ class BaseLayerTest(absltest.TestCase):
     random_input = math.random.uniform(rng, input_signature.shape,
                                        minval=-1.0, maxval=1.0)
     layer.init(input_signature)
-    f = lambda x: np.mean(layer(x))
+    f = lambda x: jnp.mean(layer(x))
     grad = math.grad(f)(random_input)
     self.assertEqual(grad.shape, (9, 17))  # Gradient for each input.
     self.assertEqual(sum(sum(grad)), sum(sum(random_input)))  # Same as input.
