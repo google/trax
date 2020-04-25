@@ -1118,16 +1118,16 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
       for arg_dtypes in CombosWithReplacement(default_dtypes, 2)
       for base_shape in [(4,), (3, 4), (2, 3, 4)]
       for axis in range(-len(base_shape)+1, len(base_shape))))
-  @disable
   def testAppend(self, axis, base_shape, arg_dtypes, rng_factory):
     rng = rng_factory()
     wrapped_axis = axis % len(base_shape)
     shapes = [base_shape[:wrapped_axis] + (size,) + base_shape[wrapped_axis+1:]
               for size, _ in zip(itertools.cycle([3, 1, 4]), arg_dtypes)]
     def onp_fun(arr, values):
-      arr = arr.astype(onp.float32) if arr.dtype == lnp.bfloat16 else arr
-      values = (values.astype(onp.float32) if values.dtype == lnp.bfloat16
-                else values)
+      arr = arr.astype(onp.float32) if lnp.bfloat16 == arr.dtype else arr
+      values = (
+          values.astype(onp.float32)
+          if lnp.bfloat16 == values.dtype else values)
       out = onp.append(arr, values, axis=axis)
       return out.astype(lnp.promote_types(*arg_dtypes))
     lnp_fun = lambda arr, values: lnp.append(arr, values, axis=axis)
@@ -1136,7 +1136,8 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
       return [rng(shape, dtype) for shape, dtype in zip(shapes, arg_dtypes)]
 
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_shape=[{}]_axis={}_repeats={}".format(
