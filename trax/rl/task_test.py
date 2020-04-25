@@ -20,6 +20,7 @@ import os
 from absl.testing import absltest
 import gym
 import numpy as np
+from trax import test_utils
 from trax.rl import task as rl_task
 
 
@@ -43,6 +44,10 @@ class DummyEnv(object):
 
 
 class TaskTest(absltest.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    test_utils.ensure_flag('test_tmpdir')
 
   def test_task_random_initial_trajectories_and_max_steps(self):
     """Test generating initial random trajectories, stop at max steps."""

@@ -33,7 +33,7 @@ pkg_dir, _ = os.path.split(__file__)
 _TESTDATA = os.path.join(pkg_dir, 'testdata')
 
 
-def test_dataset_ints(lengths):
+def _test_dataset_ints(lengths):
   """Create a test dataset of int64 tensors of shape [length]."""
   def generator():
     """Sample generator of sequences of shape [length] of type int64."""
@@ -53,7 +53,7 @@ class InputsTest(tf.test.TestCase):
     gin.clear_config()
 
   def test_batch_fn(self):
-    dataset = test_dataset_ints([32])
+    dataset = _test_dataset_ints([32])
     dataset = dataset.repeat(10)
     batches = inputs.batch_fn(
         dataset, True, ([None], [None]), 1, batch_size=10)
@@ -64,7 +64,7 @@ class InputsTest(tf.test.TestCase):
     self.assertEqual(count, 1)  # Just one batch here.
 
   def test_batch_fn_n_devices(self):
-    dataset = test_dataset_ints([32])
+    dataset = _test_dataset_ints([32])
     dataset = dataset.repeat(9)
     batches = inputs.batch_fn(
         dataset, True, ([None], [None]), 9, batch_size=10)
