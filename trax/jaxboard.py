@@ -104,7 +104,12 @@ class SummaryWriter(object):
       del self._event_writer
 
   def __del__(self):  # safe?
-    self.close()
+    # TODO(afrozm): Sometimes this complains with
+    #  `TypeError: 'NoneType' object is not callable`
+    try:
+      self.close()
+    except Exception:  # pylint: disable=broad-except
+      pass
 
   def flush(self):
     if not self._enabled:

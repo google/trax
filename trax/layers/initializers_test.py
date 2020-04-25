@@ -17,6 +17,7 @@
 """Tests for initializers."""
 
 from absl.testing import absltest
+from trax import test_utils
 from trax.layers import initializers
 from trax.math import numpy as np
 from trax.math import random
@@ -80,6 +81,9 @@ class InitializersTest(absltest.TestCase):
 
   def test_from_file(self):
     params = np.array([[0.0, 0.1], [0.2, 0.3], [0.4, 0.5]])
+    # `create_tempfile` needs access to --test_tmpdir, however in the OSS world
+    # pytest doesn't run `absltest.main`, so we need to manually parse the flags
+    test_utils.ensure_flag('test_tmpdir')
     filename = self.create_tempfile('params.npy').full_path
     with open(filename, 'wb') as f:
       np.save(f, params)

@@ -24,12 +24,17 @@ from trax import layers as tl
 from trax import lr_schedules
 from trax import models
 from trax import optimizers as opt
+from trax import test_utils
 from trax.rl import actor_critic_joint
 from trax.rl import task as rl_task
 
 
 
 class ActorCriticJointTest(absltest.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    test_utils.ensure_flag('test_tmpdir')
 
   def test_awrjoint_save_restore(self):
     """Check save and restore of joint AWR trainer."""

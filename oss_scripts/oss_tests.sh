@@ -42,15 +42,15 @@ fi
 python -c "import trax"
 set_status
 
-# Check notebooks.
-# TODO(afrozm): Add more.
-jupyter nbconvert --ExecutePreprocessor.kernel_name=python3 \
-  --ExecutePreprocessor.timeout=600 --to notebook --execute \
-  trax/intro.ipynb;
+# Check tests, separate out directories for easy triage.
+
+# Disabled test fails with "disable-warnings", tested separately.
+pytest --disable-warnings \
+  --ignore=trax/layers/initializers_test.py \
+  trax/layers
 set_status
 
-# Check tests, separate out directories for easy triage.
-pytest --disable-warnings trax/layers
+pytest trax/layers/initializers_test.py
 set_status
 
 pytest --disable-warnings trax/math
@@ -62,7 +62,20 @@ set_status
 pytest --disable-warnings trax/optimizers
 set_status
 
-pytest --disable-warnings trax/rl
+# Disabled tests fail with "disable-warnings", tested separately.
+pytest --disable-warnings \
+  --ignore=trax/rl/actor_critic_joint_test.py \
+  --ignore=trax/rl/actor_critic_test.py \
+  --ignore=trax/rl/task_test.py \
+  --ignore=trax/rl/training_test.py \
+  trax/rl
+set_status
+
+pytest \
+  trax/rl/actor_critic_joint_test.py \
+  trax/rl/actor_critic_test.py \
+  trax/rl/task_test.py \
+  trax/rl/training_test.py
 set_status
 
 pytest --disable-warnings trax/supervised
@@ -74,7 +87,18 @@ pytest --disable-warnings \
   --ignore=trax/models \
   --ignore=trax/optimizers \
   --ignore=trax/rl \
-  --ignore=trax/supervised
+  --ignore=trax/supervised \
+  --ignore=trax/tf_numpy
+set_status
+
+# TODO(traxers): Test tf-numpy separately.
+
+# Check notebooks.
+
+# TODO(afrozm): Add more.
+jupyter nbconvert --ExecutePreprocessor.kernel_name=python3 \
+  --ExecutePreprocessor.timeout=600 --to notebook --execute \
+  trax/intro.ipynb;
 set_status
 
 exit $STATUS

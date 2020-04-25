@@ -14,20 +14,23 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Tests for RL training."""
+"""A few utilities for tests."""
 
-import functools
+import sys
 
-from absl.testing import absltest
+from absl import flags
 
-from trax import lr_schedules
-from trax import models
-from trax import optimizers as opt
-from trax.models import atari_cnn
-from trax.rl import actor_critic
-from trax.rl import task as rl_task
+FLAGS = flags.FLAGS
 
 
-
-if __name__ == '__main__':
-  absltest.main()
+# pytest doesn't run the test as a main, so it doesn't parse the flags
+# so if flags are required in tests, this will ensure that flags are manually
+# parsed and the desired flag exists.
+def ensure_flag(flag_str):
+  try:
+    getattr(FLAGS, flag_str)
+  except flags.UnparsedFlagAccessError:
+    # Manually parse flags.
+    FLAGS(sys.argv)
+  finally:
+    assert getattr(FLAGS, flag_str)

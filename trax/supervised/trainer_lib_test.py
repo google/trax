@@ -45,7 +45,7 @@ from trax.tf_numpy import numpy as tf_np
 
 
 
-def test_inputs(n_classes, with_weights=False, input_shape=(6, 6, 3)):
+def _test_inputs(n_classes, with_weights=False, input_shape=(6, 6, 3)):
   """Make trainer_lib.inputs.Inputs."""
   batch_size = 2 * xla_bridge.device_count()
 
@@ -96,7 +96,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
             layers.Dropout(mode=mode, rate=0.1), layers.BatchNorm(mode=mode),
             models.MLP(d_hidden=16, n_output_classes=n_classes, mode=mode))
 
-      inputs = test_inputs(n_classes)
+      inputs = _test_inputs(n_classes)
 
       # Train and evaluate
       state = trainer_lib.train(
@@ -141,7 +141,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       eval_steps = 2
       model_fn = functools.partial(
           models.MLP, d_hidden=16, n_output_classes=n_classes)
-      inputs = test_inputs(n_classes)
+      inputs = _test_inputs(n_classes)
 
       # Train and evaluate
       state = trainer_lib.train(
@@ -178,7 +178,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       eval_steps = 2
       model_fn = functools.partial(
           models.MLP, d_hidden=16, n_output_classes=n_classes)
-      inputs = test_inputs(n_classes)
+      inputs = _test_inputs(n_classes)
 
       # Train and evaluate
       trainer_lib.train(
@@ -210,7 +210,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       eval_steps = 2
       model_fn = functools.partial(
           models.MLP, d_hidden=16, n_output_classes=n_classes)
-      inputs = test_inputs(n_classes, with_weights=True)
+      inputs = _test_inputs(n_classes, with_weights=True)
 
       # Train and evaluate
       state = trainer_lib.train(
@@ -232,7 +232,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       n_classes = 4
       model_fn = functools.partial(
           models.MLP, d_hidden=16, n_output_classes=n_classes)
-      inputs = test_inputs(n_classes)
+      inputs = _test_inputs(n_classes)
 
       trainer = trainer_lib.Trainer(
           model=model_fn,
@@ -268,7 +268,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       n_classes = 1001
       model_fn = functools.partial(models.Resnet50,
                                    n_output_classes=n_classes)
-      inputs = test_inputs(n_classes, input_shape=(224, 224, 3))
+      inputs = _test_inputs(n_classes, input_shape=(224, 224, 3))
       trainer = trainer_lib.Trainer(
           model=model_fn,
           loss_fn=layers.CrossEntropyLoss(),
