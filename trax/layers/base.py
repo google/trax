@@ -175,12 +175,12 @@ class Layer(object):
     Args:
       inputs: Input tensors, matching the number (n_in) expected by this
           layer, packaged as single positional arg. Specifically:
-            - n_in = 0: an empty tuple ()
+            - n_in = 0: an empty tuple or empty list
             - n_in = 1: a tensor (NOT wrapped in a tuple)
-            - n_in > 1: a tuple of tensors, with n_in items
-      weights: A tuple of trainable weights, with one element for this layer
-          if this layer has no sublayers, or one for each sublayer if this
-          layer has sublayers. If a layer (or sublayer) has no trainable
+            - n_in > 1: a tuple or list of tensors, with n_in items
+      weights: A tuple or list of trainable weights, with one element for this
+          layer if this layer has no sublayers, or one for each sublayer if
+          this layer has sublayers. If a layer (or sublayer) has no trainable
           weights, the corresponding weights element is an empty tuple.
 
     Returns:
@@ -203,12 +203,12 @@ class Layer(object):
     Args:
       inputs: Input tensors, matching the number (n_in) expected by this
           layer. Specifically:
-            - n_in = 0: an empty tuple ()
+            - n_in = 0: an empty tuple or empty list
             - n_in = 1: a tensor (NOT wrapped in a tuple)
-            - n_in > 1: a tuple of tensors, with n_in items
-      weights: A tuple of trainable weights, with one element for this layer
-          if this layer has no sublayers, or one for each sublayer if this
-          layer has sublayers. If a layer (or sublayer) has no trainable
+            - n_in > 1: a tuple or list of tensors, with n_in items
+      weights: A tuple or list of trainable weights, with one element for this
+          layer if this layer has no sublayers, or one for each sublayer if
+          this layer has sublayers. If a layer (or sublayer) has no trainable
           weights, the corresponding weights element is an empty tuple.
       state: Layer-specific non-parameter state that can update between batches.
       rng: Single-use random number generator (JAX PRNG key).
@@ -747,8 +747,9 @@ def check_shape_agreement(layer_obj, input_signature):
 
 def _validate_forward_input(x, n_in):
   if n_in != 1:
-    if not isinstance(x, tuple):
-      raise TypeError(f'Expected input to be a tuple; instead got {type(x)}.')
+    if not isinstance(x, (tuple, list)):
+      raise TypeError(
+          f'Expected input to be a tuple or list; instead got {type(x)}.')
     if len(x) != n_in:
       raise ValueError(f'Input tuple length ({len(x)}) does not equal required '
                        f'number of inputs ({n_in}).')
