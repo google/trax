@@ -27,9 +27,10 @@ Value.body = @trax.models.TransformerDecoder
 
 # Parameters for TransformerDecoder:
 # ==============================================================================
+depth = 64
 TransformerDecoder.vocab_size = None
-TransformerDecoder.d_model = 64
-TransformerDecoder.d_ff = 128
+TransformerDecoder.d_model = %depth
+TransformerDecoder.d_ff = %depth
 TransformerDecoder.n_layers = 2
 TransformerDecoder.n_heads = 2
 		       
