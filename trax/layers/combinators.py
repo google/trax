@@ -535,12 +535,13 @@ def Select(indices, n_in=None, name=None):
   if name is None:
     name = f'Select{indices}'.replace(' ', '')
 
-  def select(*xs):  # pylint: disable=invalid-name
+  def select(xs):  # pylint: disable=invalid-name
     if not isinstance(xs, (tuple, list)):
       xs = (xs,)
     selected = tuple(xs[i] for i in indices)
     return selected[0] if len(selected) == 1 else selected
-  return Fn(name, select, n_in=n_in, n_out=len(indices))
+
+  return base.PureLayer(select, n_in=n_in, n_out=len(indices), name=name)
 
 
 def SerialWithSideOutputs(layers, n_side_outputs=1):

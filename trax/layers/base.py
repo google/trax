@@ -638,7 +638,7 @@ class PureLayer(Layer):
     return output
 
 
-def Fn(name, f, n_in=None, n_out=1):  # pylint: disable=invalid-name
+def Fn(name, f, n_out=1):  # pylint: disable=invalid-name
   """Returns a layer with no weights that applies the function f.
 
   `f` can take and return any number of arguments, and takes only positional
@@ -648,39 +648,36 @@ def Fn(name, f, n_in=None, n_out=1):  # pylint: disable=invalid-name
 
       Fn('SumAndMax', lambda x0, x1: (x0 + x1, jnp.maximum(x0, x1)), n_out=2)
 
+  The layer's number of inputs (`n_in`) is automatically set to number of
+  positional arguments in `f`, but you must explicitly set the number of
+  outputs (`n_out`) whenever it's not the default value 1.
+
   Args:
     name: Class-like name for the resulting layer; for use in debugging.
     f: Pure function from input tensors to output tensors, where each input
         tensor is a separate positional arg, e.g.:
             f(x0, x1) --> x0 + x1
         Output tensors must be packaged as specified for `Layer.forward`.
-    n_in: Number of inputs expected by the layer.
-    n_out: Number of outputs promised by the layer.
+    n_out: Number of outputs promised by the layer; default value 1.
 
   Returns:
     Layer executing the function f.
   """
   # Inspect the function f to restrict to no-defaults and no-kwargs functions.
   argspec = inspect.getfullargspec(f)
-  varkwargs = argspec.varkw
-  # This layer cannot handle functions with kwargs or defaults.
   if argspec.defaults is not None:
     raise ValueError('Function has default arguments (not allowed).')
-  if varkwargs:
+  if argspec.varkw is not None:
     raise ValueError('Function has keyword arguments (not allowed).')
+  if argspec.varargs is not None:
+    raise ValueError('Function has variable args (not allowed).')
 
-  # Determine n_in from function signature if not set.
-  if n_in is None:
-    if argspec.varargs is not None:
-      raise ValueError('Argument n_in is not set and f has variable args.')
-    n_in = len(argspec.args)
-
-  # Create the layer.
   def _forward(xs):  # pylint: disable=invalid-name
     if not isinstance(xs, (tuple, list)):
       xs = (xs,)
     return f(*xs)
 
+  n_in = len(argspec.args)
   name = name or 'Fn'
   return PureLayer(_forward, n_in=n_in, n_out=n_out, name=name)
 

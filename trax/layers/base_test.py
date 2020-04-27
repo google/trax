@@ -129,16 +129,8 @@ class BaseLayerTest(absltest.TestCase):
       Fn('', lambda x, sth=None: x)
     with self.assertRaisesRegex(ValueError, 'keyword arg'):
       Fn('', lambda x, **kwargs: x)
-
-  def test_fn_layer_varargs_n_in(self):
     with self.assertRaisesRegex(ValueError, 'variable arg'):
       Fn('', lambda *args: args[0])
-    # Check that varargs work when n_in is set.
-    id_layer = Fn('', lambda *args: args[0], n_in=1)
-    input_signature = ShapeDtype((2, 7))
-    expected_shape = (2, 7)
-    output_shape = base.check_shape_agreement(id_layer, input_signature)
-    self.assertEqual(output_shape, expected_shape)
 
   def test_custom_zero_grad(self):
 
