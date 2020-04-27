@@ -84,7 +84,7 @@ class PositionalEncoding(base.Layer):
 
   def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
                          state=base.EMPTY_STATE, rng=None):
-    if self._mode in ('train', 'eval'):
+    if self._mode != 'predict':
       x = inputs
       symbol_size = jnp.shape(x)[1]
       px = weights[:, :symbol_size, :]
@@ -101,7 +101,6 @@ class PositionalEncoding(base.Layer):
         multiplier = keep.astype(x.dtype) / keep_prob
         return (x + px * multiplier, state)
     else:
-      assert self._mode == 'predict'
       assert self._dropout == 0
       # State in this class is only used for fast inference. In that case,
       # the model is called with consecutive elements position-by-position.
@@ -313,7 +312,7 @@ class DotProductCausalAttention(base.Layer):
                          state=base.EMPTY_STATE, rng=None):
     del weights
     q, k, v = inputs
-    if self._mode in ('train', 'eval'):
+    if self._mode != 'predict':
       mask_size = q.shape[-2]
       # Not all backends define jnp.tril. However, using np.tril is inefficient
       # in that it creates a large global constant. TODO(kitaev): try to find an
@@ -334,7 +333,7 @@ class DotProductCausalAttention(base.Layer):
     return res, state
 
   def new_weights_and_state(self, input_signature):
-    if self._mode in ('train', 'eval'):
+    if self._mode != 'predict':
       return base.EMPTY_WEIGHTS, base.EMPTY_STATE
 
     assert self._mode == 'predict'

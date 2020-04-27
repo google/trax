@@ -25,8 +25,10 @@ import tensorflow as tf
 
 from trax import jaxboard
 from trax import lr_schedules as lr
+from trax import shapes
 from trax import supervised
 from trax.rl import distributions
+from trax.rl import normalization  # So gin files see it. # pylint: disable=unused-import
 from trax.rl import task as rl_task
 
 
@@ -229,9 +231,9 @@ class PolicyTrainer(RLTrainer):
         inputs=self._policy_inputs,
         output_dir=output_dir,
         metrics={'policy_loss': self.policy_loss})
-    self._policy_eval_model = policy_model(mode='eval')
+    self._policy_collect_model = policy_model(mode='collect')
     policy_batch = next(self.policy_batches_stream())
-    self._policy_eval_model.init(policy_batch)
+    self._policy_collect_model.init(shapes.signature(policy_batch))
     if self._task._initial_trajectories == 0:
       self._task.remove_epoch(0)
       self.task.collect_trajectories(
@@ -248,7 +250,7 @@ class PolicyTrainer(RLTrainer):
 
   def policy(self, trajectory):
     """Chooses an action to play after a trajectory."""
-    model = self._policy_eval_model
+    model = self._policy_collect_model
     model.weights = self._policy_trainer.model_weights
     tr_slice = trajectory[-self._max_slice_length:]
     trajectory_np = tr_slice.to_np(timestep_to_np=self.task.timestep_to_np)

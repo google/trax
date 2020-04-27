@@ -129,9 +129,11 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
         epochs=self._replay_epochs):
       # Insert an extra depth dimension, so the target shape is consistent with
       # the network output shape.
-      yield (np_trajectory.observations,         # Inputs to the value model.
-             np_trajectory.returns[:, :, None],  # Targets: regress to returns.
-             np_trajectory.mask[:, :, None])     # Mask to zero-out padding.
+      yield (
+          np_trajectory.observations,         # Inputs to the value model.
+          np_trajectory.returns[:, :, None],  # Targets: regress to returns.
+          np_trajectory.mask[:, :, None],     # Mask to zero-out padding.
+      )
 
   def policy_inputs(self, trajectory, values):
     """Create inputs to policy model from a TrajectoryNp and values.

@@ -19,10 +19,18 @@
 from trax import layers as tl
 
 
-def Policy(policy_distribution, body=None, head_init_range=None, mode='train'):
+def Policy(
+    policy_distribution,
+    body=None,
+    normalizer=None,
+    head_init_range=None,
+    mode='train',
+):
   """Attaches a policy head to a model body."""
   if body is None:
     body = lambda mode: []
+  if normalizer is None:
+    normalizer = lambda mode: []
 
   head_kwargs = {}
   if head_init_range is not None:
@@ -31,16 +39,21 @@ def Policy(policy_distribution, body=None, head_init_range=None, mode='train'):
     )
 
   return tl.Serial(
+      normalizer(mode=mode),
       body(mode=mode),
       tl.Dense(policy_distribution.n_inputs, **head_kwargs),
   )
 
 
-def Value(body=None, mode='train'):
+def Value(body=None, normalizer=None, mode='train'):
   """Attaches a value head to a model body."""
   if body is None:
     body = lambda mode: []
+  if normalizer is None:
+    normalizer = lambda mode: []
+
   return tl.Serial(
+      normalizer(mode=mode),
       body(mode=mode),
       tl.Dense(1),
   )
