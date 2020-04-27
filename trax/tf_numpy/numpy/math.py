@@ -355,16 +355,25 @@ def polyval(p, x):
 
 
 @utils.np_doc(np.isclose)
-def isclose(a, b, rtol=1e-05, atol=1e-08):
-  def f(a, b):
+def isclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):  # pylint: disable=missing-docstring
+  def f(a, b):  # pylint: disable=missing-docstring
     dtype = a.dtype
     if np.issubdtype(dtype.as_numpy_dtype, np.inexact):
       rtol_ = tf.convert_to_tensor(rtol, dtype)
       atol_ = tf.convert_to_tensor(atol, dtype)
-      return tf.math.abs(a - b) <= atol_ + rtol_ * tf.math.abs(b)
+      result = (tf.math.abs(a - b) <= atol_ + rtol_ * tf.math.abs(b))
+      if equal_nan:
+        result = result | (tf.math.is_nan(a) & tf.math.is_nan(b))
+      return result
     else:
       return a == b
   return _bin_op(f, a, b)
+
+
+@utils.np_doc(np.allclose)
+def allclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):
+  return array_methods.all(
+      isclose(a, b, rtol=rtol, atol=atol, equal_nan=equal_nan))
 
 
 def _tf_gcd(x1, x2):
@@ -1012,6 +1021,17 @@ def tile(a, reps):
   a = tf.reshape(a, a_shape)
 
   return arrays.tensor_to_ndarray(tf.tile(a, reps))
+
+
+@utils.np_doc(np.nonzero)
+def nonzero(a):
+  a = atleast_1d(a).data
+  if a.shape.rank is None:
+    raise ValueError("The rank of `a` is unknown, so we can't decide how many "
+                     "arrays to return.")
+  return tf.nest.map_structure(
+      arrays.tensor_to_ndarray,
+      tf.unstack(tf.where(tf.cast(a, tf.bool)), axis=1))
 
 
 @utils.np_doc(np.count_nonzero)

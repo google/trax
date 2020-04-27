@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+from absl.testing import parameterized
 import numpy as np
 from six.moves import range
 import tensorflow.compat.v2 as tf
@@ -30,7 +31,7 @@ from trax.tf_numpy.numpy import arrays
 from trax.tf_numpy.numpy import math
 
 
-class MathTest(tf.test.TestCase):
+class MathTest(tf.test.TestCase, parameterized.TestCase):
 
   def setUp(self):
     super(MathTest, self).setUp()
@@ -227,6 +228,13 @@ class MathTest(tf.test.TestCase):
             math.argmax(arr, axis=axis), np.argmax(arr, axis=axis))
         self.match(
             math.argmin(arr, axis=axis), np.argmin(arr, axis=axis))
+
+  @parameterized.parameters([False, True])
+  def testIsCloseEqualNan(self, equal_nan):
+    a = np.asarray([1, 1, np.nan, 1, np.nan], np.float32)
+    b = np.asarray([1, 2, 1, np.nan, np.nan], np.float32)
+    self.match(math.isclose(a, b, equal_nan=equal_nan),
+               np.isclose(a, b, equal_nan=equal_nan))
 
 
 if __name__ == '__main__':

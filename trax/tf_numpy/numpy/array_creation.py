@@ -279,6 +279,12 @@ def array(val, dtype=None, copy=True, ndmin=0):
     # We can't call `convert_to_tensor(result_t, dtype=dtype)` here because
     # convert_to_tensor doesn't allow incompatible arguments such as (5.5, int)
     # while np.array allows them. We need to convert-then-cast.
+    def maybe_data(x):
+      if isinstance(x, arrays.ndarray):
+        return x.data
+      return x
+    # Handles lists of ndarrays
+    result_t = tf.nest.map_structure(maybe_data, result_t)
     result_t = arrays.convert_to_tensor(result_t)
     result_t = tf.cast(result_t, dtype=dtype)
   elif dtype:

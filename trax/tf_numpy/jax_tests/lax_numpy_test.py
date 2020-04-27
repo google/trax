@@ -458,8 +458,25 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
 
   # TODO(wangpeng): Make check_incomplete_shape default to True.
   def _CompileAndCheck(self, fun, args_maker, check_dtypes,
-                       rtol=None, atol=None, check_incomplete_shape=False):
-    """Helper method for running compilation and allclose assertions."""
+                       rtol=None, atol=None, check_eval_on_shapes=True,
+                       check_incomplete_shape=False, check_unknown_rank=True):
+    """Compiles the function and checks the results.
+
+    Args:
+      fun: the function to be checked.
+      args_maker: a callable that returns a tuple which will be used as the
+        positional arguments.
+      check_dtypes: whether to check that the result dtypes from non-compiled
+        and compiled runs agree.
+      rtol: relative tolerance for allclose assertions.
+      atol: absolute tolerance for allclose assertions.
+      check_eval_on_shapes: whether to run `eval_on_shapes` on the function and
+        check that the result shapes and dtypes are correct.
+      check_incomplete_shape: whether to check that the function can handle
+        incomplete shapes (including those with and without a known rank).
+      check_unknown_rank: (only has effect when check_incomplete_shape is True)
+        whether to check that the function can handle unknown ranks.
+    """
     args = args_maker()
 
     for x in args:
@@ -514,19 +531,19 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
       self.assertAllClose(new_python_ans, compiled_ans, check_dtypes, atol,
                           rtol)
 
-    # Check that npe.eval_on_shapes can get complete output shapes given
-    # complete input shapes.
-
-    cfun = npe.eval_on_shapes(fun)
-    compiled_ans = cfun(*args)
-    flat_python_ans = tf.nest.flatten(python_ans)
-    flat_compiled_ans = tf.nest.flatten(compiled_ans)
-    self.assertEqual(len(flat_python_ans), len(flat_compiled_ans))
-    for a, b in zip(flat_python_ans, flat_compiled_ans):
-      if hasattr(a, "shape"):
-        self.assertEqual(a.shape, b.shape)
-      if check_dtypes and hasattr(a, "dtype"):
-        self.assertEqual(tf.as_dtype(a.dtype), b.dtype)
+    if check_eval_on_shapes:
+      # Check that npe.eval_on_shapes can get complete output shapes given
+      # complete input shapes.
+      cfun = npe.eval_on_shapes(fun)
+      compiled_ans = cfun(*args)
+      flat_python_ans = tf.nest.flatten(python_ans)
+      flat_compiled_ans = tf.nest.flatten(compiled_ans)
+      self.assertEqual(len(flat_python_ans), len(flat_compiled_ans))
+      for a, b in zip(flat_python_ans, flat_compiled_ans):
+        if hasattr(a, "shape"):
+          self.assertEqual(a.shape, b.shape)
+        if check_dtypes and hasattr(a, "dtype"):
+          self.assertEqual(tf.as_dtype(a.dtype), b.dtype)
 
     # If some argument doesn't have a `dtype` attr (e.g. a Python scalar), we
     # skip incomplete-shape checks, since shape specs need dtype. It's OK to
@@ -541,11 +558,12 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
         compiled_ans = cfun(*args)
         self.assertAllClose(python_ans, compiled_ans, check_dtypes, atol, rtol)
 
-      # Check unknown ranks.
-      specs = [tf.TensorSpec(None, x.dtype) for x in args]
-      cfun = npe.jit(fun, input_signature=specs)
-      compiled_ans = cfun(*args)
-      self.assertAllClose(python_ans, compiled_ans, check_dtypes, atol, rtol)
+      if check_unknown_rank:
+        # Check unknown ranks.
+        specs = [tf.TensorSpec(None, x.dtype) for x in args]
+        cfun = npe.jit(fun, input_signature=specs)
+        compiled_ans = cfun(*args)
+        self.assertAllClose(python_ans, compiled_ans, check_dtypes, atol, rtol)
 
   @named_parameters(itertools.chain.from_iterable(
       jtu.cases_from_list(
@@ -734,13 +752,18 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
           jtu.format_shape_dtype_string(shape, dtype)),
        "shape": shape, "dtype": dtype}
       for shape in all_shapes for dtype in all_dtypes))
-  @disable
   def testNonzero(self, shape, dtype):
     rng = jtu.rand_some_zero()
     onp_fun = lambda x: onp.nonzero(x)
     lnp_fun = lambda x: lnp.nonzero(x)
     args_maker = lambda: [rng(shape, dtype)]
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=False)
+    # The shapes of `nonzero`'s results are value-dependent, so `eval_on_shapes`
+    # won't return concrete shapes.
+    # Also, `nonzero` requires a known rank.
+    self._CompileAndCheck(
+        lnp_fun, args_maker, check_dtypes=True, check_eval_on_shapes=False,
+        check_incomplete_shape=True, check_unknown_rank=False)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "{}_inshape={}_axis={}".format(
@@ -1675,7 +1698,6 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
         onp.array([0x2a], dtype=onp.uint8),
         check_dtypes=True)
 
-  @disable
   def testAllClose(self):
     rng = onp.random.RandomState(0)
     x = rng.randn(2, 2)
@@ -1686,7 +1708,7 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
       elements_close = list(map(allclose, list1, list2))
       return lnp.all(lnp.array(elements_close))
 
-    csame = api.jit(same)
+    csame = npe.jit(same)
 
     a1 = same((x, y), (x, y))
     a2 = csame((x, y), (x, y))
@@ -2316,7 +2338,6 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
     a = lnp.arange(4, dtype=lnp.complex64)
     self.assertEqual(a.dtype, lnp.complex64)
 
-  @disable
   def testIssue728(self):
     assert lnp.allclose(lnp.eye(5000), onp.eye(5000))
     self.assertEqual(0, onp.sum(lnp.eye(1050) - onp.eye(1050)))

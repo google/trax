@@ -42,7 +42,7 @@ _int_dtypes = [tf.int64, tf.int32, tf.int16, tf.int8, tf.uint8, tf.uint16,
 
 
 def most_precise_int_dtype(x):
-  if not isinstance(x, six.integer_types):
+  if not isinstance(x, six.integer_types) or isinstance(x, bool):
     return None
   i = bisect.bisect_right(_int_dtype_lower_bounds, x)
   if i in (0, len(_int_dtype_lower_bounds)):
