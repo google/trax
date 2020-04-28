@@ -25,7 +25,7 @@ import numpy as np
 from tensorflow import test
 from trax import math
 from trax.layers import base
-from trax.layers.research import efficient_attention_v2
+from trax.layers.research import efficient_attention
 from trax.math import numpy as jnp
 from trax.shapes import ShapeDtype
 
@@ -35,7 +35,7 @@ class EfficientAttentionTest(test.TestCase):
   def test_self_attention(self):
     with math.use_backend('jax'):
       input_signature = ShapeDtype((3, 32, 8))
-      layer = efficient_attention_v2.SelfAttention(
+      layer = efficient_attention.SelfAttention(
           n_heads=5, d_qk=7, d_v=17, share_qk=False, causal=True,
           chunk_len=8, n_chunks_before=1, n_chunks_after=0,
           use_reference_code=True, attention_dropout=0.0, mode='train')
@@ -45,7 +45,7 @@ class EfficientAttentionTest(test.TestCase):
   def test_lsh_self_attention(self):
     with math.use_backend('jax'):
       input_signature = ShapeDtype((3, 32, 8))
-      layer = efficient_attention_v2.LSHSelfAttention(
+      layer = efficient_attention.LSHSelfAttention(
           n_heads=5, d_qk=7, d_v=17, causal=True,
           chunk_len=8, n_chunks_before=1, n_chunks_after=0,
           n_hashes=2, n_buckets=4,
@@ -107,7 +107,7 @@ class EfficientAttentionTest(test.TestCase):
           jax.random.PRNGKey(0), (2, 10, 13), dtype=jnp.float32)
       input_signature = ShapeDtype((2, 10, 13), dtype=jnp.float32)
       self._test_equivalence_to_reference_code(
-          efficient_attention_v2.SelfAttention,
+          efficient_attention.SelfAttention,
           inp, input_signature,
           common_kwargs, *test_kwargs)
 
@@ -129,7 +129,7 @@ class EfficientAttentionTest(test.TestCase):
           jax.random.PRNGKey(0), (2, 10, 13), dtype=jnp.float32)
       input_signature = ShapeDtype((2, 10, 13), dtype=jnp.float32)
       self._test_equivalence_to_reference_code(
-          efficient_attention_v2.LSHSelfAttention,
+          efficient_attention.LSHSelfAttention,
           inp, input_signature,
           common_kwargs, *test_kwargs)
 
@@ -181,7 +181,7 @@ class EfficientAttentionTest(test.TestCase):
           jax.random.PRNGKey(0), (2, 10, 13), dtype=jnp.float32)
       input_signature = ShapeDtype((2, 10, 13), dtype=jnp.float32)
       self._test_fast_inference(
-          efficient_attention_v2.SelfAttention,
+          efficient_attention.SelfAttention,
           inp, input_signature,
           common_kwargs, *test_kwargs)
 

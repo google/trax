@@ -438,7 +438,7 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
   ReversibleAttentionHalfResidual. When attention_layer is None, this layer has
   the signature [accumulator, *context] -> [accumulator + f(context), *context].
   The attention_layer must be an instance of EfficientAttentionBase or one of
-  its subclasses (see efficient_attention_v2.py), or None.
+  its subclasses (see efficient_attention.py), or None.
 
   Attention is special-cased for the following two reasons:
   - LSH attention needs to save bucket assignments from the forward pass to the

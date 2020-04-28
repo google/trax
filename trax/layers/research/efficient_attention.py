@@ -17,8 +17,7 @@
 """Attention Layers optimized for efficiency (second-pass implementation).
 
 The approach taken in the first round of efficient attention implementations
-(efficient_attention.py) revealed several limitations, which this code attempts
-to address:
+revealed several limitations, which this code attempts to address:
 1. Simultaneously instantiating queries, keys, and values for all heads can
    exceed the memory budget. Transformers are typically tuned such that
    n_heads * d_attention_key == d_model. Since attention involves queries, keys,
