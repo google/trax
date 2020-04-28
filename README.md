@@ -10,6 +10,7 @@ welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)](CO
 [![License](https://img.shields.io/badge/License-Apache%202.0-brightgreen.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Gitter](https://img.shields.io/gitter/room/nwjs/nw.js.svg)](https://gitter.im/trax-ml/community)
 [![Travis](https://img.shields.io/travis/google/trax.svg)](https://travis-ci.org/google/trax)
+[![Coverage Status](https://coveralls.io/repos/github/google/trax/badge.svg?branch=master)](https://coveralls.io/github/google/trax?branch=master)
 
 
 [Trax](https://github.com/google/trax) is a library for deep learning that

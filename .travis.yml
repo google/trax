@@ -17,7 +17,5 @@ install:
   - ./oss_scripts/oss_pip_install.sh
 script:
   - ./oss_scripts/oss_tests.sh
-
-# - if [[ "$TRAVIS_PYTHON_VERSION" == "2.7" ]]; then
-#       pylint -j 2 trax;
-#   fi
+after_success:
+  - coveralls

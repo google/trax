@@ -38,3 +38,6 @@ pip install -q -e .
 pip install -q -e .[tests]
 # Make sure to install the atari extras for gym
 pip install "gym[atari]"
+
+# Coverage.
+pip install coverage coveralls
