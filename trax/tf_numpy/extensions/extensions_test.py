@@ -27,7 +27,6 @@ import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy import extensions
 from trax.tf_numpy.numpy import array_creation
-from trax.tf_numpy.numpy import array_manipulation
 from trax.tf_numpy.numpy import array_methods
 from trax.tf_numpy.numpy import arrays
 from trax.tf_numpy.numpy import math
@@ -364,7 +363,7 @@ class ExtensionsTest(tf.test.TestCase):
         _train_and_reduce, devices=devices)
 
     def replicate(x, num_devices=2):
-      return array_manipulation.broadcast_to(x, (num_devices,) + x.shape)
+      return array_methods.broadcast_to(x, (num_devices,) + x.shape)
 
     params = tf.nest.map_structure(replicate, params)
 

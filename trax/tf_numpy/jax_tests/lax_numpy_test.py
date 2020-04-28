@@ -1010,7 +1010,6 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
        "rng_factory": jtu.rand_default}
       for shape, dtype in _shape_and_dtypes(all_shapes, number_dtypes)
       for decimals in [0, 1, -2]))
-  @disable
   def testRoundStaticDecimals(self, shape, dtype, decimals, rng_factory):
     rng = rng_factory()
     if lnp.issubdtype(dtype, onp.integer) and decimals < 0:
@@ -1018,14 +1017,15 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
     onp_fun = lambda x: onp.round(x, decimals=decimals)
     lnp_fun = lambda x: lnp.round(x, decimals=decimals)
     args_maker = lambda: [rng(shape, dtype)]
-    tol = {lnp.bfloat16: 5e-2, onp.float16: 1e-2}
+    tol = {
+        # TODO(b/154768983): lnp.bfloat16: 5e-2,
+        onp.float16: 1e-2}
     check_dtypes = shape is not jtu.PYTHON_SCALAR_SHAPE
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker,
                             check_dtypes=check_dtypes, tol=tol)
     self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=check_dtypes,
-                          atol=tol, rtol=tol)
+                          atol=tol, rtol=tol, check_incomplete_shape=True)
 
-  @disable
   def testOperatorRound(self):
     self.assertAllClose(round(onp.float32(7.532), 1),
                         round(lnp.float32(7.5), 1), check_dtypes=True)
@@ -1624,7 +1624,6 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
       for weights_shape in ([None, shape] if axis is None or len(shape) == 1
                             else [None, (shape[axis],), shape])
       for returned in [False, True]))
-  @disable
   def testAverage(self, shape, dtype, axis, weights_shape, returned, rng_factory):
     rng = rng_factory()
     if weights_shape is None:
@@ -1636,8 +1635,11 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
       lnp_fun = lambda x, weights: lnp.average(x, axis, weights, returned)
       args_maker = lambda: [rng(shape, dtype), rng(weights_shape, dtype)]
     onp_fun = _promote_like_lnp(onp_fun, inexact=True)
-    tol = {lnp.bfloat16: 1e-1, onp.float16: 1e-1, onp.float32: 1e-3,
-           onp.float64: 1e-10, onp.complex64: 1e-3, onp.complex128: 1e-10}
+    tol = {
+        # TODO(b/154768983): lnp.bfloat16: 1e-1,
+        onp.float16: 1e-1, onp.float32: 1e-3, onp.float64: 1e-10,
+        # TODO(wangpeng): onp.complex64: 1e-3, onp.complex128: 1e-10,
+    }
     check_dtypes = shape is not jtu.PYTHON_SCALAR_SHAPE
     try:
       self._CheckAgainstNumpy(
@@ -1645,7 +1647,7 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
     except ZeroDivisionError:
       self.skipTest("don't support checking for ZeroDivisionError")
     self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=check_dtypes,
-                          rtol=tol, atol=tol)
+                          rtol=tol, atol=tol, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_arg{}_ndmin={}".format(i, ndmin),

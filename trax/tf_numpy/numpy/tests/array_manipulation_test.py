@@ -23,7 +23,7 @@ import numpy as np
 import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import array_creation
-from trax.tf_numpy.numpy import array_manipulation
+from trax.tf_numpy.numpy import array_methods
 from trax.tf_numpy.numpy import arrays
 
 
@@ -44,7 +44,7 @@ class ArrayManipulationTest(tf.test.TestCase):
       for fn in self.array_transforms:
         arg1 = fn(arr)
         self.match(
-            array_manipulation.broadcast_to(arg1, shape),
+            array_methods.broadcast_to(arg1, shape),
             np.broadcast_to(arg1, shape))
 
     run_test(1, 2)

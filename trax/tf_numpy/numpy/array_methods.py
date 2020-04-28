@@ -369,24 +369,19 @@ def repeat(a, repeats, axis=None):
   return utils.tensor_to_ndarray(tf.repeat(a, repeats, axis))
 
 
+@utils.np_doc(np.around)
 def around(a, decimals=0):
-  """Rounds each array element to the specified number of decimals.
-
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can
-      be converted to a Tensor using `tf.convert_to_tensor`.
-    decimals: Optional, defaults to 0. The number of decimal places to round to.
-      Could be negative.
-
-  Returns:
-    An ndarray.
-  """
   a = array_creation.asarray(a)
   factor = math.pow(10, decimals)
+  factor = tf.cast(factor, a.dtype)
   a_t = tf.multiply(a.data, factor)
   a_t = tf.round(a_t)
   a_t = tf.math.divide(a_t, factor)
   return utils.tensor_to_ndarray(a_t)
+
+
+round_ = around
+setattr(arrays.ndarray, '__round__', around)
 
 
 def reshape(a, newshape):
@@ -703,3 +698,8 @@ def split(a, indices_or_sections, axis=0):
     indices_or_sections = _boundaries_to_sizes(a, indices_or_sections, axis)
   result = tf.split(a.data, indices_or_sections, axis=axis)
   return [utils.tensor_to_ndarray(a) for a in result]
+
+
+@utils.np_doc(np.broadcast_to)
+def broadcast_to(array, shape):  # pylint: disable=redefined-outer-name
+  return array_creation.full(shape, array)

@@ -37,3 +37,4 @@ from trax.tf_numpy.numpy.utils import result_type
 
 max = amax
 min = amin
+round = around  # pylint: disable=redefined-builtin,undefined-variable

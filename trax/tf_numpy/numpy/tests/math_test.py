@@ -236,6 +236,20 @@ class MathTest(tf.test.TestCase, parameterized.TestCase):
     self.match(math.isclose(a, b, equal_nan=equal_nan),
                np.isclose(a, b, equal_nan=equal_nan))
 
+  def testAverageWrongShape(self):
+    with self.assertRaisesWithPredicateMatch(
+        tf.errors.InvalidArgumentError, r''):
+      math.average(np.ones([2, 3]), weights=np.ones([2, 4]))
+    with self.assertRaisesWithPredicateMatch(
+        tf.errors.InvalidArgumentError, r''):
+      math.average(np.ones([2, 3]), axis=0, weights=np.ones([2, 4]))
+    with self.assertRaisesWithPredicateMatch(
+        tf.errors.InvalidArgumentError, r''):
+      math.average(np.ones([2, 3]), axis=0, weights=np.ones([]))
+    with self.assertRaisesWithPredicateMatch(
+        tf.errors.InvalidArgumentError, r''):
+      math.average(np.ones([2, 3]), axis=0, weights=np.ones([5]))
+
 
 if __name__ == '__main__':
   tf.compat.v1.enable_eager_execution()

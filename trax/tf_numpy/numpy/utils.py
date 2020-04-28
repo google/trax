@@ -252,54 +252,6 @@ def np_doc_only(np_f):
   return decorator
 
 
-def cond(pred, true_fn, false_fn):
-  """A version of tf.cond that tries to evaluate the condition."""
-  v = tf.get_static_value(pred)
-  if v is None:
-    return tf.cond(pred, true_fn, false_fn)
-  if v:
-    return true_fn()
-  else:
-    return false_fn()
-
-
-def _maybe_static(x):
-  value = tf.get_static_value(x)
-  if value is None:
-    return x
-  else:
-    return value
-
-
-def add(a, b):
-  """A version of tf.add that eagerly evaluates if possible."""
-  # It's needed becaues tf.get_static_value doesn't handle tf.add
-  return _maybe_static(a) + _maybe_static(b)
-
-
-def subtract(a, b):
-  """A version of tf.subtract that eagerly evaluates if possible."""
-  return _maybe_static(a) - _maybe_static(b)
-
-
-def greater(a, b):
-  """A version of tf.greater that eagerly evaluates if possible."""
-  return _maybe_static(a) > _maybe_static(b)
-
-
-def logical_or(a, b):
-  """A version of tf.logical_or that eagerly evaluates if possible."""
-  # Because TF overloads `|` as logical_or, we need to use `|` here. It's OK if
-  # both `a` and `b` are evaluated, since `a | b` == `a or b` when a and b are
-  # bools.
-  return _maybe_static(a) | _maybe_static(b)
-
-
-def getitem(a, slice_spec):
-  """A version of __getitem__ that eagerly evaluates if possible."""
-  return _maybe_static(a)[slice_spec]
-
-
 def tf_broadcast(*args):
   """Broadcast tensors.
 
@@ -315,3 +267,106 @@ def tf_broadcast(*args):
   for arg in args[1:]:
     sh = tf.broadcast_dynamic_shape(sh, tf.shape(arg))
   return [tf.broadcast_to(arg, sh) for arg in args]
+
+
+# TODO(wangpeng): Move the following functions to a separate file and check for
+#   float dtypes in each of them.
+
+
+def get_static_value(x):
+  """A version of tf.get_static_value that returns None on float dtypes.
+
+  It returns None on float dtypes in order to avoid breaking gradients.
+
+  Args:
+    x: a tensor.
+
+  Returns:
+    Same as `tf.get_static_value`, except that it returns None when `x` has a
+    float dtype.
+  """
+  if isinstance(x, tf.Tensor) and (x.dtype.is_floating or x.dtype.is_complex):
+    return None
+  return tf.get_static_value(x)
+
+
+def _maybe_static(x):
+  value = get_static_value(x)
+  if value is None:
+    return x
+  else:
+    return value
+
+
+# All the following functions exist becaues get_static_value can't handle
+# their TF counterparts.
+
+
+def cond(pred, true_fn, false_fn):
+  """A version of tf.cond that tries to evaluate the condition."""
+  v = get_static_value(pred)
+  if v is None:
+    return tf.cond(pred, true_fn, false_fn)
+  if v:
+    return true_fn()
+  else:
+    return false_fn()
+
+
+def add(a, b):
+  """A version of tf.add that eagerly evaluates if possible."""
+  return _maybe_static(a) + _maybe_static(b)
+
+
+def subtract(a, b):
+  """A version of tf.subtract that eagerly evaluates if possible."""
+  return _maybe_static(a) - _maybe_static(b)
+
+
+def greater(a, b):
+  """A version of tf.greater that eagerly evaluates if possible."""
+  return _maybe_static(a) > _maybe_static(b)
+
+
+def logical_and(a, b):
+  """A version of tf.logical_and that eagerly evaluates if possible."""
+  a_value = get_static_value(a)
+  if a_value is not None:
+    if np.isscalar(a_value):
+      if a_value:
+        return _maybe_static(b)
+      else:
+        return a_value
+    else:
+      return a_value & _maybe_static(b)
+  else:
+    return a & _maybe_static(b)
+
+
+def logical_or(a, b):
+  """A version of tf.logical_or that eagerly evaluates if possible."""
+  a_value = get_static_value(a)
+  if a_value is not None:
+    if np.isscalar(a_value):
+      if a_value:
+        return a_value
+      else:
+        return _maybe_static(b)
+    else:
+      return a_value | _maybe_static(b)
+  else:
+    return a | _maybe_static(b)
+
+
+def getitem(a, slice_spec):
+  """A version of __getitem__ that eagerly evaluates if possible."""
+  return _maybe_static(a)[slice_spec]
+
+
+def reduce_all(input_tensor, axis=None, keepdims=False):
+  """A version of tf.reduce_all that eagerly evaluates if possible."""
+  v = get_static_value(input_tensor)
+  if v is None:
+    return tf.reduce_all(input_tensor, axis=axis, keepdims=keepdims)
+  else:
+    return v.all(axis=axis, keepdims=keepdims)

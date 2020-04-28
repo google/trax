@@ -27,19 +27,6 @@ from trax.tf_numpy.numpy import math as math_lib
 from trax.tf_numpy.numpy import utils
 
 
-def broadcast_to(a, shape):
-  """Broadcasts an array to the desired shape if possible.
-
-  Args:
-    a: array_like
-    shape: a scalar or 1-d tuple/list.
-
-  Returns:
-    An ndarray.
-  """
-  return array_creation.full(shape, a)
-
-
 @utils.np_doc(np.stack)
 def stack(arrays, axis=0):
   arrays = array_creation._promote_dtype(*arrays)  # pylint: disable=protected-access
