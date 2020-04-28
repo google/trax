@@ -16,6 +16,9 @@
 
 set -v  # print commands as they're executed
 
+# aliases aren't expanded in non-interactive shells by default.
+shopt -s expand_aliases
+
 # Instead of exiting on any failure with "set -e", we'll call set_status after
 # each command and exit $STATUS at the end.
 STATUS=0
@@ -41,6 +44,9 @@ fi
 # Check import.
 python -c "import trax"
 set_status
+
+# Run pytest with coverage.
+alias pytest='coverage run -m pytest'
 
 # Check tests, separate out directories for easy triage.
 
@@ -100,5 +106,8 @@ jupyter nbconvert --ExecutePreprocessor.kernel_name=python3 \
   --ExecutePreprocessor.timeout=600 --to notebook --execute \
   trax/intro.ipynb;
 set_status
+
+# Print coverage report.
+coverage report -m
 
 exit $STATUS
