@@ -230,7 +230,8 @@ class PolicyTrainer(RLTrainer):
         loss_fn=self.policy_loss,
         inputs=self._policy_inputs,
         output_dir=output_dir,
-        metrics={'policy_loss': self.policy_loss})
+        metrics=self.policy_metrics,
+    )
     self._policy_collect_model = policy_model(mode='collect')
     policy_batch = next(self.policy_batches_stream())
     self._policy_collect_model.init(shapes.signature(policy_batch))
@@ -243,6 +244,10 @@ class PolicyTrainer(RLTrainer):
   def policy_loss(self):
     """Policy loss."""
     return NotImplementedError
+
+  @property
+  def policy_metrics(self):
+    return {'policy_loss': self.policy_loss}
 
   def policy_batches_stream(self):
     """Use self.task to create inputs to the policy model."""

@@ -328,11 +328,6 @@ class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
         gamma=self._task.gamma,
         n_extra_steps=self._added_policy_slice_length,
     )
-    if self._advantage_normalization:
-      advantages = (
-          (advantages - jnp.mean(advantages)) /
-          (jnp.std(advantages) + self._advantage_normalization_epsilon)
-      )
     # Observations should be the same length as advantages - so if we are
     # using n_extra_steps, we need to trim the length to match.
     obs = trajectory.observations[:, :advantages.shape[1]]
@@ -367,10 +362,50 @@ class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
   @property
   def policy_loss(self, **unused_kwargs):
     """Policy loss."""
+    def NormalizeAdvantages():  # pylint: disable=invalid-name
+      def normalize(adv):
+        return (
+            (adv - jnp.mean(adv)) /
+            (jnp.std(adv) + self._advantage_normalization_epsilon)
+        )
+      return tl.Fn('NormalizeAdvantages', normalize)
+
     return tl.Serial(
         self._policy_dist.LogProb(),
+        tl.Parallel(
+            [],  # Distribution inputs.
+            # Advantages.
+            NormalizeAdvantages() if self._advantage_normalization else [],
+            [],  # Old log probs.
+            [],  # Mask.
+        ),
         self.policy_loss_given_log_probs,
     )
+
+  @property
+  def policy_metrics(self):
+    metrics = super(AdvantageBasedActorCriticTrainer, self).policy_metrics
+    metrics.update({
+        'advantage_mean': self.advantage_mean,
+        'advantage_std': self.advantage_std,
+    })
+    return metrics
+
+  @property
+  def advantage_mean(self):
+    return tl.Serial([
+        # (dist_inputs, advantages, old_log_probs, mask)
+        tl.Select([1]),  # Select just the advantages.
+        tl.Fn('AdvantageMean', lambda x: jnp.mean(x)),  # pylint: disable=unnecessary-lambda
+    ])
+
+  @property
+  def advantage_std(self):
+    return tl.Serial([
+        # (dist_inputs, advantages, old_log_probs, mask)
+        tl.Select([1]),  # Select just the advantages.
+        tl.Fn('AdvantageStd', lambda x: jnp.std(x)),  # pylint: disable=unnecessary-lambda
+    ])
 
 
 # A2C is one of the most basic actor-critic RL algorithms.
@@ -432,11 +467,15 @@ class PPOTrainer(AdvantageBasedActorCriticTrainer):
 
 
 # AWR is an off-policy actor-critic RL algorithm.
+def awr_weights(advantages, beta):
+  return jnp.exp(advantages / beta)
+
+
 def AWRLoss(beta, w_max):  # pylint: disable=invalid-name
   """Definition of the Advantage Weighted Regression (AWR) loss."""
   def f(log_probs, advantages, old_log_probs, mask):
     del old_log_probs  # Not used in AWR.
-    weights = jnp.minimum(jnp.exp(advantages / beta), w_max)
+    weights = jnp.minimum(awr_weights(advantages, beta), w_max)
     return -np.sum(log_probs * weights * mask) / np.sum(mask)
   return tl.Fn('AWRLoss', f)
 
@@ -456,3 +495,26 @@ class AWRTrainer(AdvantageBasedActorCriticTrainer):
   def policy_loss_given_log_probs(self):
     """Policy loss."""
     return AWRLoss(beta=self._beta, w_max=self._w_max)  # pylint: disable=no-value-for-parameter
+
+  @property
+  def policy_metrics(self):
+    metrics = super(AWRTrainer, self).policy_metrics
+    metrics.update({  # pylint: disable=g-complex-comprehension
+        'awr_weight_' + name: self.awr_weight_stat(name, fn)
+        for (name, fn) in [
+            ('mean', jnp.mean),
+            ('std', jnp.std),
+            ('min', jnp.min),
+            ('max', jnp.max),
+        ]
+    })
+    return metrics
+
+  def awr_weight_stat(self, stat_name, stat_fn):
+    return tl.Serial([
+        tl.Select([1]),  # Select just the advantages.
+        tl.Fn(
+            'AWRWeight' + stat_name.capitalize(),
+            lambda x: stat_fn(awr_weights(x, self._beta)),
+        ),
+    ])
