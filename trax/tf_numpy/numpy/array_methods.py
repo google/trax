@@ -453,32 +453,21 @@ def transpose(a, axes=None):
   return utils.tensor_to_ndarray(tf.transpose(a=a.data, perm=axes))
 
 
-def swapaxes(a, axis1, axis2):
-  """Interchange two axes of an array.
-
-  Args:
-    a: array_like. Input array.
-    axis1: int. First axis.
-    axis2: int. Second axis.
-
-  Returns:
-    An ndarray.
-  """
+@utils.np_doc(np.swapaxes)
+def swapaxes(a, axis1, axis2):  # pylint: disable=missing-docstring
   a = array_creation.asarray(a)
-  # TODO(wangpeng): handling partial shapes with unknown ranks
-  n = len(a.shape)
-  if not (-n <= axis1 and axis1 < n):
-    raise ValueError('axis1 must be in range [-%s, %s); got %s' % (n, n, axis1))
-  if not (-n <= axis2 and axis2 < n):
-    raise ValueError('axis2 must be in range [-%s, %s); got %s' % (n, n, axis2))
+
+  a_rank = tf.rank(a)
   if axis1 < 0:
-    axis1 += n
+    axis1 += a_rank
   if axis2 < 0:
-    axis2 += n
-  perm = list(range(n))
-  perm[axis1] = axis2
-  perm[axis2] = axis1
-  return transpose(a, perm)
+    axis2 += a_rank
+
+  perm = tf.range(a_rank)
+  perm = tf.tensor_scatter_nd_update(perm, [[axis1], [axis2]], [axis2, axis1])
+  a = tf.transpose(a, perm)
+
+  return utils.tensor_to_ndarray(a)
 
 
 def _setitem(arr, index, value):

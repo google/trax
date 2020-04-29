@@ -1580,14 +1580,14 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
           ((3, 4), 0, 1), ((3, 4), 1, 0), ((3, 4, 5), 1, 2),
           ((3, 4, 5), -1, -2), ((3, 4, 5), 0, 1)]
       for dtype in default_dtypes))
-  @disable
   def testSwapAxesStaticAxes(self, arg_shape, dtype, ax1, ax2, rng_factory):
     rng = rng_factory()
     onp_fun = lambda x: onp.swapaxes(x, ax1, ax2)
     lnp_fun = lambda x: lnp.swapaxes(x, ax1, ax2)
     args_maker = lambda: [rng(arg_shape, dtype)]
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_inshape={}_axis={}".format(
