@@ -17,18 +17,27 @@ import trax.models
 import trax.optimizers
 import trax.rl
 import trax.rl.distributions
+import trax.rl.normalization
 
 # Parameters for Gaussian:
 # ==============================================================================
-Gaussian.std = 0.1
+Gaussian.std = 0.4
 
 # Parameters for Policy:
 # ==============================================================================
 Policy.body = @trax.models.PureMLP
+Policy.head_init_range = 0.01
+Policy.normalizer = @trax.rl.normalization.Normalize
 
 # Parameters for Value:
 # ==============================================================================
 Value.body = @trax.models.PureMLP
+Value.normalizer = @trax.rl.normalization.Normalize
+
+# Parameters for Normalize:
+# ==============================================================================
+Normalize.sample_limit = 30000
+Normalize.epsilon = 1e-5
 
 # Parameters for PureMLP:
 # ==============================================================================
@@ -38,12 +47,19 @@ PureMLP.out_activation = True
 
 # Parameters for MultifactorSchedule:
 # ==============================================================================
-MultifactorSchedule.constant = 0.001
-MultifactorSchedule.factors = 'constant'
+policy/MultifactorSchedule.constant = 5e-5
+policy/MultifactorSchedule.factors = 'constant'
+value/MultifactorSchedule.constant = 0.01
+value/MultifactorSchedule.factors = 'constant'
+
+# Parameters for Momentum:
+# ==============================================================================
+Momentum.weight_decay_rate = 0.0
+Momentum.nesterov = False
 
 # Parameters for RLTask:
 # ==============================================================================
-RLTask.env = "DM-Ant-v2"
+RLTask.env = "DM-HalfCheetah-v2"
 RLTask.initial_trajectories = 0
 RLTask.gamma = 0.99
 RLTask.max_steps = 1000
@@ -55,25 +71,28 @@ td_lambda.lambda_ = 0.95
 # Parameters for AWRTrainer:
 # ==============================================================================
 AWRTrainer.value_model = @trax.models.Value
-AWRTrainer.value_optimizer = @trax.optimizers.Adam
+AWRTrainer.value_optimizer = @trax.optimizers.Momentum
 AWRTrainer.value_batch_size = 256
-AWRTrainer.value_train_steps_per_epoch = 500
-AWRTrainer.value_lr_schedule = @MultifactorSchedule
-AWRTrainer.value_evals_per_epoch = 10
+AWRTrainer.value_train_steps_per_epoch = 200
+AWRTrainer.value_lr_schedule = @value/MultifactorSchedule
+AWRTrainer.value_evals_per_epoch = 1
 AWRTrainer.value_eval_steps = 10
 AWRTrainer.policy_model = @trax.models.Policy
-AWRTrainer.policy_optimizer = @trax.optimizers.Adam
+AWRTrainer.policy_optimizer = @trax.optimizers.Momentum
 AWRTrainer.policy_batch_size = 256
 AWRTrainer.policy_train_steps_per_epoch = 1000
-AWRTrainer.policy_lr_schedule = @MultifactorSchedule
-AWRTrainer.policy_evals_per_epoch = 10
+AWRTrainer.policy_lr_schedule = @policy/MultifactorSchedule
+AWRTrainer.policy_evals_per_epoch = 1
 AWRTrainer.policy_eval_steps = 10
-AWRTrainer.collect_per_epoch = 10
+AWRTrainer.collect_per_epoch = 3
 AWRTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
-AWRTrainer.beta = 0.05
+AWRTrainer.beta = 1.0
 AWRTrainer.w_max = 20
 AWRTrainer.max_slice_length = 1
-AWRTrainer.added_policy_slice_length = 3
+AWRTrainer.added_policy_slice_length = 10
+AWRTrainer.n_replay_epochs = 25
+AWRTrainer.scale_value_targets = True
+AWRTrainer.n_shared_layers = 1
 
 # Parameters for train_rl:
 # ==============================================================================
