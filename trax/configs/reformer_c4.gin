@@ -18,8 +18,8 @@ import trax.optimizers
 import trax.supervised.inputs
 import trax.supervised.trainer_lib
 
-MAX_EVAL_LENGTH = 65536
-BUCKETS = ([65537], [8, 1])
+MAX_EVAL_LENGTH = 1024 # Get back to 65536
+BUCKETS = ([1025], [8, 1])
 
 # Parameters that will vary between experiments:
 # ==============================================================================
@@ -29,7 +29,6 @@ attn_type = [
     @LSHSelfAttention,
     @SelfAttention,
 ]
-share_qk = False  # LSH attention ignores this flag and always shares q & k
 attn_kv = 128
 n_layers = 4
 dropout = 0.2
@@ -64,6 +63,7 @@ inputs.target_name = 'text'
 # ==============================================================================
 shuffle_and_batch_data.preprocess_fun=@trax.supervised.inputs.c4_preprocess
 c4_preprocess.max_target_length = %MAX_EVAL_LENGTH
+c4_preprocess.tokenization = 'spc'
 
 # Parameters for MultifactorSchedule:
 # ==============================================================================
@@ -120,11 +120,11 @@ ReformerLM.d_model = 1024
 ReformerLM.d_ff = 4096
 ReformerLM.dropout = %dropout
 ReformerLM.ff_activation = @trax.layers.Relu
-ReformerLM.max_len = 65536
+ReformerLM.max_len = %MAX_EVAL_LENGTH
 ReformerLM.mode = 'train'
 ReformerLM.n_heads = 8
 ReformerLM.n_layers = %n_layers
-ReformerLM.vocab_size = 258  # Includes pad token and unused EOS token
-ReformerLM.share_qk = %share_qk
-ReformerLM.axial_pos_shape = (128, 512)
+ReformerLM.vocab_size = 32000  # Includes pad token and unused EOS token
+#ReformerLM.axial_pos_shape = (128, 512)
+ReformerLM.axial_pos_shape = (32, 32)
 ReformerLM.d_axial_pos_embs= (256, 768)

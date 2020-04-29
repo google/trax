@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import functools
 import os
 import random
 
@@ -31,6 +32,7 @@ import numpy as np
 from tensor2tensor import problems_colab as t2t_problems
 import tensorflow as tf   # pylint: disable=g-explicit-tensorflow-version-import
 import tensorflow_datasets as tfds
+import tensorflow_text as tf_text
 from trax import math
 from trax.math import numpy as jnp
 
@@ -848,8 +850,12 @@ def _train_and_eval_batches(
   return (train_batches, train_eval_batches, eval_batches, input_name)
 
 
+DEFAULT_SPM_PATH = 'gs://t5-data/vocabs/cc_all.32000/sentencepiece.model'  # GCS
+
+
 @gin.configurable(blacklist=['dataset', 'training', 'shapes'])
-def c4_preprocess(dataset, training, shapes, max_target_length=-1):
+def c4_preprocess(dataset, training, shapes, max_target_length=-1,
+                  tokenization=None, spm_path=None):
   """Pre-processing function for C4 dataset."""
   del training
   def unicode_decode_chars(features, targets):
@@ -859,7 +865,21 @@ def c4_preprocess(dataset, training, shapes, max_target_length=-1):
     features['inputs'] = targets
     return (features, targets)
 
-  dataset = dataset.map(unicode_decode_chars)
+  def spc_tokenize(tokenizer, features, targets):
+    del targets
+    tokenized_text = tokenizer.tokenize(features['text'])
+    features['targets'] = tf.cast(tokenized_text, tf.int64)
+    features['inputs'] = features['targets']
+    return features, features['targets']
+
+  if tokenization == 'spc':
+    spm_path = DEFAULT_SPM_PATH if spm_path is None else spm_path
+    with tf.compat.v1.gfile.GFile(spm_path, 'rb') as f:
+      spc_model = f.read()
+    tokenizer = tf_text.SentencepieceTokenizer(model=spc_model)
+    dataset = dataset.map(functools.partial(spc_tokenize, tokenizer))
+  else:
+    dataset = dataset.map(unicode_decode_chars)
 
   def target_right_length(_, target):
     return tf.less(tf.shape(target)[0], max_target_length + 1)

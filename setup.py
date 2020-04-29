@@ -46,6 +46,7 @@ setup(
         'six',
         'tensor2tensor',
         'tensorflow-datasets',
+        'tensorflow-text',
     ],
     extras_require={
         'tensorflow': ['tensorflow>=1.15.0'],
