@@ -22,6 +22,7 @@ import tensorflow as tf
 
 from trax import layers as tl
 from trax import lr_schedules as lr
+from trax import shapes
 from trax import supervised
 from trax.math import numpy as jnp
 from trax.rl import advantages as rl_advantages
@@ -49,6 +50,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
                n_shared_layers=0,
                added_policy_slice_length=0,
                n_replay_epochs=1,
+               scale_value_targets=False,
                **kwargs):  # Arguments of PolicyTrainer come here.
     """Configures the actor-critic Trainer.
 
@@ -73,6 +75,8 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
         have maximum length set by max_slice_length in **kwargs
      n_replay_epochs: how many last epochs to take into the replay buffer;
         only makes sense for off-policy algorithms
+     scale_value_targets: whether to scale targets for the value function by
+        1 / (1 - gamma)
      **kwargs: arguments for PolicyTrainer super-class
     """
     self._n_shared_layers = n_shared_layers
@@ -88,6 +92,14 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
     self._max_slice_length = kwargs.get('max_slice_length', 1)
     self._added_policy_slice_length = added_policy_slice_length
     self._n_replay_epochs = n_replay_epochs
+
+    if scale_value_targets:
+      self._value_network_scale = 1 / (1 - self._task.gamma)
+    else:
+      self._value_network_scale = 1
+
+    self._value_eval_model = value_model(mode='eval')
+    self._value_eval_model.init(self._value_model_signature)
 
     # Initialize training of the value function.
     value_output_dir = kwargs.get('output_dir', None)
@@ -106,12 +118,17 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
         inputs=self._value_inputs,
         output_dir=value_output_dir,
         metrics={'value_loss': tl.L2Loss()})
-    self._value_eval_model = value_model(mode='eval')
-    value_batch = next(self.value_batches_stream())
-    self._value_eval_model.init(value_batch)
 
     # Initialize policy training.
     super(ActorCriticTrainer, self).__init__(task, **kwargs)
+
+  @property
+  def _value_model_signature(self):
+    obs_sig = shapes.signature(self._task.observation_space)
+    target_sig = mask_sig = shapes.ShapeDtype(
+        shape=(1, 1, 1),
+    )
+    return (obs_sig.replace(shape=(1, 1) + obs_sig.shape), target_sig, mask_sig)
 
   @property
   def _replay_epochs(self):
@@ -124,15 +141,39 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
 
   def value_batches_stream(self):
     """Use the RLTask self._task to create inputs to the value model."""
+    max_slice_length = self._max_slice_length + self._added_policy_slice_length
     for np_trajectory in self._task.trajectory_batch_stream(
-        self._value_batch_size, max_slice_length=self._max_slice_length,
-        epochs=self._replay_epochs):
+        self._value_batch_size,
+        max_slice_length=max_slice_length,
+        min_slice_length=(1 + self._added_policy_slice_length),
+        epochs=self._replay_epochs,
+    ):
+      values = self._value_eval_model(
+          np_trajectory.observations, n_accelerators=1
+      ) * self._value_network_scale
+      values = np.squeeze(values, axis=2)  # Remove the singleton depth dim.
+
+      # TODO(pkozakowski): Add some shape assertions and docs.
+      # Calculate targets based on the advantages over the target network - this
+      # allows TD learning for value networks.
+      advantages = self._advantage_estimator(
+          np_trajectory.rewards, np_trajectory.returns, values,
+          gamma=self._task.gamma,
+          n_extra_steps=self._added_policy_slice_length,
+      )
+      length = advantages.shape[1]
+      values = values[:, :length]
+      target_returns = values + advantages
+
       # Insert an extra depth dimension, so the target shape is consistent with
       # the network output shape.
       yield (
-          np_trajectory.observations,         # Inputs to the value model.
-          np_trajectory.returns[:, :, None],  # Targets: regress to returns.
-          np_trajectory.mask[:, :, None],     # Mask to zero-out padding.
+          # Inputs: observations.
+          np_trajectory.observations[:, :length],
+          # Targets: computed returns.
+          target_returns[:, :, None] / self._value_network_scale,
+          # Mask to zero-out padding.
+          np_trajectory.mask[:, :length, None],
       )
 
   def policy_inputs(self, trajectory, values):
@@ -159,9 +200,9 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
         epochs=self._replay_epochs,
         max_slice_length=max_slice_length,
         include_final_state=False):
-      value_model = self._value_eval_model
-      value_model.weights = self._value_trainer.model_weights
-      values = value_model(np_trajectory.observations, n_accelerators=1)
+      values = self._value_eval_model(
+          np_trajectory.observations, n_accelerators=1
+      ) * self._value_network_scale
       values = np.squeeze(values, axis=2)  # Remove the singleton depth dim.
       if len(values.shape) != 2:
         raise ValueError('Values are expected to have shape ' +
@@ -173,6 +214,19 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
 
   def train_epoch(self):
     """Trains RL for one epoch."""
+    # Copy policy state accumulated during data collection to the trainer.
+    self._policy_trainer.model_state = self._policy_collect_model.state
+
+    # Copy policy weights and state to value trainer.
+    if self._n_shared_layers > 0:
+      _copy_model_weights_and_state(
+          0, self._n_shared_layers, self._policy_trainer, self._value_trainer
+      )
+
+    # Update the target value network.
+    self._value_eval_model.weights = self._value_trainer.model_weights
+    self._value_eval_model.state = self._value_trainer.model_state
+
     n_value_evals = rl_training.remaining_evals(
         self._value_trainer.step,
         self._epoch,
@@ -183,9 +237,11 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
           self._value_train_steps_per_epoch // self._value_evals_per_epoch,
           self._value_eval_steps,
       )
-    if self._n_shared_layers > 0:  # Copy value weights to policy trainer.
-      _copy_model_weights(0, self._n_shared_layers,
-                          self._value_trainer, self._policy_trainer)
+    # Copy value weights and state to policy trainer.
+    if self._n_shared_layers > 0:
+      _copy_model_weights_and_state(
+          0, self._n_shared_layers, self._value_trainer, self._policy_trainer
+      )
     n_policy_evals = rl_training.remaining_evals(
         self._policy_trainer.step,
         self._epoch,
@@ -196,31 +252,41 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
                            n_policy_evals < self._policy_evals_per_epoch)
     should_copy_weights = self._n_shared_layers > 0 and not stopped_after_value
     if should_copy_weights:
-      _copy_model_weights(0, self._n_shared_layers,
-                          self._value_trainer, self._policy_trainer)
+      _copy_model_weights_and_state(
+          0, self._n_shared_layers, self._value_trainer, self._policy_trainer
+      )
+
+    # Update the target value network.
+    self._value_eval_model.weights = self._value_trainer.model_weights
+    self._value_eval_model.state = self._value_trainer.model_state
 
     for _ in range(n_policy_evals):
       self._policy_trainer.train_epoch(
           self._policy_train_steps_per_epoch // self._policy_evals_per_epoch,
           self._policy_eval_steps,
       )
-    if self._n_shared_layers > 0:  # Copy policy weights to value trainer.
-      _copy_model_weights(0, self._n_shared_layers,
-                          self._policy_trainer, self._value_trainer)
 
   def close(self):
     self._value_trainer.close()
     super().close()
 
 
-def _copy_model_weights(start, end, from_trainer, to_trainer,  # pylint: disable=invalid-name
-                        copy_optimizer_slots=True):
+def _copy_model_weights_and_state(  # pylint: disable=invalid-name
+    start, end, from_trainer, to_trainer, copy_optimizer_slots=False
+):
   """Copy model weights[start:end] from from_trainer to to_trainer."""
   from_weights = from_trainer.model_weights
   to_weights = to_trainer.model_weights
   shared_weights = from_weights[start:end]
   to_weights[start:end] = shared_weights
   to_trainer.model_weights = to_weights
+
+  from_state = from_trainer.model_state
+  to_state = to_trainer.model_state
+  shared_state = from_state[start:end]
+  to_state[start:end] = shared_state
+  to_trainer.model_state = to_state
+
   if copy_optimizer_slots:
     # TODO(lukaszkaiser): make a nicer API in Trainer to support this.
     # Currently we use the hack below. Note [0] since that's the model w/o loss.

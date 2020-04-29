@@ -71,6 +71,13 @@ class ShapeDtype(object):
   def as_tuple(self):
     return self.shape, self.dtype
 
+  def replace(self, **kwargs):
+    """Creates a copy of the object with some parameters replaced."""
+    return type(self)(
+        shape=kwargs.pop('shape', self.shape),
+        dtype=kwargs.pop('dtype', self.dtype),
+    )
+
 
 def signature(obj):
   """Returns a `ShapeDtype` signature for the given `obj`.

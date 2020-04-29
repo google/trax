@@ -52,7 +52,7 @@ TrajectoryNp = collections.namedtuple('TrajectoryNp', [
     'log_probs',
     'rewards',
     'returns',
-    'mask'
+    'mask',
 ])
 
 
@@ -289,7 +289,7 @@ class RLTask:
         initial_trajectories = [
             # Whatever we gather here is intended to be removed
             # in PolicyTrainer. Here we just gather some example inputs.
-            self.play(_random_policy(self.action_space), max_steps=2)
+            self.play(_random_policy(self.action_space))
         ]
 
     if isinstance(initial_trajectories, list):
@@ -328,11 +328,18 @@ class RLTask:
     else:
       return self._env.action_space
 
-  def observation_shape(self):
+  @property
+  def observation_space(self):
+    """Returns the env's observation space in a Gym interface."""
     if self._dm_suite:
-      return self._env.observation_spec().shape
+      return gym.spaces.Box(
+          shape=self._env.observation_spec().shape,
+          dtype=self._env.observation_spec().dtype,
+          low=float('-inf'),
+          high=float('+inf'),
+      )
     else:
-      return self._env.observation_space.shape
+      return self._env.observation_space
 
   @property
   def trajectories(self):
@@ -480,6 +487,7 @@ class RLTask:
 
   def trajectory_batch_stream(self, batch_size, epochs=None,
                               max_slice_length=None,
+                              min_slice_length=None,
                               include_final_state=False,
                               sample_trajectories_uniformly=False):
     """Return a stream of trajectory batches from the specified epochs.
@@ -491,6 +499,7 @@ class RLTask:
       batch_size: the size of the batches to return
       epochs: a list of epochs to use; we use all epochs if None
       max_slice_length: maximum length of the slices of trajectories to return
+      min_slice_length: minimum length of the slices of trajectories to return
       include_final_state: whether to include slices with the final state of
         the trajectory which may have no action and reward
       sample_trajectories_uniformly: whether to sample trajectories uniformly,
@@ -498,7 +507,8 @@ class RLTask:
 
     Yields:
       batches of trajectory slices sampled uniformly from all slices of length
-      upto max_slice_length in all specified epochs
+      at least min_slice_length and up to max_slice_length in all specified
+      epochs
     """
     def pad(tensor_list):
       max_len = max([t.shape[0] for t in tensor_list])
@@ -513,6 +523,11 @@ class RLTask:
     for t in self.trajectory_stream(
         epochs, max_slice_length,
         include_final_state, sample_trajectories_uniformly):
+      # TODO(pkozakowski): Instead sample the trajectories out of those with
+      # the minimum length.
+      if min_slice_length is not None and len(t) < min_slice_length:
+        continue
+
       cur_batch.append(t)
       if len(cur_batch) == batch_size:
         obs, act, logp, rew, ret, _ = zip(*[t.to_np(self._timestep_to_np)
@@ -520,7 +535,7 @@ class RLTask:
         # Where act, logp, rew and ret will usually have the following shape:
         # [batch_size, trajectory_length-1], which we call [B, L-1].
         # Observations are more complex and will usuall be [B, L] + S where S
-        # is the shape of the observation space (self.observation_shape).
+        # is the shape of the observation space (self.observation_space.shape).
         yield TrajectoryNp(
             pad(obs), pad(act), pad(logp), pad(rew), pad(ret),
             pad([np.ones(a.shape[:1]) for a in act]))

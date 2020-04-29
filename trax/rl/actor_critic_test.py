@@ -26,6 +26,7 @@ from trax import models
 from trax import optimizers as opt
 from trax import test_utils
 from trax.rl import actor_critic
+from trax.rl import advantages
 from trax.rl import task as rl_task
 
 
@@ -161,7 +162,10 @@ class ActorCriticTest(absltest.TestCase):
         policy_lr_schedule=lr,
         policy_batch_size=32,
         policy_train_steps_per_epoch=200,
-        collect_per_epoch=10)
+        collect_per_epoch=10,
+        advantage_estimator=advantages.monte_carlo,
+        advantage_normalization=False,
+    )
     trainer.run(1)
     self.assertEqual(1, trainer.current_epoch)
     self.assertGreater(trainer.avg_returns[-1], 50.0)
@@ -189,7 +193,10 @@ class ActorCriticTest(absltest.TestCase):
         policy_lr_schedule=lr,
         policy_batch_size=32,
         policy_train_steps_per_epoch=200,
-        collect_per_epoch=10)
+        collect_per_epoch=10,
+        advantage_estimator=advantages.monte_carlo,
+        advantage_normalization=False,
+    )
     trainer.run(1)
     self.assertEqual(1, trainer.current_epoch)
     self.assertGreater(trainer.avg_returns[-1], 50.0)

@@ -211,6 +211,23 @@ class Trainer(object):
       self._opt_state = self._opt_state._replace(weights=new_weights)
 
   @property
+  def model_state(self):
+    # Currently we need to pick [0] as we ignore loss state (empty).
+    state = self._model_state[0]
+    if self.n_devices > 1:
+      unreplicate = lambda x: x[0]
+      state = math.nested_map(unreplicate, state)
+    return state
+
+  @model_state.setter
+  def model_state(self, state):
+    new_model_state = self._for_n_devices(state)
+    if isinstance(self._model_state, list):
+      self._model_state[0] = new_model_state
+    else:  # weights are a tuple, need to re-create
+      self._model_state = [new_model_state] + list(self._model_state[1:])
+
+  @property
   def state(self):
     return TrainerState(
         opt_state=self._opt_state, step=self._step, history=self._history,
