@@ -31,6 +31,241 @@ from trax.math import numpy as jnp
 # pylint: disable=invalid-name
 
 
+def Attention(d_feature, n_heads=1, dropout=0.0, mode='train'):
+  """Transformer-style multi-headed attention.
+
+  Accepts inputs of the form (x, mask) and constructs (q, k, v) from x.
+
+  Args:
+    d_feature: int:  dimensionality of feature embedding
+    n_heads: int: number of attention heads
+    dropout: float: dropout rate
+    mode: str: 'train' or 'eval'
+
+  Returns:
+    Multi-headed self-attention result and the mask.
+  """
+  return cb.Serial(
+      cb.Dup(), cb.Dup(),
+      AttentionQKV(d_feature, n_heads=n_heads, dropout=dropout, mode=mode),
+  )
+
+
+def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train'):
+  """Transformer-style multi-headed attention.
+
+  Accepts inputs of the form q, k, v, mask.
+
+  Args:
+    d_feature: int:  dimensionality of feature embedding
+    n_heads: int: number of attention heads
+    dropout: float: dropout rate
+    mode: str: 'train' or 'eval'
+
+  Returns:
+    Multi-headed self-attention result and the mask.
+  """
+  return cb.Serial(
+      cb.Parallel(
+          core.Dense(d_feature),
+          core.Dense(d_feature),
+          core.Dense(d_feature),
+      ),
+      PureAttention(  # pylint: disable=no-value-for-parameter
+          n_heads=n_heads, dropout=dropout, mode=mode),
+      core.Dense(d_feature),
+  )
+
+
+class PureAttention(base.Layer):
+  """Layer constructor function for a pure attention layer."""
+
+  def __init__(self, n_heads=1, dropout=0.0, mode='train'):
+    super(PureAttention, self).__init__(n_in=4, n_out=2)
+    self._n_heads = n_heads
+    self._dropout = dropout
+    self._mode = mode
+
+  def forward_with_state(self, x, weights, state, rng):
+    """Pure transformer-style multi-headed attention.
+
+    Args:
+      x: inputs (q, k, v, mask)
+      weights: parameters (none)
+      state: parameters (none)
+      rng: Single-use random number generator (JAX PRNG key).
+
+    Returns:
+      Pure Multi-headed attention result, and the mask.
+    """
+    del weights
+    n_heads, dropout, mode = self._n_heads, self._dropout, self._mode
+    q, k, v, mask = x
+    batch_size = q.shape[0]
+    d_feature = q.shape[-1]
+
+    assert d_feature % n_heads == 0
+    d_head = d_feature // n_heads
+
+    def _split_into_heads(x):
+      """Reshapes tensors to prepare for multi-headed computation."""
+      # (b_size, seqlen, d_feature) --> (b_size, n_heads, seqlen, d_head)
+      x = jnp.reshape(x, (batch_size, -1, n_heads, d_head))
+      x = jnp.transpose(x, (0, 2, 1, 3))
+      return x
+
+    def _merge_heads(x):
+      """Undoes splitting, post multi-headed computation."""
+      # (b_size, n_heads, seqlen, d_head) --> (b_size, seqlen, d_feature)
+      x = jnp.transpose(x, (0, 2, 1, 3))
+      x = jnp.reshape(x, (batch_size, -1, n_heads * d_head))
+      return x
+
+    res = _merge_heads(
+        DotProductAttention(_split_into_heads(q),
+                            _split_into_heads(k),
+                            _split_into_heads(v),
+                            mask,
+                            dropout=dropout,
+                            mode=mode,
+                            rng=rng))
+    return (res, mask), state  # Keep the mask.
+
+
+def DotProductAttention(query, key, value, mask, dropout, mode, rng):
+  """Core dot product self-attention.
+
+  Args:
+    query: array of representations
+    key: array of representations
+    value: array of representations
+    mask: attention-mask, gates attention
+    dropout: float: dropout rate
+    mode: 'eval' or 'train': whether to use dropout
+    rng: Single-use random number generator (JAX PRNG key).
+
+  Returns:
+    Self attention for q, k, v arrays.
+  """
+  depth = jnp.shape(query)[-1]
+  dots = jnp.matmul(query, jnp.swapaxes(key, -1, -2)) / jnp.sqrt(depth)
+  if mask is not None:
+    # TODO(kitaev): workaround for https://github.com/google/jax/issues/850
+    # We must ensure that both mask and the -1e9 constant have a data dependency
+    # on the input. Broadcasted copies of these use a lot of memory, so they
+    # should be computed at runtime (rather than being global constants).
+    if math.backend_name() == 'jax':
+      mask = jax.lax.tie_in(dots, mask)
+    # JAX's `full_like` already ties in -1e9 to dots.
+    dots = jnp.where(mask, dots, jnp.full_like(dots, -1e9))
+  # Softmax.
+  dots = jnp.exp(dots - math.logsumexp(dots, axis=-1, keepdims=True))
+  if dropout >= 1.0:
+    raise ValueError('Dropout rates must be lower than 1.')
+  if dropout is not None and dropout > 0.0 and mode == 'train':
+    keep = math.random.bernoulli(rng, 1.0 - dropout, dots.shape)
+    dots = jnp.where(keep, dots / (1.0 - dropout), jnp.zeros_like(dots))
+  out = jnp.matmul(dots, value)
+  return out
+
+
+def CausalAttention(d_feature, n_heads=1, dropout=0.0, mode='train'):
+  """Transformer-style multi-headed causal attention.
+
+  Args:
+    d_feature: int:  dimensionality of feature embedding
+    n_heads: int: number of attention heads
+    dropout: float: attention dropout
+    mode: str: 'train' or 'eval'
+
+  Returns:
+    Multi-headed self-attention result.
+  """
+  assert d_feature % n_heads == 0
+  d_head = d_feature // n_heads
+
+  def _split_into_heads():
+    """Layer that reshapes tensors to prepare for multi-headed computation."""
+    def f(x):
+      batch_size = x.shape[0]
+      seq_len = x.shape[1]
+
+      # (b_size, seq_len, d_feature) --> (b_size*n_heads, seq_len, d_head)
+      x = jnp.reshape(x, (batch_size, seq_len, n_heads, d_head))
+      x = jnp.transpose(x, (0, 2, 1, 3))
+      x = jnp.reshape(x, (-1, seq_len, d_head))
+      return x
+    return Fn('SplitIntoHeads', f)
+
+  def _merge_heads():
+    """Layer that undoes splitting, post multi-headed computation."""
+    def f(x):
+      seq_len = x.shape[1]
+
+      # (b_size*n_heads, seq_len, d_head) --> (b_size, seq_len, d_feature)
+      x = jnp.reshape(x, (-1, n_heads, seq_len, d_head))
+      x = jnp.transpose(x, (0, 2, 1, 3))
+      x = jnp.reshape(x, (-1, seq_len, n_heads * d_head))
+      return x
+    return Fn('MergeHeads', f)
+
+  return cb.Serial(
+      cb.Branch(
+          [core.Dense(d_feature), _split_into_heads()],
+          [core.Dense(d_feature), _split_into_heads()],
+          [core.Dense(d_feature), _split_into_heads()],
+      ),
+      DotProductCausalAttention(dropout=dropout, mode=mode),
+      _merge_heads(),
+      core.Dense(d_feature),
+  )
+
+
+class DotProductCausalAttention(base.Layer):
+  """A standard (non-memory-efficient) dot product attention implementation."""
+
+  def __init__(self, dropout=0.0, mode='train'):
+    super(DotProductCausalAttention, self).__init__(n_in=3, n_out=1)
+    self._dropout = dropout
+    self._mode = mode
+
+  def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
+                         state=base.EMPTY_STATE, rng=None):
+    del weights
+    q, k, v = inputs
+    if self._mode != 'predict':
+      mask_size = q.shape[-2]
+      # Not all backends define jnp.tril. However, using np.tril is inefficient
+      # in that it creates a large global constant. TODO(kitaev): try to find an
+      # alternative that works across all backends.
+      if math.backend_name() == 'jax':
+        mask = jnp.tril(
+            jnp.ones((1, mask_size, mask_size), dtype=np.bool_), k=0)
+      else:
+        mask = np.tril(
+            np.ones((1, mask_size, mask_size), dtype=np.bool_), k=0)
+    else:
+      assert self._mode == 'predict'
+      state = _fast_inference_update_state(inputs, state)
+      (k, v, mask, _) = state
+
+    res = DotProductAttention(
+        q, k, v, mask, dropout=self._dropout, mode=self._mode, rng=rng)
+    return res, state
+
+  def new_weights_and_state(self, input_signature):
+    if self._mode != 'predict':
+      return base.EMPTY_WEIGHTS, base.EMPTY_STATE
+
+    assert self._mode == 'predict'
+    weights = base.EMPTY_WEIGHTS
+    # Buffer length is hardcoded for now. TODO(pkozakowski): Pass it from the
+    # model.
+    max_len = 2048
+    state = _fast_inference_init_state(input_signature, max_len)
+    return weights, state
+
+
 def zero_pad(x, pad, axis):
   """Helper for jnp.pad with 0s for single-axis case."""
   pad_widths = [(0, 0)] * len(x.shape)
@@ -134,144 +369,6 @@ class PositionalEncoding(base.Layer):
     return weights, state
 
 
-def DotProductAttention(query, key, value, mask, dropout, mode, rng):
-  """Core dot product self-attention.
-
-  Args:
-    query: array of representations
-    key: array of representations
-    value: array of representations
-    mask: attention-mask, gates attention
-    dropout: float: dropout rate
-    mode: 'eval' or 'train': whether to use dropout
-    rng: Single-use random number generator (JAX PRNG key).
-
-  Returns:
-    Self attention for q, k, v arrays.
-  """
-  depth = jnp.shape(query)[-1]
-  dots = jnp.matmul(query, jnp.swapaxes(key, -1, -2)) / jnp.sqrt(depth)
-  if mask is not None:
-    # TODO(kitaev): workaround for https://github.com/google/jax/issues/850
-    # We must ensure that both mask and the -1e9 constant have a data dependency
-    # on the input. Broadcasted copies of these use a lot of memory, so they
-    # should be computed at runtime (rather than being global constants).
-    if math.backend_name() == 'jax':
-      mask = jax.lax.tie_in(dots, mask)
-    # JAX's `full_like` already ties in -1e9 to dots.
-    dots = jnp.where(mask, dots, jnp.full_like(dots, -1e9))
-  # Softmax.
-  dots = jnp.exp(dots - math.logsumexp(dots, axis=-1, keepdims=True))
-  if dropout >= 1.0:
-    raise ValueError('Dropout rates must be lower than 1.')
-  if dropout is not None and dropout > 0.0 and mode == 'train':
-    keep = math.random.bernoulli(rng, 1.0 - dropout, dots.shape)
-    dots = jnp.where(keep, dots / (1.0 - dropout), jnp.zeros_like(dots))
-  out = jnp.matmul(dots, value)
-  return out
-
-
-class PureAttention(base.Layer):
-  """Layer constructor function for a pure attention layer."""
-
-  def __init__(self, n_heads=1, dropout=0.0, mode='train'):
-    super(PureAttention, self).__init__(n_in=4, n_out=2)
-    self._n_heads = n_heads
-    self._dropout = dropout
-    self._mode = mode
-
-  def forward_with_state(self, x, weights, state, rng):
-    """Pure transformer-style multi-headed attention.
-
-    Args:
-      x: inputs (q, k, v, mask)
-      weights: parameters (none)
-      state: parameters (none)
-      rng: Single-use random number generator (JAX PRNG key).
-
-    Returns:
-      Pure Multi-headed attention result, and the mask.
-    """
-    del weights
-    n_heads, dropout, mode = self._n_heads, self._dropout, self._mode
-    q, k, v, mask = x
-    batch_size = q.shape[0]
-    d_feature = q.shape[-1]
-
-    assert d_feature % n_heads == 0
-    d_head = d_feature // n_heads
-
-    def _split_into_heads(x):
-      """Reshapes tensors to prepare for multi-headed computation."""
-      # (b_size, seqlen, d_feature) --> (b_size, n_heads, seqlen, d_head)
-      x = jnp.reshape(x, (batch_size, -1, n_heads, d_head))
-      x = jnp.transpose(x, (0, 2, 1, 3))
-      return x
-
-    def _merge_heads(x):
-      """Undoes splitting, post multi-headed computation."""
-      # (b_size, n_heads, seqlen, d_head) --> (b_size, seqlen, d_feature)
-      x = jnp.transpose(x, (0, 2, 1, 3))
-      x = jnp.reshape(x, (batch_size, -1, n_heads * d_head))
-      return x
-
-    res = _merge_heads(
-        DotProductAttention(_split_into_heads(q),
-                            _split_into_heads(k),
-                            _split_into_heads(v),
-                            mask,
-                            dropout=dropout,
-                            mode=mode,
-                            rng=rng))
-    return (res, mask), state  # Keep the mask.
-
-
-def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train'):
-  """Transformer-style multi-headed attention.
-
-  Accepts inputs of the form q, k, v, mask.
-
-  Args:
-    d_feature: int:  dimensionality of feature embedding
-    n_heads: int: number of attention heads
-    dropout: float: dropout rate
-    mode: str: 'train' or 'eval'
-
-  Returns:
-    Multi-headed self-attention result and the mask.
-  """
-  return cb.Serial(
-      cb.Parallel(
-          core.Dense(d_feature),
-          core.Dense(d_feature),
-          core.Dense(d_feature),
-      ),
-      PureAttention(  # pylint: disable=no-value-for-parameter
-          n_heads=n_heads, dropout=dropout, mode=mode),
-      core.Dense(d_feature),
-  )
-
-
-def Attention(d_feature, n_heads=1, dropout=0.0, mode='train'):
-  """Transformer-style multi-headed attention.
-
-  Accepts inputs of the form (x, mask) and constructs (q, k, v) from x.
-
-  Args:
-    d_feature: int:  dimensionality of feature embedding
-    n_heads: int: number of attention heads
-    dropout: float: dropout rate
-    mode: str: 'train' or 'eval'
-
-  Returns:
-    Multi-headed self-attention result and the mask.
-  """
-  return cb.Serial(
-      cb.Dup(), cb.Dup(),
-      AttentionQKV(d_feature, n_heads=n_heads, dropout=dropout, mode=mode),
-  )
-
-
 def _fast_inference_init_state(input_signature, buffer_length):
   """Returns an initial state for causal attention layer fast inference."""
   def zeros_for(batch_size, shape_dtype):
@@ -309,100 +406,3 @@ def _fast_inference_update_state(inputs, state):
       mask, jax.ops.index[batch_indices, :, seq_indices], 1
   )
   return (ks, vs, mask, seq_indices + 1)
-
-
-class DotProductCausalAttention(base.Layer):
-  """A standard (non-memory-efficient) dot product attention implementation."""
-
-  def __init__(self, dropout=0.0, mode='train'):
-    super(DotProductCausalAttention, self).__init__(n_in=3, n_out=1)
-    self._dropout = dropout
-    self._mode = mode
-
-  def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
-                         state=base.EMPTY_STATE, rng=None):
-    del weights
-    q, k, v = inputs
-    if self._mode != 'predict':
-      mask_size = q.shape[-2]
-      # Not all backends define jnp.tril. However, using np.tril is inefficient
-      # in that it creates a large global constant. TODO(kitaev): try to find an
-      # alternative that works across all backends.
-      if math.backend_name() == 'jax':
-        mask = jnp.tril(
-            jnp.ones((1, mask_size, mask_size), dtype=np.bool_), k=0)
-      else:
-        mask = np.tril(
-            np.ones((1, mask_size, mask_size), dtype=np.bool_), k=0)
-    else:
-      assert self._mode == 'predict'
-      state = _fast_inference_update_state(inputs, state)
-      (k, v, mask, _) = state
-
-    res = DotProductAttention(
-        q, k, v, mask, dropout=self._dropout, mode=self._mode, rng=rng)
-    return res, state
-
-  def new_weights_and_state(self, input_signature):
-    if self._mode != 'predict':
-      return base.EMPTY_WEIGHTS, base.EMPTY_STATE
-
-    assert self._mode == 'predict'
-    weights = base.EMPTY_WEIGHTS
-    # Buffer length is hardcoded for now. TODO(pkozakowski): Pass it from the
-    # model.
-    max_len = 2048
-    state = _fast_inference_init_state(input_signature, max_len)
-    return weights, state
-
-
-def CausalAttention(d_feature, n_heads=1, dropout=0.0, mode='train'):
-  """Transformer-style multi-headed causal attention.
-
-  Args:
-    d_feature: int:  dimensionality of feature embedding
-    n_heads: int: number of attention heads
-    dropout: float: attention dropout
-    mode: str: 'train' or 'eval'
-
-  Returns:
-    Multi-headed self-attention result.
-  """
-  assert d_feature % n_heads == 0
-  d_head = d_feature // n_heads
-
-  def _split_into_heads():
-    """Layer that reshapes tensors to prepare for multi-headed computation."""
-    def f(x):
-      batch_size = x.shape[0]
-      seq_len = x.shape[1]
-
-      # (b_size, seq_len, d_feature) --> (b_size*n_heads, seq_len, d_head)
-      x = jnp.reshape(x, (batch_size, seq_len, n_heads, d_head))
-      x = jnp.transpose(x, (0, 2, 1, 3))
-      x = jnp.reshape(x, (-1, seq_len, d_head))
-      return x
-    return Fn('SplitIntoHeads', f)
-
-  def _merge_heads():
-    """Layer that undoes splitting, post multi-headed computation."""
-    def f(x):
-      seq_len = x.shape[1]
-
-      # (b_size*n_heads, seq_len, d_head) --> (b_size, seq_len, d_feature)
-      x = jnp.reshape(x, (-1, n_heads, seq_len, d_head))
-      x = jnp.transpose(x, (0, 2, 1, 3))
-      x = jnp.reshape(x, (-1, seq_len, n_heads * d_head))
-      return x
-    return Fn('MergeHeads', f)
-
-  return cb.Serial(
-      cb.Branch(
-          [core.Dense(d_feature), _split_into_heads()],
-          [core.Dense(d_feature), _split_into_heads()],
-          [core.Dense(d_feature), _split_into_heads()],
-      ),
-      DotProductCausalAttention(dropout=dropout, mode=mode),
-      _merge_heads(),
-      core.Dense(d_feature),
-  )
