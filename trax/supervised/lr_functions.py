@@ -27,7 +27,7 @@ import math
 
 
 def constant(value):
-  """Returns an LR schedule that is constant from time/step 1 to infinity."""
+  """Returns an LR schedule that is constant from time (step) 1 to infinity."""
   return _BodyAndTail(value, body_start=1)
 
 
@@ -36,8 +36,8 @@ def warmup(n_warmup_steps, max_value):
 
   Args:
     n_warmup_steps: Number of steps during which the learning rate rises on
-        a line connecting (0, 0) and (n_warmup_steps, constant_value).
-    max_value: Value for learning rate after warm-up has finshed.
+        a line connecting (0, 0) and (n_warmup_steps, max_value).
+    max_value: Value for learning rate after warm-up has finished.
   """
   return _BodyAndTail(max_value, body_start=n_warmup_steps + 1)
 
