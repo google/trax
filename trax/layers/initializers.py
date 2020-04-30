@@ -61,16 +61,22 @@ def InitializerFromFile(path):
   return Initializer
 
 
+def _PureShape(shape):
+  """Make sure shape does not contain int tensors by calling int()."""
+  return [int(x) for x in shape]
+
+
 def RandomNormalInitializer(stddev=1e-2):
   """Returns an initializer for random normal coefficients."""
-  return (
-      lambda shape, rng: (stddev * random.normal(rng, shape)).astype('float32')
-  )
+  return lambda shape, rng: (stddev * random.normal(  # pylint: disable=g-long-lambda
+      rng, _PureShape(shape)).astype('float32'))
 
 
 def RandomUniformInitializer(lim=1.0):
   """Returns an initializer for random uniform coefficients."""
-  return lambda shape, rng: random.uniform(rng, shape, jnp.float32, -lim, lim)
+  # Make sure shape does not contain int tensors by calling int() below.
+  return lambda shape, rng: random.uniform(  # pylint: disable=g-long-lambda
+      rng, _PureShape(shape), jnp.float32, -lim, lim)
 
 
 def ScaledInitializer(out_dim, in_dim, scale, mode, distribution):
@@ -84,6 +90,7 @@ def ScaledInitializer(out_dim, in_dim, scale, mode, distribution):
 
   def Init(shape, rng):
     """Returns random values for initializing weights of the given `shape`."""
+    shape = _PureShape(shape)
     fan_in, fan_out = _GetFans(shape, out_dim, in_dim)
     gain = scale
     if mode == 'fan_in':

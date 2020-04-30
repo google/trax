@@ -79,7 +79,18 @@ def stop_gradient(*args, **kwargs):
   return backend()['stop_gradient'](*args, **kwargs)
 
 
+_disable_jit = False
+
+
+def disable_jit():
+  global _disable_jit
+  _disable_jit = True
+
+
 def jit(*args, **kwargs):
+  global _disable_jit
+  if _disable_jit:
+    return args[0]  # jit(f, **unused_now_jit_kwargs) = f
   return backend()['jit'](*args, **kwargs)
 
 

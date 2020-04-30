@@ -25,6 +25,7 @@ import tensorflow as tf
 
 from trax import jaxboard
 from trax import lr_schedules as lr
+from trax import math
 from trax import shapes
 from trax import supervised
 from trax.rl import distributions
@@ -265,6 +266,8 @@ class PolicyTrainer(RLTrainer):
     pred = pred[0, -1, :]
     sample = self._policy_dist.sample(pred)
     log_prob = self._policy_dist.log_prob(pred, sample)
+    if math.backend_name() != 'jax':
+      return (sample, log_prob)
     return (sample.copy(), log_prob.copy())
 
   def train_epoch(self):

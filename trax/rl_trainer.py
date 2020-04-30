@@ -42,12 +42,14 @@ import jax
 from jax.config import config
 from tensor2tensor import envs  # pylint: disable=unused-import
 from tensor2tensor.envs import env_problem_utils
+from trax import math
 from trax import rl  # pylint: disable=unused-import
 from trax import trainer_flags  # pylint: disable=unused-import
 from trax.rl import envs as rl_envs  # pylint: disable=unused-import
 from trax.rl import task as rl_task
 from trax.rl import trainers as rl_trainers
 from trax.rl import training as light_trainers
+from trax.tf_numpy import numpy as tf_np
 
 
 FLAGS = flags.FLAGS
@@ -97,6 +99,8 @@ def train_rl(
     light_rl: whether to use the light RL setting (experimental).
     light_rl_trainer: whichh light RL trainer to use (experimental).
   """
+  tf_np.set_allow_float64(FLAGS.tf_allow_float64)
+
   if light_rl:
     task = rl_task.RLTask()
     env_name = task.env_name
@@ -113,8 +117,14 @@ def train_rl(
 
   if light_rl:
     trainer = light_rl_trainer(task=task, output_dir=output_dir)
-    trainer.run(n_epochs, n_epochs_is_total_epochs=True)
-    trainer.close()
+    if FLAGS.jax_debug_nans or FLAGS.disable_jit:
+      math.disable_jit()
+      with jax.disable_jit():
+        trainer.run(n_epochs, n_epochs_is_total_epochs=True)
+        trainer.close()
+    else:
+      trainer.run(n_epochs, n_epochs_is_total_epochs=True)
+      trainer.close()
     return
 
   # TODO(pkozakowski): Find a better way to determine this.
@@ -174,6 +184,7 @@ def train_rl(
     trainer.training_loop(n_epochs=n_epochs)
 
   if FLAGS.jax_debug_nans or FLAGS.disable_jit:
+    math.disable_jit()
     with jax.disable_jit():
       run_training_loop()
   else:

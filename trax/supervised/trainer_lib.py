@@ -400,7 +400,7 @@ class Trainer(object):
       metric_values, _ = self._jit_eval(inp, weights, state, subrng)
       try:
         metric_values = list(metric_values)
-      except TypeError:
+      except (TypeError, IndexError):
         metric_values = [float(metric_values)]
       for m, v in zip(self._metrics, metric_values):
         metrics[m] += v
@@ -710,7 +710,9 @@ def num_devices(value=None):
 
 
 @gin.configurable
-def _is_jit_init(value=True):
+def _is_jit_init(value=None):
+  if value is None:
+    value = math.backend_name() == 'jax'
   return value
 
 

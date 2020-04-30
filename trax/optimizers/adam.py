@@ -57,6 +57,7 @@ class Adam(opt_base.Optimizer):
     b1 = opt_params['b1']
     b2 = opt_params['b2']
     eps = opt_params['eps']
+    step = np.array(step).astype(np.int32)  # Make sure it's the right type.
     m = (1 - b1) * grads + b1 * m  # First  moment estimate.
     v = (1 - b2) * (grads ** 2) + b2 * v  # Second moment estimate.
     mhat = m / (1 - b1 ** (step + 1))  # Bias correction.

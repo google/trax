@@ -413,7 +413,7 @@ def A2CLoss():  # pylint: disable=invalid-name
   """Definition of the Advantage Actor Critic (A2C) loss."""
   def f(log_probs, advantages, old_log_probs, mask):
     del old_log_probs  # Not used in A2C.
-    return -np.sum(log_probs * advantages * mask) / np.sum(mask)
+    return -jnp.sum(log_probs * advantages * mask) / jnp.sum(mask)
   return tl.Fn('A2CLoss', f)
 
 
@@ -443,7 +443,7 @@ def PPOLoss(epsilon):  # pylint: disable=invalid-name
                                  1 - epsilon,
                                  1 + epsilon) * advantages
     ppo_objective = jnp.minimum(unclipped_objective, clipped_objective)
-    return -np.sum(ppo_objective * mask) / np.sum(mask)
+    return -jnp.sum(ppo_objective * mask) / jnp.sum(mask)
   return tl.Fn('PPOLoss', f)
 
 
@@ -476,7 +476,7 @@ def AWRLoss(beta, w_max):  # pylint: disable=invalid-name
   def f(log_probs, advantages, old_log_probs, mask):
     del old_log_probs  # Not used in AWR.
     weights = jnp.minimum(awr_weights(advantages, beta), w_max)
-    return -np.sum(log_probs * weights * mask) / np.sum(mask)
+    return -jnp.sum(log_probs * weights * mask) / jnp.sum(mask)
   return tl.Fn('AWRLoss', f)
 
 

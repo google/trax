@@ -168,7 +168,7 @@ class ActorCriticTest(absltest.TestCase):
     )
     trainer.run(1)
     self.assertEqual(1, trainer.current_epoch)
-    self.assertGreater(trainer.avg_returns[-1], 50.0)
+    self.assertGreater(trainer.avg_returns[-1], 35.0)
 
   def test_awrtrainer_cartpole_shared(self):
     """Test-runs AWR on cartpole with shared layers."""
@@ -199,7 +199,7 @@ class ActorCriticTest(absltest.TestCase):
     )
     trainer.run(1)
     self.assertEqual(1, trainer.current_epoch)
-    self.assertGreater(trainer.avg_returns[-1], 50.0)
+    self.assertGreater(trainer.avg_returns[-1], 35.0)
 
   def test_sanity_awrtrainer_transformer_cartpole(self):
     """Test-runs AWR on cartpole with Transformer."""
