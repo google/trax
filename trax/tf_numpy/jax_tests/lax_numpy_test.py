@@ -1344,7 +1344,6 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
       for axis2 in range(-len(shape), len(shape))
       if (axis1 % len(shape)) != (axis2 % len(shape))
       for offset in list(range(-4, 4))))
-  @disable
   def testTrace(self, shape, dtype, out_dtype, offset, axis1, axis2, rng_factory):
     rng = rng_factory()
     def onp_fun(arg):
@@ -1355,7 +1354,8 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
     lnp_fun = lambda arg: lnp.trace(arg, offset, axis1, axis2, out_dtype)
     args_maker = lambda: [rng(shape, dtype)]
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_{}_axis={}".format(
@@ -2516,23 +2516,33 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
 
   @named_parameters(
       jtu.cases_from_list(
-        {"testcase_name": "_shapes={}_dtype={}_indexing={}_sparse={}".format(
-            shapes, dtype, indexing, sparse),
-         "shapes": shapes, "dtype": dtype, "indexing": indexing,
-         "sparse": sparse, "rng_factory": rng_factory}
-        for shapes in [(), (5,), (5, 3)]
-        for dtype in number_dtypes
-        for indexing in ['xy', 'ij']
-        for sparse in [True, False]
-        for rng_factory in [jtu.rand_default]))
-  @disable
+          {
+              "testcase_name":
+                  "_shapes={}_dtype={}_indexing={}_sparse={}".format(
+                      shapes, dtype, indexing, sparse),
+              "shapes":
+                  shapes,
+              "dtype":
+                  dtype,
+              "indexing":
+                  indexing,
+              "sparse":
+                  sparse,
+              "rng_factory":
+                  rng_factory
+          } for shapes in [(), (5,), (5, 3)] for dtype in number_dtypes
+          for indexing in ["xy", "ij"]
+          for sparse in [False]  # TODO(nareshmodi): Make sparse work
+          for rng_factory in [jtu.rand_default]))
   def testMeshGrid(self, shapes, dtype, indexing, sparse, rng_factory):
     rng = rng_factory()
     args_maker = self._GetArgsMaker(rng, [(x,) for x in shapes],
                                     [dtype] * len(shapes))
     onp_fun = partial(onp.meshgrid, indexing=indexing, sparse=sparse)
     lnp_fun = partial(lnp.meshgrid, indexing=indexing, sparse=sparse)
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+    self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(
       jtu.cases_from_list(

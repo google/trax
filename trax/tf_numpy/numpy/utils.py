@@ -328,6 +328,16 @@ def greater(a, b):
   return _maybe_static(a) > _maybe_static(b)
 
 
+def greater_equal(a, b):
+  """A version of tf.greater_equal that eagerly evaluates if possible."""
+  return _maybe_static(a) >= _maybe_static(b)
+
+
+def less_equal(a, b):
+  """A version of tf.less_equal that eagerly evaluates if possible."""
+  return _maybe_static(a) <= _maybe_static(b)
+
+
 def logical_and(a, b):
   """A version of tf.logical_and that eagerly evaluates if possible."""
   a_value = get_static_value(a)

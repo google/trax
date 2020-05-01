@@ -1161,3 +1161,70 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
     weights_sum = array_methods.broadcast_to(weights_sum, tf.shape(avg.data))
     return avg, weights_sum
   return avg
+
+
+@utils.np_doc(np.trace)
+def trace(a, offset=0, axis1=0, axis2=1, dtype=None):  # pylint: disable=missing-docstring
+  a = array_creation.asarray(a).data
+
+  if offset == 0:
+    a_shape = a.shape
+    if a_shape.rank is not None:
+      rank = len(a_shape)
+      if (axis1 == -2 or axis1 == rank - 2) and (axis2 == -1 or
+                                                 axis2 == rank - 1):
+        return utils.tensor_to_ndarray(tf.linalg.trace(a))
+
+  a_rank = tf.rank(a)
+  if axis1 < 0:
+    axis1 += a_rank
+  if axis2 < 0:
+    axis2 += a_rank
+
+  minaxis = tf.minimum(axis1, axis2)
+  maxaxis = tf.maximum(axis1, axis2)
+
+  # Move axes of interest to the end.
+  range_rank = tf.range(a_rank)
+  perm = tf.concat([
+      range_rank[0:minaxis], range_rank[minaxis + 1:maxaxis],
+      range_rank[maxaxis + 1:], [axis1, axis2]
+  ],
+                   axis=0)
+  a = tf.transpose(a, perm)
+
+  a_shape = tf.shape(a)
+
+  # All zeros since diag_part doesn't handle all possible k (aka offset).
+  # Written this way since cond will run shape inference on both branches,
+  # and diag_part shape inference will fail when offset is out of bounds.
+  a, offset = utils.cond(
+      utils.logical_or(
+          utils.less_equal(offset, -1 * utils.getitem(a_shape, -2)),
+          utils.greater_equal(offset, utils.getitem(a_shape, -1)),
+      ), lambda: (tf.zeros_like(a), 0), lambda: (a, offset))
+
+  a = utils.tensor_to_ndarray(tf.linalg.diag_part(a, k=offset))
+  return array_methods.sum(a, -1, dtype)
+
+
+@utils.np_doc(np.meshgrid)
+def meshgrid(*xi, **kwargs):
+  """This currently requires copy=True and sparse=False."""
+  sparse = kwargs.get('sparse', False)
+  if sparse:
+    raise ValueError('tf.numpy doesnt support returning sparse arrays yet')
+
+  copy = kwargs.get('copy', True)
+  if not copy:
+    raise ValueError('tf.numpy only supports copy=True')
+
+  indexing = kwargs.get('indexing', 'xy')
+
+  xi = [array_creation.asarray(arg).data for arg in xi]
+  kwargs = {'indexing': indexing}
+
+  outputs = tf.meshgrid(*xi, **kwargs)
+  outputs = [utils.tensor_to_ndarray(output) for output in outputs]
+
+  return outputs
