@@ -22,9 +22,9 @@ from __future__ import print_function
 import numpy as np
 import tensorflow.compat.v2 as tf
 
-from trax.tf_numpy.numpy import array_creation
+from trax.tf_numpy.numpy import array_ops
 from trax.tf_numpy.numpy import arrays
-from trax.tf_numpy.numpy import math
+from trax.tf_numpy.numpy import math_ops
 
 
 class LogicTest(tf.test.TestCase):
@@ -39,11 +39,11 @@ class LogicTest(tf.test.TestCase):
         lambda x: np.array(x, dtype=np.int64),
         lambda x: np.array(x, dtype=np.float32),
         lambda x: np.array(x, dtype=np.float64),
-        array_creation.array,
-        lambda x: array_creation.array(x, dtype=tf.int32),
-        lambda x: array_creation.array(x, dtype=tf.int64),
-        lambda x: array_creation.array(x, dtype=tf.float32),
-        lambda x: array_creation.array(x, dtype=tf.float64),
+        array_ops.array,
+        lambda x: array_ops.array(x, dtype=tf.int32),
+        lambda x: array_ops.array(x, dtype=tf.int64),
+        lambda x: array_ops.array(x, dtype=tf.float32),
+        lambda x: array_ops.array(x, dtype=tf.float64),
     ]
 
   def testEqual(self):
@@ -56,7 +56,7 @@ class LogicTest(tf.test.TestCase):
           arg1 = fn1(x1)
           arg2 = fn2(x2)
           self.match(
-              math.equal(arg1, arg2),
+              math_ops.equal(arg1, arg2),
               np.equal(
                   make_numpy_compatible(arg1), make_numpy_compatible(arg2)))
 

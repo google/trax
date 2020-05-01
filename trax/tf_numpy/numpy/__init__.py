@@ -24,12 +24,10 @@ from tensorflow import newaxis
 from trax.tf_numpy.numpy import random
 
 # pylint: disable=wildcard-import
-from trax.tf_numpy.numpy.array_creation import *
-from trax.tf_numpy.numpy.array_manipulation import *
-from trax.tf_numpy.numpy.array_methods import *
+from trax.tf_numpy.numpy.array_ops import *
 from trax.tf_numpy.numpy.arrays import ndarray
 from trax.tf_numpy.numpy.dtypes import *
-from trax.tf_numpy.numpy.math import *
+from trax.tf_numpy.numpy.math_ops import *
 from trax.tf_numpy.numpy.utils import finfo
 from trax.tf_numpy.numpy.utils import promote_types
 from trax.tf_numpy.numpy.utils import result_type

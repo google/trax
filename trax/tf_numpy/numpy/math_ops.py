@@ -25,8 +25,7 @@ import six
 
 import tensorflow.compat.v2 as tf
 
-from trax.tf_numpy.numpy import array_creation
-from trax.tf_numpy.numpy import array_methods
+from trax.tf_numpy.numpy import array_ops
 from trax.tf_numpy.numpy import arrays
 from trax.tf_numpy.numpy import dtypes
 from trax.tf_numpy.numpy import utils
@@ -48,10 +47,10 @@ def dot(a, b):  # pylint: disable=missing-docstring
 # TODO(wangpeng): Make element-wise ops `ufunc`s
 def _bin_op(tf_fun, a, b, promote=True):
   if promote:
-    a, b = array_creation._promote_dtype(a, b)
+    a, b = array_ops._promote_dtype(a, b)  # pylint: disable=protected-access
   else:
-    a = array_creation.asarray(a)
-    b = array_creation.asarray(b)
+    a = array_ops.array(a)
+    b = array_ops.array(b)
   return utils.tensor_to_ndarray(tf_fun(a.data, b.data))
 
 
@@ -164,7 +163,7 @@ def clip(a, a_min, a_max):  # pylint: disable=missing-docstring
   elif a_max is None:
     return maximum(a, a_min)
   else:
-    a, a_min, a_max = array_creation._promote_dtype(a, a_min, a_max)  # pylint: disable=protected-access
+    a, a_min, a_max = array_ops._promote_dtype(a, a_min, a_max)  # pylint: disable=protected-access
     return utils.tensor_to_ndarray(
         tf.clip_by_value(*utils.tf_broadcast(a.data, a_min.data, a_max.data)))
 
@@ -288,26 +287,19 @@ def hypot(x1, x2):
   return sqrt(square(x1) + square(x2))
 
 
-def _pad_left_to(n, old_shape):
-  old_shape = array_creation.asarray(old_shape, dtype=np.int32).data
-  new_shape = tf.pad(
-      old_shape, [[tf.math.maximum(n - tf.size(old_shape), 0), 0]],
-      constant_values=1)
-  return array_creation.asarray(new_shape)
-
-
 @utils.np_doc(np.kron)
 def kron(a, b):
-  a, b = array_creation._promote_dtype(a, b)
+  # pylint: disable=protected-access,g-complex-comprehension
+  a, b = array_ops._promote_dtype(a, b)
   ndim = max(a.ndim, b.ndim)
   if a.ndim < ndim:
-    a = array_methods.reshape(a, _pad_left_to(ndim, a.shape))
+    a = array_ops.reshape(a, array_ops._pad_left_to(ndim, a.shape))
   if b.ndim < ndim:
-    b = array_methods.reshape(b, _pad_left_to(ndim, b.shape))
-  a_reshaped = array_methods.reshape(a, [i for d in a.shape for i in (d, 1)])
-  b_reshaped = array_methods.reshape(b, [i for d in b.shape for i in (1, d)])
+    b = array_ops.reshape(b, array_ops._pad_left_to(ndim, b.shape))
+  a_reshaped = array_ops.reshape(a, [i for d in a.shape for i in (d, 1)])
+  b_reshaped = array_ops.reshape(b, [i for d in b.shape for i in (1, d)])
   out_shape = tuple(np.multiply(a.shape, b.shape))
-  return array_methods.reshape(a_reshaped * b_reshaped, out_shape)
+  return array_ops.reshape(a_reshaped * b_reshaped, out_shape)
 
 
 @utils.np_doc(np.outer)
@@ -322,7 +314,7 @@ def outer(a, b):
 def logaddexp(x1, x2):
   amax = maximum(x1, x2)
   delta = x1 - x2
-  return array_methods.where(
+  return array_ops.where(
       isnan(delta),
       x1 + x2,  # NaNs or infinities of the same sign.
       amax + log1p(exp(-abs(delta))))
@@ -332,7 +324,7 @@ def logaddexp(x1, x2):
 def logaddexp2(x1, x2):
   amax = maximum(x1, x2)
   delta = x1 - x2
-  return array_methods.where(
+  return array_ops.where(
       isnan(delta),
       x1 + x2,  # NaNs or infinities of the same sign.
       amax + log1p(exp2(-abs(delta))) / np.log(2))
@@ -372,8 +364,7 @@ def isclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):  # pylint: disable=m
 
 @utils.np_doc(np.allclose)
 def allclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):
-  return array_methods.all(
-      isclose(a, b, rtol=rtol, atol=atol, equal_nan=equal_nan))
+  return array_ops.all(isclose(a, b, rtol=rtol, atol=atol, equal_nan=equal_nan))
 
 
 def _tf_gcd(x1, x2):
@@ -468,7 +459,7 @@ def _scalar(tf_fn, x, promote_to_float=False):
     determined by `dtypes.default_float_type`, unless x is an ndarray with a
     floating point type, in which case the output type is same as x.dtype.
   """
-  x = array_creation.asarray(x)
+  x = array_ops.array(x)
   if promote_to_float and not np.issubdtype(x.dtype, np.floating):
     x = x.astype(dtypes.default_float_type())
   return utils.tensor_to_ndarray(tf_fn(x.data))
@@ -662,17 +653,17 @@ def fix(x):
 
 @utils.np_doc(np.iscomplex)
 def iscomplex(x):
-  return array_methods.imag(x) != 0
+  return array_ops.imag(x) != 0
 
 
 @utils.np_doc(np.isreal)
 def isreal(x):
-  return array_methods.imag(x) == 0
+  return array_ops.imag(x) == 0
 
 
 @utils.np_doc(np.iscomplexobj)
 def iscomplexobj(x):
-  x = array_creation.asarray(x)
+  x = array_ops.array(x)
   return np.issubdtype(x.dtype, np.complexfloating)
 
 
@@ -687,27 +678,31 @@ def isnan(x):
 
 
 def _make_nan_reduction(onp_reduction, reduction, init_val):
+  """Helper to generate nan* functions."""
   @utils.np_doc(onp_reduction)
   def nan_reduction(a, axis=None, dtype=None, keepdims=False):
-    a = array_creation.asarray(a)
-    v = array_creation.asarray(init_val, dtype=a.dtype)
-    return reduction(array_methods.where(isnan(a), v, a),
-                     axis=axis, dtype=dtype, keepdims=keepdims)
+    a = array_ops.array(a)
+    v = array_ops.array(init_val, dtype=a.dtype)
+    return reduction(
+        array_ops.where(isnan(a), v, a),
+        axis=axis,
+        dtype=dtype,
+        keepdims=keepdims)
   return nan_reduction
 
 
-nansum = _make_nan_reduction(np.nansum, array_methods.sum, 0)
-nanprod = _make_nan_reduction(np.nanprod, array_methods.prod, 1)
+nansum = _make_nan_reduction(np.nansum, array_ops.sum, 0)
+nanprod = _make_nan_reduction(np.nanprod, array_ops.prod, 1)
 
 
 @utils.np_doc(np.nanmean)
 def nanmean(a, axis=None, dtype=None, keepdims=None):
-  a = array_creation.asarray(a)
+  a = array_ops.array(a)
   if np.issubdtype(a.dtype, np.bool_) or np.issubdtype(a.dtype, np.integer):
-    return array_methods.mean(a, axis=axis, dtype=dtype, keepdims=keepdims)
+    return array_ops.mean(a, axis=axis, dtype=dtype, keepdims=keepdims)
   nan_mask = logical_not(isnan(a))
-  normalizer = array_methods.sum(nan_mask, axis=axis, dtype=np.int64,
-                                 keepdims=keepdims)
+  normalizer = array_ops.sum(
+      nan_mask, axis=axis, dtype=np.int64, keepdims=keepdims)
   return nansum(a, axis=axis, dtype=dtype, keepdims=keepdims) / normalizer
 
 
@@ -723,12 +718,12 @@ def isinf(x):
 
 @utils.np_doc(np.isneginf)
 def isneginf(x):
-  return x == array_creation.full_like(x, -np.inf)
+  return x == array_ops.full_like(x, -np.inf)
 
 
 @utils.np_doc(np.isposinf)
 def isposinf(x):
-  return x == array_creation.full_like(x, np.inf)
+  return x == array_ops.full_like(x, np.inf)
 
 
 @utils.np_doc(np.log2)
@@ -786,58 +781,6 @@ def diff(a, n=1, axis=-1):
   return _scalar(f, a)
 
 
-def _atleast_nd(n, new_shape, *arys):
-  """Reshape arrays to be at least `n`-dimensional.
-
-  Args:
-    n: The minimal rank.
-    new_shape: a function that takes `n` and the old shape and returns the
-      desired new shape.
-    arys: ndarray(s) to be reshaped.
-
-  Returns:
-    The reshaped array(s).
-  """
-  def f(x):
-    # pylint: disable=g-long-lambda
-    x = array_creation.asarray(x)
-    return array_creation.asarray(
-        utils.cond(
-            utils.greater(n, tf.rank(x)), lambda: array_methods.reshape(
-                x, new_shape(n, tf.shape(x.data))).data, lambda: x.data))
-
-  arys = list(map(f, arys))
-  if len(arys) == 1:
-    return arys[0]
-  else:
-    return arys
-
-
-@utils.np_doc(np.atleast_1d)
-def atleast_1d(*arys):
-  return _atleast_nd(1, _pad_left_to, *arys)
-
-
-@utils.np_doc(np.atleast_2d)
-def atleast_2d(*arys):
-  return _atleast_nd(2, _pad_left_to, *arys)
-
-
-@utils.np_doc(np.atleast_3d)
-def atleast_3d(*arys):  # pylint: disable=missing-docstring
-
-  def new_shape(_, old_shape):
-    # pylint: disable=g-long-lambda
-    ndim = tf.size(old_shape)
-    return utils.cond(
-        ndim == 0, lambda: tf.constant([1, 1, 1], dtype=tf.int32),
-        lambda: utils.cond(
-            ndim == 1, lambda: tf.pad(old_shape, [[1, 1]], constant_values=1),
-            lambda: tf.pad(old_shape, [[0, 1]], constant_values=1)))
-
-  return _atleast_nd(3, new_shape, *arys)
-
-
 def flip(f):
   def _f(a, b):
     return f(b, a)
@@ -864,8 +807,8 @@ setattr(arrays.ndarray, '__rtruediv__', flip(true_divide))
 def _comparison(tf_fun, x1, x2, cast_bool_to_int=False):
   dtype = utils.result_type(x1, x2)
   # Cast x1 and x2 to the result_type if needed.
-  x1 = array_creation.asarray(x1, dtype=dtype)
-  x2 = array_creation.asarray(x2, dtype=dtype)
+  x1 = array_ops.array(x1, dtype=dtype)
+  x2 = array_ops.array(x2, dtype=dtype)
   x1 = x1.data
   x2 = x2.data
   if cast_bool_to_int and x1.dtype == tf.bool:
@@ -914,8 +857,8 @@ def array_equal(a1, a2):
 
 
 def _logical_binary_op(tf_fun, x1, x2):
-  x1 = array_creation.asarray(x1, dtype=np.bool_)
-  x2 = array_creation.asarray(x2, dtype=np.bool_)
+  x1 = array_ops.array(x1, dtype=np.bool_)
+  x2 = array_ops.array(x2, dtype=np.bool_)
   return utils.tensor_to_ndarray(tf_fun(x1.data, x2.data))
 
 
@@ -936,7 +879,7 @@ def logical_xor(x1, x2):
 
 @utils.np_doc(np.logical_not)
 def logical_not(x):
-  x = array_creation.asarray(x, dtype=np.bool_)
+  x = array_ops.array(x, dtype=np.bool_)
   return utils.tensor_to_ndarray(tf.logical_not(x.data))
 
 setattr(arrays.ndarray, '__invert__', logical_not)
@@ -952,8 +895,8 @@ setattr(arrays.ndarray, '__ne__', not_equal)
 def linspace(start, stop, num=50, endpoint=True, retstep=False, dtype=float):
   if dtype:
     dtype = utils.result_type(dtype)
-  start = array_creation.asarray(start, dtype=dtype)
-  stop = array_creation.asarray(stop, dtype=dtype)
+  start = array_ops.array(start, dtype=dtype)
+  stop = array_ops.array(stop, dtype=dtype)
   if num == 0:
     return empty(dtype)
   if num < 0:
@@ -992,8 +935,8 @@ def logspace(start, stop, num=50, endpoint=True, base=10.0, dtype=None):
 
 @utils.np_doc(np.ptp)
 def ptp(a, axis=None, keepdims=None):
-  return (array_methods.amax(a, axis=axis, keepdims=keepdims) -
-          array_methods.amin(a, axis=axis, keepdims=keepdims))
+  return (array_ops.amax(a, axis=axis, keepdims=keepdims) -
+          array_ops.amin(a, axis=axis, keepdims=keepdims))
 
 
 @utils.np_doc_only(np.concatenate)
@@ -1001,14 +944,14 @@ def concatenate(arys, axis=0):
   if not arys:
     raise ValueError('Need at least one array to concatenate.')
   dtype = utils.result_type(*arys)
-  arys = [array_creation.asarray(array, dtype=dtype).data for array in arys]
+  arys = [array_ops.array(array, dtype=dtype).data for array in arys]
   return arrays.tensor_to_ndarray(tf.concat(arys, axis))
 
 
 @utils.np_doc_only(np.tile)
 def tile(a, reps):
-  a = array_creation.asarray(a).data
-  reps = array_creation.asarray(reps, dtype=tf.int32).reshape([-1]).data
+  a = array_ops.array(a).data
+  reps = array_ops.array(reps, dtype=tf.int32).reshape([-1]).data
 
   a_rank = tf.rank(a)
   reps_size = tf.size(reps)
@@ -1025,7 +968,7 @@ def tile(a, reps):
 
 @utils.np_doc(np.nonzero)
 def nonzero(a):
-  a = atleast_1d(a).data
+  a = array_ops.atleast_1d(a).data
   if a.shape.rank is None:
     raise ValueError("The rank of `a` is unknown, so we can't decide how many "
                      "arrays to return.")
@@ -1037,7 +980,7 @@ def nonzero(a):
 @utils.np_doc(np.count_nonzero)
 def count_nonzero(a, axis=None):
   return arrays.tensor_to_ndarray(
-      tf.math.count_nonzero(array_creation.asarray(a).data, axis))
+      tf.math.count_nonzero(array_ops.array(a).data, axis))
 
 
 @utils.np_doc(np.argsort)
@@ -1049,7 +992,7 @@ def argsort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missin
     raise ValueError("'order' argument to sort is not supported.")
   stable = (kind == 'stable')
 
-  a = array_creation.asarray(a).data
+  a = array_ops.array(a).data
 
   def _argsort(a, axis, stable):
     if axis is None:
@@ -1062,7 +1005,7 @@ def argsort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missin
       tf.rank(a) == 0, lambda: tf.constant([0]),
       lambda: _argsort(a, axis, stable))
 
-  return array_creation.asarray(tf_ans, dtype=np.intp)
+  return array_ops.array(tf_ans, dtype=np.intp)
 
 
 @utils.np_doc(np.sort)
@@ -1072,7 +1015,7 @@ def sort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missing-d
   if order is not None:
     raise ValueError("'order' argument to sort is not supported.")
 
-  a = array_creation.asarray(a)
+  a = array_ops.array(a)
 
   if axis is None:
     result_t = tf.sort(tf.reshape(a.data, [-1]), 0)
@@ -1082,12 +1025,12 @@ def sort(a, axis=-1, kind='quicksort', order=None):  # pylint: disable=missing-d
 
 
 def _argminmax(fn, a, axis=None):
-  a = array_creation.asarray(a)
+  a = array_ops.array(a)
   if axis is None:
     # When axis is None numpy flattens the array.
     a_t = tf.reshape(a.data, [-1])
   else:
-    a_t = atleast_1d(a).data
+    a_t = array_ops.atleast_1d(a).data
   return utils.tensor_to_ndarray(fn(input=a_t, axis=axis))
 
 
@@ -1104,8 +1047,7 @@ def argmin(a, axis=None):
 @utils.np_doc(np.append)
 def append(arr, values, axis=None):
   if axis is None:
-    return concatenate([array_methods.ravel(arr),
-                        array_methods.ravel(values)], 0)
+    return concatenate([array_ops.ravel(arr), array_ops.ravel(values)], 0)
   else:
     return concatenate([arr, values], axis=axis)
 
@@ -1116,7 +1058,7 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
     # TODO(wangpeng): Support tuple of ints as `axis`
     raise ValueError('`axis` must be an integer. Tuple of ints is not '
                      'supported yet. Got type: %s' % type(axis))
-  a = array_creation.asarray(a)
+  a = array_ops.array(a)
   if weights is None:  # Treat all weights as 1
     if not np.issubdtype(a.dtype, np.inexact):
       a = a.astype(utils.result_type(a.dtype, dtypes.default_float_type()))
@@ -1132,8 +1074,9 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
     else:
       out_dtype = utils.result_type(a.dtype, weights,
                                     dtypes.default_float_type())
-    a = array_creation.asarray(a, out_dtype).data
-    weights = array_creation.asarray(weights, out_dtype).data
+    a = array_ops.array(a, out_dtype).data
+    weights = array_ops.array(weights, out_dtype).data
+
     def rank_equal_case():
       tf.debugging.Assert(tf.reduce_all(tf.shape(a) == tf.shape(weights)),
                           [tf.shape(a), tf.shape(weights)])
@@ -1156,16 +1099,16 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
       avg, weights_sum = utils.cond(tf.rank(a) == tf.rank(weights),
                                     rank_equal_case, rank_not_equal_case)
 
-  avg = array_creation.asarray(avg)
+  avg = array_ops.array(avg)
   if returned:
-    weights_sum = array_methods.broadcast_to(weights_sum, tf.shape(avg.data))
+    weights_sum = array_ops.broadcast_to(weights_sum, tf.shape(avg.data))
     return avg, weights_sum
   return avg
 
 
 @utils.np_doc(np.trace)
 def trace(a, offset=0, axis1=0, axis2=1, dtype=None):  # pylint: disable=missing-docstring
-  a = array_creation.asarray(a).data
+  a = array_ops.asarray(a).data
 
   if offset == 0:
     a_shape = a.shape
@@ -1205,7 +1148,7 @@ def trace(a, offset=0, axis1=0, axis2=1, dtype=None):  # pylint: disable=missing
       ), lambda: (tf.zeros_like(a), 0), lambda: (a, offset))
 
   a = utils.tensor_to_ndarray(tf.linalg.diag_part(a, k=offset))
-  return array_methods.sum(a, -1, dtype)
+  return array_ops.sum(a, -1, dtype)
 
 
 @utils.np_doc(np.meshgrid)
@@ -1221,7 +1164,7 @@ def meshgrid(*xi, **kwargs):
 
   indexing = kwargs.get('indexing', 'xy')
 
-  xi = [array_creation.asarray(arg).data for arg in xi]
+  xi = [array_ops.asarray(arg).data for arg in xi]
   kwargs = {'indexing': indexing}
 
   outputs = tf.meshgrid(*xi, **kwargs)

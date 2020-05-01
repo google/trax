@@ -26,12 +26,11 @@ import numpy as np
 import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy import extensions
-from trax.tf_numpy.numpy import array_creation
-from trax.tf_numpy.numpy import array_methods
+from trax.tf_numpy.numpy import array_ops
 from trax.tf_numpy.numpy import arrays
-from trax.tf_numpy.numpy import math
+from trax.tf_numpy.numpy import math_ops
 from trax.tf_numpy.numpy import random
-from trax.tf_numpy.numpy.array_creation import asarray
+from trax.tf_numpy.numpy.array_ops import asarray
 
 FLAGS = flags.FLAGS
 
@@ -87,7 +86,8 @@ class ExtensionsTest(tf.test.TestCase):
 
   def testGrad(self):
     def f(a, b):
-      return array_methods.sum(math.sqrt(math.exp(a)) + b)
+      return array_ops.sum(math_ops.sqrt(math_ops.exp(a)) + b)
+
     g = extensions.grad(f)
     def compare(a, b):
       with tf.GradientTape() as tape:
@@ -125,7 +125,8 @@ class ExtensionsTest(tf.test.TestCase):
 
   def testJit(self):
     def f(a, b):
-      return array_methods.sum(math.sqrt(math.exp(a)) + b)
+      return array_ops.sum(math_ops.sqrt(math_ops.exp(a)) + b)
+
     f_jitted = extensions.jit(f)
     shape = [10]
     a = random.randn(*shape)
@@ -155,12 +156,13 @@ class ExtensionsTest(tf.test.TestCase):
 
   def _testEvalOnShapes(self, transformer):
     def f(a, b):
-      return array_methods.sum(math.sqrt(math.exp(a)) + b)
+      return array_ops.sum(math_ops.sqrt(math_ops.exp(a)) + b)
+
     f_prime = transformer(f)
     shape = [10]
     dtype = np.float16
-    a = array_creation.zeros(shape=shape, dtype=dtype)
-    b = array_creation.zeros(shape=shape, dtype=dtype)
+    a = array_ops.zeros(shape=shape, dtype=dtype)
+    b = array_ops.zeros(shape=shape, dtype=dtype)
     expected = f(a, b)
     got = f_prime(a, b)
     self.assertAllEqual(expected.shape, got.shape)
@@ -181,8 +183,7 @@ class ExtensionsTest(tf.test.TestCase):
       @extensions.jit
       def f_prime(a, b):
         shape_dtype = extensions.eval_on_shapes(f)(a, b)
-        return array_creation.zeros(shape=shape_dtype.shape,
-                                    dtype=shape_dtype.dtype)
+        return array_ops.zeros(shape=shape_dtype.shape, dtype=shape_dtype.dtype)
       return f_prime
     self._testEvalOnShapes(transformer)
 
@@ -363,7 +364,7 @@ class ExtensionsTest(tf.test.TestCase):
         _train_and_reduce, devices=devices)
 
     def replicate(x, num_devices=2):
-      return array_methods.broadcast_to(x, (num_devices,) + x.shape)
+      return array_ops.broadcast_to(x, (num_devices,) + x.shape)
 
     params = tf.nest.map_structure(replicate, params)
 
@@ -374,7 +375,7 @@ class ExtensionsTest(tf.test.TestCase):
 
       # New shape.
       new_shape_prefix = [num_devices, batch_size_per_device]
-      return array_methods.reshape(x, new_shape_prefix + x_shape[1:])
+      return array_ops.reshape(x, new_shape_prefix + x_shape[1:])
 
     inputs = tf.nest.map_structure(reshape, inputs)
     targets = tf.nest.map_structure(reshape, targets)
@@ -398,7 +399,7 @@ class ExtensionsTest(tf.test.TestCase):
     def reduce_sum(f):
       return extensions.psum(f)
 
-    data = array_creation.asarray(tf.convert_to_tensor(value=[1, 3]))
+    data = array_ops.asarray(tf.convert_to_tensor(value=[1, 3]))
     pmapped = extensions.pmap(reduce_sum, devices=devices)
     result = pmapped(data)
 
@@ -413,7 +414,7 @@ class ExtensionsTest(tf.test.TestCase):
     def reduce_mean(f):
       return extensions.pmean(f)
 
-    data = array_creation.asarray(tf.convert_to_tensor(value=[1, 3]))
+    data = array_ops.asarray(tf.convert_to_tensor(value=[1, 3]))
     pmapped = extensions.pmap(reduce_mean, devices=devices)
     result = pmapped(data)
 
@@ -426,7 +427,7 @@ class ExtensionsTest(tf.test.TestCase):
     def reduce_sum(f):
       return extensions.psum(f, axis_name="foo")
 
-    data = array_creation.asarray(tf.convert_to_tensor(value=[1, 3]))
+    data = array_ops.asarray(tf.convert_to_tensor(value=[1, 3]))
     pmapped = extensions.pmap(reduce_sum, axis_name="foo", devices=devices)
     pmapped(data)
 
@@ -436,7 +437,7 @@ class ExtensionsTest(tf.test.TestCase):
     def reduce_sum(f):
       return extensions.psum(f, axis_name="bar")
 
-    data = array_creation.asarray(tf.convert_to_tensor(value=[1, 3]))
+    data = array_ops.asarray(tf.convert_to_tensor(value=[1, 3]))
     with self.assertRaisesWithPredicateMatch(
         ValueError, r"axis_name (.*) is not equal to that of the surrounding"):
       pmapped = extensions.pmap(reduce_sum, axis_name="foo", devices=devices)
@@ -448,7 +449,7 @@ class ExtensionsTest(tf.test.TestCase):
     def f(x):
       return x + 1.0
 
-    data = array_creation.asarray(tf.convert_to_tensor(value=[1, 3]))
+    data = array_ops.asarray(tf.convert_to_tensor(value=[1, 3]))
     with self.assertRaisesWithPredicateMatch(
         ValueError, r"Nested pmap is not supported"):
       f = extensions.pmap(f, devices=devices)

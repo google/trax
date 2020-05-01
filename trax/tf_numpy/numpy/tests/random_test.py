@@ -24,7 +24,7 @@ from six.moves import range
 import tensorflow.compat.v2 as tf
 
 # Needed for ndarray.reshape.
-from trax.tf_numpy.numpy import array_methods  # pylint: disable=unused-import
+from trax.tf_numpy.numpy import array_ops  # pylint: disable=unused-import
 from trax.tf_numpy.numpy import random
 
 

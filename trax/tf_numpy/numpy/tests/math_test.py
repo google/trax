@@ -25,10 +25,9 @@ import numpy as np
 from six.moves import range
 import tensorflow.compat.v2 as tf
 
-from trax.tf_numpy.numpy import array_creation
-from trax.tf_numpy.numpy import array_methods
+from trax.tf_numpy.numpy import array_ops
 from trax.tf_numpy.numpy import arrays
-from trax.tf_numpy.numpy import math
+from trax.tf_numpy.numpy import math_ops
 
 
 class MathTest(tf.test.TestCase, parameterized.TestCase):
@@ -41,9 +40,9 @@ class MathTest(tf.test.TestCase, parameterized.TestCase):
         np.array,
         lambda x: np.array(x, dtype=np.float32),
         lambda x: np.array(x, dtype=np.float64),
-        array_creation.array,
-        lambda x: array_creation.array(x, dtype=np.float32),
-        lambda x: array_creation.array(x, dtype=np.float64),
+        array_ops.array,
+        lambda x: array_ops.array(x, dtype=np.float32),
+        lambda x: array_ops.array(x, dtype=np.float64),
     ]
     self.types = [np.int32, np.int64, np.float32, np.float64]
 
@@ -65,8 +64,8 @@ class MathTest(tf.test.TestCase, parameterized.TestCase):
         for type_b in self.types:
           if not check_promotion and type_a != type_b:
             continue
-          arg1 = array_creation.array(a, dtype=type_a)
-          arg2 = array_creation.array(b, dtype=type_b)
+          arg1 = array_ops.array(a, dtype=type_a)
+          arg2 = array_ops.array(b, dtype=type_b)
           self.match(
               math_fun(arg1, arg2),
               np_fun(arg1, arg2),
@@ -90,33 +89,39 @@ class MathTest(tf.test.TestCase, parameterized.TestCase):
         ([1, 2], [[5, 6, 7], [8, 9, 10]]),
         (np.arange(2 * 3 * 5).reshape([2, 3, 5]).tolist(),
          np.arange(5 * 7 * 11).reshape([7, 5, 11]).tolist())]
-    return self._testBinaryOp(math.dot, np.dot, 'dot',
-                              extra_operands=extra_operands)
+    return self._testBinaryOp(
+        math_ops.dot, np.dot, 'dot', extra_operands=extra_operands)
 
   def testMinimum(self):
     # The numpy version has strange result type when promotion happens,
     # so set check_promotion_result_type to False.
-    return self._testBinaryOp(math.minimum, np.minimum, 'minimum',
-                              check_promotion_result_type=False)
+    return self._testBinaryOp(
+        math_ops.minimum,
+        np.minimum,
+        'minimum',
+        check_promotion_result_type=False)
 
   def testMaximum(self):
     # The numpy version has strange result type when promotion happens,
     # so set check_promotion_result_type to False.
-    return self._testBinaryOp(math.maximum, np.maximum, 'maximum',
-                              check_promotion_result_type=False)
+    return self._testBinaryOp(
+        math_ops.maximum,
+        np.maximum,
+        'maximum',
+        check_promotion_result_type=False)
 
   def testMatmul(self):
     operands = [([[1, 2]], [[3, 4, 5], [6, 7, 8]])]
-    return self._testBinaryOp(math.matmul, np.matmul, 'matmul',
-                              operands=operands)
+    return self._testBinaryOp(
+        math_ops.matmul, np.matmul, 'matmul', operands=operands)
 
   def testMatmulError(self):
     with self.assertRaisesRegex(ValueError, r''):
-      math.matmul(array_creation.ones([], np.int32),
-                  array_creation.ones([2, 3], np.int32))
+      math_ops.matmul(
+          array_ops.ones([], np.int32), array_ops.ones([2, 3], np.int32))
     with self.assertRaisesRegex(ValueError, r''):
-      math.matmul(array_creation.ones([2, 3], np.int32),
-                  array_creation.ones([], np.int32))
+      math_ops.matmul(
+          array_ops.ones([2, 3], np.int32), array_ops.ones([], np.int32))
 
   def _testUnaryOp(self, math_fun, np_fun, name):
 
@@ -131,25 +136,25 @@ class MathTest(tf.test.TestCase, parameterized.TestCase):
     run_test([[2, -3], [-6, 7]])
 
   def testLog(self):
-    self._testUnaryOp(math.log, np.log, 'log')
+    self._testUnaryOp(math_ops.log, np.log, 'log')
 
   def testExp(self):
-    self._testUnaryOp(math.exp, np.exp, 'exp')
+    self._testUnaryOp(math_ops.exp, np.exp, 'exp')
 
   def testTanh(self):
-    self._testUnaryOp(math.tanh, np.tanh, 'tanh')
+    self._testUnaryOp(math_ops.tanh, np.tanh, 'tanh')
 
   def testSqrt(self):
-    self._testUnaryOp(math.sqrt, np.sqrt, 'sqrt')
+    self._testUnaryOp(math_ops.sqrt, np.sqrt, 'sqrt')
 
   def _testReduce(self, math_fun, np_fun, name):
     axis_transforms = [
         lambda x: x,  # Identity,
         tf.convert_to_tensor,
         np.array,
-        array_creation.array,
-        lambda x: array_creation.array(x, dtype=np.float32),
-        lambda x: array_creation.array(x, dtype=np.float64),
+        array_ops.array,
+        lambda x: array_ops.array(x, dtype=np.float32),
+        lambda x: array_ops.array(x, dtype=np.float64),
     ]
 
     def run_test(a, **kwargs):
@@ -188,18 +193,18 @@ class MathTest(tf.test.TestCase, parameterized.TestCase):
     np.testing.assert_almost_equal(actual.tolist(), expected.tolist())
 
   def testSum(self):
-    self._testReduce(array_methods.sum, np.sum, 'sum')
+    self._testReduce(array_ops.sum, np.sum, 'sum')
 
   def testAmax(self):
-    self._testReduce(array_methods.amax, np.amax, 'amax')
+    self._testReduce(array_ops.amax, np.amax, 'amax')
 
   def testArgsort(self):
-    self._testUnaryOp(math.argsort, np.argsort, 'argsort')
+    self._testUnaryOp(math_ops.argsort, np.argsort, 'argsort')
 
     # Test stability
     r = np.arange(100)
     a = np.zeros(100)
-    np.testing.assert_equal(math.argsort(a, kind='stable'), r)
+    np.testing.assert_equal(math_ops.argsort(a, kind='stable'), r)
 
   def testArgMaxArgMin(self):
     data = [
@@ -213,42 +218,41 @@ class MathTest(tf.test.TestCase, parameterized.TestCase):
     ]
     for fn, d in itertools.product(self.array_transforms, data):
       arr = fn(d)
-      self.match(math.argmax(arr), np.argmax(arr))
-      self.match(math.argmin(arr), np.argmin(arr))
+      self.match(math_ops.argmax(arr), np.argmax(arr))
+      self.match(math_ops.argmin(arr), np.argmin(arr))
       if hasattr(arr, 'shape'):
         ndims = len(arr.shape)
       else:
-        ndims = array_creation.array(arr, copy=False).ndim
+        ndims = array_ops.array(arr, copy=False).ndim
       if ndims == 0:
         # Numpy flattens the scalar ndarray and treats it as a 1-d array of
         # size 1.
         ndims = 1
       for axis in range(-ndims, ndims):
-        self.match(
-            math.argmax(arr, axis=axis), np.argmax(arr, axis=axis))
-        self.match(
-            math.argmin(arr, axis=axis), np.argmin(arr, axis=axis))
+        self.match(math_ops.argmax(arr, axis=axis), np.argmax(arr, axis=axis))
+        self.match(math_ops.argmin(arr, axis=axis), np.argmin(arr, axis=axis))
 
   @parameterized.parameters([False, True])
   def testIsCloseEqualNan(self, equal_nan):
     a = np.asarray([1, 1, np.nan, 1, np.nan], np.float32)
     b = np.asarray([1, 2, 1, np.nan, np.nan], np.float32)
-    self.match(math.isclose(a, b, equal_nan=equal_nan),
-               np.isclose(a, b, equal_nan=equal_nan))
+    self.match(
+        math_ops.isclose(a, b, equal_nan=equal_nan),
+        np.isclose(a, b, equal_nan=equal_nan))
 
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(
         tf.errors.InvalidArgumentError, r''):
-      math.average(np.ones([2, 3]), weights=np.ones([2, 4]))
+      math_ops.average(np.ones([2, 3]), weights=np.ones([2, 4]))
     with self.assertRaisesWithPredicateMatch(
         tf.errors.InvalidArgumentError, r''):
-      math.average(np.ones([2, 3]), axis=0, weights=np.ones([2, 4]))
+      math_ops.average(np.ones([2, 3]), axis=0, weights=np.ones([2, 4]))
     with self.assertRaisesWithPredicateMatch(
         tf.errors.InvalidArgumentError, r''):
-      math.average(np.ones([2, 3]), axis=0, weights=np.ones([]))
+      math_ops.average(np.ones([2, 3]), axis=0, weights=np.ones([]))
     with self.assertRaisesWithPredicateMatch(
         tf.errors.InvalidArgumentError, r''):
-      math.average(np.ones([2, 3]), axis=0, weights=np.ones([5]))
+      math_ops.average(np.ones([2, 3]), axis=0, weights=np.ones([5]))
 
 
 if __name__ == '__main__':

@@ -29,8 +29,8 @@ import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.numpy import arrays
 from trax.tf_numpy.numpy import random
-from trax.tf_numpy.numpy.array_creation import array
-from trax.tf_numpy.numpy.array_creation import asarray
+from trax.tf_numpy.numpy.array_ops import array
+from trax.tf_numpy.numpy.array_ops import asarray
 from trax.tf_numpy.numpy.arrays import ndarray
 from trax.tf_numpy.numpy.arrays import ShardedNdArray
 
