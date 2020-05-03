@@ -111,14 +111,16 @@ class Layer(object):
     self._jit_cache = {}
 
   def __repr__(self):
+    def indent_string(x):
+      return '  ' + x.replace('\n', '\n  ')
     name_str = self._name
     n_in, n_out = self.n_in, self.n_out
     if n_in != 1: name_str += f'_in{n_in}'
     if n_out != 1: name_str += f'_out{n_out}'
     objs = self.sublayers
     if objs:
-      objs_str = ' '.join(str(x) for x in objs)
-      return f'{name_str}[ {objs_str} ]'
+      objs_str = '\n'.join(indent_string(str(x)) for x in objs)
+      return f'{name_str}[\n{objs_str}\n]'
     else:
       return name_str
 
