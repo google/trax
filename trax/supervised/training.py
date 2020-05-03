@@ -163,7 +163,7 @@ class Loop:
 
     gradients, state = (
         self._gradients_and_state_fn(batch, weights, state, self.new_rng()))
-    weights, slots = (
+    weights, slots, _ = (
         optimizer.tree_update(step, gradients, weights, slots, opt_params))
     return weights, state, slots
 

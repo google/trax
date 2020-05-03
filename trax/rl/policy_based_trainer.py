@@ -252,7 +252,7 @@ class PolicyBasedTrainer(base_trainer.BaseTrainer):
 
   def _policy_and_value_opt_update(self, step, grads, opt_state):
     (params, slots, opt_params) = opt_state
-    (params, slots) = self._policy_and_value_optimizer.tree_update(
+    (params, slots, _) = self._policy_and_value_optimizer.tree_update(
         step, grads, params, slots, opt_params)
     return (params, slots, opt_params)
 

@@ -349,10 +349,14 @@ class Trainer(object):
     opt_state.opt_params.update(opt_param_updates)
 
     # Run the update.
-    (weights, slots), self._model_state, self._rngs = self._jit_update_fn(
+    (weights, slots, stat), self._model_state, self._rngs = self._jit_update_fn(
         self._step, opt_state, batch, self._model_state, self._rngs)
     self._model_state = self._map_to_state_dicts(self._state_dicts_update)
     self._opt_state = opt_state._replace(weights=weights, slots=slots)
+    if self._should_log_now():
+      for name, value in stat.items():
+        scalar_value = np.mean(value)  # On  multiple devices, take the mean.
+        self._train_sw.scalar('training/' + name, scalar_value, step=self._step)
     self._step += 1
 
   def evaluate(self, n_eval_steps):

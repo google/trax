@@ -16,6 +16,7 @@
 # Lint as: python3
 """Trax base optimizer class."""
 
+from trax import math
 from trax.layers import base as layers
 from trax.math import numpy as np
 
@@ -95,6 +96,14 @@ class Optimizer(object):
   def slots(self, slots):
     self._slots = slots
 
+  def _l2_norm(self, flat_list):
+    """Helper: calculate joint L2 norm of a list of tensors."""
+    if math.backend_name() == 'jax':
+      norm = np.sqrt(sum(np.vdot(x, x) for x in flat_list))
+    else:  # TODO(lukaszkaiser): add vdot to TF-numpy
+      norm = np.sqrt(sum(np.sum(x*x) for x in flat_list))
+    return norm
+
   def tree_init(self, weight_tree):
     """Assembles node-local initializations into full-tree initialization."""
     self._slots = [self.init(weight) for weight in _tree_flatten(weight_tree)]
@@ -121,19 +130,23 @@ class Optimizer(object):
   def tree_update(self, step, grad_tree, weight_tree, slots, opt_params):
     """Assembles node-local weight and slot updates for the full layer tree."""
     grads_flat = _tree_flatten(grad_tree)
+    grads_norm = self._l2_norm(grads_flat)
     if self._clip_grad_norm is not None:
       max_norm = self._clip_grad_norm
-      norm = np.sqrt(sum(np.vdot(x, x) for x in grads_flat))
-      grads_flat = [np.where(norm < max_norm, g, g * (max_norm / norm))
+      grads_flat = [np.where(grads_norm < max_norm,  # pylint: disable=g-complex-comprehension
+                             g,
+                             g * (max_norm / grads_norm))
                     for g in grads_flat]
     weights_flat = _tree_flatten(weight_tree)
+    weights_norm = self._l2_norm(weights_flat)
     updated_pairs = [
         self._update_and_check(step, grad, weight, slot, opt_params)
         for (grad, weight, slot) in zip(grads_flat, weights_flat, slots)
     ]
     new_weights_flat, self.slots = zip(*updated_pairs)
     new_weights, _ = _tree_unflatten(new_weights_flat, weight_tree)
-    return new_weights, self.slots
+    metrics = {'gradients_l2': grads_norm, 'weights_l2': weights_norm}
+    return new_weights, self.slots, metrics
 
 
 class SGD(Optimizer):
