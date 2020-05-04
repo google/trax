@@ -30,68 +30,6 @@ from trax.math import random
 # pylint: disable=invalid-name
 
 
-class Map(tl.Layer):
-  """Combinator for applying a layer to a list or tuple."""
-
-  def __init__(self, layer, n_sections=1, check_shapes=True):
-    """Initialize the combinator.
-
-    Args:
-      layer: a layer to apply to each element.
-      n_sections: how many sections to map to (default: 1).
-      check_shapes: whether to check that shapes are identical (default: true).
-
-    Returns:
-      A new layer representing mapping layer to all elements of the input.
-    """
-    super(Map, self).__init__(n_in=n_sections, n_out=n_sections)
-    if layer is None or isinstance(layer, (list, tuple)):
-      layer = tl.Serial(layer)
-    self._layer = layer
-    # Generally a Map should be applied to lists where all elements have
-    # the same shape -- because self._layer will only be initialized once
-    # and it could have different parameters for different shapes. But there
-    # are valid cases -- e.g., when self._layer has no parameters -- where we
-    # can apply Map to different shapes -- set check_shapes=False in such cases.
-    self._check_shapes = check_shapes
-    self._n_sections = n_sections
-
-  def forward_with_state(self, inputs, weights=(), state=(), rng=None):
-    if self._n_sections == 1:
-      results = self._layer(inputs, weights=weights, state=state, rng=rng)
-    else:
-      rngs = _split_rngs(rng, len(inputs))
-      results = [self._layer(x, weights=weights, state=state, rng=r)
-                 for x, r in zip(inputs, rngs)]
-      results = tuple(results)
-    # TODO(kitaev): think about how to merge state across copies in the map.
-    return results, self._layer.state
-
-  def new_weights_and_state(self, input_signature):
-    if self._n_sections == 1:
-      return self._layer.init(input_signature)
-    first_shape = input_signature[0].shape
-    if self._check_shapes:
-      for shape_dtype in input_signature:
-        if shape_dtype.shape != first_shape:
-          raise ValueError('Map layer can only be applied to list of elements '
-                           'with the same shapes. This shape %s vs first shape '
-                           '%s.' % (str(shape_dtype.shape), str(first_shape)))
-    return self._layer.init(input_signature[0])
-
-  @tl.Layer.weights.setter
-  def weights(self, weights):
-    self._weights = self._layer.weights = weights
-
-  @tl.Layer.state.setter
-  def state(self, state):
-    self._state = self._layer.state = state
-
-  def _set_input_signature_recursive(self, input_signature):
-    self._input_signature = input_signature
-    self._layer._set_input_signature_recursive(input_signature)  # pylint: disable=protected-access
-
-
 class BroadcastedDropout(tl.Layer):
   """Layer constructor function for a broadcasted dropout layer."""
 
@@ -151,78 +89,6 @@ def ChunkedFeedForward(d_model, d_ff, dropout, activation, act_dropout,
       tl.Scan(tl.Serial(ff), axis=0, n_carry=0, remat=True),
       tl.Fn('ReshapeXToY', lambda x, y: np.reshape(x, y.shape))
   ]
-
-
-class SplitForOutput(tl.ReversibleLayer):
-  """Splits activations into sections (for use right before the output layer).
-
-  After the reversible portion of the network, there is a final output portion
-  that's non-reversible (which at minimum includes normalization, output
-  projection, and log-softmax). The output portion needs to operate on chunks
-  of the sequence to avoid running out of memory for large vocabulary sizes.
-
-  This layer concatenates the two subparts of the activations along the feature
-  dimension, and then splits into chunks along the time dimension. We implement
-  it is a subclass of tl.ReversibleLayer because we want to ensure that multiple
-  copies of the activations don't exist simultaneously except in the middle of a
-  memory copy operation.
-  """
-
-  def __init__(self, n_sections=2, axis=-2):
-    super(SplitForOutput, self).__init__(n_in=2, n_out=n_sections)
-    self._n_sections = n_sections
-    self._axis = axis
-
-  def forward(self, inputs, weights):
-    del weights
-    x1, x2 = inputs
-
-    x1_split = np.split(x1, self._n_sections, self._axis)
-    x2_split = np.split(x2, self._n_sections, self._axis)
-
-    res = [np.concatenate(ys, -1) for ys in zip(x1_split, x2_split)]
-    if len(res) == 1:
-      return res[0]
-    else:
-      return tuple(res)
-
-  def reverse(self, output, weights=(), state=(), new_state=(), rng=None):
-    del weights
-    if not isinstance(output, (list, tuple)):
-      output = [output]
-
-    x1_split = []
-    x2_split = []
-    for y in output:
-      y1, y2 = np.split(y, 2, -1)
-      x1_split.append(y1)
-      x2_split.append(y2)
-
-    x1 = np.concatenate(x1_split, self._axis)
-    x2 = np.concatenate(x2_split, self._axis)
-
-    return (x1, x2)
-
-  def reverse_and_grad(self, output, ct, weights=(), state=(), new_state=(),
-                       rng=None):
-    del weights
-    return self.reverse(output), (self.reverse(ct), ())
-
-
-def Chunk(n_sections=2):
-  def f(x):
-    s = x.shape
-    assert s[1] % n_sections == 0
-    return np.reshape(x, (s[0] * n_sections, s[1] // n_sections) + s[2:])
-  return tl.Fn('Chunk', f)
-
-
-def Unchunk(n_sections=2):
-  def f(x):
-    s = x.shape
-    assert s[0] % n_sections == 0
-    return np.reshape(x, (s[0] // n_sections, s[1] * n_sections) + s[2:])
-  return tl.Fn('Unchunk', f)
 
 
 class ReversibleHalfResidual(tl.ReversibleLayer, tl.Serial):
@@ -652,7 +518,6 @@ def ReformerLM(vocab_size,
                n_heads=8,
                dropout=0.1,
                max_len=2048,
-               n_chunks=0,
                attention_type=tl.SelfAttention,
                axial_pos_shape=(),
                d_axial_pos_embs=None,
@@ -672,7 +537,6 @@ def ReformerLM(vocab_size,
     n_heads: int: number of attention heads
     dropout: float: dropout rate (how much to drop out)
     max_len: int: maximum symbol length for positional encoding
-    n_chunks: int: number of chunks (must match input pipeline)
     attention_type: class: attention class to use, such as SelfAttention.
     axial_pos_shape: tuple of ints: input shape to use for the axial position
       encoding. If unset, axial position encoding is disabled.
@@ -686,12 +550,6 @@ def ReformerLM(vocab_size,
   Returns:
     the layer.
   """
-  if n_chunks == 0:
-    n_chunks = 1
-    concatenate_input_chunks = []
-  else:
-    concatenate_input_chunks = tl.Concatenate(n_items=n_chunks)
-
   d_emb = d_model
   if not axial_pos_shape:
     positional_encoding = tl.PositionalEncoding(
@@ -738,21 +596,17 @@ def ReformerLM(vocab_size,
     decoder_blocks.append(decoder_block)
 
   return tl.Serial(
-      concatenate_input_chunks,
       tl.ShiftRight(mode=mode),
       positional_embedder,
       tl.Dup(),
-      tl.ReversibleSerial(decoder_blocks + [
-          SplitForOutput(n_sections=n_chunks, axis=-2),  # pylint: disable=no-value-for-parameter
-      ]),
-      Map([
-          # TODO(kitaev): Test whether dropout should go before or after the
-          # LayerNorm, and whether dropout broadcasting is needed here.
-          tl.LayerNorm(),
-          BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
-          tl.Dense(vocab_size),
-          tl.LogSoftmax(),
-      ], n_sections=n_chunks),
+      tl.ReversibleSerial(decoder_blocks),
+      tl.Concatenate(),
+      # TODO(kitaev): Test whether dropout should go before or after the
+      # LayerNorm, and whether dropout broadcasting is needed here.
+      tl.LayerNorm(),
+      BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
+      tl.Dense(vocab_size),
+      tl.LogSoftmax(),
   )
 
 

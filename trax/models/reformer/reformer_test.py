@@ -33,12 +33,10 @@ class ReformerTest(parameterized.TestCase):
     input_sd = ShapeDtype((1, 8), np.int32)
     input_signature = (input_sd, input_sd)
     model = reformer.ReformerLM(
-        vocab_size, d_model=32, d_ff=64,
-        d_attention_key=16, d_attention_value=16, n_layers=1, n_heads=2,
-        max_len=16, n_chunks=2)
-    final_shape = tl.check_shape_agreement(
-        model, input_signature)
-    self.assertEqual(((1, 8, 16), (1, 8, 16)), final_shape)
+        vocab_size, d_model=32, d_ff=64, d_attention_key=16,
+        d_attention_value=16, n_layers=1, n_heads=2, max_len=16)
+    final_shape = tl.check_shape_agreement(model, input_signature)
+    self.assertEqual(((1, 8, 16), (1, 8)), final_shape)
 
 
 if __name__ == '__main__':
