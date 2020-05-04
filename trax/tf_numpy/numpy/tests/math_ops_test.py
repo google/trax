@@ -70,7 +70,7 @@ class MathTest(tf.test.TestCase, parameterized.TestCase):
               math_fun(arg1, arg2),
               np_fun(arg1, arg2),
               msg='{}({}, {})'.format(name, arg1, arg2),
-              check_type=check_promotion_result_type)
+              check_dtype=check_promotion_result_type)
 
     if operands is None:
       operands = [(5, 2),
@@ -147,41 +147,9 @@ class MathTest(tf.test.TestCase, parameterized.TestCase):
   def testSqrt(self):
     self._testUnaryOp(math_ops.sqrt, np.sqrt, 'sqrt')
 
-  def _testReduce(self, math_fun, np_fun, name):
-    axis_transforms = [
-        lambda x: x,  # Identity,
-        tf.convert_to_tensor,
-        np.array,
-        array_ops.array,
-        lambda x: array_ops.array(x, dtype=np.float32),
-        lambda x: array_ops.array(x, dtype=np.float64),
-    ]
-
-    def run_test(a, **kwargs):
-      axis = kwargs.pop('axis', None)
-      for fn1 in self.array_transforms:
-        for fn2 in axis_transforms:
-          arg1 = fn1(a)
-          axis_arg = fn2(axis) if axis is not None else None
-          self.match(
-              math_fun(arg1, axis=axis_arg, **kwargs),
-              np_fun(arg1, axis=axis, **kwargs),
-              msg='{}({}, axis={}, keepdims={})'.format(
-                  name, arg1, axis, kwargs.get('keepdims')))
-
-    run_test(5)
-    run_test([2, 3])
-    run_test([[2, -3], [-6, 7]])
-    run_test([[2, -3], [-6, 7]], axis=0)
-    run_test([[2, -3], [-6, 7]], axis=0, keepdims=True)
-    run_test([[2, -3], [-6, 7]], axis=1)
-    run_test([[2, -3], [-6, 7]], axis=1, keepdims=True)
-    run_test([[2, -3], [-6, 7]], axis=(0, 1))
-    run_test([[2, -3], [-6, 7]], axis=(1, 0))
-
-  def match(self, actual, expected, msg='', check_type=True):
+  def match(self, actual, expected, msg='', check_dtype=True):
     self.assertIsInstance(actual, arrays.ndarray)
-    if check_type:
+    if check_dtype:
       self.assertEqual(
           actual.dtype, expected.dtype,
           'Dtype mismatch.\nActual: {}\nExpected: {}\n{}'.format(
@@ -191,12 +159,6 @@ class MathTest(tf.test.TestCase, parameterized.TestCase):
         'Shape mismatch.\nActual: {}\nExpected: {}\n{}'.format(
             actual.shape, expected.shape, msg))
     np.testing.assert_almost_equal(actual.tolist(), expected.tolist())
-
-  def testSum(self):
-    self._testReduce(array_ops.sum, np.sum, 'sum')
-
-  def testAmax(self):
-    self._testReduce(array_ops.amax, np.amax, 'amax')
 
   def testArgsort(self):
     self._testUnaryOp(math_ops.argsort, np.argsort, 'argsort')
@@ -253,6 +215,117 @@ class MathTest(tf.test.TestCase, parameterized.TestCase):
     with self.assertRaisesWithPredicateMatch(
         tf.errors.InvalidArgumentError, r''):
       math_ops.average(np.ones([2, 3]), axis=0, weights=np.ones([5]))
+
+  def testClip(self):
+
+    def run_test(arr, *args, **kwargs):
+      check_dtype = kwargs.pop('check_dtype', True)
+      for fn in self.array_transforms:
+        arr = fn(arr)
+        self.match(
+            math_ops.clip(arr, *args, **kwargs),
+            np.clip(arr, *args, **kwargs),
+            check_dtype=check_dtype)
+
+    # NumPy exhibits weird typing behavior when a/a_min/a_max are scalars v/s
+    # lists, e.g.,
+    #
+    # np.clip(np.array(0, dtype=np.int32), -5, 5).dtype == np.int64
+    # np.clip(np.array([0], dtype=np.int32), -5, 5).dtype == np.int32
+    # np.clip(np.array([0], dtype=np.int32), [-5], [5]).dtype == np.int64
+    #
+    # So we skip matching type. In tf-numpy the type of the output array is
+    # always the same as the input array.
+    run_test(0, -1, 5, check_dtype=False)
+    run_test(-1, -1, 5, check_dtype=False)
+    run_test(5, -1, 5, check_dtype=False)
+    run_test(-10, -1, 5, check_dtype=False)
+    run_test(10, -1, 5, check_dtype=False)
+    run_test(10, None, 5, check_dtype=False)
+    run_test(10, -1, None, check_dtype=False)
+    run_test([0, 20, -5, 4], -1, 5, check_dtype=False)
+    run_test([0, 20, -5, 4], None, 5, check_dtype=False)
+    run_test([0, 20, -5, 4], -1, None, check_dtype=False)
+    run_test([0.5, 20.2, -5.7, 4.4], -1.5, 5.1, check_dtype=False)
+
+    run_test([0, 20, -5, 4], [-5, 0, -5, 0], [0, 5, 0, 5], check_dtype=False)
+    run_test([[1, 2, 3], [4, 5, 6]], [2, 0, 2], 5, check_dtype=False)
+    run_test([[1, 2, 3], [4, 5, 6]], 0, [5, 3, 1], check_dtype=False)
+
+  def testPtp(self):
+
+    def run_test(arr, *args, **kwargs):
+      for fn in self.array_transforms:
+        arg = fn(arr)
+        self.match(
+            math_ops.ptp(arg, *args, **kwargs), np.ptp(arg, *args, **kwargs))
+
+    run_test([1, 2, 3])
+    run_test([1., 2., 3.])
+    run_test([[1, 2], [3, 4]], axis=1)
+    run_test([[1, 2], [3, 4]], axis=0)
+    run_test([[1, 2], [3, 4]], axis=-1)
+    run_test([[1, 2], [3, 4]], axis=-2)
+
+  def testLinSpace(self):
+    array_transforms = [
+        lambda x: x,  # Identity,
+        tf.convert_to_tensor,
+        np.array,
+        lambda x: np.array(x, dtype=np.float32),
+        lambda x: np.array(x, dtype=np.float64),
+        array_ops.array,
+        lambda x: array_ops.array(x, dtype=np.float32),
+        lambda x: array_ops.array(x, dtype=np.float64)
+    ]
+
+    def run_test(start, stop, **kwargs):
+      for fn1 in array_transforms:
+        for fn2 in array_transforms:
+          arg1 = fn1(start)
+          arg2 = fn2(stop)
+          self.match(
+              math_ops.linspace(arg1, arg2, **kwargs),
+              np.linspace(arg1, arg2, **kwargs),
+              msg='linspace({}, {})'.format(arg1, arg2))
+
+    run_test(0, 1)
+    run_test(0, 1, num=10)
+    run_test(0, 1, endpoint=False)
+    run_test(0, -1)
+    run_test(0, -1, num=10)
+    run_test(0, -1, endpoint=False)
+
+  def testLogSpace(self):
+    array_transforms = [
+        lambda x: x,  # Identity,
+        tf.convert_to_tensor,
+        np.array,
+        lambda x: np.array(x, dtype=np.float32),
+        lambda x: np.array(x, dtype=np.float64),
+        array_ops.array,
+        lambda x: array_ops.array(x, dtype=np.float32),
+        lambda x: array_ops.array(x, dtype=np.float64)
+    ]
+
+    def run_test(start, stop, **kwargs):
+      for fn1 in array_transforms:
+        for fn2 in array_transforms:
+          arg1 = fn1(start)
+          arg2 = fn2(stop)
+          self.match(
+              math_ops.logspace(arg1, arg2, **kwargs),
+              np.logspace(arg1, arg2, **kwargs),
+              msg='logspace({}, {})'.format(arg1, arg2))
+
+    run_test(0, 5)
+    run_test(0, 5, num=10)
+    run_test(0, 5, endpoint=False)
+    run_test(0, 5, base=2.0)
+    run_test(0, -5)
+    run_test(0, -5, num=10)
+    run_test(0, -5, endpoint=False)
+    run_test(0, -5, base=2.0)
 
 
 if __name__ == '__main__':
