@@ -359,12 +359,15 @@ class RLTask:
     filename, ext = os.path.splitext(base_filename)
     return filename + '_epoch' + str(epoch) + ext
 
-  def init_from_file(self, file_name):
+  def init_from_file(self, file_name, only_last_epoch=False):
     """Initialize this task from file."""
     dictionary = trainer_lib.unpickle_from_file(file_name, gzip=False)
     self._max_steps = dictionary['max_steps']
     self._gamma = dictionary['gamma']
-    epochs_to_load = dictionary['all_epochs']
+    if only_last_epoch:
+      epochs_to_load = dictionary['all_epochs'][-1:]
+    else:
+      epochs_to_load = dictionary['all_epochs']
     for epoch in epochs_to_load:
       trajectories = trainer_lib.unpickle_from_file(
           self._epoch_filename(file_name, epoch), gzip=True)
