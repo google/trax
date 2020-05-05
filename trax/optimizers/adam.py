@@ -24,7 +24,7 @@ class Adam(opt_base.Optimizer):
   """Adam optimizer."""
 
   def __init__(self, learning_rate, weight_decay_rate=1e-5,  # pylint: disable=useless-super-delegation
-               b1=0.9, b2=0.999, eps=1e-5):
+               b1=0.9, b2=0.999, eps=1e-5, clip_grad_norm=None):
     """Create the Adam optimizer.
 
     Args:
@@ -36,6 +36,7 @@ class Adam(opt_base.Optimizer):
          rate for the second moment estimates (default 0.999).
       eps: optional, a positive scalar value for epsilon, a small constant for
         numerical stability (default 1e-5).
+      clip_grad_norm: the number used for gradient clipping.
     """
     super(Adam, self).__init__(
         learning_rate=learning_rate,
@@ -43,6 +44,7 @@ class Adam(opt_base.Optimizer):
         b1=b1,
         b2=b2,
         eps=eps,
+        clip_grad_norm=clip_grad_norm
     )
 
   def init(self, weights):
@@ -57,7 +59,6 @@ class Adam(opt_base.Optimizer):
     b1 = opt_params['b1']
     b2 = opt_params['b2']
     eps = opt_params['eps']
-    step = np.array(step).astype(np.int32)  # Make sure it's the right type.
     m = (1 - b1) * grads + b1 * m  # First  moment estimate.
     v = (1 - b2) * (grads ** 2) + b2 * v  # Second moment estimate.
     mhat = m / (1 - b1 ** (step + 1))  # Bias correction.

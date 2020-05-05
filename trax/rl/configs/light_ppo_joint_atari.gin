@@ -19,7 +19,7 @@ import trax.rl
 
 # Parameters for Adam:
 # ==============================================================================
-Adam.clip_gradient = 0.5
+Adam.clip_grad_norm = 0.5
 
 # Parameters for PolicyAndValue:
 # ==============================================================================
@@ -39,7 +39,7 @@ MultifactorSchedule.factors = 'constant'
 # Parameters for RLTask:
 # ==============================================================================
 RLTask.env = "boxing"
-RLTask.initial_trajectories = 50
+RLTask.initial_trajectories = 0
 RLTask.gamma = 0.99
 RLTask.max_steps = 2000
 RLTask.dm_suite = True
