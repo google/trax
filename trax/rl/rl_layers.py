@@ -31,9 +31,8 @@ def ValueLoss(values, returns, value_loss_coeff):
 
 def ExplainedVariance(values, returns):
   """Definition of explained variance - an approach from OpenAI baselines."""
-  values = values.squeeze()
-  returns = returns.squeeze()
-  assert values.shape[0] == returns.shape[0]
+  assert returns.shape == values.shape, (
+      f'returns.shape was {returns.shape} and values.shape was {values.shape}')
   # TODO(henrykm): it would be good to explain the relation with the time dim.
   returns_variance = jnp.var(returns)
   explained_variance = 1 - jnp.var(returns-values)/returns_variance
@@ -50,9 +49,6 @@ def NewLogProbs(dist_inputs, actions, log_prob_fun):
   """Given distribution and actions calculate log probs."""
   new_log_probs = log_prob_fun(dist_inputs,
                                actions)
-  # we want to reformat from e.g. [[-2.8527899], [-2.8768425]]
-  # to [-2.8527899, -2.8768425]
-  # new_log_probs = new_log_probs.flatten()
   return new_log_probs
 
 
@@ -67,10 +63,13 @@ def EntropyLoss(dist_inputs, actions, log_prob_fun,
 
 def ProbsRatio(dist_inputs, actions, old_log_probs, log_prob_fun):
   """Probability Ratio from the PPO algorithm."""
-  # Old log probs have an undesirable extra dimension which we remove here
-  old_log_probs = jnp.array(old_log_probs.squeeze(axis=-1),
-                            dtype=jnp.float32)
+  # dist_inputs of the shape float32[128,1,18]
+  # actions of the shape int32[128,1]
+  # and old_log_probs of the shape float32[128,1]
   new_log_probs = NewLogProbs(dist_inputs, actions, log_prob_fun)
+  assert new_log_probs.shape == old_log_probs.shape, (
+      f'new_log_probs.shape was {new_log_probs.shape} and'
+      f'old_log_probs.shape was {old_log_probs.shape}')
   # The ratio between new_probs and old_probs expressed
   # using log_probs and exponentaion
   probs_ratio = jnp.exp(new_log_probs - old_log_probs)
@@ -79,13 +78,10 @@ def ProbsRatio(dist_inputs, actions, old_log_probs, log_prob_fun):
 
 def ApproximateKLDivergence(dist_inputs, actions, old_log_probs, log_prob_fun):
   """Probability Ratio from the PPO algorithm."""
-  # TODO(henrykm): Clarify the old_log_probs and squeezing
-  # Old log probs have an undesirable extra dimension which we remove here
-  old_log_probs = jnp.array(old_log_probs.squeeze(axis=-1),
-                            dtype=jnp.float32)
   new_log_probs = NewLogProbs(dist_inputs, actions, log_prob_fun)
-  # The ratio between new_probs and old_probs expressed
-  # using log_probs and exponentaion
+  assert new_log_probs.shape == old_log_probs.shape, (
+      f'new_log_probs.shape was {new_log_probs.shape} and'
+      f'old_log_probs.shape was {old_log_probs.shape}')
   approximate_kl_divergence = 0.5 * \
       jnp.mean(new_log_probs - old_log_probs) ** 2
   return approximate_kl_divergence
@@ -93,38 +89,77 @@ def ApproximateKLDivergence(dist_inputs, actions, old_log_probs, log_prob_fun):
 
 def UnclippedObjective(probs_ratio, advantages):
   """Unclipped Objective from the PPO algorithm."""
+  assert probs_ratio.shape == advantages.shape, (
+      f'probs_ratio.shape was {probs_ratio.shape} and'
+      f'advantages.shape was {advantages.shape}')
   unclipped_objective = probs_ratio * advantages
   return unclipped_objective
 
 
 def ClippedObjective(probs_ratio, advantages, epsilon):
   """Clipped Objective from the PPO algorithm."""
+  assert probs_ratio.shape == advantages.shape, (
+      f'probs_ratio.shape was {probs_ratio.shape} and'
+      f'advantages.shape was {advantages.shape}')
   clipped_objective = jnp.clip(probs_ratio, 1 - epsilon,
                                1 + epsilon) * advantages
+  assert probs_ratio.shape == clipped_objective.shape, (
+      f'probs_ratio.shape was {probs_ratio.shape} and'
+      f'clipped_objective.shape was {clipped_objective.shape}')
   return clipped_objective
 
 
 def PPOObjective(dist_inputs, values, returns, actions, old_log_probs,
                  log_prob_fun, epsilon, normalize_advantages):
   """PPO Objective."""
-  # Returns and values are arriving with two extra dimensions
-  # TODO(henrykm): remove these dimensions at an earlier stage?
-  returns = returns.squeeze()
-  values = values.squeeze()
+  # dist_inputs of the shape float32[128,1,18]
+  # values of the shape float32[128,1,1]
+  # returns of the shape float32[128,1,1]
+  # actions of the shape int32[128,1]
+  # and old_log_probs of the shape float32[128,1]
+  returns = returns.squeeze(axis=2)
+  values = values.squeeze(axis=2)
+  assert returns.shape == values.shape, (
+      f'returns.shape was {returns.shape} and values.shape was {values.shape}')
+  assert returns.shape == old_log_probs.shape, (
+      f'returns.shape was {returns.shape} and'
+      f'old_log_probs.shape was {old_log_probs.shape}')
+
   probs_ratio = ProbsRatio(dist_inputs, actions, old_log_probs, log_prob_fun)
+  assert probs_ratio.shape == old_log_probs.shape, (
+      f'probs_ratio.shape was {probs_ratio.shape} and'
+      f'old_log_probs.shape was {old_log_probs.shape}')
+
   advantages = returns - values
   if normalize_advantages:
     advantages = advantages - jnp.mean(advantages)
     advantages /= jnp.std(advantages) + 1e-8
+  assert old_log_probs.shape == advantages.shape, (
+      f'old_log_probs.shape was {old_log_probs.shape} and advantages.shape was '
+      f'{advantages.shape}')
+
   unclipped_objective = UnclippedObjective(probs_ratio, advantages)
+  assert unclipped_objective.shape == advantages.shape, (
+      f'old_log_probs.shape was {old_log_probs.shape} and'
+      f'unclipped_objective.shape was {unclipped_objective.shape}')
+
   clipped_objective = ClippedObjective(probs_ratio, advantages, epsilon)
+  assert clipped_objective.shape == advantages.shape, (
+      f'old_log_probs.shape was {old_log_probs.shape} and'
+      f'clipped_objective.shape was {clipped_objective.shape}')
+
   ppo_objective = jnp.minimum(unclipped_objective, clipped_objective)
+  assert ppo_objective.shape == advantages.shape, (
+      f'old_log_probs.shape was {old_log_probs.shape} and'
+      f'ppo_objective.shape was {ppo_objective.shape}')
+
   return ppo_objective
 
 
 def A2CObjective(dist_inputs, values, returns,
                  actions, mask, log_prob_fun, normalize_advantages):
   """Definition of the Advantage Actor Critic (A2C) loss."""
+  # dist_inputs of the shape float32[128,1,18]
   # values of the shape float32[128,1,1]
   # returns of the shape float32[128,1,1]
   # actions of the shape int32[128,1]
