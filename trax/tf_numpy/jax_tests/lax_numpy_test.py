@@ -32,17 +32,13 @@ import six
 
 import numpy as onp
 
-# TODO(wangpeng): Remove this JAX dependency
-from jax import test_util as jtu
 
 import tensorflow.compat.v2 as tf
 import trax.tf_numpy.numpy as lnp
 import trax.tf_numpy.extensions as npe
+from trax.tf_numpy.jax_tests.config import config
+import trax.tf_numpy.jax_tests.test_util as jtu
 
-# These two lines are needed to parse the --num_generated_cases argument used by
-# jtu.cases_from_list, which controls the maximum number of test cases generated
-# from a list.
-from jax.config import config
 config.parse_flags_with_absl()
 
 
@@ -236,7 +232,8 @@ JAX_COMPOUND_OP_RECORDS = [
     op_record("positive", 1, number_dtypes, all_shapes, jtu.rand_default, ["rev"]),
     op_record("power", 2, number_dtypes, all_shapes, jtu.rand_positive, ["rev"],
               tolerance={onp.complex128: 1e-14}),
-    op_record("rad2deg", 1, float_dtypes, all_shapes, jtu.rand_default, []),
+    op_record("rad2deg", 1, float_dtypes, all_shapes, jtu.rand_default, [],
+              tolerance={onp.float64: 5e-6}),
     op_record("ravel", 1, all_dtypes, all_shapes, jtu.rand_default, ["rev"]),
     op_record("real", 1, number_dtypes, all_shapes, jtu.rand_some_inf, []),
     op_record("remainder", 2, minus(default_dtypes, [onp.float16]), all_shapes,
@@ -446,7 +443,7 @@ def named_parameters(ls):
 
 
 # TODO(wangpeng): Enable all disabled tests in this class
-class LaxBackedNumpyTests(jtu.JaxTestCase):
+class LaxBackedNumpyTests(jtu.TestCase):
   """Tests for LAX-backed Numpy implementation."""
 
   def _GetArgsMaker(self, rng, shapes, dtypes, onp_arrays=True):
@@ -963,7 +960,7 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
       dtype = lnp.promote_types(lhs_dtype, rhs_dtype)
       return onp.inner(lhs, rhs).astype(dtype)
     lnp_fun = lambda lhs, rhs: lnp.inner(lhs, rhs)
-    tol_spec = {onp.float16: 1e-2, onp.float32: 1e-5, onp.float64: 1e-13}
+    tol_spec = {onp.float16: 1e-2, onp.float32: 1e-5, onp.float64: 2e-6}
     if jtu.device_under_test() == "tpu":
       tol_spec[onp.float32] = tol_spec[onp.complex64] = 2e-1
     tol = max(jtu.tolerance(lhs_dtype, tol_spec),
@@ -989,8 +986,11 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
     onp_fun = lambda x: onp.clip(x, a_min=a_min, a_max=a_max)
     lnp_fun = lambda x: lnp.clip(x, a_min=a_min, a_max=a_max)
     args_maker = lambda: [rng(shape, dtype)]
+    tol_spec = {onp.float64: 2e-7}
+    tol = jtu.tolerance(dtype, tol_spec)
     # TODO(phawkins): the promotion behavior changed in Numpy 1.17.
-    self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=False)
+    self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=False,
+                            tol=tol)
     is_float32_numpy_scalar = (dtype == onp.float32 and
                                shape == jtu.NUMPY_SCALAR_SHAPE)
     # Turns check_dtypes off if is_float32_numpy_scalar is True because there is
@@ -1001,6 +1001,7 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
     #   >> float32
     self._CompileAndCheck(lnp_fun, args_maker,
                           check_dtypes=not is_float32_numpy_scalar,
+                          atol=tol, rtol=tol,
                           check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
@@ -1096,12 +1097,14 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
     rng = rng_factory()
     onp_fun = lambda arg: onp.tile(arg, reps)
     lnp_fun = lambda arg: lnp.tile(arg, reps)
-
     args_maker = lambda: [rng(shape, dtype)]
-
+    tol_spec = {onp.float64: 2e-7}
+    tol = jtu.tolerance(dtype, tol_spec)
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker,
-                            check_dtypes=shape is not jtu.PYTHON_SCALAR_SHAPE)
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+                            check_dtypes=shape is not jtu.PYTHON_SCALAR_SHAPE,
+                            tol=tol)
+    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True, atol=tol,
+                          rtol=tol)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_axis={}_baseshape=[{}]_dtypes=[{}]".format(
@@ -1637,7 +1640,7 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
     onp_fun = _promote_like_lnp(onp_fun, inexact=True)
     tol = {
         # TODO(b/154768983): lnp.bfloat16: 1e-1,
-        onp.float16: 1e-1, onp.float32: 1e-3, onp.float64: 1e-10,
+        onp.float16: 1e-1, onp.float32: 1e-3, onp.float64: 2e-7,
         # TODO(wangpeng): onp.complex64: 1e-3, onp.complex128: 1e-10,
     }
     check_dtypes = shape is not jtu.PYTHON_SCALAR_SHAPE
@@ -2314,7 +2317,7 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
     self.assertAllClose(lnp.arange(53, 5, -3),
                         onp.arange(53, 5, -3, dtype=lnp.int_),
                         check_dtypes=True)
-    # TODO(mattjj): make these tests work when jax_enable_x64=True
+    # TODO(mattjj): make these tests work when enable_x64=True
     # self.assertAllClose(lnp.arange(77, dtype=float),
     #                     onp.arange(77, dtype=float), check_dtypes=True)
     # self.assertAllClose(lnp.arange(2, 13, dtype=int),
@@ -2607,7 +2610,7 @@ class LaxBackedNumpyTests(jtu.JaxTestCase):
                    endpoint, base, dtype, rng_factory):
     if (dtype in int_dtypes and
         jtu.device_under_test() in ("gpu", "tpu") and
-        not FLAGS.jax_enable_x64):
+        not FLAGS.enable_x64):
       raise unittest.SkipTest("GPUx32 truncated exponentiation"
                               " doesn't exactly match other platforms.")
     rng = rng_factory()
@@ -2875,7 +2878,7 @@ GRAD_SPECIAL_VALUE_TEST_RECORDS = [
 def num_float_bits(dtype):
   return lnp.finfo(dtypes.canonicalize_dtype(dtype)).bits
 
-class NumpyGradTests(jtu.JaxTestCase):
+class NumpyGradTests(jtu.TestCase):
   @named_parameters(itertools.chain.from_iterable(
       jtu.cases_from_list(
         {"testcase_name": jtu.format_test_name_suffix(
