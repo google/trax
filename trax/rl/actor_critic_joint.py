@@ -423,6 +423,17 @@ class A2CJointTrainer(ActorCriticJointTrainer):
       """Definition of the A2C loss."""
       del old_log_probs
 
+      # Typically we have dist_inputs of the shape float32[128,1,18]
+      assert len(dist_inputs.shape) == 3, (
+          f'len(dist_inputs.shape) was {len(dist_inputs.shape)}')
+      # values of the shape float32[128,1,1]
+      # returns of the shape float32[128,1,1]
+      assert values.shape == returns.shape, f'values.shape was {values.shape}'
+      # actions of the shape int32[128,1]
+      assert len(actions.shape) == 2, f'actions.shape was {actions.shape}'
+      # and mask of the shape float32[128,1]
+      assert len(mask.shape) == 2, f'mask.shape was {mask.shape}'
+
       a2c_objective = rl_layers.A2CObjective(
           dist_inputs,
           stop_gradient(values),
@@ -430,17 +441,25 @@ class A2CJointTrainer(ActorCriticJointTrainer):
           log_prob_fun=self._policy_dist.log_prob,
           normalize_advantages=self._normalize_advantages)
 
+      # we insist that a2c_objective is a scalar
+      assert jnp.ndim(a2c_objective) == 0, f'a2c_objective was {a2c_objective}'
+
       entropy_loss = rl_layers.EntropyLoss(
           dist_inputs, actions,
           log_prob_fun=self._policy_dist.log_prob,
           entropy_coeff=self._entropy_coeff,
           entropy_fun=self._policy_dist.entropy)
 
-      l2_value_loss = rl_layers.ValueLoss(
-          values, returns,
-          value_loss_coeff=self._value_loss_coeff)
+      assert jnp.ndim(entropy_loss) == 0, f'entropy_loss was {entropy_loss}'
 
-      return a2c_objective.mean() + l2_value_loss - entropy_loss
+      l2_value_loss = rl_layers.ValueLoss(
+          values, returns, value_loss_coeff=self._value_loss_coeff)
+
+      assert jnp.ndim(l2_value_loss) == 0, f'l2_value_loss was {l2_value_loss}'
+
+      combined_loss = a2c_objective + l2_value_loss - entropy_loss
+
+      return combined_loss
 
     return tl.Fn('A2CJointLoss', f, n_out=1)
 
@@ -471,6 +490,7 @@ class A2CJointTrainer(ActorCriticJointTrainer):
   def a2c_objective(self):
     """A2C objective with local parameters."""
     return tl.Fn(
+        'A2CObjective',
         lambda dist_inputs, values, returns, actions, old_log_probs, mask:
         rl_layers.A2CObjective(
             dist_inputs, values, returns, actions, mask,

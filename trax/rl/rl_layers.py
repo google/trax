@@ -50,7 +50,9 @@ def NewLogProbs(dist_inputs, actions, log_prob_fun):
   """Given distribution and actions calculate log probs."""
   new_log_probs = log_prob_fun(dist_inputs,
                                actions)
-  new_log_probs = jnp.array(new_log_probs.squeeze(axis=-1))
+  # we want to reformat from e.g. [[-2.8527899], [-2.8768425]]
+  # to [-2.8527899, -2.8768425]
+  # new_log_probs = new_log_probs.flatten()
   return new_log_probs
 
 
@@ -123,11 +125,39 @@ def PPOObjective(dist_inputs, values, returns, actions, old_log_probs,
 def A2CObjective(dist_inputs, values, returns,
                  actions, mask, log_prob_fun, normalize_advantages):
   """Definition of the Advantage Actor Critic (A2C) loss."""
-  returns = returns.squeeze()
-  values = values.squeeze()
+  # values of the shape float32[128,1,1]
+  # returns of the shape float32[128,1,1]
+  # actions of the shape int32[128,1]
+  # and mask of the shape float32[128,1]
+  # We have to squeeze values and returns, because we
+  # are planning to compute (return - values) * new_log_probs * mask
+  # and all of them should be of the same dimension
+  values = values.squeeze(axis=2)
+  returns = returns.squeeze(axis=2)
+
+  assert returns.shape == values.shape, (
+      f'returns.shape was {returns.shape} and values.shape was {values.shape}')
+  assert values.shape == mask.shape, (
+      f'values.shape was {values.shape} and mask.shape was {mask.shape}')
+  assert returns.shape[0] == dist_inputs.shape[0], (
+      f'returns.shape[0] was {returns.shape[0]} and dist_inputs.shape[0] was '
+      f'{dist_inputs.shape[0]}')
+
   new_log_probs = NewLogProbs(dist_inputs, actions, log_prob_fun)
+  assert new_log_probs.shape == mask.shape, (
+      f'new_log_probs.shape was {new_log_probs.shape} and mask.shape was '
+      f'{mask.shape}')
+
   advantages = returns - values
   if normalize_advantages:
     advantages = advantages - jnp.mean(advantages)
     advantages /= jnp.std(advantages) + 1e-8
-  return -jnp.sum(new_log_probs * advantages * mask) / jnp.sum(mask)
+  assert new_log_probs.shape == advantages.shape, (
+      f'new_log_probs.shape was {new_log_probs.shape} and advantages.shape was '
+      f'{advantages.shape}')
+
+  # One of the motivation to the squeezes and assertions is to
+  # avoid [128,1] * [128,1,1] * [128] multiplications in the definition
+  # of the a2c objective - we insist on the same shapes
+  a2c_objective = -jnp.sum(new_log_probs * advantages * mask) / jnp.sum(mask)
+  return a2c_objective
