@@ -26,37 +26,86 @@ from trax.math import numpy as jnp
 
 
 class Dense(base.Layer):
-  """A dense (a.k.a. fully-connected, affine) layer."""
+  """A dense (a.k.a. fully-connected, affine) layer.
+
+  Dense layers are the prototypical example of a trainable layer, i.e., a layer
+  with trainable "weights". Each node in a dense layer computes a weighted sum
+  of all node values from the preceding layer and adds to that sum a
+  node-specific "bias" term. The full layer computation is expressed compactly
+  in linear algebra as $$y = W x + b$$, where $$W$$ is a matrix and $$y$$,
+  $$x$$, and $$b$$ are vectors. The layer is trained, or "learns", by updating
+  the values in $$W$$ and $$b$$.
+  """
 
   def __init__(self,
                n_units,
                kernel_initializer=init.GlorotUniformInitializer(),
                bias_initializer=init.RandomNormalInitializer(1e-6)):
-    super(Dense, self).__init__()
+    """Returns a dense / fully connected layer of width `n_units`.
+
+    Args:
+      n_units: Number of nodes in the layer, also known as the "width" of the
+          layer.
+      kernel_initializer: Function that creates a matrix of (random) initial
+          connection weights ($$W$$) for the layer.
+      bias_initializer: Function that creates a vector of (random) initial
+          bias weights ($$b$$) for the layer.
+    """
+    super().__init__()
     self._n_units = n_units
     self._kernel_initializer = kernel_initializer
     self._bias_initializer = bias_initializer
 
   def forward(self, x, weights):
+    if len(weights) != 2:
+      raise ValueError(f'Weights has length {len(weights)}; should instead '
+                       f'have two elements: w, b.')
     w, b = weights
     return jnp.dot(x, w) + b
 
   def new_weights(self, input_signature):
-    input_shape = input_signature.shape
-    rng1, rng2 = self.new_rngs(2)
-    w = self._kernel_initializer((input_shape[-1], self._n_units), rng1)
-    b = self._bias_initializer((self._n_units,), rng2)
+    """Returns new (randomly initialized) weights (w, b) for this layer.
+
+    Args:
+      input_signature: ShapeDtype instance characterizing the input this layer
+          should compute on.
+    """
+    shape_w = (input_signature.shape[-1], self._n_units)
+    shape_b = (self._n_units,)
+    rng_w, rng_b = self.new_rngs(2)
+
+    w = self._kernel_initializer(shape_w, rng_w)
+    b = self._bias_initializer(shape_b, rng_b)
     return (w, b)
 
 
 class Embedding(base.Layer):
-  """Layer constructor function for an embedding layer."""
+  """Trainable layer that maps discrete tokens/ids to vectors."""
 
+  # TODO(jonni): Consider reversing param order to: vocab_size, d_feature
   def __init__(self,
                d_feature,
                vocab_size,
                kernel_initializer=init.RandomNormalInitializer(1.0)):
-    super(Embedding, self).__init__()
+    """Returns an embedding layer with given vocabulary size and vector size.
+
+    The layer clips input values (token ids) to the legal range:
+    `[0, vocab_size)`. That is, negative token ids all clip to 0 before being
+    mapped to a vector, and token ids with value vocab_size or greater all
+    clip to vocab_size - 1 before being mapped to a vector. In effect, both
+    id `0  and id `vocab_size - 1` are potentially overloaded as
+    out-of-vocabulary token ids.
+
+    TODO(jonni): Is this the behavior we want going forward?
+
+    Args:
+      d_feature: Dimensionality/depth of the output vectors.
+      vocab_size: Size (number of different token ids) of the input vocabulary.
+          The layer will handle tokens whose id's are in range(vocab_size).
+      kernel_initializer: Function that creates (random) initial vectors for
+          the embedding.
+    """
+    super().__init__()
     self._d_feature = d_feature  # feature dimensionality
     self._vocab_size = vocab_size
     self._kernel_initializer = kernel_initializer
@@ -66,9 +115,10 @@ class Embedding(base.Layer):
 
   def new_weights(self, input_signature):
     del input_signature
-    out_dim = (self._vocab_size, self._d_feature)
-    weights = self._kernel_initializer(out_dim, self.new_rng())
-    return weights
+    shape_w = (self._vocab_size, self._d_feature)
+    rng_w = self.new_rng()
+    w = self._kernel_initializer(shape_w, rng_w)
+    return w
 
 
 class Dropout(base.Layer):
