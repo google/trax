@@ -194,8 +194,7 @@ class Layer(object):
     """
     raise NotImplementedError
 
-  def forward_with_state(self, inputs, weights=EMPTY_WEIGHTS, state=EMPTY_STATE,
-                         rng=None):
+  def forward_with_state(self, inputs, weights, state, rng):
     """Computes this layer's output as part of a forward pass through the model.
 
     Authors of new Layer subclasses should override this method to define the
@@ -445,7 +444,7 @@ class Layer(object):
 
       if not self.has_backward:
         outputs, s = (
-            self.forward_with_state(x, weights=weights, state=state, rng=rng))
+            self.forward_with_state(x, weights, state, rng))
       else:
         outputs, s = self._do_custom_gradients(x, weights, state, rng=rng)
       self._state = s
@@ -480,12 +479,7 @@ class Layer(object):
       # TODO(jonni): Check if using an rng still carries this cost.
       rng_signature = ShapeDtype((2,), np.uint32)
       weight_signature = nested_map(signature, self.weights)
-
-      # Wrap forward_with_state so as to use only positional args.
-      def _forward_with_state(x, weights, state, rng):
-        return self.forward_with_state(x, weights=weights, state=state, rng=rng)
-
-      forward_infer_shapes = math.abstract_eval(_forward_with_state)
+      forward_infer_shapes = math.abstract_eval(self.forward_with_state)
       return forward_infer_shapes(
           input_signature, weight_signature, self.state, rng_signature)
     except Exception as e:
@@ -548,7 +542,7 @@ class Layer(object):
     # https://jax.readthedocs.io/en/latest/jax.html#jax.custom_transforms
     @jax.custom_transforms
     def _do_forward(y, weights):
-      res = self.forward_with_state(y, weights=weights, state=state, rng=rng)
+      res = self.forward_with_state(y, weights, state, rng)
       return res
 
     # This is the custom gradient (vector-jacobian product in JAX) function.
@@ -556,8 +550,7 @@ class Layer(object):
     # https://jax.readthedocs.io/en/latest/jax.html#jax.defjvp_all
     def do_forward_vjp(y, weights):
       """Custom gradient (vjp) function."""
-      output, new_state = (
-          self.forward_with_state(y, weights=weights, state=state, rng=rng))
+      output, new_state = self.forward_with_state(y, weights, state, rng)
       def vjpfun(grad):
         grad = grad[0]  # Ignore dummy gradient wrt state.
         res = self.backward(y, output, grad, weights, state, new_state, rng)

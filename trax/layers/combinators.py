@@ -54,8 +54,7 @@ class Serial(base.Layer):
       self._weights = tuple(l.weights for l in sublayers)
       self._state = tuple(l.state for l in sublayers)
 
-  def forward_with_state(self, xs, weights=base.EMPTY_WEIGHTS,
-                         state=base.EMPTY_STATE, rng=None):
+  def forward_with_state(self, xs, weights, state, rng):
     self._validate_forward_inputs(xs)
     rngs = _split_rngs(rng, self._n_layers)
     if not self.sublayers:  # No-op: leave args unchanged.
@@ -212,8 +211,7 @@ class Parallel(base.Layer):
     self._weights = tuple(l.weights for l in sublayers)
     self._state = tuple(l.state for l in sublayers)
 
-  def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
-                         state=base.EMPTY_STATE, rng=None):
+  def forward_with_state(self, inputs, weights, state, rng):
     n_layers, layers = self._n_layers, self.sublayers
     sublayer_inputs = self._allot_to_sublayers(inputs)
     rngs = _split_rngs(rng, n_layers)
@@ -398,14 +396,13 @@ class Scan(base.Layer):
     """Returns the unique sublayer managed by this layer."""
     return self._sublayers[0]
 
-  def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
-                         state=base.EMPTY_STATE, rng=None):
+  def forward_with_state(self, inputs, weights, state, rng):
     n_carry = self._n_carry
     def scannable_fn(x, carry_and_state):  # pylint: disable=invalid-name
       carry, state = carry_and_state
       x_and_carry = x + carry if n_carry > 0 else x
       res, new_state = self.sublayer.forward_with_state(
-          x_and_carry, weights=weights, state=state, rng=rng)
+          x_and_carry, weights, state, rng)
       if n_carry > 0:
         return (res[:-n_carry], (res[-n_carry:], new_state))
       else:
@@ -651,11 +648,10 @@ class Cache(base.Layer):
     """Returns the unique sublayer managed by this layer."""
     return self._sublayers[0]
 
-  def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
-                         state=base.EMPTY_STATE, rng=None):
+  def forward_with_state(self, inputs, weights, state, rng):
     if state[0] is ():  # pylint: disable=literal-comparison
       res, layer_state = self.sublayer.forward_with_state(
-          inputs, weights=weights, state=state[1], rng=rng)
+          inputs, weights, state[1], rng)
       return res, (res, layer_state)
     else:
       return state[0], state

@@ -89,9 +89,7 @@ class Normalize(tl.Layer):
     state = running_mean_and_variance_init(input_signature.shape[2:])
     return (tl.EMPTY_WEIGHTS, state)
 
-  def forward_with_state(
-      self, inputs, weights=tl.EMPTY_WEIGHTS, state=tl.EMPTY_STATE, rng=None
-  ):
+  def forward_with_state(self, inputs, weights, state, rng):
     del weights
     del rng
 

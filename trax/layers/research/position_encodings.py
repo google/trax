@@ -48,8 +48,7 @@ class AxialPositionalEncoding(layer_base.Layer):
     self._dropout_broadcast_dims = dropout_broadcast_dims
     self._mode = mode
 
-  def forward_with_state(self, inputs, weights=layer_base.EMPTY_WEIGHTS,
-                         state=layer_base.EMPTY_STATE, rng=None):
+  def forward_with_state(self, inputs, weights, state, rng):
     embs = []
     for ax_emb in weights:
       ax_emb = jnp.broadcast_to(
@@ -116,8 +115,7 @@ class FixedBasePositionalEncoding(layer_base.Layer):
     self._start_from_zero_one_in = start_from_zero_one_in
     self._base_dropout_one_in = base_dropout_one_in
 
-  def forward_with_state(self, x, weights=layer_base.EMPTY_WEIGHTS,
-                         state=layer_base.EMPTY_STATE, rng=None, **kwargs):
+  def forward_with_state(self, x, weights, state, rng):
     batch_size, length = x.shape[0], x.shape[1]
     max_pos = min(self._bases)**self._n_digits
     rng1, rng2, rng3 = math.random.split(rng, 3)
@@ -330,8 +328,7 @@ class InfinitePositionalEncoding(layer_base.Layer):
     assert embeddings.shape == (hi - lo, depth), embeddings.shape
     return embeddings
 
-  def forward_with_state(self, inputs, weights=layer_base.EMPTY_WEIGHTS,
-                         state=layer_base.EMPTY_STATE, rng=None, **kwargs):
+  def forward_with_state(self, inputs, weights, state, rng):
     d_feature = inputs.shape[-1]
     input_len = inputs.shape[-2]
 
@@ -410,8 +407,7 @@ class TimeBinPositionalEncoding(layer_base.Layer):
     assert embeddings.shape == t.shape + (self.num_features,), embeddings.shape
     return embeddings
 
-  def forward_with_state(self, inputs, weights=layer_base.EMPTY_WEIGHTS,
-                         state=layer_base.EMPTY_STATE, rng=None, **kwargs):
+  def forward_with_state(self, inputs, weights, state, rng):
     depth = inputs.shape[-1]
 
     if self._mode == 'predict':

@@ -260,8 +260,7 @@ class DotProductCausalAttention(base.Layer):
     self._dropout = dropout
     self._mode = mode
 
-  def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
-                         state=base.EMPTY_STATE, rng=None):
+  def forward_with_state(self, inputs, weights, state, rng):
     del weights
     q, k, v = inputs
 
@@ -349,8 +348,7 @@ class PositionalEncoding(base.Layer):
     self._dropout_broadcast_dims = dropout_broadcast_dims
     self._mode = mode
 
-  def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
-                         state=base.EMPTY_STATE, rng=None):
+  def forward_with_state(self, inputs, weights, state, rng):
     if self._mode != 'predict':
       x = inputs
       symbol_size = jnp.shape(x)[1]

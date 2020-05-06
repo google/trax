@@ -60,8 +60,7 @@ class SkippingSerial(tl.Serial):
     for layer, sublayer_state in zip(self.sublayers, state[1]):
       layer.state = sublayer_state
 
-  def forward_with_state(self, xs, weights=tl.EMPTY_WEIGHTS,
-                         state=tl.EMPTY_STATE, rng=None):
+  def forward_with_state(self, xs, weights, state, rng):
     self._validate_forward_inputs(xs)
     (step, layers_state) = state
     # Get N+1 rngs, N for running layers and one extra.

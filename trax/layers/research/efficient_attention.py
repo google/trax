@@ -392,7 +392,7 @@ class EfficientAttentionBase(base.Layer):
     raise NotImplementedError(
         'Fast inference is not implemented for this attention type.')
 
-  def forward_with_state(self, inputs, weights, state, rng=None):
+  def forward_with_state(self, inputs, weights, state, rng):
     """Computes this layer's output as part of a forward pass through the model.
 
     Args:

@@ -19,7 +19,6 @@
 import jax
 
 from trax import layers as tl
-from trax.layers import base
 from trax.layers.combinators import (  # pylint: disable=g-multiple-import
     _split_rngs, _inputs_from_stack, _outputs_onto_stack)
 from trax.math import numpy as np
@@ -41,7 +40,7 @@ class BroadcastedDropout(tl.Layer):
     self._broadcast_dims = broadcast_dims
     self._mode = mode
 
-  def forward_with_state(self, x, weights=(), state=(), rng=None):
+  def forward_with_state(self, x, weights, state, rng):
     """Dropout, with broadcasting to save memory."""
     del weights
     if rng is None:
@@ -335,8 +334,7 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
       running_total -= layer.n_out
     self._n_in = self._n_out = running_max + 1
 
-  def forward_with_state(self, xs, weights=base.EMPTY_WEIGHTS,
-                         state=base.EMPTY_STATE, rng=None):
+  def forward_with_state(self, xs, weights, state, rng):
     rngs = _split_rngs(rng, len(self.sublayers))
 
     accumulator, *context = xs

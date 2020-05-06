@@ -81,9 +81,9 @@ class BatchNorm(base.Layer):
     gamma = gamma[ed]
     return beta, gamma
 
-  def forward_with_state(self, x, weights, state, **unused_kwargs):
+  def forward_with_state(self, x, weights, state, rng):
     """Computes batch normalization as part of a forward pass in the model."""
-
+    del rng
     running_mean, running_var, n_batches = state
     if self._mode == 'train':
       n_batches += 1
