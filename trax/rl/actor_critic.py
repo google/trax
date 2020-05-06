@@ -371,15 +371,19 @@ class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
       return tl.Fn('NormalizeAdvantages', normalize)
 
     return tl.Serial(
-        self._policy_dist.LogProb(),
+        self._policy_dist.LogProb(),  # Takes dist inputs and actions and...
         tl.Parallel(
-            [],  # Distribution inputs.
+            [],  # returns log probs
             # Advantages.
             NormalizeAdvantages() if self._advantage_normalization else [],
             [],  # Old log probs.
             [],  # Mask.
         ),
-        self.policy_loss_given_log_probs,
+        self.policy_loss_given_log_probs,  # Policy is expected to consume
+        # Log probs,
+        # Advantages,
+        # Old log probs,
+        # Mask.
     )
 
   @property
@@ -408,24 +412,46 @@ class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
     ])
 
 
-# A2C is one of the most basic actor-critic RL algorithms.
-def A2CLoss():  # pylint: disable=invalid-name
-  """Definition of the Advantage Actor Critic (A2C) loss."""
-  def f(log_probs, advantages, old_log_probs, mask):
-    del old_log_probs  # Not used in A2C.
-    return -jnp.sum(log_probs * advantages * mask) / jnp.sum(mask)
-  return tl.Fn('A2CLoss', f)
-
-
 class A2CTrainer(AdvantageBasedActorCriticTrainer):
   """Trains policy and value models using the A2C algortithm."""
 
   on_policy = True
 
+  def __init__(self, task, entropy_coeff=0.01, **kwargs):
+    """Configures the A2C Trainer."""
+    self._entropy_coeff = entropy_coeff
+    super(A2CTrainer, self).__init__(task, **kwargs)
+
   @property
   def policy_loss_given_log_probs(self):
-    """Policy loss."""
-    return A2CLoss()  # pylint: disable=no-value-for-parameter
+    """Definition of the Advantage Actor Critic (A2C) loss."""
+    # A2C is one of the most basic actor-critic RL algorithms.
+    # TODO(henrykm) re-factor f into rl_layers and finally share code between
+    # actor_critic.py and actor_critic_joint.py - requires change of inputs
+    # in actor_critic_joint.py from dist_inputs to log_probs.
+    def f(log_probs, advantages, old_log_probs, mask):
+      del old_log_probs  # Not used in A2C.
+      # log_probs of the shape float32[128,1]
+      # advantages of the shape int32[128,1]
+      # mask of the shape int32[128,1]
+      if log_probs.shape != advantages.shape:
+        raise ValueError('New log-probs and advantages shapes '
+                         'should be the same, %s != %s' % (log_probs.shape,
+                                                           advantages.shape))
+      if log_probs.shape != mask.shape:
+        raise ValueError('New log-probs and mask shapes should be the same'
+                         ', %s != %s' % (log_probs.shape, mask.shape))
+
+      a2c_objective = -jnp.sum(log_probs * advantages * mask) / jnp.sum(mask)
+
+      entropy_vec = self._policy_dist.entropy(log_probs) * self._entropy_coeff
+      entropy_loss = jnp.mean(entropy_vec)
+
+      combined_loss = a2c_objective - entropy_loss
+
+      return combined_loss
+
+    return tl.Fn('A2CLoss', f)
 
 
 # PPO is a widely used actor-critic RL algorithm.
