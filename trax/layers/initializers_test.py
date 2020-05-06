@@ -17,67 +17,66 @@
 """Tests for initializers."""
 
 from absl.testing import absltest
+import numpy as np
+
+from trax import math
 from trax import test_utils
-from trax.layers import initializers
-from trax.math import numpy as np
-from trax.math import random
+import trax.layers as tl
+
+
+INPUT_SHAPE = (5, 7, 20)
+
+
+def rng():  # Can't be a constant, because JAX has to init itself in main first.
+  return math.random.get_prng(0)
 
 
 class InitializersTest(absltest.TestCase):
 
   def test_random_normal(self):
-    initializer = initializers.RandomNormalInitializer()
-    input_shape = (29, 5, 7, 20)
-    init_value = initializer(input_shape, random.get_prng(0))
-    self.assertEqual(tuple(init_value.shape), input_shape)
+    f = tl.RandomNormalInitializer()
+    init_value = f(INPUT_SHAPE, rng())
+    self.assertEqual(init_value.shape, INPUT_SHAPE)
 
   def test_lecun_uniform(self):
-    initializer = initializers.LeCunUniformInitializer()
-    input_shape = (29, 5, 7, 20)
-    init_value = initializer(input_shape, random.get_prng(0))
-    self.assertEqual(tuple(init_value.shape), input_shape)
+    f = tl.LeCunUniformInitializer()
+    init_value = f(INPUT_SHAPE, rng())
+    self.assertEqual(init_value.shape, INPUT_SHAPE)
 
   def test_random_uniform(self):
-    initializer = initializers.RandomUniformInitializer()
-    input_shape = (29, 5, 7, 20)
-    init_value = initializer(input_shape, random.get_prng(0))
-    self.assertEqual(tuple(init_value.shape), input_shape)
+    f = tl.RandomUniformInitializer()
+    init_value = f(INPUT_SHAPE, rng())
+    self.assertEqual(init_value.shape, INPUT_SHAPE)
 
   def test_glorot_normal(self):
-    initializer = initializers.GlorotNormalInitializer()
-    input_shape = (29, 5, 7, 20)
-    init_value = initializer(input_shape, random.get_prng(0))
-    self.assertEqual(tuple(init_value.shape), input_shape)
+    f = tl.GlorotNormalInitializer()
+    init_value = f(INPUT_SHAPE, rng())
+    self.assertEqual(init_value.shape, INPUT_SHAPE)
 
   def test_glorot_uniform(self):
-    initializer = initializers.GlorotUniformInitializer()
-    input_shape = (29, 5, 7, 20)
-    init_value = initializer(input_shape, random.get_prng(0))
-    self.assertEqual(tuple(init_value.shape), input_shape)
+    f = tl.GlorotUniformInitializer()
+    init_value = f(INPUT_SHAPE, rng())
+    self.assertEqual(init_value.shape, INPUT_SHAPE)
 
   def test_lecun_normal(self):
-    initializer = initializers.LeCunNormalInitializer()
-    input_shape = (29, 5, 7, 20)
-    init_value = initializer(input_shape, random.get_prng(0))
-    self.assertEqual(tuple(init_value.shape), input_shape)
+    f = tl.LeCunNormalInitializer()
+    init_value = f(INPUT_SHAPE, rng())
+    self.assertEqual(init_value.shape, INPUT_SHAPE)
 
   def test_kaiming_normal(self):
-    initializer = initializers.KaimingNormalInitializer()
-    input_shape = (29, 5, 7, 20)
-    init_value = initializer(input_shape, random.get_prng(0))
-    self.assertEqual(tuple(init_value.shape), input_shape)
+    f = tl.KaimingNormalInitializer()
+    init_value = f(INPUT_SHAPE, rng())
+    self.assertEqual(init_value.shape, INPUT_SHAPE)
 
   def test_kaiming_uniform(self):
-    initializer = initializers.KaimingUniformInitializer()
-    input_shape = (29, 5, 7, 20)
-    init_value = initializer(input_shape, random.get_prng(0))
-    self.assertEqual(tuple(init_value.shape), input_shape)
+    f = tl.KaimingUniformInitializer()
+    init_value = f(INPUT_SHAPE, rng())
+    self.assertEqual(init_value.shape, INPUT_SHAPE)
 
   def test_orthogonal(self):
-    initializer = initializers.OrthogonalInitializer()
-    input_shape = (29, 5, 7, 20)
-    init_value = initializer(input_shape, random.get_prng(0))
-    self.assertEqual(tuple(init_value.shape), input_shape)
+    f = tl.OrthogonalInitializer()
+    init_value = f(INPUT_SHAPE, rng())
+    self.assertEqual(init_value.shape, INPUT_SHAPE)
 
   def test_from_file(self):
     params = np.array([[0.0, 0.1], [0.2, 0.3], [0.4, 0.5]])
@@ -87,10 +86,11 @@ class InitializersTest(absltest.TestCase):
     filename = self.create_tempfile('params.npy').full_path
     with open(filename, 'wb') as f:
       np.save(f, params)
-    initializer = initializers.InitializerFromFile(filename)
-    input_shape = (3, 2)
-    init_value = initializer(input_shape, random.get_prng(0))
-    self.assertEqual('%s' % init_value, '%s' % params)
+    f = tl.InitializerFromFile(filename)
+    init_value = f(params.shape, rng())
+    self.assertEqual(tl.to_list(init_value), tl.to_list(params))
+    # self.assertEqual('%s' % init_value, '%s' % params)
+
 
 if __name__ == '__main__':
   absltest.main()
