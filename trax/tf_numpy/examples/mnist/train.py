@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl import app
 from absl import flags
 
+from six.moves import range
 import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.examples.mnist import dataset
