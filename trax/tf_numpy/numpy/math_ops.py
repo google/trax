@@ -279,7 +279,10 @@ def heaviside(x1, x2):
   def f(x1, x2):
     return tf.where(x1 < 0, tf.constant(0, dtype=x2.dtype),
                     tf.where(x1 > 0, tf.constant(1, dtype=x2.dtype), x2))
-  return _bin_op(f, x1, x2)
+  y = _bin_op(f, x1, x2)
+  if not np.issubdtype(y.dtype, np.inexact):
+    y = y.astype(dtypes.default_float_type())
+  return y
 
 
 @utils.np_doc(np.hypot)
@@ -629,7 +632,7 @@ def cbrt(x):
 
 @utils.np_doc(np.conjugate)
 def conjugate(x):
-  return _scalar(tf.math.conj, x, True)
+  return _scalar(tf.math.conj, x)
 
 
 @utils.np_doc(np.exp2)
@@ -696,13 +699,15 @@ nanprod = _make_nan_reduction(np.nanprod, array_ops.prod, 1)
 
 
 @utils.np_doc(np.nanmean)
-def nanmean(a, axis=None, dtype=None, keepdims=None):
+def nanmean(a, axis=None, dtype=None, keepdims=None):  # pylint: disable=missing-docstring
   a = array_ops.array(a)
   if np.issubdtype(a.dtype, np.bool_) or np.issubdtype(a.dtype, np.integer):
     return array_ops.mean(a, axis=axis, dtype=dtype, keepdims=keepdims)
   nan_mask = logical_not(isnan(a))
+  if dtype is None:
+    dtype = a.dtype
   normalizer = array_ops.sum(
-      nan_mask, axis=axis, dtype=np.int64, keepdims=keepdims)
+      nan_mask, axis=axis, dtype=dtype, keepdims=keepdims)
   return nansum(a, axis=axis, dtype=dtype, keepdims=keepdims) / normalizer
 
 
@@ -743,7 +748,7 @@ def log1p(x):
 
 @utils.np_doc(np.positive)
 def positive(x):
-  return _scalar(lambda x: x, x, True)
+  return _scalar(lambda x: x, x)
 
 
 @utils.np_doc(np.sinc)
@@ -1068,6 +1073,7 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
         weights_sum = tf.size(a.data)
       else:
         weights_sum = tf.shape(a.data)[axis]
+      weights_sum = tf.cast(weights_sum, a.data.dtype)
   else:
     if np.issubdtype(a.dtype, np.inexact):
       out_dtype = utils.result_type(a.dtype, weights)
@@ -1108,7 +1114,9 @@ def average(a, axis=None, weights=None, returned=False):  # pylint: disable=miss
 
 @utils.np_doc(np.trace)
 def trace(a, offset=0, axis1=0, axis2=1, dtype=None):  # pylint: disable=missing-docstring
-  a = array_ops.asarray(a).data
+  if dtype:
+    dtype = utils.result_type(dtype)
+  a = array_ops.asarray(a, dtype).data
 
   if offset == 0:
     a_shape = a.shape

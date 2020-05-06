@@ -663,17 +663,18 @@ class LaxBackedNumpyTests(jtu.TestCase):
     rng = rng_factory()
     args_maker = self._GetArgsMaker(rng, shapes, dtypes)
     has_python_scalar = jtu.PYTHON_SCALAR_SHAPE in shapes
-    self._CheckAgainstNumpy(onp_op, lnp_op, args_maker,
-                            check_dtypes=not has_python_scalar)
+    self._CheckAgainstNumpy(onp_op, lnp_op, args_maker, check_dtypes=True)
     if onp_op == onp.bitwise_not and has_python_scalar:
       # For bitwise_not with a Python `int`, npe.jit may choose a different
       # dtype for the `int` from onp's choice, which may result in a different
       # result value, so we skip _CompileAndCheck.
       return
-    has_numpy_scalar = jtu.NUMPY_SCALAR_SHAPE in shapes
-    # numpy's bitwise ops seem to ignore the dtype of a numpy scalar, while jit
-    # respects it, so we skip dtype check when there are numpy scalars.
-    self._CompileAndCheck(lnp_op, args_maker, check_dtypes=not has_numpy_scalar)
+    # Numpy does value-dependent dtype promotion on Python/numpy/array scalars
+    # which `jit` can't do (when np.result_type is called inside `jit`, tensor
+    # values are not available), so we skip dtype check in this case.
+    check_dtypes = not(set(shapes) & set([jtu.NUMPY_SCALAR_SHAPE,
+                                          jtu.PYTHON_SCALAR_SHAPE, ()]))
+    self._CompileAndCheck(lnp_op, args_maker, check_dtypes=check_dtypes)
 
   @named_parameters(itertools.chain.from_iterable(
       jtu.cases_from_list(
@@ -862,10 +863,20 @@ class LaxBackedNumpyTests(jtu.TestCase):
       x = x.astype(onp.float32) if lhs_dtype == lnp.bfloat16 else x
       y = y.astype(onp.float32) if rhs_dtype == lnp.bfloat16 else y
       return onp.dot(x, y).astype(lnp.promote_types(lhs_dtype, rhs_dtype))
-    self._CheckAgainstNumpy(onp_dot, lnp.dot, args_maker, check_dtypes=True,
-                            tol=tol)
-    self._CompileAndCheck(lnp.dot, args_maker, check_dtypes=True, atol=tol,
-                          rtol=tol, check_incomplete_shape=True)
+    # np.dot's type promotion is different from np.result_type when rhs_shape
+    # is ():
+    # ```
+    # print(np.dot(np.ones([3, 3], np.float16), np.array(1, np.int64)).dtype)
+    # print(np.result_type(np.ones([3, 3], np.float16), np.array(1, np.int64)))
+    # ```
+    # >>>
+    # float64
+    # float16
+    check_dtype = rhs_shape != ()
+    self._CheckAgainstNumpy(onp_dot, lnp.dot, args_maker,
+                            check_dtypes=check_dtype, tol=tol)
+    self._CompileAndCheck(lnp.dot, args_maker, check_dtypes=check_dtype,
+                          atol=tol, rtol=tol, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_{}_{}_{}".format(
@@ -988,21 +999,33 @@ class LaxBackedNumpyTests(jtu.TestCase):
     args_maker = lambda: [rng(shape, dtype)]
     tol_spec = {onp.float64: 2e-7}
     tol = jtu.tolerance(dtype, tol_spec)
-    # TODO(phawkins): the promotion behavior changed in Numpy 1.17.
-    self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=False,
-                            tol=tol)
-    is_float32_numpy_scalar = (dtype == onp.float32 and
-                               shape == jtu.NUMPY_SCALAR_SHAPE)
-    # Turns check_dtypes off if is_float32_numpy_scalar is True because there is
+    is_x32_scalar = (dtype in [onp.int32, onp.float32] and
+                     shape in [jtu.NUMPY_SCALAR_SHAPE, ()])
+    # Turns check_dtypes off if is_x32_scalar is True because there is
     # a weird promotion inconsistency in numpy:
-    #   np.result_type(np.float32(1.2), 1)
-    #   >> float64
-    #   np.result_type(np.float32, 1)
-    #   >> float32
-    self._CompileAndCheck(lnp_fun, args_maker,
-                          check_dtypes=not is_float32_numpy_scalar,
-                          atol=tol, rtol=tol,
-                          check_incomplete_shape=True)
+    # ```
+    # print(np.result_type(np.ones([], np.int32), 1))
+    # print(np.result_type(np.ones([1], np.int32), 1))
+    # print(np.result_type(np.int32(1), 1))
+    # print(np.result_type(np.int32, 1))
+    # print(np.result_type(np.ones([], np.float32), 1))
+    # print(np.result_type(np.ones([1], np.float32), 1))
+    # print(np.result_type(np.float32(1), 1))
+    # print(np.result_type(np.float32, 1))
+    # ```
+    # >>>
+    # int64
+    # int32
+    # int64
+    # int32
+    # float64
+    # float32
+    # float64
+    # float32
+    self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker,
+                            check_dtypes=not is_x32_scalar, tol=tol)
+    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=not is_x32_scalar,
+                          atol=tol, rtol=tol, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_{}_decimals={}".format(

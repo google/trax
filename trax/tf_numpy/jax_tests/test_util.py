@@ -81,10 +81,21 @@ flags.DEFINE_integer(
 
 EPS = 1e-4
 
+
+# Default dtypes corresponding to Python scalars.
+python_scalar_dtypes = {
+  bool: onp.dtype(onp.bool_),
+  int: onp.dtype(onp.int_),
+  float: onp.dtype(onp.float_),
+  complex: onp.dtype(onp.complex_),
+}
+
+
 def _dtype(x):
   return (getattr(x, 'dtype', None) or
-          onp.dtype(dtypes.python_scalar_dtypes.get(type(x), None)) or
+          onp.dtype(python_scalar_dtypes.get(type(x), None)) or
           onp.asarray(x).dtype)
+
 
 def is_sequence(x):
   try:

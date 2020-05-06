@@ -90,7 +90,9 @@ def result_type(*arrays_and_dtypes):
     A numpy dtype.
   """
   def maybe_get_dtype(x):
-    if isinstance(x, (np.ndarray, arrays.ndarray, arrays.ShardedNdArray,
+    # Don't put np.ndarray in this list, because np.result_type looks at the
+    # value (not just dtype) of np.ndarray to decide the result type.
+    if isinstance(x, (arrays.ndarray, arrays.ShardedNdArray,
                       tf.Tensor, tf.IndexedSlices)):
       return _to_numpy_type(x.dtype)
     elif isinstance(x, tf.DType):

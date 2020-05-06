@@ -781,14 +781,19 @@ def repeat(a, repeats, axis=None):
 
 
 @utils.np_doc(np.around)
-def around(a, decimals=0):
+def around(a, decimals=0):  # pylint: disable=missing-docstring
   a = asarray(a)
+  dtype = a.dtype
   factor = math.pow(10, decimals)
-  factor = tf.cast(factor, a.dtype)
-  a_t = tf.multiply(a.data, factor)
-  a_t = tf.round(a_t)
-  a_t = tf.math.divide(a_t, factor)
-  return utils.tensor_to_ndarray(a_t)
+  # Use float as the working dtype instead of a.dtype, because a.dtype can be
+  # integer and `decimals` can be negative.
+  float_dtype = dtypes.default_float_type()
+  a = a.astype(float_dtype).data
+  factor = tf.cast(factor, float_dtype)
+  a = tf.multiply(a, factor)
+  a = tf.round(a)
+  a = tf.math.divide(a, factor)
+  return utils.tensor_to_ndarray(a).astype(dtype)
 
 
 round_ = around
