@@ -380,3 +380,12 @@ def reduce_all(input_tensor, axis=None, keepdims=False):
     return tf.reduce_all(input_tensor, axis=axis, keepdims=keepdims)
   else:
     return v.all(axis=axis, keepdims=keepdims)
+
+
+def reduce_any(input_tensor, axis=None, keepdims=False):
+  """A version of tf.reduce_any that eagerly evaluates if possible."""
+  v = get_static_value(input_tensor)
+  if v is None:
+    return tf.reduce_any(input_tensor, axis=axis, keepdims=keepdims)
+  else:
+    return v.any(axis=axis, keepdims=keepdims)

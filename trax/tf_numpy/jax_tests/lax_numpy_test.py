@@ -1292,14 +1292,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
       for dtype in default_dtypes
       for shape in [shape for shape in all_shapes if len(shape) in (1, 2)]
       for k in list(range(-4, 4))))
-  @disable
   def testDiag(self, shape, dtype, k, rng_factory):
     rng = rng_factory()
     onp_fun = lambda arg: onp.diag(arg, k)
     lnp_fun = lambda arg: lnp.diag(arg, k)
     args_maker = lambda: [rng(shape, dtype)]
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_shape={}_offset={}_axis1={}_axis2={}".format(

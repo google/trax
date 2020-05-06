@@ -384,71 +384,38 @@ def geomspace(start, stop, num=50, endpoint=True, dtype=float):  # pylint: disab
 
 
 # Building matrices.
-def diag(v, k=0):
-  """Returns the array diagonal or constructs a diagonal array.
+@utils.np_doc(np.diag)
+def diag(v, k=0):  # pylint: disable=missing-docstring
+  """Raises an error if input is not 1- or 2-d."""
+  v = asarray(v).data
+  v_rank = tf.rank(v)
 
-  If `v` is a 1-d array, returns a 2-d array with v as the diagonal shifted
-  to the right/left if `k` is positive/negative.
-  If `v` is a 2-d array, returns the 1-d array diagonal shifted to the
-  right/left if `k` is positive/negative.
+  v.shape.with_rank_at_most(2)
 
-  Args:
-    v: 1-d or 2-d array_like. Could be an ndarray, a Tensor or any object that
-      can be converted to a Tensor using `tf.convert_to_tensor`.
-    k: Position of the diagonal. Defaults to 0, the main diagonal. Positive
-      values refer to diagonals shifted right, negative values refer to
-      diagonals shifted left.
+  # TODO(nareshmodi): Consider a utils.Assert version that will fail during
+  # tracing time if the shape is known.
+  tf.debugging.Assert(
+      utils.logical_or(tf.equal(v_rank, 1), tf.equal(v_rank, 2)), [v_rank])
 
-  Returns:
-    1-d or 2-d ndarray.
+  def _diag(v, k):
+    return utils.cond(
+        tf.equal(tf.size(v), 0),
+        lambda: tf.zeros([abs(k), abs(k)], dtype=v.dtype),
+        lambda: tf.linalg.diag(v, k=k))
 
-  Raises:
-    ValueError: If v is not 1-d or 2-d.
-  """
-  v = asarray(v)
-  if v.ndim == 0 or v.ndim > 2:
-    raise ValueError('Input to diag must be 1-d or 2-d only.')
-  if v.ndim == 1:
-    if v.shape[0] == 0:
-      size = abs(k)
-      return zeros((size, size), dtype=v.dtype)
-    result = tf.linalg.tensor_diag(v.data)
-    if k:
-      if k < 0:
-        padding = [[-k, 0], [0, -k]]
-      else:
-        padding = [[0, k], [k, 0]]
-      result = tf.pad(tensor=result, paddings=padding)
-  else:
-    n, m = v.shape
-    if not n or not m:
-      return empty(0, dtype=v.dtype)
-    result = v.data
-    if k:
-      if k < 0:
-        k = -k  # For sanity.
-        if k >= n:
-          return empty(0, dtype=v.dtype)
-        else:
-          # We intentionally cut a square matrix since diag_part only
-          # supports square matrices.
-          size = min(n - k, m)
-          result = tf.slice(result, [k, 0], [size, size])
-      else:
-        if k >= m:
-          return empty(0, dtype=v.dtype)
-        else:
-          # We intentionally cut a square matrix since diag_part only
-          # supports square matrices.
-          size = min(m - k, n)
-          result = tf.slice(result, [0, k], [size, size])
-    elif m != n:
-      # We intentionally cut a square matrix since diag_part only
-      # supports square matrices.
-      min_n_m = min(n, m)
-      result = tf.slice(result, [0, 0], [min_n_m, min_n_m])
-    result = tf.linalg.tensor_diag_part(result)
-  return arrays_lib.tensor_to_ndarray(result)
+  def _diag_part(v, k):
+    v_shape = tf.shape(v)
+    v, k = utils.cond(
+        utils.logical_or(
+            utils.less_equal(k, -1 * utils.getitem(v_shape, 0)),
+            utils.greater_equal(k, utils.getitem(v_shape, 1)),
+        ), lambda: (tf.zeros([0, 0], dtype=v.dtype), 0), lambda: (v, k))
+    result = tf.linalg.diag_part(v, k=k)
+    return result
+
+  result = utils.cond(
+      tf.equal(v_rank, 1), lambda: _diag(v, k), lambda: _diag_part(v, k))
+  return utils.tensor_to_ndarray(result)
 
 
 def diagflat(v, k=0):
