@@ -134,9 +134,10 @@ class Serial(base.Layer):
     return running_max, (running_max - running_total)
 
   def _validate_forward_inputs(self, xs):
-    if not isinstance(xs, tuple) and self._n_in != 1:
-      raise TypeError(
-          f'Serial.forward input must be a tuple; instead got {xs}')
+    if not isinstance(xs, (tuple, list)) and self._n_in != 1:
+      raise TypeError(f'Serial.forward input must be a tuple or list; '
+                      f'instead got {type(xs)}.')
+      # TODO(jonni): Include full xs (or shape) in error message?
     len_xs = 1 if isinstance(xs, np.ndarray) else len(xs)
     if len_xs < self.n_in:
       raise ValueError(
@@ -397,6 +398,8 @@ class Scan(base.Layer):
     return self._sublayers[0]
 
   def forward_with_state(self, inputs, weights, state, rng):
+    if isinstance(inputs, list):
+      inputs = tuple(inputs)  # so that inputs structure matches outputs
     n_carry = self._n_carry
     def scannable_fn(x, carry_and_state):  # pylint: disable=invalid-name
       carry, state = carry_and_state
@@ -494,21 +497,6 @@ def Residual(*layers, shortcut=None):
   )
 
 
-def Drop():
-  """Drops the top stack element."""
-  return Fn('Drop', lambda x: (), n_out=0)
-
-
-def Dup():
-  """Duplicates (copies) the top element on the data stack."""
-  return Fn('Dup', lambda x: (x, x), n_out=2)
-
-
-def Swap():
-  """Swaps the top two stack elements."""
-  return Fn('Swap', lambda x0, x1: (x1, x0), n_out=2)
-
-
 def Select(indices, n_in=None, name=None):
   """Copies, reorders, or deletes stack elements according to `indices`.
 
@@ -539,6 +527,21 @@ def Select(indices, n_in=None, name=None):
     return selected[0] if len(selected) == 1 else selected
 
   return base.PureLayer(select, n_in=n_in, n_out=len(indices), name=name)
+
+
+def Drop():
+  """Drops the top stack element."""
+  return Fn('Drop', lambda x: (), n_out=0)
+
+
+def Dup():
+  """Duplicates (copies) the top element on the data stack."""
+  return Fn('Dup', lambda x: (x, x), n_out=2)
+
+
+def Swap():
+  """Swaps the top two stack elements."""
+  return Fn('Swap', lambda x0, x1: (x1, x0), n_out=2)
 
 
 def SerialWithSideOutputs(layers, n_side_outputs=1):
