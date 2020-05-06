@@ -16,49 +16,60 @@
 # Lint as: python3
 """Tests for trax.layers.attention."""
 
+from absl.testing import absltest
 import numpy as np
-from tensorflow import test
-from trax.layers import attention
+
+import trax.layers as tl
 
 
-class AttentionTest(test.TestCase):
+class AttentionTest(absltest.TestCase):
 
   def test_shift_right(self):
     # Test shifts right on axis=1
-    layer = attention.ShiftRight()
-    input_np = np.arange(2*3*3).reshape(2, 3, 3)
-    output_np = layer(input_np)
-    self.assertEqual(input_np.shape, output_np.shape)
-    self.assertAllEqual(np.array([[[0, 0, 0],
-                                   [0, 1, 2],
-                                   [3, 4, 5]],
-
-                                  [[0, 0, 0],
-                                   [9, 10, 11],
-                                   [12, 13, 14]]]),
-                        output_np)
+    layer = tl.ShiftRight()
+    x = np.array([[[9, 9, 9],
+                   [8, 8, 8],
+                   [7, 7, 7],
+                   [6, 6, 6]],
+                  [[99, 98, 97],
+                   [96, 95, 94],
+                   [93, 92, 91],
+                   [90, 89, 88]]])
+    y = layer(x)
+    self.assertEqual(x.shape, y.shape)
+    self.assertEqual(tl.to_list(y), [[[0, 0, 0],
+                                      [9, 9, 9],
+                                      [8, 8, 8],
+                                      [7, 7, 7]],
+                                     [[0, 0, 0],
+                                      [99, 98, 97],
+                                      [96, 95, 94],
+                                      [93, 92, 91]]])
 
   def test_shift_right_float(self):
-    layer = attention.ShiftRight()
-    input_np = np.arange(2*3*3).reshape(2, 3, 3).astype(np.float32)
-    # Test on a float array.
-    input_np = input_np.astype(np.float32)
-    input_np /= 2.0
-    self.assertEqual(input_np.dtype, np.float32)
+    layer = tl.ShiftRight()
+    x = np.array([[[9, 9, 9],
+                   [8, 8, 8],
+                   [7, 7, 7],
+                   [6, 6, 6]],
+                  [[99, 98, 97],
+                   [96, 95, 94],
+                   [93, 92, 91],
+                   [90, 89, 88]]]).astype(np.float32)
+    x /= 2.0
+    self.assertEqual(x.dtype, np.float32)
 
-    output_np = layer(input_np)
-    self.assertEqual(input_np.shape, output_np.shape)
-    self.assertEqual(output_np.dtype, np.float32)
-
-    self.assertAllEqual(np.array([[[0., 0., 0.],
-                                   [0., 0.5, 1.],
-                                   [1.5, 2., 2.5]],
-
-                                  [[0., 0., 0.],
-                                   [4.5, 5., 5.5],
-                                   [6., 6.5, 7.]]]),
-                        output_np)
+    y = layer(x)
+    self.assertEqual(y.dtype, np.float32)
+    self.assertEqual(tl.to_list(y), [[[0.0, 0.0, 0.0],
+                                      [4.5, 4.5, 4.5],
+                                      [4.0, 4.0, 4.0],
+                                      [3.5, 3.5, 3.5]],
+                                     [[0.0, 0.0, 0.0],
+                                      [49.5, 49.0, 48.5],
+                                      [48.0, 47.5, 47.0],
+                                      [46.5, 46.0, 45.5]]])
 
 
 if __name__ == '__main__':
-  test.main()
+  absltest.main()

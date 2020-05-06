@@ -17,33 +17,40 @@
 """Tests for convolution layers."""
 
 from absl.testing import absltest
-from trax.layers import base
-from trax.layers import convolution
-from trax.shapes import ShapeDtype
+import numpy as np
+
+from trax import shapes
+import trax.layers as tl
 
 
-class ConvolutionLayerTest(absltest.TestCase):
+class ConvolutionTest(absltest.TestCase):
 
-  def test_conv(self):
-    input_signature = ShapeDtype((29, 5, 5, 20))
-    result_shape = base.check_shape_agreement(convolution.Conv(30, (3, 3)),
-                                              input_signature)
-    self.assertEqual(result_shape, (29, 3, 3, 30))
+  def test_call(self):
+    layer = tl.Conv(30, (3, 3))
+    x = np.ones((9, 5, 5, 20))
+    layer.init(shapes.signature(x))
 
-  def test_conv_rebatch(self):
-    input_signature = ShapeDtype((3, 29, 5, 5, 20))
-    result_shape = base.check_shape_agreement(convolution.Conv(30, (3, 3)),
-                                              input_signature)
-    self.assertEqual(result_shape, (3, 29, 3, 3, 30))
+    y = layer(x)
+    self.assertEqual(y.shape, (9, 3, 3, 30))
+
+  def test_call_rebatch(self):
+    layer = tl.Conv(30, (3, 3))
+    x = np.ones((2, 9, 5, 5, 20))
+    layer.init(shapes.signature(x))
+
+    y = layer(x)
+    self.assertEqual(y.shape, (2, 9, 3, 3, 30))
 
 
 class CausalConvolutionTest(absltest.TestCase):
 
   def test_causal_conv(self):
-    input_signature = ShapeDtype((29, 5, 20))
-    conv = convolution.CausalConv(filters=30, kernel_width=3)
-    result_shape = base.check_shape_agreement(conv, input_signature)
-    self.assertEqual(result_shape, (29, 5, 30))
+    layer = tl.CausalConv(filters=30, kernel_width=3)
+    x = np.ones((9, 5, 20))
+    layer.init(shapes.signature(x))
+
+    y = layer(x)
+    self.assertEqual(y.shape, (9, 5, 30))
 
     # TODO(ddohan): How to test for causality? Gradient check between positions?
 

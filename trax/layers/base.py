@@ -706,6 +706,27 @@ class LayerError(Exception):
     return prefix + caller + shapes_str + self._traceback
 
 
+def to_list(outputs):
+  """Converts layer outputs to a nested list, for easier equality testing.
+
+  Args:
+    outputs: A tensor or tuple/list of tensors coming from the forward
+        application of a layer. Each tensor is NumPy ndarray-like, which
+        complicates simple equality testing (e.g., via `assertEquals`):
+        such tensors require equality testing to use either `all` (all
+        elements match) or `any` (at least one element matches), which is not
+        directly supported in absltest.
+
+  Returns:
+    A nested list structure containing all the output values, but now directly
+    testable using `assertEquals`.
+  """
+  if isinstance(outputs, (list, tuple)):
+    return [y.tolist() for y in outputs]
+  else:
+    return outputs.tolist()
+
+
 def check_shape_agreement(layer_obj, input_signature):
   """Compares the layer's __call__ output to its _foward_abstract shape output.
 
