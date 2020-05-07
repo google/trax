@@ -1126,36 +1126,7 @@ def trace(a, offset=0, axis1=0, axis2=1, dtype=None):  # pylint: disable=missing
                                                  axis2 == rank - 1):
         return utils.tensor_to_ndarray(tf.linalg.trace(a))
 
-  a_rank = tf.rank(a)
-  if axis1 < 0:
-    axis1 += a_rank
-  if axis2 < 0:
-    axis2 += a_rank
-
-  minaxis = tf.minimum(axis1, axis2)
-  maxaxis = tf.maximum(axis1, axis2)
-
-  # Move axes of interest to the end.
-  range_rank = tf.range(a_rank)
-  perm = tf.concat([
-      range_rank[0:minaxis], range_rank[minaxis + 1:maxaxis],
-      range_rank[maxaxis + 1:], [axis1, axis2]
-  ],
-                   axis=0)
-  a = tf.transpose(a, perm)
-
-  a_shape = tf.shape(a)
-
-  # All zeros since diag_part doesn't handle all possible k (aka offset).
-  # Written this way since cond will run shape inference on both branches,
-  # and diag_part shape inference will fail when offset is out of bounds.
-  a, offset = utils.cond(
-      utils.logical_or(
-          utils.less_equal(offset, -1 * utils.getitem(a_shape, -2)),
-          utils.greater_equal(offset, utils.getitem(a_shape, -1)),
-      ), lambda: (tf.zeros_like(a), 0), lambda: (a, offset))
-
-  a = utils.tensor_to_ndarray(tf.linalg.diag_part(a, k=offset))
+  a = array_ops.diagonal(a, offset, axis1, axis2)
   return array_ops.sum(a, -1, dtype)
 
 

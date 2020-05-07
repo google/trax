@@ -175,9 +175,9 @@ def eye(N, M=None, k=0, dtype=float):  # pylint: disable=invalid-name,missing-do
       diag_len += k
     elif M - k > N:
       diag_len = N + k
-  diagonal = tf.ones([diag_len], dtype=dtype)
+  diagonal_ = tf.ones([diag_len], dtype=dtype)
   return arrays_lib.tensor_to_ndarray(
-      tf.linalg.diag(diagonal=diagonal, num_rows=N, num_cols=M, k=k))
+      tf.linalg.diag(diagonal=diagonal_, num_rows=N, num_cols=M, k=k))
 
 
 def identity(n, dtype=float):
@@ -416,6 +416,36 @@ def diag(v, k=0):  # pylint: disable=missing-docstring
   result = utils.cond(
       tf.equal(v_rank, 1), lambda: _diag(v, k), lambda: _diag_part(v, k))
   return utils.tensor_to_ndarray(result)
+
+
+@utils.np_doc(np.diagonal)
+def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstring
+  a = asarray(a).data
+
+  maybe_rank = a.shape.rank
+  if maybe_rank is not None and offset == 0 and (
+      axis1 == maybe_rank - 2 or axis1 == -2) and (axis2 == maybe_rank - 1 or
+                                                   axis2 == -1):
+    return utils.tensor_to_ndarray(tf.linalg.diag_part(a))
+
+  a = moveaxis(utils.tensor_to_ndarray(a), (axis1, axis2), (-2, -1)).data
+
+  a_shape = tf.shape(a)
+
+  def _zeros():  # pylint: disable=missing-docstring
+    return (tf.zeros(tf.concat([a_shape[:-1], [0]], 0), dtype=a.dtype), 0)
+
+  # All zeros since diag_part doesn't handle all possible k (aka offset).
+  # Written this way since cond will run shape inference on both branches,
+  # and diag_part shape inference will fail when offset is out of bounds.
+  a, offset = utils.cond(
+      utils.logical_or(
+          utils.less_equal(offset, -1 * utils.getitem(a_shape, -2)),
+          utils.greater_equal(offset, utils.getitem(a_shape, -1)),
+      ), _zeros, lambda: (a, offset))
+
+  a = utils.tensor_to_ndarray(tf.linalg.diag_part(a, k=offset))
+  return a
 
 
 def diagflat(v, k=0):

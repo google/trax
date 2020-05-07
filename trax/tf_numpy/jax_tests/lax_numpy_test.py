@@ -1346,14 +1346,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
       for axis2 in [a for a in range(-len(shape), len(shape))
                     if a % len(shape) != axis1 % len(shape)]
       for offset in list(range(-4, 4))))
-  @disable
   def testDiagonal(self, shape, dtype, offset, axis1, axis2, rng_factory):
     rng = rng_factory()
     onp_fun = lambda arg: onp.diagonal(arg, offset, axis1, axis2)
     lnp_fun = lambda arg: lnp.diagonal(arg, offset, axis1, axis2)
     args_maker = lambda: [rng(shape, dtype)]
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_shape={}_n={}".format(onp.dtype(dtype).name, n),
