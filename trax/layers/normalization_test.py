@@ -20,76 +20,111 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import numpy as np
 
-from trax.layers import base
-from trax.layers import normalization
-from trax.math import numpy as jnp
-from trax.math import use_backend
-from trax.shapes import ShapeDtype
+from trax import math
+from trax import shapes
+import trax.layers as tl
 
 
-class NormalizationLayerTest(parameterized.TestCase):
+class BatchNormTest(parameterized.TestCase):
 
-  def test_batch_norm_shape(self):
-    input_signature = ShapeDtype((29, 5, 7, 20))
-    result_shape = base.check_shape_agreement(normalization.BatchNorm(),
-                                              input_signature)
-    self.assertEqual(result_shape, input_signature.shape)
-
-  def test_batch_norm(self):
-    input_shape = (2, 3, 4)
-    input_dtype = jnp.float32
-    input_signature = ShapeDtype(input_shape, input_dtype)
-    eps = 1e-5
-    inp1 = jnp.reshape(jnp.arange(jnp.prod(input_shape), dtype=input_dtype),
-                       input_shape)
-    m1 = 11.5  # Mean of this random input.
-    v1 = 47.9167  # Variance of this random input.
-    layer = normalization.BatchNorm(axis=(0, 1, 2))
-    _, _ = layer.init(input_signature)
-    state = layer.state
-    np.testing.assert_allclose(state[0], 0)
-    np.testing.assert_allclose(state[1], 1)
-    self.assertEqual(state[2], 0)
-    out = layer(inp1)
-    state = layer.state
-    np.testing.assert_allclose(state[0], m1 * 0.001)
-    np.testing.assert_allclose(state[1], 0.999 + v1 * 0.001, rtol=1e-6)
-    self.assertEqual(state[2], 1)
-    np.testing.assert_allclose(out, (inp1 - m1) / jnp.sqrt(v1 + eps), rtol=1e-6)
-
-  def test_layer_norm_shape(self):
-    input_signature = ShapeDtype((29, 5, 7, 20))
-    result_shape = base.check_shape_agreement(
-        normalization.LayerNorm(), input_signature)
-    self.assertEqual(result_shape, input_signature.shape)
+  def test_forward_shape(self):
+    layer = tl.BatchNorm()
+    x = np.ones((30, 20, 70)).astype(np.float32)
+    _, _ = layer.init(shapes.signature(x))
+    y = layer(x)
+    self.assertEqual(y.shape, x.shape)
 
   @parameterized.named_parameters(
-      ('jax32', 'jax', jnp.float32),
-      ('tf32', 'tf', jnp.float32),
-      ('tf64', 'tf', jnp.float64),
-      # NOTE: float64 requires more fix in jax
-      # ('jax64', 'jax', jnp.float64),
+      ('jax32', 'jax', np.float32),
+      ('tf32', 'tf', np.float32),
+      ('tf64', 'tf', np.float64),
   )
-  def test_layer_norm_dtype(self, backend, dtype):
-    with use_backend(backend):
-      input_shape = (2, 3, 4)
-      input_signature = ShapeDtype(input_shape, dtype)
-      layer = normalization.LayerNorm()
-      layer.init(input_signature)
-      out = layer(np.empty(input_shape, dtype=dtype))
-      self.assertEqual(out.dtype, dtype)
+  def test_forward_dtype(self, backend, dtype):
+    with math.use_backend(backend):
+      layer = tl.BatchNorm()
+      x = np.ones((3, 2, 7)).astype(dtype)
+      _, _ = layer.init(shapes.signature(x))
+      y = layer(x)
+      self.assertEqual(y.dtype, dtype)
 
-  def test_frn_shape(self):
+  @parameterized.named_parameters(
+      ('momentum_999', .999),
+      ('momentum_900', .900),
+      ('momentum_800', .800),
+  )
+  def test_forward(self, momentum):
+    layer = tl.BatchNorm(momentum=momentum)
+    x = np.array([[[0, 1, 2, 3],
+                   [4, 5, 6, 7],
+                   [8, 9, 10, 11]],
+                  [[12, 13, 14, 15],
+                   [16, 17, 18, 19],
+                   [20, 21, 22, 23]]]).astype(np.float32)
+    _, _ = layer.init(shapes.signature(x))
+    y = layer(x)
+    running_mean, running_var, n_batches = layer.state
+
+    fraction_old = momentum
+    fraction_new = 1.0 - momentum
+    mean_of_x = 11.5  # mean of range(24)
+    var_of_x = 47.9167  # variance of range(24)
+    np.testing.assert_allclose(
+        running_mean, 0.0 * fraction_old + mean_of_x * fraction_new)
+    np.testing.assert_allclose(
+        running_var, 1.0 * fraction_old + var_of_x * fraction_new, rtol=1e-6)
+    self.assertEqual(n_batches, 1)
+    eps = 1e-5
+    np.testing.assert_allclose(
+        y, (x - mean_of_x) / np.sqrt(var_of_x + eps), rtol=1e-6)
+
+  def test_new_weights_and_state(self):
+    layer = tl.BatchNorm()
+    x = np.ones((3, 2, 7)).astype(np.float32)
+    _, _ = layer.init(shapes.signature(x))
+
+    running_mean, running_var, n_batches = layer.state
+    np.testing.assert_allclose(running_mean, 0.0)
+    np.testing.assert_allclose(running_var, 1.0)
+    self.assertEqual(n_batches, 0)
+
+
+class LayerNormTest(parameterized.TestCase):
+
+  def test_forward_shape(self):
+    layer = tl.LayerNorm()
+    x = np.ones((3, 2, 7)).astype(np.float32)
+    _, _ = layer.init(shapes.signature(x))
+    y = layer(x)
+    self.assertEqual(y.shape, x.shape)
+
+  @parameterized.named_parameters(
+      ('jax32', 'jax', np.float32),
+      ('tf32', 'tf', np.float32),
+      ('tf64', 'tf', np.float64),
+  )
+  def test_forward_dtype(self, backend, dtype):
+    with math.use_backend(backend):
+      layer = tl.LayerNorm()
+      x = np.ones((3, 2, 7)).astype(dtype)
+      _, _ = layer.init(shapes.signature(x))
+      y = layer(x)
+      self.assertEqual(y.dtype, dtype)
+
+
+class FilterResponseNormTest(parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      ('learn_epsilon_false', False),
+      ('learn_epsilon_true', True),
+  )
+  def test_forward_shape(self, learn_epsilon):
+    layer = tl.FilterResponseNorm(learn_epsilon=learn_epsilon)
+
     B, H, W, C = 64, 5, 7, 3  # pylint: disable=invalid-name
-    input_signature = ShapeDtype((B, H, W, C))
-    result_shape = base.check_shape_agreement(
-        normalization.FilterResponseNorm(), input_signature)
-    self.assertEqual(result_shape, input_signature.shape)
-
-    result_shape = base.check_shape_agreement(
-        normalization.FilterResponseNorm(learn_epsilon=False),
-        input_signature)
-    self.assertEqual(result_shape, input_signature.shape)
+    x = np.ones((B, H, W, C)).astype(np.float32)
+    _, _ = layer.init(shapes.signature(x))
+    y = layer(x)
+    self.assertEqual(y.shape, x.shape)
 
 
 if __name__ == '__main__':

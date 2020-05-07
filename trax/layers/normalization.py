@@ -17,7 +17,7 @@
 """Trax normalization layers."""
 
 from trax.layers import base
-from trax.math import numpy as np
+from trax.math import numpy as jnp
 
 
 class BatchNorm(base.Layer):
@@ -32,54 +32,6 @@ class BatchNorm(base.Layer):
     self._scale = scale
     self._momentum = momentum
     self._mode = mode
-
-  def new_weights_and_state(self, input_signature):
-    """Helper to initialize batch norm weights."""
-    axis = self._axis
-    axis = (axis,) if np.isscalar(axis) else axis
-    input_shape = input_signature.shape
-    shape = tuple(d for i, d in enumerate(input_shape) if i not in axis)
-    beta = np.zeros(shape, dtype='float32') if self._center else ()
-    gamma = np.ones(shape, dtype='float32') if self._scale else ()
-    def get_stats_axis(i, d):
-      if i in axis:
-        return 1
-      else:
-        return d
-    stats_shape = tuple(get_stats_axis(i, d) for i, d in enumerate(input_shape))
-    running_mean = np.zeros(stats_shape, dtype=np.float32)
-    running_var = np.ones(stats_shape, dtype=np.float32)
-    n_batches = np.zeros((), dtype=np.int64)
-    weights = (beta, gamma)
-    state = (running_mean, running_var, n_batches)
-    return weights, state
-
-  def _fast_mean_and_variance(self, x):
-    mean = np.mean(x, self._axis, keepdims=True)
-    # Fast but less numerically-stable variance calculation than np.var.
-    m1 = np.mean(x**2, self._axis, keepdims=True)
-    variance = m1 - mean**2
-    return mean, variance
-
-  def _exponential_smoothing(self, new, old):
-    smoothed_value = self._momentum * old + (1 - self._momentum) * new
-    return smoothed_value.astype(old.dtype)
-
-  def _z_score(self, x, mean, variance):
-    mu = mean.astype(x.dtype)
-    sigma = np.sqrt(variance + self._epsilon).astype(x.dtype)
-    return (x - mu) / sigma
-
-  def _beta_gamma_with_correct_axes(self, x, weights):
-    # Expand the parameters to have the right axes.
-    beta, gamma = weights
-    # TODO(phawkins): np.expand_dims should accept an axis tuple.
-    # (https://github.com/numpy/numpy/issues/12290)
-    ed = tuple(None if i in self._axis else slice(None)
-               for i in range(np.ndim(x)))
-    beta = beta[ed]
-    gamma = gamma[ed]
-    return beta, gamma
 
   def forward_with_state(self, x, weights, state, rng):
     """Computes batch normalization as part of a forward pass in the model."""
@@ -113,6 +65,55 @@ class BatchNorm(base.Layer):
                       f'Batch norm should not change the dtype.')
     return output, state
 
+  def new_weights_and_state(self, input_signature):
+    """Helper to initialize batch norm weights."""
+    axis = self._axis
+    axis = (axis,) if jnp.isscalar(axis) else axis
+    input_shape = input_signature.shape
+    shape = tuple(d for i, d in enumerate(input_shape) if i not in axis)
+    # TODO(jonni): Should beta and gamma match the dtype in the input signature?
+    beta = jnp.zeros(shape, dtype='float32') if self._center else ()
+    gamma = jnp.ones(shape, dtype='float32') if self._scale else ()
+    def get_stats_axis(i, d):
+      if i in axis:
+        return 1
+      else:
+        return d
+    stats_shape = tuple(get_stats_axis(i, d) for i, d in enumerate(input_shape))
+    running_mean = jnp.zeros(stats_shape, dtype=jnp.float32)
+    running_var = jnp.ones(stats_shape, dtype=jnp.float32)
+    n_batches = jnp.zeros((), dtype=jnp.int64)
+    weights = (beta, gamma)
+    state = (running_mean, running_var, n_batches)
+    return weights, state
+
+  def _fast_mean_and_variance(self, x):
+    mean = jnp.mean(x, self._axis, keepdims=True)
+    # Fast but less numerically-stable variance calculation than jnp.var.
+    m1 = jnp.mean(x**2, self._axis, keepdims=True)
+    variance = m1 - mean**2
+    return mean, variance
+
+  def _exponential_smoothing(self, new, old):
+    smoothed_value = self._momentum * old + (1 - self._momentum) * new
+    return smoothed_value.astype(old.dtype)
+
+  def _z_score(self, x, mean, variance):
+    mu = mean.astype(x.dtype)
+    sigma = jnp.sqrt(variance + self._epsilon).astype(x.dtype)
+    return (x - mu) / sigma
+
+  def _beta_gamma_with_correct_axes(self, x, weights):
+    # Expand the parameters to have the right axes.
+    beta, gamma = weights
+    # TODO(phawkins): jnp.expand_dims should accept an axis tuple.
+    # (https://github.com/numpy/numpy/issues/12290)
+    ed = tuple(None if i in self._axis else slice(None)
+               for i in range(jnp.ndim(x)))
+    beta = beta[ed]
+    gamma = gamma[ed]
+    return beta, gamma
+
 
 class LayerNorm(base.Layer):
   """Layer normalization."""
@@ -123,16 +124,16 @@ class LayerNorm(base.Layer):
 
   def forward(self, x, weights):
     scale, bias = weights
-    mean = np.mean(x, axis=-1, keepdims=True)
+    mean = jnp.mean(x, axis=-1, keepdims=True)
     sub = x - mean
-    variance = np.mean(sub * sub, axis=-1, keepdims=True)
-    norm_inputs = sub / np.sqrt(variance + self._epsilon)
+    variance = jnp.mean(sub * sub, axis=-1, keepdims=True)
+    norm_inputs = sub / jnp.sqrt(variance + self._epsilon)
     return norm_inputs * scale + bias
 
   def new_weights(self, input_signature):
     features = input_signature.shape[-1]
-    scale = np.ones(features, dtype=input_signature.dtype)
-    bias = np.zeros(features, dtype=input_signature.dtype)
+    scale = jnp.ones(features, dtype=input_signature.dtype)
+    bias = jnp.zeros(features, dtype=input_signature.dtype)
     return scale, bias
 
 
@@ -162,35 +163,36 @@ class FilterResponseNorm(base.Layer):
     assert init_epsilon > 0
     assert init_learnt_epsilon > 0
 
-    self._init_epsilon = np.array(init_epsilon, dtype=np.float32)
-    self._init_learnt_epsilon = np.array(init_learnt_epsilon, dtype=np.float32)
-
-  def new_weights(self, input_signature):
-    # Usually (B, W, H, C)
-    shape = input_signature.shape
-    num_channels = shape[-1]
-
-    gamma = np.ones((num_channels,), dtype=np.float32)
-    beta = np.zeros((num_channels,), dtype=np.float32)
-
-    epsilon_l = base.EMPTY_WEIGHTS
-    if self._learn_epsilon:
-      epsilon_l = (self._init_learnt_epsilon,)
-
-    return gamma, beta, epsilon_l
+    self._init_epsilon = jnp.array(init_epsilon, dtype=jnp.float32)
+    self._init_learnt_epsilon = jnp.array(init_learnt_epsilon,
+                                          dtype=jnp.float32)
 
   def forward(self, inputs, weights):
     gamma, beta, epsilon_l = weights
 
     epsilon = self._init_epsilon
     if epsilon_l is not base.EMPTY_WEIGHTS:
-      epsilon += np.abs(epsilon_l[0])
+      epsilon += jnp.abs(epsilon_l[0])
 
     # Omit B and C
-    axis = tuple(range(1, len(np.shape(inputs)) - 1))
+    axis = tuple(range(1, len(jnp.shape(inputs)) - 1))
     # (B, 1, 1, C)
-    nu2 = np.mean(inputs**2, axis=axis, keepdims=True)
+    nu2 = jnp.mean(inputs**2, axis=axis, keepdims=True)
     # (B, W, H, C)
-    xhat = inputs / np.sqrt(nu2 + epsilon)
+    xhat = inputs / jnp.sqrt(nu2 + epsilon)
 
     return gamma * xhat + beta
+
+  def new_weights(self, input_signature):
+    # Usually (B, W, H, C)
+    shape = input_signature.shape
+    num_channels = shape[-1]
+
+    gamma = jnp.ones((num_channels,), dtype=jnp.float32)
+    beta = jnp.zeros((num_channels,), dtype=jnp.float32)
+
+    epsilon_l = base.EMPTY_WEIGHTS
+    if self._learn_epsilon:
+      epsilon_l = (self._init_learnt_epsilon,)
+
+    return gamma, beta, epsilon_l
