@@ -454,25 +454,6 @@ class A2CTrainer(AdvantageBasedActorCriticTrainer):
     return tl.Fn('A2CLoss', f)
 
 
-# PPO is a widely used actor-critic RL algorithm.
-def PPOLoss(epsilon):  # pylint: disable=invalid-name
-  """Definition of the Proximal Policy Optimization loss."""
-  def f(new_log_probs, advantages, old_log_probs, mask):
-    # Old log probs have an undesirable extra dimension which we remove here
-    old_log_probs = old_log_probs.squeeze(axis=-1)
-
-    # The ratio between new_probs and old_probs expressed
-    # using log_probs and exponentaion
-    probs_ratio = jnp.exp(new_log_probs - old_log_probs)
-    unclipped_objective = probs_ratio * advantages
-    clipped_objective = jnp.clip(probs_ratio,
-                                 1 - epsilon,
-                                 1 + epsilon) * advantages
-    ppo_objective = jnp.minimum(unclipped_objective, clipped_objective)
-    return -jnp.sum(ppo_objective * mask) / jnp.sum(mask)
-  return tl.Fn('PPOLoss', f)
-
-
 class PPOTrainer(AdvantageBasedActorCriticTrainer):
   """The Proximal Policy Optimization Algorithm aka PPO.
 
@@ -481,15 +462,66 @@ class PPOTrainer(AdvantageBasedActorCriticTrainer):
 
   on_policy = True
 
-  def __init__(self, task, epsilon=0.2, **kwargs):
+  def __init__(self, task, epsilon=0.2, entropy_coeff=0.01, **kwargs):
     """Configures the PPO Trainer."""
+    self._entropy_coeff = entropy_coeff
     self._epsilon = epsilon
     super(PPOTrainer, self).__init__(task, **kwargs)
 
   @property
   def policy_loss_given_log_probs(self):
-    """Policy loss."""
-    return PPOLoss(epsilon=self._epsilon)  # pylint: disable=no-value-for-parameter
+    """Definition of the Proximal Policy Optimization loss."""
+    def f(new_log_probs, advantages, old_log_probs, mask):
+      # new_log_probs of the shape float32[128,1]
+      # advantages of the shape int32[128,1]
+      # old_log_probs of the shape int32[128,1]
+      # mask of the shape int32[128,1]
+      if new_log_probs.shape != advantages.shape:
+        raise ValueError('New log-probs and advantages shapes '
+                         'should be the same, %s != %s' % (new_log_probs.shape,
+                                                           advantages.shape))
+      if new_log_probs.shape != old_log_probs.shape:
+        raise ValueError('New log-probs and old log probs shapes '
+                         'should be the same, %s != %s' % (new_log_probs.shape,
+                                                           old_log_probs.shape))
+      if new_log_probs.shape != mask.shape:
+        raise ValueError('New log-probs and mask shapes should be the same'
+                         ', %s != %s' % (new_log_probs.shape, mask.shape))
+
+      # The ratio between new_probs and old_probs expressed
+      # using log_probs and exponentaion
+      probs_ratio = jnp.exp(new_log_probs - old_log_probs)
+      if advantages.shape != probs_ratio.shape:
+        raise ValueError('New log-probs and old log probs shapes '
+                         'should be the same, %s != %s' % (advantages.shape,
+                                                           probs_ratio.shape))
+      unclipped_objective = probs_ratio * advantages
+      clipped_objective = jnp.clip(probs_ratio,
+                                   1 - self._epsilon,
+                                   1 + self._epsilon) * advantages
+
+      if unclipped_objective.shape != probs_ratio.shape:
+        raise ValueError('unclipped_objective and clipped_objective shapes '
+                         'should be the same, %s != %s' % (
+                             unclipped_objective.shape,
+                             clipped_objective.shape))
+
+      ppo_objective = jnp.minimum(unclipped_objective, clipped_objective)
+
+      if ppo_objective.shape != mask.shape:
+        raise ValueError('ppo_objective and mask shapes '
+                         'should be the same, %s != %s' % (
+                             ppo_objective.shape,
+                             mask.shape))
+
+      ppo_loss = -jnp.sum(ppo_objective * mask) / jnp.sum(mask)
+      entropy_vec = self._policy_dist.entropy(
+          new_log_probs) * self._entropy_coeff
+      entropy_loss = jnp.mean(entropy_vec)
+      combined_loss = ppo_loss - entropy_loss
+
+      return combined_loss
+    return tl.Fn('PPOLoss', f)
 
 
 # AWR is an off-policy actor-critic RL algorithm.
