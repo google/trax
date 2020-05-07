@@ -886,6 +886,63 @@ def swapaxes(a, axis1, axis2):  # pylint: disable=missing-docstring
   return utils.tensor_to_ndarray(a)
 
 
+@utils.np_doc(np.moveaxis)
+def moveaxis(a, source, destination):  # pylint: disable=missing-docstring
+  """Raises ValueError if source, destination not in (-ndim(a), ndim(a))."""
+  if not source and not destination:
+    return a
+
+  a = asarray(a).data
+
+  if isinstance(source, int):
+    source = (source,)
+  if isinstance(destination, int):
+    destination = (destination,)
+
+  a_rank = utils._maybe_static(tf.rank(a))  # pylint: disable=protected-access
+
+  def _correct_axis(axis, rank):
+    if axis < 0:
+      return axis + rank
+    return axis
+
+  source = tuple(_correct_axis(axis, a_rank) for axis in source)
+  destination = tuple(_correct_axis(axis, a_rank) for axis in destination)
+
+  if a.shape.rank is not None:
+    perm = [i for i in range(a_rank) if i not in source]
+    for dest, src in sorted(zip(destination, source)):
+      assert dest <= len(perm)
+      perm.insert(dest, src)
+  else:
+    r = tf.range(a_rank)
+
+    def _remove_indices(a, b):
+      """Remove indices (`b`) from `a`."""
+      items = tf.unstack(tf.sort(tf.stack(b)), num=len(b))
+
+      i = 0
+      result = []
+
+      for item in items:
+        result.append(a[i:item])
+        i = item + 1
+
+      result.append(a[i:])
+
+      return tf.concat(result, 0)
+
+    minus_sources = _remove_indices(r, source)
+    minus_dest = _remove_indices(r, destination)
+
+    perm = tf.scatter_nd(tf.expand_dims(minus_dest, 1), minus_sources, [a_rank])
+    perm = tf.tensor_scatter_nd_update(perm, tf.expand_dims(destination, 1),
+                                       source)
+  a = tf.transpose(a, perm)
+
+  return utils.tensor_to_ndarray(a)
+
+
 def _setitem(arr, index, value):
   """Sets the `value` at `index` in the array `arr`.
 

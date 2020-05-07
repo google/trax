@@ -36,7 +36,7 @@ import numpy as onp
 import tensorflow.compat.v2 as tf
 import trax.tf_numpy.numpy as lnp
 import trax.tf_numpy.extensions as npe
-from trax.tf_numpy.jax_tests.config import config
+from trax.tf_numpy.jax_tests.config import config, FLAGS
 import trax.tf_numpy.jax_tests.test_util as jtu
 
 config.parse_flags_with_absl()
@@ -421,6 +421,17 @@ def _promote_like_lnp(fun, inexact=False):
 def disable(_):
   def wrapper(self, *args, **kwargs):
     self.skipTest("Test is disabled")
+  return wrapper
+
+
+def new_test(f):
+
+  def wrapper(self, *args, **kwargs):
+    if not FLAGS.tf_numpy_additional_tests:
+      self.skipTest("Newly added test is disabled, since flag is False.")
+    else:
+      f(self, *args, **kwargs)
+
   return wrapper
 
 
@@ -1610,6 +1621,33 @@ class LaxBackedNumpyTests(jtu.TestCase):
     rng = rng_factory()
     onp_fun = lambda x: onp.swapaxes(x, ax1, ax2)
     lnp_fun = lambda x: lnp.swapaxes(x, ax1, ax2)
+    args_maker = lambda: [rng(arg_shape, dtype)]
+    self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=True)
+
+  @named_parameters(jtu.cases_from_list(
+      {"testcase_name": "_shape={}_axes=({},{})".format(
+          jtu.format_shape_dtype_string(arg_shape, dtype), source, destination),
+       "arg_shape": arg_shape, "dtype": dtype, "source": source,
+       "destination": destination, "rng_factory": jtu.rand_default}
+      for arg_shape, source, destination in [
+          (tuple(range(6)), (0, 2), (3, 5)),
+          (tuple(range(6)), (0, 2), (-1, -3)),
+          (tuple(range(6)), (-6, -4),(3, 5)),
+          (tuple(range(6)), (-6, -4), (-1, -3)),
+          (tuple(range(6)), 0, 4),
+          (tuple(range(6)), -6, -2),
+          (tuple(range(6)), tuple(range(6)), tuple(range(6))),
+          (tuple(range(6)), tuple(range(6)), tuple(reversed(range(6)))),
+          (tuple(range(6)), (), ()),
+      ] for dtype in default_dtypes))
+  @new_test
+  def testMoveaxisStaticAxes(self, arg_shape, dtype, source, destination,
+                             rng_factory):
+    rng = rng_factory()
+    onp_fun = lambda x: onp.moveaxis(x, source, destination)
+    lnp_fun = lambda x: lnp.moveaxis(x, source, destination)
     args_maker = lambda: [rng(arg_shape, dtype)]
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
     self._CompileAndCheck(

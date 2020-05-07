@@ -145,6 +145,7 @@ already_configured_with_absl = False
 flags.DEFINE_bool(
     'jax_enable_checks',
     bool_env('JAX_ENABLE_CHECKS', False),
-    help=
-    'Turn on invariant checking (core.skip_checks = False)'
-)
+    help='Turn on invariant checking (core.skip_checks = False)')
+
+flags.DEFINE_bool('tf_numpy_additional_tests', True,
+                  'Run tests added specifically for TF numpy')
