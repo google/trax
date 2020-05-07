@@ -50,6 +50,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
                n_shared_layers=0,
                added_policy_slice_length=0,
                n_replay_epochs=1,
+               entropy_coeff=0.01,
                scale_value_targets=False,
                **kwargs):  # Arguments of PolicyTrainer come here.
     """Configures the actor-critic Trainer.
@@ -75,6 +76,8 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
         have maximum length set by max_slice_length in **kwargs
      n_replay_epochs: how many last epochs to take into the replay buffer;
         only makes sense for off-policy algorithms
+     entropy_coeff: entropy_coefficient - can be used to multiply the entropy
+        los
      scale_value_targets: whether to scale targets for the value function by
         1 / (1 - gamma)
      **kwargs: arguments for PolicyTrainer super-class
@@ -92,6 +95,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
     self._max_slice_length = kwargs.get('max_slice_length', 1)
     self._added_policy_slice_length = added_policy_slice_length
     self._n_replay_epochs = n_replay_epochs
+    self._entropy_coeff = entropy_coeff
 
     if scale_value_targets:
       self._value_network_scale = 1 / (1 - self._task.gamma)
@@ -392,13 +396,14 @@ class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
     metrics.update({
         'advantage_mean': self.advantage_mean,
         'advantage_std': self.advantage_std,
+        'entropy': self.entropy,
     })
     return metrics
 
   @property
   def advantage_mean(self):
     return tl.Serial([
-        # (dist_inputs, advantages, old_log_probs, mask)
+        # (log_probs, advantages, old_log_probs, mask)
         tl.Select([1]),  # Select just the advantages.
         tl.Fn('AdvantageMean', lambda x: jnp.mean(x)),  # pylint: disable=unnecessary-lambda
     ])
@@ -406,9 +411,20 @@ class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
   @property
   def advantage_std(self):
     return tl.Serial([
-        # (dist_inputs, advantages, old_log_probs, mask)
+        # (log_probs, advantages, old_log_probs, mask)
         tl.Select([1]),  # Select just the advantages.
         tl.Fn('AdvantageStd', lambda x: jnp.std(x)),  # pylint: disable=unnecessary-lambda
+    ])
+
+  @property
+  def entropy(self):
+    return tl.Serial([
+        # (log_probs, advantages, old_log_probs, mask)
+        tl.Select([0]),  # Select just the advantages.
+        tl.Fn(
+            'Entropy',
+            lambda x: jnp.mean(  # pylint: disable=g-long-lambda
+                self._policy_dist.entropy(x) * self._entropy_coeff)),
     ])
 
 
@@ -417,9 +433,8 @@ class A2CTrainer(AdvantageBasedActorCriticTrainer):
 
   on_policy = True
 
-  def __init__(self, task, entropy_coeff=0.01, **kwargs):
+  def __init__(self, task, **kwargs):
     """Configures the A2C Trainer."""
-    self._entropy_coeff = entropy_coeff
     super(A2CTrainer, self).__init__(task, **kwargs)
 
   @property
@@ -462,9 +477,8 @@ class PPOTrainer(AdvantageBasedActorCriticTrainer):
 
   on_policy = True
 
-  def __init__(self, task, epsilon=0.2, entropy_coeff=0.01, **kwargs):
+  def __init__(self, task, epsilon=0.2, **kwargs):
     """Configures the PPO Trainer."""
-    self._entropy_coeff = entropy_coeff
     self._epsilon = epsilon
     super(PPOTrainer, self).__init__(task, **kwargs)
 
