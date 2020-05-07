@@ -65,8 +65,8 @@ def _gin_parse_configs():
   # Override with --dataset and --model
   if FLAGS.dataset:
     configs.append("inputs.dataset_name='%s'" % FLAGS.dataset)
-    if FLAGS.data_dir:
-      configs.append("inputs.data_dir='%s'" % FLAGS.data_dir)
+  if FLAGS.data_dir:
+    configs.append("inputs.data_dir='%s'" % FLAGS.data_dir)
   if FLAGS.model:
     configs.append('train.model=@trax.models.%s' % FLAGS.model)
   gin.parse_config_files_and_bindings(FLAGS.config_file, configs)

@@ -25,6 +25,7 @@ from jax import random as jax_random
 import jax.numpy as jnp
 import jax.scipy.special as jax_special
 import numpy as np
+import tensorflow as tf
 import tensorflow_datasets as tfds
 
 from trax.shapes import signature
@@ -157,6 +158,45 @@ def nested_map(f, obj):
   return f(obj)
 
 
+def tree_flatten(tree):
+  """Flatten a tree into a list."""
+  if isinstance(tree, (list, tuple)):
+    # In python, sum of lists starting from [] is the concatenation.
+    return sum([tree_flatten(t) for t in tree], [])
+  if isinstance(tree, dict):
+    # Only use the values in case of a dictionary node.
+    return sum([tree_flatten(v) for v in tree.values()], [])
+  return [tree]
+
+
+def tree_unflatten(flat, tree):
+  """Unflatten a list into a tree given the tree shape as second argument.
+
+  Args:
+    flat: a flat list of elements to be assembled into a tree.
+    tree: a tree with the structure we want to have in the new tree.
+
+  Returns:
+    A pair (new_tree, rest_of_flat) where the new tree that has the structure
+    of tree but with leaves from flat, and the remaining elements of flat if
+    more were provided than the number of leaves of tree (useful for recursion).
+  """
+  if isinstance(tree, (list, tuple)):
+    new_tree, rest = [], flat
+    for t in tree:
+      new_t, rest = tree_unflatten(rest, t)
+      new_tree.append(new_t)
+    new_tree = tuple(new_tree) if isinstance(tree, tuple) else new_tree
+    return new_tree, rest
+  if isinstance(tree, dict):
+    new_tree, rest = {}, flat
+    for k in tree:
+      new_v, rest = tree_unflatten(rest, tree[k])
+      new_tree[k] = new_v
+    return new_tree, rest
+  return flat[0], flat[1:]
+
+
 def jax_abstract_eval(f):
   """Returns a function that evaluates `f` given input shapes and dtypes.
 
@@ -197,6 +237,29 @@ def jax_randint(key, shape, minval, maxval, dtype=np.int32):
                             dtype=dtype)
 
 
+def _to_numpy(x):
+  """Converts non-NumPy tensors to NumPy arrays."""
+  return x if isinstance(x, np.ndarray) else x.numpy()
+
+
+def _dataset_as_numpy(ds, batch_size=64):
+  """Speed up tfds.as_numpy by batching and then iterating over the batches."""
+  try:  # Check that dense_to_ragged_batch exists.
+    if batch_size < 2:  # Fall back to default if no batching requested.
+      raise AttributeError
+    ds_batch = ds.apply(tf.data.experimental.dense_to_ragged_batch(batch_size))
+    for example in tfds.as_numpy(ds_batch):
+      flat_example = tree_flatten(example)
+      np_flat_example = [_to_numpy(x) for x in flat_example]
+      for single_example_flat in zip(*np_flat_example):
+        single_example, _ = tree_unflatten(single_example_flat, example)
+        yield single_example
+  except AttributeError:
+    # In TF 1.X there is not dense_to_ragged_batch: fallback.
+    for example in tfds.as_numpy(ds):
+      yield example
+
+
 JAX_BACKEND = {
     'name': 'jax',
     'np': jnp,
@@ -222,6 +285,6 @@ JAX_BACKEND = {
     'random_bernoulli': jax_random.bernoulli,
     'random_get_prng': jax.jit(jax_random.PRNGKey),
     'random_split': jax_random.split,
-    'dataset_as_numpy': tfds.as_numpy,
+    'dataset_as_numpy': _dataset_as_numpy,
     'device_count': jax.local_device_count,
 }

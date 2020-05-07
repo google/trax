@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Trax input pipeline."""
 
 from __future__ import absolute_import
@@ -186,16 +187,20 @@ def inputs(dataset_name, data_dir=None, input_name=None, target_name=None):
     """Create the stream, cache TF streams if needed."""
     if n_devices not in cache:
       cache[n_devices] = _train_and_eval_batches(
-          dataset_name, data_dir, input_name, target_name, n_devices)
+          dataset_name, data_dir, input_name, target_name)
 
     (train_batches, train_eval_batches, eval_batches,
-     input_name_c) = cache[n_devices]
+     input_name_c, var_shapes) = cache[n_devices]
     dataset = train_batches
+    training = True
     if which == 'eval':
       dataset = eval_batches
+      training = False
     if which == 'train_eval':
       dataset = train_eval_batches
-    return dataset_to_stream(dataset, input_name_c)
+      training = False
+    generator = dataset_to_stream(dataset, input_name_c)
+    return batch_fn(generator, training, n_devices, var_shapes)
 
   return Inputs(train_stream=lambda n: stream(n, 'train'),
                 train_eval_stream=lambda n: stream(n, 'train_eval'),
@@ -367,19 +372,18 @@ def addition_inputs(
 
 def dataset_to_stream(dataset, input_name):
   """Takes a tf.Dataset and creates a numpy stream of ready batches."""
+  # All input-pipeline processing should be on CPU.
   for example in math.dataset_as_numpy(dataset):
     features = example[0]
     inp, out = features[input_name], example[1]
     mask = features['mask'] if 'mask' in features else None
-    # All input-pipeline processing should be on CPU.
-    with tf.device('cpu:0'):
-      # Some accelerators don't handle uint8 well, cast to int.
-      if isinstance(inp, jnp.uint8):
-        inp = inp.astype(jnp.int32)
-      if isinstance(out, jnp.uint8):
-        out = out.astype(jnp.int32)
-      if len(out.shape) > 1 and out.shape[-1] == 1:
-        out = jnp.squeeze(out, axis=-1)
+    # Some accelerators don't handle uint8 well, cast to int.
+    if isinstance(inp, np.uint8):
+      inp = inp.astype(np.int32)
+    if isinstance(out, np.uint8):
+      out = out.astype(np.int32)
+    if len(out.shape) > 1 and out.shape[-1] == 1:
+      out = np.squeeze(out, axis=-1)
     yield (inp, out) if mask is None else (inp, out, mask)
 
 
@@ -518,12 +522,13 @@ def _train_and_eval_dataset_v1(problem_name, data_dir,
   return train_dataset, eval_dataset, info, supervised_keys
 
 
-@gin.configurable(blacklist=['dataset', 'training', 'shapes', 'n_devices'])
-def batch_fn(dataset, training, shapes, n_devices,
+@gin.configurable(blacklist=['dataset', 'training',
+                             'n_devices', 'variable_target_shapes'])
+def batch_fn(dataset, training, n_devices, variable_target_shapes,
              batch_size_per_device=32, batch_size=None, eval_batch_size=32,
              bucket_length=32, buckets=None,
              buckets_include_inputs_in_length=False,
-             batch_shuffle_size=128, max_eval_length=None):
+             batch_shuffle_size=8, max_eval_length=None):
   """Batching function."""
   # Batch size is batch_size_per_device * n_devices unless given directly.
   batch_size = batch_size or batch_size_per_device * n_devices
@@ -533,11 +538,6 @@ def batch_fn(dataset, training, shapes, n_devices,
   cur_batch_size = max(cur_batch_size // n_devices, 1) * n_devices
   # Create heuristic buckets is none are specified.
   if buckets is None:
-    variable_target_shapes = False
-    target_shape = shapes[1]
-    for dim in target_shape:
-      if dim is None:
-        variable_target_shapes = True
     logging.info('Heuristically setting bucketing to %s based on shapes '
                  'of target tensors.', variable_target_shapes)
     if variable_target_shapes:
@@ -563,20 +563,23 @@ def batch_fn(dataset, training, shapes, n_devices,
 
   if buckets:
     logging.info('Bucketing with buckets %s.', str(buckets))
-    def example_length(example_inputs, target):
+    def example_length(x):
       """The length function used by bucket_by_sequence_length to bucket."""
-      other_length = 0
+      # The input x is a tuple to go on the stack, typically either
+      # (input, target) or (input, target, mask).
+      example_inputs, target = x[0], x[1]
+      # Length is the shape of axis 0 here (no batch yet).
+      other_length = 0  # We include input length only if asked.
       if buckets_include_inputs_in_length:
-        other_length = tf.shape(example_inputs['inputs'])[0]
-      return tf.maximum(tf.shape(target)[0], other_length)
+        other_length = example_inputs.shape[0]
+      return max(target.shape[0], other_length)
     boundaries, batch_sizes = buckets
-    dataset = dataset.apply(tf.data.experimental.bucket_by_sequence_length(
-        example_length, boundaries, batch_sizes,
-        pad_to_bucket_boundary=True))
+    dataset = bucket_by_length(
+        dataset, example_length, boundaries, batch_sizes)
   else:
-    dataset = dataset.padded_batch(cur_batch_size, shapes)
+    dataset = batch_data(dataset, cur_batch_size)
   if training:
-    return dataset.shuffle(batch_shuffle_size)
+    dataset = shuffle_data(dataset, batch_shuffle_size)
   return dataset
 
 
@@ -797,7 +800,6 @@ def shuffle_and_batch_data(dataset,
                            target_names,
                            features_info,
                            training,
-                           n_devices,
                            shuffle_buffer_size=1024,
                            preprocess_fun=no_preprocess):
   """Shuffle and batch the given dataset."""
@@ -824,12 +826,10 @@ def shuffle_and_batch_data(dataset,
   shapes = (shapes, shapes[target_names[0]])
   dataset, shapes = preprocess_fun(dataset, training, shapes)
   dataset = dataset.shuffle(shuffle_buffer_size)
-  dataset = batch_fn(dataset, training, shapes, n_devices)
-  return dataset.prefetch(2)
+  return dataset.prefetch(8), shapes
 
 
-def _train_and_eval_batches(
-    dataset, data_dir, input_name, target_name, n_devices):
+def _train_and_eval_batches(dataset, data_dir, input_name, target_name):
   """Return train and eval batches with input name and shape."""
   (train_data, eval_data, features_info, keys) = train_and_eval_dataset(
       dataset, data_dir)
@@ -837,17 +837,18 @@ def _train_and_eval_batches(
     input_names, target_names = keys[0], keys[1]
   else:
     input_names, target_names = [input_name], [target_name]
-  train_batches = shuffle_and_batch_data(
-      train_data, target_names, features_info, training=True,
-      n_devices=n_devices)
-  train_eval_batches = shuffle_and_batch_data(  # Data for eval-on-train
-      train_data, target_names, features_info, training=False,
-      n_devices=n_devices)
-  eval_batches = shuffle_and_batch_data(
-      eval_data, target_names, features_info, training=False,
-      n_devices=n_devices)
+  train_batches, shapes = shuffle_and_batch_data(
+      train_data, target_names, features_info, training=True)
+  train_eval_batches, _ = shuffle_and_batch_data(  # Data for eval-on-train
+      train_data, target_names, features_info, training=False)
+  eval_batches, _ = shuffle_and_batch_data(
+      eval_data, target_names, features_info, training=False)
   input_name = input_name or input_names[0]
-  return (train_batches, train_eval_batches, eval_batches, input_name)
+  # Check if target shapes are variable so we know whether to do bucketing.
+  target_shape = shapes[1]
+  variable_target_shapes = None in target_shape
+  return (train_batches, train_eval_batches, eval_batches,
+          input_name, variable_target_shapes)
 
 
 DEFAULT_SPM_PATH = 'gs://t5-data/vocabs/cc_all.32000/sentencepiece.model'  # GCS
@@ -891,3 +892,111 @@ def c4_preprocess(dataset, training, shapes, max_target_length=-1,
   new_shapes['inputs'] = (None,)
   new_shapes['targets'] = (None,)
   return dataset, (new_shapes, new_shapes['targets'])
+
+
+def shuffle_data(generator, buffer_size):
+  """Shuffle generator as in tf.data.Dataset.shuffle."""
+  buf = []
+  assert buffer_size > 0, 'Buffer size must be positive'
+  for example in generator:
+    buf.append(example)
+    if len(buf) == buffer_size:
+      i = int(np.random.randint(buffer_size))  # Random index to yield.
+      # Swap the selected element with the last element (no-op if i = len - 1).
+      buf[i], buf[-1] = buf[-1], buf[i]
+      # Remove and yield last element.
+      yield buf.pop()
+
+
+def batch_data(generator, batch_size):
+  """Batch and pad generator as in tf.data.Dataset.padded_batch."""
+  buf = []
+  assert batch_size > 0, f'Batch size must be positive, but is {batch_size}'
+  for example in generator:
+    buf.append(example)  # Examples are tuples of tensors.
+    if len(buf) == batch_size:
+      # buf is a list of tuples, e.g., [(in1, tgt1), (in2, tgt2), (in3, tgt3)]
+      # batch is a tuple of arrays: ([in1, in2, in3], [tgt1, tgt2, tgt3])
+      batch = tuple(np.stack(x) for x in zip(*buf))
+      # Note that it's the same shape as each example with added batch dim.
+      yield batch
+      buf = []
+
+
+def pad_to_max_dims(tensors, boundary=None):
+  """Pad a tuple of tensors to a joint dimension and return their batch.
+
+  For example, a pair of tensors of shape (2, 10) and (3, 9) will be padded
+  to (3, 10) both and the returned tensor will have shape (2, 3, 10).
+
+  When boundary is specified, we try to pad all unknown dimensions to boundary
+  if possible, which can help reduce the number of different shapes occuring
+  in the tensors and speed up XLA compilation. So, for example, a pair of
+  tensors of shapes (8, 10), (8, 9) with boundary=12 will be padded to (8, 12).
+
+  One special case occurs when boundary is much higher than the padding length
+  that we'd use without boundary. For example, tensors (2, 10) and (3, 9) with
+  boundary=12 could end up padded to (12, 12), but this is very wasteful in
+  the first dimension. In that case, we will use the closest power-of-2 instead
+  of the boundary, so the we will end up padding to (4, 12) instead of (12, 12).
+
+  Args:
+    tensors: a tuple or list of tensors to pad
+    boundary: int or None; if given, expand the padded dimensions to this size
+
+  Returns:
+    a tensor, the tensors padded together
+  """
+  max_len_to_pad = []
+  padding_needed = False
+  dim = len(tensors[0].shape)
+  for i in range(dim):
+    max_len = max([t.shape[i] for t in tensors])
+    min_len = min([t.shape[i] for t in tensors])
+    if max_len == min_len:  # No padding needed.
+      max_len_to_pad.append(max_len)
+    elif boundary is None:
+      max_len_to_pad.append(max_len)
+      padding_needed = True
+    else:
+      padding_needed = True
+      cur_boundary = max(max_len, boundary)
+      if 2 * max_len < cur_boundary:
+        cur_boundary = 2**int(np.ceil(np.log2(max_len)))
+      max_len_to_pad.append(cur_boundary)
+  if not padding_needed:
+    return np.stack(tensors)
+  padded_tensors = []
+  for t in tensors:
+    pad_widths = [(0, max_len_to_pad[i] - t.shape[i]) for i in range(dim)]
+    padded_t = np.pad(t, pad_widths, mode='constant',
+                      constant_values=t.dtype.type(0))
+    padded_tensors.append(padded_t)
+  return np.stack(padded_tensors)
+
+
+def bucket_by_length(generator, length_fn, boundaries, batch_sizes):
+  """Bucket by length, like tf.data.experimental.bucket_by_sequence_length.
+
+  Args:
+    generator: python generator to draw data from.
+    length_fn: a function taking the example and returning the length.
+    boundaries: a list of bucket boundaries.
+    batch_sizes: a list of batch sizes.
+
+  Yields:
+    An input batch, which comes from one of the buckets.
+  """
+  buckets = [[] for _ in range(len(batch_sizes))]
+  boundaries = boundaries + [1e20]  # Max boundary is unlimited.
+  max_idx = len(boundaries)
+  for example in generator:
+    length = length_fn(example)
+    bucket_idx = min([i for i, b in enumerate(boundaries) if length < b])
+    buckets[bucket_idx].append(example)
+    if len(buckets[bucket_idx]) == batch_sizes[bucket_idx]:
+      batch = zip(*buckets[bucket_idx])
+      boundary = boundaries[bucket_idx] - 1 if bucket_idx < max_idx else None
+      padded_batch = tuple(pad_to_max_dims(x, boundary) for x in batch)
+      yield padded_batch
+      buckets[bucket_idx] = []

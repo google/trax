@@ -106,7 +106,8 @@ class Optimizer(object):
 
   def tree_init(self, weight_tree):
     """Assembles node-local initializations into full-tree initialization."""
-    self._slots = [self.init(weight) for weight in _tree_flatten(weight_tree)]
+    self._slots = [self.init(weight)
+                   for weight in math.tree_flatten(weight_tree)]
     return (
         self._slots,
         self._init_opt_params,
@@ -129,7 +130,7 @@ class Optimizer(object):
 
   def tree_update(self, step, grad_tree, weight_tree, slots, opt_params):
     """Assembles node-local weight and slot updates for the full layer tree."""
-    grads_flat = _tree_flatten(grad_tree)
+    grads_flat = math.tree_flatten(grad_tree)
     grads_norm = self._l2_norm(grads_flat)
     if self._clip_grad_norm is not None:
       max_norm = self._clip_grad_norm
@@ -137,14 +138,14 @@ class Optimizer(object):
                              g,
                              g * (max_norm / grads_norm))
                     for g in grads_flat]
-    weights_flat = _tree_flatten(weight_tree)
+    weights_flat = math.tree_flatten(weight_tree)
     weights_norm = self._l2_norm(weights_flat)
     updated_pairs = [
         self._update_and_check(step, grad, weight, slot, opt_params)
         for (grad, weight, slot) in zip(grads_flat, weights_flat, slots)
     ]
     new_weights_flat, self.slots = zip(*updated_pairs)
-    new_weights, _ = _tree_unflatten(new_weights_flat, weight_tree)
+    new_weights, _ = math.tree_unflatten(new_weights_flat, weight_tree)
     metrics = {'gradients_l2': grads_norm, 'weights_l2': weights_norm}
     return new_weights, self.slots, metrics
 
@@ -165,50 +166,12 @@ class SGD(Optimizer):
     return new_weights, None
 
 
-def _tree_flatten(tree):
-  """Flatten a tree into a list."""
-  if isinstance(tree, (list, tuple)):
-    # In python, sum of lists starting from [] is the concatenation.
-    return sum([_tree_flatten(t) for t in tree], [])
-  if isinstance(tree, dict):
-    # Only use the values in case of a dictionary node.
-    return sum([_tree_flatten(v) for v in tree.values()], [])
-  return [tree]
-
-
-def _tree_unflatten(flat, tree):
-  """Unflatten a list into a tree given the tree shape as second argument.
-
-  Args:
-    flat: a flat list of elements to be assembled into a tree.
-    tree: a tree with the structure we want to have in the new tree.
-
-  Returns:
-    A pair (new_tree, rest_of_flat) where the new tree that has the structure
-    of tree but with leaves from flat, and the remaining elements of flat if
-    more were provided than the number of leaves of tree (useful for recursion).
-  """
-  if isinstance(tree, (list, tuple)):
-    new_tree, rest = [], flat
-    for t in tree:
-      new_t, rest = _tree_unflatten(rest, t)
-      new_tree.append(new_t)
-    new_tree = tuple(new_tree) if isinstance(tree, tuple) else new_tree
-    return new_tree, rest
-  if isinstance(tree, dict):
-    new_tree, rest = {}, flat
-    for k in tree:
-      new_v, rest = _tree_unflatten(rest, tree[k])
-      new_tree[k] = new_v
-    return new_tree, rest
-  return flat[0], flat[1:]
-
 # Utilities.
 
 
 def l2_norm(tree):
   """Compute the l2 norm of a pytree of arrays. Useful for weight decay."""
-  leaves = _tree_flatten(tree)
+  leaves = math.tree_flatten(tree)
   return np.sqrt(sum(np.vdot(x, x) for x in leaves))
 
 

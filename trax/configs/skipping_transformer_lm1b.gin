@@ -57,7 +57,6 @@ DotProductCausalAttention.dropout = 0.1
 
 # Parameters for SkippingTransformerLM:
 # ==============================================================================
-SkippingTransformerLM.attention_type = @trax.layers.DotProductCausalAttention
 SkippingTransformerLM.d_model = 1024
 SkippingTransformerLM.d_ff = 4096
 SkippingTransformerLM.dropout = 0.2
