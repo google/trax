@@ -33,12 +33,19 @@ from trax.rl import training as rl_training
 class ActorCriticJointTrainer(rl_training.RLTrainer):
   """Trains a joint policy-and-value model using actor-critic methods."""
 
-  def __init__(self, task, joint_model=None,
-               optimizer=None, lr_schedule=lr.MultifactorSchedule,
-               batch_size=64, train_steps_per_epoch=500,
-               supervised_evals_per_epoch=1, supervised_eval_steps=1,
-               collect_per_epoch=50, max_slice_length=1,
-               normalize_advantages=True, output_dir=None):
+  def __init__(self, task,
+               joint_model=None,
+               optimizer=None,
+               lr_schedule=lr.MultifactorSchedule,
+               batch_size=64,
+               train_steps_per_epoch=500,
+               supervised_evals_per_epoch=1,
+               supervised_eval_steps=1,
+               collect_per_epoch=50,
+               max_slice_length=1,
+               normalize_advantages=True,
+               output_dir=None,
+               n_replay_epochs=1):
     """Configures the joint trainer.
 
     Args:
@@ -57,6 +64,8 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
       normalize_advantages: if True, then normalize advantages - currently
           implemented only in PPO.
       output_dir: Path telling where to save outputs (evals and checkpoints).
+      n_replay_epochs: how many last epochs to take into the replay buffer;
+           > 1 only makes sense for off-policy algorithms.
     """
     super(ActorCriticJointTrainer, self).__init__(
         task, collect_per_epoch=collect_per_epoch, output_dir=output_dir)
@@ -70,6 +79,8 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
     self._lr_schedule = lr_schedule
     self._optimizer = optimizer
     self._normalize_advantages = normalize_advantages
+    self._n_replay_epochs = n_replay_epochs
+    self._task.set_n_replay_epochs(n_replay_epochs)
 
     # Inputs to the joint model are produced by self.batches_stream.
     self._inputs = supervised.Inputs(

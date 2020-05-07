@@ -87,14 +87,12 @@ class RLTrainer:
       pickle.dump(dictionary, f)
 
   def init_from_file(self, file_name='rl.pkl',
-                     task_file_name='trajectories.pkl',
-                     only_last_epoch=False):
+                     task_file_name='trajectories.pkl'):
     """Initialize epoch number and average returns from file."""
     assert self._output_dir is not None
     task_path = os.path.join(self._output_dir, task_file_name)
     if tf.io.gfile.exists(task_path):
-      self._task.init_from_file(task_path,
-                                only_last_epoch=only_last_epoch)
+      self._task.init_from_file(task_path)
     file_path = os.path.join(self._output_dir, file_name)
     if not tf.io.gfile.exists(file_path):
       return

@@ -92,6 +92,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
     self._max_slice_length = kwargs.get('max_slice_length', 1)
     self._added_policy_slice_length = added_policy_slice_length
     self._n_replay_epochs = n_replay_epochs
+    task.set_n_replay_epochs(n_replay_epochs)
 
     if scale_value_targets:
       self._value_network_scale = 1 / (1 - self._task.gamma)

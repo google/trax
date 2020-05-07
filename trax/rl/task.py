@@ -238,7 +238,8 @@ class RLTask:
 
   def __init__(self, env=gin.REQUIRED, initial_trajectories=1, gamma=0.99,
                dm_suite=False, max_steps=None,
-               timestep_to_np=None, num_stacked_frames=1):
+               timestep_to_np=None, num_stacked_frames=1,
+               n_replay_epochs=1):
     r"""Configures a RL task.
 
     Args:
@@ -255,6 +256,7 @@ class RLTask:
         represent it, but other representations (such as embeddings that include
         actions or serialized representations) can be passed here.
       num_stacked_frames: the number of stacked frames for Atari.
+      n_replay_epochs: the size of the replay buffer expressed in epochs.
     """
     if isinstance(env, str):
       self._env_name = env
@@ -304,6 +306,9 @@ class RLTask:
     # When we repeatedly save, trajectories for many epochs do not change, so
     # we don't need to save them again. This keeps track which are unchanged.
     self._saved_epochs_unchanged = []
+    self._n_replay_epochs = n_replay_epochs
+    self._n_trajectories = 0
+    self._n_interactions = 0
 
   @property
   def env(self):
@@ -359,15 +364,18 @@ class RLTask:
     filename, ext = os.path.splitext(base_filename)
     return filename + '_epoch' + str(epoch) + ext
 
-  def init_from_file(self, file_name, only_last_epoch=False):
+  def set_n_replay_epochs(self, n_replay_epochs):
+    self._n_replay_epochs = n_replay_epochs
+
+  def init_from_file(self, file_name):
     """Initialize this task from file."""
     dictionary = trainer_lib.unpickle_from_file(file_name, gzip=False)
+    self._n_trajectories = dictionary['n_trajectories']
+    self._n_interactions = dictionary['n_interactions']
     self._max_steps = dictionary['max_steps']
     self._gamma = dictionary['gamma']
-    if only_last_epoch:
-      epochs_to_load = dictionary['all_epochs'][-1:]
-    else:
-      epochs_to_load = dictionary['all_epochs']
+    epochs_to_load = dictionary['all_epochs'][-self._n_replay_epochs:]
+
     for epoch in epochs_to_load:
       trajectories = trainer_lib.unpickle_from_file(
           self._epoch_filename(file_name, epoch), gzip=True)
@@ -385,7 +393,9 @@ class RLTask:
                                  gzip=True)
     # Now save the list of epochs (so the trajectories are already there,
     # even in case of preemption).
-    dictionary = {'max_steps': self._max_steps,
+    dictionary = {'n_interactions': self._n_interactions,
+                  'n_trajectories': self._n_trajectories,
+                  'max_steps': self._max_steps,
                   'gamma': self._gamma,
                   'all_epochs': list(self._trajectories.keys())}
     trainer_lib.pickle_to_file(dictionary, file_name, gzip=False)
@@ -408,18 +418,30 @@ class RLTask:
                                       if e != epoch_id]
     # Calculate returns.
     returns = [t.total_return for t in new_trajectories]
+
+    # Remove epochs not intended to be in the buffer
+    current_trajectories = {
+        key: value for key, value in self._trajectories.items() \
+          if key >= epoch_id - self._n_replay_epochs}
+    self._trajectories = collections.defaultdict(list)
+    self._trajectories.update(current_trajectories)
+
+    self._n_trajectories += n
+    self._n_interactions += sum([len(traj) for traj in new_trajectories])
+
     return sum(returns) / float(len(returns))
 
   def n_trajectories(self, epochs=None):
-    all_epochs = list(self._trajectories.keys())
-    epoch_indices = epochs or all_epochs
-    return sum([len(self._trajectories[ep]) for ep in epoch_indices])
+    # TODO(henrykm) support selection of epochs if really necessary (will
+    # require a dump of a list of lengths in save_to_file
+    del epochs
+    return self._n_trajectories
 
   def n_interactions(self, epochs=None):
-    all_epochs = list(self._trajectories.keys())
-    epoch_indices = epochs or all_epochs
-    return sum([sum([len(traj) for traj in self._trajectories[ep]])
-                for ep in epoch_indices])
+    # TODO(henrykm) support selection of epochs if really necessary (will
+    # require a dump of a list of lengths in save_to_file
+    del epochs
+    return self._n_interactions
 
   def remove_epoch(self, epoch):
     """Useful when we need to remove an unwanted trajectory."""
