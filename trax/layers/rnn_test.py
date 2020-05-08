@@ -17,40 +17,41 @@
 """Tests for rnn layers."""
 
 from absl.testing import absltest
-from trax.layers import base
-from trax.layers import rnn
-from trax.shapes import ShapeDtype
+import numpy as np
+
+from trax import shapes
+import trax.layers as tl
 
 
-class RnnLayerTest(absltest.TestCase):
-
-  def _test_cell_runs(self, layer, input_signature, output_shape):
-    final_shape = base.check_shape_agreement(layer, input_signature)
-    self.assertEqual(output_shape, final_shape)
+class RnnTest(absltest.TestCase):
 
   def test_conv_gru_cell(self):
-    self._test_cell_runs(
-        rnn.ConvGRUCell(9, kernel_size=(3, 3)),
-        input_signature=ShapeDtype((8, 1, 7, 9)),
-        output_shape=(8, 1, 7, 9))
+    layer = tl.ConvGRUCell(9, kernel_size=(3, 3))
+    x = np.ones((8, 1, 7, 9))
+    _, _ = layer.init(shapes.signature(x))
+    y = layer(x)
+    self.assertEqual(y.shape, x.shape)
 
   def test_gru_cell(self):
-    self._test_cell_runs(
-        rnn.GRUCell(9),
-        input_signature=(ShapeDtype((8, 7, 9)), ShapeDtype((8, 7, 9))),
-        output_shape=((8, 7, 9), (8, 7, 9)))
+    layer = tl.GRUCell(9)
+    xs = [np.ones((8, 7, 9)), np.ones((8, 7, 9))]
+    _, _ = layer.init(shapes.signature(xs))
+    ys = layer(xs)
+    self.assertEqual([y.shape for y in ys], [(8, 7, 9), (8, 7, 9)])
 
   def test_lstm_cell(self):
-    self._test_cell_runs(
-        rnn.LSTMCell(9),
-        input_signature=(ShapeDtype((8, 9)), ShapeDtype((8, 18))),
-        output_shape=((8, 9), (8, 18)))
+    layer = tl.LSTMCell(9)
+    xs = [np.ones((8, 9)), np.ones((8, 18))]
+    _, _ = layer.init(shapes.signature(xs))
+    ys = layer(xs)
+    self.assertEqual([y.shape for y in ys], [(8, 9), (8, 18)])
 
   def test_sru(self):
-    self._test_cell_runs(
-        rnn.SRU(7),
-        input_signature=ShapeDtype((8, 9, 7)),
-        output_shape=(8, 9, 7))
+    layer = tl.SRU(7)
+    x = np.ones((8, 9, 7))
+    _, _ = layer.init(shapes.signature(x))
+    y = layer(x)
+    self.assertEqual(y.shape, x.shape)
 
 
 if __name__ == '__main__':

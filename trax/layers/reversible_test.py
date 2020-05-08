@@ -17,18 +17,18 @@
 """Tests for reversible layers."""
 
 from absl.testing import absltest
-from trax.layers import base
-from trax.layers import reversible
-from trax.shapes import ShapeDtype
+import numpy as np
+
+import trax.layers as tl
 
 
 class ReversibleLayerTest(absltest.TestCase):
 
   def test_reversible_swap(self):
-    layer = reversible.ReversibleSwap()
-    input_signature = (ShapeDtype((2, 3)), ShapeDtype((3, 3)))
-    final_shape = base.check_shape_agreement(layer, input_signature)
-    self.assertEqual(final_shape, ((3, 3), (2, 3)))
+    layer = tl.ReversibleSwap()
+    xs = [np.array([1, 2]), np.array([10, 20])]
+    ys = layer(xs)
+    self.assertEqual(tl.to_list(ys), [[10, 20], [1, 2]])
 
 
 if __name__ == '__main__':

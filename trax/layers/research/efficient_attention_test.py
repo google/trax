@@ -16,42 +16,40 @@
 # Lint as: python3
 """Tests for trax.layers.research.efficient_attention."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import jax
 import numpy as np
 from tensorflow import test
+
 from trax import math
-from trax.layers import base
+from trax import shapes
 from trax.layers.research import efficient_attention
 from trax.math import numpy as jnp
-from trax.shapes import ShapeDtype
 
 
 class EfficientAttentionTest(test.TestCase):
 
   def test_self_attention(self):
     with math.use_backend('jax'):
-      input_signature = ShapeDtype((3, 32, 8))
       layer = efficient_attention.SelfAttention(
           n_heads=5, d_qk=7, d_v=17, share_qk=False, causal=True,
           chunk_len=8, n_chunks_before=1, n_chunks_after=0,
           use_reference_code=True, attention_dropout=0.0, mode='train')
-      final_shape = base.check_shape_agreement(layer, input_signature)
-      self.assertEqual((3, 32, 8), final_shape)
+      x = np.ones((3, 32, 8)).astype(np.float32)
+      _, _ = layer.init(shapes.signature(x))
+      y = layer(x)
+      self.assertEqual(y.shape, x.shape)
 
   def test_lsh_self_attention(self):
     with math.use_backend('jax'):
-      input_signature = ShapeDtype((3, 32, 8))
       layer = efficient_attention.LSHSelfAttention(
           n_heads=5, d_qk=7, d_v=17, causal=True,
           chunk_len=8, n_chunks_before=1, n_chunks_after=0,
           n_hashes=2, n_buckets=4,
           use_reference_code=True, attention_dropout=0.0, mode='train')
-      final_shape = base.check_shape_agreement(layer, input_signature)
-      self.assertEqual((3, 32, 8), final_shape)
+      x = np.ones((3, 32, 8)).astype(np.float32)
+      _, _ = layer.init(shapes.signature(x))
+      y = layer(x)
+      self.assertEqual(y.shape, x.shape)
 
   def _run_forward_and_backward(self, model, inp, weights, state):
     def forward(inp, weights):
@@ -103,12 +101,12 @@ class EfficientAttentionTest(test.TestCase):
           test_kwargs.append(dict(n_parallel_heads=n_parallel_heads,
                                   use_python_loop=use_python_loop))
 
-      inp = jax.random.uniform(
+      x = jax.random.uniform(
           jax.random.PRNGKey(0), (2, 10, 13), dtype=jnp.float32)
-      input_signature = ShapeDtype((2, 10, 13), dtype=jnp.float32)
+      input_signature = shapes.signature(x)
       self._test_equivalence_to_reference_code(
           efficient_attention.SelfAttention,
-          inp, input_signature,
+          x, input_signature,
           common_kwargs, *test_kwargs)
 
   def test_batching_lsh_self_attention(self):
@@ -125,32 +123,32 @@ class EfficientAttentionTest(test.TestCase):
           test_kwargs.append(dict(n_parallel_heads=n_parallel_heads,
                                   use_python_loop=use_python_loop))
 
-      inp = jax.random.uniform(
+      x = jax.random.uniform(
           jax.random.PRNGKey(0), (2, 10, 13), dtype=jnp.float32)
-      input_signature = ShapeDtype((2, 10, 13), dtype=jnp.float32)
+      input_signature = shapes.signature(x)
       self._test_equivalence_to_reference_code(
           efficient_attention.LSHSelfAttention,
-          inp, input_signature,
+          x, input_signature,
           common_kwargs, *test_kwargs)
 
   def _test_fast_inference(
-      self, model_cls, inp, input_signature, common_kwargs, *test_kwargs):
+      self, model_cls, x, input_signature, common_kwargs, *test_kwargs):
     ref_model = model_cls(use_reference_code=True, mode='eval', **common_kwargs)
     weights, state = ref_model.init(input_signature)
 
     ref_out, _ = ref_model.pure_fn(
-        inp, weights, state, rng=jax.random.PRNGKey(0))
+        x, weights, state, rng=jax.random.PRNGKey(0))
 
     def get_slice(pytree, i):
       def get_slice_for_val(x):
-        if isinstance(x, ShapeDtype):
-          return ShapeDtype(shape=x.shape[:1] + (1,) + x.shape[2:],
-                            dtype=x.dtype)
+        if isinstance(x, shapes.ShapeDtype):
+          return shapes.ShapeDtype(shape=x.shape[:1] + (1,) + x.shape[2:],
+                                   dtype=x.dtype)
         else:
           return x[:, i:i+1]
       return jax.tree_map(get_slice_for_val, pytree)
 
-    seqlen = inp[0].shape[1] if isinstance(inp, (tuple, list)) else inp.shape[1]
+    seqlen = x[0].shape[1] if isinstance(x, (tuple, list)) else x.shape[1]
 
     for kwargs in test_kwargs:
       test_model = model_cls(mode='predict', **common_kwargs, **kwargs)
@@ -158,7 +156,7 @@ class EfficientAttentionTest(test.TestCase):
       out = []
       for i in range(seqlen):
         cur_out, cur_state = test_model.pure_fn(
-            get_slice(inp, i), weights, cur_state, jax.random.PRNGKey(0))
+            get_slice(x, i), weights, cur_state, jax.random.PRNGKey(0))
         out.append(cur_out)
       out = jnp.concatenate(out, axis=1)
 
@@ -177,12 +175,12 @@ class EfficientAttentionTest(test.TestCase):
           test_kwargs.append(dict(n_parallel_heads=n_parallel_heads,
                                   use_python_loop=use_python_loop))
 
-      inp = jax.random.uniform(
+      x = jax.random.uniform(
           jax.random.PRNGKey(0), (2, 10, 13), dtype=jnp.float32)
-      input_signature = ShapeDtype((2, 10, 13), dtype=jnp.float32)
+      input_signature = shapes.signature(x)
       self._test_fast_inference(
           efficient_attention.SelfAttention,
-          inp, input_signature,
+          x, input_signature,
           common_kwargs, *test_kwargs)
 
 
