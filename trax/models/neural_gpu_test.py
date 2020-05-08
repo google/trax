@@ -18,19 +18,19 @@
 
 from absl.testing import absltest
 import numpy as np
-from trax.layers import base
+
+from trax import shapes
 from trax.models import neural_gpu
-from trax.shapes import ShapeDtype
 
 
 class NeuralGPUTest(absltest.TestCase):
 
   def test_ngpu(self):
-    vocab_size = 2
-    input_signature = ShapeDtype((3, 5, 7), np.int32)
-    model = neural_gpu.NeuralGPU(d_feature=30, steps=4, vocab_size=vocab_size)
-    final_shape = base.check_shape_agreement(model, input_signature)
-    self.assertEqual((3, 5, 7, vocab_size), final_shape)
+    model = neural_gpu.NeuralGPU(d_feature=30, steps=4, vocab_size=22)
+    x = np.ones((3, 5, 7)).astype(np.int32)
+    _, _ = model.init(shapes.signature(x))
+    y = model(x)
+    self.assertEqual(y.shape, (3, 5, 7, 22))
 
 
 if __name__ == '__main__':

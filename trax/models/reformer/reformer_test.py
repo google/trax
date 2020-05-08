@@ -17,26 +17,24 @@
 """Tests for Reformer models."""
 
 from absl.testing import absltest
-from absl.testing import parameterized
+import numpy as np
 
-from trax import layers as tl
-from trax.math import numpy as np
+from trax import shapes
 from trax.models.reformer import reformer
-from trax.shapes import ShapeDtype
 
 
-class ReformerTest(parameterized.TestCase):
+class ReformerTest(absltest.TestCase):
 
   def test_reformer_lm_forward_shape(self):
-    """Run the ReformerLM forward and check output shape."""
     vocab_size = 16
-    input_sd = ShapeDtype((1, 8), np.int32)
-    input_signature = (input_sd, input_sd)
     model = reformer.ReformerLM(
         vocab_size, d_model=32, d_ff=64, d_attention_key=16,
         d_attention_value=16, n_layers=1, n_heads=2, max_len=16)
-    final_shape = tl.check_shape_agreement(model, input_signature)
-    self.assertEqual(((1, 8, 16), (1, 8)), final_shape)
+    xs = [np.ones((1, 8)).astype(np.int32),
+          np.ones((1, 8)).astype(np.int32)]
+    _, _ = model.init(shapes.signature(xs))
+    ys = model(xs)
+    self.assertEqual([y.shape for y in ys], [(1, 8, 16), (1, 8)])
 
 
 if __name__ == '__main__':
