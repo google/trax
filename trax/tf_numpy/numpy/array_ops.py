@@ -568,77 +568,46 @@ def copy(a):
   return array(a, copy=True)
 
 
-def cumprod(a, axis=None, dtype=None):
-  """Returns cumulative product of `a` along an axis or the flattened array.
-
-  Uses `tf.cumprod`.
-
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can
-      be converted to a Tensor using `tf.convert_to_tensor`.
-    axis: Optional. Axis along which to compute products. If None, operation is
-      performed on the flattened array.
-    dtype: Optional. The type of the output array. If None, defaults to the
-      dtype of `a` unless `a` is an integer type with precision less than `int`
-      in which case the output type is `int.`
-
-  Returns:
-    An ndarray with the same number of elements as `a`. If `axis` is None, the
-    output is a 1-d array, else it has the same shape as `a`.
-  """
-  a = asarray(a, dtype=dtype)
-
-  if dtype is None and tf.as_dtype(a.dtype).is_integer:
+def _maybe_promote_to_int(a):
+  if tf.as_dtype(a.dtype).is_integer:
     # If a is an integer type and its precision is less than that of `int`,
     # the output type will be `int`.
     output_type = np.promote_types(a.dtype, int)
     if output_type != a.dtype:
       a = asarray(a, dtype=output_type)
 
+  return a
+
+
+@utils.np_doc(np.cumprod)
+def cumprod(a, axis=None, dtype=None):  # pylint: disable=missing-docstring
+  a = asarray(a, dtype=dtype)
+
+  if dtype is None:
+    a = _maybe_promote_to_int(a)
+
   # If axis is None, the input is flattened.
   if axis is None:
     a = ravel(a)
     axis = 0
-  if axis < 0:
-    axis += a.ndim
-  assert axis >= 0 and axis < a.ndim
+  elif axis < 0:
+    axis += tf.rank(a.data)
   return utils.tensor_to_ndarray(tf.math.cumprod(a.data, axis))
 
 
-def cumsum(a, axis=None, dtype=None):
-  """Returns cumulative sum of `a` along an axis or the flattened array.
-
-  Uses `tf.cumsum`.
-
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can
-      be converted to a Tensor using `tf.convert_to_tensor`.
-    axis: Optional. Axis along which to compute sums. If None, operation is
-      performed on the flattened array.
-    dtype: Optional. The type of the output array. If None, defaults to the
-      dtype of `a` unless `a` is an integer type with precision less than `int`
-      in which case the output type is `int.`
-
-  Returns:
-    An ndarray with the same number of elements as `a`. If `axis` is None, the
-    output is a 1-d array, else it has the same shape as `a`.
-  """
+@utils.np_doc(np.cumsum)
+def cumsum(a, axis=None, dtype=None):  # pylint: disable=missing-docstring
   a = asarray(a, dtype=dtype)
 
-  if dtype is None and tf.as_dtype(a.dtype).is_integer:
-    # If a is an integer type and its precision is less than that of `int`,
-    # the output type will be `int`.
-    output_type = np.promote_types(a.dtype, int)
-    if output_type != a.dtype:
-      a = asarray(a, dtype=output_type)
+  if dtype is None:
+    a = _maybe_promote_to_int(a)
 
   # If axis is None, the input is flattened.
   if axis is None:
     a = ravel(a)
     axis = 0
-  if axis < 0:
-    axis += a.ndim
-  assert axis >= 0 and axis < a.ndim
+  elif axis < 0:
+    axis += tf.rank(a.data)
   return utils.tensor_to_ndarray(tf.cumsum(a.data, axis))
 
 

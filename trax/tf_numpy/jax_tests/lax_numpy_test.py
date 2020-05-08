@@ -1260,7 +1260,6 @@ class LaxBackedNumpyTests(jtu.TestCase):
       for out_dtype in default_dtypes
       for shape in all_shapes
       for axis in [None] + list(range(-len(shape), len(shape)))))
-  @disable
   def testCumSumProd(self, axis, shape, dtype, out_dtype, onp_op, lnp_op, rng_factory):
     rng = rng_factory()
     onp_fun = lambda arg: onp_op(arg, axis=axis, dtype=out_dtype)
@@ -1271,7 +1270,8 @@ class LaxBackedNumpyTests(jtu.TestCase):
     tol = max(jtu.tolerance(dtype), jtu.tolerance(out_dtype))
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True,
                             tol=tol)
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_dtype={}_m={}_n={}_k={}".format(
