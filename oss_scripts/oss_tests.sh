@@ -50,6 +50,8 @@ alias pytest='coverage run -m pytest'
 
 # Check tests, separate out directories for easy triage.
 
+## Core Trax and Supervised Learning
+
 # Disabled test fails with "disable-warnings", tested separately.
 pytest --disable-warnings \
   --ignore=trax/layers/initializers_test.py \
@@ -68,6 +70,11 @@ set_status
 pytest --disable-warnings trax/optimizers
 set_status
 
+pytest --disable-warnings trax/supervised
+set_status
+
+## RL Trax
+
 # Disabled tests fail with "disable-warnings", tested separately.
 pytest --disable-warnings \
   --ignore=trax/rl/actor_critic_joint_test.py \
@@ -84,8 +91,7 @@ pytest \
   trax/rl/training_test.py
 set_status
 
-pytest --disable-warnings trax/supervised
-set_status
+# Catch-all for futureproofing.
 
 pytest --disable-warnings \
   --ignore=trax/layers \
