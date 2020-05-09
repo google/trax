@@ -247,7 +247,8 @@ def _dataset_as_numpy(ds, batch_size=64):
   try:  # Check that dense_to_ragged_batch exists.
     if batch_size < 2:  # Fall back to default if no batching requested.
       raise AttributeError
-    ds_batch = ds.apply(tf.data.experimental.dense_to_ragged_batch(batch_size))
+    ds_batch = ds.apply(
+        tf.data.experimental.dense_to_ragged_batch(batch_size=batch_size))
     for example in tfds.as_numpy(ds_batch):
       flat_example = tree_flatten(example)
       np_flat_example = [_to_numpy(x) for x in flat_example]
