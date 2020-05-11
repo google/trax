@@ -320,8 +320,9 @@ def _to_numpy(x):
   return x if isinstance(x, np.ndarray) else x.numpy()
 
 
-def _dataset_as_numpy(ds, batch_size=64):
+def _dataset_as_numpy(ds, batch_size=None):
   """Speed up tfds.as_numpy by batching and then iterating over the batches."""
+  batch_size = batch_size or 1
   try:  # Check that dense_to_ragged_batch exists.
     if batch_size < 2:  # Fall back to default if no batching requested.
       raise AttributeError
