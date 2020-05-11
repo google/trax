@@ -19,11 +19,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 import gin
 import jax.numpy as jnp
 import numpy as onp
 from tensorflow import test
 import trax.math as math
+
+
+_TestNamedtuple = collections.namedtuple('_TestNamedtuple', ['x'])
 
 
 class BackendTest(test.TestCase):
@@ -71,6 +76,20 @@ class BackendTest(test.TestCase):
     self.assertTrue(numpy.isinf(numpy.inf))
     self.assertEqual(onp.isinf, numpy.isinf)
     self.assertEqual(onp.inf, numpy.inf)
+
+  def test_nested_map(self):
+    inp = {'a': ([0, 1], 2), 'b': _TestNamedtuple(3)}
+    out = {'a': ([1, 2], 3), 'b': _TestNamedtuple(4)}
+    self.assertEqual(math.nested_map(lambda x: x + 1, inp), out)
+
+  def test_nested_stack(self):
+    inp = [
+        {'a': ([0, 1], 2), 'b': _TestNamedtuple(3)},
+        {'a': ([1, 2], 3), 'b': _TestNamedtuple(4)},
+    ]
+    out = {'a': ([[0, 1], [1, 2]], [2, 3]), 'b': _TestNamedtuple([3, 4])}
+    onp.testing.assert_equal(math.nested_stack(inp), out)
+
 
 if __name__ == '__main__':
   test.main()

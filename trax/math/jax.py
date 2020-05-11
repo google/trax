@@ -136,7 +136,27 @@ def _jax_scan(f, xs, init_value, axis=0, remat=False):
   return ys, last_value
 
 
-def nested_map(f, obj):
+def _is_namedtuple_instance(x):
+  """Checks if `x` is an instance of a `namedtuple` type."""
+  if not isinstance(x, tuple):
+    return False
+  return hasattr(x, '_fields')
+
+
+def _is_at_level(obj, level):
+  """Checks if `obj` is an at level `level`."""
+  is_leaf = not isinstance(obj, (list, tuple, dict))
+  if level == 0 or is_leaf:
+    return (level == 0) == is_leaf
+
+  if isinstance(obj, dict):
+    elems = obj.values()
+  else:
+    elems = obj
+  return elems and all(_is_at_level(x, level - 1) for x in elems)
+
+
+def nested_map(f, obj, level=0):
   """Maps `f` recursively inside any dicts/lists/tuples in `obj`.
 
   Args:
@@ -144,18 +164,76 @@ def nested_map(f, obj):
         dict, list, or tuple, or any subclass of those.
     obj: Either an input object to f or some nested structure of collections
         of (collections of ...) input objects to f.
+    level: Level in the nested structure to stop at, counted from the leaves -
+        so level 0 is the leaf, level 1 is such that all of its children are at
+        level 0 etc.
 
   Returns:
     An object with the same nested structure as `obj`, but with each input
     object `x` replaced by `f(x)`.
   """
+  if _is_at_level(obj, level):
+    return f(obj)
+
+  if _is_namedtuple_instance(obj):
+    return type(obj)(*nested_map(f, list(obj), level=level))
   if isinstance(obj, list):
-    return [nested_map(f, y) for y in obj]
+    return [nested_map(f, y, level=level) for y in obj]
   if isinstance(obj, tuple):
-    return tuple([nested_map(f, y) for y in obj])
+    return tuple([nested_map(f, y, level=level) for y in obj])
   if isinstance(obj, dict):
-    return {k: nested_map(f, v) for (k, v) in obj.items()}
-  return f(obj)
+    return {k: nested_map(f, v, level=level) for (k, v) in obj.items()}
+
+  raise ValueError('Non-exhaustive pattern match for {}.'.format(obj))
+
+
+def nested_zip(objs):
+  """Zips the leaves of each nested structure in `objs`.
+
+  Args:
+    objs: List of nested structures to zip.
+
+  Returns:
+    An object with the same nested structure as each element of `objs`, with
+    leaves zipped together into tuples.
+  """
+  assert isinstance(objs, (list, tuple))
+  assert objs, 'Cannot zip an empty sequence.'
+
+  if _is_at_level(objs, 1):
+    return tuple(objs)
+
+  if _is_namedtuple_instance(objs[0]):
+    return type(objs[0])(*nested_zip(list(map(list, objs))))
+  if isinstance(objs[0], list):
+    return [nested_zip([obj[i] for obj in objs]) for i in range(len(objs[0]))]
+  if isinstance(objs[0], tuple):
+    return nested_zip(list(map(list, objs)))
+  if isinstance(objs[0], dict):
+    return {k: nested_zip([obj[k] for obj in objs]) for k in objs[0].keys()}
+
+  raise ValueError('Non-exhaustive pattern match for {}.'.format(objs[0]))
+
+
+def nested_stack(objs, axis=0, np_module=np):
+  """Stacks the numpy arrays inside any dicts/lists/tuples in `objs`.
+
+  Args:
+    objs: List of nested structures to stack.
+    axis: Axis to stack along.
+    np_module: numpy module to use - typically numpy or jax.numpy.
+
+  Returns:
+    An object with the same nested structure as each element of `objs`, with
+    leaves stacked together into numpy arrays.
+  """
+  # nested_map the stacking operation, but stopping at level 1 so at tuples of
+  # numpy arrays.
+  return nested_map(
+      lambda x: np_module.stack(x, axis=axis),
+      nested_zip(objs),
+      level=1,
+  )
 
 
 def tree_flatten(tree):
