@@ -727,40 +727,6 @@ def to_list(outputs):
     return outputs.tolist()
 
 
-def check_shape_agreement(layer_obj, input_signature):
-  """Compares the layer's __call__ output to its _foward_abstract shape output.
-
-  This function helps test layer mechanics and inter-layer connections that
-  aren't dependent on specific data values.
-
-  Args:
-    layer_obj: A layer object.
-    input_signature: A `ShapeDtype` instance (if `layer_obj` takes one input)
-        or a list/tuple of ShapeDtype instances.
-
-  Returns:
-    A tuple representing either a single shape (if the layer has one output) or
-    a tuple of shape tuples (if the layer has more than one output).
-  """
-  weights, state = layer_obj.init(input_signature)
-  output_signature, _ = layer_obj._forward_abstract(input_signature)  # pylint: disable=protected-access
-  if isinstance(output_signature, tuple):
-    shape_output = tuple(x.shape for x in output_signature)
-  else:
-    shape_output = output_signature.shape
-
-  rng1, rng2 = layer_obj.new_rngs(2)
-  random_input = _random_values(input_signature, rng1)
-  call_output = layer_obj(random_input, weights=weights, state=state, rng=rng2)
-  call_output_shape = _shapes(call_output)
-
-  msg = '_foward_abstract shape output %s != __call__ output shape %s' % (
-      shape_output, call_output_shape)
-  assert shape_output == call_output_shape, msg
-  # TODO(jonni): Remove this assert? It makes test logs harder to read.
-  return shape_output
-
-
 def _validate_forward_input(x, n_in):
   if n_in != 1:
     if not isinstance(x, (tuple, list)):
