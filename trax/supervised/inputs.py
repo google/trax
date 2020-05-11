@@ -382,8 +382,6 @@ def dataset_to_stream(dataset, input_name):
       inp = inp.astype(np.int32)
     if isinstance(out, np.uint8):
       out = out.astype(np.int32)
-    if len(out.shape) > 1 and out.shape[-1] == 1:
-      out = np.squeeze(out, axis=-1)
     yield (inp, out) if mask is None else (inp, out, mask)
 
 
@@ -528,7 +526,7 @@ def batch_fn(dataset, training, n_devices, variable_target_shapes,
              batch_size_per_device=32, batch_size=None, eval_batch_size=32,
              bucket_length=32, buckets=None,
              buckets_include_inputs_in_length=False,
-             batch_shuffle_size=8, max_eval_length=None):
+             batch_shuffle_size=None, max_eval_length=None):
   """Batching function."""
   # Batch size is batch_size_per_device * n_devices unless given directly.
   batch_size = batch_size or batch_size_per_device * n_devices
@@ -578,7 +576,7 @@ def batch_fn(dataset, training, n_devices, variable_target_shapes,
         dataset, example_length, boundaries, batch_sizes)
   else:
     dataset = batch_data(dataset, cur_batch_size)
-  if training:
+  if training and batch_shuffle_size is not None:
     dataset = shuffle_data(dataset, batch_shuffle_size)
   return dataset
 
@@ -686,6 +684,23 @@ def concat_preprocess(dataset, training, shapes, pad_symbol=0):
     return features, concat
 
   dataset = dataset.map(concat)
+  return dataset, shapes
+
+
+@gin.configurable(blacklist=['dataset', 'training', 'shapes'])
+def squeeze_targets_preprocess(dataset, training, shapes):
+  """Pre-processing function that squeezes last axis of targets."""
+  del training
+
+  def squeeze(features, targets):
+    if targets.shape[-1] == 1:
+      targets = tf.squeeze(targets, axis=-1)
+    return features, targets
+
+  dataset = dataset.map(squeeze)
+  feature_shapes, target_shapes = shapes
+  if target_shapes[-1] == 1:
+    shapes = (feature_shapes, target_shapes[:-1])
   return dataset, shapes
 
 

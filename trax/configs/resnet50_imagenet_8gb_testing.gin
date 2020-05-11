@@ -21,14 +21,16 @@ import trax.supervised.trainer_lib
 # Parameters for batch_fn:
 # ==============================================================================
 batch_fn.batch_size_per_device = 32
-batch_fn.bucket_length = 32
-batch_fn.buckets = None
 batch_fn.eval_batch_size = 32
 
 # Parameters for inputs:
 # ==============================================================================
 inputs.data_dir = None
 inputs.dataset_name = 't2t_image_imagenet224'
+
+# Parameters for preprocess_fun:
+# ==============================================================================
+shuffle_and_batch_data.preprocess_fun=@trax.supervised.inputs.squeeze_targets_preprocess
 
 # Parameters for MultifactorSchedule:
 # ==============================================================================
@@ -39,7 +41,6 @@ MultifactorSchedule.warmup_steps = 400
 # Parameters for Momentum:
 # ==============================================================================
 Momentum.mass = 0.9
-
 
 # Parameters for Resnet50:
 # ==============================================================================
