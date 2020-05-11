@@ -22,6 +22,31 @@ from trax.layers.base import Fn
 
 # pylint: disable=invalid-name
 def MaxPool(pool_size=(2, 2), strides=None, padding='VALID'):
+  """Reduces each multi-dimensional window to the max of the window's values.
+
+  Windows, as specified by `pool_size` and `strides`, involve all axes of an
+  n-dimensional array except the first and last: $$dim_1 ... dim_{n-2}$$ from
+  shape $$(dim_0, dim_1, ..., dim_{n-2}, dim_{n-1})$$.
+
+  Args:
+    pool_size: Shape of window that gets reduced to a single vector value.
+        If the layer inputs are $$n$$-dimensional arrays, then `pool_size` must
+        be a tuple of length $$n-2$$.
+    strides: Offsets from the location of one window to the locations of
+        neighboring windows along each axis. If specified, must be a tuple of
+        the same length as `pool_size`. If None, then offsets of 1 along each
+        window axis, $$(1, ..., 1)$$, will be used.
+    padding: 'VALID' or 'SAME'. If 'VALID', no padding is done, and only
+        full windows get reduced; partial windows are discarded. If 'SAME',
+        padding is added at array edges as needed to avoid partial windows
+        but does not otherwise affect the selection of max values.
+
+  Returns:
+    N-dimensional array in which each valid (or padded-valid) window position
+    in the input is reduced to / replaced by the max value from that window.
+    An output array has the same number of dimensions as its input, but has
+    fewer elements.
+  """
   layer_name = f'MaxPool{pool_size}'.replace(' ', '')
   def f(x):
     return math.max_pool(
@@ -30,6 +55,31 @@ def MaxPool(pool_size=(2, 2), strides=None, padding='VALID'):
 
 
 def SumPool(pool_size=(2, 2), strides=None, padding='VALID'):
+  """Reduces each multi-dimensional window to the sum of the window's values.
+
+  Windows, as specified by `pool_size` and `strides`, involve all axes of an
+  n-dimensional array except the first and last: $$dim_1 ... dim_{n-2}$$ from
+  shape $$(dim_0, dim_1, ..., dim_{n-2}, dim_{n-1})$$.
+
+  Args:
+    pool_size: Shape of window that gets reduced to a single vector value.
+        If the layer inputs are $$n$$-dimensional arrays, then `pool_size` must
+        be a tuple of length $$n-2$$.
+    strides: Offsets from the location of one window to the locations of
+        neighboring windows along each axis. If specified, must be a tuple of
+        the same length as `pool_size`. If None, then offsets of 1 along each
+        window axis, $$(1, ..., 1)$$, will be used.
+    padding: 'VALID' or 'SAME'. If 'VALID', no padding is done, and only
+        full windows get reduced; partial windows are discarded. If 'SAME',
+        padding is added at array edges as needed to avoid partial
+        windows but does not otherwise affect the computation of sums.
+
+  Returns:
+    N-dimensional array in which each valid (or padded-valid) window position
+    in the input is reduced to / replaced by the sum of values in that window.
+    An output array has the same number of dimensions as its input, but has
+    fewer elements.
+  """
   layer_name = f'SumPool{pool_size}'.replace(' ', '')
   def f(x):
     return math.sum_pool(
@@ -38,6 +88,31 @@ def SumPool(pool_size=(2, 2), strides=None, padding='VALID'):
 
 
 def AvgPool(pool_size=(2, 2), strides=None, padding='VALID'):
+  """Reduces each multi-dimensional window to the mean of the window's values.
+
+  Windows, as specified by `pool_size` and `strides`, involve all axes of an
+  n-dimensional array except the first and last: $$dim_1 ... dim_{n-2}$$ from
+  shape $$(dim_0, dim_1, ..., dim_{n-2}, dim_{n-1})$$.
+
+  Args:
+    pool_size: Shape of window that gets reduced to a single vector value.
+        If the layer inputs are $$n$$-dimensional arrays, then `pool_size` must
+        be a tuple of length $$n-2$$.
+    strides: Offsets from the location of one window to the locations of
+        neighboring windows along each axis. If specified, must be a tuple of
+        the same length as `pool_size`. If None, then offsets of 1 along each
+        window axis, $$(1, ..., 1)$$, will be used.
+    padding: 'VALID' or 'SAME'. If 'VALID', no padding is done, and only
+        full windows get reduced; partial windows are discarded. If 'SAME',
+        padding is added at array edges as needed but is not counted in the
+        computation of averages.
+
+  Returns:
+    N-dimensional array in which each valid (or padded-valid) window position
+    in the input is reduced to / replaced by the mean of values in that window.
+    An output array has the same number of dimensions as its input, but has
+    fewer elements.
+  """
   layer_name = f'AvgPool{pool_size}'.replace(' ', '')
   def f(x):
     return math.avg_pool(
