@@ -133,10 +133,15 @@ class Gaussian(Distribution):
     return jnp.prod(self._shape, dtype=jnp.int32)
 
   def sample(self, inputs, temperature=1.0):
-    return np.random.normal(
-        loc=jnp.reshape(inputs, inputs.shape[:-1] + self._shape),
-        scale=self._std * temperature,
-    )
+    if temperature == 0:
+      # this seemingly strange if solves the problem
+      # of calling np/jnp.random in the metric PreferredMove
+      return inputs
+    else:
+      return np.random.normal(
+          loc=jnp.reshape(inputs, inputs.shape[:-1] + self._shape),
+          scale=self._std * temperature,
+      )
 
   def log_prob(self, inputs, point):
     point = point.reshape(inputs.shape[:-1] + (-1,))
@@ -149,8 +154,9 @@ class Gaussian(Distribution):
     )
 
   # At that point self._std is not learnable, hence
-  # we return a constaent
-  def entropy(self):
+  # we return a constant
+  def entropy(self, log_probs):
+    del log_probs  # would be helpful if self._std was learnable
     return jnp.exp(self._std) + .5 * jnp.log(2.0 * jnp.pi * jnp.e)
 
 

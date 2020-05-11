@@ -234,8 +234,8 @@ class PPOJointTrainer(ActorCriticJointTrainer):
                  'clipped_objective_mean': self.clipped_objective_mean,
                  'ppo_objective_mean': self.ppo_objective_mean,
                  'clip_fraction': self.clip_fraction,
-                 'approximate_kl_divergence': self.approximate_kl_divergence,
-                 'preferred_move': self.preferred_move})
+                 'preferred_move': self.preferred_move,
+                 'approximate_kl_divergence': self.approximate_kl_divergence})
 
   def batches_stream(self):
     """Use the RLTask self._task to create inputs to the value model."""
@@ -268,11 +268,14 @@ class PPOJointTrainer(ActorCriticJointTrainer):
       assert returns.shape[0:2] == old_log_probs.shape, (
           f'returns.shape was {returns.shape}'
           f'old_log_probs.shape was {old_log_probs.shape}')
-      # actions is a tensor of the shape int32[128,1]
-      assert len(actions.shape) == 2, f'actions.shape was {actions.shape}'
-      # which agrees with returns/values on the first two coordinates
+
+      # actions is a tensor of the shape int32[128,1] in the case
+      # of discrete actions and float32[128,1,6] in the case of
+      # half-cheetah and other continuous actions
+      # actions agree with returns/values on the first two coordinates
+      # meaning batch and time
       assert actions.shape[0:2] == returns.shape[0:2], (
-          f'actions.shape was {actions.shape} and'
+          f'actions.shape was {actions.shape} and '
           f'returns.shape was {returns.shape}')
 
       ppo_objective = rl_layers.PPOObjective(
@@ -480,16 +483,18 @@ class A2CJointTrainer(ActorCriticJointTrainer):
       assert values.shape == returns.shape, (
           f'values.shape was {values.shape}'
           f'returns.shape was (returns.shape)')
-      # actions of the shape int32[128,1]
-      assert len(actions.shape) == 2, f'actions.shape was {actions.shape}'
-      # which agrees with returns/values on the first two coordinates
-      assert actions.shape[0:2] == actions.shape[0:2], (
-          f'actions was {actions}')
+      # actions of the shape int32[128,1] in the case of discrete actions
+      # and float32[128,1,6] in the case of of half-cheetah
+      # actions agree with returns/values on the first two coordinates
+      assert actions.shape[0:2] == returns.shape[0:2], (
+          f'actions.shape was {actions.shape}'
+          f'returns.shape was (returns.shape)')
       # and mask of the shape float32[128,1]
       assert len(mask.shape) == 2, f'mask.shape was {mask.shape}'
       # which agrees with returns/values/actions on the first two coordinates
-      assert mask.shape[0:2] == mask.shape[0:2], (
-          f'actions was {mask}')
+      assert mask.shape[0:2] == returns.shape[0:2], (
+          f'mask.shape was {mask.shape}'
+          f'returns.shape was (returns.shape)')
 
       a2c_objective = rl_layers.A2CObjective(
           dist_inputs,

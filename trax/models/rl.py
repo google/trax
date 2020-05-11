@@ -64,12 +64,24 @@ def PolicyAndValue(
     body=None,
     policy_top=Policy,
     value_top=Value,
+    normalizer=None,
+    head_init_range=None,
     mode='train',
 ):
   """Attaches policy and value heads to a model body."""
+
+  head_kwargs = {}
+  if head_init_range is not None:
+    head_kwargs['kernel_initializer'] = tl.RandomUniformInitializer(
+        lim=head_init_range
+    )
+
+  if normalizer is None:
+    normalizer = lambda mode: []
   if body is None:
     body = lambda mode: []
   return tl.Serial(
+      normalizer(mode=mode),
       body(mode=mode),
       tl.Branch(
           policy_top(policy_distribution=policy_distribution, mode=mode),
