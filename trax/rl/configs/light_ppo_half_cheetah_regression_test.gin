@@ -16,20 +16,33 @@ import trax.lr_schedules
 import trax.models
 import trax.optimizers
 import trax.rl
+import trax.rl.distributions
+import trax.rl.normalization
 
 # Parameters for Adam:
 # ==============================================================================
 Adam.clip_grad_norm = 0.5
 
-# Parameters for PolicyAndValue:
+# Parameters for Gaussian:
 # ==============================================================================
-PolicyAndValue.body = @trax.models.AtariCnnBody
+Gaussian.std = 0.4
 
-# Parameters for the AtariCnnBody:
+# Parameters for Policy and Value:
 # ==============================================================================
-AtariCnnBody.kernel_initializer = @trax.layers.AtariConvInit
-AtariCnnBody.n_frames = 1
-AtariCnnBody.padding = 'VALID'
+PolicyAndValue.body = @trax.models.PureMLP
+PolicyAndValue.head_init_range = 0.01
+PolicyAndValue.normalizer = @trax.rl.normalization.Normalize
+
+# Parameters for Normalize:
+# ==============================================================================
+Normalize.sample_limit = 30000
+Normalize.epsilon = 1e-5
+
+# Parameters for PureMLP:
+# ==============================================================================
+PureMLP.flatten = False
+PureMLP.layer_widths = (128, 64)
+PureMLP.out_activation = True
 
 # Parameters for MultifactorSchedule:
 # ==============================================================================
@@ -39,27 +52,26 @@ MultifactorSchedule.warmup_steps = 100
 
 # Parameters for RLTask:
 # ==============================================================================
-RLTask.env = "boxing"
+RLTask.env = "DM-HalfCheetah-v2"
 RLTask.initial_trajectories = 0
 RLTask.gamma = 0.99
-RLTask.max_steps = 2000
-RLTask.dm_suite = True
-RLTask.num_stacked_frames = 4
+RLTask.max_steps = 1000
 
 # Parameters for PPOTrainer:
 # ==============================================================================
 PPOJointTrainer.joint_model = @trax.models.PolicyAndValue
 PPOJointTrainer.optimizer = @trax.optimizers.Adam
-PPOJointTrainer.batch_size = 256
-PPOJointTrainer.train_steps_per_epoch = 80
+PPOJointTrainer.batch_size = 128
+PPOJointTrainer.train_steps_per_epoch = 100
 PPOJointTrainer.lr_schedule = @MultifactorSchedule
-PPOJointTrainer.collect_per_epoch = 5
+PPOJointTrainer.collect_per_epoch = 25
 PPOJointTrainer.epsilon = 0.1
-PPOJointTrainer.value_loss_coeff = 0.25
-PPOJointTrainer.entropy_coeff = 0.1
+PPOJointTrainer.value_loss_coeff = 0.001
+PPOJointTrainer.entropy_coeff = 0.001
+
 
 # Parameters for train_rl:
 # ==============================================================================
 train_rl.light_rl = True
 train_rl.light_rl_trainer = @trax.rl.PPOJointTrainer
-train_rl.n_epochs = 1000
+train_rl.n_epochs = 700
