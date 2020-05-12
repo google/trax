@@ -52,6 +52,9 @@ alias pytest='coverage run -m pytest'
 
 ## Core Trax and Supervised Learning
 
+pytest --disable-warnings trax/supervised
+set_status
+
 # Disabled test fails with "disable-warnings", tested separately.
 pytest --disable-warnings \
   --ignore=trax/layers/initializers_test.py \
@@ -68,9 +71,6 @@ pytest --disable-warnings trax/models
 set_status
 
 pytest --disable-warnings trax/optimizers
-set_status
-
-pytest --disable-warnings trax/supervised
 set_status
 
 ## RL Trax
