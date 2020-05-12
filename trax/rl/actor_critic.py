@@ -333,8 +333,11 @@ class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
     # using n_extra_steps, we need to trim the length to match.
     obs = trajectory.observations[:, :advantages.shape[1]]
     act = trajectory.actions[:, :advantages.shape[1]]
-    old_logps = trajectory.log_probs[:, :advantages.shape[1]]
     mask = trajectory.mask[:, :advantages.shape[1]]  # Mask to zero-out padding.
+    if trajectory.dist_inputs is not None:
+      dist_inputs = trajectory.dist_inputs[:, :advantages.shape[1]]
+    else:
+      dist_inputs = jnp.zeros(advantages.shape + (self._policy_dist.n_inputs,))
     # Shape checks to help debugging.
     if len(advantages.shape) != 2:
       raise ValueError('Advantages are expected to have shape ' +
@@ -347,13 +350,14 @@ class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
       raise ValueError('First 2 dimensions of observations should be the same '
                        'as in advantages, %s != %s' % (obs.shape[0:2],
                                                        advantages.shape))
-    if old_logps.shape != advantages.shape:
-      raise ValueError('Old log-probs and advantages shapes should be the same'
-                       ', %s != %s' % (old_logps.shape, advantages.shape))
+    if dist_inputs.shape[:2] != advantages.shape:
+      raise ValueError('First 2 dimensions of dist_inputs should be the same '
+                       'as in advantages, %s != %s' % (dist_inputs.shape[:2],
+                                                       advantages.shape))
     if mask.shape != advantages.shape:
       raise ValueError('Mask and advantages shapes should be the same'
                        ', %s != %s' % (mask.shape, advantages.shape))
-    return (obs, act, advantages, old_logps, mask)
+    return (obs, act, advantages, dist_inputs, mask)
 
   @property
   def policy_loss_given_log_probs(self):
@@ -363,28 +367,25 @@ class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
   @property
   def policy_loss(self, **unused_kwargs):
     """Policy loss."""
-    def NormalizeAdvantages():  # pylint: disable=invalid-name
-      def normalize(adv):
-        return (
-            (adv - jnp.mean(adv)) /
-            (jnp.std(adv) + self._advantage_normalization_epsilon)
-        )
-      return tl.Fn('NormalizeAdvantages', normalize)
+    def normalize(adv):
+      return (
+          (adv - jnp.mean(adv)) /
+          (jnp.std(adv) + self._advantage_normalization_epsilon)
+      )
+
+    def LossInput(dist_inputs, actions, advantages, old_dist_inputs):  # pylint: disable=invalid-name
+      """Calculates action log probabilities and normalizes advantages."""
+      if self._advantage_normalization:
+        advantages = normalize(advantages)
+      log_probs = self._policy_dist.log_prob(dist_inputs, actions)
+      old_log_probs = self._policy_dist.log_prob(old_dist_inputs, actions)
+      return (log_probs, advantages, old_log_probs)
 
     return tl.Serial(
-        self._policy_dist.LogProb(),  # Takes dist inputs and actions and...
-        tl.Parallel(
-            [],  # returns log probs
-            # Advantages.
-            NormalizeAdvantages() if self._advantage_normalization else [],
-            [],  # Old log probs.
-            [],  # Mask.
-        ),
-        self.policy_loss_given_log_probs,  # Policy is expected to consume
-        # Log probs,
-        # Advantages,
-        # Old log probs,
-        # Mask.
+        tl.Fn('LossInput', LossInput, n_out=3),
+        # Policy loss is expected to consume
+        # (log_probs, advantages, old_log_probs, mask).
+        self.policy_loss_given_log_probs,
     )
 
   @property
@@ -399,7 +400,7 @@ class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
   @property
   def advantage_mean(self):
     return tl.Serial([
-        # (dist_inputs, advantages, old_log_probs, mask)
+        # (dist_inputs, advantages, old_dist_inputs, mask)
         tl.Select([1]),  # Select just the advantages.
         tl.Fn('AdvantageMean', lambda x: jnp.mean(x)),  # pylint: disable=unnecessary-lambda
     ])
@@ -407,7 +408,7 @@ class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
   @property
   def advantage_std(self):
     return tl.Serial([
-        # (dist_inputs, advantages, old_log_probs, mask)
+        # (dist_inputs, advantages, old_dist_inputs, mask)
         tl.Select([1]),  # Select just the advantages.
         tl.Fn('AdvantageStd', lambda x: jnp.std(x)),  # pylint: disable=unnecessary-lambda
     ])
@@ -482,7 +483,7 @@ class PPOTrainer(AdvantageBasedActorCriticTrainer):
                          'should be the same, %s != %s' % (new_log_probs.shape,
                                                            advantages.shape))
       if new_log_probs.shape != old_log_probs.shape:
-        raise ValueError('New log-probs and old log probs shapes '
+        raise ValueError('New log-probs and old log-probs shapes '
                          'should be the same, %s != %s' % (new_log_probs.shape,
                                                            old_log_probs.shape))
       if new_log_probs.shape != mask.shape:

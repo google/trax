@@ -39,7 +39,7 @@ class ActorCriticTest(absltest.TestCase):
 
   def test_a2ctrainer_save_restore(self):
     """Check save and restore of A2C trainer."""
-    task = rl_task.RLTask('CartPole-v0', initial_trajectories=1,
+    task = rl_task.RLTask('CartPole-v0', initial_trajectories=0,
                           max_steps=20)
     body = lambda mode: tl.Serial(tl.Dense(64), tl.Relu())
     policy_model = functools.partial(models.Policy, body=body)
@@ -85,7 +85,7 @@ class ActorCriticTest(absltest.TestCase):
 
   def test_sanity_a2ctrainer_cartpole(self):
     """Test-runs a2c on cartpole."""
-    task = rl_task.RLTask('CartPole-v0', initial_trajectories=1,
+    task = rl_task.RLTask('CartPole-v0', initial_trajectories=0,
                           max_steps=2)
     body = lambda mode: tl.Serial(tl.Dense(64), tl.Relu())
     policy_model = functools.partial(models.Policy, body=body)
@@ -112,7 +112,7 @@ class ActorCriticTest(absltest.TestCase):
   def test_sanity_ppo_cartpole(self):
     """Run PPO and check whether it correctly runs for 2 epochs.s."""
     task = rl_task.RLTask(
-        'CartPole-v1', initial_trajectories=750, max_steps=200)
+        'CartPole-v1', initial_trajectories=0, max_steps=200)
 
     lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
         h, constant=1e-3,
@@ -217,10 +217,10 @@ class ActorCriticTest(absltest.TestCase):
 
   def test_sanity_awrtrainer_transformer_cartpole(self):
     """Test-runs AWR on cartpole with Transformer."""
-    task = rl_task.RLTask('CartPole-v0', initial_trajectories=100,
-                          max_steps=200)
+    task = rl_task.RLTask('CartPole-v0', initial_trajectories=2,
+                          max_steps=2)
     body = lambda mode: models.TransformerDecoder(  # pylint: disable=g-long-lambda
-        d_model=32, d_ff=32, n_layers=1, n_heads=1, mode=mode)
+        d_model=2, d_ff=2, n_layers=1, n_heads=1, mode=mode)
     policy_model = functools.partial(models.Policy, body=body)
     value_model = functools.partial(models.Value, body=body)
     lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
@@ -228,19 +228,19 @@ class ActorCriticTest(absltest.TestCase):
     trainer = actor_critic.AWRTrainer(
         task,
         n_shared_layers=0,
-        max_slice_length=127,
+        max_slice_length=2,
         added_policy_slice_length=1,
         value_model=value_model,
         value_optimizer=opt.Adam,
         value_lr_schedule=lr,
-        value_batch_size=4,
-        value_train_steps_per_epoch=200,
+        value_batch_size=2,
+        value_train_steps_per_epoch=2,
         policy_model=policy_model,
         policy_optimizer=opt.Adam,
         policy_lr_schedule=lr,
-        policy_batch_size=4,
-        policy_train_steps_per_epoch=200,
-        collect_per_epoch=10)
+        policy_batch_size=2,
+        policy_train_steps_per_epoch=2,
+        collect_per_epoch=1)
     trainer.run(2)
     self.assertEqual(2, trainer.current_epoch)
 

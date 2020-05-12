@@ -108,8 +108,9 @@ class RLTrainer:
       trajectory: an instance of trax.rl.task.Trajectory
 
     Returns:
-      a pair (action, log_prob) where action is the action taken and log_prob
-      is the probability assigned to this action (for future use, can be None).
+      a pair (action, dist_inputs) where action is the action taken and
+      dist_inputs is the parameters of the policy distribution, that will later
+      be used for training.
     """
     raise NotImplementedError
 
@@ -265,10 +266,10 @@ class PolicyTrainer(RLTrainer):
     # Pick element 0 from the batch (the only one), last (current) timestep.
     pred = pred[0, -1, :]
     sample = self._policy_dist.sample(pred)
-    log_prob = self._policy_dist.log_prob(pred, sample)
-    if math.backend_name() != 'jax':
-      return (sample, log_prob)
-    return (sample.copy(), log_prob.copy())
+    result = (sample, pred)
+    if math.backend_name() == 'jax':
+      result = math.nested_map(lambda x: x.copy(), result)
+    return result
 
   def train_epoch(self):
     """Trains RL for one epoch."""

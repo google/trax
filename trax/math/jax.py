@@ -156,7 +156,14 @@ def _is_at_level(obj, level):
   return elems and all(_is_at_level(x, level - 1) for x in elems)
 
 
-def nested_map(f, obj, level=0):
+def _is_made_of_nones(obj):
+  """Checks if `obj` is a nested structure of `None`s."""
+  elems = tree_flatten(obj)
+  # Returning False for an empty list, because it doesn't have any Nones inside.
+  return elems and all(x is None for x in elems)
+
+
+def nested_map(f, obj, level=0, ignore_nones=True):
   """Maps `f` recursively inside any dicts/lists/tuples in `obj`.
 
   Args:
@@ -167,13 +174,18 @@ def nested_map(f, obj, level=0):
     level: Level in the nested structure to stop at, counted from the leaves -
         so level 0 is the leaf, level 1 is such that all of its children are at
         level 0 etc.
+    ignore_nones: Whether to ignore Nones in the structure, i.e. return None
+        without calling `f`.
 
   Returns:
     An object with the same nested structure as `obj`, but with each input
     object `x` replaced by `f(x)`.
   """
   if _is_at_level(obj, level):
-    return f(obj)
+    if ignore_nones and _is_made_of_nones(obj):
+      return None
+    else:
+      return f(obj)
 
   if _is_namedtuple_instance(obj):
     return type(obj)(*nested_map(f, list(obj), level=level))
@@ -225,7 +237,8 @@ def nested_stack(objs, axis=0, np_module=np):
 
   Returns:
     An object with the same nested structure as each element of `objs`, with
-    leaves stacked together into numpy arrays.
+    leaves stacked together into numpy arrays. Nones are propagated, i.e. if
+    each element of the stacked sequence is None, the output will be None.
   """
   # nested_map the stacking operation, but stopping at level 1 so at tuples of
   # numpy arrays.

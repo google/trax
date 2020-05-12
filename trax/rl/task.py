@@ -23,6 +23,7 @@ import gin
 import gym
 import numpy as np
 
+from trax import math
 from trax.supervised import trainer_lib
 
 
@@ -37,11 +38,11 @@ class _TimeStep(object):
   * discounted return from that state (includes the reward from this step)
   """
 
-  def __init__(self, observation, action=None, reward=None, log_prob=None):
+  def __init__(self, observation, action=None, reward=None, dist_inputs=None):
     self.observation = observation
     self.action = action
     self.reward = reward
-    self.log_prob = log_prob
+    self.dist_inputs = dist_inputs
     self.discounted_return = None
 
 
@@ -49,7 +50,7 @@ class _TimeStep(object):
 TrajectoryNp = collections.namedtuple('TrajectoryNp', [
     'observations',
     'actions',
-    'log_probs',
+    'dist_inputs',
     'rewards',
     'returns',
     'mask',
@@ -100,11 +101,11 @@ class Trajectory(object):
     last_timestep = self._timesteps[-1]
     return last_timestep.observation
 
-  def extend(self, action, log_prob, reward, new_observation):
+  def extend(self, action, dist_inputs, reward, new_observation):
     """Take action in the last state, getting reward and going to new state."""
     last_timestep = self._timesteps[-1]
     last_timestep.action = action
-    last_timestep.log_prob = log_prob
+    last_timestep.dist_inputs = dist_inputs
     last_timestep.reward = reward
     new_timestep = _TimeStep(new_observation)
     self._timesteps.append(new_timestep)
@@ -119,40 +120,41 @@ class Trajectory(object):
 
   def _default_timestep_to_np(self, ts):
     """Default way to convert timestep to numpy."""
-    if ts.action is None:
-      return (np.array(ts.observation),
-              None, None, None, None)
-    return (np.array(ts.observation),
-            np.array(ts.action),
-            np.array(ts.log_prob, dtype=np.float32),
-            np.array(ts.reward, dtype=np.float32),
-            np.array(ts.discounted_return, dtype=np.float32))
+    return math.nested_map(np.array, (
+        ts.observation,
+        ts.action,
+        ts.dist_inputs,
+        ts.reward,
+        ts.discounted_return,
+    ))
 
   def to_np(self, timestep_to_np=None):
     """Create a tuple of numpy arrays from a given trajectory."""
-    observations, actions, logps, rewards, returns = [], [], [], [], []
+    observations, actions, dist_inputs, rewards, returns, mask = (
+        [], [], [], [], [], []
+    )
     timestep_to_np = timestep_to_np or self._default_timestep_to_np
     for timestep in self._timesteps:
       if timestep.action is None:
         obs = timestep_to_np(timestep)[0]
         observations.append(obs)
       else:
-        (obs, act, logp, rew, ret) = timestep_to_np(timestep)
+        (obs, act, dinp, rew, ret) = timestep_to_np(timestep)
         observations.append(obs)
         actions.append(act)
-        logps.append(logp)
+        dist_inputs.append(dinp)
         rewards.append(rew)
         returns.append(ret)
+        mask.append(1.0)
+
     def stack(x):
       if not x:
         return None
-      return np.stack(x, axis=0)
-    return TrajectoryNp(stack(observations),
-                        stack(actions),
-                        stack(logps),
-                        stack(rewards),
-                        stack(returns),
-                        None)
+      return math.nested_stack(x)
+
+    return TrajectoryNp(*map(stack, (
+        observations, actions, dist_inputs, rewards, returns, mask
+    )))
 
 
 def play(env, policy, dm_suite=False, max_steps=None):
@@ -180,9 +182,9 @@ def play(env, policy, dm_suite=False, max_steps=None):
   if dm_suite:
     cur_trajectory = Trajectory(env.reset().observation)
     while not terminal and (max_steps is None or cur_step < max_steps):
-      action, log_prob = policy(cur_trajectory)
+      action, dist_inputs = policy(cur_trajectory)
       observation = env.step(action)
-      cur_trajectory.extend(action, log_prob,
+      cur_trajectory.extend(action, dist_inputs,
                             observation.reward,
                             observation.observation)
       cur_step += 1
@@ -190,9 +192,9 @@ def play(env, policy, dm_suite=False, max_steps=None):
   else:
     cur_trajectory = Trajectory(env.reset())
     while not terminal and (max_steps is None or cur_step < max_steps):
-      action, log_prob = policy(cur_trajectory)
+      action, dist_inputs = policy(cur_trajectory)
       observation, reward, terminal, _ = env.step(action)
-      cur_trajectory.extend(action, log_prob, reward, observation)
+      cur_trajectory.extend(action, dist_inputs, reward, observation)
       cur_step += 1
   return cur_trajectory
 
@@ -206,9 +208,7 @@ def _zero_pad(x, pad, axis):
 
 
 def _random_policy(action_space):
-  # TODO(pkozakowski): Make returning the log probabilities optional.
-  # Returning 1 as a log probability is a temporary hack.
-  return lambda _: (action_space.sample(), 1.0)
+  return lambda _: (action_space.sample(), None)
 
 
 def _sample_proportionally(inputs, weights):
@@ -536,6 +536,12 @@ class RLTask:
       epochs
     """
     def pad(tensor_list):
+      # Replace Nones with valid tensors.
+      not_none_tensors = [t for t in tensor_list if t is not None]
+      assert not_none_tensors, 'All tensors to pad are None.'
+      prototype = np.zeros_like(not_none_tensors[0])
+      tensor_list = [t if t is not None else prototype for t in tensor_list]
+
       max_len = max([t.shape[0] for t in tensor_list])
       min_len = min([t.shape[0] for t in tensor_list])
       if max_len == min_len:  # No padding needed.
@@ -555,13 +561,16 @@ class RLTask:
 
       cur_batch.append(t)
       if len(cur_batch) == batch_size:
-        obs, act, logp, rew, ret, _ = zip(*[t.to_np(self._timestep_to_np)
-                                            for t in cur_batch])
-        # Where act, logp, rew and ret will usually have the following shape:
+        obs, act, dinp, rew, ret, mask = zip(*[
+            t.to_np(self._timestep_to_np) for t in cur_batch
+        ])
+        # Where act, rew and ret will usually have the following shape:
         # [batch_size, trajectory_length-1], which we call [B, L-1].
         # Observations are more complex and will usuall be [B, L] + S where S
         # is the shape of the observation space (self.observation_space.shape).
-        yield TrajectoryNp(
-            pad(obs), pad(act), pad(logp), pad(rew), pad(ret),
-            pad([np.ones(a.shape[:1]) for a in act]))
+        # We stop the recursion at level 1, so we pass lists of arrays into
+        # pad().
+        yield math.nested_map(
+            pad, TrajectoryNp(obs, act, dinp, rew, ret, mask), level=1
+        )
         cur_batch = []
