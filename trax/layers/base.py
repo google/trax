@@ -97,7 +97,6 @@ class Layer(object):
     self._n_out = n_out
     self._name = name or self.__class__.__name__
     self._sublayers = ()  # Default is no sublayers.
-    self._input_signature = None
     self._rng = None
     self._weights = EMPTY_WEIGHTS  # cached weights
     self._state = EMPTY_STATE
@@ -382,15 +381,6 @@ class Layer(object):
     return self._sublayers
 
   @property
-  def input_signature(self):
-    """Returns this layer's input signature.
-
-    An input signature is a ShapeDtype instance (if the layer takes one input)
-    or a tuple of ShapeDtype instances.
-    """
-    return self._input_signature
-
-  @property
   def weights(self):
     """Returns this layer's weights.
 
@@ -496,30 +486,6 @@ class Layer(object):
       rngs = math.random.split(rng, len(sublayers))
       for sublayer, rng in zip(sublayers, rngs):
         sublayer._set_rng_recursive(rng)
-
-  def _set_input_signature_recursive(self, input_signature):
-    """Sets input_signatures for this layer and sublayers, recursively.
-
-    General combinators (those that can take multiple sublayers) must override
-    this method to calculate and set input signatures for the sublayers. (See
-    the `Serial` class in combinators.py for an example.)
-
-    Args:
-      input_signature: A `ShapeDtype` instance (if this layer takes one input)
-          or a list/tuple of `ShapeDtype` instances
-    """
-    self._input_signature = input_signature
-
-    # Handle the special case of a single immediate sublayer (which may in turn
-    # have its own sublayers).
-    sublayers = self.sublayers
-    if sublayers and len(sublayers) == 1:
-      sublayers[0]._set_input_signature_recursive(input_signature)
-    if sublayers and len(sublayers) > 1:
-      raise ValueError('A layer class whose instances can have more than one '
-                       'sublayer must override the input_signature property '
-                       'setter.')
-  # pylint: enable=protected-access
 
   def replicate(self, n_accelerators):
     """Replicate weights and state for use on n accelerators. Experimental."""

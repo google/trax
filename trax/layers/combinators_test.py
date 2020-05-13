@@ -97,31 +97,6 @@ class SerialTest(absltest.TestCase):
     layer = tl.Serial(tl.Dup(), tl.Dup(), name='Branch')
     self.assertIn('Branch', str(layer))
 
-  # TODO(jonni): Do we still need _set_input_signature_recursive?
-  def test_input_signatures(self):
-    layer = tl.Serial(DivideBy(2.0), DivideBy(5.0))
-    self.assertIsNone(layer.input_signature)
-
-    layer._set_input_signature_recursive(shapes.ShapeDtype((3, 2)))
-    self.assertEqual(layer.input_signature, shapes.ShapeDtype((3, 2)))
-    self.assertLen(layer.sublayers, 2)
-    for sublayer in layer.sublayers:
-      self.assertEqual(sublayer.input_signature, shapes.ShapeDtype((3, 2)))
-
-  def test_input_signatures_serial_batch_norm(self):
-    # Include a layer that actively uses state.
-    input_signature = shapes.ShapeDtype((3, 28, 28))
-    batch_norm = tl.BatchNorm()
-    relu = tl.Relu()
-    batch_norm_and_relu = tl.Serial(batch_norm, relu)
-    batch_norm_and_relu.init(input_signature)
-
-    # Check for correct shapes entering and exiting the batch_norm layer.
-    # And the code should run without errors.
-    batch_norm_and_relu._set_input_signature_recursive(input_signature)
-    self.assertEqual(batch_norm.input_signature, input_signature)
-    self.assertEqual(relu.input_signature, input_signature)
-
   def test_weights(self):
     model = tl.Serial(tl.Dense(4), tl.Dense(5), tl.Dense(7))
     self.assertIsInstance(model.weights, tuple)
@@ -132,7 +107,6 @@ class SerialTest(absltest.TestCase):
     self.assertIsInstance(model.state, tuple)
     self.assertLen(model.state, 3)
 
-  # TODO(jonni): Do we still need _set_input_signature_recursive?
   def test_set_rng_recurse_two_levels(self):
     dense_00 = tl.Dense(2)
     dense_01 = tl.Dense(2)
@@ -193,19 +167,6 @@ class ParallelTest(absltest.TestCase):
   def test_custom_name(self):
     layer = tl.Parallel(tl.Dup(), tl.Dup(), name='DupDup')
     self.assertIn('DupDup', str(layer))
-
-  def test_input_signatures(self):
-    layer = tl.Parallel(DivideBy(0.5), DivideBy(3.0))
-    self.assertIsNone(layer.input_signature)
-
-    layer._set_input_signature_recursive((shapes.ShapeDtype((3, 2)),
-                                          shapes.ShapeDtype((4, 7))))
-    self.assertEqual(layer.input_signature,
-                     (shapes.ShapeDtype((3, 2)), shapes.ShapeDtype((4, 7))))
-    self.assertLen(layer.sublayers, 2)
-    sublayer_0, sublayer_1 = layer.sublayers
-    self.assertEqual(sublayer_0.input_signature, shapes.ShapeDtype((3, 2)))
-    self.assertEqual(sublayer_1.input_signature, shapes.ShapeDtype((4, 7)))
 
   def test_weights(self):
     model = tl.Parallel(tl.Dense(3), tl.Dense(5))

@@ -19,7 +19,6 @@
 from absl.testing import absltest
 import numpy as np
 
-from trax import layers as tl
 from trax import math
 from trax import shapes
 from trax.models import mlp
@@ -40,22 +39,6 @@ class MLPTest(absltest.TestCase):
     _, _ = model.init(shapes.signature(x))
     y = model(x)
     self.assertEqual(y.shape, (3, 10))
-
-  def test_mlp_input_signatures(self):
-    mlp_layer = mlp.MLP(d_hidden=32, n_output_classes=10)
-    relu = tl.Relu()
-    mlp_and_relu = tl.Serial(
-        mlp_layer,
-        relu,
-    )
-    x = np.ones((3, 28, 28, 1)).astype(np.float32)
-    input_signature = shapes.signature(x)
-    mlp_and_relu.init(input_signature)
-
-    # Check for correct shapes entering and exiting the mlp_block.
-    mlp_and_relu._set_input_signature_recursive(input_signature)
-    self.assertEqual(mlp_layer.input_signature, input_signature)
-    self.assertEqual(relu.input_signature, shapes.ShapeDtype((3, 10)))
 
 
 

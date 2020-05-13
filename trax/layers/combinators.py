@@ -144,25 +144,6 @@ class Serial(base.Layer):
           f'Number of inputs ({len(xs)}) to Serial.forward less than n_in '
           f'({self.n_in}).')
 
-  # pylint: disable=protected-access
-  def _set_input_signature_recursive(self, input_signature):
-    """Sets input signatures for this layer and sublayers, recursively.
-
-    Args:
-      input_signature: A `ShapeDtype` instance (if this layer takes one input)
-          or a list/tuple of `ShapeDtype` instances.
-    """
-    self._input_signature = input_signature
-
-    # Infer shapes and dtypes (signatures) through the successive sublayers.
-    stack = input_signature
-    for layer in self.sublayers:
-      inputs = _inputs_from_stack(layer, stack)
-      layer._set_input_signature_recursive(inputs)
-      outputs, _ = layer._forward_abstract(inputs)
-      stack = _outputs_onto_stack(layer, outputs, stack)
-  # pylint: enable=protected-access
-
 
 class Parallel(base.Layer):
   """Combinator that applies a list of layers in parallel to its inputs.
@@ -314,20 +295,6 @@ class Parallel(base.Layer):
         sub_inputs.append(inputs[start:end])
       start = end
     return tuple(sub_inputs)
-
-  def _set_input_signature_recursive(self, input_signature):
-    """Sets input signatures for this layer and sublayers, recursively.
-
-    Args:
-      input_signature: A `ShapeDtype` instance (if this layer takes one input)
-          or a list/tuple of `ShapeDtype` instances.
-    """
-    self._input_signature = input_signature
-
-    # Assign signatures to the sublayers.
-    sublayer_signatures = self._allot_to_sublayers(input_signature)
-    for layer, signature in zip(self.sublayers, sublayer_signatures):
-      layer._set_input_signature_recursive(signature)  # pylint: disable=protected-access
 
 
 class Concatenate(base.Layer):

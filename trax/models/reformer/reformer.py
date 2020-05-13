@@ -444,25 +444,6 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
       return (weights, attn_weights), (state, attn_state)
   # pylint: enable=protected-access
 
-  # pylint: disable=protected-access
-  def _set_input_signature_recursive(self, input_signature):
-    """Sets input signatures for this layer and sublayers, recursively.
-
-    Args:
-      input_signature: A `ShapeDtype` instance (if this layer takes one input)
-          or a list/tuple of `ShapeDtype` instances.
-    """
-    self._input_signature = input_signature
-
-    # Infer shapes and dtypes (signatures) through the successive sublayers.
-    stack = input_signature[1:]
-    for layer in self.sublayers:
-      inputs = _inputs_from_stack(layer, stack)
-      layer._set_input_signature_recursive(inputs)
-      outputs, _ = layer._forward_abstract(inputs)
-      stack = _outputs_onto_stack(layer, outputs, stack)
-  # pylint: enable=protected-access
-
 
 def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
                  n_heads, attention_type,
