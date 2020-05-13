@@ -70,49 +70,6 @@ class BaseLayerTest(absltest.TestCase):
     self.assertEmpty(weights)
     self.assertEmpty(state)
 
-  def test_new_rng_deterministic(self):
-    input_signature = shapes.ShapeDtype((2, 3, 5))
-    layer1 = base.Layer()
-    layer2 = base.Layer(n_in=2, n_out=2)
-    _, _ = layer1.init(input_signature)
-    _, _ = layer2.init(input_signature)
-    rng1 = layer1.new_rng()
-    rng2 = layer2.new_rng()
-    self.assertEqual(rng1.tolist(), rng2.tolist())
-
-  def test_new_rng_new_value_each_call(self):
-    input_signature = shapes.ShapeDtype((2, 3, 5))
-    layer = base.Layer()
-    _, _ = layer.init(input_signature)
-    rng1 = layer.new_rng()
-    rng2 = layer.new_rng()
-    rng3 = layer.new_rng()
-    self.assertNotEqual(rng1.tolist(), rng2.tolist())
-    self.assertNotEqual(rng2.tolist(), rng3.tolist())
-
-  def test_new_rngs_deterministic(self):
-    inputs1 = shapes.ShapeDtype((2, 3, 5))
-    inputs2 = (shapes.ShapeDtype((2, 3, 5)), shapes.ShapeDtype((2, 3, 5)))
-    layer1 = base.Layer()
-    layer2 = base.Layer(n_in=2, n_out=2)
-    _, _ = layer1.init(inputs1)
-    _, _ = layer2.init(inputs2)
-    rng1, rng2 = layer1.new_rngs(2)
-    rng3, rng4 = layer2.new_rngs(2)
-    self.assertEqual(rng1.tolist(), rng3.tolist())
-    self.assertEqual(rng2.tolist(), rng4.tolist())
-
-  def test_new_rngs_new_values_each_call(self):
-    input_signature = shapes.ShapeDtype((2, 3, 5))
-    layer = base.Layer()
-    _, _ = layer.init(input_signature)
-    rng1, rng2 = layer.new_rngs(2)
-    rng3, rng4 = layer.new_rngs(2)
-    self.assertNotEqual(rng1.tolist(), rng2.tolist())
-    self.assertNotEqual(rng3.tolist(), rng4.tolist())
-    self.assertNotEqual(rng1.tolist(), rng3.tolist())
-    self.assertNotEqual(rng2.tolist(), rng4.tolist())
-
   def test_output_signature(self):
     input_signature = (shapes.ShapeDtype((2, 3, 5)),
                        shapes.ShapeDtype((2, 3, 5)))

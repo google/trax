@@ -21,6 +21,7 @@ import absl.testing.absltest as unittest
 import numpy as np
 import parameterized
 
+from trax import math
 import trax.layers.research.position_encodings as pe
 
 
@@ -58,14 +59,15 @@ class PositionEncodingsTest(unittest.TestCase):
     # Get the eval mode outputs:
     encoding = self.Encoding(mode='eval')
     input_ntc = np.random.randn(n, t, c)
-    encoding.init(input_ntc)
+    rng = math.random.get_prng(1234)
+    encoding.init(input_ntc, rng=rng)
     output_ntc = encoding(input_ntc)
 
     is_random = self.Encoding == pe.InfinitePositionalEncoding
 
     # Get the predict mode outputs:
     encoding_pred = self.Encoding(mode='predict')
-    encoding_pred.init(input_ntc[:, 0:1, :])
+    encoding_pred.init(input_ntc[:, 0:1, :], rng=rng)
     output_ntc0 = encoding_pred(input_ntc[:, 0:1, :])
     if not is_random:
       np.testing.assert_allclose(output_ntc0, output_ntc[:, 0:1, :], atol=1e-4)

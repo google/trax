@@ -72,7 +72,7 @@ class Dense(base.Layer):
     """
     shape_w = (input_signature.shape[-1], self._n_units)
     shape_b = (self._n_units,)
-    rng_w, rng_b = self.new_rngs(2)
+    rng_w, rng_b = math.random.split(self.rng, 2)
 
     w = self._kernel_initializer(shape_w, rng_w)
     b = self._bias_initializer(shape_b, rng_b)
@@ -116,8 +116,8 @@ class Embedding(base.Layer):
   def new_weights(self, input_signature):
     del input_signature
     shape_w = (self._vocab_size, self._d_feature)
-    rng_w = self.new_rng()
-    w = self._kernel_initializer(shape_w, rng_w)
+    # TODO(lukaszkaiser): do we split self.rng for consistency? Add a method?
+    w = self._kernel_initializer(shape_w, self.rng)
     return w
 
 

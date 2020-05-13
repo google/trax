@@ -69,7 +69,7 @@ class LSTMCell(base.Layer):
     assert input_signature[1].shape[-1] == 2 * self._n_units
     # The dense layer input is the input and half of the lstm state.
     input_shape = input_signature[0].shape[-1] + self._n_units
-    rng1, rng2 = self.new_rngs(2)
+    rng1, rng2 = math.random.split(self.rng, 2)
     w = self._kernel_initializer((input_shape, 4 * self._n_units), rng1)
     b = self._bias_initializer((4 * self._n_units,), rng2) + self._forget_bias
     return (w, b)
@@ -132,7 +132,7 @@ class GRUCell(base.Layer):
     assert input_signature[1].shape[-1] == self._n_units
     # The dense layer input is the input and half of the GRU state.
     input_shape = input_signature[0].shape[-1] + self._n_units
-    rng1, rng2, rng3, rng4 = self.new_rngs(4)
+    rng1, rng2, rng3, rng4 = math.random.split(self.rng, 4)
     w1 = self._kernel_initializer((input_shape, 2 * self._n_units), rng1)
     b1 = self._bias_initializer((2 * self._n_units,), rng2) + self._forget_bias
     w2 = self._kernel_initializer((input_shape, self._n_units), rng3)

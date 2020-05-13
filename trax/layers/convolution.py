@@ -82,7 +82,7 @@ class Conv(base.Layer):
     kernel_shape = self._kernel_shape(input_shape)
     bias_shape = [self._filters if c == 'C' else 1 for c in self._out_spec]
     bias_shape = tuple(itertools.dropwhile(lambda x: x == 1, bias_shape))
-    rng1, rng2 = self.new_rngs(2)
+    rng1, rng2 = math.random.split(self.rng, 2)
     w = self._kernel_initializer(kernel_shape, rng1)
     b = self._bias_initializer(bias_shape, rng2)
     return (w, b)

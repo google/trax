@@ -72,8 +72,8 @@ class TransformerTest(parameterized.TestCase):
       batch_size = 2
       input_signature = shapes.ShapeDtype((batch_size, 1), np.int32)
       # Given the same rng, both models initialize with the same parameters.
-      model_slow.init(input_signature)
-      model_fast.init(input_signature)
+      model_slow.init(input_signature, rng)
+      model_fast.init(input_signature, rng)
 
       buf = np.zeros((batch_size, length), dtype=np.int32)
       next_sym = np.zeros((batch_size, 1), dtype=np.int32)

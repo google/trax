@@ -36,6 +36,7 @@ import functools
 import jax
 from jax.scipy.special import logsumexp
 
+from trax import math
 from trax.layers import base
 from trax.math import numpy as np
 
@@ -321,12 +322,12 @@ class EfficientAttentionBase(base.Layer):
     batch_size = int(input_signature[0].shape[0])
 
     weights = []
-    weight_rngs = self.new_rngs(self.n_heads)
+    weight_rngs = math.random.split(self.rng, self.n_heads)
     for i in range(self.n_heads):
       weights.append(self.create_weights_unbatched(input_signature_unbatched,
                                                    weight_rngs[i]))
     state = []
-    state_rngs = self.new_rngs(self.n_heads * batch_size)
+    state_rngs = math.random.split(self.rng, self.n_heads * batch_size)
     for i in range(self.n_heads * batch_size):
       state.append(self.create_state_unbatched(input_signature_unbatched,
                                                state_rngs[i]))

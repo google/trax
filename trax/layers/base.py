@@ -97,7 +97,8 @@ class Layer(object):
     self._n_out = n_out
     self._name = name or self.__class__.__name__
     self._sublayers = ()  # Default is no sublayers.
-    self._rng = None
+    # This may run before JAX is initialized, so we use pure numpy here.
+    self._rng = math.numpy_math.get_prng(int(np.random.randint(0, 2**31 - 1)))
     self._weights = EMPTY_WEIGHTS  # cached weights
     self._state = EMPTY_STATE
     # record root call site for custom error messages:
@@ -302,9 +303,8 @@ class Layer(object):
           on the first call and `EMPTY_WEIGHTS` on all subsequent calls.
     """
     try:
-      if self._rng is None:
-        rng = math.random.get_prng(0) if rng is None else rng
-        self._set_rng_recursive(rng)
+      if rng is not None:
+        self.rng = rng
       # Initialize weights once; store them for use when this layer is called.
       # Needs to call new_weights_and_state regardless of _init_finished because
       # state also needs to be initialized. After jitting, graph pruning should
@@ -341,26 +341,6 @@ class Layer(object):
     self.weights = dictionary['weights']
     if not weights_only:
       self.state = dictionary['state']
-
-  def new_rng(self):
-    """Returns a new single-use random number generator (JAX PRNG key)."""
-    self._rng, rng = math.random.split(self._rng)
-    return rng
-
-  def new_rngs(self, n):
-    """Returns `n` single-use random number generators (JAX PRNG keys).
-
-    Args:
-      n: The number of rngs to return; must be an integer > 0.
-
-    Returns:
-      A tuple of `n` rngs. Successive calls will yield continually new values.
-    """
-    if n < 1:
-      raise ValueError(f"Requested number of new rng's ({n}) less than 1.")
-    rngs = math.random.split(self._rng, n + 1)
-    self._rng = rngs[0]
-    return tuple(rngs[1:])
 
   # End of public callable methods.
   # Methods and properties below are reserved for internal use.
@@ -404,6 +384,22 @@ class Layer(object):
   @state.setter
   def state(self, state):
     self._state = state
+
+  @property
+  def rng(self):
+    """Returns a single-use random number generator without advancing it."""
+    # TODO(lukaszkaiser, jonni): be even more explicit that we're not advancing.
+    return self._rng
+
+  @rng.setter
+  def rng(self, rng):
+    """Sets the rng (JAX PRNG key) for this layer and sublayers, recursively."""
+    self._rng = rng
+    sublayers = self.sublayers
+    if sublayers:
+      rngs = math.random.split(rng, len(sublayers))
+      for sublayer, rng in zip(sublayers, rngs):
+        sublayer.rng = rng
 
   def pure_fn(self, x, weights, state, rng):
     """Applies this layer as a pure function with no optional args.
@@ -478,15 +474,6 @@ class Layer(object):
                        trace) from e
 
   # pylint: disable=protected-access
-  def _set_rng_recursive(self, rng):
-    """Sets the rng (JAX PRNG key) for this layer and sublayers, recursively."""
-    self._rng = rng
-    sublayers = self.sublayers
-    if sublayers:
-      rngs = math.random.split(rng, len(sublayers))
-      for sublayer, rng in zip(sublayers, rngs):
-        sublayer._set_rng_recursive(rng)
-
   def replicate(self, n_accelerators):
     """Replicate weights and state for use on n accelerators. Experimental."""
     if n_accelerators > 1:

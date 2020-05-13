@@ -143,7 +143,10 @@ class Loop:
 
   def new_rng(self):
     """Returns a new single-use random number generator (JAX PRNG key)."""
-    return self._model_in_training.new_rng()
+    rng = self._model_in_training.rng
+    rng1, rng2 = math.random.split(rng)
+    self._model_in_training.rng = rng1
+    return rng2
 
   def _run_one_step(self, weights, state, slots):
     """Updates model weights/state and optimizer slots by running one step.
@@ -235,7 +238,7 @@ def _model_with_metrics(model, eval_task):
   _, _ = metrics_layer.init(metrics_input_signature)
 
   model_with_metrics = tl.Serial(model, metrics_layer)
-  model_with_metrics._rng = model.new_rng()  # pylint: disable=protected-access
+  model_with_metrics._rng = model.rng  # pylint: disable=protected-access
   return model_with_metrics
 
 

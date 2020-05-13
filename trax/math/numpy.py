@@ -22,11 +22,21 @@ from __future__ import print_function
 import numpy as np
 
 
+def get_prng(seed):
+  """JAX-compatible way of getting PRNG seeds."""
+  if np.shape(seed):
+    raise TypeError('PRNGKey seed must be a scalar.')
+  convert = lambda k: np.reshape(np.asarray(k, np.uint32), [1])
+  k1 = convert(np.bitwise_and(np.right_shift(seed, 32), 0xFFFFFFFF))
+  k2 = convert(np.bitwise_and(seed, 0xFFFFFFFF))
+  return np.concatenate([k1, k2], 0)
+
+
 NUMPY_BACKEND = {
     'name': 'numpy',
     'np': np,
     'jit': lambda f: f,
-    'random_get_prng': lambda seed: None,
+    'random_get_prng': get_prng,
     'random_split': lambda prng, num=2: (None,) * num,
     'expit': lambda x: 1. / (1. + np.exp(-x)),
 }

@@ -128,8 +128,7 @@ class Trainer(object):
       # because `m.initialize` puts cached parameter values in `m` and hence the
       # next call of `m.initialize` will give wrong results.
       m = tl.Serial(model(mode='train'), loss_fn)
-      m._set_rng_recursive(rng)  # pylint: disable=protected-access
-      weights, state = m.init(input_signature)
+      weights, state = m.init(input_signature, rng=rng)
       (slots, opt_params) = opt.tree_init(weights)
       return (OptState(weights, slots, opt_params), state)
 
@@ -145,7 +144,7 @@ class Trainer(object):
     self._metrics = list(sorted(self._metrics_dict.keys()))
     metrics_layers = [self._metrics_dict[m] for m in self._metrics]
     metrics_in_parallel = tl.Branch(*metrics_layers)
-    metrics_in_parallel._set_rng_recursive(init_rng)  # pylint: disable=protected-access
+    metrics_in_parallel.rng = init_rng
     example_signature = tuple(
         ShapeDtype(s, d) for (s, d) in zip(*self._inputs.example_shape_dtype)
     )

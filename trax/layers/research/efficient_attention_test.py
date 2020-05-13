@@ -62,14 +62,15 @@ class EfficientAttentionTest(test.TestCase):
   def _test_equivalence_to_reference_code(
       self, model_cls, inp, input_signature, common_kwargs, *test_kwargs):
     ref_model = model_cls(use_reference_code=True, **common_kwargs)
-    weights, state = ref_model.init(input_signature)
+    rng = math.random.get_prng(123)
+    weights, state = ref_model.init(input_signature, rng)
 
     ref_all = self._run_forward_and_backward(ref_model, inp, weights, state)
     ref_out, ref_state, ref_inp_grad, ref_weights_grad = ref_all
 
     for kwargs in test_kwargs:
       test_model = model_cls(**common_kwargs, **kwargs)
-      state = test_model.init(input_signature)[1]
+      state = test_model.init(input_signature, rng)[1]
       test_all = self._run_forward_and_backward(test_model, inp, weights, state)
       test_out, test_state, test_inp_grad, test_weights_grad = test_all
 

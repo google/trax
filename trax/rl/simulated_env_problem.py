@@ -68,7 +68,7 @@ class SimulatedEnvProblem(env_problem.EnvProblem):
     if model_predict_kwargs is None:
       model_predict_kwargs = {}
     model_predict = self._model(mode='predict', **model_predict_kwargs)
-    # NOTE: can set non-default PRNG key: model_predict._set_rng_recursive(...)
+    # NOTE: can set non-default PRNG key: model_predict.rng = given_prng_key
     def predict_with_state(*args, **kwargs):
       output = model_predict(*args, **kwargs)
       return (output, model_predict.state)

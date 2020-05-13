@@ -88,7 +88,7 @@ class AxialPositionalEncoding(layer_base.Layer):
     d_feature = input_signature.shape[-1]
     assert sum(self._d_embs) == d_feature
 
-    rngs = self.new_rngs(len(self._d_embs))
+    rngs = math.random.split(self.rng, len(self._d_embs))
     weights = []
     for ax, (ax_rng, d_emb) in enumerate(zip(rngs, self._d_embs)):
       ax_shape = [1] * len(self._shape)
@@ -153,7 +153,7 @@ class FixedBasePositionalEncoding(layer_base.Layer):
     assert d_feature % self._n_digits == 0
     d_weight = d_feature // self._n_digits
     return [[self._initializer((1, d_weight), rng)
-             for rng in self.new_rngs(self._n_digits)]
+             for rng in math.random.split(self.rng, self._n_digits)]
             for _ in self._bases]
 
 
@@ -237,7 +237,6 @@ class InfinitePositionalEncoding(layer_base.Layer):
     super().__init__()
     if transform not in ('any', 'diag', 'none'):
       raise ValueError(transform)
-    # self._noise_rng = self.new_rng()
     self._noise_rng = jax.random.split(jax.random.PRNGKey(234234535))[0]
     assert self._noise_rng is not None
     self._noise = None
@@ -360,12 +359,12 @@ class InfinitePositionalEncoding(layer_base.Layer):
       weights = scale_isoftplus
     elif self._transform == 'any':
       ortho = trax.layers.initializers.OrthogonalInitializer()
-      weights = ortho((d_feature, d_feature), self.new_rng())
+      weights = ortho((d_feature, d_feature), self.rng)
     else:
       weights = layer_base.EMPTY_WEIGHTS
     if self._mode == 'predict':
       batch_size = input_signature.shape[0]
-      state = jnp.zeros((batch_size,), dtype=jnp.int32), self.new_rng()
+      state = jnp.zeros((batch_size,), dtype=jnp.int32), self.rng
     else:
       state = layer_base.EMPTY_STATE
     return weights, state
