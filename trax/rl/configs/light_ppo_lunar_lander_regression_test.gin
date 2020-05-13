@@ -16,43 +16,30 @@ import trax.lr_schedules
 import trax.models
 import trax.optimizers
 import trax.rl
-import trax.rl.distributions
-import trax.rl.normalization
 
 # Parameters for Adam:
 # ==============================================================================
 Adam.clip_grad_norm = 0.5
 
-# Parameters for Gaussian:
-# ==============================================================================
-Gaussian.std = 0.4
-
-# Parameters for Policy and Value:
+# Parameters for PolicyAndValue:
 # ==============================================================================
 PolicyAndValue.body = @trax.models.PureMLP
-PolicyAndValue.head_init_range = 0.01
-PolicyAndValue.normalizer = @trax.rl.normalization.Normalize
-
-# Parameters for Normalize:
-# ==============================================================================
-Normalize.sample_limit = 30000
-Normalize.epsilon = 1e-5
 
 # Parameters for PureMLP:
 # ==============================================================================
 PureMLP.flatten = False
-PureMLP.layer_widths = (128, 64)
+PureMLP.layer_widths = (64,64)
 PureMLP.out_activation = True
 
 # Parameters for MultifactorSchedule:
 # ==============================================================================
-MultifactorSchedule.constant = 0.0001
+MultifactorSchedule.constant = 0.0025
 MultifactorSchedule.factors = 'constant * linear_warmup'
 MultifactorSchedule.warmup_steps = 100
 
 # Parameters for RLTask:
 # ==============================================================================
-RLTask.env = "DM-HalfCheetah-v2"
+RLTask.env = "LunarLander-v2"
 RLTask.initial_trajectories = 0
 RLTask.gamma = 0.99
 RLTask.max_steps = 1000
@@ -61,13 +48,13 @@ RLTask.max_steps = 1000
 # ==============================================================================
 PPOJointTrainer.joint_model = @trax.models.PolicyAndValue
 PPOJointTrainer.optimizer = @trax.optimizers.Adam
-PPOJointTrainer.batch_size = 128
-PPOJointTrainer.train_steps_per_epoch = 100
+PPOJointTrainer.batch_size = 256
+PPOJointTrainer.train_steps_per_epoch = 200
 PPOJointTrainer.lr_schedule = @MultifactorSchedule
-PPOJointTrainer.collect_per_epoch = 25
+PPOJointTrainer.collect_per_epoch = 20
 PPOJointTrainer.epsilon = 0.1
-PPOJointTrainer.value_loss_coeff = 0.001
-PPOJointTrainer.entropy_coeff = 0.001
+PPOJointTrainer.value_loss_coeff = 0
+PPOJointTrainer.entropy_coeff = 0.01
 
 
 # Parameters for train_rl:

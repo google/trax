@@ -62,4 +62,4 @@ PPOJointTrainer.entropy_coeff = 0.1
 # ==============================================================================
 train_rl.light_rl = True
 train_rl.light_rl_trainer = @trax.rl.PPOJointTrainer
-train_rl.n_epochs = 1000
+train_rl.n_epochs = 900
