@@ -15,7 +15,7 @@
 import trax.layers
 import trax.models
 import trax.optimizers
-import trax.supervised.inputs
+import trax.supervised.tf_inputs
 import trax.supervised.trainer_lib
 
 # Parameters that will vary between experiments:
@@ -26,21 +26,22 @@ attn_kv = 64
 n_layers = 3
 dropout = 0.0
 
-# Parameters for batch_fn:
+# Parameters for batcher:
 # ==============================================================================
-batch_fn.batch_size_per_device = 1
-batch_fn.eval_batch_size = 8
-batch_fn.max_eval_length = 24576
+batcher.data_streams = @tf_inputs.data_streams
+batcher.batch_size_per_device = 1
+batcher.eval_batch_size = 8
+batcher.max_eval_length = 24576
 
-# Parameters for inputs:
+# Parameters for data_streams:
 # ==============================================================================
-inputs.data_dir = None
-inputs.dataset_name = 't2t_video_bair_robot_pushing'
-inputs.input_name = 'targets'
+data_streams.data_dir = None
+data_streams.dataset_name = 't2t_video_bair_robot_pushing'
+data_streams.input_name = 'targets'
+data_streams.preprocess_fn = @bair_robot_pushing_preprocess
+data_streams.shuffle_buffer_size = 8
 bair_robot_pushing_hparams.video_num_input_frames = 1
 bair_robot_pushing_hparams.video_num_target_frames = 1
-shuffle_and_batch_data.preprocess_fun = @bair_robot_pushing_preprocess
-shuffle_and_batch_data.shuffle_buffer_size = 8
 
 # Parameters for MultifactorSchedule:
 # ==============================================================================
@@ -60,7 +61,7 @@ Adam.eps = 1e-9
 # ==============================================================================
 train.eval_frequency = 20
 train.eval_steps = 1
-train.inputs = @trax.supervised.inputs.inputs
+train.inputs = @trax.supervised.tf_inputs.inputs
 # train.model: see top
 train.optimizer = @trax.optimizers.Adam
 train.steps = 100000

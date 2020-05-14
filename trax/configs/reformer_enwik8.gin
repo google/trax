@@ -15,7 +15,7 @@
 import trax.layers
 import trax.models
 import trax.optimizers
-import trax.supervised.inputs
+import trax.supervised.tf_inputs
 import trax.supervised.trainer_lib
 
 # Parameters that will vary between experiments:
@@ -42,17 +42,18 @@ LSHSelfAttention.n_buckets = 512
 LSHSelfAttention.n_chunks_before = 1
 LSHSelfAttention.n_hashes = 2
 
-# Parameters for batch_fn:
+# Parameters for batcher:
 # ==============================================================================
-batch_fn.batch_size_per_device = 1
-batch_fn.eval_batch_size = 8
-batch_fn.max_eval_length = 65536
+batcher.data_streams = @tf_inputs.data_streams
+batcher.batch_size_per_device = 1
+batcher.eval_batch_size = 8
+batcher.max_eval_length = 65536
 
-# Parameters for inputs:
+# Parameters for data_streams:
 # ==============================================================================
-inputs.data_dir = None
-inputs.dataset_name = 't2t_enwik8_l65k'
-inputs.input_name = 'targets'
+data_streams.data_dir = None
+data_streams.dataset_name = 't2t_enwik8_l65k'
+data_streams.input_name = 'targets'
 
 # Parameters for MultifactorSchedule:
 # ==============================================================================
@@ -72,7 +73,6 @@ Adam.eps = 1e-9
 # ==============================================================================
 train.eval_frequency = 500
 train.eval_steps = 8
-train.inputs = @trax.supervised.inputs.inputs
 train.model = @trax.models.ReformerLM
 train.optimizer = @trax.optimizers.Adam
 train.steps = 100000

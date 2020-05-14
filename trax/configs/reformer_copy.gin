@@ -21,16 +21,10 @@ n_symbols = 128
 length = 4096
 batch = 16
 
-# Parameters for batch_fn:
+# Parameters for data_streams:
 # ==============================================================================
-batch_fn.batch_size = %batch
-batch_fn.eval_batch_size = %batch
-batch_fn.max_eval_length = %length
-
-# Parameters for inputs:
-# ==============================================================================
-inputs.data_dir = None
-inputs.dataset_name = 'sequence_copy'
+data_streams.data_dir = None
+data_streams.dataset_name = 'sequence_copy'
 
 # Parameters for MultifactorSchedule:
 # ==============================================================================

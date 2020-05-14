@@ -610,7 +610,7 @@ class Trainer(object):
 def train(output_dir,
           model=gin.REQUIRED,
           loss_fn=tl.CrossEntropyLoss(),
-          inputs=trax_inputs.inputs,
+          inputs=trax_inputs.batcher,
           optimizer=trax_opt.Adafactor,
           lr_schedule=lr.MultifactorSchedule,
           trainer_class=Trainer,

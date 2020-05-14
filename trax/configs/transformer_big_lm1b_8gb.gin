@@ -14,20 +14,22 @@
 
 import trax.models
 import trax.optimizers
-import trax.supervised.inputs
+import trax.supervised.tf_inputs
 import trax.supervised.trainer_lib
 
-# Parameters for batch_fn:
+# Parameters for batcher:
 # ==============================================================================
-batch_fn.batch_size_per_device = 32
-batch_fn.eval_batch_size = 64
-batch_fn.max_eval_length = 512
+batcher.data_streams = @tf_inputs.data_streams
+batcher.batch_size_per_device = 32
+batcher.eval_batch_size = 64
+batcher.max_eval_length = 512
 
-# Parameters for inputs:
+# Parameters for data_streams:
 # ==============================================================================
-inputs.data_dir = None
-inputs.dataset_name = 't2t_languagemodel_lm1b32k'
-inputs.input_name = 'targets'
+data_streams.data_dir = None
+data_streams.dataset_name = 't2t_languagemodel_lm1b32k'
+data_streams.input_name = 'targets'
+data_streams.preprocess_fn = @trax.supervised.tf_inputs.lm1b_preprocess
 
 # Parameters for MultifactorSchedule:
 # ==============================================================================
@@ -35,9 +37,8 @@ MultifactorSchedule.constant = 0.1
 MultifactorSchedule.factors = 'constant * linear_warmup'
 MultifactorSchedule.warmup_steps = 16000
 
-# Parameters for preprocess_fun:
+# Parameters for lm1b_preprocess:
 # ==============================================================================
-shuffle_and_batch_data.preprocess_fun=@trax.supervised.inputs.lm1b_preprocess
 lm1b_preprocess.max_target_length = 512
 lm1b_preprocess.max_eval_target_length = 512
 
@@ -45,7 +46,6 @@ lm1b_preprocess.max_eval_target_length = 512
 # ==============================================================================
 train.eval_frequency = 1000
 train.eval_steps = 10
-train.inputs = @trax.supervised.inputs.inputs
 train.model = @trax.models.TransformerLM
 train.optimizer = @trax.optimizers.SM3
 train.steps = 500000

@@ -14,21 +14,23 @@
 
 import trax.models
 import trax.optimizers
-import trax.supervised.inputs
+import trax.supervised.tf_inputs
 import trax.supervised.trainer_lib
 
-# Parameters for batch_fn:
+# Parameters for batcher:
 # ==============================================================================
-batch_fn.batch_size_per_device = 64
-batch_fn.eval_batch_size = 64
-batch_fn.bucket_length=64
-batch_fn.max_eval_length = 1024
-batch_fn.buckets_include_inputs_in_length=True
+batcher.data_streams = @tf_inputs.data_streams
+batcher.batch_size_per_device = 64
+batcher.eval_batch_size = 64
+batcher.bucket_length=64
+batcher.max_eval_length = 1024
+batcher.buckets_include_inputs_in_length=True
 
-# Parameters for inputs:
+# Parameters for data_streams:
 # ==============================================================================
-inputs.data_dir = None
-inputs.dataset_name = 't2t_translate_ende_wmt32k'
+data_streams.data_dir = None
+data_streams.dataset_name = 't2t_translate_ende_wmt32k'
+data_stream.preprocess_fn = @trax.supervised.tf_inputs.wmt_concat_preprocess
 
 # Parameters for MultifactorSchedule:
 # ==============================================================================
@@ -46,9 +48,8 @@ Adafactor.epsilon2 = 0.001
 Adafactor.factored = True
 Adafactor.multiply_by_parameter_scale = True
 
-# Parameters for preprocess_fun:
+# Parameters for wmt_concat_preprocess:
 # ==============================================================================
-shuffle_and_batch_data.preprocess_fun=@trax.supervised.inputs.wmt_concat_preprocess
 wmt_concat_preprocess.max_length = 255
 wmt_concat_preprocess.max_eval_length = 511
 
@@ -56,7 +57,6 @@ wmt_concat_preprocess.max_eval_length = 511
 # ==============================================================================
 train.eval_frequency = 500
 train.eval_steps = 1
-train.inputs = @trax.supervised.inputs.inputs
 train.model = @trax.models.TransformerLM
 train.steps = 50000
 train.optimizer = @trax.optimizers.Adafactor

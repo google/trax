@@ -15,7 +15,7 @@
 import trax.layers
 import trax.models
 import trax.optimizers
-import trax.supervised.inputs
+import trax.supervised.tf_inputs
 import trax.supervised.trainer_lib
 
 MAX_EVAL_LENGTH = 1024 # Get back to 65536
@@ -45,23 +45,24 @@ LSHSelfAttention.n_buckets = 512
 LSHSelfAttention.n_chunks_before = 1
 LSHSelfAttention.n_hashes = 2
 
-# Parameters for batch_fn:
+# Parameters for batcher:
 # ==============================================================================
-batch_fn.batch_size_per_device = 8
-batch_fn.eval_batch_size = 8
-batch_fn.max_eval_length = %MAX_EVAL_LENGTH
-batch_fn.buckets =%BUCKETS
+batcher.data_streams = @tf_inputs.data_streams
+batcher.batch_size_per_device = 8
+batcher.eval_batch_size = 8
+batcher.max_eval_length = %MAX_EVAL_LENGTH
+batcher.buckets =%BUCKETS
 
-# Parameters for inputs:
+# Parameters for data_streams:
 # ==============================================================================
-inputs.data_dir = None
-inputs.dataset_name = 'c4'
-inputs.input_name = 'targets'
-inputs.target_name = 'text'
+data_streams.data_dir = None
+data_streams.dataset_name = 'c4'
+data_streams.input_name = 'targets'
+data_streams.target_name = 'text'
+data_streams.preprocess_fn=@trax.supervised.tf_inputs.c4_preprocess
 
-# Parameters for preprocess_fun:
+# Parameters for c4_preprocess:
 # ==============================================================================
-shuffle_and_batch_data.preprocess_fun=@trax.supervised.inputs.c4_preprocess
 c4_preprocess.max_target_length = %MAX_EVAL_LENGTH
 c4_preprocess.tokenization = 'spc'
 
@@ -83,7 +84,6 @@ Adam.eps = 1e-9
 # ==============================================================================
 train.eval_frequency = 500
 train.eval_steps = 8
-train.inputs = @trax.supervised.inputs.inputs
 train.model = @trax.models.ReformerLM
 train.optimizer = @trax.optimizers.Adam
 train.steps = 100000

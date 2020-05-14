@@ -15,22 +15,21 @@
 import trax.lr_schedules
 import trax.models
 import trax.optimizers
-import trax.supervised.inputs
+import trax.supervised.tf_inputs
 import trax.supervised.trainer_lib
 
-# Parameters for batch_fn:
+# Parameters for batcher:
 # ==============================================================================
-batch_fn.batch_size_per_device = 32
-batch_fn.eval_batch_size = 32
+batcher.data_streams = @tf_inputs.data_streams
+batcher.batch_size_per_device = 32
+batcher.eval_batch_size = 32
+batcher.variable_shapes = False
 
-# Parameters for inputs:
+# Parameters for data_streams:
 # ==============================================================================
-inputs.data_dir = None
-inputs.dataset_name = 't2t_image_imagenet224'
-
-# Parameters for preprocess_fun:
-# ==============================================================================
-shuffle_and_batch_data.preprocess_fun=@trax.supervised.inputs.squeeze_targets_preprocess
+data_streams.data_dir = None
+data_streams.dataset_name = 't2t_image_imagenet224'
+data_streams.preprocess_fn = @trax.supervised.tf_inputs.squeeze_targets_preprocess
 
 # Parameters for MultifactorSchedule:
 # ==============================================================================
@@ -51,7 +50,6 @@ Resnet50.n_output_classes = 1001
 # ==============================================================================
 train.eval_frequency = 2000
 train.eval_steps = 20
-train.inputs = @trax.supervised.inputs.inputs
 train.model = @trax.models.Resnet50
 train.optimizer = @trax.optimizers.Momentum
 train.steps = 100000

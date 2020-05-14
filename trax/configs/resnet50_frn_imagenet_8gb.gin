@@ -15,20 +15,22 @@
 import trax.lr_schedules
 import trax.models
 import trax.optimizers
-import trax.supervised.inputs
+import trax.supervised.tf_inputs
 import trax.supervised.trainer_lib
 
-# Parameters for batch_fn:
+# Parameters for batcher:
 # ==============================================================================
-batch_fn.batch_size_per_device = 32
-batch_fn.bucket_length = 32
-batch_fn.buckets = None
-batch_fn.eval_batch_size = 32
+batcher.data_streams = @tf_inputs.data_streams
+batcher.batch_size_per_device = 32
+batcher.bucket_length = 32
+batcher.buckets = None
+batcher.eval_batch_size = 32
+batcher.variable_shapes = False
 
-# Parameters for inputs:
+# Parameters for data_streams:
 # ==============================================================================
-inputs.data_dir = None
-inputs.dataset_name = 't2t_image_imagenet224'
+data_streams.data_dir = None
+data_streams.dataset_name = 't2t_image_imagenet224'
 
 # Parameters for FilterResponseNorm:
 # ==============================================================================
@@ -45,7 +47,6 @@ MultifactorSchedule.warmup_steps = 30000
 # ==============================================================================
 Momentum.mass = 0.9
 
-
 # Parameters for Resnet50:
 # ==============================================================================
 Resnet50.d_hidden = 64
@@ -53,12 +54,10 @@ Resnet50.n_output_classes = 1001
 Resnet50.norm = @trax.layers.FilterResponseNorm
 Resnet50.non_linearity = @trax.layers.ThresholdedLinearUnit
 
-
 # Parameters for train:
 # ==============================================================================
 train.eval_frequency = 2000
 train.eval_steps = 20
-train.inputs = @trax.supervised.inputs.inputs
 train.model = @trax.models.Resnet50
 train.optimizer = @trax.optimizers.Momentum
 train.steps = 300000

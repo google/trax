@@ -64,9 +64,9 @@ def _gin_parse_configs():
   configs = FLAGS.config or []
   # Override with --dataset and --model
   if FLAGS.dataset:
-    configs.append("inputs.dataset_name='%s'" % FLAGS.dataset)
+    configs.append("data_streams.dataset_name='%s'" % FLAGS.dataset)
   if FLAGS.data_dir:
-    configs.append("inputs.data_dir='%s'" % FLAGS.data_dir)
+    configs.append("data_streams.data_dir='%s'" % FLAGS.data_dir)
   if FLAGS.model:
     configs.append('train.model=@trax.models.%s' % FLAGS.model)
   gin.parse_config_files_and_bindings(FLAGS.config_file, configs)
@@ -81,7 +81,7 @@ def _output_dir_or_default():
 
   # Else, generate a default output dir (under the user's home directory).
   try:
-    dataset_name = gin.query_parameter('inputs.dataset_name')
+    dataset_name = gin.query_parameter('data_streams.dataset_name')
   except ValueError:
     dataset_name = 'random'
   output_name = '{model_name}_{dataset_name}_{timestamp}'.format(

@@ -20,12 +20,12 @@ import itertools
 
 from absl.testing import absltest
 
-import gin
 import numpy as np
 
 from trax import layers as tl
 from trax.optimizers import adafactor
 from trax.supervised import inputs
+from trax.supervised import tf_inputs
 from trax.supervised import training
 
 
@@ -37,11 +37,6 @@ class MnistTest(absltest.TestCase):
     Evals for cross-entropy loss and accuracy are run every 50 steps;
     their values are visible in the test log.
     """
-    gin.parse_config([
-        'batch_fn.batch_size_per_device = 256',
-        'batch_fn.eval_batch_size = 256',
-    ])
-
     mnist_model = tl.Serial(
         tl.Flatten(),
         tl.Dense(512),
@@ -69,7 +64,10 @@ class MnistTest(absltest.TestCase):
 
 def _mnist_dataset():
   """Loads (and caches) the standard MNIST data set."""
-  return _add_weights(inputs.inputs('mnist'))
+  streams = tf_inputs.data_streams('mnist')
+  return _add_weights(inputs.batcher(streams, variable_shapes=False,
+                                     batch_size_per_device=256,
+                                     eval_batch_size=256))
 
 
 def _add_weights(trax_inputs):

@@ -20,15 +20,17 @@ import trax.rl.envs
 
 # Parameters for batch_fn:
 # ==============================================================================
-batch_fn.batch_size_per_device = 256
-batch_fn.bucket_length = 32
-batch_fn.buckets = None
-batch_fn.eval_batch_size = 512
+batcher.data_streams = @tf_inputs.data_streams
+batcher.batch_size_per_device = 256
+batcher.bucket_length = 32
+batcher.eval_batch_size = 512
+batcher.variable_shapes = False
 
-# Parameters for inputs:
+# Parameters for data_streams:
 # ==============================================================================
-inputs.data_dir = None
-inputs.dataset_name = 'cifar10'
+data_streams.data_dir = None
+data_streams.dataset_name = 'cifar10'
+data_streams.preprocess_fun = @trax.supervised.inputs.cifar10_augmentation_preprocess
 
 # Parameters for train_and_eval_dataset:
 # ==============================================================================
@@ -39,10 +41,6 @@ train_and_eval_dataset.eval_shuffle_files = True
 # ==============================================================================
 Momentum.mass = 0.9
 
-# Parameters for shuffle_and_batch_data:
-# ==============================================================================
-shuffle_and_batch_data.preprocess_fun = @trax.supervised.inputs.cifar10_augmentation_preprocess
-
 # Parameters for WideResnet:
 # ==============================================================================
 WideResnet.widen_factor = 10
@@ -51,7 +49,7 @@ WideResnet.n_output_classes = 10
 
 # Parameters for OnlineTuneEnv:
 # ==============================================================================
-OnlineTuneEnv.inputs = @trax.supervised.inputs.inputs
+OnlineTuneEnv.inputs = @trax.supervised.inputs.batcher
 OnlineTuneEnv.model = @trax.models.WideResnet
 OnlineTuneEnv.optimizer = @trax.optimizers.Momentum
 OnlineTuneEnv.control_configs = (

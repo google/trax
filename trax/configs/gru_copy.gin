@@ -14,17 +14,17 @@
 
 import trax.models
 import trax.optimizers
-import trax.supervised.inputs
+import trax.supervised.tf_inputs
 import trax.supervised.trainer_lib
 
 n_symbols = 32
 length = 16
 batch = 512
 
-# Parameters for inputs:
+# Parameters for data_streams:
 # ==============================================================================
-inputs.data_dir = None
-inputs.dataset_name = 'gru_copy'
+data_streams.data_dir = None
+data_streams.dataset_name = 'gru_copy'
 
 # Parameters for sequence_copy_inputs:
 # ==============================================================================

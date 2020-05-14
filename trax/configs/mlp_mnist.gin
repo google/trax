@@ -15,18 +15,21 @@
 import trax.lr_schedules
 import trax.models
 import trax.optimizers
-import trax.supervised.inputs
+import trax.supervised.tf_inputs
 import trax.supervised.trainer_lib
 
-# Parameters for batch_fn:
+# Parameters for batcher:
 # ==============================================================================
-batch_fn.batch_size_per_device = 256
-batch_fn.eval_batch_size = 256
+batcher.data_streams = @tf_inputs.data_streams
+batcher.data_streams = @tf_inputs.data_streams
+batcher.batch_size_per_device = 256
+batcher.eval_batch_size = 256
+batcher.variable_shapes = False
 
-# Parameters for inputs:
+# Parameters for tf_inputs.data_streams:
 # ==============================================================================
-inputs.data_dir = None
-inputs.dataset_name = 'mnist'
+data_streams.data_dir = None
+data_streams.dataset_name = 'mnist'
 
 # Parameters for MLP:
 # ==============================================================================

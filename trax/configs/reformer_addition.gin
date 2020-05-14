@@ -19,10 +19,10 @@ import trax.supervised.trainer_lib
 
 vocab_size = 13  #  For addition, base = vocab_size - 3.
 
-# Parameters for inputs:
+# Parameters for data_streams:
 # ==============================================================================
-inputs.data_dir = None
-inputs.dataset_name = 'addition'
+data_streams.data_dir = None
+data_streams.dataset_name = 'addition'
 
 # Parameters for sequence_copy_inputs:
 # ==============================================================================
@@ -73,7 +73,7 @@ ReformerLM.vocab_size = %vocab_size
 
 # Parameters for train:
 # ==============================================================================
-# train.inputs = @trax.supervised.inputs.sequence_copy_inputs
+# train.inputs = @trax.supervised.tf_inputs.sequence_copy_inputs
 train.inputs = @trax.supervised.inputs.addition_inputs
 train.eval_frequency = 1000
 train.eval_steps = 10
