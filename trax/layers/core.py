@@ -51,7 +51,7 @@ class Dense(base.Layer):
       bias_initializer: Function that creates a vector of (random) initial
           bias weights ($$b$$) for the layer.
     """
-    super().__init__()
+    super().__init__(name=f'Dense_{n_units}')
     self._n_units = n_units
     self._kernel_initializer = kernel_initializer
     self._bias_initializer = bias_initializer
