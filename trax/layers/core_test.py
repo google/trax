@@ -86,13 +86,14 @@ class DenseTest(absltest.TestCase):
 
   def test_call_no_bias(self):
     layer = tl.Dense(4, use_bias=False)
-    x = np.array([2, 3])
+    x = np.array([2, 5, 3])
     _, _ = layer.init(shapes.signature(x))
 
     w = np.array([[100, 200, 300, 400],
+                  [10, 10, 10, 10],
                   [1, 2, 1, 2]])
     y = layer(x, weights=w)
-    self.assertEqual(y.tolist(), [203, 406, 603, 806])
+    self.assertEqual(y.tolist(), [253, 456, 653, 856])
 
   def test_new_weights_use_bias(self):
     layer = tl.Dense(4)

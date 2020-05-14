@@ -64,10 +64,10 @@ class Dense(base.Layer):
     self._use_bias = use_bias
 
   def forward(self, x, weights):
-    if len(weights) != 2:
-      raise ValueError(f'Weights has length {len(weights)}; should instead '
-                       f'have two elements: w, b.')
     if self._use_bias:
+      if not isinstance(weights, (tuple, list)):
+        raise ValueError(f'Weights should be a (w, b) tuple or list; '
+                         f'instead got: {weights}')
       w, b = weights
       return jnp.matmul(x, w) + b  # Affine map.
     else:
