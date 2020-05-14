@@ -36,6 +36,7 @@ setup(
     packages=find_packages(),
     install_requires=[
         'absl-py',
+        'faulthandler',
         'funcsigs',
         'gin-config',
         'gym==0.14.0',
