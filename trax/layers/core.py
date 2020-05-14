@@ -61,7 +61,7 @@ class Dense(base.Layer):
       raise ValueError(f'Weights has length {len(weights)}; should instead '
                        f'have two elements: w, b.')
     w, b = weights
-    return jnp.dot(x, w) + b
+    return jnp.matmul(x, w) + b
 
   def new_weights(self, input_signature):
     """Returns new (randomly initialized) weights (w, b) for this layer.
