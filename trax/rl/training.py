@@ -20,6 +20,8 @@ import functools
 import os
 import pickle
 import time
+
+from absl import logging
 import numpy as np
 import tensorflow as tf
 
@@ -165,9 +167,12 @@ class RLTrainer:
         self.save_to_file()
 
   def close(self):
-    if self._sw is not None:
-      self._sw.close()
-      self._sw = None
+    if self._sw is None:
+      logging.info('Asked to close non-existent SummaryWriter, no-op.')
+    logging.info('Closing SummaryWriter.')
+    self._sw.close()
+    logging.info('Closed SummaryWriter.')
+    self._sw = None
 
 
 class PolicyTrainer(RLTrainer):

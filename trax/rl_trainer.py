@@ -37,6 +37,7 @@ import os
 from absl import app
 from absl import flags
 from absl import logging
+import faulthandler
 import gin
 import jax
 from jax.config import config
@@ -117,14 +118,34 @@ def train_rl(
 
   if light_rl:
     trainer = light_rl_trainer(task=task, output_dir=output_dir)
+    def light_training_loop():
+      """Run the trainer for n_epochs and call close on it."""
+      try:
+        logging.info('Starting RL training for %d epochs.', n_epochs)
+        trainer.run(n_epochs, n_epochs_is_total_epochs=True)
+        logging.info('Completed RL training for %d epochs.', n_epochs)
+        trainer.close()
+        logging.info('Trainer is now closed.')
+
+        # TODO(afrozm): This is for debugging.
+        logging.info('Dumping stck traces of all stacks.')
+        faulthandler.dump_traceback(all_threads=True)
+      except Exception as e:
+        raise e
+      finally:
+        logging.info('Encountered an exception, still calling trainer.close()')
+        trainer.close()
+        logging.info('Trainer is now closed.')
+        # TODO(afrozm): This is for debugging.
+        logging.info('Dumping stck traces of all stacks.')
+        faulthandler.dump_traceback(all_threads=True)
+
     if FLAGS.jax_debug_nans or FLAGS.disable_jit:
       math.disable_jit()
       with jax.disable_jit():
-        trainer.run(n_epochs, n_epochs_is_total_epochs=True)
-        trainer.close()
+        light_training_loop()
     else:
-      trainer.run(n_epochs, n_epochs_is_total_epochs=True)
-      trainer.close()
+      light_training_loop()
     return
 
   # TODO(pkozakowski): Find a better way to determine this.
