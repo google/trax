@@ -32,15 +32,19 @@ class Dense(base.Layer):
   with trainable "weights". Each node in a dense layer computes a weighted sum
   of all node values from the preceding layer and adds to that sum a
   node-specific "bias" term. The full layer computation is expressed compactly
-  in linear algebra as $$y = W x + b$$, where $$W$$ is a matrix and $$y$$,
-  $$x$$, and $$b$$ are vectors. The layer is trained, or "learns", by updating
-  the values in $$W$$ and $$b$$.
+  in linear algebra as an affine map $$y = W x + b$$, where $$W$$ is a matrix
+  and $$y$$, $$x$$, and $$b$$ are vectors. The layer is trained, or "learns",
+  by updating the values in $$W$$ and $$b$$.
+
+  Less commonly, a dense layer can be used as a pure linear map, by omitting
+  the bias term: $$y = W x$$.
   """
 
   def __init__(self,
                n_units,
                kernel_initializer=init.GlorotUniformInitializer(),
-               bias_initializer=init.RandomNormalInitializer(1e-6)):
+               bias_initializer=init.RandomNormalInitializer(1e-6),
+               use_bias=True):
     """Returns a dense / fully connected layer of width `n_units`.
 
     Args:
@@ -50,21 +54,31 @@ class Dense(base.Layer):
           connection weights ($$W$$) for the layer.
       bias_initializer: Function that creates a vector of (random) initial
           bias weights ($$b$$) for the layer.
+      use_bias: If True, compute an affine map: $$y = W x + b$$; else compute
+          a linear map: $$y = W x$$.
     """
     super().__init__(name=f'Dense_{n_units}')
     self._n_units = n_units
     self._kernel_initializer = kernel_initializer
     self._bias_initializer = bias_initializer
+    self._use_bias = use_bias
 
   def forward(self, x, weights):
     if len(weights) != 2:
       raise ValueError(f'Weights has length {len(weights)}; should instead '
                        f'have two elements: w, b.')
-    w, b = weights
-    return jnp.matmul(x, w) + b
+    if self._use_bias:
+      w, b = weights
+      return jnp.matmul(x, w) + b  # Affine map.
+    else:
+      w = weights
+      return jnp.matmul(x, w)  # Linear map.
 
   def new_weights(self, input_signature):
-    """Returns new (randomly initialized) weights (w, b) for this layer.
+    """Returns new (randomly initialized) weights for this layer.
+
+    In the default case (`use_bias=True`), weights are a `(w, b)` tuple.
+    If `use_bias` is false, weights are a `w` tensor.
 
     Args:
       input_signature: ShapeDtype instance characterizing the input this layer
@@ -73,10 +87,13 @@ class Dense(base.Layer):
     shape_w = (input_signature.shape[-1], self._n_units)
     shape_b = (self._n_units,)
     rng_w, rng_b = math.random.split(self.rng, 2)
-
     w = self._kernel_initializer(shape_w, rng_w)
-    b = self._bias_initializer(shape_b, rng_b)
-    return (w, b)
+
+    if self._use_bias:
+      b = self._bias_initializer(shape_b, rng_b)
+      return (w, b)
+    else:
+      return w
 
 
 class Embedding(base.Layer):

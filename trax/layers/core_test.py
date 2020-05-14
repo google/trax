@@ -84,6 +84,30 @@ class DenseTest(absltest.TestCase):
 
     self.assertIs(weights_0, weights_1)
 
+  def test_call_no_bias(self):
+    layer = tl.Dense(4, use_bias=False)
+    x = np.array([2, 3])
+    _, _ = layer.init(shapes.signature(x))
+
+    w = np.array([[100, 200, 300, 400],
+                  [1, 2, 1, 2]])
+    y = layer(x, weights=w)
+    self.assertEqual(y.tolist(), [203, 406, 603, 806])
+
+  def test_new_weights_use_bias(self):
+    layer = tl.Dense(4)
+    x = np.array([1, 2])
+    _, _ = layer.init(shapes.signature(x))
+    self.assertLen(layer.weights, 2)
+    self.assertEqual(layer.weights[0].shape, (2, 4))
+    self.assertEqual(layer.weights[1].shape, (4,))
+
+  def test_new_weights_no_bias(self):
+    layer = tl.Dense(4, use_bias=False)
+    x = np.array([1, 2])
+    _, _ = layer.init(shapes.signature(x))
+    self.assertEqual(layer.weights.shape, (2, 4))
+
 
 class EmbeddingTest(absltest.TestCase):
 
