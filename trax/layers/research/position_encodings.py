@@ -84,7 +84,7 @@ class AxialPositionalEncoding(layer_base.Layer):
 
       return inputs + jnp.reshape(emb * multiplier, inputs.shape), state
 
-  def new_weights_and_state(self, input_signature):
+  def new_weights_and_state(self, input_signature, initialized_layers=None):
     d_feature = input_signature.shape[-1]
     assert sum(self._d_embs) == d_feature
 
@@ -351,7 +351,7 @@ class InfinitePositionalEncoding(layer_base.Layer):
       emb = emb @ weights
     return inputs + emb, state
 
-  def new_weights_and_state(self, input_signature):
+  def new_weights_and_state(self, input_signature, initialized_layers=None):
     d_feature = input_signature.shape[-1]
     if self._transform == 'diag':
       # Initialize it to a small value because JAX has a bug in softplus.
@@ -430,7 +430,7 @@ class TimeBinPositionalEncoding(layer_base.Layer):
     assert inputs.shape[-1] == depth, inputs.shape
     return inputs, state
 
-  def new_weights_and_state(self, input_signature):
+  def new_weights_and_state(self, input_signature, initialized_layers=None):
     if self._mode == 'predict':
       batch_size = input_signature.shape[0]
       return layer_base.EMPTY_WEIGHTS, jnp.zeros((batch_size,), dtype=jnp.int32)

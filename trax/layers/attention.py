@@ -283,7 +283,7 @@ class DotProductCausalAttention(base.Layer):
         q, k, v, mask, dropout=self._dropout, mode=self._mode, rng=rng)
     return res, state
 
-  def new_weights_and_state(self, input_signature):
+  def new_weights_and_state(self, input_signature, initialized_layers=None):
     weights, state = base.EMPTY_WEIGHTS, base.EMPTY_STATE
     if self._mode == 'predict':
       max_len = 2048  # Hardcoded.  TODO(pkozakowski): Pass it from the model.
@@ -384,7 +384,7 @@ class PositionalEncoding(base.Layer):
               weights[0], state[i], inputs.shape[1], axis=0))
         return inputs + jnp.stack(emb, 0), state + inputs.shape[1]
 
-  def new_weights_and_state(self, input_signature):
+  def new_weights_and_state(self, input_signature, initialized_layers=None):
     d_feature = input_signature.shape[-1]
     pe = np.zeros((self._max_len, d_feature), dtype=np.float32)
     position = np.arange(0, self._max_len)[:, np.newaxis]

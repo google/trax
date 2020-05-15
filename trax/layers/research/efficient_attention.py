@@ -313,7 +313,7 @@ class EfficientAttentionBase(base.Layer):
     self.use_python_loop = use_python_loop
     self.use_reference_code = use_reference_code
 
-  def new_weights_and_state(self, input_signature):
+  def new_weights_and_state(self, input_signature, initialized_layers=None):
     if not isinstance(input_signature, (tuple, list)):
       input_signature = (input_signature,)
     input_signature_unbatched = jax.tree_map(

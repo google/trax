@@ -76,13 +76,9 @@ class DenseTest(absltest.TestCase):
     # Same dense layer instance in two places --> shared weights.
     layer = tl.Dense(5)
     model = tl.Serial(layer, layer)
-
     sample_input = np.array([1, 2, 3, 4, 5])
-    _, _ = model.init(shapes.signature(sample_input))
-    weights_0 = model.sublayers[0].weights
-    weights_1 = model.sublayers[1].weights
-
-    self.assertIs(weights_0, weights_1)
+    weights, _ = model.init(shapes.signature(sample_input))
+    self.assertIs(weights[1], tl.EMPTY_WEIGHTS)
 
   def test_call_no_bias(self):
     layer = tl.Dense(4, use_bias=False)

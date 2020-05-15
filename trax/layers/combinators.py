@@ -80,20 +80,22 @@ class Serial(base.Layer):
     return stack, new_state
 
   # pylint: disable=protected-access
-  def new_weights_and_state(self, input_signature):
+  def new_weights_and_state(self, input_signature, initialized_layers=None):
     weights = []
     states = []
+    if initialized_layers is None:  # Start collecting layers for sharing.
+      initialized_layers = []
     # In the code below, stack, inputs, and outputs are abstract (shapes and
     # dtypes), but weights and states are non-abstract actual values.
     stack = input_signature
     for sublayer in self.sublayers:
       inputs = _inputs_from_stack(sublayer, stack)
-      weights_or_empty, state = sublayer.init(inputs)
+      weights_or_empty, state_or_empty = sublayer.init(
+          inputs, initialized_layers=initialized_layers)
       outputs, _ = sublayer._forward_abstract(inputs)
       stack = _outputs_onto_stack(sublayer, outputs, stack)
-
       weights.append(weights_or_empty)
-      states.append(state)
+      states.append(state_or_empty)
     return weights, states
   # pylint: enable=protected-access
 
@@ -226,9 +228,11 @@ class Parallel(base.Layer):
     output = outputs[0] if self.n_out == 1 else tuple(outputs)
     return output, tuple(new_state)
 
-  def new_weights_and_state(self, input_signature):
+  def new_weights_and_state(self, input_signature, initialized_layers=None):
+    if initialized_layers is None:  # Start collecting layers for sharing.
+      initialized_layers = []
     sublayer_signatures = self._allot_to_sublayers(input_signature)
-    inits = [layer.init(signature)
+    inits = [layer.init(signature, initialized_layers=initialized_layers)
              for layer, signature
              in zip(self.sublayers, sublayer_signatures)]
     if inits:
@@ -388,7 +392,7 @@ class Scan(base.Layer):
     res = ys + carry if n_carry > 0 else ys
     return res, new_state  # Put outputs and carry back on stack.
 
-  def new_weights_and_state(self, input_signature):
+  def new_weights_and_state(self, input_signature, initialized_layers=None):
     n_carry = self._n_carry
     if n_carry == 0:
       if isinstance(input_signature, (list, tuple)):
@@ -404,7 +408,8 @@ class Scan(base.Layer):
     xs_slices = [ShapeDtype(_shape_without_axis(x, self._axis), x.dtype)
                  for x in xs]
     layer_signature = tuple(xs_slices + list(init))
-    return self.sublayer.init(layer_signature)
+    return self.sublayer.init(
+        layer_signature, initialized_layers=initialized_layers)
 
 
 def Branch(*layers, name='Branch'):
@@ -626,8 +631,9 @@ class Cache(base.Layer):
     else:
       return state[0], state
 
-  def new_weights_and_state(self, input_signature):
-    weights, layer_state = self.sublayer.init(input_signature)
+  def new_weights_and_state(self, input_signature, initialized_layers=None):
+    weights, layer_state = self.sublayer.init(
+        input_signature, initialized_layers=initialized_layers)
     return weights, ((), layer_state)
 
 

@@ -426,13 +426,14 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
     return stack, (stack_ct, weights_ct)
 
   # pylint: disable=protected-access
-  def new_weights_and_state(self, input_signature):
+  def new_weights_and_state(self, input_signature, initialized_layers=None):
     stack = input_signature[1:]
     if len(stack) == 1:
       stack = stack[0]
 
     inputs = _inputs_from_stack(self.compute_residual, stack)
-    weights, state = self.compute_residual.init(inputs)
+    weights, state = self.compute_residual.init(
+        inputs, initialized_layers=initialized_layers)
     outputs, _ = self.compute_residual._forward_abstract(inputs)
     stack = _outputs_onto_stack(self.compute_residual, outputs, stack)
 
@@ -440,7 +441,8 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
       return (weights,), (state,)
     else:
       inputs = _inputs_from_stack(self.attention_layer, stack)
-      attn_weights, attn_state = self.attention_layer.init(inputs)
+      attn_weights, attn_state = self.attention_layer.init(
+          inputs, initialized_layers=initialized_layers)
       return (weights, attn_weights), (state, attn_state)
   # pylint: enable=protected-access
 

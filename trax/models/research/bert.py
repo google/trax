@@ -138,8 +138,9 @@ class PretrainedBERT(tl.Serial):
           'Please manually specify the path to bert_model.ckpt')
     self.init_checkpoint = init_checkpoint
 
-  def new_weights_and_state(self, input_signature):
-    weights, state = super().new_weights_and_state(input_signature)
+  def new_weights_and_state(self, input_signature, initialized_layers=None):
+    weights, state = super().new_weights_and_state(
+        input_signature, initialized_layers=initialized_layers)
     if self.init_checkpoint is None:
       return weights, state
 

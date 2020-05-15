@@ -107,7 +107,6 @@ class Layer(object):
     self._caller = {'filename': copy.copy(frame.f_code.co_filename),
                     'lineno': int(frame.f_lineno)}
     del frame  # Just in case.
-    self._init_finished = False
     self._jit_cache = {}
 
   def __repr__(self):
@@ -239,18 +238,21 @@ class Layer(object):
     del input_signature
     return EMPTY_WEIGHTS
 
-  def new_weights_and_state(self, input_signature):
+  def new_weights_and_state(self, input_signature, initialized_layers=None):
     """Returns a (weights, state) pair suitable for initializing this layer.
 
     Authors of new Layer subclasses should override this method if their layer
-    uses trainable weights or has non-parameter state that gets updated
-    between batches. The default implementation works for layers that have
-    no weights or state.
+    has non-parameter state that gets updated between batches. The default
+    implementation works for layers that have no state.
 
     Args:
       input_signature: A ShapeDtype instance (if this layer takes one input)
           or a list/tuple of ShapeDtype instances.
+      initialized_layers: Unless you are writing a combinator that manages layer
+        trees, ignore this. Optional list of already initialized layers, used
+        to control weights of shared layer instances in combinators.
     """
+    del initialized_layers
     return self.new_weights(input_signature), EMPTY_STATE
 
   @property
@@ -285,7 +287,7 @@ class Layer(object):
   # End of public subclassing interface.
   # Begin public callable interface.
 
-  def init(self, input_signature, rng=None):
+  def init(self, input_signature, rng=None, initialized_layers=None):
     """Initializes this layer and its sublayers recursively.
 
     This method is designed to initialize each layer instance once, even if the
@@ -297,10 +299,12 @@ class Layer(object):
           or list/tuple of `ShapeDtype` instances.
       rng: Single-use random number generator (JAX PRNG key). If none is
           provided, a default rng based on the integer seed 0 will be used.
+      initialized_layers: Optional list of already initialized layers, used
+        to control weights of shared layer instances; if current layer is on
+        this list, this function will return EMPTY_WEIGHTS as weights.
 
     Returns:
-      A (weights, state) tuple, in which weights contains newly created weights
-          on the first call and `EMPTY_WEIGHTS` on all subsequent calls.
+      A (weights, state) tuple.
     """
     try:
       if rng is not None:
@@ -311,14 +315,17 @@ class Layer(object):
       # be able to remove unnecessary computation.
       # TODO(lukaszkaiser): Revisit this decision and see whether layers sharing
       #   weights should also share states.
-      weights, state = self.new_weights_and_state(input_signature)
-      if not self._init_finished:
-        self._init_finished = True
-        self._weights = weights
-        self._state = state
-        return (weights, state)
-      else:
+      weights, state = self.new_weights_and_state(
+          input_signature, initialized_layers=initialized_layers)
+      if initialized_layers is not None and id(self) in initialized_layers:
         return (EMPTY_WEIGHTS, state)
+
+      self._weights = weights
+      self._state = state
+      if initialized_layers is not None:
+        initialized_layers.append(id(self))
+      return (weights, state)
+
     except Exception as e:
       name, trace = self._name, _short_traceback(skip=3)
       raise LayerError(name, 'init', self._caller,

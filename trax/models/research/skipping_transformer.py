@@ -42,10 +42,10 @@ class SkippingSerial(tl.Serial):
         assert layer.n_in == n_in_out
         assert layer.n_out == n_in_out
 
-  def new_weights_and_state(self, input_signature):
+  def new_weights_and_state(self, input_signature, initialized_layers=None):
     """Add a step-counter to the state. Initialize with 0."""
     weights, state = super(SkippingSerial, self).new_weights_and_state(
-        input_signature)
+        input_signature, initialized_layers=initialized_layers)
     return weights, (0, state)
 
   @tl.Layer.state.setter
