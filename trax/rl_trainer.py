@@ -126,19 +126,12 @@ def train_rl(
         logging.info('Completed RL training for %d epochs.', n_epochs)
         trainer.close()
         logging.info('Trainer is now closed.')
-
-        # TODO(afrozm): This is for debugging.
-        logging.info('Dumping stack traces of all stacks.')
-        faulthandler.dump_traceback(all_threads=True)
       except Exception as e:
         raise e
       finally:
         logging.info('Encountered an exception, still calling trainer.close()')
         trainer.close()
         logging.info('Trainer is now closed.')
-        # TODO(afrozm): This is for debugging.
-        logging.info('Dumping stack traces of all stacks.')
-        faulthandler.dump_traceback(all_threads=True)
 
     if FLAGS.jax_debug_nans or FLAGS.disable_jit:
       math.disable_jit()
@@ -228,6 +221,12 @@ def main(argv):
       eval_batch_size=FLAGS.eval_batch_size,
       trajectory_dump_dir=(FLAGS.trajectory_dump_dir or None),
   )
+
+  # TODO(afrozm): This is for debugging.
+  logging.info('Dumping stack traces of all stacks.')
+  faulthandler.dump_traceback(all_threads=True)
+
+  logging.info('Training is done, should exit.')
 
 
 if __name__ == '__main__':

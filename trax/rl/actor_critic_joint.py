@@ -112,6 +112,10 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
     example_batch = next(self.batches_stream())
     self._eval_model.init(example_batch)
 
+  def close(self):
+    self._trainer.close()
+    super().close()
+
   def batches_stream(self):
     """Use self.task to create inputs to the policy model."""
     return NotImplementedError
