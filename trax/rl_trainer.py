@@ -128,7 +128,7 @@ def train_rl(
         logging.info('Trainer is now closed.')
 
         # TODO(afrozm): This is for debugging.
-        logging.info('Dumping stck traces of all stacks.')
+        logging.info('Dumping stack traces of all stacks.')
         faulthandler.dump_traceback(all_threads=True)
       except Exception as e:
         raise e
@@ -137,7 +137,7 @@ def train_rl(
         trainer.close()
         logging.info('Trainer is now closed.')
         # TODO(afrozm): This is for debugging.
-        logging.info('Dumping stck traces of all stacks.')
+        logging.info('Dumping stack traces of all stacks.')
         faulthandler.dump_traceback(all_threads=True)
 
     if FLAGS.jax_debug_nans or FLAGS.disable_jit:

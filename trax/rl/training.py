@@ -169,6 +169,7 @@ class RLTrainer:
   def close(self):
     if self._sw is None:
       logging.info('Asked to close non-existent SummaryWriter, no-op.')
+      return
     logging.info('Closing SummaryWriter.')
     self._sw.close()
     logging.info('Closed SummaryWriter.')
