@@ -481,18 +481,18 @@ class Trainer(object):
         batch, weights=weights, state=self._model_state[0],
         rng=self._rngs[0])
     with tf.io.gfile.GFile(os.path.join(output_dir, 'forward.txt'), 'w') as f:
-      f.write(forward_computation.GetHloText())
+      f.write(forward_computation.as_hlo_text())
     with tf.io.gfile.GFile(os.path.join(output_dir, 'forward.dot'), 'w') as f:
-      f.write(forward_computation.GetHloDotGraph())
+      f.write(forward_computation.as_hlo_dot_graph())
     backward_computation = jax.xla_computation(self._jit_update_fn)(
         self._step, self._opt_state, batch, self._model_state,
         self._rngs)
     with tf.io.gfile.GFile(os.path.join(output_dir, 'backward.txt'), 'w') as f:
-      f.write(backward_computation.GetHloText())
+      f.write(backward_computation.as_hlo_text())
     if save_backward_graph:  # Backward graphs can be large so we guard it.
       with tf.io.gfile.GFile(
           os.path.join(output_dir, 'backward.dot'), 'w') as f:
-        f.write(backward_computation.GetHloDotGraph())
+        f.write(backward_computation.as_hlo_dot_graph())
 
   def log_step(self, step_message):
     log('Step % 6d: %s' % (self.step, step_message))
