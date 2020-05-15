@@ -16,7 +16,6 @@
 # Lint as: python3
 """Trax TF input pipeline."""
 
-import collections
 import functools
 import os
 import random
@@ -39,48 +38,15 @@ from trax import math
 _MAX_SKIP_EXAMPLES = 1e5
 
 
-def download_and_prepare(dataset_name, data_dir):
-  """Downloads and prepares T2T or TFDS dataset.
-
-  Args:
-    dataset_name: tfds dataset or t2t problem name prefixed by 't2t_'.
-    data_dir: location of existing dataset or None.
-
-  Returns:
-    data_dir: path string of downloaded data.
-  """
-  if not data_dir:
-    data_dir = os.path.expanduser('~/tensorflow_datasets/')
-    dl_dir = os.path.join(data_dir, 'download')
-    logging.info(
-        'No dataset directory provided. '
-        'Downloading and generating dataset for %s inside data directory %s '
-        'For large datasets it is better to prepare datasets manually!',
-        dataset_name, data_dir)
-    if dataset_name.startswith('t2t_'):
-      # Download and run dataset generator for T2T problem.
-      data_dir = os.path.join(data_dir, dataset_name)
-      tf.io.gfile.makedirs(data_dir)
-      tf.io.gfile.makedirs(dl_dir)
-      t2t_problems.problem(
-          dataset_name[len('t2t_'):]).generate_data(data_dir, dl_dir)
-    else:
-      # Download and prepare TFDS dataset.
-      tfds_builder = tfds.builder(dataset_name)
-      tfds_builder.download_and_prepare(download_dir=dl_dir)
-  else:
-    data_dir = os.path.expanduser(data_dir)
-  return data_dir
-
-
-def no_preprocess(dataset, training, shapes):
+def no_preprocess(dataset, training):
   del training
-  return dataset, shapes
+  return dataset
 
 
 @gin.configurable()
 def data_streams(dataset_name, data_dir=None, preprocess_fn=no_preprocess,
-                 shuffle_buffer_size=1024, input_name=None, target_name=None):
+                 shuffle_buffer_size=1024, eval_holdout_size=0,
+                 input_name=None, target_name=None):
   """Make data streams for TF datasets.
 
   Args:
@@ -89,6 +55,8 @@ def data_streams(dataset_name, data_dir=None, preprocess_fn=no_preprocess,
     data_dir: data directory.
     preprocess_fn: function to use for pre-processing.
     shuffle_buffer_size: size of the shuffle buffer.
+    eval_holdout_size: float from 0 to <1; if >0 use this much of training data
+      for evaluation (instead of looking for a pre-specified VALIDATION split).
     input_name: optional, name of the inputs from the dictionary.
     target_name: optional, name of the outputs either from the dictionary or as
       a result of post-processing.
@@ -102,14 +70,12 @@ def data_streams(dataset_name, data_dir=None, preprocess_fn=no_preprocess,
   def stream(which):
     """Create the stream, cache TF streams if needed."""
     if not cache:
-      cache.append(_train_and_eval_batches(
+      cache.append(_train_and_eval_streams(
           dataset_name, data_dir, preprocess_fn, shuffle_buffer_size,
-          input_name, target_name))
+          eval_holdout_size, input_name, target_name))
 
-    (train_batches, eval_batches, input_name_c) = cache[0]
-    dataset = train_batches
-    if which == 'eval':
-      dataset = eval_batches
+    (train_ds, eval_ds, input_name_c) = cache[0]
+    dataset = eval_ds if which == 'eval' else train_ds
     return dataset_to_stream(dataset, input_name_c)
 
   train_stream = lambda: stream('train')
@@ -132,10 +98,56 @@ def dataset_to_stream(dataset, input_name):
     yield (inp, out) if mask is None else (inp, out, mask)
 
 
-@gin.configurable(whitelist=['train_shuffle_files', 'eval_shuffle_files',
-                             'eval_holdout_size'])
-def train_and_eval_dataset(dataset_name, data_dir, eval_holdout_size=0,
-                           train_shuffle_files=True, eval_shuffle_files=False):
+def _train_and_eval_streams(dataset, data_dir, preprocess_fn,
+                            shuffle_buffer_size, eval_holdout_size,
+                            input_name, target_name):
+  """Return train and eval batches with input name and shape."""
+  (train_data, eval_data, keys) = _train_and_eval_dataset(
+      dataset, data_dir, eval_holdout_size)
+  if keys is not None:
+    input_names, target_names = keys[0], keys[1]
+  else:
+    input_names, target_names = [input_name], [target_name]
+  train_batches = _shuffle_data(
+      train_data, target_names, True, shuffle_buffer_size, preprocess_fn)
+  eval_batches = _shuffle_data(
+      eval_data, target_names, False, shuffle_buffer_size, preprocess_fn)
+  input_name = input_name or input_names[0]
+  return (train_batches, eval_batches, input_name)
+
+
+def _shuffle_data(dataset,
+                  target_names,
+                  training,
+                  shuffle_buffer_size,
+                  preprocess_fn):
+  """Shuffle the given dataset and run pre-processing."""
+  def append_targets(example):
+    """Append targets to the example dictionary. Needed for Keras."""
+    if len(target_names) == 1:
+      return (example, example[target_names[0]])
+    targets = {}
+    for name in target_names:
+      targets[name] = example[name]
+    return (example, targets)
+  dataset = dataset.map(append_targets)
+  # TODO(pkozakowski): Repeat both the training and evaluation set, so we don't
+  # have incomplete batches during evaluation. This will be a problem when we
+  # add an option to evaluate on the whole dataset, then we'll need to think of
+  # a different solution.
+  dataset = dataset.repeat()
+  if training:
+    # Skip a random fraction at the beginning of the stream.  The skip is
+    # essential for synchronous highly-parallel training to avoid multiple
+    # replicas reading the same data in lock-step.
+    dataset = dataset.skip(random.randint(0, _MAX_SKIP_EXAMPLES))
+  dataset = preprocess_fn(dataset, training)
+  dataset = dataset.shuffle(shuffle_buffer_size)
+  return dataset.prefetch(8)
+
+
+def _train_and_eval_dataset(dataset_name, data_dir, eval_holdout_size,
+                            train_shuffle_files=True, eval_shuffle_files=False):
   """Return train and evaluation datasets, feature info and supervised keys.
 
   Args:
@@ -188,23 +200,7 @@ def train_and_eval_dataset(dataset_name, data_dir, eval_holdout_size=0,
   keys = None
   if info.supervised_keys:
     keys = ([info.supervised_keys[0]], [info.supervised_keys[1]])
-  return train, valid, info.features, keys
-
-
-def _make_info(shape_list, n_classes, dtype):
-  """Create an info-like tuple for feature given some shapes and vocab size."""
-  feature_info = collections.namedtuple(
-      'FeatureInfo', ['shape', 'n_classes', 'dtype'])
-  cur_shape = list(shape_list[0])
-  # We need to merge the provided shapes, put None where they disagree.
-  for shape in shape_list:
-    if len(shape) != len(cur_shape):
-      raise ValueError('Shapes need to have the same number of dimensions.')
-    for i in range(len(shape)):
-      if cur_shape[i] is not None:
-        if shape[i] != cur_shape[i]:
-          cur_shape[i] = None
-  return feature_info(cur_shape, n_classes, dtype)
+  return train, valid, keys
 
 
 def _select_features(example, feature_list=None):
@@ -237,39 +233,18 @@ def _train_and_eval_dataset_v1(problem_name, data_dir,
                                    shuffle_files=eval_shuffle_files,
                                    hparams=hparams)
     eval_dataset = eval_dataset.map(_select_features)
-    hparams = problem.get_hparams()
-    # We take a few training examples to guess the shapes.
-    input_shapes, target_shapes, examples = [], [], []
-    if tf.executing_eagerly():
-      for example in _eager_dataset_iterator(train_dataset.take(3)):
-        examples.append(example)
-    else:
-      example_tensor = train_dataset.make_one_shot_iterator().get_next()
-      sess = tf.Session()
-      example1 = sess.run(example_tensor)
-      example2 = sess.run(example_tensor)
-      example3 = sess.run(example_tensor)
-      examples = [example1, example2, example3]
+    # TODO(lukaszkaiser): remove this need for one example, just input_key.
+    examples = list(tfds.as_numpy(train_dataset.take(1)))
   # We use 'inputs' as input except for purely auto-regressive tasks like
   # language models where 'targets' are used as input_key.
   input_key = 'inputs' if 'inputs' in examples[0] else 'targets'
   supervised_keys = ([input_key], ['targets'])
-  for example in examples:
-    input_shapes.append(list(example[input_key].shape))
-    target_shapes.append(list(example['targets'].shape))
-  input_vocab_size = hparams.vocab_size[input_key]
-  target_vocab_size = hparams.vocab_size['targets']
-  input_dtype = examples[0][input_key].dtype
-  target_dtype = examples[0]['targets'].dtype
-  input_info = _make_info(input_shapes, input_vocab_size, input_dtype)
-  target_info = _make_info(target_shapes, target_vocab_size, target_dtype)
-  info = {input_key: input_info, 'targets': target_info}
-  return train_dataset, eval_dataset, info, supervised_keys
+  return train_dataset, eval_dataset, supervised_keys
 
 
 # Makes the function accessible in gin configs, even with all args blacklisted.
-@gin.configurable(blacklist=['dataset', 'training', 'shapes'])
-def cifar10_no_augmentation_preprocess(dataset, training, shapes):
+@gin.configurable(blacklist=['dataset', 'training'])
+def cifar10_no_augmentation_preprocess(dataset, training):
   del training
 
   def cast_image(features, targets):
@@ -277,7 +252,7 @@ def cifar10_no_augmentation_preprocess(dataset, training, shapes):
     return features, targets
 
   dataset = dataset.map(cast_image)
-  return dataset, shapes
+  return dataset
 
 
 def _cifar_augment_image(image):
@@ -297,8 +272,8 @@ def _cifar_augment_image(image):
 
 
 # Makes the function accessible in gin configs, even with all args blacklisted.
-@gin.configurable(blacklist=['dataset', 'training', 'shapes'])
-def cifar10_augmentation_preprocess(dataset, training, shapes):
+@gin.configurable(blacklist=['dataset', 'training'])
+def cifar10_augmentation_preprocess(dataset, training):
   """Preprocessing for cifar10 with augmentation (see below)."""
 
   def augment(features, targets):
@@ -312,11 +287,11 @@ def cifar10_augmentation_preprocess(dataset, training, shapes):
   if training:
     dataset = dataset.map(augment)
   dataset = dataset.map(cast_image)
-  return dataset, shapes
+  return dataset
 
 
-@gin.configurable(blacklist=['dataset', 'training', 'shapes'])
-def cifar10_augmentation_flatten_preprocess(dataset, training, shapes,
+@gin.configurable(blacklist=['dataset', 'training'])
+def cifar10_augmentation_flatten_preprocess(dataset, training,
                                             predict_image_train_weight=0.01):
   """Preprocessing for cifar10 that flattens it and appends targets."""
 
@@ -343,15 +318,11 @@ def cifar10_augmentation_flatten_preprocess(dataset, training, shapes,
     dataset = dataset.map(augment)
   dataset = dataset.map(flatten_image)
 
-  inp_shape, _ = shapes
-  img_shape = inp_shape['image']
-  flat_shape = img_shape[0] * img_shape[1] * img_shape[2] + 1
-  new_shapes = {'image': (flat_shape,), 'mask': (flat_shape,)}
-  return dataset, (new_shapes, (flat_shape,))
+  return dataset
 
 
-@gin.configurable(blacklist=['dataset', 'training', 'shapes'])
-def concat_preprocess(dataset, training, shapes, pad_symbol=0):
+@gin.configurable(blacklist=['dataset', 'training'])
+def concat_preprocess(dataset, training, pad_symbol=0):
   """Pre-processing function that concatenates input and target for LM."""
   del training
 
@@ -365,11 +336,11 @@ def concat_preprocess(dataset, training, shapes, pad_symbol=0):
     return features, concat
 
   dataset = dataset.map(concat)
-  return dataset, shapes
+  return dataset
 
 
-@gin.configurable(blacklist=['dataset', 'training', 'shapes'])
-def squeeze_targets_preprocess(dataset, training, shapes):
+@gin.configurable(blacklist=['dataset', 'training'])
+def squeeze_targets_preprocess(dataset, training):
   """Pre-processing function that squeezes last axis of targets."""
   del training
 
@@ -379,14 +350,11 @@ def squeeze_targets_preprocess(dataset, training, shapes):
     return features, targets
 
   dataset = dataset.map(squeeze)
-  feature_shapes, target_shapes = shapes
-  if target_shapes[-1] == 1:
-    shapes = (feature_shapes, target_shapes[:-1])
-  return dataset, shapes
+  return dataset
 
 
-@gin.configurable(blacklist=['dataset', 'training', 'shapes'])
-def lm1b_preprocess(dataset, training, shapes,
+@gin.configurable(blacklist=['dataset', 'training'])
+def lm1b_preprocess(dataset, training,
                     max_target_length=-1, max_eval_target_length=-1):
   """Preprocessing for LM1B: filter out targets exceeding maximum length."""
 
@@ -402,12 +370,12 @@ def lm1b_preprocess(dataset, training, shapes,
   if max_eval_target_length > 0 and not training:
     dataset = dataset.filter(eval_target_right_length)
 
-  return dataset, shapes
+  return dataset
 
 
 # TODO(lukaszkaiser): find a single more abstract way of text pre-processing.
-@gin.configurable(blacklist=['dataset', 'training', 'shapes'])
-def wmt_preprocess(dataset, training, shapes,
+@gin.configurable(blacklist=['dataset', 'training'])
+def wmt_preprocess(dataset, training,
                    max_length=-1, max_eval_length=-1):
   """Preprocessing for LM1B: filter out targets exceeding maximum length."""
 
@@ -425,15 +393,14 @@ def wmt_preprocess(dataset, training, shapes,
   if max_eval_length > 0 and not training:
     dataset = dataset.filter(eval_right_length)
 
-  return dataset, shapes
+  return dataset
 
 
-@gin.configurable(blacklist=['dataset', 'training', 'shapes'])
-def wmt_concat_preprocess(dataset, training, shapes,
+@gin.configurable(blacklist=['dataset', 'training'])
+def wmt_concat_preprocess(dataset, training,
                           max_length=-1, max_eval_length=-1):
   """Preprocessing for WMT: filter exceeding maximum length and concatenate."""
-  dataset, shapes = wmt_preprocess(
-      dataset, training, shapes, max_length, max_eval_length)
+  dataset = wmt_preprocess(dataset, training, max_length, max_eval_length)
 
   def concat_and_add_mask(features, targets):
     inp = features['inputs']
@@ -445,7 +412,7 @@ def wmt_concat_preprocess(dataset, training, shapes,
     return features, concat
 
   dataset = dataset.map(concat_and_add_mask)
-  return dataset, shapes
+  return dataset
 
 
 @gin.configurable(blacklist=['hparams'])
@@ -459,10 +426,10 @@ def bair_robot_pushing_hparams(
     return video_num_input_frames, video_num_target_frames
 
 
-@gin.configurable(blacklist=['dataset', 'training', 'shapes'])
-def bair_robot_pushing_preprocess(dataset, training, shapes):
+@gin.configurable(blacklist=['dataset', 'training'])
+def bair_robot_pushing_preprocess(dataset, training):
   """Pre-processing function that concatenates input and target frames."""
-  del training, shapes
+  del training
 
   def concat_and_add_mask(features, targets):
     """Concatenate input and output frames to form a language modeling setup."""
@@ -478,76 +445,14 @@ def bair_robot_pushing_preprocess(dataset, training, shapes):
     return features, concat
 
   dataset = dataset.map(concat_and_add_mask)
-
-  video_num_input_frames, video_num_target_frames = bair_robot_pushing_hparams()
-  video_num_frames = video_num_input_frames + video_num_target_frames
-  new_shape = (video_num_frames * 64 * 64 * 3,)
-  new_shapes = {
-      'inputs': new_shape,
-      'targets': new_shape,
-      'mask': new_shape,
-  }
-
-  return dataset, (new_shapes, new_shape)
-
-
-def _shuffle_data(dataset,
-                  target_names,
-                  features_info,
-                  training,
-                  shuffle_buffer_size,
-                  preprocess_fn):
-  """Shuffle the given dataset and run pre-processing."""
-  def append_targets(example):
-    """Append targets to the example dictionary. Needed for Keras."""
-    if len(target_names) == 1:
-      return (example, example[target_names[0]])
-    targets = {}
-    for name in target_names:
-      targets[name] = example[name]
-    return (example, targets)
-  dataset = dataset.map(append_targets)
-  # TODO(pkozakowski): Repeat both the training and evaluation set, so we don't
-  # have incomplete batches during evaluation. This will be a problem when we
-  # add an option to evaluate on the whole dataset, then we'll need to think of
-  # a different solution.
-  dataset = dataset.repeat()
-  if training:
-    # Skip a random fraction at the beginning of the stream.  The skip is
-    # essential for synchronous highly-parallel training to avoid multiple
-    # replicas reading the same data in lock-step.
-    dataset = dataset.skip(random.randint(0, _MAX_SKIP_EXAMPLES))
-  shapes = {k: features_info[k].shape for k in features_info}
-  shapes = (shapes, shapes[target_names[0]])
-  dataset, shapes = preprocess_fn(dataset, training, shapes)
-  dataset = dataset.shuffle(shuffle_buffer_size)
-  return dataset.prefetch(8), shapes
-
-
-def _train_and_eval_batches(dataset, data_dir, preprocess_fn,
-                            shuffle_buffer_size, input_name, target_name):
-  """Return train and eval batches with input name and shape."""
-  (train_data, eval_data, features_info, keys) = train_and_eval_dataset(
-      dataset, data_dir)
-  if keys is not None:
-    input_names, target_names = keys[0], keys[1]
-  else:
-    input_names, target_names = [input_name], [target_name]
-  train_batches, _ = _shuffle_data(
-      train_data, target_names, features_info,
-      True, shuffle_buffer_size, preprocess_fn)
-  eval_batches, _ = _shuffle_data(
-      eval_data, target_names, features_info,
-      False, shuffle_buffer_size, preprocess_fn)
-  input_name = input_name or input_names[0]
-  return (train_batches, eval_batches, input_name)
+  return dataset
 
 
 DEFAULT_SPM_PATH = 'gs://t5-data/vocabs/cc_all.32000/sentencepiece.model'  # GCS
 
 
-@gin.configurable(blacklist=['dataset', 'training', 'shapes'])
-def c4_preprocess(dataset, training, shapes, max_target_length=-1,
+@gin.configurable(blacklist=['dataset', 'training'])
+def c4_preprocess(dataset, training, max_target_length=-1,
                   tokenization=None, spm_path=None):
   """Pre-processing function for C4 dataset."""
   del training
@@ -580,7 +485,38 @@ def c4_preprocess(dataset, training, shapes, max_target_length=-1,
   if max_target_length > 0:
     dataset = dataset.filter(target_right_length)
 
-  new_shapes = shapes[0]
-  new_shapes['inputs'] = (None,)
-  new_shapes['targets'] = (None,)
-  return dataset, (new_shapes, new_shapes['targets'])
+  return dataset
+
+
+def download_and_prepare(dataset_name, data_dir):
+  """Downloads and prepares T2T or TFDS dataset.
+
+  Args:
+    dataset_name: tfds dataset or t2t problem name prefixed by 't2t_'.
+    data_dir: location of existing dataset or None.
+
+  Returns:
+    data_dir: path string of downloaded data.
+  """
+  if not data_dir:
+    data_dir = os.path.expanduser('~/tensorflow_datasets/')
+    dl_dir = os.path.join(data_dir, 'download')
+    logging.info(
+        'No dataset directory provided. '
+        'Downloading and generating dataset for %s inside data directory %s '
+        'For large datasets it is better to prepare datasets manually!',
+        dataset_name, data_dir)
+    if dataset_name.startswith('t2t_'):
+      # Download and run dataset generator for T2T problem.
+      data_dir = os.path.join(data_dir, dataset_name)
+      tf.io.gfile.makedirs(data_dir)
+      tf.io.gfile.makedirs(dl_dir)
+      t2t_problems.problem(
+          dataset_name[len('t2t_'):]).generate_data(data_dir, dl_dir)
+    else:
+      # Download and prepare TFDS dataset.
+      tfds_builder = tfds.builder(dataset_name)
+      tfds_builder.download_and_prepare(download_dir=dl_dir)
+  else:
+    data_dir = os.path.expanduser(data_dir)
+  return data_dir

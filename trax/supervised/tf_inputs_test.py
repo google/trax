@@ -72,11 +72,7 @@ class TFInputsTest(tf.test.TestCase):
       # Targets are NOT in the example.
       self.assertNotIn('targets', example[0])
 
-    proc_dataset, proc_shapes = tf_inputs.c4_preprocess(
-        load_c4_dataset(), False, ({}, ()), 2048)
-
-    # The target shape.
-    self.assertEqual(proc_shapes[1], (None,))
+    proc_dataset = tf_inputs.c4_preprocess(load_c4_dataset(), False, 2048)
 
     # `examine_processed_dataset` has some asserts in it.
     proc_count, char_lengths = examine_processed_dataset(proc_dataset)
@@ -89,8 +85,8 @@ class TFInputsTest(tf.test.TestCase):
     self.assertLess(proc_count, unfiltered_count)
 
     # Preprocess using the sentencepiece model in testdata.
-    spc_proc_dataset, _ = tf_inputs.c4_preprocess(
-        load_c4_dataset(), False, ({}, ()), 2048,
+    spc_proc_dataset = tf_inputs.c4_preprocess(
+        load_c4_dataset(), False, 2048,
         tokenization='spc',
         spm_path=os.path.join(_TESTDATA, 'sentencepiece.model'))
 

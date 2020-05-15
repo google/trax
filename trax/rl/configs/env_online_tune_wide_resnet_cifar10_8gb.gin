@@ -30,12 +30,8 @@ batcher.variable_shapes = False
 # ==============================================================================
 data_streams.data_dir = None
 data_streams.dataset_name = 'cifar10'
+data_streams.eval_holdout_size = 0.05
 data_streams.preprocess_fun = @trax.supervised.inputs.cifar10_augmentation_preprocess
-
-# Parameters for train_and_eval_dataset:
-# ==============================================================================
-train_and_eval_dataset.eval_holdout_size = 0.05
-train_and_eval_dataset.eval_shuffle_files = True
 
 # Parameters for Momentum:
 # ==============================================================================
