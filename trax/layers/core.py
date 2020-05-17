@@ -154,8 +154,9 @@ class Dropout(base.Layer):
     state = {self._name: jnp.array(self._initial_rate)}
     return base.EMPTY_WEIGHTS, state
 
-  def forward_with_state(self, x, weights, state, rng):
+  def forward_with_state(self, x, weights, state, rng, env):
     """Execute dropout."""
+    del env
     if self._mode != 'train':
       return x, state
     rate = self._initial_rate

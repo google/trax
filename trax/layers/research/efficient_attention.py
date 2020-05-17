@@ -313,7 +313,7 @@ class EfficientAttentionBase(base.Layer):
     self.use_python_loop = use_python_loop
     self.use_reference_code = use_reference_code
 
-  def new_weights_and_state(self, input_signature, initialized_layers=None):
+  def new_weights_and_state(self, input_signature, env):
     if not isinstance(input_signature, (tuple, list)):
       input_signature = (input_signature,)
     input_signature_unbatched = jax.tree_map(
@@ -393,7 +393,7 @@ class EfficientAttentionBase(base.Layer):
     raise NotImplementedError(
         'Fast inference is not implemented for this attention type.')
 
-  def forward_with_state(self, inputs, weights, state, rng):
+  def forward_with_state(self, inputs, weights, state, rng, env):
     """Computes this layer's output as part of a forward pass through the model.
 
     Args:
@@ -405,10 +405,12 @@ class EfficientAttentionBase(base.Layer):
         instances are automatically broadcasted across the batch and head
         dimensions). Attention types that need separate random numbers for each
         example and head may store their own RNG in the model state.
+      env: shared layers.
 
     Returns:
       A tuple (output, new_state).
     """
+    del env
     if not self.use_reference_code:
       # By default, an efficient, batched implementation is used.
       output, new_state, _, _ = self.forward_and_or_backward(

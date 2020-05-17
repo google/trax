@@ -100,7 +100,7 @@ class PureAttention(base.Layer):
     self._dropout = dropout
     self._mode = mode
 
-  def forward_with_state(self, inputs, weights, state, rng):
+  def forward_with_state(self, inputs, weights, state, rng, env):
     """Returns attention-computed activations, unmodified mask, and state.
 
     Args:
@@ -108,11 +108,12 @@ class PureAttention(base.Layer):
       weights: Not used; should be empty tuple or list.
       state: Not used; should be empty tuple or list.
       rng: Single-use random number generator (JAX PRNG key).
+      env: Shared-layers weights-and-state assignment (ignored here).
 
     Returns:
       Tuple of (outputs, state), where outputs is the pair (activations, mask).
     """
-    del weights
+    del weights, env
     q, k, v, mask = inputs
 
     batch_size = q.shape[0]
@@ -260,8 +261,8 @@ class DotProductCausalAttention(base.Layer):
     self._dropout = dropout
     self._mode = mode
 
-  def forward_with_state(self, inputs, weights, state, rng):
-    del weights
+  def forward_with_state(self, inputs, weights, state, rng, env):
+    del weights, env
     q, k, v = inputs
 
     if self._mode == 'predict':
@@ -283,7 +284,7 @@ class DotProductCausalAttention(base.Layer):
         q, k, v, mask, dropout=self._dropout, mode=self._mode, rng=rng)
     return res, state
 
-  def new_weights_and_state(self, input_signature, initialized_layers=None):
+  def new_weights_and_state(self, input_signature, env):
     weights, state = base.EMPTY_WEIGHTS, base.EMPTY_STATE
     if self._mode == 'predict':
       max_len = 2048  # Hardcoded.  TODO(pkozakowski): Pass it from the model.
@@ -348,7 +349,8 @@ class PositionalEncoding(base.Layer):
     self._dropout_broadcast_dims = dropout_broadcast_dims
     self._mode = mode
 
-  def forward_with_state(self, inputs, weights, state, rng):
+  def forward_with_state(self, inputs, weights, state, rng, env):
+    del env
     if self._mode != 'predict':
       x = inputs
       symbol_size = jnp.shape(x)[1]
@@ -384,7 +386,7 @@ class PositionalEncoding(base.Layer):
               weights[0], state[i], inputs.shape[1], axis=0))
         return inputs + jnp.stack(emb, 0), state + inputs.shape[1]
 
-  def new_weights_and_state(self, input_signature, initialized_layers=None):
+  def new_weights_and_state(self, input_signature, env):
     d_feature = input_signature.shape[-1]
     pe = np.zeros((self._max_len, d_feature), dtype=np.float32)
     position = np.arange(0, self._max_len)[:, np.newaxis]

@@ -32,8 +32,11 @@ from trax.shapes import ShapeDtype
 from trax.shapes import signature
 
 
-EMPTY_WEIGHTS = ()
-EMPTY_STATE = ()
+# TODO(lukaszkaiser): distinguish EMPTY from SHARED and add stricter tests.
+EMPTY_WEIGHTS = ()    # Used for layers that have no trainable weights.
+EMPTY_STATE = ()      # Used for layers that have no non-trainable state.
+SHARED_WEIGHTS = ()   # Used to mark that the weights of a layer are shared.
+SHARED_STATE = ()     # Used to mark that the state of a layer is shared.
 
 
 class Layer(object):
@@ -193,7 +196,7 @@ class Layer(object):
     """
     raise NotImplementedError
 
-  def forward_with_state(self, inputs, weights, state, rng):
+  def forward_with_state(self, inputs, weights, state, rng, env):
     """Computes this layer's output as part of a forward pass through the model.
 
     Authors of new Layer subclasses should override this method to define the
@@ -212,6 +215,9 @@ class Layer(object):
           weights, the corresponding weights element is an empty tuple.
       state: Layer-specific non-parameter state that can update between batches.
       rng: Single-use random number generator (JAX PRNG key).
+      env: Unless you are writing a combinator that manages layer
+        trees, ignore this. Optional dictionary assigning to shared layers
+        their weights and state, used to implement sharing in combinators.
 
     Returns:
       A tuple of (tensors, state). The tensors match the number (n_out) promised
@@ -220,7 +226,7 @@ class Layer(object):
         - n_out = 1: one tensor (NOT wrapped in a tuple)
         - n_out > 1: a tuple of tensors, with n_out items
     """
-    del rng
+    del rng, env
     return self.forward(inputs, weights), state
 
   def new_weights(self, input_signature):
@@ -238,7 +244,7 @@ class Layer(object):
     del input_signature
     return EMPTY_WEIGHTS
 
-  def new_weights_and_state(self, input_signature, initialized_layers=None):
+  def new_weights_and_state(self, input_signature, env):
     """Returns a (weights, state) pair suitable for initializing this layer.
 
     Authors of new Layer subclasses should override this method if their layer
@@ -248,11 +254,12 @@ class Layer(object):
     Args:
       input_signature: A ShapeDtype instance (if this layer takes one input)
           or a list/tuple of ShapeDtype instances.
-      initialized_layers: Unless you are writing a combinator that manages layer
-        trees, ignore this. Optional list of already initialized layers, used
-        to control weights of shared layer instances in combinators.
+      env: Unless you are writing a combinator that manages layer
+        trees, ignore this. Optional dictionary assigning to already
+        initialized layers the signature of their weights and state,
+        used to control sharing of layer instances in combinators.
     """
-    del initialized_layers
+    del env
     return self.new_weights(input_signature), EMPTY_STATE
 
   @property
@@ -287,7 +294,7 @@ class Layer(object):
   # End of public subclassing interface.
   # Begin public callable interface.
 
-  def init(self, input_signature, rng=None, initialized_layers=None):
+  def init(self, input_signature, rng=None, env=None):
     """Initializes this layer and its sublayers recursively.
 
     This method is designed to initialize each layer instance once, even if the
@@ -299,31 +306,25 @@ class Layer(object):
           or list/tuple of `ShapeDtype` instances.
       rng: Single-use random number generator (JAX PRNG key). If none is
           provided, a default rng based on the integer seed 0 will be used.
-      initialized_layers: Optional list of already initialized layers, used
-        to control weights of shared layer instances; if current layer is on
-        this list, this function will return EMPTY_WEIGHTS as weights.
+      env: Optional dictionary assigning to already initialized layers
+        the signature of their weights and state, used to control sharing
+        of layer instances in combinators; if current layer is in this
+        dictionary, this function will return (SHARED_WEIGHTS, SHARED_STATE).
 
     Returns:
       A (weights, state) tuple.
     """
     try:
+      if env is not None and id(self) in env:
+        return (SHARED_WEIGHTS, SHARED_STATE)
       if rng is not None:
         self.rng = rng
-      # Initialize weights once; store them for use when this layer is called.
-      # Needs to call new_weights_and_state regardless of _init_finished because
-      # state also needs to be initialized. After jitting, graph pruning should
-      # be able to remove unnecessary computation.
-      # TODO(lukaszkaiser): Revisit this decision and see whether layers sharing
-      #   weights should also share states.
-      weights, state = self.new_weights_and_state(
-          input_signature, initialized_layers=initialized_layers)
-      if initialized_layers is not None and id(self) in initialized_layers:
-        return (EMPTY_WEIGHTS, state)
-
+      weights, state = self.new_weights_and_state(input_signature, env)
       self._weights = weights
       self._state = state
-      if initialized_layers is not None:
-        initialized_layers.append(id(self))
+      if env is not None:
+        env[id(self)] = (nested_map(signature, weights),
+                         nested_map(signature, state))
       return (weights, state)
 
     except Exception as e:
@@ -408,7 +409,7 @@ class Layer(object):
       for sublayer, rng in zip(sublayers, rngs):
         sublayer.rng = rng
 
-  def pure_fn(self, x, weights, state, rng):
+  def pure_fn(self, x, weights, state, rng, env=None):
     """Applies this layer as a pure function with no optional args.
 
     This method exposes the layer's computation as a pure function. This is
@@ -419,28 +420,25 @@ class Layer(object):
       weights: See Layer.forward_with_state.
       state: See Layer.forward_with_state.
       rng: See Layer.forward_with_state.
+      env: See Layer.forward_with_state.
 
     Returns:
       See Layer.forward_with_state.
     """
     try:
-      # If weights are nothing, we may be reusing this layer.
-      # Use the cached weights to calculate the value.
-      # Note: to make sure jit tracers can decide this branch in python we use
-      # `weights is EMPTY_WEIGHTS` instead of, e.g., `not weights` or
-      # `weights == EMPTY_WEIGHTS`.
-      if weights is EMPTY_WEIGHTS:  # pylint: disable=literal-comparison
-        weights = self._weights
+      if weights is SHARED_WEIGHTS:  # pylint: disable=literal-comparison
+        if env is not None and id(self) in env:
+          (weights, state) = env[id(self)]
       else:
         # In this case, we're called for the first time: cache weights.
-        self._weights = weights
+        if env is not None:
+          env[id(self)] = (weights, state)
 
       if not self.has_backward:
-        outputs, s = (
-            self.forward_with_state(x, weights, state, rng))
+        outputs, s = self.forward_with_state(
+            x, weights, state, rng, env)
       else:
-        outputs, s = self._do_custom_gradients(x, weights, state, rng=rng)
-      self._state = s
+        outputs, s = self._do_custom_gradients(x, weights, state, rng, env)
       return outputs, s
 
     except Exception as e:
@@ -450,14 +448,16 @@ class Layer(object):
 
   def output_signature(self, input_signature):
     """Returns output signature this layer would give for `input_signature`."""
-    return self._forward_abstract(input_signature)[0]  # output only, not state
+    return self._forward_abstract(input_signature, None)[0]
 
-  def _forward_abstract(self, input_signature):
+  def _forward_abstract(self, input_signature, env):
     """Computes shapes and dtypes this layer would produce in a forward pass.
 
     Args:
       input_signature: ShapeDtype instance (if this layer takes one input)
           or list/tuple of ShapeDtype instances.
+      env: Dictionary assigning to shared layers their weights and state
+          signatures.
 
     Returns:
       Tuple of (output, state).
@@ -474,7 +474,7 @@ class Layer(object):
       weight_signature = nested_map(signature, self.weights)
       forward_infer_shapes = math.abstract_eval(self.forward_with_state)
       return forward_infer_shapes(
-          input_signature, weight_signature, self.state, rng_signature)
+          input_signature, weight_signature, self.state, rng_signature, env)
     except Exception as e:
       name, trace = self._name, _short_traceback(skip=3)
       raise LayerError(name, '_forward_abstract', self._caller, input_signature,
@@ -493,7 +493,7 @@ class Layer(object):
     if unreplicate_state:
       self.state = math.nested_map(self.state, lambda x: x[0])
 
-  def _do_custom_gradients(self, x, weights, state, rng):
+  def _do_custom_gradients(self, x, weights, state, rng, env):
     """Calls this layer for a forward pass, but with custom gradients."""
     assert math.backend_name() == 'jax', (
         'Custom gradients are only supported in JAX for now.')
@@ -502,7 +502,7 @@ class Layer(object):
     # https://jax.readthedocs.io/en/latest/jax.html#jax.custom_transforms
     @jax.custom_transforms
     def _do_forward(y, weights):
-      res = self.forward_with_state(y, weights, state, rng)
+      res = self.forward_with_state(y, weights, state, rng, env)
       return res
 
     # This is the custom gradient (vector-jacobian product in JAX) function.
@@ -510,7 +510,7 @@ class Layer(object):
     # https://jax.readthedocs.io/en/latest/jax.html#jax.defjvp_all
     def do_forward_vjp(y, weights):
       """Custom gradient (vjp) function."""
-      output, new_state = self.forward_with_state(y, weights, state, rng)
+      output, new_state = self.forward_with_state(y, weights, state, rng, env)
       def vjpfun(grad):
         grad = grad[0]  # Ignore dummy gradient wrt state.
         res = self.backward(y, output, grad, weights, state, new_state, rng)

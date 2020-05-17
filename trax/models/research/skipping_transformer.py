@@ -42,10 +42,10 @@ class SkippingSerial(tl.Serial):
         assert layer.n_in == n_in_out
         assert layer.n_out == n_in_out
 
-  def new_weights_and_state(self, input_signature, initialized_layers=None):
+  def new_weights_and_state(self, input_signature, env):
     """Add a step-counter to the state. Initialize with 0."""
     weights, state = super(SkippingSerial, self).new_weights_and_state(
-        input_signature, initialized_layers=initialized_layers)
+        input_signature, env)
     return weights, (0, state)
 
   @tl.Layer.state.setter
@@ -60,7 +60,7 @@ class SkippingSerial(tl.Serial):
     for layer, sublayer_state in zip(self.sublayers, state[1]):
       layer.state = sublayer_state
 
-  def forward_with_state(self, xs, weights, state, rng):
+  def forward_with_state(self, xs, weights, state, rng, env):
     self._validate_forward_inputs(xs)
     (step, layers_state) = state
     # Get N+1 rngs, N for running layers and one extra.
@@ -101,6 +101,7 @@ class SkippingSerial(tl.Serial):
     else:
       n_forward_layers = float(n_layers)
     # Run layers skipping after a certain number.
+    env = {} if env is None else env
     cur_layer_idx = 0.0
     for layer, p, s, rng in zip(self.sublayers, weights, layers_state, rngs):
       inputs = _inputs_from_stack(layer, stack)

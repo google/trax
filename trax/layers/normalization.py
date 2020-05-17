@@ -33,9 +33,9 @@ class BatchNorm(base.Layer):
     self._momentum = momentum
     self._mode = mode
 
-  def forward_with_state(self, x, weights, state, rng):
+  def forward_with_state(self, x, weights, state, rng, env):
     """Computes batch normalization as part of a forward pass in the model."""
-    del rng
+    del rng, env
     running_mean, running_var, n_batches = state
     if self._mode == 'train':
       n_batches += 1
@@ -65,7 +65,7 @@ class BatchNorm(base.Layer):
                       f'Batch norm should not change the dtype.')
     return output, state
 
-  def new_weights_and_state(self, input_signature, initialized_layers=None):
+  def new_weights_and_state(self, input_signature, env):
     """Helper to initialize batch norm weights."""
     axis = self._axis
     axis = (axis,) if jnp.isscalar(axis) else axis

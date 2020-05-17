@@ -85,14 +85,12 @@ class Normalize(tl.Layer):
     self._epsilon = epsilon
     self._mode = mode
 
-  def new_weights_and_state(self, input_signature, initialized_layers=None):
+  def new_weights_and_state(self, input_signature, env):
     state = running_mean_and_variance_init(input_signature.shape[2:])
     return (tl.EMPTY_WEIGHTS, state)
 
-  def forward_with_state(self, inputs, weights, state, rng):
-    del weights
-    del rng
-
+  def forward_with_state(self, inputs, weights, state, rng, env):
+    del weights, rng, env
     observations = inputs
     if self._mode == 'collect':
       # Accumulate statistics only in the collect mode, i.e. when collecting
