@@ -69,10 +69,10 @@ class Dense(base.Layer):
         raise ValueError(f'Weights should be a (w, b) tuple or list; '
                          f'instead got: {weights}')
       w, b = weights
-      return jnp.matmul(x, w) + b  # Affine map.
+      return jnp.dot(x, w) + b  # Affine map.
     else:
       w = weights
-      return jnp.matmul(x, w)  # Linear map.
+      return jnp.dot(x, w)  # Linear map.
 
   def new_weights(self, input_signature):
     """Returns new (randomly initialized) weights for this layer.
