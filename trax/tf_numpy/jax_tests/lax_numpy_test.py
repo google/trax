@@ -2238,13 +2238,20 @@ class LaxBackedNumpyTests(jtu.TestCase):
           jtu.format_shape_dtype_string(shape, dtype)),
        "shape": shape, "dtype": dtype}
       for shape in all_shapes for dtype in all_dtypes))
-  @disable
   def testWhereOneArgument(self, shape, dtype):
     rng = jtu.rand_some_zero()
     onp_fun = lambda x: onp.where(x)
     lnp_fun = lambda x: lnp.where(x)
     args_maker = lambda: [rng(shape, dtype)]
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=False)
+    self._CompileAndCheck(
+        lnp.where,
+        args_maker,
+        check_dtypes=True,
+        check_eval_on_shapes=False,
+        check_incomplete_shape=True,
+        check_unknown_rank=False)
+
 
   @named_parameters(jtu.cases_from_list(
     {"testcase_name": "_{}".format("_".join(
@@ -2254,15 +2261,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
     for shapes in filter(_shapes_are_broadcast_compatible,
                          CombosWithReplacement(all_shapes, 3))
     for dtypes in CombosWithReplacement(all_dtypes, 3)))
-  @disable
   def testWhereThreeArgument(self, rng_factory, shapes, dtypes):
     rng = rng_factory()
     args_maker = self._GetArgsMaker(rng_factory(), shapes, dtypes)
     def onp_fun(cond, x, y):
       return _promote_like_lnp(partial(onp.where, cond))(x, y)
-    self._CheckAgainstNumpy(onp_fun, lnp.where, args_maker,
-                            check_dtypes=True)
-    self._CompileAndCheck(lnp.where, args_maker, check_dtypes=True)
+    self._CheckAgainstNumpy(onp_fun, lnp.where, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp.where, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @disable
   def testWhereScalarPromotion(self):

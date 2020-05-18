@@ -971,17 +971,6 @@ def tile(a, reps):
   return arrays.tensor_to_ndarray(tf.tile(a, reps))
 
 
-@utils.np_doc(np.nonzero)
-def nonzero(a):
-  a = array_ops.atleast_1d(a).data
-  if a.shape.rank is None:
-    raise ValueError("The rank of `a` is unknown, so we can't decide how many "
-                     "arrays to return.")
-  return tf.nest.map_structure(
-      arrays.tensor_to_ndarray,
-      tf.unstack(tf.where(tf.cast(a, tf.bool)), axis=1))
-
-
 @utils.np_doc(np.count_nonzero)
 def count_nonzero(a, axis=None):
   return arrays.tensor_to_ndarray(

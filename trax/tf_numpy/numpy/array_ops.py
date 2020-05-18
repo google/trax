@@ -1070,21 +1070,16 @@ def take(a, indices, axis=None):
   return utils.tensor_to_ndarray(tf.gather(a, indices.data, axis=axis))
 
 
-def where(condition, x, y):
-  """Return an array with elements from `x` or `y`, depending on condition.
-
-  Args:
-    condition: array_like, bool. Where True, yield `x`, otherwise yield `y`.
-    x: see below.
-    y: array_like, optional. Values from which to choose. `x`, `y` and
-      `condition` need to be broadcastable to some shape.
-
-  Returns:
-    An array.
-  """
+@utils.np_doc_only(np.where)
+def where(condition, x=None, y=None):
+  """Raises ValueError if exactly one of x or y is not None."""
   condition = asarray(condition, dtype=np.bool_)
-  x, y = _promote_dtype(x, y)
-  return utils.tensor_to_ndarray(tf.where(condition.data, x.data, y.data))
+  if x is None and y is None:
+    return nonzero(condition)
+  elif x is not None and y is not None:
+    x, y = _promote_dtype(x, y)
+    return utils.tensor_to_ndarray(tf.where(condition.data, x.data, y.data))
+  raise ValueError('Both x and y must be ndarrays, or both must be None.')
 
 
 def shape(a):
@@ -1267,3 +1262,14 @@ def atleast_3d(*arys):  # pylint: disable=missing-docstring
             lambda: tf.pad(old_shape, [[0, 1]], constant_values=1)))
 
   return _atleast_nd(3, new_shape, *arys)
+
+
+@utils.np_doc(np.nonzero)
+def nonzero(a):
+  a = atleast_1d(a).data
+  if a.shape.rank is None:
+    raise ValueError("The rank of `a` is unknown, so we can't decide how many "
+                     "arrays to return.")
+  return tf.nest.map_structure(
+      arrays_lib.tensor_to_ndarray,
+      tf.unstack(tf.where(tf.cast(a, tf.bool)), a.shape.rank, axis=1))
