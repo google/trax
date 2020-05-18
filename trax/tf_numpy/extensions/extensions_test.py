@@ -230,7 +230,7 @@ class ExtensionsTest(tf.test.TestCase):
                       pooling_type="MAX", padding="VALID", strides=[2, 3],))
 
   def testPrng(self):
-    self.assertAllEqual(0, extensions.prng(123))
+    self.assertAllEqual(asarray(123, np.int64), extensions.prng(123))
 
   def testUniform(self):
     minval = 0.43
@@ -238,13 +238,13 @@ class ExtensionsTest(tf.test.TestCase):
     shape = [13, 34, 29]
     atol = 0.1
     outputs = extensions.uniform(
-        None, shape, minval=minval, maxval=maxval)
+        123, shape, minval=minval, maxval=maxval)
     self.assertAllClose((minval + maxval) / 2.0, np.mean(outputs), atol=atol)
 
   def testNormal(self):
     shape = [13, 34, 29]
     atol = 0.1
-    outputs = extensions.normal(None, shape)
+    outputs = extensions.normal(123, shape)
     self.assertAllClose(0, np.mean(outputs), atol=atol)
     self.assertAllClose(1, np.std(outputs), atol=atol)
 
@@ -252,7 +252,7 @@ class ExtensionsTest(tf.test.TestCase):
     mean = 0.23
     shape = [13, 34, 29]
     atol = 0.1
-    outputs = extensions.bernoulli(None, mean, shape)
+    outputs = extensions.bernoulli(123, mean, shape)
     self.assertAllClose(mean, np.mean(outputs), atol=atol)
 
   def testBernoulliWrongShape(self):
@@ -260,7 +260,7 @@ class ExtensionsTest(tf.test.TestCase):
     shape = [3]
     with self.assertRaisesWithPredicateMatch(
         tf.errors.InvalidArgumentError, r"Incompatible shapes"):
-      extensions.bernoulli(None, mean, shape)
+      extensions.bernoulli(123, mean, shape)
 
   def testDatasetAsNumpy(self):
     arrs = extensions.dataset_as_numpy(

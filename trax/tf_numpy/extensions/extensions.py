@@ -422,49 +422,89 @@ def max_pool(x, pool_size, strides, padding):
                             strides=strides, padding=padding))
 
 
+# Use int64 instead of int32 to avoid TF's "int32 problem"
+_RNG_KEY_DTYPE = np.int64
+
+
+def _key2seed(a):
+  """Converts an RNG key to an RNG seed.
+
+  Args:
+    a: an RNG key, an ndarray of shape [] and dtype `np.int64`.
+
+  Returns:
+    an RNG seed, a tensor of shape [2] and dtype `tf.int32`.
+  """
+  def int64_to_int32s(a):
+    """Converts an int64 tensor of shape [] to an int32 tensor of shape [2]."""
+    a = tf.cast(a, tf.uint64)
+    fst = tf.cast(a, tf.uint32)
+    snd = tf.cast(tf.bitwise.right_shift(a, tf.constant(32, tf.uint64)),
+                  tf.uint32)
+    a = [fst, snd]
+    a = tf.nest.map_structure(lambda x: tf.cast(x, tf.int32), a)
+    a = tf.stack(a)
+    return a
+  return int64_to_int32s(a.data)
+
+
+def _seed2key(a):
+  """Converts an RNG seed to an RNG key.
+
+  Args:
+    a: an RNG seed, a tensor of shape [2] and dtype `tf.int32`.
+
+  Returns:
+    an RNG key, an ndarray of shape [] and dtype `np.int64`.
+  """
+  def int32s_to_int64(a):
+    """Converts an int32 tensor of shape [2] to an int64 tensor of shape []."""
+    a = tf.bitwise.bitwise_or(
+        tf.cast(a[0], tf.uint64),
+        tf.bitwise.left_shift(tf.cast(a[1], tf.uint64),
+                              tf.constant(32, tf.uint64)))
+    a = tf.cast(a, tf.int64)
+    return a
+  return asarray(int32s_to_int64(a))
+
+
 def prng(s):
   """Creates RNG state from seed.
-
-  This implementation doesn't pass RNG states explicitly so the result is
-  always a dummy 0.
 
   Args:
     s: the seed, an integer.
 
   Returns:
-    A dummy integer 0.
+    An RNG state, as a scalar array of dtype `np.int64`.
   """
-  # TODO(wangpeng): change it to use stateless random ops to truely mimic JAX
-  #   RNGs
-  random.seed(s)
-  # Returning None will cause errors in some layer/optimizer libraries based on
-  # JAX
-  return asarray(0, dtype=np.int64)
+  # TODO(wangpeng): Become bitwise-identical to JAX when TF stateless RNGs get
+  #   improved.
+  return asarray(s, dtype=_RNG_KEY_DTYPE)
 
 
-def split(state, num):  # pylint: disable=unused-argument
+def split(state, num):
   """Creates new independent RNG states from an existing state.
 
-  This implementation doesn't pass RNG states explicitly, so all RNG states
-  are assumed to be zeros.
-
   Args:
-    state: the existing state (unused).
+    state: the existing state.
     num: the number of the new states.
 
   Returns:
     A tuple of new states.
   """
-  # TODO(wangpeng): change it to use stateless random ops to truely mimic JAX
-  #   RNGs
-  return (asarray(0, dtype=np.int64),) * num
+  state = asarray(state, dtype=_RNG_KEY_DTYPE)
+  state = _key2seed(state)
+  states = tf.random.experimental.stateless_split(state, num)
+  states = tf.unstack(states, num)
+  states = tf.nest.map_structure(_seed2key, states)
+  return states
 
 
 def uniform(key, shape, dtype=random.DEFAULT_RANDN_DTYPE, minval=0., maxval=1.):
   """Sample uniform random values in range [`minval`, `maxval`).
 
   Args:
-    key: not used by this implementation.
+    key: the RNG key.
     shape: the shape of the result.
     dtype: the dtype of the result.
     minval: the minimal value (inclusive).
@@ -474,44 +514,44 @@ def uniform(key, shape, dtype=random.DEFAULT_RANDN_DTYPE, minval=0., maxval=1.):
     An ndarray with shape `shape` and dtype `dtype`. Each value in the ndarray
     is sampled uniformly randomly in range [`minval`, `maxval`).
   """
-  del key
-  return array(
-      tf.random.uniform(shape, dtype=dtype, minval=minval, maxval=maxval),
-      copy=False)
+  key = asarray(key, dtype=_RNG_KEY_DTYPE)
+  return asarray(tf.random.stateless_uniform(
+      shape, seed=_key2seed(key), dtype=dtype, minval=minval, maxval=maxval))
 
 
 def normal(key, shape, dtype=tf.float32):
   """Sample standard-normal random values.
 
   Args:
-    key: not used since TF doesn't pass RNG states explicitly.
+    key: the RNG key.
     shape: the shape of the result.
     dtype: the dtype of the result.
 
   Returns:
     Random values in standard-normal distribution.
   """
-  del key
-  return array(tf.random.normal(shape, dtype=dtype), copy=False)
+  key = asarray(key, dtype=_RNG_KEY_DTYPE)
+  return asarray(tf.random.stateless_normal(
+      shape, seed=_key2seed(key), dtype=dtype))
 
 
-def bernoulli(key, mean=np.float32(0.5), shape=()):
+def bernoulli(key, mean=np.float32(0.5), shape=None):
   """Sample Bernoulli random values with given shape and mean.
 
   Args:
-    key: a random key, not used in the TF backend (stored in graph).
+    key: the RNG key.
     mean: optional, an array_like broadcastable to `shape` for the mean of the
       random variables (default 0.5).
     shape: optional, a tuple of nonnegative integers representing the shape
-      (default scalar).
+      (default to `mean`'s shape).
 
   Returns:
     A random array with the specified shape and boolean dtype.
   """
-  # TODO(wangpeng): convert types TF <-> numpy.
-  shape = shape or arrays.convert_to_tensor(value=mean).shape
-  return array(
-      tf.less(uniform(key, shape), mean), copy=False)
+  mean = asarray(mean)
+  if shape is None:
+    shape = mean.shape
+  return uniform(key, shape) < mean
 
 
 def _eager_dataset_iterator(dataset):

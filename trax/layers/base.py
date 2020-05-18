@@ -97,8 +97,11 @@ class Layer(object):
     self._n_out = n_out
     self._name = name or self.__class__.__name__
     self._sublayers = ()  # Default is no sublayers.
-    # This may run before JAX is initialized, so we use pure numpy here.
-    self._rng = math.numpy_math.get_prng(int(np.random.randint(0, 2**31 - 1)))
+    # This may run before some backends (e.g. JAX) are initialized, so we use
+    # Python `int` here instead of `math.random.get_prng` (also note that
+    # different backends' `get_prng` may return different shapes so they can't
+    # be used interchangeably).
+    self._rng = int(np.random.randint(0, 2**31 - 1))
     self._weights = EMPTY_WEIGHTS  # cached weights
     self._state = EMPTY_STATE
     # record root call site for custom error messages:
@@ -150,7 +153,7 @@ class Layer(object):
     """
     weights = self.weights if weights is None else weights
     state = self.state if state is None else state
-    rng = self._rng if rng is None else rng
+    rng = self.rng if rng is None else rng
     rng = math.random.get_prng(0) if rng is None else rng
 
     forward_w_s_r = self.pure_fn
@@ -396,6 +399,8 @@ class Layer(object):
   def rng(self):
     """Returns a single-use random number generator without advancing it."""
     # TODO(lukaszkaiser, jonni): be even more explicit that we're not advancing.
+    if isinstance(self._rng, int):
+      self._rng = math.random.get_prng(self._rng)
     return self._rng
 
   @rng.setter
@@ -470,7 +475,8 @@ class Layer(object):
       # Note: By using rng_signature in place of an rng, we avoid computing and
       # permanently storing in global memory a large number of dropout masks.
       # TODO(jonni): Check if using an rng still carries this cost.
-      rng_signature = ShapeDtype((2,), np.uint32)
+      dummy_rng = math.random.get_prng(0)
+      rng_signature = ShapeDtype(dummy_rng.shape, dummy_rng.dtype)
       weight_signature = nested_map(signature, self.weights)
       forward_infer_shapes = math.abstract_eval(self.forward_with_state)
       return forward_infer_shapes(

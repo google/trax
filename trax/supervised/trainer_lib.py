@@ -125,8 +125,8 @@ class Trainer(object):
       input_signature = tuple(ShapeDtype(s, d)
                               for (s, d) in zip(shapes, dtypes))
       # We need to create a new model instance and not reuse `model_train` here,
-      # because `m.initialize` puts cached parameter values in `m` and hence the
-      # next call of `m.initialize` will give wrong results.
+      # because `m.init` puts cached parameter values in `m` hence the
+      # next call of `m.init` will give wrong results.
       m = tl.Serial(model(mode='train'), loss_fn)
       weights, state = m.init(input_signature, rng=rng)
       (slots, opt_params) = opt.tree_init(weights)
