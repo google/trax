@@ -189,7 +189,7 @@ def Transformer(input_vocab_size,
                 ff_activation=tl.Relu):
   """Returns a Transformer model.
 
-  This model expects an input pair: target, source.
+  This model expects an input pair: source, target.
 
   Args:
     input_vocab_size: int: vocab size of the source.
@@ -206,7 +206,7 @@ def Transformer(input_vocab_size,
     ff_activation: the non-linearity in feed-forward layer
 
   Returns:
-    A Transformer model as a layer that maps from a target, source pair to
+    A Transformer model as a layer that maps from a source, target pair to
     activations over a vocab set.
   """
   def PositionalEncoder(vocab_size):  # tokens --> vectors
