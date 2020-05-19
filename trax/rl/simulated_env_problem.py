@@ -69,10 +69,7 @@ class SimulatedEnvProblem(env_problem.EnvProblem):
       model_predict_kwargs = {}
     model_predict = self._model(mode='predict', **model_predict_kwargs)
     # NOTE: can set non-default PRNG key: model_predict.rng = given_prng_key
-    def predict_with_state(*args, **kwargs):
-      output = model_predict(*args, **kwargs)
-      return (output, model_predict.state)
-    self._model_predict = math.jit(predict_with_state)
+    self._model_predict = math.jit(model_predict.pure_fn)
     self._model_initialize = model_predict.init
     self._init_model_weights = None
     self._init_model_state = None
@@ -124,8 +121,7 @@ class SimulatedEnvProblem(env_problem.EnvProblem):
 
     def predict_fn(inputs, rng):
       (output, self._model_state) = self._model_predict(
-          inputs, weights=model_weights, state=self._model_state, rng=rng
-      )
+          inputs, model_weights, self._model_state, rng)
       return output
 
     self._predict_fn = predict_fn

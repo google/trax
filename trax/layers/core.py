@@ -149,7 +149,7 @@ class Dropout(base.Layer):
     self._name = 'dropout_' + name
     self._mode = mode
 
-  def new_weights_and_state(self, input_signature, initialized_layers=None):
+  def new_weights_and_state(self, input_signature):
     del input_signature
     state = {self._name: jnp.array(self._initial_rate)}
     return base.EMPTY_WEIGHTS, state

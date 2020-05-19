@@ -102,19 +102,26 @@ class SerialTest(absltest.TestCase):
     self.assertIsInstance(model.weights, tuple)
     self.assertLen(model.weights, 3)
 
-  def test_shared_weights_second_empty(self):
+  def test_shared_weights(self):
     layer = tl.Dense(5)
     model = tl.Serial(layer, layer)
     sample_input = np.array([1, 2, 3, 4, 5])
     weights, _ = model.init(shapes.signature(sample_input))
-    self.assertIs(weights[1], tl.EMPTY_WEIGHTS)
+    self.assertIs(weights[1], tl.GET_WEIGHTS_FROM_CACHE)
 
-  def test_shared_weights_nested_second_empty(self):
+  def test_shared_weights_nested(self):
     layer = tl.Dense(5)
     model = tl.Serial(layer, tl.Serial(layer))
     sample_input = np.array([1, 2, 3, 4, 5])
     weights, _ = model.init(shapes.signature(sample_input))
-    self.assertIs(weights[1][0], tl.EMPTY_WEIGHTS)
+    self.assertIs(weights[1][0], tl.GET_WEIGHTS_FROM_CACHE)
+
+  def test_shared_weights_double_nested(self):
+    layer = tl.Dense(5)
+    model = tl.Serial(tl.Serial(layer), tl.Serial(layer))
+    sample_input = np.array([1, 2, 3, 4, 5])
+    weights, _ = model.init(shapes.signature(sample_input))
+    self.assertIs(weights[1][0], tl.GET_WEIGHTS_FROM_CACHE)
 
   def test_state(self):
     model = tl.Serial(tl.Dense(4), tl.Dense(5), tl.Dense(7))
@@ -187,20 +194,20 @@ class ParallelTest(absltest.TestCase):
     self.assertIsInstance(model.weights, tuple)
     self.assertLen(model.weights, 2)
 
-  def test_shared_weights_second_empty(self):
+  def test_shared_weights(self):
     layer = tl.Dense(5)
     model = tl.Parallel(layer, layer)
     sample_input = (np.array([1, 2, 3, 4, 5]), np.array([1, 2, 3, 4, 5]))
     weights, _ = model.init(shapes.signature(sample_input))
-    self.assertIs(weights[1], tl.EMPTY_WEIGHTS)
+    self.assertIs(weights[1], tl.GET_WEIGHTS_FROM_CACHE)
 
-  def test_shared_weights_nested_second_empty(self):
+  def test_shared_weights_nested(self):
     layer = tl.Dense(5)
     model = tl.Parallel([layer, tl.Dense(2)],
                         [layer, tl.Dense(2)])
     sample_input = (np.array([1, 2, 3, 4, 5]), np.array([1, 2, 3, 4, 5]))
     weights, _ = model.init(shapes.signature(sample_input))
-    self.assertIs(weights[1][0], tl.EMPTY_WEIGHTS)
+    self.assertIs(weights[1][0], tl.GET_WEIGHTS_FROM_CACHE)
 
   def test_state(self):
     model = tl.Parallel(tl.Dense(3), tl.Dense(5))

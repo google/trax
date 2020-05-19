@@ -74,36 +74,32 @@ class Serial(base.Layer):
 
     for layer, w, s, rng in zip(self.sublayers, weights, state, rngs):
       inputs = _inputs_from_stack(layer, stack)
-      outputs, s = layer.pure_fn(inputs, w, s, rng)
+      outputs, s = layer.pure_fn(inputs, w, s, rng, use_cache=True)
       stack = _outputs_onto_stack(layer, outputs, stack)
       new_state.append(s)
     return stack, new_state
 
   # pylint: disable=protected-access
-  def new_weights_and_state(self, input_signature, initialized_layers=None):
+  def new_weights_and_state(self, input_signature):
     weights = []
     states = []
-    if initialized_layers is None:  # Start collecting layers for sharing.
-      initialized_layers = []
     # In the code below, stack, inputs, and outputs are abstract (shapes and
     # dtypes), but weights and states are non-abstract actual values.
     stack = input_signature
     for sublayer in self.sublayers:
       inputs = _inputs_from_stack(sublayer, stack)
-      weights_or_empty, state_or_empty = sublayer.init(
-          inputs, initialized_layers=initialized_layers)
+      weights_or_empty, state = sublayer.init(inputs, use_cache=True)
       outputs, _ = sublayer._forward_abstract(inputs)
       stack = _outputs_onto_stack(sublayer, outputs, stack)
+
       weights.append(weights_or_empty)
-      states.append(state_or_empty)
+      states.append(state)
     return weights, states
   # pylint: enable=protected-access
 
   @base.Layer.weights.setter
   def weights(self, weights):
     """Recursively sets weights on this layer and all sublayers."""
-    if weights == base.EMPTY_WEIGHTS:
-      return
     self._weights = weights
     n_layers = self._n_layers
     if len(weights) != n_layers:
@@ -111,7 +107,8 @@ class Serial(base.Layer):
           f'Number of weight elements ({len(weights)}) does not equal '
           f'number of sublayers ({n_layers}).')
     for layer, sublayer_weights in zip(self.sublayers, weights):
-      layer.weights = sublayer_weights
+      if sublayer_weights is not base.GET_WEIGHTS_FROM_CACHE:
+        layer.weights = sublayer_weights
 
   @base.Layer.state.setter
   def state(self, state):
@@ -123,7 +120,8 @@ class Serial(base.Layer):
           f'Number of state elements ({len(state)}) does not equal '
           f'number of sublayers ({n_layers}).')
     for layer, sublayer_state in zip(self.sublayers, state):
-      layer.state = sublayer_state
+      if sublayer_state is not base.GET_STATE_FROM_CACHE:
+        layer.state = sublayer_state
 
   def _n_inputs_n_outputs(self, layers):
     del self
@@ -219,7 +217,7 @@ class Parallel(base.Layer):
     new_state = []
     for layer, x, w, s, r in zip(layers, sublayer_inputs, weights, state, rngs):
       # Note that zip silently truncates its result if lengths don't match.
-      sub_outputs, sub_state = layer.pure_fn(x, w, s, r)
+      sub_outputs, sub_state = layer.pure_fn(x, w, s, r, use_cache=True)
       if layer.n_out == 1:
         outputs.append(sub_outputs)
       else:
@@ -228,11 +226,9 @@ class Parallel(base.Layer):
     output = outputs[0] if self.n_out == 1 else tuple(outputs)
     return output, tuple(new_state)
 
-  def new_weights_and_state(self, input_signature, initialized_layers=None):
-    if initialized_layers is None:  # Start collecting layers for sharing.
-      initialized_layers = []
+  def new_weights_and_state(self, input_signature):
     sublayer_signatures = self._allot_to_sublayers(input_signature)
-    inits = [layer.init(signature, initialized_layers=initialized_layers)
+    inits = [layer.init(signature, use_cache=True)
              for layer, signature
              in zip(self.sublayers, sublayer_signatures)]
     if inits:
@@ -375,8 +371,8 @@ class Scan(base.Layer):
     def scannable_fn(x, carry_and_state):  # pylint: disable=invalid-name
       carry, state = carry_and_state
       x_and_carry = x + carry if n_carry > 0 else x
-      res, new_state = self.sublayer.forward_with_state(
-          x_and_carry, weights, state, rng)
+      res, new_state = self.sublayer.pure_fn(
+          x_and_carry, weights, state, rng, use_cache=True)
       if n_carry > 0:
         return (res[:-n_carry], (res[-n_carry:], new_state))
       else:
@@ -392,7 +388,7 @@ class Scan(base.Layer):
     res = ys + carry if n_carry > 0 else ys
     return res, new_state  # Put outputs and carry back on stack.
 
-  def new_weights_and_state(self, input_signature, initialized_layers=None):
+  def new_weights_and_state(self, input_signature):
     n_carry = self._n_carry
     if n_carry == 0:
       if isinstance(input_signature, (list, tuple)):
@@ -408,8 +404,7 @@ class Scan(base.Layer):
     xs_slices = [ShapeDtype(_shape_without_axis(x, self._axis), x.dtype)
                  for x in xs]
     layer_signature = tuple(xs_slices + list(init))
-    return self.sublayer.init(
-        layer_signature, initialized_layers=initialized_layers)
+    return self.sublayer.init(layer_signature, use_cache=True)
 
 
 def Branch(*layers, name='Branch'):
@@ -631,9 +626,8 @@ class Cache(base.Layer):
     else:
       return state[0], state
 
-  def new_weights_and_state(self, input_signature, initialized_layers=None):
-    weights, layer_state = self.sublayer.init(
-        input_signature, initialized_layers=initialized_layers)
+  def new_weights_and_state(self, input_signature):
+    weights, layer_state = self.sublayer.init(input_signature, use_cache=True)
     return weights, ((), layer_state)
 
 

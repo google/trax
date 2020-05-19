@@ -65,7 +65,7 @@ class BatchNorm(base.Layer):
                       f'Batch norm should not change the dtype.')
     return output, state
 
-  def new_weights_and_state(self, input_signature, initialized_layers=None):
+  def new_weights_and_state(self, input_signature):
     """Helper to initialize batch norm weights."""
     axis = self._axis
     axis = (axis,) if jnp.isscalar(axis) else axis

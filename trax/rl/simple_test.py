@@ -268,26 +268,6 @@ class SimpleTest(test.TestCase):
         output_dir=None,
     )
 
-  def test_evaluates_model_with_vector_observation_space(self):
-    with math.use_backend('numpy'):
-      env = self._make_env(  # pylint: disable=no-value-for-parameter
-          observation_space=gym.spaces.Box(shape=(2,), low=0, high=1),
-          action_space=gym.spaces.Discrete(n=1),
-          max_trajectory_length=2,
-          batch_size=3,
-      )
-      trajectories = [
-          self._make_trajectory(observations, actions)  # pylint: disable=g-complex-comprehension
-          for (observations, actions) in [
-              (np.array([[0, 1]]), np.array([0])),
-              (np.array([[1, 2], [3, 4]]), np.array([0, 0])),
-              (np.array([[1, 2], [3, 4], [5, 6]]), np.array([0, 0, 0])),
-          ]
-      ]
-      metrics = simple.evaluate_model(env, trajectories, plt)
-      self.assertIsNotNone(metrics)
-      self.assertEqual(len(metrics), 2)
-
   def test_fails_to_evaluate_model_with_matrix_observation_space(self):
     with math.use_backend('numpy'):
       env = self._make_env(  # pylint: disable=no-value-for-parameter
