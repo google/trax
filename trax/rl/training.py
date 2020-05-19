@@ -38,8 +38,11 @@ from trax.rl import task as rl_task
 class RLTrainer:
   """Abstract class for RL Trainers, presenting the required API."""
 
-  def __init__(self, task: rl_task.RLTask, collect_per_epoch=None,
-               output_dir=None, timestep_to_np=None):
+  def __init__(self, task: rl_task.RLTask,
+               collect_per_epoch=None,
+               only_eval=False,
+               output_dir=None,
+               timestep_to_np=None):
     """Configures the RL Trainer.
 
     Note that subclasses can have many more arguments, which will be configured
@@ -48,6 +51,8 @@ class RLTrainer:
     Args:
       task: RLTask instance, which defines the environment to train on.
       collect_per_epoch: How many new trajectories to collect in each epoch.
+      only_eval: If set to True, then trajectories are collected only for
+        for evaluation purposes, but they are not recorded.
       output_dir: Path telling where to save outputs such as checkpoints.
       timestep_to_np: Timestep-to-numpy function to override in the task.
     """
@@ -56,6 +61,7 @@ class RLTrainer:
     if timestep_to_np is not None:
       self._task.timestep_to_np = timestep_to_np
     self._collect_per_epoch = collect_per_epoch
+    self._only_eval = only_eval
     self._output_dir = output_dir
     self._avg_returns = []
     self._sw = None
@@ -142,7 +148,7 @@ class RLTrainer:
           'RL training took %.2f seconds.' % (time.time() - cur_time))
       cur_time = time.time()
       avg_return = self.task.collect_trajectories(
-          self.policy, self._collect_per_epoch, self._epoch)
+          self.policy, self._collect_per_epoch, self._only_eval, self._epoch)
       self._avg_returns.append(avg_return)
       supervised.trainer_lib.log(
           'Collecting %d episodes took %.2f seconds.'
@@ -187,7 +193,7 @@ class PolicyTrainer(RLTrainer):
   def __init__(self, task, policy_model=None, policy_optimizer=None,
                policy_lr_schedule=lr.MultifactorSchedule, policy_batch_size=64,
                policy_train_steps_per_epoch=500, policy_evals_per_epoch=1,
-               policy_eval_steps=1, collect_per_epoch=50,
+               policy_eval_steps=1, collect_per_epoch=50, only_eval=False,
                max_slice_length=1, output_dir=None):
     """Configures the policy trainer.
 
@@ -205,7 +211,9 @@ class PolicyTrainer(RLTrainer):
           - only affects metric reporting.
       policy_eval_steps: number of policy trainer steps per evaluation - only
           affects metric reporting.
-      collect_per_epoch: how many trajectories to collect per epoch.
+      collect_per_epoch: how many trajectories to collect per epoch
+      only_eval: If set to True, then trajectories are collected only for
+        for evaluation purposes, but they are not recorded.
       max_slice_length: the maximum length of trajectory slices to use.
       output_dir: Path telling where to save outputs (evals and checkpoints).
     """
@@ -216,6 +224,7 @@ class PolicyTrainer(RLTrainer):
     self._policy_evals_per_epoch = policy_evals_per_epoch
     self._policy_eval_steps = policy_eval_steps
     self._collect_per_epoch = collect_per_epoch
+    self._only_eval = only_eval
     self._max_slice_length = max_slice_length
     self._policy_dist = distributions.create_distribution(task.action_space)
 
