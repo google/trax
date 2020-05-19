@@ -1598,14 +1598,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
       for arg_shape in [(), (3,), (3, 4)]
       for dtype in default_dtypes
       for dim in range(-len(arg_shape)+1, len(arg_shape))))
-  @disable
   def testExpandDimsStaticDim(self, arg_shape, dtype, dim, rng_factory):
     rng = rng_factory()
     onp_fun = lambda x: onp.expand_dims(x, dim)
     lnp_fun = lambda x: lnp.expand_dims(x, dim)
     args_maker = lambda: [rng(arg_shape, dtype)]
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_inshape={}_axes=({},{})".format(
@@ -1663,14 +1663,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
           ((1, 3, 1), (0, 2)),
           ((1, 4, 1), (0,))]
       for dtype in default_dtypes))
-  @disable
   def testSqueeze(self, arg_shape, dtype, ax, rng_factory):
     rng = rng_factory()
     onp_fun = lambda x: onp.squeeze(x, ax)
     lnp_fun = lambda x: lnp.squeeze(x, ax)
     args_maker = lambda: [rng(arg_shape, dtype)]
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_shape={}_axis={}_weights={}_returned={}".format(
