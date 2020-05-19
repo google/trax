@@ -1281,14 +1281,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
       for n in [0, 4]
       for m in [None, 0, 1, 3, 4]
       for k in list(range(-4, 4))))
-  @disable
   def testTri(self, m, n, k, dtype, rng_factory):
     rng = rng_factory()
     onp_fun = lambda: onp.tri(n, M=m, k=k, dtype=dtype)
     lnp_fun = lambda: lnp.tri(n, M=m, k=k, dtype=dtype)
     args_maker = lambda: []
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_op={}_shape={}_k={}".format(
@@ -1299,13 +1299,13 @@ class LaxBackedNumpyTests(jtu.TestCase):
       for shape in [shape for shape in all_shapes if len(shape) >= 2]
       for op in ["tril", "triu"]
       for k in list(range(-3, 3))))
-  @disable
   def testTriLU(self, dtype, shape, op, k, rng_factory):
     rng = rng_factory()
     onp_fun = lambda arg: getattr(onp, op)(arg, k=k)
     lnp_fun = lambda arg: getattr(lnp, op)(arg, k=k)
     args_maker = lambda: [rng(shape, dtype)]
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
+    # Incomplete shape support is not implemented at the moment.
     self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
 
   @named_parameters(jtu.cases_from_list(

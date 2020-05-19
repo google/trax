@@ -1281,3 +1281,67 @@ def diag_indices(n, ndim=2):  # pylint: disable=missing-docstring,redefined-oute
                      .format(ndim))
 
   return (tf.range(n),) * ndim
+
+
+@utils.np_doc(np.tri)
+def tri(N, M=None, k=0, dtype=None):  # pylint: disable=invalid-name,missing-docstring
+  M = M if M is not None else N
+  if dtype is not None:
+    dtype = utils.result_type(dtype)
+  else:
+    dtype = dtypes.default_float_type()
+
+  if k < 0:
+    lower = -k - 1
+    if lower > N:
+      r = tf.zeros([N, M], dtype)
+    else:
+      # Keep as tf bool, since we create an upper triangular matrix and invert
+      # it.
+      o = tf.ones([N, M], dtype=tf.bool)
+      r = tf.cast(tf.math.logical_not(tf.linalg.band_part(o, lower, -1)), dtype)
+  else:
+    o = tf.ones([N, M], dtype)
+    if k > M:
+      r = o
+    else:
+      r = tf.linalg.band_part(o, -1, k)
+  return utils.tensor_to_ndarray(r)
+
+
+@utils.np_doc(np.tril)
+def tril(m, k=0):  # pylint: disable=missing-docstring
+  m = asarray(m).data
+  m_shape = m.shape.as_list()
+
+  if len(m_shape) < 2:
+    raise ValueError('Argument to tril must have rank at least 2')
+
+  if m_shape[-1] is None or m_shape[-2] is None:
+    raise ValueError('Currently, the last two dimensions of the input array '
+                     'need to be known.')
+
+  z = tf.constant(0, m.dtype)
+
+  mask = tri(*m_shape[-2:], k=k, dtype=bool)
+  return utils.tensor_to_ndarray(
+      tf.where(tf.broadcast_to(mask, tf.shape(m)), m, z))
+
+
+@utils.np_doc(np.triu)
+def triu(m, k=0):  # pylint: disable=missing-docstring
+  m = asarray(m).data
+  m_shape = m.shape.as_list()
+
+  if len(m_shape) < 2:
+    raise ValueError('Argument to triu must have rank at least 2')
+
+  if m_shape[-1] is None or m_shape[-2] is None:
+    raise ValueError('Currently, the last two dimensions of the input array '
+                     'need to be known.')
+
+  z = tf.constant(0, m.dtype)
+
+  mask = tri(*m_shape[-2:], k=k - 1, dtype=bool)
+  return utils.tensor_to_ndarray(
+      tf.where(tf.broadcast_to(mask, tf.shape(m)), z, m))
