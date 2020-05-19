@@ -70,6 +70,20 @@ class AttentionTest(absltest.TestCase):
                                       [48.0, 47.5, 47.0],
                                       [46.5, 46.0, 45.5]]])
 
+  def test_padding_mask(self):
+    layer = tl.PaddingMask()
+    x = np.array([
+        [1., 2., 3., 4., 0.],
+        [1., 2., 3., 0., 0.],
+        [1., 2., 0., 0., 0.],
+    ])
+    y = layer(x)
+    self.assertEqual(x.shape, (3, 5))
+    self.assertEqual(y.shape, (3, 1, 1, 5))
+    np.testing.assert_equal(y, [[[[True, True, True, True, False]]],
+                                [[[True, True, True, False, False]]],
+                                [[[True, True, False, False, False]]]])
+
 
 if __name__ == '__main__':
   absltest.main()
