@@ -1269,3 +1269,15 @@ def nonzero(a):
   return tf.nest.map_structure(
       arrays_lib.tensor_to_ndarray,
       tf.unstack(tf.where(tf.cast(a, tf.bool)), a.shape.rank, axis=1))
+
+
+@utils.np_doc(np.diag_indices)
+def diag_indices(n, ndim=2):  # pylint: disable=missing-docstring,redefined-outer-name
+  if n < 0:
+    raise ValueError('n argument to diag_indices must be nonnegative, got {}'
+                     .format(n))
+  if ndim < 0:
+    raise ValueError('ndim argument to diag_indices must be nonnegative, got {}'
+                     .format(ndim))
+
+  return (tf.range(n),) * ndim

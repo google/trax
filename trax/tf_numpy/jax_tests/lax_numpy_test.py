@@ -1313,7 +1313,6 @@ class LaxBackedNumpyTests(jtu.TestCase):
        "ndim": ndim, "n": n}
       for ndim in [0, 1, 4]
       for n in [0, 1, 7]))
-  @disable
   def testDiagIndices(self, ndim, n):
     onp.testing.assert_equal(onp.diag_indices(n, ndim),
                              lnp.diag_indices(n, ndim))
