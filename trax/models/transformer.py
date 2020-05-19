@@ -49,10 +49,8 @@ def TransformerEncoder(vocab_size,
     A Transformer model as a layer that maps from a tensor of tokens to
     activations over a set of output classes.
   """
-  positional_encoder = [
-      tl.Embedding(d_model, vocab_size),
-      tl.Dropout(rate=dropout, name='emb_dropout', mode=mode),
-      tl.PositionalEncoding(max_len=max_len)]
+  positional_encoder = _PositionalEncoder(
+      vocab_size, d_model, dropout, mode, max_len)
 
   encoder_blocks = [
       _EncoderBlock(d_model, d_ff, n_heads, dropout, i, mode, ff_activation)
@@ -105,11 +103,8 @@ def TransformerDecoder(vocab_size=None,
     A Transformer decoder as a layer that maps from a continuous or discrete
     tensor to a continuous tensor.
   """
-  positional_encoder = [
-      (tl.Embedding(d_model, vocab_size) if vocab_size is not None
-       else tl.Dense(d_model)),
-      tl.Dropout(rate=dropout, mode=mode),
-      tl.PositionalEncoding(max_len=max_len)]
+  positional_encoder = _PositionalEncoder(
+      vocab_size, d_model, dropout, mode, max_len)
 
   decoder_blocks = [
       # pylint: disable=g-complex-comprehension
@@ -154,10 +149,8 @@ def TransformerLM(vocab_size,
     A Transformer language model as a layer that maps from a tensor of tokens
     to activations over a vocab set.
   """
-  positional_encoder = [
-      tl.Embedding(d_model, vocab_size),
-      tl.Dropout(rate=dropout, name='embedding', mode=mode),
-      tl.PositionalEncoding(max_len=max_len, mode=mode)]
+  positional_encoder = _PositionalEncoder(
+      vocab_size, d_model, dropout, mode, max_len)
 
   decoder_blocks = [
       # pylint: disable=g-complex-comprehension
@@ -209,16 +202,12 @@ def Transformer(input_vocab_size,
     A Transformer model as a layer that maps from a target, source pair to
     activations over a vocab set.
   """
-  def PositionalEncoder(vocab_size):  # tokens --> vectors
-    return [
-        tl.Embedding(d_model, vocab_size),
-        tl.Dropout(rate=dropout, mode=mode),
-        tl.PositionalEncoding(max_len=max_len),
-    ]
 
-  in_encoder = PositionalEncoder(input_vocab_size)
+  in_encoder = _PositionalEncoder(
+      input_vocab_size, d_model, dropout, mode, max_len)
   out_encoder = (in_encoder if output_vocab_size is None
-                 else PositionalEncoder(output_vocab_size))
+                 else _PositionalEncoder(
+                     output_vocab_size, d_model, dropout, mode, max_len))
   if output_vocab_size is None:
     output_vocab_size = input_vocab_size
 
@@ -424,3 +413,27 @@ def _FeedForwardBlock(d_model, d_ff, dropout, layer_idx, mode, activation):
       tl.Dense(d_model),
       dropout_final,
   ]
+
+
+def _PositionalEncoder(vocab_size,
+                       d_model,
+                       dropout,
+                       mode,
+                       max_len):
+  """Returns a list of layers implementing positional encoding.
+
+  Args:
+    vocab_size: int, vocab size of the input.
+    d_model: int:  depth of embedding.
+    dropout: float: dropout rate (how much to drop out).
+    mode: str: 'train' or 'eval'.
+    max_len: int: maximum symbol length for positional encoding.
+  """
+
+  return [
+      (tl.Embedding(d_model, vocab_size) if vocab_size is not None
+       else tl.Dense(d_model)),
+      tl.Dropout(rate=dropout, mode=mode, name='embedding_dropout'),
+      tl.PositionalEncoding(max_len=max_len),
+  ]
+
