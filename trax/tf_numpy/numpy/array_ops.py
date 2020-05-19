@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
 import math
 import numpy as np
 import six
@@ -720,43 +719,50 @@ def amin(a, axis=None, keepdims=None):
                  promote_int=None, tf_bool_fn=tf.reduce_all, preserve_bool=True)
 
 
-# TODO(wangpeng): Remove this workaround once b/157232284 is fixed
-def _reduce_variance_complex(input_tensor, axis, keepdims):
-  f = functools.partial(tf.math.reduce_variance, axis=axis, keepdims=keepdims)
-  return f(tf.math.real(input_tensor)) + f(tf.math.imag(input_tensor))
-
-
-# TODO(wangpeng): Remove this workaround once b/157232284 is fixed
-def _reduce_std_complex(input_tensor, axis, keepdims):
-  y = _reduce_variance_complex(input_tensor=input_tensor, axis=axis,
-                               keepdims=keepdims)
-  return tf.math.sqrt(y)
-
-
 @utils.np_doc(np.var)
-def var(a, axis=None, keepdims=None):
-  def f(input_tensor, axis, keepdims):
-    if input_tensor.dtype in (tf.complex64, tf.complex128):
-      # A workaround for b/157232284
-      fn = _reduce_variance_complex
-    else:
-      fn = tf.math.reduce_variance
-    return fn(input_tensor=input_tensor, axis=axis, keepdims=keepdims)
-  return _reduce(f, a, axis=axis, dtype=None, keepdims=keepdims,
-                 promote_int=_TO_FLOAT)
+def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: disable=missing-docstring
+  if dtype:
+    working_dtype = utils.result_type(a, dtype)
+  else:
+    working_dtype = None
+  if out is not None:
+    raise ValueError('Setting out is not supported.')
+  if ddof != 0:
+    # TF reduce_variance doesn't support ddof, so calculate it using raw ops.
+    def reduce_fn(input_tensor, axis, keepdims):
+      means = tf.math.reduce_mean(input_tensor, axis=axis, keepdims=True)
+      centered = input_tensor - means
+      if input_tensor.dtype in (tf.complex64, tf.complex128):
+        centered = tf.cast(
+            tf.math.real(centered * tf.math.conj(centered)), input_tensor.dtype)
+      else:
+        centered = tf.math.square(centered)
+      squared_deviations = tf.math.reduce_sum(
+          centered, axis=axis, keepdims=keepdims)
+
+      if axis is None:
+        n = tf.size(input_tensor)
+      else:
+        if axis < 0:
+          axis += tf.rank(input_tensor)
+        n = tf.math.reduce_prod(tf.gather(tf.shape(input_tensor), axis))
+      n = tf.cast(n - ddof, input_tensor.dtype)
+
+      return tf.cast(tf.math.divide(squared_deviations, n), dtype)
+  else:
+    reduce_fn = tf.math.reduce_variance
+
+  result = _reduce(reduce_fn, a, axis=axis, dtype=working_dtype,
+                   keepdims=keepdims, promote_int=_TO_FLOAT).data
+  if dtype:
+    result = tf.cast(result, dtype)
+  return utils.tensor_to_ndarray(result)
 
 
 @utils.np_doc(np.std)
 def std(a, axis=None, keepdims=None):
-  def f(input_tensor, axis, keepdims):
-    if input_tensor.dtype in (tf.complex64, tf.complex128):
-      # A workaround for b/157232284
-      fn = _reduce_std_complex
-    else:
-      fn = tf.math.reduce_std
-    return fn(input_tensor=input_tensor, axis=axis, keepdims=keepdims)
-  return _reduce(f, a, axis=axis, dtype=None, keepdims=keepdims,
-                 promote_int=_TO_FLOAT)
+  return _reduce(tf.math.reduce_std, a, axis=axis, dtype=None,
+                 keepdims=keepdims, promote_int=_TO_FLOAT)
 
 
 @utils.np_doc(np.ravel)
