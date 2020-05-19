@@ -1506,14 +1506,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
           ((3,), 0, 3), ((12,), 0, 3), ((12, 4), 0, 4), ((12, 4), 1, 2),
           ((2, 3, 4), -1, 2), ((2, 3, 4), -2, 3)]
       for dtype in default_dtypes))
-  @disable
   def testSplitStaticInt(self, shape, num_sections, axis, dtype, rng_factory):
     rng = rng_factory()
     onp_fun = lambda x: onp.split(x, num_sections, axis=axis)
     lnp_fun = lambda x: lnp.split(x, num_sections, axis=axis)
     args_maker = lambda: [rng(shape, dtype)]
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_{}_axis={}_{}sections".format(
@@ -1524,7 +1524,6 @@ class LaxBackedNumpyTests(jtu.TestCase):
           ((12, 4), 0, 4), ((12, 4), 1, 2),
           ((2, 3, 4), 2, 2), ((4, 3, 4), 0, 2)]
       for dtype in default_dtypes))
-  @disable
   def testHVDSplit(self, shape, num_sections, axis, dtype, rng_factory):
     rng = rng_factory()
     def fn(module, axis):
@@ -1540,7 +1539,8 @@ class LaxBackedNumpyTests(jtu.TestCase):
     lnp_fun = lambda x: fn(lnp, axis)(x, num_sections)
     args_maker = lambda: [rng(shape, dtype)]
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_inshape={}_outshape={}_order={}".format(

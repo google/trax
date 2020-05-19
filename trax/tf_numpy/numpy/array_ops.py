@@ -1131,26 +1131,25 @@ def _boundaries_to_sizes(a, boundaries, axis):
   return sizes
 
 
-def split(a, indices_or_sections, axis=0):
-  """Split an array into multiple sub-arrays.
-
-  See https://docs.scipy.org/doc/numpy/reference/generated/numpy.split.html for
-  reference.
-
-  Args:
-    a: the array to be splitted.
-    indices_or_sections: int or 1-D array, representing the number of even
-      splits or the boundaries between splits.
-    axis: the axis along which to split.
-
-  Returns:
-    A list of sub-arrays.
-  """
-  a = asarray(a)
+@utils.np_doc(np.split)
+def split(ary, indices_or_sections, axis=0):
+  ary = asarray(ary)
   if not isinstance(indices_or_sections, six.integer_types):
-    indices_or_sections = _boundaries_to_sizes(a, indices_or_sections, axis)
-  result = tf.split(a.data, indices_or_sections, axis=axis)
+    indices_or_sections = _boundaries_to_sizes(ary, indices_or_sections, axis)
+  result = tf.split(ary.data, indices_or_sections, axis=axis)
   return [utils.tensor_to_ndarray(a) for a in result]
+
+
+def _split_on_axis(np_fun, axis):
+  @utils.np_doc(np_fun)
+  def f(ary, indices_or_sections):
+    return split(ary, indices_or_sections, axis=axis)
+  return f
+
+
+vsplit = _split_on_axis(np.vsplit, axis=0)
+hsplit = _split_on_axis(np.hsplit, axis=1)
+dsplit = _split_on_axis(np.dsplit, axis=2)
 
 
 @utils.np_doc(np.broadcast_to)
