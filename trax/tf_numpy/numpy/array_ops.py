@@ -218,26 +218,23 @@ def full(shape, fill_value, dtype=None):  # pylint: disable=redefined-outer-name
   return arrays_lib.tensor_to_ndarray(tf.broadcast_to(fill_value.data, shape))
 
 
-def full_like(a, fill_value, dtype=None):
-  """Returns an array with same shape and dtype as `a` filled with `fill_value`.
+# Using doc only here since np full_like signature doesn't seem to have the
+# shape argument (even though it exists in the documentation online).
+@utils.np_doc_only(np.full_like)
+def full_like(a, fill_value, dtype=None, order='K', subok=True, shape=None):  # pylint: disable=missing-docstring,redefined-outer-name
+  """order, subok and shape arguments mustn't be changed."""
+  if order != 'K':
+    raise ValueError('Non-standard orders are not supported.')
+  if not subok:
+    raise ValueError('subok being False is not supported.')
+  if shape:
+    raise ValueError('Overriding the shape is not supported.')
 
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can be
-      converted to a Tensor using `tf.convert_to_tensor`.
-    fill_value: array_like. Could be an ndarray, a Tensor or any object that can
-      be converted to a Tensor using `tf.convert_to_tensor`.
-    dtype: Optional, defaults to dtype of the `a`. The type of the resulting
-      ndarray. Could be a python type, a NumPy type or a TensorFlow `DType`.
-
-  Returns:
-    An ndarray.
-
-  Raises:
-    ValueError: if `fill_value` can not be broadcast to shape `shape`.
-  """
-  a = asarray(a)
+  a = asarray(a).data
   dtype = dtype or utils.result_type(a)
-  return full(a.shape, fill_value, dtype)
+  fill_value = asarray(fill_value, dtype=dtype)
+  return arrays_lib.tensor_to_ndarray(
+      tf.broadcast_to(fill_value.data, tf.shape(a)))
 
 
 # TODO(wangpeng): investigate whether we can make `copy` default to False.

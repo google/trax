@@ -1488,14 +1488,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
       for in_dtype in default_dtypes
       for fill_value_dtype in default_dtypes
       for out_dtype in default_dtypes))
-  @disable
   def testFullLike(self, shape, in_dtype, fill_value_dtype, out_dtype, rng_factory):
     rng = rng_factory()
     onp_fun = lambda x, fill_value: onp.full_like(x, fill_value, dtype=out_dtype)
     lnp_fun = lambda x, fill_value: lnp.full_like(x, fill_value, dtype=out_dtype)
     args_maker = lambda: [rng(shape, in_dtype), rng((), fill_value_dtype)]
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_{}_axis={}_{}sections".format(
