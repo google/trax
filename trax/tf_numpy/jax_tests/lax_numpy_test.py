@@ -1841,19 +1841,19 @@ class LaxBackedNumpyTests(jtu.TestCase):
 
   # TODO(mattjj): test infix operator overrides
 
-  @jtu.disable
   def testRavel(self):
     rng = onp.random.RandomState(0)
     args_maker = lambda: [rng.randn(3, 4).astype("float32")]
-    self._CompileAndCheck(lambda x: x.ravel(), args_maker, check_dtypes=True)
+    self._CompileAndCheck(lambda x: x.ravel(), args_maker, check_dtypes=True,
+                          check_incomplete_shape=True)
 
-  @jtu.disable
   def testAstype(self):
     rng = onp.random.RandomState(0)
     args_maker = lambda: [rng.randn(3, 4).astype("float32")]
     op = lambda x: x.astype(lnp.int32)
     self._CheckAgainstNumpy(op, op, args_maker, check_dtypes=True)
-    self._CompileAndCheck(op, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        op, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   # TODO(mattjj): test other ndarray-like method overrides
 

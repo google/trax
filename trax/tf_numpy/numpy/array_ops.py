@@ -731,24 +731,15 @@ def std(a, axis=None, keepdims=None):
                  keepdims=keepdims, promote_int=_TO_FLOAT)
 
 
-def ravel(a):
-  """Flattens `a` into a 1-d array.
-
-  If `a` is already a 1-d ndarray it is returned as is.
-
-  Uses `tf.reshape`.
-
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can
-      be converted to a Tensor using `tf.convert_to_tensor`.
-
-  Returns:
-    A 1-d ndarray.
-  """
+@utils.np_doc(np.ravel)
+def ravel(a):  # pylint: disable=missing-docstring
   a = asarray(a)
   if a.ndim == 1:
     return a
   return utils.tensor_to_ndarray(tf.reshape(a.data, [-1]))
+
+
+setattr(arrays_lib.ndarray, 'ravel', ravel)
 
 
 def real(val):
