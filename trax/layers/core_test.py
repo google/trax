@@ -197,13 +197,6 @@ class DropoutTest(absltest.TestCase):
     y = layer(x)
     self.assertEqual(np.count_nonzero(y), 10_000)
 
-  def test_forward_with_state_with_no_rng_raises_error(self):
-    layer = tl.Dropout(rate=0.1, mode='train')
-    _, _ = layer.init(None)
-    x = np.ones((2, 5))
-    with self.assertRaises(ValueError):
-      _, _ = layer.forward_with_state(x, (), (), None)
-
   def test_new_weights(self):
     layer = tl.Dropout(rate=0.1, mode='train')
     w = layer.new_weights(None)

@@ -57,8 +57,11 @@ class ReversibleLayer(base.Layer):
       gradient signal for the weights.
     """
     def _do_forward(x, weights):
-      return super(ReversibleLayer, self).forward_with_state(
-          x, weights, state, rng)[0]
+      old_state, old_rng = self._state, self._rng
+      self._state, self._rng = state, rng
+      res = self.forward(x, weights)
+      self._state, self._rng = old_state, old_rng
+      return res
 
     reconstructed_x = self.reverse(output, weights, state, new_state, rng)
     _, vjpfun = jax.vjp(_do_forward, reconstructed_x, weights)
@@ -88,8 +91,9 @@ class ReversibleSwap(ReversibleLayer):
     return x1, x0
 
   def reverse(self, output, weights=(), state=(), new_state=(), rng=None):
+    del state, new_state, rng
     # Swap is its own inverse, except that reverse doesn't return the state.
-    return self.forward_with_state(output, weights, state, rng)[0]
+    return self.forward(output, weights)
 
 
 class ReversibleSerial(ReversibleLayer, cb.Serial):

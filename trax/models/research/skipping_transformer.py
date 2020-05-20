@@ -42,11 +42,11 @@ class SkippingSerial(tl.Serial):
         assert layer.n_in == n_in_out
         assert layer.n_out == n_in_out
 
-  def new_weights_and_state(self, input_signature):
+  def new_weights(self, input_signature):
     """Add a step-counter to the state. Initialize with 0."""
-    weights, state = super(SkippingSerial, self).new_weights_and_state(
-        input_signature)
-    return weights, (0, state)
+    weights = super(SkippingSerial, self).new_weights(input_signature)
+    self.state = (0, self.state)
+    return weights
 
   @tl.Layer.state.setter
   def state(self, state):
@@ -58,16 +58,18 @@ class SkippingSerial(tl.Serial):
           f'Number of state elements ({len(state[1])}) does not equal '
           f'number of sublayers ({n_layers}).')
     for layer, sublayer_state in zip(self.sublayers, state[1]):
-      layer.state = sublayer_state
+      if sublayer_state is not tl.GET_STATE_FROM_CACHE:
+        layer.state = sublayer_state
 
-  def forward_with_state(self, xs, weights, state, rng):
+  def forward(self, xs, weights):
     self._validate_forward_inputs(xs)
-    (step, layers_state) = state
+    (step, layers_state) = self.state
     # Get N+1 rngs, N for running layers and one extra.
-    rngs = _split_rngs(rng, self._n_layers + 1)
+    rngs = _split_rngs(self.rng, self._n_layers + 1)
     rng0, rngs = rngs[0], rngs[1:]
     if not self.sublayers:  # No-op: leave args unchanged.
-      return (xs, (step + 1, layers_state))
+      self.state = (step + 1, layers_state)
+      return xs
 
     # Prepare the stack and do some safety checks as in the parent class.
     stack = xs
@@ -114,7 +116,8 @@ class SkippingSerial(tl.Serial):
       stack = _outputs_onto_stack(layer, outputs, stack)
       new_state.append(s)
       cur_layer_idx += 1.0
-    return stack, (step + 1, new_state)
+    self.state = (step + 1, new_state)
+    return stack
 
 
 def SkippingTransformerLM(vocab_size,

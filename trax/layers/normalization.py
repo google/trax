@@ -33,16 +33,15 @@ class BatchNorm(base.Layer):
     self._momentum = momentum
     self._mode = mode
 
-  def forward_with_state(self, x, weights, state, rng):
+  def forward(self, x, weights):
     """Computes batch normalization as part of a forward pass in the model."""
-    del rng
-    running_mean, running_var, n_batches = state
+    running_mean, running_var, n_batches = self.state
     if self._mode == 'train':
       n_batches += 1
       mean, var = self._fast_mean_and_variance(x)
       running_mean = self._exponential_smoothing(mean, running_mean)
       running_var = self._exponential_smoothing(var, running_var)
-      state = (running_mean, running_var, n_batches)
+      self.state = (running_mean, running_var, n_batches)
     else:
       mean = running_mean
       var = running_var
@@ -63,9 +62,9 @@ class BatchNorm(base.Layer):
       raise TypeError(f'The dtype of the output ({output.dtype}) of batch '
                       f'norm is not the same as the input ({x.dtype}). '
                       f'Batch norm should not change the dtype.')
-    return output, state
+    return output
 
-  def new_weights_and_state(self, input_signature):
+  def new_weights(self, input_signature):
     """Helper to initialize batch norm weights."""
     axis = self._axis
     axis = (axis,) if jnp.isscalar(axis) else axis
@@ -84,8 +83,8 @@ class BatchNorm(base.Layer):
     running_var = jnp.ones(stats_shape, dtype=jnp.float32)
     n_batches = jnp.zeros((), dtype=jnp.int64)
     weights = (beta, gamma)
-    state = (running_mean, running_var, n_batches)
-    return weights, state
+    self.state = (running_mean, running_var, n_batches)
+    return weights
 
   def _fast_mean_and_variance(self, x):
     mean = jnp.mean(x, self._axis, keepdims=True)

@@ -138,10 +138,10 @@ class PretrainedBERT(tl.Serial):
           'Please manually specify the path to bert_model.ckpt')
     self.init_checkpoint = init_checkpoint
 
-  def new_weights_and_state(self, input_signature):
-    weights, state = super().new_weights_and_state(input_signature)
+  def new_weights(self, input_signature):
+    weights = super().new_weights(input_signature)
     if self.init_checkpoint is None:
-      return weights, state
+      return weights
 
     print('Loading pre-trained weights from', self.init_checkpoint)
     ckpt = tf.train.load_checkpoint(self.init_checkpoint)
@@ -198,4 +198,4 @@ class PretrainedBERT(tl.Serial):
     weights = jax.tree_unflatten(jax.tree_structure(weights), new_w)
     move_to_device = jax.jit(lambda x: x)
     weights = jax.tree_map(move_to_device, weights)
-    return weights, state
+    return weights

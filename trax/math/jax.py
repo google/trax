@@ -199,6 +199,31 @@ def nested_map(f, obj, level=0, ignore_nones=True):
   raise ValueError('Non-exhaustive pattern match for {}.'.format(obj))
 
 
+def nested_map_multiarg(f, *objs):
+  """Maps multi-arg `f` recursively inside any dicts/lists/tuples in `objs`.
+
+  Args:
+    f: A function taking len(objs) inputs. f's input must NOT be a
+        dict, list, or tuple, or any subclass of those.
+    *objs: Either input objects to f or some nested structure of collections
+        of (collections of ...) input objects to f.
+
+  Returns:
+    An object with the same nested structure as `objs[0]`, but with each input
+    object `x` replaced by `f(*xs)`.
+  """
+  if isinstance(objs[0], list):
+    return [nested_map_multiarg(f, *[o[i] for o in objs])
+            for i in range(len(objs[0]))]
+  if isinstance(objs[0], tuple):
+    return tuple([nested_map_multiarg(f, *[o[i] for o in objs])
+                  for i in range(len(objs[0]))])
+  if isinstance(objs[0], dict):
+    return {k: nested_map_multiarg(f, *[o[k] for o in objs])
+            for k in objs[0].keys()}
+  return f(*objs)
+
+
 def nested_zip(objs):
   """Zips the leaves of each nested structure in `objs`.
 

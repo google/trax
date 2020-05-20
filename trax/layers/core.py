@@ -149,25 +149,21 @@ class Dropout(base.Layer):
     self._name = 'dropout_' + name
     self._mode = mode
 
-  def new_weights_and_state(self, input_signature):
+  def new_weights(self, input_signature):
     del input_signature
-    state = {self._name: jnp.array(self._initial_rate)}
-    return base.EMPTY_WEIGHTS, state
+    self.state = {self._name: jnp.array(self._initial_rate)}
+    return base.EMPTY_WEIGHTS
 
-  def forward_with_state(self, x, weights, state, rng):
+  def forward(self, x, weights):
     """Execute dropout."""
     if self._mode != 'train':
-      return x, state
+      return x
+    state, rng = self.state, self.rng
     rate = self._initial_rate
     if isinstance(state, dict) and self._name in state:
       rate = state[self._name]
-    if rng is None:
-      msg = ('Dropout layer requires apply_fn to be called with a rng keyword '
-             'argument. That is, instead of `Dropout(weights, inputs)`, call '
-             'it like `Dropout(weights, inputs, rng=key)`.')
-      raise ValueError(msg)
     keep = math.random.bernoulli(rng, 1.0 - rate, x.shape)
-    return jnp.where(keep, x / (1.0 - rate), jnp.zeros_like(x)), state
+    return jnp.where(keep, x / (1.0 - rate), jnp.zeros_like(x))
 
 
 def Flatten(n_axes_to_keep=1):

@@ -317,7 +317,7 @@ class EfficientAttentionBase(base.Layer):
     self.use_python_loop = use_python_loop
     self.use_reference_code = use_reference_code
 
-  def new_weights_and_state(self, input_signature):
+  def new_weights(self, input_signature):
     if not isinstance(input_signature, (tuple, list)):
       input_signature = (input_signature,)
     input_signature_unbatched = math.nested_map(
@@ -349,7 +349,8 @@ class EfficientAttentionBase(base.Layer):
       mem_end = np.zeros((), dtype=np.int32)
       state = (mem_end, mem, state)
 
-    return weights, state
+    self.state = state
+    return weights
 
   def create_weights_unbatched(self, input_signature, rng):
     raise NotImplementedError(
@@ -397,27 +398,23 @@ class EfficientAttentionBase(base.Layer):
     raise NotImplementedError(
         'Fast inference is not implemented for this attention type.')
 
-  def forward_with_state(self, inputs, weights, state, rng):
+  def forward(self, inputs, weights):
     """Computes this layer's output as part of a forward pass through the model.
 
     Args:
       inputs: Layer inputs (subclasses may use different inputs)
       weights: Layer weights
-      state: Complete state of the layer
-      rng: PRNG key. Note that the RNG is shared across all examples and heads.
-        This sharing is useful to reduce memory usage for dropout (all dropout
-        instances are automatically broadcasted across the batch and head
-        dimensions). Attention types that need separate random numbers for each
-        example and head may store their own RNG in the model state.
 
     Returns:
       A tuple (output, new_state).
     """
+    state, rng = self.state, self.rng
     if not self.use_reference_code:
       # By default, an efficient, batched implementation is used.
       output, new_state, _, _ = self.forward_and_or_backward(
           inputs, weights, state, rng, compute_output=True, update_state=True)
-      return output, new_state
+      self.state = new_state
+      return output
 
     # The reference implementation below provides a more readable overview of
     # what this class does. It's not optimized, however, and should only be used
@@ -461,7 +458,8 @@ class EfficientAttentionBase(base.Layer):
       new_state = state
     if self.incremental:
       new_state = (new_mem_end, new_mem, new_state)
-    return output, new_state
+    self.state = new_state
+    return output
 
   def use_predict_mem(self, inputs, state):
     """Update input cache for fast inference."""
@@ -554,7 +552,7 @@ class EfficientAttentionBase(base.Layer):
       compute_output=True, update_state=True):
     """Performs batched forward and/or backward passes.
 
-    See `forward_with_state` for a reference implementation of what this layer
+    See `forward` for a reference implementation of what this layer
     does. The reference implementation is not very efficient, however, and this
     method provides a more performant version.
 

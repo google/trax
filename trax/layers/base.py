@@ -176,9 +176,10 @@ class Layer(object):
     """Computes this layer's output as part of a forward pass through the model.
 
     Authors of new Layer subclasses should override this method to define the
-    forward computation that their layer performs, unless they need to use
-    local non-trainable state or randomness, in which case they should
-    override `forward_with_state` instead.
+    forward computation that their layer performs. If you need to use
+    local non-trainable state or randomness, use self.rng for the random seed
+    (no need to set it) and use self.state for non-trainable state (and set it
+    to the new value).
 
     Args:
       inputs: Input tensors, matching the number (n_in) expected by this
@@ -200,43 +201,12 @@ class Layer(object):
     """
     raise NotImplementedError
 
-  def forward_with_state(self, inputs, weights, state, rng):
-    """Computes this layer's output as part of a forward pass through the model.
-
-    Authors of new Layer subclasses should override this method to define the
-    forward computation that their layer performs only if their layer uses
-    local state or randomness. Otherwise override `forward` instead.
-
-    Args:
-      inputs: Input tensors, matching the number (n_in) expected by this
-          layer. Specifically:
-            - n_in = 0: an empty tuple or empty list
-            - n_in = 1: a tensor (NOT wrapped in a tuple)
-            - n_in > 1: a tuple or list of tensors, with n_in items
-      weights: A tuple or list of trainable weights, with one element for this
-          layer if this layer has no sublayers, or one for each sublayer if
-          this layer has sublayers. If a layer (or sublayer) has no trainable
-          weights, the corresponding weights element is an empty tuple.
-      state: Layer-specific non-parameter state that can update between batches.
-      rng: Single-use random number generator (JAX PRNG key).
-
-    Returns:
-      A tuple of (tensors, state). The tensors match the number (n_out) promised
-      by this layer, and are formatted according to that number, specifically:
-        - n_out = 0: an empty tuple
-        - n_out = 1: one tensor (NOT wrapped in a tuple)
-        - n_out > 1: a tuple of tensors, with n_out items
-    """
-    del rng
-    return self.forward(inputs, weights), state
-
   def new_weights(self, input_signature):
     """Returns new weights suitable for inputs with the given signature.
 
     Authors of new Layer subclasses should override this method if their layer
-    uses trainable weights. The default implementation works for layers that
-    have no weights. Layers that have trainable state should override the
-    `new_weights_and_state` method instead.
+    uses trainable weights or non-trainable state. To initialize non-trainable
+    state, set self.state to the intended value.
 
     Args:
       input_signature: A ShapeDtype instance (if this layer takes one input)
@@ -244,20 +214,6 @@ class Layer(object):
     """
     del input_signature
     return EMPTY_WEIGHTS
-
-  def new_weights_and_state(self, input_signature):
-    """Returns a (weights, state) pair suitable for initializing this layer.
-
-    Authors of new Layer subclasses should override this method if their layer
-    uses trainable weights or has non-parameter state that gets updated
-    between batches. The default implementation works for layers that have
-    no weights or state.
-
-    Args:
-      input_signature: A ShapeDtype instance (if this layer takes one input)
-          or a list/tuple of ShapeDtype instances.
-    """
-    return self.new_weights(input_signature), EMPTY_STATE
 
   @property
   def has_backward(self):
@@ -317,16 +273,15 @@ class Layer(object):
 
       if rng is not None:
         self.rng = rng
-      weights, state = self.new_weights_and_state(input_signature)
+      weights = self.new_weights(input_signature)
       self._weights = weights
-      self._state = state
 
       if use_cache:
         self._init_cached = True
       else:
         self._clear_init_cache()
 
-      return (weights, state)
+      return (weights, self.state)
 
     except Exception as e:
       name, trace = self._name, _short_traceback(skip=3)
@@ -424,15 +379,26 @@ class Layer(object):
     esp. useful for JIT compilation. Do not override, use `forward` instead.
 
     Args:
-      x: See Layer.forward_with_state inputs.
-      weights: See Layer.forward_with_state.
-      state: See Layer.forward_with_state.
-      rng: See Layer.forward_with_state.
+      x: Input tensors, matching the number (n_in) expected by this
+          layer. Specifically:
+            - n_in = 0: an empty tuple or empty list
+            - n_in = 1: a tensor (NOT wrapped in a tuple)
+            - n_in > 1: a tuple or list of tensors, with n_in items
+      weights: A tuple or list of trainable weights, with one element for this
+          layer if this layer has no sublayers, or one for each sublayer if
+          this layer has sublayers. If a layer (or sublayer) has no trainable
+          weights, the corresponding weights element is an empty tuple.
+      state: Layer-specific non-parameter state that can update between batches.
+      rng: Single-use random number generator (JAX PRNG key).
       use_cache: if True, cache weights and state in the layer object; used
         to implement layer sharing in combinators.
 
     Returns:
-      See Layer.forward_with_state.
+      A tuple of (tensors, state). The tensors match the number (n_out) promised
+      by this layer, and are formatted according to that number, specifically:
+        - n_out = 0: an empty tuple
+        - n_out = 1: one tensor (NOT wrapped in a tuple)
+        - n_out > 1: a tuple of tensors, with n_out items
     """
     try:
       old_weights, old_state, old_rng = self.weights, self.state, self.rng
@@ -445,10 +411,11 @@ class Layer(object):
         self._weights, self._state = weights, state
 
       if not self.has_backward:
-        outputs, s = self.forward_with_state(x, weights, state, rng)
+        outputs = self.forward(x, weights)
+        s = self.state
       else:
         outputs, s = self._do_custom_gradients(x, weights, state, rng=rng)
-      self._state = s
+        self._state = s
       self._rng = old_rng
       if not use_cache:
         self.weights, self.state = old_weights, old_state
@@ -514,15 +481,21 @@ class Layer(object):
     # https://jax.readthedocs.io/en/latest/jax.html#jax.custom_transforms
     @jax.custom_transforms
     def _do_forward(y, weights):
-      res = self.forward_with_state(y, weights, state, rng)
-      return res
+      old_weights, old_state, old_rng = self._weights, self._state, self._rng
+      res = self.forward(y, weights)
+      s = self._state
+      self._weights, self._state, self._rng = old_weights, old_state, old_rng
+      return res, s
 
     # This is the custom gradient (vector-jacobian product in JAX) function.
     # For the exact specification of this custom transformation see this link:
     # https://jax.readthedocs.io/en/latest/jax.html#jax.defjvp_all
     def do_forward_vjp(y, weights):
       """Custom gradient (vjp) function."""
-      output, new_state = self.forward_with_state(y, weights, state, rng)
+      old_weights, old_state, old_rng = self._weights, self._state, self._rng
+      output = self.forward(y, weights)
+      new_state = self._state
+      self._weights, self._state, self._rng = old_weights, old_state, old_rng
       def vjpfun(grad):
         grad = grad[0]  # Ignore dummy gradient wrt state.
         res = self.backward(y, output, grad, weights, state, new_state, rng)

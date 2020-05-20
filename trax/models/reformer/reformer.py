@@ -40,21 +40,19 @@ class BroadcastedDropout(tl.Layer):
     self._broadcast_dims = broadcast_dims
     self._mode = mode
 
-  def forward_with_state(self, x, weights, state, rng):
+  def forward(self, x, weights):
     """Dropout, with broadcasting to save memory."""
     del weights
-    if rng is None:
-      raise ValueError('BroadcastedDropout requires rng kwarg.')
     if self._mode == 'train' and self._rate > 0.0:
       noise_shape = list(x.shape)
       for dim in self._broadcast_dims:
         noise_shape[dim] = 1
-      keep_prob = jax.lax.tie_in(rng, 1.0 - self._rate)
-      keep = random.bernoulli(rng, keep_prob, tuple(noise_shape))
+      keep_prob = jax.lax.tie_in(self.rng, 1.0 - self._rate)
+      keep = random.bernoulli(self.rng, keep_prob, tuple(noise_shape))
       multiplier = keep.astype(x.dtype) / jax.lax.tie_in(keep, keep_prob)
-      return x * multiplier, state
+      return x * multiplier
     else:
-      return x, state
+      return x
 
 
 def FeedForward(d_model, d_ff, dropout, activation, act_dropout, mode):
@@ -334,13 +332,12 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
       running_total -= layer.n_out
     self._n_in = self._n_out = running_max + 1
 
-  def forward_with_state(self, xs, weights, state, rng):
-    rngs = _split_rngs(rng, len(self.sublayers))
-
+  def forward(self, xs, weights):
+    rngs = _split_rngs(self.rng, len(self.sublayers))
     accumulator, *context = xs
     stack = context = tuple(context)
     new_state = []
-    for layer, w, s, rng in zip(self.sublayers, weights, state, rngs):
+    for layer, w, s, rng in zip(self.sublayers, weights, self.state, rngs):
       inputs = _inputs_from_stack(layer, stack)
       outputs, s = layer.pure_fn(inputs, w, s, rng)
       stack = _outputs_onto_stack(layer, outputs, stack)
@@ -349,7 +346,8 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
 
     output = accumulator + residual
     stack = (output,) + context
-    return stack, new_state
+    self.state = new_state
+    return stack
 
   def reverse(self, output, weights=(), state=(), new_state=(), rng=None):
     raise NotImplementedError('Only reverse_and_grad is actually used.')
@@ -426,7 +424,7 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
     return stack, (stack_ct, weights_ct)
 
   # pylint: disable=protected-access
-  def new_weights_and_state(self, input_signature):
+  def new_weights(self, input_signature):
     stack = input_signature[1:]
     if len(stack) == 1:
       stack = stack[0]
@@ -437,11 +435,13 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
     stack = _outputs_onto_stack(self.compute_residual, outputs, stack)
 
     if self.attention_layer is None:
-      return (weights,), (state,)
+      self.state = (state,)
+      return (weights,)
     else:
       inputs = _inputs_from_stack(self.attention_layer, stack)
       attn_weights, attn_state = self.attention_layer.init(inputs)
-      return (weights, attn_weights), (state, attn_state)
+      self.state = (state, attn_state)
+      return (weights, attn_weights)
   # pylint: enable=protected-access
 
 

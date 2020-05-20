@@ -20,6 +20,7 @@ from trax.math import numpy as numpy_math
 from trax.math import tf as tf_math
 from trax.math.backend import *  # pylint: disable=wildcard-import
 from trax.math.jax import nested_map
+from trax.math.jax import nested_map_multiarg
 from trax.math.jax import nested_stack
 from trax.math.jax import nested_zip
 from trax.math.jax import tree_flatten

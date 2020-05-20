@@ -42,26 +42,11 @@ class BaseLayerTest(absltest.TestCase):
     with self.assertRaises(NotImplementedError):
       _ = layer.forward(x, base.EMPTY_WEIGHTS)
 
-  def test_forward_with_state_raises_error(self):
-    layer = base.Layer()
-    x = np.array([[1, 2, 3, 4, 5],
-                  [10, 20, 30, 40, 50]])
-    with self.assertRaises(NotImplementedError):
-      _, _ = layer.forward_with_state(
-          x, base.EMPTY_WEIGHTS, base.EMPTY_STATE, None)
-
   def test_new_weights_returns_empty(self):
     layer = base.Layer()
     input_signature = shapes.ShapeDtype((2, 5))
     weights = layer.new_weights(input_signature)
     self.assertEmpty(weights)
-
-  def test_new_weights_and_state_returns_empty(self):
-    layer = base.Layer()
-    input_signature = shapes.ShapeDtype((2, 5))
-    weights, state = layer.new_weights_and_state(input_signature)
-    self.assertEmpty(weights)
-    self.assertEmpty(state)
 
   def test_init_returns_empty_weights_and_state(self):
     layer = base.Layer()
@@ -173,9 +158,9 @@ class PureLayerTest(absltest.TestCase):
     out_1 = layer.forward(in_1, base.EMPTY_WEIGHTS)
     self.assertEqual(out_1.tolist(), [6, 8])
 
-    # Use Layer.forward_with_state.
+    # Use Layer.pure_fn
     in_2 = np.array([5, 6])
-    out_2, _ = layer.forward_with_state(
+    out_2, _ = layer.pure_fn(
         in_2, base.EMPTY_WEIGHTS, base.EMPTY_WEIGHTS, None)
     self.assertEqual(out_2.tolist(), [10, 12])
 
@@ -210,7 +195,7 @@ class FnTest(absltest.TestCase):
     self.assertEqual(y2.tolist(), [11, 22, 33, 44, 55])
     self.assertEqual(y3.tolist(), [10, 20, 30, 40, 50])
 
-    (y4, y5), state = layer.forward_with_state(
+    (y4, y5), state = layer.pure_fn(
         (x0, x1), base.EMPTY_WEIGHTS, base.EMPTY_STATE, None)
     self.assertEqual(y4.tolist(), [11, 22, 33, 44, 55])
     self.assertEqual(y5.tolist(), [10, 20, 30, 40, 50])
@@ -220,9 +205,9 @@ class FnTest(absltest.TestCase):
     layer = base.Fn(
         '2in2out',
         lambda x, y: (x + y, jnp.concatenate([x, y], axis=0)), n_out=2)
-    weights, state = layer.new_weights_and_state(None)
+    weights = layer.new_weights(None)
     self.assertEmpty(weights)
-    self.assertEmpty(state)
+    self.assertEmpty(layer.state)
 
 
 if __name__ == '__main__':
