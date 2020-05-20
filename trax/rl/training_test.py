@@ -55,8 +55,8 @@ class TrainingTest(absltest.TestCase):
         policy_optimizer=opt.Adam,
         policy_batch_size=128,
         policy_train_steps_per_epoch=1,
-        collect_per_epoch=2,
-        temperature0_eval_episodes=1,
+        n_trajectories_per_epoch=2,
+        n_eval_episodes=1,
         output_dir=tmp_dir)
     trainer1.run(1)
     trainer1.run(1)
@@ -69,8 +69,8 @@ class TrainingTest(absltest.TestCase):
         policy_optimizer=opt.Adam,
         policy_batch_size=128,
         policy_train_steps_per_epoch=1,
-        collect_per_epoch=2,
-        temperature0_eval_episodes=1,
+        n_trajectories_per_epoch=2,
+        n_eval_episodes=1,
         output_dir=tmp_dir)
     trainer2.run(1)
     self.assertEqual(trainer2.current_epoch, 3)
@@ -82,8 +82,8 @@ class TrainingTest(absltest.TestCase):
         policy_optimizer=opt.Adam,
         policy_batch_size=128,
         policy_train_steps_per_epoch=2,
-        collect_per_epoch=2,
-        temperature0_eval_episodes=1,
+        n_trajectories_per_epoch=2,
+        n_eval_episodes=1,
         output_dir=tmp_dir)
     self.assertRaises(ValueError, trainer3.run)
     # Manually set saved epoch to 1.
@@ -101,8 +101,8 @@ class TrainingTest(absltest.TestCase):
         policy_batch_size=128,
         policy_train_steps_per_epoch=2,
         policy_evals_per_epoch=2,
-        collect_per_epoch=2,
-        temperature0_eval_episodes=1,
+        n_trajectories_per_epoch=2,
+        n_eval_episodes=1,
         output_dir=tmp_dir)
     trainer4.run(1)
     self.assertEqual(trainer4.current_epoch, 2)
@@ -131,7 +131,7 @@ class TrainingTest(absltest.TestCase):
         policy_lr_schedule=lr,
         policy_batch_size=128,
         policy_train_steps_per_epoch=1,
-        collect_per_epoch=2)
+        n_trajectories_per_epoch=2)
     # Assert that we get to 200 at some point and then exit so the test is as
     # fast as possible.
     for ep in range(200):

@@ -51,7 +51,7 @@ class ActorCriticJointTest(absltest.TestCase):
         optimizer=opt.Adam,
         batch_size=4,
         train_steps_per_epoch=1,
-        collect_per_epoch=2,
+        n_trajectories_per_epoch=2,
         output_dir=tmp_dir)
     trainer1.run(2)
     self.assertEqual(trainer1.current_epoch, 2)
@@ -63,7 +63,7 @@ class ActorCriticJointTest(absltest.TestCase):
         optimizer=opt.Adam,
         batch_size=4,
         train_steps_per_epoch=1,
-        collect_per_epoch=2,
+        n_trajectories_per_epoch=2,
         output_dir=tmp_dir)
     trainer2.run(1)
     self.assertEqual(trainer2.current_epoch, 3)
@@ -91,7 +91,7 @@ class ActorCriticJointTest(absltest.TestCase):
         lr_schedule=lr,
         batch_size=4,
         train_steps_per_epoch=2,
-        collect_per_epoch=5)
+        n_trajectories_per_epoch=5)
     trainer.run(2)
     self.assertEqual(2, trainer.current_epoch)
 
@@ -112,7 +112,7 @@ class ActorCriticJointTest(absltest.TestCase):
         lr_schedule=lr,
         batch_size=4,
         train_steps_per_epoch=2,
-        collect_per_epoch=5)
+        n_trajectories_per_epoch=5)
     trainer.run(2)
     self.assertEqual(2, trainer.current_epoch)
 
@@ -133,7 +133,7 @@ class ActorCriticJointTest(absltest.TestCase):
         lr_schedule=lr,
         batch_size=2,
         train_steps_per_epoch=1,
-        collect_per_epoch=1)
+        n_trajectories_per_epoch=1)
     trainer.run(2)
     self.assertEqual(2, trainer.current_epoch)
 
@@ -150,7 +150,7 @@ class ActorCriticJointTest(absltest.TestCase):
         optimizer=opt.Adam,
         batch_size=4,
         train_steps_per_epoch=2,
-        collect_per_epoch=2,
+        n_trajectories_per_epoch=2,
         max_slice_length=2)
     trainer.run(2)
     self.assertEqual(2, trainer.current_epoch)
@@ -168,7 +168,7 @@ class ActorCriticJointTest(absltest.TestCase):
         optimizer=opt.RMSProp,
         batch_size=4,
         train_steps_per_epoch=2,
-        collect_per_epoch=2)
+        n_trajectories_per_epoch=2)
     trainer.run(2)
     self.assertEqual(2, trainer.current_epoch)
 

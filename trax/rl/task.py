@@ -435,9 +435,27 @@ class RLTask:
     cur_trajectory.calculate_returns(self._gamma)
     return cur_trajectory
 
-  def collect_trajectories(self, policy, n, only_eval=False, epoch_id=1):
-    """Collect n trajectories in env playing the given policy."""
-    new_trajectories = [self.play(policy) for _ in range(n)]
+  def collect_trajectories(
+      self, policy,
+      n_trajectories=None,
+      n_interactions=None,
+      only_eval=False,
+      epoch_id=1,
+  ):
+    """Collect experience in env playing the given policy."""
+    if n_trajectories:
+      new_trajectories = [self.play(policy) for _ in range(n_trajectories)]
+    elif n_interactions:
+      # TODO(pkozakowski): Test this mode of experience collection.
+      new_trajectories = []
+      while n_interactions > 0:
+        traj = self.play(policy)
+        new_trajectories.append(traj)
+        n_interactions -= len(traj)
+    else:
+      raise ValueError(
+          'Either n_trajectories or n_interactions must be defined.'
+      )
     if not only_eval:
       self._trajectories[epoch_id].extend(new_trajectories)
     # Mark that epoch epoch_id has changed.
@@ -454,7 +472,7 @@ class RLTask:
     self._trajectories = collections.defaultdict(list)
     self._trajectories.update(current_trajectories)
 
-    self._n_trajectories += n
+    self._n_trajectories += len(new_trajectories)
     self._n_interactions += sum([len(traj) for traj in new_trajectories])
 
     return sum(returns) / float(len(returns))

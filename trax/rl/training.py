@@ -39,8 +39,9 @@ class RLTrainer:
   """Abstract class for RL Trainers, presenting the required API."""
 
   def __init__(self, task: rl_task.RLTask,
-               collect_per_epoch=None,
-               temperature0_eval_episodes=0,
+               n_trajectories_per_epoch=None,
+               n_interactions_per_epoch=None,
+               n_eval_episodes=0,
                only_eval=False,
                output_dir=None,
                timestep_to_np=None):
@@ -51,23 +52,30 @@ class RLTrainer:
 
     Args:
       task: RLTask instance, which defines the environment to train on.
-      collect_per_epoch: How many new trajectories to collect in each epoch.
-      temperature0_eval_episodes: Number of episodes to play with policy at
+      n_trajectories_per_epoch: How many new trajectories to collect in each
+        epoch.
+      n_interactions_per_epoch: How many interactions to collect in each epoch.
+      n_eval_episodes: Number of episodes to play with policy at
         temperature 0 in each epoch -- used for evaluation only.
       only_eval: If set to True, then trajectories are collected only for
         for evaluation purposes, but they are not recorded.
       output_dir: Path telling where to save outputs such as checkpoints.
       timestep_to_np: Timestep-to-numpy function to override in the task.
     """
+    assert bool(n_trajectories_per_epoch) != bool(n_interactions_per_epoch), (
+        'Exactly one of n_trajectories_per_epoch or n_interactions_per_epoch '
+        'should be specified.'
+    )
     self._epoch = 0
     self._task = task
     if timestep_to_np is not None:
       self._task.timestep_to_np = timestep_to_np
-    self._collect_per_epoch = collect_per_epoch
+    self._n_trajectories_per_epoch = n_trajectories_per_epoch
+    self._n_interactions_per_epoch = n_interactions_per_epoch
     self._only_eval = only_eval
     self._output_dir = output_dir
     self._avg_returns = []
-    self._temperature0_eval_episodes = temperature0_eval_episodes
+    self._n_eval_episodes = n_eval_episodes
     self._avg_returns_temperature0 = []
     self._sw = None
     if output_dir is not None:
@@ -116,6 +124,15 @@ class RLTrainer:
     self._avg_returns = dictionary['avg_returns']
     self._avg_returns_temperature0 = dictionary['avg_returns_temperature0']
 
+  def _collect_trajectories(self):
+    return self.task.collect_trajectories(
+        self.policy,
+        n_trajectories=self._n_trajectories_per_epoch,
+        n_interactions=self._n_interactions_per_epoch,
+        only_eval=self._only_eval,
+        epoch_id=self._epoch
+    )
+
   def policy(self, trajectory, temperature=1.0):
     """Policy function that allows to play using this trainer.
 
@@ -155,18 +172,22 @@ class RLTrainer:
       supervised.trainer_lib.log(
           'RL training took %.2f seconds.' % (time.time() - cur_time))
       cur_time = time.time()
-      avg_return = self.task.collect_trajectories(
-          self.policy, self._collect_per_epoch, self._only_eval, self._epoch)
+      avg_return = self._collect_trajectories()
       self._avg_returns.append(avg_return)
-      supervised.trainer_lib.log(
-          'Collecting %d episodes took %.2f seconds.'
-          % (self._collect_per_epoch, time.time() - cur_time))
+      if self._n_trajectories_per_epoch:
+        supervised.trainer_lib.log(
+            'Collecting %d episodes took %.2f seconds.'
+            % (self._n_trajectories_per_epoch, time.time() - cur_time))
+      else:
+        supervised.trainer_lib.log(
+            'Collecting %d interactions took %.2f seconds.'
+            % (self._n_interactions_per_epoch, time.time() - cur_time))
       supervised.trainer_lib.log(
           'Average return in epoch %d was %.2f.' % (self._epoch, avg_return))
-      if self._temperature0_eval_episodes > 0:
+      if self._n_eval_episodes > 0:
         avg_return_temperature0 = self.task.collect_trajectories(
             lambda x: self.policy(x, temperature=0.0),
-            self._temperature0_eval_episodes, '_tmp_eval_epoch__')
+            self._n_eval_episodes, '_tmp_eval_epoch__')
         self.task.remove_epoch('_tmp_eval_epoch__')
         self._avg_returns_temperature0.append(avg_return_temperature0)
         supervised.trainer_lib.log(
@@ -176,7 +197,7 @@ class RLTrainer:
         self._sw.scalar('timing/collect', time.time() - cur_time,
                         step=self._epoch)
         self._sw.scalar('rl/avg_return', avg_return, step=self._epoch)
-        if self._temperature0_eval_episodes > 0:
+        if self._n_eval_episodes > 0:
           self._sw.scalar('rl/avg_return_temperature0',
                           avg_return_temperature0, step=self._epoch)
         self._sw.scalar('rl/n_interactions', self.task.n_interactions(),
@@ -213,9 +234,8 @@ class PolicyTrainer(RLTrainer):
   def __init__(self, task, policy_model=None, policy_optimizer=None,
                policy_lr_schedule=lr.MultifactorSchedule, policy_batch_size=64,
                policy_train_steps_per_epoch=500, policy_evals_per_epoch=1,
-               policy_eval_steps=1, collect_per_epoch=50,
-               temperature0_eval_episodes=0, only_eval=False,
-               max_slice_length=1, output_dir=None):
+               policy_eval_steps=1, n_eval_episodes=0,
+               only_eval=False, max_slice_length=1, output_dir=None, **kwargs):
     """Configures the policy trainer.
 
     Args:
@@ -232,24 +252,24 @@ class PolicyTrainer(RLTrainer):
           - only affects metric reporting.
       policy_eval_steps: number of policy trainer steps per evaluation - only
           affects metric reporting.
-      collect_per_epoch: how many trajectories to collect per epoch
-      temperature0_eval_episodes: number of episodes to play with policy at
+      n_eval_episodes: number of episodes to play with policy at
         temperature 0 in each epoch -- used for evaluation only
       only_eval: If set to True, then trajectories are collected only for
         for evaluation purposes, but they are not recorded.
       max_slice_length: the maximum length of trajectory slices to use.
       output_dir: Path telling where to save outputs (evals and checkpoints).
+      **kwargs: arguments for the superclass RLTrainer.
     """
     super(PolicyTrainer, self).__init__(
         task,
-        collect_per_epoch=collect_per_epoch,
-        temperature0_eval_episodes=temperature0_eval_episodes,
-        output_dir=output_dir)
+        n_eval_episodes=n_eval_episodes,
+        output_dir=output_dir,
+        **kwargs
+    )
     self._policy_batch_size = policy_batch_size
     self._policy_train_steps_per_epoch = policy_train_steps_per_epoch
     self._policy_evals_per_epoch = policy_evals_per_epoch
     self._policy_eval_steps = policy_eval_steps
-    self._collect_per_epoch = collect_per_epoch
     self._only_eval = only_eval
     self._max_slice_length = max_slice_length
     self._policy_dist = distributions.create_distribution(task.action_space)
@@ -280,8 +300,7 @@ class PolicyTrainer(RLTrainer):
     self._policy_collect_model.init(shapes.signature(policy_batch))
     if self._task._initial_trajectories == 0:
       self._task.remove_epoch(0)
-      self.task.collect_trajectories(
-          self.policy, self._collect_per_epoch, self._epoch)
+      self._collect_trajectories()
 
   @property
   def policy_loss(self):

@@ -55,7 +55,7 @@ class ActorCriticTest(absltest.TestCase):
         policy_optimizer=opt.Adam,
         policy_batch_size=2,
         policy_train_steps_per_epoch=2,
-        collect_per_epoch=2,
+        n_trajectories_per_epoch=2,
         n_shared_layers=1,
         output_dir=tmp_dir)
     trainer1.run(2)
@@ -73,7 +73,7 @@ class ActorCriticTest(absltest.TestCase):
         policy_optimizer=opt.Adam,
         policy_batch_size=2,
         policy_train_steps_per_epoch=2,
-        collect_per_epoch=2,
+        n_trajectories_per_epoch=2,
         n_shared_layers=1,
         output_dir=tmp_dir)
     trainer2.run(1)
@@ -105,7 +105,7 @@ class ActorCriticTest(absltest.TestCase):
         policy_lr_schedule=lr,
         policy_batch_size=2,
         policy_train_steps_per_epoch=2,
-        collect_per_epoch=2)
+        n_trajectories_per_epoch=2)
     trainer.run(2)
     self.assertEqual(2, trainer.current_epoch)
 
@@ -135,7 +135,7 @@ class ActorCriticTest(absltest.TestCase):
         policy_lr_schedule=lr,
         policy_batch_size=128,
         policy_train_steps_per_epoch=10,
-        collect_per_epoch=10)
+        n_trajectories_per_epoch=10)
 
     trainer.run(2)
     self.assertEqual(2, trainer.current_epoch)
@@ -163,7 +163,7 @@ class ActorCriticTest(absltest.TestCase):
         policy_lr_schedule=lr,
         policy_batch_size=32,
         policy_train_steps_per_epoch=200,
-        collect_per_epoch=10,
+        n_trajectories_per_epoch=10,
         advantage_estimator=advantages.monte_carlo,
         advantage_normalization=False,
     )
@@ -202,7 +202,7 @@ class ActorCriticTest(absltest.TestCase):
           policy_lr_schedule=lr,
           policy_batch_size=32,
           policy_train_steps_per_epoch=200,
-          collect_per_epoch=10,
+          n_trajectories_per_epoch=10,
           advantage_estimator=advantages.monte_carlo,
           advantage_normalization=False,
       )
@@ -240,8 +240,8 @@ class ActorCriticTest(absltest.TestCase):
         policy_lr_schedule=lr,
         policy_batch_size=2,
         policy_train_steps_per_epoch=2,
-        collect_per_epoch=1,
-        temperature0_eval_episodes=1)
+        n_trajectories_per_epoch=1,
+        n_eval_episodes=1)
     trainer.run(2)
     self.assertEqual(2, trainer.current_epoch)
 
@@ -268,7 +268,7 @@ class ActorCriticTest(absltest.TestCase):
         policy_lr_schedule=lr,
         policy_batch_size=2,
         policy_train_steps_per_epoch=2,
-        collect_per_epoch=2,
+        n_trajectories_per_epoch=2,
         advantage_estimator=advantages.monte_carlo,
         advantage_normalization=False,
         q_value_n_samples=3,

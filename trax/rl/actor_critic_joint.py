@@ -41,7 +41,7 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
                train_steps_per_epoch=500,
                supervised_evals_per_epoch=1,
                supervised_eval_steps=1,
-               collect_per_epoch=50,
+               n_trajectories_per_epoch=50,
                max_slice_length=1,
                normalize_advantages=True,
                output_dir=None,
@@ -59,7 +59,7 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
           epoch - only affects metric reporting.
       supervised_eval_steps: number of value trainer steps per evaluation -
           only affects metric reporting.
-      collect_per_epoch: how many trajectories to collect per epoch.
+      n_trajectories_per_epoch: how many trajectories to collect per epoch.
       max_slice_length: the maximum length of trajectory slices to use.
       normalize_advantages: if True, then normalize advantages - currently
           implemented only in PPO.
@@ -68,12 +68,15 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
            > 1 only makes sense for off-policy algorithms.
     """
     super(ActorCriticJointTrainer, self).__init__(
-        task, collect_per_epoch=collect_per_epoch, output_dir=output_dir)
+        task,
+        n_trajectories_per_epoch=n_trajectories_per_epoch,
+        output_dir=output_dir,
+    )
     self._batch_size = batch_size
     self._train_steps_per_epoch = train_steps_per_epoch
     self._supervised_evals_per_epoch = supervised_evals_per_epoch
     self._supervised_eval_steps = supervised_eval_steps
-    self._collect_per_epoch = collect_per_epoch
+    self._n_trajectories_per_epoch = n_trajectories_per_epoch
     self._max_slice_length = max_slice_length
     self._policy_dist = distributions.create_distribution(task.action_space)
     self._lr_schedule = lr_schedule
