@@ -16,7 +16,11 @@
 # Lint as: python3
 """Transformer Models."""
 
+import jax
+
 from trax import layers as tl
+from trax import math
+from trax.math import numpy as jnp
 
 
 def TransformerEncoder(vocab_size,
@@ -266,6 +270,113 @@ def Transformer(input_vocab_size,
   )
 
 
+def TransformerNoEncDecAttention(input_vocab_size,
+                                 output_vocab_size=None,
+                                 d_model=512,
+                                 d_ff=2048,
+                                 n_encoder_layers=6,
+                                 n_decoder_layers=6,
+                                 n_heads=8,
+                                 dropout=0.1,
+                                 max_len=2048,
+                                 mode='train',
+                                 ff_activation=tl.Relu):
+  """Returns a Transformer model.
+
+  This model expects an input pair: target, source.
+
+  Args:
+    input_vocab_size: int: vocab size of the source.
+    output_vocab_size: int (optional): vocab size of the target. If None, the
+      source and target are assumed to have the same vocab.
+    d_model: int:  depth of embedding
+    d_ff: int: depth of feed-forward layer
+    n_encoder_layers: int: number of encoder layers
+    n_decoder_layers: int: number of decoder layers
+    n_heads: int: number of attention heads
+    dropout: float: dropout rate (how much to drop out)
+    max_len: int: maximum symbol length for positional encoding
+    mode: str: 'train' or 'eval'
+    ff_activation: the non-linearity in feed-forward layer
+
+  Returns:
+    A Transformer model as a layer that maps from a target, source pair to
+    activations over a vocab set.
+  """
+  def PositionalEncoder(vocab_size):  # tokens --> vectors
+    return [
+        tl.Embedding(d_model, vocab_size),
+        tl.Dropout(rate=dropout, mode=mode),
+        tl.PositionalEncoding(max_len=max_len),
+    ]
+
+  in_encoder = PositionalEncoder(input_vocab_size)
+  out_encoder = (in_encoder if output_vocab_size is None
+                 else PositionalEncoder(output_vocab_size))
+  if output_vocab_size is None:
+    output_vocab_size = input_vocab_size
+
+  encoder_blocks = [
+      _EncoderBlock(
+          d_model, d_ff, n_heads, dropout, i, mode, ff_activation)
+      for i in range(n_encoder_layers)]
+
+  encoder = tl.Serial(
+      in_encoder,
+      encoder_blocks,
+      tl.LayerNorm()
+  )
+  if mode == 'predict':
+    encoder = tl.Cache(encoder)
+
+  decoder_blocks = [
+      # pylint: disable=g-complex-comprehension
+      _DecoderBlock(d_model, d_ff, n_heads,
+                    dropout, i, mode, ff_activation)
+      for i in range(n_decoder_layers)]
+
+  # Assemble and return the model.
+  return tl.Serial(
+      # Input: encoder_side_tokens, decoder_side_tokens
+      # Copy decoder tokens for use in loss.
+      tl.Select([0, 0, 1, 1]),            # tok_e tok_e tok_d tok_d
+
+      # Encode.
+      tl.Branch([], tl.PaddingMask()),    # tok_e mask_e tok_e tok_d tok_d
+      encoder,                            # vec_e mask_e tok_e tok_d tok_d
+
+      # Simple encoder mask, doesn't contain extra dims.
+      tl.Select([2, 0, 2], n_in=3),       # tok_e vec_e tok_e tok_d tok_d
+      _MaskOfRightShiftedArray(
+          n_shifts=0),                    # mask_e vec_e tok_e tok_d tok_d
+
+      # Decode.
+      tl.Select([3, 1, 0, 2]),          #  tok_d vec_e mask_e tok_e tok_d
+      tl.ShiftRight(),                  # stok_d vec_e mask_e tok_e tok_d
+      tl.Branch(
+          [],
+          _MaskOfRightShiftedArray()
+      ),                                # stok_d mask_d vec_e mask_e tok_e tok_d
+      out_encoder,                      # svec_d mask_d vec_e mask_e tok_e tok_d
+
+      # Concat encoder and decoder.
+      tl.Select([2, 0, 3, 1]),          # vec_e svec_d mask_e mask_d tok_e tok_d
+      _ConcatWithPadding(),             # vec_ed tok_e tok_d
+
+      # Decoder blocks with causal attention
+      decoder_blocks,                     # vec_ed tok_e tok_d
+      tl.LayerNorm(),                     # vec_ed tok_e tok_d
+
+      # Separate out the encoder part from the concatenated vector.
+      tl.Select([0, 1, 2, 2]),               # vec_ed tok_e tok_d tok_d
+      _StripFromConcatenateWithPadding(),    # vec_d tok_d
+
+      # Map to output vocab.
+      tl.Dense(output_vocab_size),        # vec_d tok_d
+      tl.LogSoftmax(),                    # vec_d tok_d
+  )
+
+
 def _EncoderBlock(d_model, d_ff, n_heads, dropout, layer_idx, mode,
                   ff_activation):
   """Returns a list of layers that implements a Transformer encoder block.
@@ -424,3 +535,82 @@ def _FeedForwardBlock(d_model, d_ff, dropout, layer_idx, mode, activation):
       tl.Dense(d_model),
       dropout_final,
   ]
+
+
+def _ConcatWithPadding():
+  """Concatenates two length padded (B, L, H) arrays (of different lenghts)."""
+
+  # Arg shapes: (B, L1, H), (B, L2, H), (B, L1) & (B, L2)
+  def F(vec_e, vec_d, mask_e, mask_d):
+    # pylint: disable=invalid-name
+    L1 = mask_e.shape[1]
+    L2 = mask_d.shape[1]
+    # pylint: enable=invalid-name
+
+    # [-(L1+L2), -L2) but with padding 0-ed out - (B, L1).
+    mask_e_key = jnp.arange(-(L1 + L2), -L2) * mask_e
+    # [-L2,0) but with padding 0-ed out - (B, L2).
+    mask_d_key = jnp.arange(-L2, 0) * mask_d
+
+    # Shape (B, L1+L2, H)
+    enc_dec_concat = jnp.concatenate([vec_e, vec_d], axis=1)
+    # Shape (B, L1+L2)
+    mask_concat = jnp.concatenate([mask_e_key, mask_d_key], axis=1)
+    # Make `mask_concat` the same shape as `enc_dec_concat`
+    mask_concat = (
+        mask_concat[..., jnp.newaxis] +
+        jnp.zeros_like(enc_dec_concat, dtype=jnp.int32))
+    # Sort on `mask_concat` so padding with key=0 goes to the right end, axis=1.
+    _, enc_dec_pad = math.sort_key_val(mask_concat, enc_dec_concat, 1)
+
+    return enc_dec_pad
+
+  return tl.Fn('ConcatWithPadding', F, n_out=1)
+
+
+def _MaskOfRightShiftedArray(n_shifts=1, mode='train'):
+  """Gives us the mask of a right shifted by n_shifts array."""
+
+  def F(x):
+    # TODO(afrozm): What to do in this case?
+    if mode == 'predict':
+      raise ValueError('MaskOfRightShiftedArray not implemented for predict.')
+
+    mask = x != 0
+
+    if n_shifts == 0:
+      return mask
+
+    # Need to set (B, n_shifts, ...) section to True.
+    trues_shape = (x.shape[0], n_shifts) + mask.shape[2:]
+    trues = jnp.full(trues_shape, True)
+    return jnp.concatenate([trues, mask[:, n_shifts:, ...]], axis=1)
+  return tl.Fn(f'MaskOfRightShiftedArray({n_shifts})', F)
+
+
+def _StripFromConcatenateWithPadding():
+  """Strip out the leading encoder tokens from the concatenated array."""
+
+  # Shapes: (L1+L2, H), (L1,) and (L2,)
+  def F(vec_ed, tok_e, tok_d):
+    mask_e = tok_e != 0
+    # Actual length of encoder tokens <= L1
+    len_e = jnp.sum(mask_e)
+    # Padded length of decoder tokens, this is L2.
+    L2 = tok_d.shape[0]  # pylint: disable=invalid-name
+
+    # vec_ed is of type [eeedd00000], we will roll it len_e=3 in reverse.
+    # This gives us [dd00000eee] and now we take only the first L2 elements.
+    return jnp.roll(vec_ed, -len_e, axis=0)[:L2]
+
+  # TODO(afrozm): Try to do this with sort_key_val instead of roll to get rid of
+  # the vmap.
+  def _F(vec_ed, tok_e, tok_d):
+    return jax.vmap(F)(vec_ed, tok_e, tok_d)
+
+  # We could have written `tl.Fn(..., jax.vmap(F), ...)` here but Trax needs the
+  # top-level function (here: jax.vmap) to not have variable or named arguments,
+  # so we need a thin wrapper.
+  return tl.Fn('StripFromConcatenateWithPadding', _F, n_out=1)
+
+

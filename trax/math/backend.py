@@ -118,6 +118,10 @@ def device_count(*args, **kwargs):
   return backend()['device_count'](*args, **kwargs)
 
 
+def sort_key_val(*args, **kwargs):
+  return backend()['sort_key_val'](*args, **kwargs)
+
+
 # For numpy and random modules, we need to call "backend()" lazily, only when
 # the function is called -- so that it can be set by gin configs.
 # (Otherwise, backend() is called on import before gin-config is parsed.)
