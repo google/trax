@@ -796,21 +796,35 @@ round_ = around
 setattr(arrays_lib.ndarray, '__round__', around)
 
 
-def reshape(a, newshape):
-  """Reshapes an array.
+@utils.np_doc(np.reshape)
+def reshape(a, newshape, order='C'):
+  """order argument can only b 'C' or 'F'."""
+  if order not in {'C', 'F'}:
+    raise ValueError('Unsupported order argument {}'.format(order))
 
-  Args:
-    a: array_like. Could be an ndarray, a Tensor or any object that can
-      be converted to a Tensor using `tf.convert_to_tensor`.
-    newshape: 0-d or 1-d array_like.
-
-  Returns:
-    An ndarray with the contents and dtype of `a` and shape `newshape`.
-  """
   a = asarray(a)
   if isinstance(newshape, arrays_lib.ndarray):
     newshape = newshape.data
-  return utils.tensor_to_ndarray(tf.reshape(a.data, newshape))
+  if isinstance(newshape, int):
+    newshape = [newshape]
+
+  if order == 'F':
+    r = tf.transpose(tf.reshape(tf.transpose(a.data), newshape[::-1]))
+  else:
+    r = tf.reshape(a.data, newshape)
+
+  return utils.tensor_to_ndarray(r)
+
+
+def _reshape_method_wrapper(a, *newshape, **kwargs):
+  order = kwargs.pop('order', 'C')
+  if kwargs:
+    raise ValueError('Unsupported arguments: {}'.format(kwargs.keys()))
+
+  if len(newshape) == 1 and not isinstance(newshape[0], int):
+    newshape = newshape[0]
+
+  return reshape(a, newshape, order=order)
 
 
 def expand_dims(a, axis):
@@ -995,7 +1009,7 @@ def _setitem(arr, index, value):
 
 
 setattr(arrays_lib.ndarray, 'transpose', transpose)
-setattr(arrays_lib.ndarray, 'reshape', reshape)
+setattr(arrays_lib.ndarray, 'reshape', _reshape_method_wrapper)
 setattr(arrays_lib.ndarray, '__setitem__', _setitem)
 
 

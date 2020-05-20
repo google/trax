@@ -1445,14 +1445,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
           ((2, 1, 4), (-1,)),
           ((2, 2, 4), (2, 8))
       ]))
-  @jtu.disable
   def testReshape(self, arg_shape, out_shape, dtype, order, rng_factory):
     rng = rng_factory()
     onp_fun = lambda x: onp.reshape(x, out_shape, order=order)
     lnp_fun = lambda x: lnp.reshape(x, out_shape, order=order)
     args_maker = lambda: [rng(arg_shape, dtype)]
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_inshape={}_outshape={}".format(
@@ -1466,14 +1466,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
           ((2, 1, 4), (-1,)),
           ((2, 2, 4), (2, 8))
       ]))
-  @jtu.disable
   def testReshapeMethod(self, arg_shape, out_shape, dtype, rng_factory):
     rng = rng_factory()
     onp_fun = lambda x: onp.reshape(x, out_shape)
     lnp_fun = lambda x: x.reshape(*out_shape)
     args_maker = lambda: [rng(arg_shape, dtype)]
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_inshape={}_expanddim={}".format(
