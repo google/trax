@@ -786,7 +786,7 @@ def diff(a, n=1, axis=-1):
   return _scalar(f, a)
 
 
-def flip(f):
+def _flip_args(f):
   def _f(a, b):
     return f(b, a)
   return _f
@@ -794,19 +794,19 @@ def flip(f):
 
 setattr(arrays.ndarray, '__abs__', absolute)
 setattr(arrays.ndarray, '__floordiv__', floor_divide)
-setattr(arrays.ndarray, '__rfloordiv__', flip(floor_divide))
+setattr(arrays.ndarray, '__rfloordiv__', _flip_args(floor_divide))
 setattr(arrays.ndarray, '__mod__', mod)
-setattr(arrays.ndarray, '__rmod__', flip(mod))
+setattr(arrays.ndarray, '__rmod__', _flip_args(mod))
 setattr(arrays.ndarray, '__add__', add)
-setattr(arrays.ndarray, '__radd__', flip(add))
+setattr(arrays.ndarray, '__radd__', _flip_args(add))
 setattr(arrays.ndarray, '__sub__', subtract)
-setattr(arrays.ndarray, '__rsub__', flip(subtract))
+setattr(arrays.ndarray, '__rsub__', _flip_args(subtract))
 setattr(arrays.ndarray, '__mul__', multiply)
-setattr(arrays.ndarray, '__rmul__', flip(multiply))
+setattr(arrays.ndarray, '__rmul__', _flip_args(multiply))
 setattr(arrays.ndarray, '__pow__', power)
-setattr(arrays.ndarray, '__rpow__', flip(power))
+setattr(arrays.ndarray, '__rpow__', _flip_args(power))
 setattr(arrays.ndarray, '__truediv__', true_divide)
-setattr(arrays.ndarray, '__rtruediv__', flip(true_divide))
+setattr(arrays.ndarray, '__rtruediv__', _flip_args(true_divide))
 
 
 def _comparison(tf_fun, x1, x2, cast_bool_to_int=False):

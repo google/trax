@@ -1350,3 +1350,26 @@ def triu(m, k=0):  # pylint: disable=missing-docstring
   mask = tri(*m_shape[-2:], k=k - 1, dtype=bool)
   return utils.tensor_to_ndarray(
       tf.where(tf.broadcast_to(mask, tf.shape(m)), z, m))
+
+
+@utils.np_doc(np.flip)
+def flip(m, axis=None):  # pylint: disable=missing-docstring
+  m = asarray(m).data
+
+  if axis is None:
+    return utils.tensor_to_ndarray(tf.reverse(m, tf.range(tf.rank(m))))
+
+  if axis < 0:
+    axis += tf.rank(m)
+
+  return utils.tensor_to_ndarray(tf.reverse(m, [axis]))
+
+
+@utils.np_doc(np.flipud)
+def flipud(m):  # pylint: disable=missing-docstring
+  return flip(m, 0)
+
+
+@utils.np_doc(np.fliplr)
+def fliplr(m):  # pylint: disable=missing-docstring
+  return flip(m, 1)

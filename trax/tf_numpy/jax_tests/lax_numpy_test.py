@@ -1774,14 +1774,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
       for dtype in default_dtypes
       for axis in list(range(-len(shape), len(shape))) + [None]  # Test negative axes
       for rng_factory in [jtu.rand_default]))
-  @jtu.disable
   def testFlip(self, shape, dtype, axis, rng_factory):
     rng = rng_factory()
     args_maker = self._GetArgsMaker(rng, [shape], [dtype])
     lnp_op = lambda x: lnp.flip(x, axis)
     onp_op = lambda x: onp.flip(x, axis)
     self._CheckAgainstNumpy(onp_op, lnp_op, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_op, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_op, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_{}".format(
@@ -1790,14 +1790,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
       for shape in [(3,), (2, 3), (3, 2, 4)]
       for dtype in default_dtypes
       for rng_factory in [jtu.rand_default]))
-  @jtu.disable
   def testFlipud(self, shape, dtype, rng_factory):
     rng = rng_factory()
     args_maker = self._GetArgsMaker(rng, [shape], [dtype])
     lnp_op = lambda x: lnp.flipud(x)
     onp_op = lambda x: onp.flipud(x)
     self._CheckAgainstNumpy(onp_op, lnp_op, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_op, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_op, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
 
   @named_parameters(jtu.cases_from_list(
@@ -1807,14 +1807,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
       for shape in [(3, 2), (2, 3), (3, 2, 4)]
       for dtype in default_dtypes
       for rng_factory in [jtu.rand_default]))
-  @jtu.disable
   def testFliplr(self, shape, dtype, rng_factory):
     rng = rng_factory()
     args_maker = self._GetArgsMaker(rng, [shape], [dtype])
     lnp_op = lambda x: lnp.fliplr(x)
     onp_op = lambda x: onp.fliplr(x)
     self._CheckAgainstNumpy(onp_op, lnp_op, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_op, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_op, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
 
   @named_parameters(jtu.cases_from_list(
