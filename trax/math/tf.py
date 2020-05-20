@@ -115,6 +115,7 @@ TF_BACKEND = {
     'erf': tf_np_extensions.erf,
     'logsumexp': tf_np_extensions.logsumexp,
     'conv': tf_np_extensions.conv,
+    'lt': lambda x, y: x < y,
     'avg_pool': tf_np_extensions.avg_pool,
     'max_pool': tf_np_extensions.max_pool,
     'random_uniform': tf_np_extensions.uniform,
