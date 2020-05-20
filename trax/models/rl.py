@@ -17,6 +17,7 @@
 """Policy networks."""
 
 from trax import layers as tl
+from trax import models
 
 
 def Policy(
@@ -45,16 +46,43 @@ def Policy(
   )
 
 
-def Value(body=None, normalizer=None, mode='train'):
+def Value(
+    body=None,
+    normalizer=None,
+    inject_actions=False,
+    inject_actions_n_layers=1,
+    inject_actions_dim=64,
+    mode='train',
+):
   """Attaches a value head to a model body."""
   if body is None:
     body = lambda mode: []
   if normalizer is None:
     normalizer = lambda mode: []
 
+  def ActionInjector(mode):
+    if inject_actions:
+      return tl.Serial(
+          # Input: (body output, actions).
+          tl.Parallel(
+              tl.Dense(inject_actions_dim),
+              tl.Dense(inject_actions_dim),
+          ),
+          tl.Add(),
+          models.PureMLP(
+              layer_widths=(inject_actions_dim,) * inject_actions_n_layers,
+              out_activation=True,
+              flatten=False,
+              mode=mode,
+          )
+      )
+    else:
+      return []
+
   return tl.Serial(
       normalizer(mode=mode),
       body(mode=mode),
+      ActionInjector(mode=mode),
       tl.Dense(1),
   )
 

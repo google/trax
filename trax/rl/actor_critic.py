@@ -16,7 +16,9 @@
 # Lint as: python3
 """Classes for RL training in Trax."""
 
+import functools
 import os
+
 import numpy as np
 import tensorflow as tf
 
@@ -51,6 +53,8 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
                added_policy_slice_length=0,
                n_replay_epochs=1,
                scale_value_targets=False,
+               q_value=False,
+               q_value_n_samples=1,
                **kwargs):  # Arguments of PolicyTrainer come here.
     """Configures the actor-critic Trainer.
 
@@ -77,6 +81,9 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
         only makes sense for off-policy algorithms
      scale_value_targets: whether to scale targets for the value function by
         1 / (1 - gamma)
+     q_value: whether to use Q-values as baselines
+     q_value_n_samples: number of samples to average over when calculating
+        baselines based on Q-values
      **kwargs: arguments for PolicyTrainer super-class
     """
     self._n_shared_layers = n_shared_layers
@@ -99,8 +106,15 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
     else:
       self._value_network_scale = 1
 
+    self._q_value = q_value
+    self._q_value_n_samples = q_value_n_samples
+    if q_value:
+      value_model = functools.partial(value_model, inject_actions=True)
     self._value_eval_model = value_model(mode='eval')
     self._value_eval_model.init(self._value_model_signature)
+
+    # Initialize policy training.
+    super(ActorCriticTrainer, self).__init__(task, **kwargs)
 
     # Initialize training of the value function.
     value_output_dir = kwargs.get('output_dir', None)
@@ -120,16 +134,17 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
         output_dir=value_output_dir,
         metrics={'value_loss': tl.L2Loss()})
 
-    # Initialize policy training.
-    super(ActorCriticTrainer, self).__init__(task, **kwargs)
-
   @property
   def _value_model_signature(self):
     obs_sig = shapes.signature(self._task.observation_space)
     target_sig = mask_sig = shapes.ShapeDtype(
         shape=(1, 1, 1),
     )
-    return (obs_sig.replace(shape=(1, 1) + obs_sig.shape), target_sig, mask_sig)
+    inputs_sig = (obs_sig.replace(shape=(1, 1) + obs_sig.shape),)
+    if self._q_value:
+      act_sig = shapes.signature(self._task.action_space)
+      inputs_sig += (act_sig.replace(shape=(1, 1) + act_sig.shape),)
+    return (*inputs_sig, target_sig, mask_sig)
 
   @property
   def _replay_epochs(self):
@@ -140,6 +155,36 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
       )
     return [-(ep + 1) for ep in range(self._n_replay_epochs)]
 
+  def _run_value_model(self, observations, dist_inputs):
+    if dist_inputs is None:
+      dist_inputs = jnp.zeros(
+          observations.shape[:2] + (self._policy_dist.n_inputs,)
+      )
+
+    actions = None
+    if self._q_value:
+      dist_inputs = np.broadcast_to(
+          dist_inputs, (self._q_value_n_samples,) + dist_inputs.shape
+      )
+      actions = self._policy_dist.sample(dist_inputs)
+      inputs = (observations, actions)
+    else:
+      inputs = (observations,)
+
+    values = self._value_eval_model(
+        inputs, n_accelerators=1
+    ) * self._value_network_scale
+    values = np.squeeze(values, axis=-1)  # Remove the singleton depth dim.
+
+    return (values, actions)
+
+  def _aggregate_values(self, values):
+    if self._q_value:
+      # TODO(pkozakowski): Try max here.
+      return jnp.mean(values, axis=0)
+    else:
+      return values
+
   def value_batches_stream(self):
     """Use the RLTask self._task to create inputs to the value model."""
     max_slice_length = self._max_slice_length + self._added_policy_slice_length
@@ -149,10 +194,10 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
         min_slice_length=(1 + self._added_policy_slice_length),
         epochs=self._replay_epochs,
     ):
-      values = self._value_eval_model(
-          np_trajectory.observations, n_accelerators=1
-      ) * self._value_network_scale
-      values = np.squeeze(values, axis=2)  # Remove the singleton depth dim.
+      (values, _) = self._run_value_model(
+          np_trajectory.observations, np_trajectory.dist_inputs
+      )
+      values = self._aggregate_values(values)
 
       # TODO(pkozakowski): Add some shape assertions and docs.
       # Calculate targets based on the advantages over the target network - this
@@ -166,11 +211,15 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
       values = values[:, :length]
       target_returns = values + advantages
 
+      inputs = (np_trajectory.observations[:, :length],)
+      if self._q_value:
+        inputs += (np_trajectory.actions[:, :length],)
+
       # Insert an extra depth dimension, so the target shape is consistent with
       # the network output shape.
       yield (
-          # Inputs: observations.
-          np_trajectory.observations[:, :length],
+          # Inputs: observations and maybe actions.
+          *inputs,
           # Targets: computed returns.
           target_returns[:, :, None] / self._value_network_scale,
           # Mask to zero-out padding.
@@ -201,10 +250,10 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
         epochs=self._replay_epochs,
         max_slice_length=max_slice_length,
         include_final_state=False):
-      values = self._value_eval_model(
-          np_trajectory.observations, n_accelerators=1
-      ) * self._value_network_scale
-      values = np.squeeze(values, axis=2)  # Remove the singleton depth dim.
+      (values, _) = self._run_value_model(
+          np_trajectory.observations, np_trajectory.dist_inputs
+      )
+      values = self._aggregate_values(values)
       if len(values.shape) != 2:
         raise ValueError('Values are expected to have shape ' +
                          '[batch_size, length], got: %s' % str(values.shape))
@@ -364,19 +413,20 @@ class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
     """Policy loss given action log-probabilities."""
     raise NotImplementedError
 
+  def _preprocess_advantages(self, advantages):
+    if self._advantage_normalization:
+      advantages = (
+          (advantages - jnp.mean(advantages)) /
+          (jnp.std(advantages) + self._advantage_normalization_epsilon)
+      )
+    return advantages
+
   @property
   def policy_loss(self, **unused_kwargs):
     """Policy loss."""
-    def normalize(adv):
-      return (
-          (adv - jnp.mean(adv)) /
-          (jnp.std(adv) + self._advantage_normalization_epsilon)
-      )
-
     def LossInput(dist_inputs, actions, advantages, old_dist_inputs):  # pylint: disable=invalid-name
       """Calculates action log probabilities and normalizes advantages."""
-      if self._advantage_normalization:
-        advantages = normalize(advantages)
+      advantages = self._preprocess_advantages(advantages)
       log_probs = self._policy_dist.log_prob(dist_inputs, actions)
       old_log_probs = self._policy_dist.log_prob(old_dist_inputs, actions)
       return (log_probs, advantages, old_log_probs)
@@ -531,6 +581,29 @@ def awr_weights(advantages, beta):
   return jnp.exp(advantages / beta)
 
 
+# Helper functions for computing AWR metrics.
+def awr_metrics(beta):
+  return {  # pylint: disable=g-complex-comprehension
+      'awr_weight_' + name: awr_weight_stat(name, fn, beta)
+      for (name, fn) in [
+          ('mean', jnp.mean),
+          ('std', jnp.std),
+          ('min', jnp.min),
+          ('max', jnp.max),
+      ]
+  }
+
+
+def awr_weight_stat(stat_name, stat_fn, beta):
+  return tl.Serial([
+      tl.Select([1]),  # Select just the advantages.
+      tl.Fn(
+          'AWRWeight' + stat_name.capitalize(),
+          lambda x: stat_fn(awr_weights(x, beta)),
+      ),
+  ])
+
+
 def AWRLoss(beta, w_max):  # pylint: disable=invalid-name
   """Definition of the Advantage Weighted Regression (AWR) loss."""
   def f(log_probs, advantages, old_log_probs, mask):
@@ -559,22 +632,86 @@ class AWRTrainer(AdvantageBasedActorCriticTrainer):
   @property
   def policy_metrics(self):
     metrics = super(AWRTrainer, self).policy_metrics
-    metrics.update({  # pylint: disable=g-complex-comprehension
-        'awr_weight_' + name: self.awr_weight_stat(name, fn)
-        for (name, fn) in [
-            ('mean', jnp.mean),
-            ('std', jnp.std),
-            ('min', jnp.min),
-            ('max', jnp.max),
-        ]
-    })
+    metrics.update(awr_metrics(self._beta))
     return metrics
 
-  def awr_weight_stat(self, stat_name, stat_fn):
-    return tl.Serial([
-        tl.Select([1]),  # Select just the advantages.
-        tl.Fn(
-            'AWRWeight' + stat_name.capitalize(),
-            lambda x: stat_fn(awr_weights(x, self._beta)),
-        ),
-    ])
+
+class SamplingAWRTrainer(AdvantageBasedActorCriticTrainer):
+  """Trains policy and value models using Sampling AWR."""
+
+  on_policy = False
+
+  def __init__(self, task, beta=1.0, w_max=20.0, **kwargs):
+    """Configures the AWR Trainer."""
+    self._beta = beta
+    self._w_max = w_max
+    super(SamplingAWRTrainer, self).__init__(task, q_value=True, **kwargs)
+
+  @property
+  def policy_metrics(self):
+    metrics = super(SamplingAWRTrainer, self).policy_metrics
+    metrics.update(awr_metrics(self._beta))
+    return metrics
+
+  @property
+  def policy_loss(self, **unused_kwargs):
+    """Policy loss."""
+    def LossInput(dist_inputs, actions, advantages, old_dist_inputs, mask):  # pylint: disable=invalid-name
+      """Calculates action log probabilities and normalizes advantages."""
+      del old_dist_inputs
+      advantages = self._preprocess_advantages(advantages)
+      dist_inputs = jnp.broadcast_to(
+          dist_inputs, (self._q_value_n_samples,) + dist_inputs.shape
+      )
+      log_probs = self._policy_dist.log_prob(dist_inputs, actions)
+      # (batch_size, n_samples, ...) -> (n_samples, batch_size, ...)
+      advantages = jnp.swapaxes(advantages, 0, 1)
+      mask = jnp.swapaxes(mask, 0, 1)
+      return (log_probs, advantages, log_probs, mask)
+
+    return tl.Serial(
+        tl.Fn('LossInput', LossInput, n_out=4),
+        # Policy loss is expected to consume
+        # (log_probs, advantages, old_log_probs, mask).
+        AWRLoss(beta=self._beta, w_max=self._w_max),  # pylint: disable=no-value-for-parameter
+    )
+
+  def policy_batches_stream(self):
+    """Use the RLTask self._task to create inputs to the policy model."""
+    # For now TD-0 estimation of the value. TODO(pkozakowski): Support others?
+    for np_trajectory in self._task.trajectory_batch_stream(
+        self._policy_batch_size,
+        epochs=self._replay_epochs,
+        max_slice_length=self._max_slice_length,
+        include_final_state=False,
+    ):
+      (q_values, actions) = self._run_value_model(
+          np_trajectory.observations, np_trajectory.dist_inputs
+      )
+      # TODO(pkozakowski): Try max here.
+      values = jnp.mean(q_values, axis=0)
+
+      if len(values.shape) != 2:
+        raise ValueError('Values are expected to have shape ' +
+                         '[batch_size, length], got: %s' % str(values.shape))
+      if values.shape[0] != self._policy_batch_size:
+        raise ValueError('Values first dimension should = policy batch size, ' +
+                         '%d != %d' %(values.shape[0], self._policy_batch_size))
+
+      # q_values shape: (n_samples, batch_size, length)
+      # values shape: (batch_size, length)
+      # Computing advantages by broadcasting over n_samples.
+      advantages = q_values - values
+      mask = jnp.broadcast_to(np_trajectory.mask, advantages.shape)
+
+      shapes.assert_shape_equals(
+          advantages, (self._q_value_n_samples,) + values.shape
+      )
+      shapes.assert_same_shape(mask, advantages)
+
+      # Swapping the n_samples and batch_size axes, so the input is split
+      # between accelerators along the batch_size axis.
+      advantages = jnp.swapaxes(advantages, 0, 1)
+      mask = jnp.swapaxes(mask, 0, 1)
+
+      yield (np_trajectory.observations, actions, advantages, mask, mask)
