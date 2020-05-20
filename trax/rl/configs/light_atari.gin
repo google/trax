@@ -60,7 +60,7 @@ AWRTrainer.policy_train_steps_per_epoch = 1000
 AWRTrainer.policy_lr_schedule = @policy/MultifactorSchedule
 AWRTrainer.policy_evals_per_epoch = 10
 AWRTrainer.policy_eval_steps = 10
-AWRTrainer.collect_per_epoch = 10
+AWRTrainer.n_trajectories_per_epoch = 10
 AWRTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
 AWRTrainer.beta = 1.0
 AWRTrainer.w_max = 20
@@ -84,7 +84,7 @@ PPOTrainer.policy_lr_schedule = @policy/MultifactorSchedule
 PPOTrainer.policy_evals_per_epoch = 1
 PPOTrainer.policy_eval_steps = 1
 PPOTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
-PPOTrainer.collect_per_epoch = 10
+PPOTrainer.n_trajectories_per_epoch = 10
 
 # Parameters for train_rl:
 # ==============================================================================

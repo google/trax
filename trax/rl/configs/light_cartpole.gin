@@ -55,7 +55,7 @@ PolicyGradientTrainer.policy_batch_size = 128
 PolicyGradientTrainer.policy_train_steps_per_epoch = 1
 PolicyGradientTrainer.policy_evals_per_epoch = 1
 PolicyGradientTrainer.policy_eval_steps = 1
-PolicyGradientTrainer.collect_per_epoch = 2
+PolicyGradientTrainer.n_trajectories_per_epoch = 2
 PolicyGradientTrainer.max_slice_length = 1
 
 # Parameters for PPOTrainer:
@@ -75,7 +75,7 @@ PPOTrainer.policy_lr_schedule = @policy/MultifactorSchedule
 PPOTrainer.policy_evals_per_epoch = 1
 PPOTrainer.policy_eval_steps = 1
 PPOTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
-PPOTrainer.collect_per_epoch = 50
+PPOTrainer.n_trajectories_per_epoch = 50
 # PPOTrainer.max_slice_length = 0
 
 # Parameters for AWRTrainer:
@@ -96,7 +96,7 @@ AWRTrainer.policy_evals_per_epoch = 10
 AWRTrainer.policy_eval_steps = 10
 AWRTrainer.supervised_evals_per_epoch = 10
 AWRTrainer.supervised_eval_steps = 10
-AWRTrainer.collect_per_epoch = 10
+AWRTrainer.n_trajectories_per_epoch = 10
 AWRTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
 AWRTrainer.beta = 1.0
 AWRTrainer.w_max = 20

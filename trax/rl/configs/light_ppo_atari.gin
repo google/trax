@@ -58,7 +58,7 @@ PPOTrainer.policy_optimizer = @trax.optimizers.Adam
 PPOTrainer.policy_batch_size = 4
 PPOTrainer.policy_train_steps_per_epoch = 10
 PPOTrainer.policy_lr_schedule = @policy/MultifactorSchedule
-PPOTrainer.collect_per_epoch = 50
+PPOTrainer.n_trajectories_per_epoch = 50
 
 # Parameters for train_rl:
 # ==============================================================================
