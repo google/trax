@@ -56,6 +56,7 @@ class TrainingTest(absltest.TestCase):
         policy_batch_size=128,
         policy_train_steps_per_epoch=1,
         collect_per_epoch=2,
+        temperature0_eval_episodes=1,
         output_dir=tmp_dir)
     trainer1.run(1)
     trainer1.run(1)
@@ -69,6 +70,7 @@ class TrainingTest(absltest.TestCase):
         policy_batch_size=128,
         policy_train_steps_per_epoch=1,
         collect_per_epoch=2,
+        temperature0_eval_episodes=1,
         output_dir=tmp_dir)
     trainer2.run(1)
     self.assertEqual(trainer2.current_epoch, 3)
@@ -81,10 +83,12 @@ class TrainingTest(absltest.TestCase):
         policy_batch_size=128,
         policy_train_steps_per_epoch=2,
         collect_per_epoch=2,
+        temperature0_eval_episodes=1,
         output_dir=tmp_dir)
     self.assertRaises(ValueError, trainer3.run)
     # Manually set saved epoch to 1.
-    dictionary = {'epoch': 1, 'avg_returns': [0.0]}
+    dictionary = {'epoch': 1, 'avg_returns': [0.0],
+                  'avg_returns_temperature0': [0.0]}
     with tf.io.gfile.GFile(os.path.join(tmp_dir, 'rl.pkl'), 'wb') as f:
       pickle.dump(dictionary, f)
     # Trainer 3 still should fail as steps between evals are 2, cannot do 1.
@@ -98,6 +102,7 @@ class TrainingTest(absltest.TestCase):
         policy_train_steps_per_epoch=2,
         policy_evals_per_epoch=2,
         collect_per_epoch=2,
+        temperature0_eval_episodes=1,
         output_dir=tmp_dir)
     trainer4.run(1)
     self.assertEqual(trainer4.current_epoch, 2)

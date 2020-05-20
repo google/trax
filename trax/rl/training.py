@@ -40,6 +40,7 @@ class RLTrainer:
 
   def __init__(self, task: rl_task.RLTask,
                collect_per_epoch=None,
+               temperature0_eval_episodes=0,
                only_eval=False,
                output_dir=None,
                timestep_to_np=None):
@@ -51,6 +52,8 @@ class RLTrainer:
     Args:
       task: RLTask instance, which defines the environment to train on.
       collect_per_epoch: How many new trajectories to collect in each epoch.
+      temperature0_eval_episodes: Number of episodes to play with policy at
+        temperature 0 in each epoch -- used for evaluation only.
       only_eval: If set to True, then trajectories are collected only for
         for evaluation purposes, but they are not recorded.
       output_dir: Path telling where to save outputs such as checkpoints.
@@ -64,6 +67,8 @@ class RLTrainer:
     self._only_eval = only_eval
     self._output_dir = output_dir
     self._avg_returns = []
+    self._temperature0_eval_episodes = temperature0_eval_episodes
+    self._avg_returns_temperature0 = []
     self._sw = None
     if output_dir is not None:
       self._sw = jaxboard.SummaryWriter(os.path.join(output_dir, 'rl'))
@@ -90,7 +95,8 @@ class RLTrainer:
     self._task.save_to_file(task_path)
     file_path = os.path.join(self._output_dir, file_name)
     dictionary = {'epoch': self._epoch,
-                  'avg_returns': self._avg_returns}
+                  'avg_returns': self._avg_returns,
+                  'avg_returns_temperature0': self._avg_returns_temperature0}
     with tf.io.gfile.GFile(file_path, 'wb') as f:
       pickle.dump(dictionary, f)
 
@@ -108,12 +114,14 @@ class RLTrainer:
       dictionary = pickle.load(f)
     self._epoch = dictionary['epoch']
     self._avg_returns = dictionary['avg_returns']
+    self._avg_returns_temperature0 = dictionary['avg_returns_temperature0']
 
-  def policy(self, trajectory):
+  def policy(self, trajectory, temperature=1.0):
     """Policy function that allows to play using this trainer.
 
     Args:
       trajectory: an instance of trax.rl.task.Trajectory
+      temperature: temperature used to sample from the policy (default=1.0)
 
     Returns:
       a pair (action, dist_inputs) where action is the action taken and
@@ -155,10 +163,22 @@ class RLTrainer:
           % (self._collect_per_epoch, time.time() - cur_time))
       supervised.trainer_lib.log(
           'Average return in epoch %d was %.2f.' % (self._epoch, avg_return))
+      if self._temperature0_eval_episodes > 0:
+        avg_return_temperature0 = self.task.collect_trajectories(
+            lambda x: self.policy(x, temperature=0.0),
+            self._temperature0_eval_episodes, '_tmp_eval_epoch__')
+        self.task.remove_epoch('_tmp_eval_epoch__')
+        self._avg_returns_temperature0.append(avg_return_temperature0)
+        supervised.trainer_lib.log(
+            'Avg return with temperature 0 in epoch %d was %.2f.'
+            % (self._epoch, avg_return_temperature0))
       if self._sw is not None:
         self._sw.scalar('timing/collect', time.time() - cur_time,
                         step=self._epoch)
         self._sw.scalar('rl/avg_return', avg_return, step=self._epoch)
+        if self._temperature0_eval_episodes > 0:
+          self._sw.scalar('rl/avg_return_temperature0',
+                          avg_return_temperature0, step=self._epoch)
         self._sw.scalar('rl/n_interactions', self.task.n_interactions(),
                         step=self._epoch)
         self._sw.scalar('rl/n_interactions_per_second',
@@ -193,7 +213,8 @@ class PolicyTrainer(RLTrainer):
   def __init__(self, task, policy_model=None, policy_optimizer=None,
                policy_lr_schedule=lr.MultifactorSchedule, policy_batch_size=64,
                policy_train_steps_per_epoch=500, policy_evals_per_epoch=1,
-               policy_eval_steps=1, collect_per_epoch=50, only_eval=False,
+               policy_eval_steps=1, collect_per_epoch=50,
+               temperature0_eval_episodes=0, only_eval=False,
                max_slice_length=1, output_dir=None):
     """Configures the policy trainer.
 
@@ -212,13 +233,18 @@ class PolicyTrainer(RLTrainer):
       policy_eval_steps: number of policy trainer steps per evaluation - only
           affects metric reporting.
       collect_per_epoch: how many trajectories to collect per epoch
+      temperature0_eval_episodes: number of episodes to play with policy at
+        temperature 0 in each epoch -- used for evaluation only
       only_eval: If set to True, then trajectories are collected only for
         for evaluation purposes, but they are not recorded.
       max_slice_length: the maximum length of trajectory slices to use.
       output_dir: Path telling where to save outputs (evals and checkpoints).
     """
     super(PolicyTrainer, self).__init__(
-        task, collect_per_epoch=collect_per_epoch, output_dir=output_dir)
+        task,
+        collect_per_epoch=collect_per_epoch,
+        temperature0_eval_episodes=temperature0_eval_episodes,
+        output_dir=output_dir)
     self._policy_batch_size = policy_batch_size
     self._policy_train_steps_per_epoch = policy_train_steps_per_epoch
     self._policy_evals_per_epoch = policy_evals_per_epoch
@@ -270,7 +296,7 @@ class PolicyTrainer(RLTrainer):
     """Use self.task to create inputs to the policy model."""
     return NotImplementedError
 
-  def policy(self, trajectory):
+  def policy(self, trajectory, temperature=1.0):
     """Chooses an action to play after a trajectory."""
     model = self._policy_collect_model
     model.weights = self._policy_trainer.model_weights
@@ -280,7 +306,7 @@ class PolicyTrainer(RLTrainer):
     pred = model(trajectory_np.observations[None, ...], n_accelerators=1)
     # Pick element 0 from the batch (the only one), last (current) timestep.
     pred = pred[0, -1, :]
-    sample = self._policy_dist.sample(pred)
+    sample = self._policy_dist.sample(pred, temperature=temperature)
     result = (sample, pred)
     if math.backend_name() == 'jax':
       result = math.nested_map(lambda x: x.copy(), result)

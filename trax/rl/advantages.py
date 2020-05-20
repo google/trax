@@ -77,7 +77,7 @@ def td_k(rewards, returns, values, gamma, n_extra_steps):
   advantages = (gamma ** k) * values[:, k:] - values[:, :-k]
   discount = 1.0
   for i in range(n_extra_steps):
-    advantages += gamma * rewards[:, i:-(n_extra_steps - i)]
+    advantages += discount * rewards[:, i:-(n_extra_steps - i)]
     discount *= gamma
   return advantages
 

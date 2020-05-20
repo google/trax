@@ -240,7 +240,8 @@ class ActorCriticTest(absltest.TestCase):
         policy_lr_schedule=lr,
         policy_batch_size=2,
         policy_train_steps_per_epoch=2,
-        collect_per_epoch=1)
+        collect_per_epoch=1,
+        temperature0_eval_episodes=1)
     trainer.run(2)
     self.assertEqual(2, trainer.current_epoch)
 

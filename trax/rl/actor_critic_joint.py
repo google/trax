@@ -173,7 +173,7 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
       return rl_layers.PreferredMove(dist_inputs, self._policy_dist.sample)
     return tl.Fn('PreferredMove', f)
 
-  def policy(self, trajectory):
+  def policy(self, trajectory, temperature=1.0):
     """Chooses an action to play after a trajectory."""
     model = self._eval_model
     model.weights = self._trainer.model_weights
@@ -185,7 +185,7 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
     pred = model(trajectory_np.observations[None, ...], n_accelerators=1)[0]
     # Pick element 0 from the batch (the only one), last (current) timestep.
     pred = pred[0, -1, :]
-    sample = self._policy_dist.sample(pred)
+    sample = self._policy_dist.sample(pred, temperature=temperature)
     return (sample.copy(), pred.copy())
 
   def train_epoch(self):
@@ -621,4 +621,3 @@ class AWRJointTrainer(ActorCriticJointTrainer):
       l2_value_loss = jnp.mean((returns - values)**2) * self._value_loss_coeff
       return awr_loss + l2_value_loss
     return tl.Fn('AWRJointLoss', f)
-
