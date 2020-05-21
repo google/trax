@@ -403,7 +403,7 @@ class Layer(object):
     try:
       old_weights, old_state, old_rng = self.weights, self.state, self.rng
       self._rng = rng
-      if weights is GET_WEIGHTS_FROM_CACHE:  # pylint: disable=literal-comparison
+      if weights is GET_WEIGHTS_FROM_CACHE and state is GET_STATE_FROM_CACHE:  # pylint: disable=literal-comparison
         weights = self._weights
         state = self._state
       else:
