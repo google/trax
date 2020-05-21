@@ -2181,7 +2181,6 @@ class LaxBackedNumpyTests(jtu.TestCase):
     self._CompileAndCheck(
         lnp.where, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
-  @jtu.disable
   def testWhereScalarPromotion(self):
     x = lnp.where(lnp.array([True, False]), 3,
                   lnp.ones((2,), dtype=lnp.float32))
@@ -2196,7 +2195,6 @@ class LaxBackedNumpyTests(jtu.TestCase):
           _shapes_are_broadcast_compatible,
           CombosWithReplacement(all_shapes, 2 * n + 1))
         for dtypes in CombosWithReplacement(all_dtypes, n + 1)))
-  @jtu.disable
   def testSelect(self, rng_factory, shapes, dtypes):
     rng = rng_factory()
     n = len(dtypes) - 1
@@ -2208,7 +2206,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
       return condlist, choicelist, default
     # TODO(phawkins): float32/float64 type mismatches
     def onp_fun(condlist, choicelist, default):
-      choicelist = [x if lnp.result_type(x) != lnp.bfloat16
+      choicelist = [x if lnp.bfloat16 != lnp.result_type(x)
                     else x.astype(onp.float32) for x in choicelist]
       dtype = lnp.result_type(default, *choicelist)
       return onp.select(condlist,
@@ -2217,6 +2215,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
     self._CheckAgainstNumpy(onp_fun, lnp.select, args_maker,
                             check_dtypes=False)
     self._CompileAndCheck(lnp.select, args_maker, check_dtypes=True,
+                          check_incomplete_shape=True,
                           rtol={onp.float64: 1e-7, onp.complex128: 1e-7})
 
 

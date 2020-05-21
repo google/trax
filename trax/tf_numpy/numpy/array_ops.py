@@ -1087,6 +1087,23 @@ def where(condition, x=None, y=None):
   raise ValueError('Both x and y must be ndarrays, or both must be None.')
 
 
+@utils.np_doc(np.select)
+def select(condlist, choicelist, default=0):  # pylint: disable=missing-docstring
+  if len(condlist) != len(choicelist):
+    msg = 'condlist must have length equal to choicelist ({} vs {})'
+    raise ValueError(msg.format(len(condlist), len(choicelist)))
+  if not condlist:
+    raise ValueError('condlist must be non-empty')
+  choices = _promote_dtype(default, *choicelist)
+  choicelist = choices[1:]
+  output = choices[0]
+  # The traversal is in reverse order so we can return the first value in
+  # choicelist where condlist is True.
+  for cond, choice in zip(condlist[::-1], choicelist[::-1]):
+    output = where(cond, choice, output)
+  return output
+
+
 def shape(a):
   """Return the shape of an array.
 
