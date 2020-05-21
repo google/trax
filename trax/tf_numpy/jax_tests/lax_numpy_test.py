@@ -1922,14 +1922,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
         ((1, 2), (0, -1))
       ]
       for rng_factory in [jtu.rand_default]))
-  @jtu.disable
   def testRoll(self, shape, dtype, shifts, axis, rng_factory):
     rng = rng_factory()
     args_maker = lambda: [rng(shape, dtype), onp.array(shifts)]
     lnp_op = partial(lnp.roll, axis=axis)
     onp_op = partial(onp.roll, axis=axis)
     self._CheckAgainstNumpy(lnp_op, onp_op, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_op, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_op, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_{}_index={}_axis={}_mode={}".format(

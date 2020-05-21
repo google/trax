@@ -1373,3 +1373,16 @@ def flipud(m):  # pylint: disable=missing-docstring
 @utils.np_doc(np.fliplr)
 def fliplr(m):  # pylint: disable=missing-docstring
   return flip(m, 1)
+
+
+@utils.np_doc(np.roll)
+def roll(a, shift, axis=None):  # pylint: disable=missing-docstring
+  a = asarray(a).data
+
+  if axis is not None:
+    return utils.tensor_to_ndarray(tf.roll(a, shift, axis))
+
+  # If axis is None, the roll happens as a 1-d tensor.
+  original_shape = tf.shape(a)
+  a = tf.roll(tf.reshape(a, [-1]), shift, 0)
+  return utils.tensor_to_ndarray(tf.reshape(a, original_shape))
