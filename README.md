@@ -82,6 +82,7 @@ in Trax code:
 * [optimizers/](https://github.com/google/trax/tree/master/trax/optimizers) is a directory with optimizers needed for deep learning
 * [supervised/](https://github.com/google/trax/tree/master/trax/supervised) contains the utilities needed to run supervised learning and the Trainer class
 * [rl/](https://github.com/google/trax/tree/master/trax/rl) contains our work on reinforcement learning
+* [tf_numpy/](https://github.com/google/trax/tree/master/trax/tf_numpy) contains a set of TensorFlow Numpy API operations
 
 ### Development
 
