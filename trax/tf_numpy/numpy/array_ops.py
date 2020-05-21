@@ -1048,28 +1048,31 @@ def pad(ary, pad_width, mode, constant_values=0):
       constant_values=constant_values))
 
 
-def take(a, indices, axis=None):
-  """Take elements from an array along an axis.
+@utils.np_doc(np.take)
+def take(a, indices, axis=None, out=None, mode='clip'):
+  """out argument is not supported, and default mode is clip."""
+  if out is not None:
+    raise ValueError('out argument is not supported in take.')
 
-  See https://docs.scipy.org/doc/numpy/reference/generated/numpy.take.html for
-  description.
+  if mode not in {'raise', 'clip', 'wrap'}:
+    raise ValueError("Invalid mode '{}' for take".format(mode))
 
-  Args:
-    a: array_like. The source array.
-    indices: array_like. The indices of the values to extract.
-    axis: int, optional. The axis over which to select values. By default, the
-      flattened input array is used.
+  a = asarray(a).data
+  indices = asarray(indices).data
 
-  Returns:
-    A ndarray. The returned array has the same type as `a`.
-  """
-  a = asarray(a)
-  indices = asarray(indices)
-  a = a.data
   if axis is None:
     a = tf.reshape(a, [-1])
     axis = 0
-  return utils.tensor_to_ndarray(tf.gather(a, indices.data, axis=axis))
+
+  axis_size = tf.shape(a, indices.dtype)[axis]
+  if mode == 'clip':
+    indices = tf.clip_by_value(indices, 0, axis_size-1)
+  elif mode == 'wrap':
+    indices = tf.math.floormod(indices, axis_size)
+  else:
+    raise ValueError("The 'raise' mode to take is not supported.")
+
+  return utils.tensor_to_ndarray(tf.gather(a, indices, axis=axis))
 
 
 @utils.np_doc_only(np.where)

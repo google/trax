@@ -1947,7 +1947,6 @@ class LaxBackedNumpyTests(jtu.TestCase):
       for mode in ['wrap', 'clip']
       for rng_factory in [jtu.rand_default]
       for rng_indices_factory in [partial(jtu.rand_int, -5, 5)]))
-  @jtu.disable
   def testTake(self, shape, dtype, index_shape, index_dtype, axis, mode,
                rng_factory, rng_indices_factory):
     def args_maker():
@@ -1960,7 +1959,8 @@ class LaxBackedNumpyTests(jtu.TestCase):
     lnp_op = lambda x, i: lnp.take(x, i, axis=axis, mode=mode)
     onp_op = lambda x, i: onp.take(x, i, axis=axis, mode=mode)
     self._CheckAgainstNumpy(lnp_op, onp_op, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_op, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_op, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_{}_ishape={}_axis={}".format(
