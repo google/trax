@@ -1362,8 +1362,7 @@ def flip(m, axis=None):  # pylint: disable=missing-docstring
   if axis is None:
     return utils.tensor_to_ndarray(tf.reverse(m, tf.range(tf.rank(m))))
 
-  if axis < 0:
-    axis += tf.rank(m)
+  axis = utils._canonicalize_axis(axis, tf.rank(m))  # pylint: disable=protected-access
 
   return utils.tensor_to_ndarray(tf.reverse(m, [axis]))
 
@@ -1389,3 +1388,23 @@ def roll(a, shift, axis=None):  # pylint: disable=missing-docstring
   original_shape = tf.shape(a)
   a = tf.roll(tf.reshape(a, [-1]), shift, 0)
   return utils.tensor_to_ndarray(tf.reshape(a, original_shape))
+
+
+@utils.np_doc(np.rot90)
+def rot90(m, k=1, axes=(0, 1)):  # pylint: disable=missing-docstring
+  m_rank = tf.rank(m)
+  ax1, ax2 = utils._canonicalize_axes(axes, m_rank)  # pylint: disable=protected-access
+
+  k = k % 4
+  if k == 0:
+    return m
+  elif k == 2:
+    return flip(flip(m, ax1), ax2)
+  else:
+    perm = tf.range(m_rank)
+    perm = tf.tensor_scatter_nd_update(perm, [[ax1], [ax2]], [ax2, ax1])
+
+    if k == 1:
+      return transpose(flip(m, ax2), perm)
+    else:
+      return flip(transpose(m, perm), ax2)

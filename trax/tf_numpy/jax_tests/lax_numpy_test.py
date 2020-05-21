@@ -1830,14 +1830,41 @@ class LaxBackedNumpyTests(jtu.TestCase):
       for k in range(-3, 4)
       for dtype in default_dtypes
       for rng_factory in [jtu.rand_default]))
-  @jtu.disable
   def testRot90(self, shape, dtype, k, axes, rng_factory):
     rng = rng_factory()
     args_maker = self._GetArgsMaker(rng, [shape], [dtype])
     lnp_op = lambda x: lnp.rot90(x, k, axes)
     onp_op = lambda x: onp.rot90(x, k, axes)
     self._CheckAgainstNumpy(onp_op, lnp_op, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_op, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_op, args_maker, check_dtypes=True, check_incomplete_shape=True)
+
+  @named_parameters(jtu.cases_from_list(
+      {"testcase_name": "_{}_k={}_axes={}".format(
+          jtu.format_shape_dtype_string(shape, dtype), k, axes),
+       "rng_factory": rng_factory, "shape": shape, "dtype": dtype, "k": k,
+       "axes": axes}
+      for shape, axes in [
+          [(2, 3), (-2, -1)],
+          [(2, 3), (-2, 1)],
+          [(4, 3, 2), (-1, -2)],
+          [(4, 3, 2), (2, -2)],
+      ]
+      for k in range(-3, 4)
+      for dtype in default_dtypes
+      for rng_factory in [jtu.rand_default]))
+  @new_test
+  # These tests are only added as a separate test from testRot90 since we would
+  # like to measure coverage directly against the existing baseline. Once we
+  # stop measuring that, we can combine this test with the above.
+  def testRot90Additional(self, shape, dtype, k, axes, rng_factory):
+    rng = rng_factory()
+    args_maker = self._GetArgsMaker(rng, [shape], [dtype])
+    lnp_op = lambda x: lnp.rot90(x, k, axes)
+    onp_op = lambda x: onp.rot90(x, k, axes)
+    self._CheckAgainstNumpy(onp_op, lnp_op, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_op, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   # TODO(mattjj): test infix operator overrides
 
