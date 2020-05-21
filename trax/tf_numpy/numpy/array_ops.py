@@ -1408,3 +1408,41 @@ def rot90(m, k=1, axes=(0, 1)):  # pylint: disable=missing-docstring
       return transpose(flip(m, ax2), perm)
     else:
       return flip(transpose(m, perm), ax2)
+
+
+@utils.np_doc(np.vander)
+def vander(x, N=None, increasing=False):  # pylint: disable=missing-docstring,invalid-name
+  x = asarray(x).data
+
+  x_shape = tf.shape(x)
+  N = N or x_shape[0]
+
+  N_temp = utils.get_static_value(N)  # pylint: disable=invalid-name
+  if N_temp is not None:
+    N = N_temp
+    if N < 0:
+      raise ValueError('N must be nonnegative')
+  else:
+    tf.debugging.Assert(N >= 0, [N])
+
+  rank = tf.rank(x)
+  rank_temp = utils.get_static_value(rank)
+  if rank_temp is not None:
+    rank = rank_temp
+    if rank != 1:
+      raise ValueError('x must be a one-dimensional array')
+  else:
+    tf.debugging.Assert(rank == 1, [rank])
+
+  if increasing:
+    start = 0
+    limit = N
+    delta = 1
+  else:
+    start = N - 1
+    limit = -1
+    delta = -1
+
+  x = tf.expand_dims(x, -1)
+  return utils.tensor_to_ndarray(
+      tf.math.pow(x, tf.cast(tf.range(start, limit, delta), dtype=x.dtype)))
