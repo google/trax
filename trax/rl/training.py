@@ -298,6 +298,8 @@ class PolicyTrainer(RLTrainer):
     self._policy_collect_model = policy_model(mode='collect')
     policy_batch = next(self.policy_batches_stream())
     self._policy_collect_model.init(shapes.signature(policy_batch))
+    self._policy_eval_model = policy_model(mode='eval')  # Not collecting stats
+    self._policy_eval_model.init(shapes.signature(policy_batch))
     if self._task._initial_trajectories == 0:
       self._task.remove_epoch(0)
       self._collect_trajectories()
@@ -318,6 +320,9 @@ class PolicyTrainer(RLTrainer):
   def policy(self, trajectory, temperature=1.0):
     """Chooses an action to play after a trajectory."""
     model = self._policy_collect_model
+    if temperature != 1.0:  # When evaluating (t != 1.0), don't collect stats
+      model = self._policy_eval_model
+      model.state = self._policy_collect_model.state
     model.weights = self._policy_trainer.model_weights
     tr_slice = trajectory[-self._max_slice_length:]
     trajectory_np = tr_slice.to_np(timestep_to_np=self.task.timestep_to_np)
