@@ -22,6 +22,7 @@ import pickle
 import time
 
 from absl import logging
+import gin
 import numpy as np
 import tensorflow as tf
 
@@ -94,6 +95,16 @@ class RLTrainer:
   @property
   def avg_returns(self):
     return self._avg_returns
+
+  def save_gin(self):
+    assert self._output_dir is not None
+    config_path = os.path.join(self._output_dir, 'config.gin')
+    config_str = gin.operative_config_str()
+    with tf.io.gfile.GFile(config_path, 'w') as f:
+      f.write(config_str)
+    if self._sw:
+      self._sw.text('gin_config',
+                    jaxboard.markdownify_operative_config_str(config_str))
 
   def save_to_file(self, file_name='rl.pkl',
                    task_file_name='trajectories.pkl'):
@@ -210,6 +221,8 @@ class RLTrainer:
         self._sw.scalar('rl/n_trajectories', self.task.n_trajectories(),
                         step=self._epoch)
         self._sw.flush()
+      if self._output_dir is not None and self._epoch == 1:
+        self.save_gin()
       if self._output_dir is not None:
         self.save_to_file()
 
