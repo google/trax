@@ -218,18 +218,44 @@ def batch_fn(dataset, training, n_devices, variable_shapes,
   return dataset
 
 
-def shuffle_data(generator, buffer_size):
-  """Shuffle generator as in tf.data.Dataset.shuffle."""
-  buf = []
-  assert buffer_size > 0, 'Buffer size must be positive'
-  for example in generator:
-    buf.append(example)
-    if len(buf) == buffer_size:
-      i = int(np.random.randint(buffer_size))  # Random index to yield.
-      # Swap the selected element with the last element (no-op if i = len - 1).
-      buf[i], buf[-1] = buf[-1], buf[i]
-      # Remove and yield last element.
-      yield buf.pop()
+def shuffle_data(samples, queue_size):
+  """Shuffles a sample stream using a random-out next-in queue of given size.
+
+  Args:
+    samples: Stream of samples for eventual use as training data or eval data.
+    queue_size: Minimum number of samples within which the streamed shuffling
+        takes place.
+
+  Yields:
+    Shuffled stream of samples, ready for further processing, e.g., grouping
+    into batches.
+  """
+  if queue_size < 1:
+    raise ValueError(f'Arg queue_size ({queue_size}) is less than 1.')
+  if queue_size == 1:
+    logging.warning('Queue size of 1 results in no shuffling.')
+  queue = []
+  try:
+    # Prep: fill the queue.
+    for _ in range(queue_size):
+      queue.append(next(samples))
+
+    # Core streaming shuffle: yield sample from random location in queue, then
+    # fill that location with new sample from input stream.
+    for sample in samples:
+      i = np.random.randint(queue_size)
+      yield queue[i]
+      queue[i] = sample
+  except StopIteration:
+    # Only get here if the initial queue fill fails.
+    logging.warning(
+        'Not enough samples (%d) to fill initial queue (size %d).',
+        len(queue), queue_size)
+
+  # No new samples coming in; shuffle and drain the queue.
+  np.random.shuffle(queue)
+  for sample in queue:
+    yield sample
 
 
 def batch_data(generator, batch_size):

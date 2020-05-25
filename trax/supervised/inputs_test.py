@@ -17,11 +17,54 @@
 """Tests for trax.supervised.inputs."""
 
 from absl.testing import absltest
+from absl.testing import parameterized
 import numpy as np
 from trax.supervised import inputs
 
 
-class InputsTest(absltest.TestCase):
+class InputsTest(parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      ('zero', 0),
+      ('negative', -5),
+  )
+  def test_shuffle_data_raises_error_queue_size(self, queue_size):
+    samples = iter(range(10))
+    with self.assertRaises(ValueError):
+      _ = list(inputs.shuffle_data(samples, queue_size))
+
+  @parameterized.named_parameters(
+      ('one', 1),
+      ('two', 2),
+      ('twenty', 20),
+  )
+  def test_shuffle_data_queue_size(self, queue_size):
+    samples = iter(range(100, 200))
+    shuffled_stream = inputs.shuffle_data(samples, queue_size)
+    first_ten = [next(shuffled_stream) for _ in range(10)]
+
+    # Queue size limits how far ahead/upstream the current sample can reach.
+    self.assertLess(first_ten[0], 100 + queue_size)
+    self.assertLess(first_ten[3], 103 + queue_size)
+    self.assertLess(first_ten[9], 109 + queue_size)
+
+    unshuffled_first_ten = list(range(100, 110))
+    if queue_size == 1:  # Degenerate case: no shuffling can happen.
+      self.assertEqual(first_ten, unshuffled_first_ten)
+    if queue_size > 1:
+      self.assertNotEqual(first_ten, unshuffled_first_ten)
+
+  @parameterized.named_parameters(
+      ('qsize_100_n_001', 100, 1),
+      ('qsize_100_n_099', 100, 99),
+      ('qsize_100_n_100', 100, 100),
+      ('qsize_100_n_101', 100, 101),
+      ('qsize_100_n_199', 100, 199),
+  )
+  def test_shuffle_data_yields_all_samples(self, queue_size, n_samples):
+    samples = iter(range(n_samples))
+    shuffled_stream = inputs.shuffle_data(samples, queue_size)
+    self.assertLen(list(shuffled_stream), n_samples)
 
   def test_batch_data(self):
     dataset = ((i, i+1) for i in range(10))
