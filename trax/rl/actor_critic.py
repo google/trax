@@ -24,6 +24,7 @@ import tensorflow as tf
 
 from trax import layers as tl
 from trax import lr_schedules as lr
+from trax import math
 from trax import shapes
 from trax import supervised
 from trax.math import numpy as jnp
@@ -54,6 +55,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
                n_replay_epochs=1,
                scale_value_targets=False,
                q_value=False,
+               q_value_aggregate_max=True,
                q_value_n_samples=1,
                **kwargs):  # Arguments of PolicyTrainer come here.
     """Configures the actor-critic Trainer.
@@ -82,6 +84,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
      scale_value_targets: whether to scale targets for the value function by
         1 / (1 - gamma)
      q_value: whether to use Q-values as baselines
+     q_value_aggregate_max: whether to aggregate Q-values with max (or mean)
      q_value_n_samples: number of samples to average over when calculating
         baselines based on Q-values
      **kwargs: arguments for PolicyTrainer super-class
@@ -107,6 +110,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
       self._value_network_scale = 1
 
     self._q_value = q_value
+    self._q_value_aggregate_max = q_value_aggregate_max
     self._q_value_n_samples = q_value_n_samples
     if q_value:
       value_model = functools.partial(value_model, inject_actions=True)
@@ -167,21 +171,24 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
           dist_inputs, (self._q_value_n_samples,) + dist_inputs.shape
       )
       actions = self._policy_dist.sample(dist_inputs)
+      log_probs = self._policy_dist.log_prob(dist_inputs, actions)
       inputs = (observations, actions)
     else:
+      log_probs = None
       inputs = (observations,)
 
     values = self._value_eval_model(
         inputs, n_accelerators=1
     ) * self._value_network_scale
     values = np.squeeze(values, axis=-1)  # Remove the singleton depth dim.
+    return (values, actions, log_probs)
 
-    return (values, actions)
-
-  def _aggregate_values(self, values):
+  def _aggregate_values(self, values, aggregate_max):
     if self._q_value:
-      # TODO(pkozakowski): Try max here.
-      return jnp.mean(values, axis=0)
+      if aggregate_max:
+        return jnp.max(values, axis=0)
+      else:
+        return jnp.mean(values, axis=0)
     else:
       return values
 
@@ -194,10 +201,10 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
         min_slice_length=(1 + self._added_policy_slice_length),
         epochs=self._replay_epochs,
     ):
-      (values, _) = self._run_value_model(
+      (values, _, _) = self._run_value_model(
           np_trajectory.observations, np_trajectory.dist_inputs
       )
-      values = self._aggregate_values(values)
+      values = self._aggregate_values(values, self._q_value_aggregate_max)
 
       # TODO(pkozakowski): Add some shape assertions and docs.
       # Calculate targets based on the advantages over the target network - this
@@ -250,10 +257,10 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
         epochs=self._replay_epochs,
         max_slice_length=max_slice_length,
         include_final_state=False):
-      (values, _) = self._run_value_model(
+      (values, _, _) = self._run_value_model(
           np_trajectory.observations, np_trajectory.dist_inputs
       )
-      values = self._aggregate_values(values)
+      values = self._aggregate_values(values, False)
       if len(values.shape) != 2:
         raise ValueError('Values are expected to have shape ' +
                          '[batch_size, length], got: %s' % str(values.shape))
@@ -636,15 +643,26 @@ class AWRTrainer(AdvantageBasedActorCriticTrainer):
     return metrics
 
 
+def SamplingAWRLoss(beta, w_max, reweight=False):  # pylint: disable=invalid-name
+  """Definition of the Advantage Weighted Regression (AWR) loss."""
+  def f(log_probs, advantages, old_log_probs, mask):
+    if reweight:  # Use new policy weights for sampled actions instead.
+      mask *= jnp.exp(math.stop_gradient(log_probs) - old_log_probs)
+    weights = jnp.minimum(awr_weights(advantages, beta), w_max)
+    return -jnp.sum(log_probs * weights * mask) / jnp.sum(mask)
+  return tl.Fn('SamplingAWRLoss', f)
+
+
 class SamplingAWRTrainer(AdvantageBasedActorCriticTrainer):
   """Trains policy and value models using Sampling AWR."""
 
   on_policy = False
 
-  def __init__(self, task, beta=1.0, w_max=20.0, **kwargs):
+  def __init__(self, task, beta=1.0, w_max=20.0, reweight=False, **kwargs):
     """Configures the AWR Trainer."""
     self._beta = beta
     self._w_max = w_max
+    self._reweight = reweight
     super(SamplingAWRTrainer, self).__init__(task, q_value=True, **kwargs)
 
   @property
@@ -656,24 +674,30 @@ class SamplingAWRTrainer(AdvantageBasedActorCriticTrainer):
   @property
   def policy_loss(self, **unused_kwargs):
     """Policy loss."""
-    def LossInput(dist_inputs, actions, advantages, old_dist_inputs, mask):  # pylint: disable=invalid-name
+    def LossInput(dist_inputs, actions, q_values, act_log_probs, mask):  # pylint: disable=invalid-name
       """Calculates action log probabilities and normalizes advantages."""
-      del old_dist_inputs
-      advantages = self._preprocess_advantages(advantages)
-      dist_inputs = jnp.broadcast_to(
-          dist_inputs, (self._q_value_n_samples,) + dist_inputs.shape
-      )
-      log_probs = self._policy_dist.log_prob(dist_inputs, actions)
       # (batch_size, n_samples, ...) -> (n_samples, batch_size, ...)
-      advantages = jnp.swapaxes(advantages, 0, 1)
+      q_values = jnp.swapaxes(q_values, 0, 1)
       mask = jnp.swapaxes(mask, 0, 1)
-      return (log_probs, advantages, log_probs, mask)
+
+      # TODO(pkozakowski,lukaszkaiser): Try max here, or reweighting?
+      # Reweight: values = jnp.sum(q_values * jnp.exp(act_log_probs), axis=0)
+      values = jnp.mean(q_values, axis=0)
+      advantages = q_values - values  # Broadcasting values over n_samples
+      advantages = self._preprocess_advantages(advantages)
+
+      # Broadcast inputs and calculate log-probs
+      dist_inputs = jnp.broadcast_to(
+          dist_inputs, (self._q_value_n_samples,) + dist_inputs.shape)
+      log_probs = self._policy_dist.log_prob(dist_inputs, actions)
+      return (log_probs, advantages, act_log_probs, mask)
 
     return tl.Serial(
         tl.Fn('LossInput', LossInput, n_out=4),
         # Policy loss is expected to consume
         # (log_probs, advantages, old_log_probs, mask).
-        AWRLoss(beta=self._beta, w_max=self._w_max),  # pylint: disable=no-value-for-parameter
+        SamplingAWRLoss(beta=self._beta, w_max=self._w_max,
+                        reweight=self._reweight),  # pylint: disable=no-value-for-parameter
     )
 
   def policy_batches_stream(self):
@@ -685,33 +709,27 @@ class SamplingAWRTrainer(AdvantageBasedActorCriticTrainer):
         max_slice_length=self._max_slice_length,
         include_final_state=False,
     ):
-      (q_values, actions) = self._run_value_model(
-          np_trajectory.observations, np_trajectory.dist_inputs
-      )
-      # TODO(pkozakowski): Try max here.
-      values = jnp.mean(q_values, axis=0)
-
-      if len(values.shape) != 2:
-        raise ValueError('Values are expected to have shape ' +
-                         '[batch_size, length], got: %s' % str(values.shape))
-      if values.shape[0] != self._policy_batch_size:
-        raise ValueError('Values first dimension should = policy batch size, ' +
-                         '%d != %d' %(values.shape[0], self._policy_batch_size))
+      (q_values, actions, act_log_probs) = self._run_value_model(
+          np_trajectory.observations, np_trajectory.dist_inputs)
+      shapes.assert_same_shape(q_values, act_log_probs)
 
       # q_values shape: (n_samples, batch_size, length)
-      # values shape: (batch_size, length)
-      # Computing advantages by broadcasting over n_samples.
-      advantages = q_values - values
-      mask = jnp.broadcast_to(np_trajectory.mask, advantages.shape)
+      if len(q_values.shape) != 3:
+        raise ValueError('Q-values are expected to have shape [n_samples, ' +
+                         'batch_size, length], got: %s' % str(q_values.shape))
+      if q_values.shape[0] != self._q_value_n_samples:
+        raise ValueError('Q-values dimension 0 should = n_samples, %d != %d'
+                         % (q_values.shape[0], self._q_value_n_samples))
+      if q_values.shape[1] != self._policy_batch_size:
+        raise ValueError('Q-values dimension 1 should = policy batch size, ' +
+                         '%d!=%d' %(q_values.shape[1], self._policy_batch_size))
 
-      shapes.assert_shape_equals(
-          advantages, (self._q_value_n_samples,) + values.shape
-      )
-      shapes.assert_same_shape(mask, advantages)
+      mask = jnp.broadcast_to(np_trajectory.mask, q_values.shape)
+      shapes.assert_same_shape(mask, q_values)
 
       # Swapping the n_samples and batch_size axes, so the input is split
       # between accelerators along the batch_size axis.
-      advantages = jnp.swapaxes(advantages, 0, 1)
+      q_values = jnp.swapaxes(q_values, 0, 1)
       mask = jnp.swapaxes(mask, 0, 1)
 
-      yield (np_trajectory.observations, actions, advantages, mask, mask)
+      yield (np_trajectory.observations, actions, q_values, act_log_probs, mask)

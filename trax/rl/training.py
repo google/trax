@@ -43,6 +43,7 @@ class RLTrainer:
                n_trajectories_per_epoch=None,
                n_interactions_per_epoch=None,
                n_eval_episodes=0,
+               eval_steps=None,
                only_eval=False,
                output_dir=None,
                timestep_to_np=None):
@@ -58,6 +59,8 @@ class RLTrainer:
       n_interactions_per_epoch: How many interactions to collect in each epoch.
       n_eval_episodes: Number of episodes to play with policy at
         temperature 0 in each epoch -- used for evaluation only.
+      eval_steps: an optional list of max_steps to use for evaluation
+        (defaults to task.max_steps).
       only_eval: If set to True, then trajectories are collected only for
         for evaluation purposes, but they are not recorded.
       output_dir: Path telling where to save outputs such as checkpoints.
@@ -69,6 +72,7 @@ class RLTrainer:
     )
     self._epoch = 0
     self._task = task
+    self._eval_steps = eval_steps or [task.max_steps]
     if timestep_to_np is not None:
       self._task.timestep_to_np = timestep_to_np
     self._n_trajectories_per_epoch = n_trajectories_per_epoch
@@ -77,7 +81,7 @@ class RLTrainer:
     self._output_dir = output_dir
     self._avg_returns = []
     self._n_eval_episodes = n_eval_episodes
-    self._avg_returns_temperature0 = []
+    self._avg_returns_temperature0 = {step: [] for step in self._eval_steps}
     self._sw = None
     if output_dir is not None:
       self._sw = jaxboard.SummaryWriter(os.path.join(output_dir, 'rl'))
@@ -196,21 +200,24 @@ class RLTrainer:
       supervised.trainer_lib.log(
           'Average return in epoch %d was %.2f.' % (self._epoch, avg_return))
       if self._n_eval_episodes > 0:
-        avg_return_temperature0 = self.task.collect_trajectories(
-            lambda x: self.policy(x, temperature=0.0),
-            self._n_eval_episodes, '_tmp_eval_epoch__')
-        self.task.remove_epoch('_tmp_eval_epoch__')
-        self._avg_returns_temperature0.append(avg_return_temperature0)
-        supervised.trainer_lib.log(
-            'Avg return with temperature 0 in epoch %d was %.2f.'
-            % (self._epoch, avg_return_temperature0))
+        for steps in self._eval_steps:
+          avg_return_temperature0 = self.task.collect_trajectories(
+              lambda x: self.policy(x, temperature=0.0),
+              n_trajectories=self._n_eval_episodes,
+              max_steps=steps, only_eval=True)
+          self._avg_returns_temperature0[steps].append(avg_return_temperature0)
+          supervised.trainer_lib.log(
+              'Avg return with temperature 0 at %d steps in epoch %d was %.2f.'
+              % (steps, self._epoch, avg_return_temperature0))
       if self._sw is not None:
         self._sw.scalar('timing/collect', time.time() - cur_time,
                         step=self._epoch)
         self._sw.scalar('rl/avg_return', avg_return, step=self._epoch)
         if self._n_eval_episodes > 0:
-          self._sw.scalar('rl/avg_return_temperature0',
-                          avg_return_temperature0, step=self._epoch)
+          for steps in self._eval_steps:
+            self._sw.scalar('rl/avg_return_temperature0_steps%d' % steps,
+                            self._avg_returns_temperature0[steps][-1],
+                            step=self._epoch)
         self._sw.scalar('rl/n_interactions', self.task.n_interactions(),
                         step=self._epoch)
         self._sw.scalar('rl/n_interactions_per_second',

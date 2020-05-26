@@ -440,38 +440,49 @@ class RLTask:
       n_trajectories=None,
       n_interactions=None,
       only_eval=False,
+      max_steps=None,
       epoch_id=1,
   ):
     """Collect experience in env playing the given policy."""
+    max_steps = max_steps or self.max_steps
     if n_trajectories:
-      new_trajectories = [self.play(policy) for _ in range(n_trajectories)]
+      new_trajectories = [self.play(policy, max_steps=max_steps)
+                          for _ in range(n_trajectories)]
     elif n_interactions:
       # TODO(pkozakowski): Test this mode of experience collection.
       new_trajectories = []
       while n_interactions > 0:
-        traj = self.play(policy)
+        traj = self.play(policy, max_steps=max_steps)
         new_trajectories.append(traj)
         n_interactions -= len(traj)
     else:
       raise ValueError(
           'Either n_trajectories or n_interactions must be defined.'
       )
-    if not only_eval:
-      self._trajectories[epoch_id].extend(new_trajectories)
+
+    # Calculate returns.
+    returns = [t.total_return for t in new_trajectories]
+
+    # If we're only evaluating, we're done, return the average.
+    if only_eval:
+      return sum(returns) / float(len(returns))
+
+    # Store new trajectories.
+    self._trajectories[epoch_id].extend(new_trajectories)
+
     # Mark that epoch epoch_id has changed.
     if epoch_id in self._saved_epochs_unchanged:
       self._saved_epochs_unchanged = [e for e in self._saved_epochs_unchanged
                                       if e != epoch_id]
-    # Calculate returns.
-    returns = [t.total_return for t in new_trajectories]
 
     # Remove epochs not intended to be in the buffer
     current_trajectories = {
-        key: value for key, value in self._trajectories.items() \
-          if key >= epoch_id - self._n_replay_epochs}
+        key: value for key, value in self._trajectories.items()
+        if key >= epoch_id - self._n_replay_epochs}
     self._trajectories = collections.defaultdict(list)
     self._trajectories.update(current_trajectories)
 
+    # Update statistics.
     self._n_trajectories += len(new_trajectories)
     self._n_interactions += sum([len(traj) for traj in new_trajectories])
 

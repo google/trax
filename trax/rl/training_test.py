@@ -88,7 +88,7 @@ class TrainingTest(absltest.TestCase):
     self.assertRaises(ValueError, trainer3.run)
     # Manually set saved epoch to 1.
     dictionary = {'epoch': 1, 'avg_returns': [0.0],
-                  'avg_returns_temperature0': [0.0]}
+                  'avg_returns_temperature0': {200: [0.0]}}
     with tf.io.gfile.GFile(os.path.join(tmp_dir, 'rl.pkl'), 'wb') as f:
       pickle.dump(dictionary, f)
     # Trainer 3 still should fail as steps between evals are 2, cannot do 1.

@@ -45,11 +45,17 @@ PureMLP.flatten = False
 PureMLP.layer_widths = (128, 64)
 PureMLP.out_activation = True
 
+batch_size = 256
+policy_train_steps = 1000
+value_train_steps = 2000  # 200 was the default for AWR
+policy_lr = 0.0001
+value_lr = 0.01
+
 # Parameters for MultifactorSchedule:
 # ==============================================================================
-policy/MultifactorSchedule.constant = 5e-5
+policy/MultifactorSchedule.constant = %policy_lr
 policy/MultifactorSchedule.factors = 'constant'
-value/MultifactorSchedule.constant = 0.01
+value/MultifactorSchedule.constant = %value_lr
 value/MultifactorSchedule.factors = 'constant'
 
 # Parameters for Momentum:
@@ -72,21 +78,22 @@ td_lambda.lambda_ = 0.95
 # ==============================================================================
 AWRTrainer.value_model = @trax.models.Value
 AWRTrainer.value_optimizer = @trax.optimizers.Momentum
-AWRTrainer.value_batch_size = 256
-AWRTrainer.value_train_steps_per_epoch = 200
+AWRTrainer.value_batch_size = %batch_size
+AWRTrainer.value_train_steps_per_epoch = %value_train_steps
 AWRTrainer.value_lr_schedule = @value/MultifactorSchedule
 AWRTrainer.value_evals_per_epoch = 1
 AWRTrainer.value_eval_steps = 10
 AWRTrainer.policy_model = @trax.models.Policy
 AWRTrainer.policy_optimizer = @trax.optimizers.Momentum
-AWRTrainer.policy_batch_size = 256
-AWRTrainer.policy_train_steps_per_epoch = 1000
+AWRTrainer.policy_batch_size = %batch_size
+AWRTrainer.policy_train_steps_per_epoch = %policy_train_steps
 AWRTrainer.policy_lr_schedule = @policy/MultifactorSchedule
 AWRTrainer.policy_evals_per_epoch = 1
 AWRTrainer.policy_eval_steps = 10
 AWRTrainer.n_trajectories_per_epoch = None
 AWRTrainer.n_interactions_per_epoch = 3000
 AWRTrainer.n_eval_episodes = 1
+AWRTrainer.eval_steps = [200, 1000, 5000]
 AWRTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
 AWRTrainer.beta = 1.0
 AWRTrainer.w_max = 20
@@ -95,25 +102,29 @@ AWRTrainer.added_policy_slice_length = 10
 AWRTrainer.n_replay_epochs = 25
 AWRTrainer.scale_value_targets = True
 AWRTrainer.n_shared_layers = 1
+AWRTrainer.q_value = False
+AWRTrainer.q_value_n_samples = 128
+AWRTrainer.q_value_aggregate_max = True
 
 # Parameters for SamplingAWRTrainer:
 # ==============================================================================
 SamplingAWRTrainer.value_model = @trax.models.Value
 SamplingAWRTrainer.value_optimizer = @trax.optimizers.Momentum
-SamplingAWRTrainer.value_batch_size = 256
-SamplingAWRTrainer.value_train_steps_per_epoch = 200
+SamplingAWRTrainer.value_batch_size = %batch_size
+SamplingAWRTrainer.value_train_steps_per_epoch = %value_train_steps
 SamplingAWRTrainer.value_lr_schedule = @value/MultifactorSchedule
 SamplingAWRTrainer.value_evals_per_epoch = 1
 SamplingAWRTrainer.value_eval_steps = 10
 SamplingAWRTrainer.policy_model = @trax.models.Policy
 SamplingAWRTrainer.policy_optimizer = @trax.optimizers.Momentum
-SamplingAWRTrainer.policy_batch_size = 256
-SamplingAWRTrainer.policy_train_steps_per_epoch = 1000
+SamplingAWRTrainer.policy_batch_size = %batch_size
+SamplingAWRTrainer.policy_train_steps_per_epoch = %policy_train_steps
 SamplingAWRTrainer.policy_lr_schedule = @policy/MultifactorSchedule
 SamplingAWRTrainer.policy_evals_per_epoch = 1
 SamplingAWRTrainer.policy_eval_steps = 10
 SamplingAWRTrainer.n_trajectories_per_epoch = 3
 SamplingAWRTrainer.n_eval_episodes = 1
+SamplingAWRTrainer.eval_steps = [200, 1000, 5000]
 SamplingAWRTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
 SamplingAWRTrainer.beta = 1.0
 SamplingAWRTrainer.w_max = 20
@@ -122,12 +133,14 @@ SamplingAWRTrainer.added_policy_slice_length = 10
 SamplingAWRTrainer.n_replay_epochs = 25
 SamplingAWRTrainer.scale_value_targets = True
 SamplingAWRTrainer.n_shared_layers = 1
-SamplingAWRTrainer.q_value_n_samples = 4
+SamplingAWRTrainer.q_value_n_samples = 128
+SamplingAWRTrainer.q_value_aggregate_max = True
+SamplingAWRTrainer.reweight = False
 
 # Parameters for train_rl:
 # ==============================================================================
 train_rl.light_rl = True
 train_rl.light_rl_trainer = @trax.rl.AWRTrainer
-train_rl.n_epochs = 10000
+train_rl.n_epochs = 1000
 
 # TODO(pkozakowski): Add PPO config here once we get it to work on MuJoCo.

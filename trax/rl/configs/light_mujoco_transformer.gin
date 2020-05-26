@@ -42,10 +42,10 @@ Normalize.epsilon = 1e-5
 # Parameters for TransformerDecoder:
 # ==============================================================================
 TransformerDecoder.d_model = 256
-TransformerDecoder.d_ff = 256
+TransformerDecoder.d_ff = 1024
 TransformerDecoder.dropout = 0.0
-TransformerDecoder.n_heads = 2
-TransformerDecoder.n_layers = 1
+TransformerDecoder.n_heads = 4
+TransformerDecoder.n_layers = 3
 
 # Parameters for MultifactorSchedule:
 # ==============================================================================
@@ -86,7 +86,8 @@ AWRTrainer.policy_lr_schedule = @policy/MultifactorSchedule
 AWRTrainer.policy_evals_per_epoch = 10
 AWRTrainer.policy_eval_steps = 10
 AWRTrainer.n_trajectories_per_epoch = 3
-AWRTrainer.value_evals_per_epoch = 1
+AWRTrainer.n_eval_episodes = 1
+AWRTrainer.eval_steps = [200, 1000]
 AWRTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
 AWRTrainer.beta = 1.0
 AWRTrainer.w_max = 20
@@ -95,25 +96,29 @@ AWRTrainer.added_policy_slice_length = 8
 AWRTrainer.n_replay_epochs = 25
 AWRTrainer.scale_value_targets = True
 AWRTrainer.n_shared_layers = 1
+AWRTrainer.q_value = False
+AWRTrainer.q_value_n_samples = 128
+AWRTrainer.q_value_aggregate_max = True
 
 # Parameters for SamplingAWRTrainer:
 # ==============================================================================
 SamplingAWRTrainer.value_model = @trax.models.Value
 SamplingAWRTrainer.value_optimizer = @trax.optimizers.Adam
 SamplingAWRTrainer.value_batch_size = 256
-SamplingAWRTrainer.value_train_steps_per_epoch = 200
+SamplingAWRTrainer.value_train_steps_per_epoch = 2000
 SamplingAWRTrainer.value_lr_schedule = @value/MultifactorSchedule
 SamplingAWRTrainer.value_evals_per_epoch = 10
 SamplingAWRTrainer.value_eval_steps = 10
 SamplingAWRTrainer.policy_model = @trax.models.Policy
 SamplingAWRTrainer.policy_optimizer = @trax.optimizers.Adam
 SamplingAWRTrainer.policy_batch_size = 256
-SamplingAWRTrainer.policy_train_steps_per_epoch = 1000
+SamplingAWRTrainer.policy_train_steps_per_epoch = 4000
 SamplingAWRTrainer.policy_lr_schedule = @policy/MultifactorSchedule
 SamplingAWRTrainer.policy_evals_per_epoch = 10
 SamplingAWRTrainer.policy_eval_steps = 10
 SamplingAWRTrainer.n_trajectories_per_epoch = 3
-SamplingAWRTrainer.value_evals_per_epoch = 1
+SamplingAWRTrainer.n_eval_episodes = 1
+SamplingAWRTrainer.eval_steps = [200, 1000]
 SamplingAWRTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
 SamplingAWRTrainer.beta = 1.0
 SamplingAWRTrainer.w_max = 20
@@ -122,12 +127,14 @@ SamplingAWRTrainer.added_policy_slice_length = 8
 SamplingAWRTrainer.n_replay_epochs = 25
 SamplingAWRTrainer.scale_value_targets = True
 SamplingAWRTrainer.n_shared_layers = 1
-SamplingAWRTrainer.q_value_n_samples = 4
+SamplingAWRTrainer.q_value_n_samples = 128
+SamplingAWRTrainer.q_value_aggregate_max = True
+SamplingAWRTrainer.reweight = False
 
 # Parameters for train_rl:
 # ==============================================================================
 train_rl.light_rl = True
 train_rl.light_rl_trainer = @trax.rl.AWRTrainer
-train_rl.n_epochs = 10000
+train_rl.n_epochs = 1000
 
 # TODO(pkozakowski): Add PPO config here once we get it to work on MuJoCo.
