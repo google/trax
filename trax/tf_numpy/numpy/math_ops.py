@@ -897,32 +897,41 @@ setattr(arrays.ndarray, '__ne__', not_equal)
 
 
 @utils.np_doc(np.linspace)
-def linspace(start, stop, num=50, endpoint=True, retstep=False, dtype=float):
+def linspace(  # pylint: disable=missing-docstring
+    start, stop, num=50, endpoint=True, retstep=False, dtype=float, axis=0):
   if dtype:
     dtype = utils.result_type(dtype)
-  start = array_ops.array(start, dtype=dtype)
-  stop = array_ops.array(stop, dtype=dtype)
+  start = array_ops.array(start, dtype=dtype).data
+  stop = array_ops.array(stop, dtype=dtype).data
   if num == 0:
-    return empty(dtype)
+    final_shape = tf.broadcast_dynamic_shape(tf.shape(start), tf.shape(stop))
+    axis = tf.where(axis < 0, tf.shape(final_shape)[0] + axis + 1, axis)
+    final_shape = tf.concat([final_shape[:axis], [0], final_shape[axis:]], 0)
+    result = array_ops.asarray(tf.zeros(final_shape), dtype)
+    if retstep:
+      return result, array_ops.asarray(np.nan)
+    return result
   if num < 0:
     raise ValueError('Number of samples {} must be non-negative.'.format(num))
-  step = np.nan
+  step = tf.convert_to_tensor(np.nan)
   if endpoint:
-    result = tf.linspace(start.data, stop.data, num)
+    result = tf.linspace(start, stop, num, axis=axis)
     if num > 1:
       step = (stop - start) / (num - 1)
   else:
     # tf.linspace does not support endpoint=False so we manually handle it
     # here.
     if num > 1:
-      step = (stop - start) / num
-      result = tf.linspace(start.data, (stop - step).data, num)
+      step = ((stop - start) / num)
+      new_stop = tf.cast(stop, step.dtype) - step
+      start = tf.cast(start, new_stop.dtype)
+      result = tf.linspace(start, new_stop, num, axis=axis)
     else:
-      result = tf.linspace(start.data, stop.data, num)
+      result = tf.linspace(start, stop, num, axis=axis)
   if dtype:
     result = tf.cast(result, dtype)
   if retstep:
-    return arrays.tensor_to_ndarray(result), step
+    return arrays.tensor_to_ndarray(result), arrays.tensor_to_ndarray(step)
   else:
     return arrays.tensor_to_ndarray(result)
 

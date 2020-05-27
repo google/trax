@@ -2537,9 +2537,11 @@ class LaxBackedNumpyTests(jtu.TestCase):
         for num in [0, 1, 2, 5, 20]
         for endpoint in [True, False]
         for retstep in [True, False]
-        for dtype in number_dtypes + [None,]
+        # TODO(b/157597565): Support all dtypes when the tf op supports endpoint
+        # Currently, subtracting the step early leads to rounding errors for
+        # integers.
+        for dtype in float_dtypes + [None,]
         for rng_factory in [jtu.rand_default]))
-  @jtu.disable
   def testLinspace(self, start_shape, stop_shape, num, endpoint,
                    retstep, dtype, rng_factory):
     rng = rng_factory()
@@ -2563,7 +2565,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
       # cause unavoidable variation in integer truncation for some inputs.
       if dtype in (inexact_dtypes + [None,]):
         self._CompileAndCheck(lnp_op, args_maker,
-                              check_dtypes=False, atol=tol, rtol=tol)
+                              check_dtypes=False, atol=tol, rtol=tol, check_incomplete_shape=True)
 
   @named_parameters(
       jtu.cases_from_list(
