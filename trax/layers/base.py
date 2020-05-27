@@ -460,18 +460,6 @@ class Layer(object):
                        trace) from e
 
   # pylint: disable=protected-access
-  def replicate(self, n_accelerators):
-    """Replicate weights and state for use on n accelerators. Experimental."""
-    if n_accelerators > 1:
-      self.weights = for_n_devices(self.weights, n_accelerators)
-      self.state = for_n_devices(self.state, n_accelerators)
-
-  def unreplicate(self, unreplicate_state=False):
-    """Unreplicate weights and optionally state. Experimental."""
-    self.weights = math.nested_map(self.weights, lambda x: x[0])
-    if unreplicate_state:
-      self.state = math.nested_map(self.state, lambda x: x[0])
-
   def _do_custom_gradients(self, x, weights, state, rng):
     """Calls this layer for a forward pass, but with custom gradients."""
     assert math.backend_name() == 'jax', (
