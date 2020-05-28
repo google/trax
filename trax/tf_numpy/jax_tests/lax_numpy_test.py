@@ -52,10 +52,10 @@ nonzerodim_shapes = nonempty_nonscalar_array_shapes + empty_array_shapes
 nonempty_shapes = scalar_shapes + nonempty_array_shapes
 all_shapes =  scalar_shapes + array_shapes
 
-# TODO(wangpeng): float_dtypes = [lnp.bfloat16, onp.float16, onp.float32, onp.float64]
+# TODO(wangpeng): float_dtypes = [lnp.bfloat16, onp.float16, onp.float32,
+#                                 onp.float64]
 float_dtypes = [onp.float16, onp.float32, onp.float64]
-# TODO(wangpeng): complex_dtypes = [onp.complex64, onp.complex128]
-complex_dtypes = []
+complex_dtypes = [onp.complex64, onp.complex128]
 int_dtypes = [onp.int32, onp.int64]
 unsigned_dtypes = [onp.uint32, onp.uint64]
 bool_dtypes = [onp.bool_]
@@ -112,18 +112,24 @@ JAX_ONE_TO_ONE_OP_RECORDS = [
                   onp.float64: 1e-12, onp.complex64: 2e-4,
                   onp.complex128: 1e-12}, check_dtypes=False),
     op_record("floor", 1, float_dtypes, all_shapes, jtu.rand_default, []),
-    op_record("greater", 2, all_dtypes, all_shapes, jtu.rand_some_equal, []),
-    op_record("greater_equal", 2, all_dtypes, all_shapes, jtu.rand_some_equal, []),
-    op_record("less", 2, all_dtypes, all_shapes, jtu.rand_some_equal, []),
-    op_record("less_equal", 2, all_dtypes, all_shapes, jtu.rand_some_equal, []),
+    op_record("greater", 2, minus(all_dtypes, complex_dtypes), all_shapes,
+              jtu.rand_some_equal, []),
+    op_record("greater_equal", 2, minus(all_dtypes, complex_dtypes), all_shapes,
+              jtu.rand_some_equal, []),
+    op_record("less", 2, minus(all_dtypes, complex_dtypes), all_shapes,
+              jtu.rand_some_equal, []),
+    op_record("less_equal", 2, minus(all_dtypes, complex_dtypes), all_shapes,
+              jtu.rand_some_equal, []),
     op_record("log", 1, number_dtypes, all_shapes, jtu.rand_positive, ["rev"],
               inexact=True),
     op_record("logical_and", 2, all_dtypes, all_shapes, jtu.rand_bool, []),
     op_record("logical_not", 1, all_dtypes, all_shapes, jtu.rand_bool, []),
     op_record("logical_or", 2, all_dtypes, all_shapes, jtu.rand_bool, []),
     op_record("logical_xor", 2, all_dtypes, all_shapes, jtu.rand_bool, []),
-    op_record("maximum", 2, all_dtypes, all_shapes, jtu.rand_some_inf, []),
-    op_record("minimum", 2, all_dtypes, all_shapes, jtu.rand_some_inf, []),
+    op_record("maximum", 2, minus(all_dtypes, complex_dtypes), all_shapes,
+              jtu.rand_some_inf, []),
+    op_record("minimum", 2, minus(all_dtypes, complex_dtypes), all_shapes,
+              jtu.rand_some_inf, []),
     op_record("multiply", 2, all_dtypes, all_shapes, jtu.rand_default, ["rev"]),
     op_record("negative", 1, number_dtypes, all_shapes, jtu.rand_default, ["rev"]),
     op_record("nextafter", 2, [f for f in float_dtypes
@@ -194,8 +200,8 @@ JAX_COMPOUND_OP_RECORDS = [
     op_record("expm1", 1, number_dtypes, all_shapes, jtu.rand_small_positive,
               [], tolerance={onp.float64: 1e-8}, inexact=True),
     op_record("fix", 1, float_dtypes, all_shapes, jtu.rand_default, []),
-    op_record("floor_divide", 2, number_dtypes, all_shapes, jtu.rand_nonzero,
-              ["rev"]),
+    op_record("floor_divide", 2, minus(number_dtypes, complex_dtypes),
+              all_shapes, jtu.rand_nonzero, ["rev"]),
     op_record("heaviside", 2, default_dtypes, all_shapes, jtu.rand_default, [],
               inexact=True),
     op_record("hypot", 2, default_dtypes, all_shapes, jtu.rand_default, [],
@@ -204,9 +210,12 @@ JAX_COMPOUND_OP_RECORDS = [
     op_record("outer", 2, number_dtypes, all_shapes, jtu.rand_default, []),
     op_record("imag", 1, number_dtypes, all_shapes, jtu.rand_some_inf, []),
     op_record("iscomplex", 1, number_dtypes, all_shapes, jtu.rand_some_inf, []),
-    op_record("isfinite", 1, inexact_dtypes, all_shapes, jtu.rand_some_inf_and_nan, []),
-    op_record("isinf", 1, inexact_dtypes, all_shapes, jtu.rand_some_inf_and_nan, []),
-    op_record("isnan", 1, inexact_dtypes, all_shapes, jtu.rand_some_inf_and_nan, []),
+    op_record("isfinite", 1, minus(inexact_dtypes, complex_dtypes), all_shapes,
+              jtu.rand_some_inf_and_nan, []),
+    op_record("isinf", 1, minus(inexact_dtypes, complex_dtypes), all_shapes,
+              jtu.rand_some_inf_and_nan, []),
+    op_record("isnan", 1, minus(inexact_dtypes, complex_dtypes), all_shapes,
+              jtu.rand_some_inf_and_nan, []),
     op_record("isneginf", 1, float_dtypes, all_shapes, jtu.rand_some_inf_and_nan, []),
     op_record("isposinf", 1, float_dtypes, all_shapes, jtu.rand_some_inf_and_nan, []),
     op_record("isreal", 1, number_dtypes, all_shapes, jtu.rand_some_inf, []),
@@ -270,17 +279,21 @@ JAX_REDUCER_RECORDS = [
               inexact=True),
     op_record("prod", 1, all_dtypes, all_shapes, jtu.rand_small_positive, []),
     op_record("sum", 1, all_dtypes, all_shapes, jtu.rand_default, []),
-    op_record("nanmean", 1, inexact_dtypes, nonempty_shapes, jtu.rand_some_nan,
-              [], inexact=True),
-    op_record("nanprod", 1, inexact_dtypes, all_shapes, jtu.rand_some_nan, []),
-    op_record("nansum", 1, number_dtypes, all_shapes, jtu.rand_some_nan, []),
+    op_record("nanmean", 1, minus(inexact_dtypes, complex_dtypes),
+              nonempty_shapes, jtu.rand_some_nan, [], inexact=True),
+    op_record("nanprod", 1, minus(inexact_dtypes, complex_dtypes), all_shapes,
+              jtu.rand_some_nan, []),
+    op_record("nansum", 1, minus(number_dtypes, complex_dtypes), all_shapes,
+              jtu.rand_some_nan, []),
 ]
 
 JAX_REDUCER_NO_DTYPE_RECORDS = [
     op_record("all", 1, all_dtypes, all_shapes, jtu.rand_some_zero, []),
     op_record("any", 1, all_dtypes, all_shapes, jtu.rand_some_zero, []),
-    op_record("max", 1, all_dtypes, nonempty_shapes, jtu.rand_default, []),
-    op_record("min", 1, all_dtypes, nonempty_shapes, jtu.rand_default, []),
+    op_record("max", 1, minus(all_dtypes, complex_dtypes), nonempty_shapes,
+              jtu.rand_default, []),
+    op_record("min", 1, minus(all_dtypes, complex_dtypes), nonempty_shapes,
+              jtu.rand_default, []),
     op_record("var", 1, all_dtypes, nonempty_shapes, jtu.rand_default, [],
               inexact=True),
     op_record("std", 1, all_dtypes, nonempty_shapes, jtu.rand_default, [],
@@ -288,8 +301,10 @@ JAX_REDUCER_NO_DTYPE_RECORDS = [
 ]
 
 JAX_ARGMINMAX_RECORDS = [
-    op_record("argmin", 1, all_dtypes, nonempty_shapes, jtu.rand_some_equal, []),
-    op_record("argmax", 1, all_dtypes, nonempty_shapes, jtu.rand_some_equal, []),
+    op_record("argmin", 1, minus(all_dtypes, complex_dtypes), nonempty_shapes,
+              jtu.rand_some_equal, []),
+    op_record("argmax", 1, minus(all_dtypes, complex_dtypes), nonempty_shapes,
+              jtu.rand_some_equal, []),
 ]
 
 JAX_OPERATOR_OVERLOADS = [
@@ -347,7 +362,8 @@ if numpy_version >= (1, 15):
       op_record("lcm", 2, int_dtypes, all_shapes, jtu.rand_default, []),
   ]
   JAX_REDUCER_NO_DTYPE_RECORDS += [
-      op_record("ptp", 1, number_dtypes, nonempty_shapes, jtu.rand_default, []),
+      op_record("ptp", 1, minus(number_dtypes, complex_dtypes), nonempty_shapes,
+                jtu.rand_default, []),
   ]
 
 if six.PY2:
@@ -706,7 +722,8 @@ class LaxBackedNumpyTests(jtu.TestCase):
           [(4, 5, 2), (4, 5, 2), (-1, -1, 0, None)], # axisc should do nothing
           [(4, 5, 2), (4, 5, 2), (-1, -1, -1, None)] # same as before
       ]
-      for lhs_dtype, rhs_dtype in CombosWithReplacement(number_dtypes, 2)))
+      for lhs_dtype, rhs_dtype in CombosWithReplacement(
+          minus(number_dtypes, complex_dtypes), 2)))
   def testCross(self, lhs_shape, lhs_dtype, rhs_shape, rhs_dtype, axes, rng_factory):
     rng = rng_factory()
     args_maker = lambda: [rng(lhs_shape, lhs_dtype), rng(rhs_shape, rhs_dtype)]
@@ -758,20 +775,17 @@ class LaxBackedNumpyTests(jtu.TestCase):
     def onp_dot(x, y):
       x = x.astype(onp.float32) if lhs_dtype == lnp.bfloat16 else x
       y = y.astype(onp.float32) if rhs_dtype == lnp.bfloat16 else y
-      return onp.dot(x, y).astype(lnp.promote_types(lhs_dtype, rhs_dtype))
-    # np.dot's type promotion is different from np.result_type when rhs_shape
-    # is ():
-    # ```
-    # print(np.dot(np.ones([3, 3], np.float16), np.array(1, np.int64)).dtype)
-    # print(np.result_type(np.ones([3, 3], np.float16), np.array(1, np.int64)))
-    # ```
-    # >>>
-    # float64
-    # float16
-    check_dtype = rhs_shape != ()
+      # `onp.dot(x, y).dtype` sometimes differs from `onp.result_type(x, y)`
+      # (e.g. when x is float64[] and y is complex64[3,3], or when x is
+      # float16[3,3] and y is int64[]). We ignore this corner case and pretend
+      # that they agree.
+      return onp.dot(x, y).astype(onp.result_type(x, y))
     self._CheckAgainstNumpy(onp_dot, lnp.dot, args_maker,
-                            check_dtypes=check_dtype, tol=tol)
-    self._CompileAndCheck(lnp.dot, args_maker, check_dtypes=check_dtype,
+                            check_dtypes=True, tol=tol)
+    # We disable dtype check in the following cases because `np.dot` does
+    # value-dependent type promotion in those cases.
+    check_dtypes = () not in (lhs_shape, rhs_shape)
+    self._CompileAndCheck(lnp.dot, args_maker, check_dtypes=check_dtypes,
                           atol=tol, rtol=tol, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
@@ -883,7 +897,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
           jtu.format_shape_dtype_string(shape, dtype), a_min, a_max),
        "shape": shape, "dtype": dtype, "a_min": a_min, "a_max": a_max,
        "rng_factory": jtu.rand_default}
-      for shape in all_shapes for dtype in number_dtypes
+      for shape in all_shapes for dtype in minus(number_dtypes, complex_dtypes)
       for a_min, a_max in [(-1, None), (None, 1), (-1, 1),
                            (-onp.ones(1), None),
                            (None, onp.ones(1)),
@@ -928,7 +942,8 @@ class LaxBackedNumpyTests(jtu.TestCase):
           jtu.format_shape_dtype_string(shape, dtype), decimals),
        "shape": shape, "dtype": dtype, "decimals": decimals,
        "rng_factory": jtu.rand_default}
-      for shape, dtype in _shape_and_dtypes(all_shapes, number_dtypes)
+      for shape, dtype in _shape_and_dtypes(
+          all_shapes, minus(number_dtypes, complex_dtypes))
       for decimals in [0, 1, -2]))
   def testRoundStaticDecimals(self, shape, dtype, decimals, rng_factory):
     rng = rng_factory()
@@ -1586,7 +1601,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
     tol = {
         # TODO(b/154768983): lnp.bfloat16: 1e-1,
         onp.float16: 1e-1, onp.float32: 1e-3, onp.float64: 2e-7,
-        # TODO(wangpeng): onp.complex64: 1e-3, onp.complex128: 1e-10,
+        onp.complex64: 1e-3, onp.complex128: 1e-10,
     }
     check_dtypes = shape is not jtu.PYTHON_SCALAR_SHAPE
     try:

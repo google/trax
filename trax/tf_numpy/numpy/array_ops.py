@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import math
 import numpy as np
 import six
@@ -719,16 +720,43 @@ def amin(a, axis=None, keepdims=None):
                  promote_int=None, tf_bool_fn=tf.reduce_all, preserve_bool=True)
 
 
+# TODO(wangpeng): Remove this workaround once b/157232284 is fixed
+def _reduce_variance_complex(input_tensor, axis, keepdims):
+  f = functools.partial(tf.math.reduce_variance, axis=axis, keepdims=keepdims)
+  return f(tf.math.real(input_tensor)) + f(tf.math.imag(input_tensor))
+
+
+# TODO(wangpeng): Remove this workaround once b/157232284 is fixed
+def _reduce_std_complex(input_tensor, axis, keepdims):
+  y = _reduce_variance_complex(input_tensor=input_tensor, axis=axis,
+                               keepdims=keepdims)
+  return tf.math.sqrt(y)
+
+
 @utils.np_doc(np.var)
 def var(a, axis=None, keepdims=None):
-  return _reduce(tf.math.reduce_variance, a, axis=axis, dtype=None,
-                 keepdims=keepdims, promote_int=_TO_FLOAT)
+  def f(input_tensor, axis, keepdims):
+    if input_tensor.dtype in (tf.complex64, tf.complex128):
+      # A workaround for b/157232284
+      fn = _reduce_variance_complex
+    else:
+      fn = tf.math.reduce_variance
+    return fn(input_tensor=input_tensor, axis=axis, keepdims=keepdims)
+  return _reduce(f, a, axis=axis, dtype=None, keepdims=keepdims,
+                 promote_int=_TO_FLOAT)
 
 
 @utils.np_doc(np.std)
 def std(a, axis=None, keepdims=None):
-  return _reduce(tf.math.reduce_std, a, axis=axis, dtype=None,
-                 keepdims=keepdims, promote_int=_TO_FLOAT)
+  def f(input_tensor, axis, keepdims):
+    if input_tensor.dtype in (tf.complex64, tf.complex128):
+      # A workaround for b/157232284
+      fn = _reduce_std_complex
+    else:
+      fn = tf.math.reduce_std
+    return fn(input_tensor=input_tensor, axis=axis, keepdims=keepdims)
+  return _reduce(f, a, axis=axis, dtype=None, keepdims=keepdims,
+                 promote_int=_TO_FLOAT)
 
 
 @utils.np_doc(np.ravel)
@@ -772,11 +800,14 @@ def around(a, decimals=0):  # pylint: disable=missing-docstring
   a = asarray(a)
   dtype = a.dtype
   factor = math.pow(10, decimals)
-  # Use float as the working dtype instead of a.dtype, because a.dtype can be
-  # integer and `decimals` can be negative.
-  float_dtype = dtypes.default_float_type()
-  a = a.astype(float_dtype).data
-  factor = tf.cast(factor, float_dtype)
+  if np.issubdtype(dtype, np.inexact):
+    factor = tf.cast(factor, dtype)
+  else:
+    # Use float as the working dtype when a.dtype is exact (e.g. integer),
+    # because `decimals` can be negative.
+    float_dtype = dtypes.default_float_type()
+    a = a.astype(float_dtype).data
+    factor = tf.cast(factor, float_dtype)
   a = tf.multiply(a, factor)
   a = tf.round(a)
   a = tf.math.divide(a, factor)

@@ -354,8 +354,8 @@ def isclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):  # pylint: disable=m
   def f(a, b):  # pylint: disable=missing-docstring
     dtype = a.dtype
     if np.issubdtype(dtype.as_numpy_dtype, np.inexact):
-      rtol_ = tf.convert_to_tensor(rtol, dtype)
-      atol_ = tf.convert_to_tensor(atol, dtype)
+      rtol_ = tf.convert_to_tensor(rtol, dtype.real_dtype)
+      atol_ = tf.convert_to_tensor(atol, dtype.real_dtype)
       result = (tf.math.abs(a - b) <= atol_ + rtol_ * tf.math.abs(b))
       if equal_nan:
         result = result | (tf.math.is_nan(a) & tf.math.is_nan(b))
@@ -462,8 +462,8 @@ def _scalar(tf_fn, x, promote_to_float=False):
     determined by `dtypes.default_float_type`, unless x is an ndarray with a
     floating point type, in which case the output type is same as x.dtype.
   """
-  x = array_ops.array(x)
-  if promote_to_float and not np.issubdtype(x.dtype, np.floating):
+  x = array_ops.asarray(x)
+  if promote_to_float and not np.issubdtype(x.dtype, np.inexact):
     x = x.astype(dtypes.default_float_type())
   return utils.tensor_to_ndarray(tf_fn(x.data))
 
