@@ -59,6 +59,8 @@ def Value(
     inject_actions_dim=64,
     batch_axes=None,
     mode='train',
+    is_discrete=False,
+    vocab_size=2
 ):
   """Attaches a value head to a model body."""
   if body is None:
@@ -72,12 +74,18 @@ def Value(
 
   def ActionInjector(mode):
     if inject_actions:
+      if is_discrete:
+        encode_layer = tl.Parallel(
+            tl.Dense(inject_actions_dim),
+            tl.Embedding(inject_actions_dim, vocab_size=vocab_size))
+      else:
+        encode_layer = tl.Parallel(
+            tl.Dense(inject_actions_dim),
+            tl.Dense(inject_actions_dim),
+        )
       return tl.Serial(
           # Input: (body output, actions).
-          tl.Parallel(
-              tl.Dense(inject_actions_dim),
-              tl.Dense(inject_actions_dim),
-          ),
+          encode_layer,
           tl.Add(),
           models.PureMLP(
               layer_widths=(inject_actions_dim,) * inject_actions_n_layers,

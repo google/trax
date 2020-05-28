@@ -19,6 +19,7 @@
 import functools
 import os
 
+import gym
 import numpy as np
 import tensorflow as tf
 
@@ -57,6 +58,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
                q_value=False,
                q_value_aggregate_max=True,
                q_value_n_samples=1,
+               vocab_size=2,
                **kwargs):  # Arguments of PolicyTrainer come here.
     """Configures the actor-critic Trainer.
 
@@ -87,6 +89,8 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
      q_value_aggregate_max: whether to aggregate Q-values with max (or mean)
      q_value_n_samples: number of samples to average over when calculating
         baselines based on Q-values
+     vocab_size: used only with discrete actions and when q_value is set to True
+        The number is passed to tl.Embeeding
      **kwargs: arguments for PolicyTrainer super-class
     """
     self._n_shared_layers = n_shared_layers
@@ -112,8 +116,16 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
     self._q_value = q_value
     self._q_value_aggregate_max = q_value_aggregate_max
     self._q_value_n_samples = q_value_n_samples
+    self._vocab_size = vocab_size
+
+    is_discrete = isinstance(self._task.action_space, gym.spaces.Discrete)
+    # TODO(henrykm) handle the case other than Discrete/Gaussian
+
     if q_value:
-      value_model = functools.partial(value_model, inject_actions=True)
+      value_model = functools.partial(value_model,
+                                      inject_actions=True,
+                                      is_discrete=is_discrete,
+                                      vocab_size=self._vocab_size)
     self._value_eval_model = value_model(mode='eval')
     self._value_eval_model.init(self._value_model_signature)
     self._value_eval_jit = tl.jit_forward(self._value_eval_model.pure_fn,
