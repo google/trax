@@ -464,5 +464,24 @@ class ScanTest(absltest.TestCase):
                                   [11, 31, 71]])
 
 
+class BatchLeadingAxesTest(absltest.TestCase):
+
+  def _Id3Dim(self):  # pylint: disable=invalid-name
+    del self
+    def f(x):
+      assert len(x.shape) == 3
+      return x
+    return tl.Fn('Id3Dim', f, n_out=2)
+
+  def test_2axes(self):
+    layer = tl.BatchLeadingAxes(self._Id3Dim(), n_last_axes_to_keep=2)
+    ys = layer(np.zeros((3, 4, 5)))
+    self.assertEqual(ys.shape, (3, 4, 5))
+    ys = layer(np.zeros((2, 3, 4, 5)))
+    self.assertEqual(ys.shape, (2, 3, 4, 5))
+    ys = layer(np.zeros((1, 2, 3, 4, 5)))
+    self.assertEqual(ys.shape, (1, 2, 3, 4, 5))
+
+
 if __name__ == '__main__':
   absltest.main()

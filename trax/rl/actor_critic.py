@@ -116,6 +116,8 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
       value_model = functools.partial(value_model, inject_actions=True)
     self._value_eval_model = value_model(mode='eval')
     self._value_eval_model.init(self._value_model_signature)
+    self._value_eval_jit = tl.jit_forward(self._value_eval_model.pure_fn,
+                                          math.device_count(), do_mean=False)
 
     # Initialize policy training.
     super(ActorCriticTrainer, self).__init__(task, **kwargs)
@@ -170,25 +172,33 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
       dist_inputs = np.broadcast_to(
           dist_inputs, (self._q_value_n_samples,) + dist_inputs.shape
       )
+      # Swapping the n_samples and batch_size axes, so the input is split
+      # between accelerators along the batch_size axis.
+      dist_inputs = jnp.swapaxes(dist_inputs, 0, 1)
       actions = self._policy_dist.sample(dist_inputs)
       log_probs = self._policy_dist.log_prob(dist_inputs, actions)
-      inputs = (observations, actions)
+      obs = observations
+      obs = np.reshape(obs, [obs.shape[0], 1] + list(obs.shape[1:]))
+      inputs = (obs, actions)
     else:
       log_probs = None
       inputs = (observations,)
 
-    values = self._value_eval_model(
-        inputs, n_accelerators=1
-    ) * self._value_network_scale
+    n_devices = math.device_count()
+    weights = tl.for_n_devices(self._value_eval_model.weights, n_devices)
+    state = tl.for_n_devices(self._value_eval_model.state, n_devices)
+    rng = self._value_eval_model.rng
+    values, _ = self._value_eval_jit(inputs, weights, state, rng)
+    values *= self._value_network_scale
     values = np.squeeze(values, axis=-1)  # Remove the singleton depth dim.
     return (values, actions, log_probs)
 
   def _aggregate_values(self, values, aggregate_max):
     if self._q_value:
       if aggregate_max:
-        return jnp.max(values, axis=0)
+        return jnp.max(values, axis=1)
       else:
-        return jnp.mean(values, axis=0)
+        return jnp.mean(values, axis=1)
     else:
       return values
 
@@ -679,6 +689,8 @@ class SamplingAWRTrainer(AdvantageBasedActorCriticTrainer):
       # (batch_size, n_samples, ...) -> (n_samples, batch_size, ...)
       q_values = jnp.swapaxes(q_values, 0, 1)
       mask = jnp.swapaxes(mask, 0, 1)
+      actions = jnp.swapaxes(actions, 0, 1)
+      act_log_probs = jnp.swapaxes(act_log_probs, 0, 1)
 
       # TODO(pkozakowski,lukaszkaiser): Try max here, or reweighting?
       # Reweight: values = jnp.sum(q_values * jnp.exp(act_log_probs), axis=0)
@@ -713,23 +725,20 @@ class SamplingAWRTrainer(AdvantageBasedActorCriticTrainer):
           np_trajectory.observations, np_trajectory.dist_inputs)
       shapes.assert_same_shape(q_values, act_log_probs)
 
-      # q_values shape: (n_samples, batch_size, length)
+      # q_values shape: (batch_size, n_samples, length)
       if len(q_values.shape) != 3:
-        raise ValueError('Q-values are expected to have shape [n_samples, ' +
-                         'batch_size, length], got: %s' % str(q_values.shape))
-      if q_values.shape[0] != self._q_value_n_samples:
-        raise ValueError('Q-values dimension 0 should = n_samples, %d != %d'
-                         % (q_values.shape[0], self._q_value_n_samples))
-      if q_values.shape[1] != self._policy_batch_size:
-        raise ValueError('Q-values dimension 1 should = policy batch size, ' +
+        raise ValueError('Q-values are expected to have shape [batch_size, ' +
+                         'n_samples, length], got: %s' % str(q_values.shape))
+      if q_values.shape[1] != self._q_value_n_samples:
+        raise ValueError('Q-values dimension 1 should = n_samples, %d != %d'
+                         % (q_values.shape[1], self._q_value_n_samples))
+      if q_values.shape[0] != self._policy_batch_size:
+        raise ValueError('Q-values dimension 0 should = policy batch size, ' +
                          '%d!=%d' %(q_values.shape[1], self._policy_batch_size))
 
-      mask = jnp.broadcast_to(np_trajectory.mask, q_values.shape)
+      mask = np_trajectory.mask
+      mask = np.reshape(mask, [mask.shape[0], 1] + list(mask.shape[1:]))
+      mask = jnp.broadcast_to(mask, q_values.shape)
       shapes.assert_same_shape(mask, q_values)
-
-      # Swapping the n_samples and batch_size axes, so the input is split
-      # between accelerators along the batch_size axis.
-      q_values = jnp.swapaxes(q_values, 0, 1)
-      mask = jnp.swapaxes(mask, 0, 1)
 
       yield (np_trajectory.observations, actions, q_values, act_log_probs, mask)

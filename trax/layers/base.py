@@ -768,7 +768,7 @@ def _shapes(x):
   return tuple(nested_map(shape, x))
 
 
-def jit_forward(forward, n_devices):
+def jit_forward(forward, n_devices, do_mean=True):
   """Returns a JIT-compiled forward function running on n_devices."""
   model_predict = _accelerate(forward, n_devices)
   if n_devices == 1:
@@ -781,7 +781,10 @@ def jit_forward(forward, n_devices):
         weights,
         state,
         jnp.stack(math.random.split(rng, n_devices))))
-    return math.nested_map(lambda y: jnp.mean(y, axis=0), res), state
+    if do_mean:
+      return math.nested_map(lambda y: jnp.mean(y, axis=0), res), state
+    else:
+      return res, state
 
   return predict
 

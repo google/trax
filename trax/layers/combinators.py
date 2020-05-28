@@ -19,7 +19,7 @@
 from trax import math
 from trax.layers import base
 from trax.layers.base import Fn
-from trax.math import numpy as np
+from trax.math import numpy as jnp
 from trax.shapes import ShapeDtype
 
 
@@ -141,7 +141,7 @@ class Serial(base.Layer):
       raise TypeError(f'Serial.forward input must be a tuple or list; '
                       f'instead got {type(xs)}.')
       # TODO(jonni): Include full xs (or shape) in error message?
-    len_xs = 1 if isinstance(xs, np.ndarray) else len(xs)
+    len_xs = 1 if isinstance(xs, jnp.ndarray) else len(xs)
     if len_xs < self.n_in:
       raise ValueError(
           f'Number of inputs ({len(xs)}) to Serial.forward less than n_in '
@@ -315,7 +315,7 @@ class Concatenate(base.Layer):
 
   def forward(self, xs, weights):
     del weights
-    return np.concatenate(xs, self._axis)
+    return jnp.concatenate(xs, self._axis)
 
 
 class Split(base.Layer):
@@ -328,7 +328,7 @@ class Split(base.Layer):
 
   def forward(self, inputs, weights):
     del weights
-    return tuple(np.split(inputs, self._n_items, self._axis))
+    return tuple(jnp.split(inputs, self._n_items, self._axis))
 
 
 class Scan(base.Layer):
@@ -643,6 +643,41 @@ class Cache(base.Layer):
   def new_weights(self, input_signature):
     weights, layer_state = self.sublayer.init(input_signature, use_cache=True)
     self.state = ((), layer_state)
+    return weights
+
+
+class BatchLeadingAxes(base.Layer):
+  """Applies a layer after flattening all but n_last_axes_to_keep to batch.
+
+  This can be used to make layers accept an arbitrary number of leading
+  axes (dimensions) as batch. For example, a Convolution layer may normally
+  only operate on tensors of shape [B, W, H, C]. In this case, the layer
+    BatchLeadingAxes(Convolution(), n_last_axes_to_keep=3)
+  will operate on any tensor [..., W, H, C] and treat the leading axes as batch.
+  """
+
+  def __init__(self, layer, n_last_axes_to_keep=1):
+    super(BatchLeadingAxes, self).__init__(n_in=layer.n_in, n_out=layer.n_out)
+    self._sublayers = [layer]
+    self._n_last_axes_to_keep = n_last_axes_to_keep
+
+  @property
+  def sublayer(self):
+    """Returns the unique sublayer managed by this layer."""
+    return self._sublayers[0]
+
+  def forward(self, inputs, weights):
+    batched_axes_shape = list(inputs.shape[:-self._n_last_axes_to_keep])
+    batched_shape = [-1] + list(inputs.shape[-self._n_last_axes_to_keep:])
+    inputs = jnp.reshape(inputs, batched_shape)
+    res, layer_state = self.sublayer.pure_fn(
+        inputs, weights, self.state, self.rng)
+    self.state = layer_state
+    return jnp.reshape(res, batched_axes_shape + list(res.shape[1:]))
+
+  def new_weights(self, input_signature):
+    weights, layer_state = self.sublayer.init(input_signature, use_cache=True)
+    self.state = layer_state
     return weights
 
 

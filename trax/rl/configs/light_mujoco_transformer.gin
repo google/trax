@@ -26,12 +26,14 @@ Gaussian.std = 0.4
 # Parameters for Policy:
 # ==============================================================================
 Policy.body = @trax.models.TransformerDecoder
+Policy.batch_axes = 2
 Policy.head_init_range = 0.01
 Policy.normalizer = @trax.rl.normalization.Normalize
 
 # Parameters for Value:
 # ==============================================================================
 Value.body = @trax.models.TransformerDecoder
+Value.batch_axes = 2
 Value.normalizer = @trax.rl.normalization.Normalize
 
 # Parameters for Normalize:

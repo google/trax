@@ -25,6 +25,7 @@ def Policy(
     body=None,
     normalizer=None,
     head_init_range=None,
+    batch_axes=None,
     mode='train',
 ):
   """Attaches a policy head to a model body."""
@@ -32,6 +33,10 @@ def Policy(
     body = lambda mode: []
   if normalizer is None:
     normalizer = lambda mode: []
+  if batch_axes is None:
+    batch = lambda x: x
+  else:
+    batch = lambda x: tl.BatchLeadingAxes(x, n_last_axes_to_keep=batch_axes)
 
   head_kwargs = {}
   if head_init_range is not None:
@@ -40,8 +45,8 @@ def Policy(
     )
 
   return tl.Serial(
-      normalizer(mode=mode),
-      body(mode=mode),
+      batch(normalizer(mode=mode)),
+      batch(body(mode=mode)),
       tl.Dense(policy_distribution.n_inputs, **head_kwargs),
   )
 
@@ -52,6 +57,7 @@ def Value(
     inject_actions=False,
     inject_actions_n_layers=1,
     inject_actions_dim=64,
+    batch_axes=None,
     mode='train',
 ):
   """Attaches a value head to a model body."""
@@ -59,6 +65,10 @@ def Value(
     body = lambda mode: []
   if normalizer is None:
     normalizer = lambda mode: []
+  if batch_axes is None:
+    batch = lambda x: x
+  else:
+    batch = lambda x: tl.BatchLeadingAxes(x, n_last_axes_to_keep=batch_axes)
 
   def ActionInjector(mode):
     if inject_actions:
@@ -80,8 +90,8 @@ def Value(
       return []
 
   return tl.Serial(
-      normalizer(mode=mode),
-      body(mode=mode),
+      batch(normalizer(mode=mode)),
+      batch(body(mode=mode)),
       ActionInjector(mode=mode),
       tl.Dense(1),
   )
