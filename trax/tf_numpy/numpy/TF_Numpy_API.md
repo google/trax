@@ -1,6 +1,6 @@
 ### Current TensorFlow Numpy API (in trax)
 
-(The parenthesis contains the according numpy equivalence)
+(The parenthesis contains the according Numpy equivalence)
 
 1. `trax.tf_numpy.numpy.array_ops`
     * `trax.tf_numpy.numpy.array_ops.array` ([`np.array`](https://numpy.org/doc/1.18/reference/generated/numpy.array.html))
@@ -28,26 +28,26 @@
     * `trax.tf_numpy.numpy.array_ops.full_like` ([`np.full_like`](https://numpy.org/doc/stable/reference/generated/numpy.full_like.html))
     * `trax.tf_numpy.numpy.array_ops.geomspace` ([`np.geomspace`](https://numpy.org/doc/stable/reference/generated/numpy.geomspace.html))
     * `trax.tf_numpy.numpy.array_ops.imag` ([`np.imag`](https://numpy.org/doc/stable/reference/generated/numpy.imag.html))
-    * `trax.tf_numpy.numpy.array_ops.isscalar`
+    * `trax.tf_numpy.numpy.array_ops.isscalar` ([`np.isscalar`](https://numpy.org/doc/1.18/reference/generated/numpy.isscalar.html))
     * `trax.tf_numpy.numpy.array_ops.identity` ([`np.identity`](https://numpy.org/doc/stable/reference/generated/numpy.identity.html))
     * `trax.tf_numpy.numpy.array_ops.moveaxis` ([`np.moveaxis`](https://numpy.org/doc/1.18/reference/generated/numpy.moveaxis.html))
     * `trax.tf_numpy.numpy.array_ops.mean` ([`np.mean`](https://numpy.org/doc/stable/reference/generated/numpy.mean.html))
-    * `trax.tf_numpy.numpy.array_ops.ndim`
+    * `trax.tf_numpy.numpy.array_ops.ndim` ([`np.ndim`](https://numpy.org/doc/1.18/reference/generated/numpy.ndarray.ndim.html))
     * `trax.tf_numpy.numpy.array_ops.ones` ([`np.ones`](https://numpy.org/doc/stable/reference/generated/numpy.ones.html))
     * `trax.tf_numpy.numpy.array_ops.ones_like` ([`np.ones_like`](https://numpy.org/doc/stable/reference/generated/numpy.ones_like.html))
-    * `trax.tf_numpy.numpy.array_ops.pad`
+    * `trax.tf_numpy.numpy.array_ops.pad` ([`np.pad`](https://numpy.org/doc/1.18/reference/generated/numpy.pad.html))
     * `trax.tf_numpy.numpy.array_ops.prod` ([`np.prod`](https://docs.scipy.org/doc/numpy-1.14.0/reference/generated/numpy.prod.html))
     * `trax.tf_numpy.numpy.array_ops.ravel` ([`np.ravel`](https://numpy.org/doc/1.18/reference/generated/numpy.ravel.html))
     * `trax.tf_numpy.numpy.array_ops.real` ([`np.real`](https://numpy.org/doc/1.18/reference/generated/numpy.real.html))
     * `trax.tf_numpy.numpy.array_ops.repeat` ([`np.repeat`](https://numpy.org/doc/1.18/reference/generated/numpy.repeat.html))
     * `trax.tf_numpy.numpy.array_ops.reshape` ([`np.reshape`](https://numpy.org/doc/1.18/reference/generated/numpy.reshape.html))
-    * `trax.tf_numpy.numpy.array_ops.swapaxes`
-    * `trax.tf_numpy.numpy.array_ops.split`
+    * `trax.tf_numpy.numpy.array_ops.swapaxes` ([`np.swapaxes`](https://numpy.org/doc/1.18/reference/generated/numpy.swapaxes.html))
+    * `trax.tf_numpy.numpy.array_ops.split` ([`np.split`](https://numpy.org/doc/1.18/reference/generated/numpy.split.html))
     * `trax.tf_numpy.numpy.array_ops.squeeze` ([`np.squeeze`](https://numpy.org/doc/1.18/reference/generated/numpy.squeeze.html))
     * `trax.tf_numpy.numpy.array_ops.sum` ([`np.sum`](https://numpy.org/doc/1.18/reference/generated/numpy.sum.html))
     * `trax.tf_numpy.numpy.array_ops.transpose` ([`np.transpose`](https://numpy.org/doc/1.18/reference/generated/numpy.transpose.html))
     * `trax.tf_numpy.numpy.array_ops.take` ([`np.take`](https://numpy.org/doc/stable/reference/generated/numpy.take.html))
-    * `trax.tf_numpy.numpy.array_ops.where`
+    * `trax.tf_numpy.numpy.array_ops.where` ([`np.where`](https://numpy.org/doc/1.18/reference/generated/numpy.where.html))
     * `trax.tf_numpy.numpy.array_ops.zeros` ([`np.zeros`](https://numpy.org/doc/stable/reference/generated/numpy.zeros.html))
     * `trax.tf_numpy.numpy.array_ops.zeros_like` ([`np.zeros_like`](https://numpy.org/doc/1.18/reference/generated/numpy.zeros_like.html))
 
@@ -55,7 +55,7 @@
     * `trax.tf_numpy.numpy.arrays.ndarray`
 
 3. `trax.tf_numpy.numpy.math_ops`
-    * `trax.tf_numpy.numpy.math_ops.average`
+    * `trax.tf_numpy.numpy.math_ops.average` ([`np.average`](https://numpy.org/doc/1.18/reference/generated/numpy.average.html))
     * `trax.tf_numpy.numpy.math_ops.argsort` ([`np.argsort`](https://numpy.org/devdocs/reference/generated/numpy.argsort.html))
     * `trax.tf_numpy.numpy.math_ops.argmax` ([`np.argmin`](https://numpy.org/devdocs/reference/generated/numpy.argmin.html))
     * `trax.tf_numpy.numpy.math_ops.clip` ([`np.clip`](https://numpy.org/doc/1.18/reference/generated/numpy.clip.html))
@@ -75,8 +75,8 @@
 
 
 4. `trax.tf_numpy.numpy.random`
-    * `trax.tf_numpy.numpy.random.seed`
-    * `trax.tf_numpy.numpy.random.randn`
+    * `trax.tf_numpy.numpy.random.seed` ([`np.random.seed`](https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.random.seed.html))
+    * `trax.tf_numpy.numpy.random.randn` ([`np.random.randn`](https://docs.scipy.org/doc/numpy-1.15.1/reference/generated/numpy.random.randn.html))
     * `trax.tf_numpy.numpy.random.DEFAULT_RANDN_DTYPE`
 
 5. `trax.tf_numpy.numpy.utils`
