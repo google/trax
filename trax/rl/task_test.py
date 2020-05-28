@@ -80,7 +80,7 @@ class TaskTest(absltest.TestCase):
     """Test that the epoch index -1 means last epoch and updates to it."""
     elem = np.zeros((2,))
     tr1 = rl_task.Trajectory(elem)
-    tr1.extend(0, 0, 0, elem)
+    tr1.extend(0, 0, 0, True, elem)
     task = rl_task.RLTask(DummyEnv(), initial_trajectories=[tr1], max_steps=9)
     stream = task.trajectory_stream(epochs=[-1], max_slice_length=1)
     next_slice = next(stream)
@@ -95,7 +95,7 @@ class TaskTest(absltest.TestCase):
     """Test the shape yielded by trajectory stream."""
     elem = np.zeros((12, 13))
     tr1 = rl_task.Trajectory(elem)
-    tr1.extend(0, 0, 0, elem)
+    tr1.extend(0, 0, 0, True, elem)
     task = rl_task.RLTask(DummyEnv(), initial_trajectories=[tr1], max_steps=9)
     stream = task.trajectory_stream(max_slice_length=1)
     next_slice = next(stream)
@@ -106,8 +106,8 @@ class TaskTest(absltest.TestCase):
     """Test trajectory stream with slices of longer length."""
     elem = np.zeros((12, 13))
     tr1 = rl_task.Trajectory(elem)
-    tr1.extend(0, 0, 0, elem)
-    tr1.extend(0, 0, 0, elem)
+    tr1.extend(0, 0, 0, False, elem)
+    tr1.extend(0, 0, 0, True, elem)
     task = rl_task.RLTask(DummyEnv(), initial_trajectories=[tr1], max_steps=9)
     stream = task.trajectory_stream(max_slice_length=2)
     next_slice = next(stream)
@@ -117,7 +117,7 @@ class TaskTest(absltest.TestCase):
   def test_trajectory_stream_final_state(self):
     """Test trajectory stream with and without the final state."""
     tr1 = rl_task.Trajectory(0)
-    tr1.extend(0, 0, 0, 1)
+    tr1.extend(0, 0, 0, True, 1)
     task = rl_task.RLTask(DummyEnv(), initial_trajectories=[tr1], max_steps=9)
 
     # Stream of slices without the final state.
@@ -143,11 +143,11 @@ class TaskTest(absltest.TestCase):
     # Long trajectory of 0s.
     tr1 = rl_task.Trajectory(0)
     for _ in range(100):
-      tr1.extend(0, 0, 0, 0)
-    tr1.extend(0, 0, 0, 200)
+      tr1.extend(0, 0, 0, False, 0)
+    tr1.extend(0, 0, 0, True, 200)
     # Short trajectory of 101.
     tr2 = rl_task.Trajectory(101)
-    tr2.extend(0, 0, 0, 200)
+    tr2.extend(0, 0, 0, True, 200)
     task = rl_task.RLTask(
         DummyEnv(), initial_trajectories=[tr1, tr2], max_steps=9)
 
@@ -168,11 +168,11 @@ class TaskTest(absltest.TestCase):
     # Long trajectory of 0s.
     tr1 = rl_task.Trajectory(0)
     for _ in range(100):
-      tr1.extend(0, 0, 0, 0)
-    tr1.extend(0, 0, 0, 200)
+      tr1.extend(0, 0, 0, False, 0)
+    tr1.extend(0, 0, 0, True, 200)
     # Short trajectory of 101.
     tr2 = rl_task.Trajectory(101)
-    tr2.extend(0, 0, 0, 200)
+    tr2.extend(0, 0, 0, True, 200)
     task = rl_task.RLTask(
         DummyEnv(), initial_trajectories=[tr1, tr2], max_steps=9)
 
@@ -189,6 +189,29 @@ class TaskTest(absltest.TestCase):
     # Sampling 101 < 2 times has low probability (but it possible, flaky test).
     self.assertGreater(mean_obs, 20)
     self.assertLen(slices, 10)
+
+  def test_trajectory_stream_margin(self):
+    """Test trajectory stream with an added margin."""
+    tr1 = rl_task.Trajectory(0)
+    tr1.extend(0, 0, 0, False, 1)
+    tr1.extend(1, 2, 3, True, 1)
+    task = rl_task.RLTask(DummyEnv(), initial_trajectories=[tr1], max_steps=9)
+
+    # Stream of slices without the final state.
+    stream1 = task.trajectory_stream(
+        max_slice_length=3, margin=2, include_final_state=False)
+    got_done = False
+    for _ in range(10):
+      next_slice = next(stream1)
+      self.assertLen(next_slice, 3)
+      if next_slice.timesteps[0].done:
+        for i in range(1, 3):
+          self.assertTrue(next_slice.timesteps[i].done)
+          self.assertFalse(next_slice.timesteps[i].mask)
+        got_done = True
+    # Assert that we got a done somewhere, otherwise the test is not trigerred.
+    # Not getting done has low probability (1/2^10) but is possible, flaky test.
+    self.assertTrue(got_done)
 
 
 if __name__ == '__main__':

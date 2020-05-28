@@ -38,12 +38,17 @@ class _TimeStep(object):
   * discounted return from that state (includes the reward from this step)
   """
 
-  def __init__(self, observation, action=None, reward=None, dist_inputs=None):
+  def __init__(
+      self, observation, action=None, reward=None, dist_inputs=None, done=None,
+      mask=None
+  ):
     self.observation = observation
     self.action = action
     self.reward = reward
     self.dist_inputs = dist_inputs
-    self.discounted_return = None
+    self.done = done
+    self.mask = mask
+    self.discounted_return = 0.0
 
 
 # Tuple for representing trajectories and batches of them in numpy; immutable.
@@ -53,6 +58,23 @@ TrajectoryNp = collections.namedtuple('TrajectoryNp', [
     'dist_inputs',
     'rewards',
     'returns',
+    'dones',
+    'mask',
+])
+
+
+# Same as TrajectoryNp, for timesteps. This is separate for documentation
+# purposes, but it's functionally redundant.
+# TODO(pkozakowski): Consider merging with TrajectoryNp and finding a common
+# name. At the very least it should be merged with _TimeStep - I'm not doing it
+# for now to keep backward compatibility with batch RL experiments.
+TimeStepNp = collections.namedtuple('TimeStepNp', [
+    'observation',
+    'action',
+    'dist_inputs',
+    'reward',
+    'return_',
+    'done',
     'mask',
 ])
 
@@ -101,12 +123,14 @@ class Trajectory(object):
     last_timestep = self._timesteps[-1]
     return last_timestep.observation
 
-  def extend(self, action, dist_inputs, reward, new_observation):
+  def extend(self, action, dist_inputs, reward, done, new_observation, mask=1):
     """Take action in the last state, getting reward and going to new state."""
     last_timestep = self._timesteps[-1]
     last_timestep.action = action
     last_timestep.dist_inputs = dist_inputs
     last_timestep.reward = reward
+    last_timestep.done = done
+    last_timestep.mask = mask
     new_timestep = _TimeStep(new_observation)
     self._timesteps.append(new_timestep)
 
@@ -120,41 +144,52 @@ class Trajectory(object):
 
   def _default_timestep_to_np(self, ts):
     """Default way to convert timestep to numpy."""
-    return math.nested_map(np.array, (
-        ts.observation,
-        ts.action,
-        ts.dist_inputs,
-        ts.reward,
-        ts.discounted_return,
+    return math.nested_map(np.array, TimeStepNp(
+        observation=ts.observation,
+        action=ts.action,
+        dist_inputs=ts.dist_inputs,
+        reward=ts.reward,
+        done=ts.done,
+        return_=ts.discounted_return,
+        mask=ts.mask,
     ))
 
   def to_np(self, timestep_to_np=None):
     """Create a tuple of numpy arrays from a given trajectory."""
-    observations, actions, dist_inputs, rewards, returns, mask = (
-        [], [], [], [], [], []
+    observations, actions, dist_inputs, rewards, returns, dones, masks = (
+        [], [], [], [], [], [], []
     )
     timestep_to_np = timestep_to_np or self._default_timestep_to_np
     for timestep in self._timesteps:
       if timestep.action is None:
-        obs = timestep_to_np(timestep)[0]
+        obs = timestep_to_np(timestep).observation
         observations.append(obs)
       else:
-        (obs, act, dinp, rew, ret) = timestep_to_np(timestep)
-        observations.append(obs)
-        actions.append(act)
-        dist_inputs.append(dinp)
-        rewards.append(rew)
-        returns.append(ret)
-        mask.append(1.0)
+        timestep_np = timestep_to_np(timestep)
+        observations.append(timestep_np.observation)
+        actions.append(timestep_np.action)
+        dist_inputs.append(timestep_np.dist_inputs)
+        rewards.append(timestep_np.reward)
+        dones.append(timestep_np.done)
+        returns.append(timestep_np.return_)
+        masks.append(timestep_np.mask)
 
     def stack(x):
       if not x:
         return None
       return math.nested_stack(x)
 
-    return TrajectoryNp(*map(stack, (
-        observations, actions, dist_inputs, rewards, returns, mask
-    )))
+    return TrajectoryNp(**{  # pylint: disable=g-complex-comprehension
+        key: stack(value) for (key, value) in [
+            ('observations', observations),
+            ('actions', actions),
+            ('dist_inputs', dist_inputs),
+            ('rewards', rewards),
+            ('dones', dones),
+            ('returns', returns),
+            ('mask', masks),
+        ]
+    })
 
 
 def play(env, policy, dm_suite=False, max_steps=None):
@@ -186,6 +221,7 @@ def play(env, policy, dm_suite=False, max_steps=None):
       observation = env.step(action)
       cur_trajectory.extend(action, dist_inputs,
                             observation.reward,
+                            observation.step_type.last(),
                             observation.observation)
       cur_step += 1
       terminal = observation.step_type.last()
@@ -194,7 +230,7 @@ def play(env, policy, dm_suite=False, max_steps=None):
     while not terminal and (max_steps is None or cur_step < max_steps):
       action, dist_inputs = policy(cur_trajectory)
       observation, reward, terminal, _ = env.step(action)
-      cur_trajectory.extend(action, dist_inputs, reward, observation)
+      cur_trajectory.extend(action, dist_inputs, reward, terminal, observation)
       cur_step += 1
   return cur_trajectory
 
@@ -507,7 +543,7 @@ class RLTask:
 
   def trajectory_stream(self, epochs=None, max_slice_length=None,
                         include_final_state=False,
-                        sample_trajectories_uniformly=False):
+                        sample_trajectories_uniformly=False, margin=0):
     """Return a stream of random trajectory slices from the specified epochs.
 
     Args:
@@ -516,11 +552,13 @@ class RLTask:
       include_final_state: whether to include slices with the final state of
         the trajectory which may have no action and reward
       sample_trajectories_uniformly: whether to sample trajectories uniformly,
-       or proportionally to the number of slices in each trajectory (default)
+        or proportionally to the number of slices in each trajectory (default)
+      margin: number of extra steps after "done" that should be included in
+        slices, so that networks see the terminal states in the training data
 
     Yields:
       random trajectory slices sampled uniformly from all slices of length
-      upto max_slice_length in all specified epochs
+      up to max_slice_length in all specified epochs
     """
     # TODO(lukaszkaiser): add option to sample from n last trajectories.
     end_offset = 0 if include_final_state else 1
@@ -530,7 +568,29 @@ class RLTask:
         return 1
       # A trajectory [a, b, c, end_state] will have 2 slices of length 2:
       # the slice [a, b] and the one [b, c], with end_offset; 3 without.
-      return max(1, len(t) - max_slice_length + 1 - end_offset)
+      return max(1, len(t) + margin - max_slice_length + 1 - end_offset)
+
+    def extend_trajectory(t):
+      # TODO(pkozakowski) Refactor.
+      if len(t) == 1:
+        return t
+      else:
+        ts = t.timesteps[0]
+        extend_kwargs = {
+            'action': np.zeros_like(ts.action),
+            'dist_inputs': (
+                np.zeros_like(ts.dist_inputs)
+                if ts.dist_inputs is not None else None
+            ),
+            'reward': 0.0,
+            'done': True,
+            'mask': 0,
+            'new_observation': np.zeros_like(ts.observation),
+        }
+        t = t[:]  # Make a shallow copy of the timestep list.
+        for _ in range(margin):
+          t.extend(**extend_kwargs)
+        return t
 
     while True:
       all_epochs = list(self._trajectories.keys())
@@ -565,13 +625,19 @@ class RLTask:
 
       # Sample a slice from the trajectory.
       slice_start = np.random.randint(n_slices(trajectory))
-      slice_end = slice_start + (max_slice_length or len(trajectory))
-      slice_end = min(slice_end, len(trajectory) - end_offset)
-      yield trajectory[slice_start:slice_end]
+      # Extend the trajectory with a given margin - this is to make sure that
+      # the networks always "see" the "done" states in the training data, even
+      # when a suffix is added to the trajectory slice for better estimation of
+      # returns.
+      extended_trajectory = extend_trajectory(trajectory)
+      slice_end = slice_start + (max_slice_length or len(extended_trajectory))
+      slice_end = min(slice_end, len(extended_trajectory) - end_offset)
+      yield extended_trajectory[slice_start:slice_end]
 
   def trajectory_batch_stream(self, batch_size, epochs=None,
                               max_slice_length=None,
                               min_slice_length=None,
+                              margin=0,
                               include_final_state=False,
                               sample_trajectories_uniformly=False):
     """Return a stream of trajectory batches from the specified epochs.
@@ -584,6 +650,8 @@ class RLTask:
       epochs: a list of epochs to use; we use all epochs if None
       max_slice_length: maximum length of the slices of trajectories to return
       min_slice_length: minimum length of the slices of trajectories to return
+      margin: number of extra steps after "done" that should be included in
+        slices, so that networks see the terminal states in the training data
       include_final_state: whether to include slices with the final state of
         the trajectory which may have no action and reward
       sample_trajectories_uniformly: whether to sample trajectories uniformly,
@@ -612,7 +680,9 @@ class RLTask:
     cur_batch = []
     for t in self.trajectory_stream(
         epochs, max_slice_length,
-        include_final_state, sample_trajectories_uniformly):
+        include_final_state, sample_trajectories_uniformly,
+        margin=margin
+    ):
       # TODO(pkozakowski): Instead sample the trajectories out of those with
       # the minimum length.
       if min_slice_length is not None and len(t) < min_slice_length:
@@ -620,7 +690,9 @@ class RLTask:
 
       cur_batch.append(t)
       if len(cur_batch) == batch_size:
-        obs, act, dinp, rew, ret, mask = zip(*[
+        # TODO(pkozakowski): Unpack based on name instead of position in the
+        # tuple (how?).
+        obs, act, dinp, rew, ret, done, mask = zip(*[
             t.to_np(self._timestep_to_np) for t in cur_batch
         ])
         # Where act, rew and ret will usually have the following shape:
@@ -629,7 +701,13 @@ class RLTask:
         # is the shape of the observation space (self.observation_space.shape).
         # We stop the recursion at level 1, so we pass lists of arrays into
         # pad().
-        yield math.nested_map(
-            pad, TrajectoryNp(obs, act, dinp, rew, ret, mask), level=1
-        )
+        yield math.nested_map(pad, TrajectoryNp(
+            observations=obs,
+            actions=act,
+            dist_inputs=dinp,
+            rewards=rew,
+            dones=done,
+            returns=ret,
+            mask=mask,
+        ), level=1)
         cur_batch = []

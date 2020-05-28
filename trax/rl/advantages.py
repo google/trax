@@ -20,11 +20,13 @@ import gin
 import numpy as np
 
 
-common_args = ['rewards', 'returns', 'values', 'gamma', 'n_extra_steps']
+common_args = [
+    'rewards', 'returns', 'values', 'dones', 'gamma', 'n_extra_steps'
+]
 
 
 @gin.configurable(blacklist=common_args)
-def monte_carlo(rewards, returns, values, gamma, n_extra_steps):
+def monte_carlo(rewards, returns, values, dones, gamma, n_extra_steps):
   """Calculate Monte Carlo advantage.
 
   We assume the values are a tensor of shape [batch_size, length] and this
@@ -34,20 +36,23 @@ def monte_carlo(rewards, returns, values, gamma, n_extra_steps):
     rewards: the rewards, tensor of shape [batch_size, length]
     returns: discounted returns, tensor of shape [batch_size, length]
     values: the value function computed for this trajectory (shape as above)
+    dones: trajectory termination flags
     gamma: float, gamma parameter for TD from the underlying task
     n_extra_steps: number of extra steps in the sequence
 
   Returns:
     the advantages, a tensor of shape [batch_size, length - n_extra_steps].
   """
-  del rewards
   del gamma
   (_, length) = returns.shape
+  # Make sure that the future returns and the values at "done" states are zero.
+  returns[dones] = rewards[dones]
+  values[dones] = 0
   return (returns - values)[:, :(length - n_extra_steps)]
 
 
 @gin.configurable(blacklist=common_args)
-def td_k(rewards, returns, values, gamma, n_extra_steps):
+def td_k(rewards, returns, values, dones, gamma, n_extra_steps):
   """Calculate TD-k advantage.
 
   The k parameter is assumed to be the same as n_extra_steps.
@@ -63,6 +68,7 @@ def td_k(rewards, returns, values, gamma, n_extra_steps):
     rewards: the rewards, tensor of shape [batch_size, length]
     returns: discounted returns, tensor of shape [batch_size, length]
     values: the value function computed for this trajectory (shape as above)
+    dones: trajectory termination flags
     gamma: float, gamma parameter for TD from the underlying task
     n_extra_steps: number of extra steps in the sequence, also controls the
       number of steps k
@@ -74,16 +80,23 @@ def td_k(rewards, returns, values, gamma, n_extra_steps):
   # Here we calculate advantage with TD-k, where k=n_extra_steps.
   k = n_extra_steps
   assert k > 0
-  advantages = (gamma ** k) * values[:, k:] - values[:, :-k]
+  advantages = (gamma ** k) * values[:, k:]
   discount = 1.0
   for i in range(n_extra_steps):
     advantages += discount * rewards[:, i:-(n_extra_steps - i)]
     discount *= gamma
+  # Zero out the future returns at "done" states.
+  dones = dones[:, :-k]
+  advantages[dones] = rewards[:, :-k][dones]
+  # Subtract the baseline (value).
+  advantages -= values[:, :-k]
   return advantages
 
 
 @gin.configurable(blacklist=common_args)
-def td_lambda(rewards, returns, values, gamma, n_extra_steps, lambda_=0.95):
+def td_lambda(
+    rewards, returns, values, dones, gamma, n_extra_steps, lambda_=0.95
+):
   """Calculate TD-lambda advantage.
 
   The estimated return is an exponentially-weighted average of different TD-k
@@ -93,6 +106,7 @@ def td_lambda(rewards, returns, values, gamma, n_extra_steps, lambda_=0.95):
     rewards: the rewards, tensor of shape [batch_size, length]
     returns: discounted returns, tensor of shape [batch_size, length]
     values: the value function computed for this trajectory (shape as above)
+    dones: trajectory termination flags
     gamma: float, gamma parameter for TD from the underlying task
     n_extra_steps: number of extra steps in the sequence
     lambda_: discount parameter of the exponentially-weighted average
@@ -104,7 +118,7 @@ def td_lambda(rewards, returns, values, gamma, n_extra_steps, lambda_=0.95):
   (_, length) = returns.shape
   td_returns[:, -1] = values[:, -1]
   for i in reversed(range(length - 1)):
-    td_returns[:, i] = rewards[:, i] + gamma * (
+    td_returns[:, i] = rewards[:, i] + (1 - dones[:, i]) * gamma * (
         (1 - lambda_) * values[:, i + 1] + lambda_ * td_returns[:, i + 1]
     )
   return (td_returns - values)[:, :(returns.shape[1] - n_extra_steps)]

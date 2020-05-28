@@ -169,7 +169,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
 
     actions = None
     if self._q_value:
-      dist_inputs = np.broadcast_to(
+      dist_inputs = jnp.broadcast_to(
           dist_inputs, (self._q_value_n_samples,) + dist_inputs.shape
       )
       # Swapping the n_samples and batch_size axes, so the input is split
@@ -178,7 +178,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
       actions = self._policy_dist.sample(dist_inputs)
       log_probs = self._policy_dist.log_prob(dist_inputs, actions)
       obs = observations
-      obs = np.reshape(obs, [obs.shape[0], 1] + list(obs.shape[1:]))
+      obs = jnp.reshape(obs, [obs.shape[0], 1] + list(obs.shape[1:]))
       inputs = (obs, actions)
     else:
       log_probs = None
@@ -190,17 +190,16 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
     rng = self._value_eval_model.rng
     values, _ = self._value_eval_jit(inputs, weights, state, rng)
     values *= self._value_network_scale
-    values = np.squeeze(values, axis=-1)  # Remove the singleton depth dim.
+    values = jnp.squeeze(values, axis=-1)  # Remove the singleton depth dim.
     return (values, actions, log_probs)
 
   def _aggregate_values(self, values, aggregate_max):
     if self._q_value:
       if aggregate_max:
-        return jnp.max(values, axis=1)
+        values = jnp.max(values, axis=1)
       else:
-        return jnp.mean(values, axis=1)
-    else:
-      return values
+        values = jnp.mean(values, axis=1)
+    return np.array(values)  # Move the values to CPU.
 
   def value_batches_stream(self):
     """Use the RLTask self._task to create inputs to the value model."""
@@ -209,6 +208,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
         self._value_batch_size,
         max_slice_length=max_slice_length,
         min_slice_length=(1 + self._added_policy_slice_length),
+        margin=self._added_policy_slice_length,
         epochs=self._replay_epochs,
     ):
       (values, _, _) = self._run_value_model(
@@ -220,7 +220,10 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
       # Calculate targets based on the advantages over the target network - this
       # allows TD learning for value networks.
       advantages = self._advantage_estimator(
-          np_trajectory.rewards, np_trajectory.returns, values,
+          rewards=np_trajectory.rewards,
+          returns=np_trajectory.returns,
+          values=values,
+          dones=np_trajectory.dones,
           gamma=self._task.gamma,
           n_extra_steps=self._added_policy_slice_length,
       )
@@ -266,6 +269,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
         self._policy_batch_size,
         epochs=self._replay_epochs,
         max_slice_length=max_slice_length,
+        margin=self._added_policy_slice_length,
         include_final_state=False):
       (values, _, _) = self._run_value_model(
           np_trajectory.observations, np_trajectory.dist_inputs
@@ -391,7 +395,10 @@ class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
     # How much TD to use is determined by the added policy slice length,
     # as the policy batches need to be this much longer to calculate TD.
     advantages = self._advantage_estimator(
-        trajectory.rewards, trajectory.returns, values,
+        rewards=trajectory.rewards,
+        returns=trajectory.returns,
+        values=values,
+        dones=trajectory.dones,
         gamma=self._task.gamma,
         n_extra_steps=self._added_policy_slice_length,
     )
