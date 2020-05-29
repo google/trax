@@ -119,6 +119,91 @@ def _tf_to_np(inp):
   return tf.nest.map_structure(f, inp)
 
 
+def stop_gradient(x):
+  return _tf_to_np(tf.nest.map_structure(tf.stop_gradient, _np_to_tf(x)))
+
+
+def custom_grad(f_vjp, f_original=None):
+  """Decorator to define a function with a custom gradient.
+
+  This function is very similar to `tf.custom_gradient`. See the documentation
+  of `tf.custom_gradient` for detailed usage.
+
+  The differences with `tf.custom_gradient` are:
+
+  - All arguments and results are ndarrays instead of tensors.
+
+  - The `grad_fn` returned by `f_vjp` accepts and returns nested structures,
+    unlike that in `tf.custom_gradient` which only accepts and returns lists.
+
+  Args:
+    f_vjp: the same as the `f` argument of `tf.custom_gradient`. Note that all
+      inputs and outputs of `f_vjp` and of the `grad_fn` function it returns can
+      be nested structures.
+    f_original: (optional) not used.
+
+  Returns:
+    The same as `tf.custom_gradient`.
+  """
+  del f_original
+  @tf.custom_gradient
+  def tf_f(*tf_args, **tf_kwargs):
+    np_args = _tf_to_np(tf_args)
+    np_kwargs = _tf_to_np(tf_kwargs)
+    np_y, np_vjp = f_vjp(*np_args, **np_kwargs)
+    tf_y = _np_to_tf(np_y)
+    def tf_vjp(*flat_tf_dy):
+      tf_dy = tf.nest.pack_sequence_as(tf_y, flat_tf_dy)
+      np_dy = _tf_to_np(tf_dy)
+      np_dx = np_vjp(np_dy)
+      return tf.nest.flatten(_np_to_tf(np_dx))
+    return tf_y, tf_vjp
+  def np_f(*args, **kwargs):
+    return _tf_to_np(tf_f(*_np_to_tf(args), **_np_to_tf(kwargs)))
+  return np_f
+
+
+def vjp(f, *primals, has_aux=False):
+  """Returns the result and the VJP function of `f`.
+
+  This function returns the result and the vector-Jacobian-product (VJP)
+  function of `f`.
+
+  Args:
+    f: a function from (nested structures of) ndarrays to a (nested structure
+      of) ndarray. If `has_aux` is True, it should return an extra output.
+    *primals: the inputs to be fed to `f`.
+    has_aux: if True, the second output of `f` will be regarded as an auxiliary,
+      non-differentiable output that will be ignored by the VJP function.
+
+  Returns:
+    A pair `(y, vjpfun)` if `has_aux` is False; a tuple `(y, vjpfun, aux)`
+    otherwise. `y` and `aux` are the outputs of `f`, i.e. `y, aux =
+    f(*primals)`. `vjpfun` is a function `dx = vjpfun(dy)`, where `dy` is the
+    cotengents of `y`, having the same structures, shapes and dtypes as
+    `y`. `dx` is the cotengents of `x`, having the same structures, shapes and
+    dtypes as `x`.
+  """
+  tf_primals = _np_to_tf(primals)
+  with tf.GradientTape(persistent=True) as tape:
+    tape.watch(tf.nest.flatten(tf_primals))
+    outputs = f(*primals)
+    if has_aux:
+      np_out, aux = outputs
+    else:
+      np_out = outputs
+    tf_out = _np_to_tf(np_out)
+    def _vjp(dy):
+      tf_dy = _np_to_tf(dy)
+      tf_dx = tape.gradient(tf_out, tf_primals, output_gradients=tf_dy)
+      return _tf_to_np(tf_dx)
+  if has_aux:
+    ret = (np_out, _vjp, aux)
+  else:
+    ret = (np_out, _vjp)
+  return ret
+
+
 # TODO(wangpeng): match JAX's handling of kwargs and non-ndarray args
 def grad(f, has_aux=False):
   """Returns a function that computes gradient of f.

@@ -377,6 +377,12 @@ def _dataset_as_numpy(ds, batch_size=None):
       yield example
 
 
+def _custom_grad(f_vjp, f_original):
+  f_ = jax.custom_transforms(f_original)
+  jax.defvjp_all(f_, f_vjp)
+  return f_
+
+
 JAX_BACKEND = {
     'name': 'jax',
     'np': jnp,
@@ -389,6 +395,8 @@ JAX_BACKEND = {
     'erf': jax_special.erf,
     'expit': jax_special.expit,
     'grad': jax.grad,
+    'vjp': jax.vjp,
+    'custom_grad': _custom_grad,
     'jit': jax.jit,
     'logsumexp': jax_special.logsumexp,
     'lt': lax.lt,

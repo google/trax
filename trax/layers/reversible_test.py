@@ -17,18 +17,25 @@
 """Tests for reversible layers."""
 
 from absl.testing import absltest
+from absl.testing import parameterized
 import numpy as np
 
+from trax import math
 import trax.layers as tl
 
 
-class ReversibleLayerTest(absltest.TestCase):
+BACKENDS = ['jax', 'tf']
 
-  def test_reversible_swap(self):
-    layer = tl.ReversibleSwap()
-    xs = [np.array([1, 2]), np.array([10, 20])]
-    ys = layer(xs)
-    self.assertEqual(tl.to_list(ys), [[10, 20], [1, 2]])
+
+class ReversibleLayerTest(parameterized.TestCase):
+
+  @parameterized.named_parameters([('_' + b, b) for b in BACKENDS])
+  def test_reversible_swap(self, backend_name):
+    with math.use_backend(backend_name):
+      layer = tl.ReversibleSwap()
+      xs = [np.array([1, 2]), np.array([10, 20])]
+      ys = layer(xs)
+      self.assertEqual(tl.to_list(ys), [[10, 20], [1, 2]])
 
 
 if __name__ == '__main__':

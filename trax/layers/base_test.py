@@ -17,6 +17,7 @@
 """Tests for Trax base layer classes and generic layer-creating functions."""
 
 from absl.testing import absltest
+from absl.testing import parameterized
 
 import numpy as np
 
@@ -26,7 +27,10 @@ from trax.layers import base
 from trax.math import numpy as jnp
 
 
-class BaseLayerTest(absltest.TestCase):
+BACKENDS = ['jax', 'tf']
+
+
+class BaseLayerTest(parameterized.TestCase):
 
   def test_call_raises_error(self):
     layer = base.Layer()
@@ -69,7 +73,8 @@ class BaseLayerTest(absltest.TestCase):
     self.assertNotEqual(output_signature, (shapes.ShapeDtype((4, 7)),) * 3)
     self.assertNotEqual(output_signature, (shapes.ShapeDtype((5, 7)),) * 2)
 
-  def test_custom_zero_grad(self):
+  @parameterized.named_parameters([('_' + b, b) for b in BACKENDS])
+  def test_custom_zero_grad(self, backend_name):
 
     class IdWithZeroGrad(base.Layer):
 
@@ -83,18 +88,20 @@ class BaseLayerTest(absltest.TestCase):
       def backward(self, inputs, output, grad, weights, state, new_state, rng):
         return (jnp.zeros_like(grad), ())
 
-    layer = IdWithZeroGrad()
-    rng = math.random.get_prng(0)
-    input_signature = shapes.ShapeDtype((9, 17))
-    random_input = math.random.uniform(rng, input_signature.shape,
-                                       minval=-1.0, maxval=1.0)
-    layer.init(input_signature)
-    f = lambda x: jnp.mean(layer(x))
-    grad = math.grad(f)(random_input)
-    self.assertEqual(grad.shape, (9, 17))  # Gradient for each input.
-    self.assertEqual(sum(sum(grad * grad)), 0.0)  # Each one is 0.
+    with math.use_backend(backend_name):
+      layer = IdWithZeroGrad()
+      rng = math.random.get_prng(0)
+      input_signature = shapes.ShapeDtype((9, 17))
+      random_input = math.random.uniform(rng, input_signature.shape,
+                                         minval=-1.0, maxval=1.0)
+      layer.init(input_signature)
+      f = lambda x: jnp.mean(layer(x))
+      grad = math.grad(f)(random_input)
+      self.assertEqual(grad.shape, (9, 17))  # Gradient for each input.
+      self.assertEqual(sum(sum(grad * grad)), 0.0)  # Each one is 0.
 
-  def test_custom_id_grad(self):
+  @parameterized.named_parameters([('_' + b, b) for b in BACKENDS])
+  def test_custom_id_grad(self, backend_name):
 
     class IdWithIdGrad(base.Layer):
 
@@ -108,16 +115,17 @@ class BaseLayerTest(absltest.TestCase):
       def backward(self, inputs, output, grad, weights, state, new_state, rng):
         return (inputs, ())
 
-    layer = IdWithIdGrad()
-    rng = math.random.get_prng(0)
-    input_signature = shapes.ShapeDtype((9, 17))
-    random_input = math.random.uniform(rng, input_signature.shape,
-                                       minval=-1.0, maxval=1.0)
-    layer.init(input_signature)
-    f = lambda x: jnp.mean(layer(x))
-    grad = math.grad(f)(random_input)
-    self.assertEqual(grad.shape, (9, 17))  # Gradient for each input.
-    self.assertEqual(sum(sum(grad)), sum(sum(random_input)))  # Same as input.
+    with math.use_backend(backend_name):
+      layer = IdWithIdGrad()
+      rng = math.random.get_prng(0)
+      input_signature = shapes.ShapeDtype((9, 17))
+      random_input = math.random.uniform(rng, input_signature.shape,
+                                         minval=-1.0, maxval=1.0)
+      layer.init(input_signature)
+      f = lambda x: jnp.mean(layer(x))
+      grad = math.grad(f)(random_input)
+      self.assertEqual(grad.shape, (9, 17))  # Gradient for each input.
+      self.assertEqual(sum(sum(grad)), sum(sum(random_input)))  # Same as input.
 
   def test_accelerated_forward_called_twice(self):
 

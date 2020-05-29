@@ -16,7 +16,6 @@
 # Lint as: python3
 """Implementations of reversible layers."""
 
-import jax
 from trax import math
 from trax.layers import base
 from trax.layers import combinators as cb
@@ -64,7 +63,7 @@ class ReversibleLayer(base.Layer):
       return res
 
     reconstructed_x = self.reverse(output, weights, state, new_state, rng)
-    _, vjpfun = jax.vjp(_do_forward, reconstructed_x, weights)
+    _, vjpfun = math.vjp(_do_forward, reconstructed_x, weights)
     x_weights_grad = vjpfun(grad)
     return reconstructed_x, x_weights_grad
 
