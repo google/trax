@@ -929,11 +929,11 @@ def linspace(  # pylint: disable=missing-docstring
 
 
 @utils.np_doc(np.logspace)
-def logspace(start, stop, num=50, endpoint=True, base=10.0, dtype=None):
-  if dtype:
-    dtype = utils.result_type(dtype)
-  result = linspace(start, stop, num=num, endpoint=endpoint)
-  result = tf.pow(base, result.data)
+def logspace(start, stop, num=50, endpoint=True, base=10.0, dtype=None, axis=0):
+  dtype = utils.result_type(start, stop, dtype)
+  result = linspace(
+      start, stop, num=num, endpoint=endpoint, dtype=dtype, axis=axis).data
+  result = tf.pow(tf.cast(base, result.dtype), result)
   if dtype:
     result = tf.cast(result, dtype)
   return arrays.tensor_to_ndarray(result)

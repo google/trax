@@ -2602,7 +2602,6 @@ class LaxBackedNumpyTests(jtu.TestCase):
         for base in [10.0, 2, onp.e]
         for dtype in inexact_dtypes + [None,]
         for rng_factory in [jtu.rand_default]))
-  @jtu.disable
   def testLogspace(self, start_shape, stop_shape, num,
                    endpoint, base, dtype, rng_factory):
     if (dtype in int_dtypes and
@@ -2631,7 +2630,8 @@ class LaxBackedNumpyTests(jtu.TestCase):
         # slightly more than expected?
         atol = {onp.float16: 1e-2}
         self._CompileAndCheck(lnp_op, args_maker,
-                              check_dtypes=False, atol=atol, rtol=tol)
+                              check_dtypes=False, atol=atol, rtol=tol,
+                              check_incomplete_shape=True)
 
   @named_parameters(
       jtu.cases_from_list(
