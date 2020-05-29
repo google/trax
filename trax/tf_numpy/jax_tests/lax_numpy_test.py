@@ -1640,7 +1640,6 @@ class LaxBackedNumpyTests(jtu.TestCase):
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
     self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
 
-  @jtu.disable
   def testIssue121(self):
     assert not onp.isscalar(lnp.array(3))
 
@@ -1710,7 +1709,6 @@ class LaxBackedNumpyTests(jtu.TestCase):
     out_val = fun(lnp.ones(4))
     self.assertAllClose(out_val, onp.full((3, 4), 2.), check_dtypes=False)
 
-  @jtu.disable
   def testZeroStridesConstantHandler(self):
     raw_const = onp.random.RandomState(0).randn(1, 2, 1, 1, 5, 1)
     const = onp.broadcast_to(raw_const, (3, 2, 3, 4, 5, 6))
@@ -1718,15 +1716,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
     def fun(x):
       return x * const
 
-    fun = api.jit(fun)
+    fun = npe.jit(fun)
     out_val = fun(3.)
     self.assertAllClose(out_val, 3. * const, check_dtypes=False)
 
-  @jtu.disable
   def testIsInstanceNdarrayDuringTracing(self):
     arr = onp.ones(3)
 
-    @api.jit
+    @npe.jit
     def f(x):
       self.assertIsInstance(x, lnp.ndarray)
       return lnp.sum(x)
@@ -2722,15 +2719,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
     finally:
       FLAGS.jax_numpy_rank_promotion = prev_flag
 
-  @jtu.disable
   def testStackArrayArgument(self):
     # tests https://github.com/google/jax/issues/1271
-    @api.jit
+    @npe.jit
     def foo(x):
       return lnp.stack(x)
     foo(onp.zeros(2))  # doesn't crash
 
-    @api.jit
+    @npe.jit
     def foo(x):
       return lnp.concatenate(x)
     foo(onp.zeros((2, 2)))  # doesn't crash
@@ -2774,18 +2770,15 @@ class LaxBackedNumpyTests(jtu.TestCase):
     self._CompileAndCheck(
         lnp_op, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
-  @jtu.disable
   def testBroadcastToIssue1522(self):
     self.assertRaisesRegex(
-        ValueError, "Incompatible shapes for broadcasting: .*",
+        Exception, "Unable to broadcast",
         lambda: lnp.broadcast_to(onp.ones((2, 3)), (1, 3)))
 
-  @jtu.disable
   def testBroadcastToIntIssue1548(self):
     self.assertAllClose(lnp.broadcast_to(1, (3, 2)), onp.ones((3, 2)),
                         check_dtypes=False)
 
-  @jtu.disable
   def testBroadcastToOnScalar(self):
     self.assertIsInstance(lnp.broadcast_to(10.0, ()), lnp.ndarray)
     self.assertIsInstance(onp.broadcast_to(10.0, ()), onp.ndarray)

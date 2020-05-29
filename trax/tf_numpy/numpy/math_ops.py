@@ -947,6 +947,8 @@ def ptp(a, axis=None, keepdims=None):
 
 @utils.np_doc_only(np.concatenate)
 def concatenate(arys, axis=0):
+  if not isinstance(arys, (list, tuple)):
+    arys = [arys]
   if not arys:
     raise ValueError('Need at least one array to concatenate.')
   dtype = utils.result_type(*arys)
