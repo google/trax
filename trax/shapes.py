@@ -108,8 +108,9 @@ def splice_signatures(*sigs):
 
   The splicing effectively flattens the top level input signatures. For
   instance, it would perform the following mapping:
-    - *sigs: sd1, (sd2, sd3, sd4), (), sd5
-    - return: (sd1, sd2, sd3, sd4, sd5)
+
+    - `*sigs: sd1, (sd2, sd3, sd4), (), sd5`
+    - return: `(sd1, sd2, sd3, sd4, sd5)`
 
   Args:
     *sigs: Any number of signatures. A signature is either a `ShapeDtype`

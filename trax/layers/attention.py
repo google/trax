@@ -36,6 +36,7 @@ def Attention(d_feature, n_heads=1, dropout=0.0, mode='train'):
 
   This layer type represents one pass of multi-head self-attention, best
   known for its central role in Transformer models. Internally, it:
+
     - maps activations to `(queries, keys, values)` triples,
     - splits `queries`, `keys`, and `values` into multiple 'heads',
     - computes per-head attention weights from per-head `(queries, keys)`,
@@ -86,6 +87,7 @@ class PureAttention(base.Layer):
 
   This layer type performs the inner workings of one pass of multi-head
   self-attention. It:
+
     - splits `queries`, `keys`, and `values` into multiple 'heads',
     - computes per-head attention weights from per-head `(queries, keys)`,
     - applies `mask` to screen out positions that come from padding tokens,

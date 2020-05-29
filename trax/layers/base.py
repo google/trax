@@ -184,9 +184,11 @@ class Layer(object):
     Args:
       inputs: Input tensors, matching the number (n_in) expected by this
           layer, packaged as single positional arg. Specifically:
+
             - n_in = 0: an empty tuple or empty list
             - n_in = 1: a tensor (NOT wrapped in a tuple)
             - n_in > 1: a tuple or list of tensors, with n_in items
+
       weights: A tuple or list of trainable weights, with one element for this
           layer if this layer has no sublayers, or one for each sublayer if
           this layer has sublayers. If a layer (or sublayer) has no trainable
@@ -195,6 +197,7 @@ class Layer(object):
     Returns:
       Tensors, matching the number (n_out) promised by this layer.
       Specifically:
+
         - n_out = 0: an empty tuple
         - n_out = 1: one tensor (NOT wrapped in a tuple)
         - n_out > 1: a tuple of tensors, with n_out items
@@ -329,9 +332,11 @@ class Layer(object):
     """Returns this layer's weights.
 
     Depending on the layer, the weights can be in the form of:
+
       - an empty tuple
       - a tensor (ndarray)
       - a nested structure of tuples and tensors
+
     TODO(jonni): Simplify this picture (and underlying implementation).
     """
     return self._weights
@@ -381,9 +386,11 @@ class Layer(object):
     Args:
       x: Input tensors, matching the number (n_in) expected by this
           layer. Specifically:
+
             - n_in = 0: an empty tuple or empty list
             - n_in = 1: a tensor (NOT wrapped in a tuple)
             - n_in > 1: a tuple or list of tensors, with n_in items
+
       weights: A tuple or list of trainable weights, with one element for this
           layer if this layer has no sublayers, or one for each sublayer if
           this layer has sublayers. If a layer (or sublayer) has no trainable
@@ -395,7 +402,8 @@ class Layer(object):
 
     Returns:
       A tuple of (tensors, state). The tensors match the number (n_out) promised
-      by this layer, and are formatted according to that number, specifically:
+      by this layer, and are formatted according to that number. Specifically:
+
         - n_out = 0: an empty tuple
         - n_out = 1: one tensor (NOT wrapped in a tuple)
         - n_out > 1: a tuple of tensors, with n_out items
@@ -583,8 +591,7 @@ def Fn(name, f, n_out=1):  # pylint: disable=invalid-name
   Args:
     name: Class-like name for the resulting layer; for use in debugging.
     f: Pure function from input tensors to output tensors, where each input
-        tensor is a separate positional arg, e.g.:
-            f(x0, x1) --> x0 + x1
+        tensor is a separate positional arg, e.g., f(x0, x1) --> x0 + x1.
         Output tensors must be packaged as specified for `Layer.forward`.
     n_out: Number of outputs promised by the layer; default value 1.
 

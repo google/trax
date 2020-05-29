@@ -342,21 +342,24 @@ class Scan(base.Layer):
 
   In more detail, we assume the layer takes a tuple of inputs of the following
   form:
+
     (input1, ..., inputN, carry1, ..., carryM)
-  and returns
+
+  and returns:
+
     (output1, ..., outputK, new_carry1, ..., new_carryM)
 
   The scanned version applies the layer iteratively to a tensor treating values
   at the given axis as if they were a list. For example, to calculate all
-  sums of prefixes of a tensor, we can do this:
+  sums of prefixes of a tensor, we can do this::
 
-  def add(x, carry):
-    def f(input, carry):
-      res = input + carry
-      return res, res  # output and carry are the same
-    return tl.Fn('add', f, n_out=2)
+    def add(x, carry):
+      def f(input, carry):
+        res = input + carry
+        return res, res  # output and carry are the same
+      return tl.Fn('add', f, n_out=2)
 
-  Scan(add)([1, 2, 3], 0) = [1, 3, 6], 6
+    Scan(add)([1, 2, 3], 0) = [1, 3, 6], 6
   """
 
   def __init__(self, layer, axis=0, n_carry=1, remat=False):
@@ -490,6 +493,7 @@ def Select(indices, n_in=None, name=None):
   Returns:
     Tensors, matching the number selected (`n_out = len(indices)`).
     Specifically:
+
       - n_out = 0: an empty tuple
       - n_out = 1: one tensor (NOT wrapped in a tuple)
       - n_out > 1: a tuple of tensors, with n_out items
@@ -529,7 +533,8 @@ def SerialWithSideOutputs(layers, n_side_outputs=1):
   This layer makes it easier to manage the stack when layers have side outputs.
 
   In the simplest case of layers with n_in=1, n_out=2 and with
-  n_side_outputs=1 this layer runs the following computation on x:
+  n_side_outputs=1, this layer runs the following computation on x::
+
     side_outputs = []
     for i in range(len(layers)):
       x, side_output = layers[i](x)
@@ -537,7 +542,8 @@ def SerialWithSideOutputs(layers, n_side_outputs=1):
     return [x] + side_outputs
 
   In the general case of layers with variable n_in and n_out and
-  n_side_outputs being a list of N integers, it does the following:
+  n_side_outputs being a list of N integers, it does the following::
+
     side_outputs = []
     for i in range(N):
       res = layer[i](cur_stack)  # remove n_in from stack
@@ -548,10 +554,10 @@ def SerialWithSideOutputs(layers, n_side_outputs=1):
   Args:
     layers: a list of layers to execute
     n_side_outputs: an int or a list of ints, how many outputs of each layer
-      to put aside
+        to put aside
 
   Returns:
-    a layer that performs the above computation
+    A layer that performs the above computation.
   """
   if isinstance(n_side_outputs, int):
     n_side_outputs = [n_side_outputs] * len(layers)
@@ -652,7 +658,9 @@ class BatchLeadingAxes(base.Layer):
   This can be used to make layers accept an arbitrary number of leading
   axes (dimensions) as batch. For example, a Convolution layer may normally
   only operate on tensors of shape [B, W, H, C]. In this case, the layer
-    BatchLeadingAxes(Convolution(), n_last_axes_to_keep=3)
+
+      BatchLeadingAxes(Convolution(), n_last_axes_to_keep=3)
+
   will operate on any tensor [..., W, H, C] and treat the leading axes as batch.
   """
 
