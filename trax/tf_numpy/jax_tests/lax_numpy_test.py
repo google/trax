@@ -2099,14 +2099,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
           (((3,), (4,)), (onp.int32, onp.int32)),
           (((3,), (1,), (4,)), (onp.int32, onp.int32, onp.int32)),
         )))
-  @jtu.disable
   def testIx_(self, rng_factory, shapes, dtypes):
     rng = rng_factory()
     args_maker = lambda: [rng(shape, dtype)
                           for shape, dtype in zip(shapes, dtypes)]
     self._CheckAgainstNumpy(onp.ix_, lnp.ix_, args_maker,
                             check_dtypes=True)
-    self._CompileAndCheck(lnp.ix_, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp.ix_, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
         {"testcase_name":

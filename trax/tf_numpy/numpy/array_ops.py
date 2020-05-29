@@ -1494,3 +1494,34 @@ def vander(x, N=None, increasing=False):  # pylint: disable=missing-docstring,in
   x = tf.expand_dims(x, -1)
   return utils.tensor_to_ndarray(
       tf.math.pow(x, tf.cast(tf.range(start, limit, delta), dtype=x.dtype)))
+
+
+@utils.np_doc(np.ix_)
+def ix_(*args):  # pylint: disable=missing-docstring
+  n = len(args)
+  output = []
+  for i, a in enumerate(args):
+    a = asarray(a).data
+    a_rank = tf.rank(a)
+    a_rank_temp = utils.get_static_value(a_rank)
+    if a_rank_temp is not None:
+      a_rank = a_rank_temp
+      if a_rank != 1:
+        raise ValueError(
+            'Arguments must be 1-d, got arg {} of rank {}'.format(i, a_rank))
+    else:
+      tf.debugging.Assert(a_rank == 1, [a_rank])
+
+    new_shape = [1] * n
+    new_shape[i] = -1
+    dtype = a.dtype
+    if dtype == tf.bool:
+      output.append(
+          utils.tensor_to_ndarray(tf.reshape(nonzero(a)[0].data, new_shape)))
+    elif dtype.is_integer:
+      output.append(utils.tensor_to_ndarray(tf.reshape(a, new_shape)))
+    else:
+      raise ValueError(
+          'Only integer and bool dtypes are supported, got {}'.format(dtype))
+
+  return output
