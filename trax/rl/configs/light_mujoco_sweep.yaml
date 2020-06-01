@@ -13,11 +13,9 @@
 # limitations under the License.
 
 RLTask.env: [
-    # "DM-Ant-v2",
+    "DM-Ant-v2",
     "DM-HalfCheetah-v2",
-    # "DM-Hopper-v2",
-    # "DM-Humanoid-v2",
-    # "DM-Walker2d-v2",
+    "DM-Hopper-v2",
+    "DM-Humanoid-v2",
+    "DM-Walker2d-v2",
 ]
-q_value_n_samples: [2, 8, 32, 128]
-added_policy_slice_length: [1, 7, 31, 127]

@@ -33,7 +33,7 @@ Policy.normalizer = @trax.rl.normalization.Normalize
 # ==============================================================================
 Value.body = @trax.models.PureMLP
 Value.normalizer = @trax.rl.normalization.Normalize
-Value.inject_actions_dim = 64
+Value.inject_actions_dim = 256
 
 # Parameters for Normalize:
 # ==============================================================================
@@ -43,7 +43,7 @@ Normalize.epsilon = 1e-5
 # Parameters for PureMLP:
 # ==============================================================================
 PureMLP.flatten = False
-PureMLP.layer_widths = (128, 64)
+PureMLP.layer_widths = (256, 256)
 PureMLP.out_activation = True
 
 batch_size = 256
@@ -52,8 +52,8 @@ policy_train_steps = %train_steps
 value_train_steps = %train_steps
 policy_lr = 0.0001
 value_lr = 0.001
-added_policy_slice_length = 31
-q_value_n_samples = 32
+added_policy_slice_length = 3
+q_value_n_samples = 4
 
 # Parameters for Adam:
 # ==============================================================================

@@ -618,9 +618,9 @@ def awr_weights(advantages, beta):
 
 
 # Helper functions for computing AWR metrics.
-def awr_metrics(beta):
+def awr_metrics(beta, preprocess_layer=None):
   return {  # pylint: disable=g-complex-comprehension
-      'awr_weight_' + name: awr_weight_stat(name, fn, beta)
+      'awr_weight_' + name: awr_weight_stat(name, fn, beta, preprocess_layer)
       for (name, fn) in [
           ('mean', jnp.mean),
           ('std', jnp.std),
@@ -630,9 +630,11 @@ def awr_metrics(beta):
   }
 
 
-def awr_weight_stat(stat_name, stat_fn, beta):
+def awr_weight_stat(stat_name, stat_fn, beta, preprocess_layer):
+  # Select just the advantages if preprocess layer is not given.
+  preprocess = tl.Select([1]) if preprocess_layer is None else preprocess_layer
   return tl.Serial([
-      tl.Select([1]),  # Select just the advantages.
+      preprocess,
       tl.Fn(
           'AWRWeight' + stat_name.capitalize(),
           lambda x: stat_fn(awr_weights(x, beta)),
@@ -694,10 +696,34 @@ class SamplingAWRTrainer(AdvantageBasedActorCriticTrainer):
     self._reweight = reweight
     super(SamplingAWRTrainer, self).__init__(task, q_value=True, **kwargs)
 
+  def _policy_inputs_to_advantages(self, preprocess):
+    """A layer that computes advantages from policy inputs."""
+    def fn(dist_inputs, actions, q_values, act_log_probs, mask):
+      del dist_inputs, actions, mask
+      q_values = jnp.swapaxes(q_values, 0, 1)
+      act_log_probs = jnp.swapaxes(act_log_probs, 0, 1)
+      values = jnp.mean(q_values, axis=0)
+      advantages = q_values - values  # Broadcasting values over n_samples
+      if preprocess:
+        advantages = self._preprocess_advantages(advantages)
+      return advantages
+    return tl.Fn('PolicyInputsToAdvantages', fn)
+
   @property
   def policy_metrics(self):
-    metrics = super(SamplingAWRTrainer, self).policy_metrics
-    metrics.update(awr_metrics(self._beta))
+    metrics = {
+        'policy_loss': self.policy_loss,
+        'advantage_mean': tl.Serial(
+            self._policy_inputs_to_advantages(False),
+            tl.Fn('Mean', lambda x: jnp.mean(x))  # pylint: disable=unnecessary-lambda
+        ),
+        'advantage_std': tl.Serial(
+            self._policy_inputs_to_advantages(False),
+            tl.Fn('Std', lambda x: jnp.std(x))  # pylint: disable=unnecessary-lambda
+        )
+    }
+    metrics.update(awr_metrics(
+        self._beta, preprocess_layer=self._policy_inputs_to_advantages(True)))
     return metrics
 
   @property
