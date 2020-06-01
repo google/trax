@@ -789,10 +789,32 @@ def real(val):
 
 
 @utils.np_doc(np.repeat)
-def repeat(a, repeats, axis=None):
+def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
   a = asarray(a).data
+  original_shape = a._shape_as_list()  # pylint: disable=protected-access
+  # Best effort recovery of the shape.
+  if original_shape is not None and None not in original_shape:
+    if not original_shape:
+      original_shape = (repeats,)
+    else:
+      repeats_np = np.ravel(np.array(repeats))
+      if repeats_np.size == 1:
+        repeats_np = repeats_np.item()
+        if axis is None:
+          original_shape = (repeats_np * np.prod(original_shape),)
+        else:
+          original_shape[axis] = repeats_np * original_shape[axis]
+      else:
+        if axis is None:
+          original_shape = (repeats_np.sum(),)
+        else:
+          original_shape[axis] = repeats_np.sum()
+
   repeats = asarray(repeats).data
-  return utils.tensor_to_ndarray(tf.repeat(a, repeats, axis))
+  result = tf.repeat(a, repeats, axis)
+  result.set_shape(original_shape)
+
+  return utils.tensor_to_ndarray(result)
 
 
 @utils.np_doc(np.around)
