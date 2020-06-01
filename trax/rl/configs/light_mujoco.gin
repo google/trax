@@ -37,7 +37,7 @@ Value.inject_actions_dim = 256
 
 # Parameters for Normalize:
 # ==============================================================================
-Normalize.sample_limit = 30000
+Normalize.sample_limit = 300000
 Normalize.epsilon = 1e-5
 
 # Parameters for PureMLP:
@@ -150,6 +150,6 @@ SamplingAWRTrainer.reweight = False
 # ==============================================================================
 train_rl.light_rl = True
 train_rl.light_rl_trainer = @trax.rl.AWRTrainer
-train_rl.n_epochs = 1000
+train_rl.n_epochs = 10000
 
 # TODO(pkozakowski): Add PPO config here once we get it to work on MuJoCo.
