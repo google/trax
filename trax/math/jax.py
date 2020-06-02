@@ -289,6 +289,15 @@ def tree_flatten(tree):
   return [tree]
 
 
+def tree_leaves(tree, ignore_nones=True):
+  """Gets the leaves of a tree."""
+
+  # Right now this is just `tree_flatten`, but we keep this separate since
+  # JAX's tree_flatten returns the structure of the tree as well.
+  flattened = tree_flatten(tree)
+  return [flat for flat in flattened if (not ignore_nones) or flat is not None]
+
+
 def tree_unflatten(flat, tree):
   """Unflatten a list into a tree given the tree shape as second argument.
 
@@ -381,6 +390,12 @@ def _dataset_as_numpy(ds, batch_size=None):
       yield example
 
 
+def _custom_grad(f_vjp, f_original):
+  f_ = jax.custom_transforms(f_original)
+  jax.defvjp_all(f_, f_vjp)
+  return f_
+
+
 JAX_BACKEND = {
     'name': 'jax',
     'np': jnp,
@@ -388,6 +403,7 @@ JAX_BACKEND = {
     'avg_pool': jax_avg_pool,
     'cond': lax.cond,
     'conv': jax_conv,
+    'custom_grad': _custom_grad,
     'dataset_as_numpy': _dataset_as_numpy,
     'device_count': jax.local_device_count,
     'erf': jax_special.erf,
@@ -409,4 +425,5 @@ JAX_BACKEND = {
     'sort_key_val': jax.lax.sort_key_val,
     'stop_gradient': lax.stop_gradient,
     'sum_pool': jax_sum_pool,
+    'vjp': jax.vjp,
 }

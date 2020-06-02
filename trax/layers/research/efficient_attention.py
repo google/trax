@@ -452,7 +452,7 @@ class EfficientAttentionBase(base.Layer):
         output_accum[example_idx] = output_accum[example_idx] + single_out
 
     output = np.stack(output_accum, 0)
-    if new_state and jax.tree_leaves(new_state[0]):
+    if new_state and math.tree_leaves(new_state[0]):
       new_state = math.nested_map_multiarg(
           lambda *s: np.stack(s, 0), *new_state)
     else:
@@ -504,7 +504,7 @@ class EfficientAttentionBase(base.Layer):
       # language model given a long prefix. Note that if we're not at the start
       # of the sequence, the code here won't work.
       new_flat_mem = []
-      for inp in jax.tree_leaves(inputs):
+      for inp in math.tree_leaves(inputs):
         assert inp.shape[1] == seqlen
         if seqlen == self.predict_mem_len:
           new_mem_val = inp
@@ -663,10 +663,10 @@ class EfficientAttentionBase(base.Layer):
         return differentiable_xs, non_differentiable_xs
       def join_differentiable(differentiable_xs, non_differentiable_xs):
         """Reconstitute inputs pytree from differentiable/non-d. partitions."""
-        differentiable_leaves = list(jax.tree_leaves(differentiable_xs))
-        non_differentiable_leaves = list(jax.tree_leaves(non_differentiable_xs))
+        differentiable_leaves = math.tree_leaves(differentiable_xs)
+        non_differentiable_leaves = math.tree_leaves(non_differentiable_xs)
         leaves = []
-        for is_differentiable in jax.tree_leaves(inputs_is_differentiable):
+        for is_differentiable in math.tree_leaves(inputs_is_differentiable):
           if is_differentiable:
             leaves.append(differentiable_leaves.pop(0))
           else:

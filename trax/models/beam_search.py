@@ -497,7 +497,7 @@ class Search:
 
     # Fix tree structure of the state (there's a tuple vs. list mismatch)
     initial_state = jax.tree_unflatten(
-        state_structure, jax.tree_leaves(initial_state))
+        state_structure, trax.math.tree_leaves(initial_state))
 
     return initial_state
 

@@ -24,4 +24,5 @@ from trax.math.jax import nested_map_multiarg
 from trax.math.jax import nested_stack
 from trax.math.jax import nested_zip
 from trax.math.jax import tree_flatten
+from trax.math.jax import tree_leaves
 from trax.math.jax import tree_unflatten
