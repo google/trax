@@ -39,7 +39,7 @@ GET_WEIGHTS_FROM_CACHE = ()  # Used to mark that the weights are shared.
 GET_STATE_FROM_CACHE = ()    # Used to mark that the state is shared.
 
 
-class Layer(object):
+class Layer:
   """Base class for composable layers in a deep learning network.
 
   Layers are the basic building blocks for deep learning models. A Trax layer
@@ -48,10 +48,10 @@ class Layer(object):
   common). Authors of new layer subclasses typically override at most two
   methods of the base `Layer` class:
 
-    forward(inputs, weights):
+    `forward(inputs, weights)`:
       Computes this layer's output as part of a forward pass through the model.
 
-    new_weights(self, input_signature):
+    `new_weights(self, input_signature)`:
       Returns new weights suitable for inputs with the given signature.
 
   A small subset of layer types are combinators -- they organize the computation
@@ -60,26 +60,26 @@ class Layer(object):
   All layers have the following properties, with default values implemented
   in the base `Layer` class:
 
-    - n_in: int (default 1)
-    - n_out: int (default 1)
-    - weights: tuple (default empty -- the layer has no weights)
-    - state: tuple (default empty -- the layer has no non-parameter state)
-    - sublayers: tuple (default empty -- the layer has no sublayers)
+    - `n_in`: int (default 1)
+    - `n_out`: int (default 1)
+    - `weights`: tuple (default empty -- the layer has no weights)
+    - `state`: tuple (default empty -- the layer has no non-parameter state)
+    - `sublayers`: tuple (default empty -- the layer has no sublayers)
 
   The inputs to a layer are tensors, packaged according to how many there are:
 
-    - n_in = 0: an empty tuple ()
-    - n_in = 1: one tensor (NOT wrapped in a tuple)
-    - n_in > 1: a tuple of tensors
+    - `n_in = 0`: an empty tuple
+    - `n_in = 1`: one tensor (NOT wrapped in a tuple)
+    - `n_in > 1`: a tuple of tensors
 
   (The special treatment of the single-input case is meant to simplify the
   work of layer writers; this design choice may be revisited in the future.)
 
   The outputs from a layer are also tensors, packaged the same as layer inputs:
 
-    - n_out = 0: an empty tuple ()
-    - n_out = 1: the tensor (NOT wrapped in a tuple)
-    - n_out > 1: a tuple of tensors
+    - `n_out = 0`: an empty tuple
+    - `n_out = 1`: the tensor (NOT wrapped in a tuple)
+    - `n_out > 1`: a tuple of tensors
 
   The Trax runtime maintains a data stack with which layer calls are composed.
   For more complex data network architectures, possibly involving multiple data
@@ -131,7 +131,7 @@ class Layer(object):
       return name_str
 
   def __call__(self, x, weights=None, state=None, rng=None, n_accelerators=0):
-    """Makes Layer instances callable; for use in tests or interactive settings.
+    """Makes layers callable; for use in tests or interactive settings.
 
     This convenience method helps library users play with, test, or otherwise
     probe the behavior of layers outside of a full training environment. It
@@ -143,17 +143,17 @@ class Layer(object):
     explicitly provided via the weights and state keyword arguments.
 
     Args:
-      x: 0 or more input tensors, formatted the same as the inputs to
-          Layer.forward.
-      weights: Weights or None; if None, use self's cached weights value.
-      state: State or None; if None, use self's cached state value.
-      rng: rng object or None; if None, use a default computed from an
-          integer 0 seed.
+      x: Zero or more input tensors, packaged as described in the `Layer` class
+          docstring.
+      weights: Weights or `None`; if `None`, use self's cached weights value.
+      state: State or `None`; if `None`, use self's cached state value.
+      rng: Single-use random number generator (JAX PRNG key), or `None`;
+          if `None`, use a default computed from an integer 0 seed.
       n_accelerators: Number of accelerators to target.
 
     Returns:
-      0 or more output tensors, formatted the same as the outputs from
-          Layer.forward.
+      Zero or more output tensors, packaged as described in the `Layer` class
+      docstring.
     """
     weights = self.weights if weights is None else weights
     state = self.state if state is None else state
@@ -175,55 +175,46 @@ class Layer(object):
   def forward(self, inputs, weights):
     """Computes this layer's output as part of a forward pass through the model.
 
-    Authors of new Layer subclasses should override this method to define the
+    Authors of new layer subclasses should override this method to define the
     forward computation that their layer performs. If you need to use
-    local non-trainable state or randomness, use self.rng for the random seed
-    (no need to set it) and use self.state for non-trainable state (and set it
+    local non-trainable state or randomness, use `self.rng` for the random seed
+    (no need to set it) and use `self.state` for non-trainable state (and set it
     to the new value).
 
     Args:
-      inputs: Input tensors, matching the number (n_in) expected by this
-          layer, packaged as single positional arg. Specifically:
-
-            - n_in = 0: an empty tuple or empty list
-            - n_in = 1: a tensor (NOT wrapped in a tuple)
-            - n_in > 1: a tuple or list of tensors, with n_in items
-
+      inputs: Zero or more input tensors, packaged as described in the `Layer`
+          class docstring.
       weights: A tuple or list of trainable weights, with one element for this
           layer if this layer has no sublayers, or one for each sublayer if
           this layer has sublayers. If a layer (or sublayer) has no trainable
           weights, the corresponding weights element is an empty tuple.
 
     Returns:
-      Tensors, matching the number (n_out) promised by this layer.
-      Specifically:
-
-        - n_out = 0: an empty tuple
-        - n_out = 1: one tensor (NOT wrapped in a tuple)
-        - n_out > 1: a tuple of tensors, with n_out items
+      Zero or more output tensors, packaged as described in the `Layer` class
+      docstring.
     """
     raise NotImplementedError
 
   def new_weights(self, input_signature):
     """Returns new weights suitable for inputs with the given signature.
 
-    Authors of new Layer subclasses should override this method if their layer
+    Authors of new layer subclasses should override this method if their layer
     uses trainable weights or non-trainable state. To initialize non-trainable
-    state, set self.state to the intended value.
+    state, set `self.state` to the intended value.
 
     Args:
-      input_signature: A ShapeDtype instance (if this layer takes one input)
-          or a list/tuple of ShapeDtype instances; signatures of inputs.
+      input_signature: A `ShapeDtype` instance (if this layer takes one input)
+          or a list/tuple of `ShapeDtype` instances; signatures of inputs.
     """
     del input_signature
     return EMPTY_WEIGHTS
 
   @property
   def has_backward(self):
-    """Returns True if this layer provides its own (custom) backward pass code.
+    """Returns `True` if this layer provides its own custom backward pass code.
 
     A layer subclass that provides custom backward pass code (for custom
-    gradients) must override this method to return True.
+    gradients) must override this method to return `True`.
     """
     return False
 
@@ -233,11 +224,11 @@ class Layer(object):
     Args:
       inputs: Input tensors; can be a (possibly nested) tuple.
       output: The result of running this layer on inputs.
-      grad: gradient signal (called cotangent in jax) computed based on
-        subsequent layers. The structure and shape must match output.
-      weights: layer weights
-      state: start state.
-      new_state: end state computed by running the layer
+      grad: Gradient signal computed based on subsequent layers; its structure
+          and shape must match output.
+      weights: This layer's weights.
+      state: This layer's state prior to the current forward pass.
+      new_state: This layer's state after the current forward pass.
       rng: Single-use random number generator (JAX PRNG key).
 
     Returns:
@@ -260,15 +251,15 @@ class Layer(object):
     Args:
       input_signature: `ShapeDtype` instance (if this layer takes one input)
           or list/tuple of `ShapeDtype` instances.
-      rng: Single-use random number generator (JAX PRNG key). If none is
-          provided, a default rng based on the integer seed 0 will be used.
-      use_cache: If True, and if this layer instance has already been
+      rng: Single-use random number generator (JAX PRNG key), or `None`;
+          if `None`, use a default computed from an integer 0 seed.
+      use_cache: If `True`, and if this layer instance has already been
           initialized elsewhere in the network, then return special marker
-          values -- tuple (GET_WEIGHTS_FROM_CACHE, GET_STATE_FROM_CACHE).
+          values -- tuple `(GET_WEIGHTS_FROM_CACHE, GET_STATE_FROM_CACHE)`.
           Else return this layer's newly initialized weights and state.
 
     Returns:
-      A (weights, state) tuple.
+      A `(weights, state)` tuple.
     """
     try:
       if self._init_cached and use_cache:
@@ -292,16 +283,18 @@ class Layer(object):
                        input_signature, trace) from e
 
   def init_from_file(self, file_name, weights_only=False):
-    """Initializes this layer and its sublayers from a file.
+    """Initializes this layer and its sublayers from a pickled checkpoint.
 
-    We assume that the file is a pickled dictionary that contains the fields
-    'weights' and 'state' with structures corresponding to this layers weights
-    and state. Note that the pickled dictionary is allowed to contain other
-    fields too, but these two are required to init.
+    In the common case (`weights_only=False`), the file must be a pickled
+    dictionary containing items with keys `'weights' and `'state'`, whose
+    values have the correct structure for this layer's weights and state.
+    If `weights_only` is `True`, the dictionary only needs to have a
+    `'weights'` item.
 
     Args:
-      file_name: the name of the file to initialize from.
-      weights_only: if True, initialize only the weights, not state.
+      file_name: Name/path of the pickeled weights/state file.
+      weights_only: If `True`, initialize only the layer's weights. Else
+          initialize both weights and state.
     """
     with tf.io.gfile.GFile(file_name, 'rb') as f:
       dictionary = pickle.load(f)
@@ -381,32 +374,25 @@ class Layer(object):
     """Applies this layer as a pure function with no optional args.
 
     This method exposes the layer's computation as a pure function. This is
-    esp. useful for JIT compilation. Do not override, use `forward` instead.
+    especially useful for JIT compilation. Do not override, use `forward`
+    instead.
 
     Args:
-      x: Input tensors, matching the number (n_in) expected by this
-          layer. Specifically:
-
-            - n_in = 0: an empty tuple or empty list
-            - n_in = 1: a tensor (NOT wrapped in a tuple)
-            - n_in > 1: a tuple or list of tensors, with n_in items
-
+      x: Zero or more input tensors, packaged as described in the `Layer` class
+          docstring.
       weights: A tuple or list of trainable weights, with one element for this
           layer if this layer has no sublayers, or one for each sublayer if
           this layer has sublayers. If a layer (or sublayer) has no trainable
           weights, the corresponding weights element is an empty tuple.
       state: Layer-specific non-parameter state that can update between batches.
       rng: Single-use random number generator (JAX PRNG key).
-      use_cache: if True, cache weights and state in the layer object; used
+      use_cache: if `True`, cache weights and state in the layer object; used
         to implement layer sharing in combinators.
 
     Returns:
-      A tuple of (tensors, state). The tensors match the number (n_out) promised
-      by this layer, and are formatted according to that number. Specifically:
-
-        - n_out = 0: an empty tuple
-        - n_out = 1: one tensor (NOT wrapped in a tuple)
-        - n_out > 1: a tuple of tensors, with n_out items
+      A tuple of `(tensors, state)`. The tensors match the number (`n_out`)
+      promised by this layer, and are packaged as described in the `Layer`
+      class docstring.
     """
     try:
       old_weights, old_state, old_rng = self.weights, self.state, self.rng
@@ -442,15 +428,15 @@ class Layer(object):
     """Computes shapes and dtypes this layer would produce in a forward pass.
 
     Args:
-      input_signature: ShapeDtype instance (if this layer takes one input)
-          or list/tuple of ShapeDtype instances.
+      input_signature: `ShapeDtype` instance (if this layer takes one input)
+          or list/tuple of `ShapeDtype` instances.
 
     Returns:
       Tuple of (output, state).
 
-      The output part of the tuple is a ShapeDtype instance representing the
+      The output part of the tuple is a `ShapeDtype` instance representing the
       shape and type of the output (if this layer has one output) or a tuple
-      of ShapeDtype instances (if this layer has more than one output).
+      of `ShapeDtype` instances (if this layer has more than one output).
     """
     try:
       # Note: By using rng_signature in place of an rng, we avoid computing and
@@ -508,7 +494,7 @@ def layer(n_in=1, n_out=1, name=None):
   """Decorator for creating simple layers.  DEPRECATED; use base.Fn instead."""
 
   def _build_layer_class(raw_fn):
-    """Returns a Layer class whose callable instances execute the function."""
+    """Returns a layer class whose callable instances execute the function."""
 
     def _init(self, **kwargs):
       self._kwargs = kwargs  # pylint: disable=protected-access
@@ -542,7 +528,7 @@ class PureLayer(Layer):
   """
 
   def __init__(self, forward_fn, n_in=1, n_out=1, name='PureLayer'):
-    """Creates an unconnected PureLayer instance.
+    """Creates an unconnected `PureLayer` instance.
 
     Args:
       forward_fn: Pure function from input tensors to output tensors, where
@@ -558,12 +544,14 @@ class PureLayer(Layer):
     """Overrides `Layer.forward`.
 
     Args:
-      inputs: Input tensors, matching the number (n_in) expected by this layer.
+      inputs: Zero or more input tensors, packaged as described in the `Layer`
+          class docstring.
       weights: Trainable weights in general, but this subclass doesn't use
           weights, so the only acceptable value is an empty tuple/list.
 
     Returns:
-      Tensors, matching the number (n_out) promised by this layer.
+      Zero or more output tensors, packaged as described in the `Layer` class
+      docstring.
 
     Raises:
       ValueError: If weights is other than an empty tuple/list.
@@ -575,14 +563,14 @@ class PureLayer(Layer):
 
 
 def Fn(name, f, n_out=1):  # pylint: disable=invalid-name
-  """Returns a layer with no weights that applies the function f.
+  """Returns a layer with no weights that applies the function `f`.
 
   `f` can take and return any number of arguments, and takes only positional
-  arguments -- no default or keyword arguments. It often uses JAX-numpy (jnp).
+  arguments -- no default or keyword arguments. It often uses JAX-numpy (`jnp`).
   The following, for example, would create a layer that takes two inputs and
   returns two outputs -- element-wise sums and maxima:
 
-      Fn('SumAndMax', lambda x0, x1: (x0 + x1, jnp.maximum(x0, x1)), n_out=2)
+      `Fn('SumAndMax', lambda x0, x1: (x0 + x1, jnp.maximum(x0, x1)), n_out=2)`
 
   The layer's number of inputs (`n_in`) is automatically set to number of
   positional arguments in `f`, but you must explicitly set the number of
@@ -591,12 +579,13 @@ def Fn(name, f, n_out=1):  # pylint: disable=invalid-name
   Args:
     name: Class-like name for the resulting layer; for use in debugging.
     f: Pure function from input tensors to output tensors, where each input
-        tensor is a separate positional arg, e.g., f(x0, x1) --> x0 + x1.
-        Output tensors must be packaged as specified for `Layer.forward`.
+        tensor is a separate positional arg, e.g., `f(x0, x1) --> x0 + x1`.
+        Output tensors must be packaged as specified in the `Layer` class
+        docstring.
     n_out: Number of outputs promised by the layer; default value 1.
 
   Returns:
-    Layer executing the function f.
+    Layer executing the function `f`.
   """
   # Inspect the function f to restrict to no-defaults and no-kwargs functions.
   argspec = inspect.getfullargspec(f)
@@ -618,11 +607,7 @@ def Fn(name, f, n_out=1):  # pylint: disable=invalid-name
 
 
 class LayerError(Exception):
-  """Exception raised in the layer stack.
-
-  Attributes:
-    message: the message corresponding to this exception.
-  """
+  """Exception raised in the layer stack."""
 
   def __init__(self, layer_name, function_name, caller,
                input_signature, traceback_string):
@@ -635,7 +620,7 @@ class LayerError(Exception):
 
   @property
   def message(self):
-    """Create error message."""
+    """Assembles current layer context into an error message."""
     prefix = 'Exception passing through layer '
     prefix += '%s (in %s):\n' % (self._layer_name, self._function_name)
     short_path = '[...]/' + '/'.join(
@@ -655,7 +640,7 @@ def to_list(outputs):
         complicates simple equality testing (e.g., via `assertEquals`):
         such tensors require equality testing to use either `all` (all
         elements match) or `any` (at least one element matches), which is not
-        directly supported in absltest.
+        directly supported in `absltest`.
 
   Returns:
     A nested list structure containing all the output values, but now directly
@@ -766,7 +751,7 @@ def _random_values(input_signature, rng):
 
 
 def _shapes(x):
-  """Get a structure of shapes for a structure of nested arrays."""
+  """Gets a structure of shapes for a structure of nested arrays."""
   def shape(x):
     try:
       return tuple([int(i) for i in x.shape])
@@ -776,13 +761,13 @@ def _shapes(x):
 
 
 def jit_forward(forward, n_devices, do_mean=True):
-  """Returns a JIT-compiled forward function running on n_devices."""
+  """Returns a JIT-compiled forward function running on `n_devices`."""
   model_predict = _accelerate(forward, n_devices)
   if n_devices == 1:
     return model_predict
 
   def predict(x, weights, state, rng):
-    """Predict function jited and parallelized as requested."""
+    """Predict function JIT-compileds and parallelized as requested."""
     res, state = _combine_devices(model_predict(
         reshape_by_device(x, n_devices),
         weights,
@@ -797,7 +782,7 @@ def jit_forward(forward, n_devices, do_mean=True):
 
 
 def _combine_devices(x_tuple):
-  """Combine multi-device tensors into a single batch."""
+  """Combines multi-device tensors into a single batch."""
   def f(x):
     if len(x.shape) < 2:
       return x  # No extra batch dimension: use devices as batch, so return.
@@ -807,7 +792,7 @@ def _combine_devices(x_tuple):
 
 
 def _accelerate(f, n_devices):
-  """JITed version of f running on n_devices."""
+  """JIT-compiled version of `f` running on `n_devices`."""
   if n_devices == 1:
     return math.jit(f)
 
@@ -815,7 +800,7 @@ def _accelerate(f, n_devices):
 
 
 def reshape_by_device(x, n_devices):
-  """Reshapes possibly nested x into a shape (n_devices, ...)."""
+  """Reshapes possibly nested `x` into a shape `(n_devices, ...)`."""
   def f(x):
     x_shape = list(x.shape)
     batch_size = x_shape[0]
@@ -829,7 +814,7 @@ def reshape_by_device(x, n_devices):
 
 
 def for_n_devices(x, n_devices):
-  """Replicates/broadcasts `x` for n_devices."""
+  """Replicates/broadcasts `x` for `n_devices`."""
   def f(x):
     if n_devices > 1 and math.backend_name() == 'jax':
       return _multi_device_put(x)
