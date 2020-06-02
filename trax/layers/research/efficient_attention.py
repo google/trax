@@ -337,8 +337,8 @@ class EfficientAttentionBase(base.Layer):
                                                state_rngs[i]))
 
     stack_along_axis_0 = lambda *x: np.stack(x, axis=0)
-    weights = jax.tree_multimap(stack_along_axis_0, *weights)
-    state = jax.tree_multimap(stack_along_axis_0, *state)
+    weights = math.nested_map_multiarg(stack_along_axis_0, *weights)
+    state = math.nested_map_multiarg(stack_along_axis_0, *state)
 
     if self.incremental:
       mem = math.nested_map(
@@ -453,7 +453,8 @@ class EfficientAttentionBase(base.Layer):
 
     output = np.stack(output_accum, 0)
     if new_state and jax.tree_leaves(new_state[0]):
-      new_state = jax.tree_multimap(lambda *s: np.stack(s, 0), *new_state)
+      new_state = math.nested_map_multiarg(
+          lambda *s: np.stack(s, 0), *new_state)
     else:
       new_state = state
     if self.incremental:
@@ -493,7 +494,7 @@ class EfficientAttentionBase(base.Layer):
         else:
           return jax.lax.dynamic_update_slice_in_dim(
               mem_element, new_vals, mem_end, axis=1)
-      inputs = jax.tree_multimap(update_mem, mem, inputs)
+      inputs = math.nested_map_multiarg(update_mem, mem, inputs)
       return inputs, state, mem_end, inputs, mem_end + seqlen
     else:
       assert seqlen > self.predict_drop_len or seqlen == self.predict_mem_len
@@ -640,12 +641,12 @@ class EfficientAttentionBase(base.Layer):
       n_parallel_heads = self.n_parallel_heads
 
     def tree_update(tree, indices, new_values):
-      return jax.tree_multimap(
+      return math.nested_map_multiarg(
           lambda x, y: jax.ops.index_update(x, jax.ops.index[indices], y),
           tree, new_values)
 
     def tree_add(tree, indices, new_values):
-      return jax.tree_multimap(
+      return math.nested_map_multiarg(
           lambda x, y: jax.ops.index_add(x, jax.ops.index[indices], y),
           tree, new_values)
 
@@ -653,10 +654,10 @@ class EfficientAttentionBase(base.Layer):
       inputs_is_differentiable = math.nested_map(
           lambda x: np.issubdtype(x.dtype, np.inexact), inputs)
       def split_differentiable(xs):
-        differentiable_xs = jax.tree_multimap(
+        differentiable_xs = math.nested_map_multiarg(
             lambda x, is_differentiable: x if is_differentiable else None,
             xs, inputs_is_differentiable)
-        non_differentiable_xs = jax.tree_multimap(
+        non_differentiable_xs = math.nested_map_multiarg(
             lambda x, is_differentiable: None if is_differentiable else x,
             xs, inputs_is_differentiable)
         return differentiable_xs, non_differentiable_xs
@@ -803,7 +804,7 @@ class EfficientAttentionBase(base.Layer):
           s_all = tree_update(s_all, state_range, s_mex)
         if compute_grad:
           i_ct_all = tree_update(i_ct_all, example_range, i_ct_mex)
-          w_ct_all = jax.tree_multimap(
+          w_ct_all = math.nested_map_multiarg(
               lambda old_all, delta_all: old_all + delta_all,
               w_ct_all, w_ct_mex)
         return (o_all, s_all, i_ct_all, w_ct_all)

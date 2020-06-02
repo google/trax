@@ -199,7 +199,7 @@ def nested_map(f, obj, level=0, ignore_nones=True):
   raise ValueError('Non-exhaustive pattern match for {}.'.format(obj))
 
 
-def nested_map_multiarg(f, *objs):
+def nested_map_multiarg(f, *objs, ignore_nones=True):
   """Maps multi-arg `f` recursively inside any dicts/lists/tuples in `objs`.
 
   Args:
@@ -207,6 +207,8 @@ def nested_map_multiarg(f, *objs):
         dict, list, or tuple, or any subclass of those.
     *objs: Either input objects to f or some nested structure of collections
         of (collections of ...) input objects to f.
+    ignore_nones: Whether to ignore Nones in the structure, i.e. return None
+        without calling `f`.
 
   Returns:
     An object with the same nested structure as `objs[0]`, but with each input
@@ -221,6 +223,8 @@ def nested_map_multiarg(f, *objs):
   if isinstance(objs[0], dict):
     return {k: nested_map_multiarg(f, *[o[k] for o in objs])
             for k in objs[0].keys()}
+  if ignore_nones and _is_made_of_nones(objs):
+    return None
   return f(*objs)
 
 

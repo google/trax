@@ -19,6 +19,7 @@
 import jax
 
 from trax import layers as tl
+from trax import math
 from trax.layers.combinators import (  # pylint: disable=g-multiple-import
     _split_rngs, _inputs_from_stack, _outputs_onto_stack)
 from trax.math import numpy as np
@@ -411,7 +412,7 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
         self.compute_residual.n_out, self.compute_residual.n_in)
     if not isinstance(stack_ct, (tuple, list)):
       stack_ct = (stack_ct,)
-    stack_ct = (accumulator_output_ct,) + jax.tree_multimap(
+    stack_ct = (accumulator_output_ct,) + math.nested_map_multiarg(
         lambda x, y: x+y, context_ct[:len(stack_ct)], stack_ct
         ) + context_ct[len(stack_ct):]
 

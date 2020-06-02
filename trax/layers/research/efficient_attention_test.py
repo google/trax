@@ -95,10 +95,10 @@ class EfficientAttentionTest(test.TestCase):
                        jax.tree_structure(test_weights_grad))
 
       check_close = lambda x, y: self.assertAllClose(x, y, rtol=1e-3, atol=1e-3)
-      jax.tree_multimap(check_close, ref_out, test_out)
-      jax.tree_multimap(check_close, ref_state, test_state)
-      jax.tree_multimap(check_close, ref_inp_grad, test_inp_grad)
-      jax.tree_multimap(check_close, ref_weights_grad, test_weights_grad)
+      math.nested_map_multiarg(check_close, ref_out, test_out)
+      math.nested_map_multiarg(check_close, ref_state, test_state)
+      math.nested_map_multiarg(check_close, ref_inp_grad, test_inp_grad)
+      math.nested_map_multiarg(check_close, ref_weights_grad, test_weights_grad)
 
   def test_batching_self_attention(self):
     with math.use_backend('jax'):

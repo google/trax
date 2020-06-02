@@ -21,11 +21,6 @@ n_symbols = 128
 length = 4096
 batch = 16
 
-# Parameters for data_streams:
-# ==============================================================================
-data_streams.data_dir = None
-data_streams.dataset_name = 'sequence_copy'
-
 # Parameters for MultifactorSchedule:
 # ==============================================================================
 MultifactorSchedule.constant = 1.0
