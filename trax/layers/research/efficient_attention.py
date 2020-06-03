@@ -18,6 +18,7 @@
 
 The approach taken in the first round of efficient attention implementations
 revealed several limitations, which this code attempts to address:
+
 1. Simultaneously instantiating queries, keys, and values for all heads can
    exceed the memory budget. Transformers are typically tuned such that
    n_heads * d_attention_key == d_model. Since attention involves queries, keys,
@@ -25,6 +26,7 @@ revealed several limitations, which this code attempts to address:
    the input activations. Once the O(n^2) dot-product bottleneck is removed
    -- as is the case in all of our efficient attention implementations -- this
    becomes the next critical bottleneck for scaling up Transformer models.
+
 2. Attention masking is implemented by associating an integer (typically, the
    sequence position) with each query and key vector, and defining a function
    to compute attention masks from this information. The standard attention API
@@ -553,9 +555,9 @@ class EfficientAttentionBase(base.Layer):
       compute_output=True, update_state=True):
     """Performs batched forward and/or backward passes.
 
-    See `forward` for a reference implementation of what this layer
-    does. The reference implementation is not very efficient, however, and this
-    method provides a more performant version.
+    See `forward` for a reference implementation of what this layer does. The
+    reference implementation is not very efficient, however, and this method
+    provides a more performant version.
 
     Args:
       inputs: inputs to the attention layer
@@ -563,41 +565,19 @@ class EfficientAttentionBase(base.Layer):
       state: state of the attention layer
       rng: PRNG key for the layer (shared across all examples and heads)
       output_grad: gradient of the loss wrt the output of the layer, or None.
-        This function performs the backward pass iff `output_grad` is not None.
+          This function performs the backward pass iff `output_grad` is not
+          None.
       compute_output: bool: whether to return the output of the forward pass
-        (for example, a pure backwards pass does not need to return the output).
+          (for example, a pure backwards pass does not need to return the
+          output).
       update_state: bool: whether to return an updated layer state.
+
     Returns:
       A tuple (output, new_state, inputs_grad, weights_grad).
+
       - output is not None iff compute_output is True
       - new_state is not None iff update_state is True
       - inputs_grad & weights_grad are not None iff output_grad is not None
-
-    Notes regarding the implementation:
-    (a) Multiple heads or examples are batched together. There are three
-        different regimes possible: one head at a time (for long sequences and
-        expensive attention types), several attention heads at a time (for
-        long sequences but less-expensive attention types), and several
-        examples at a time (for large batches of shorter sequences). For the
-        time being, each of these regimes has its own code.
-    (b) Python loops produce large computation graphs when jitted, so the
-        default is to use a JAX loop instead.
-    (c) No intermediate quantities are cached for the backward pass. Instead,
-        the forward pass is re-computed when doing backprop. This approach is
-        often called "checkpointing" or "rematerialization". When not all
-        examples or heads fit in memory simultaneously, the implementation
-        should be [FW-BW-1] and NOT [FW-BW-2], because the latter has worse
-        memory locality. I don't think JAX autodiff can synthesize [FW-BW-1]
-        automatically, so the looping for the backward pass is done manually.
-
-        [FW-BW-1] for example, head in zip(examples, heads):
-                    forward(example, head)
-                    backward(example, head)  # uses intermediates from forward
-
-        [FW-BW-2] for example, head in zip(examples, heads):
-                    forward(example, head)
-                  for example, head in zip(examples, heads):
-                    backward(example, head)
     """
     # TODO(kitaev): profile ~4% speed drop compared to previous implementation
     #     in some conditions. Other conditions (e.g. the enwik8 model) appear
@@ -605,6 +585,32 @@ class EfficientAttentionBase(base.Layer):
     # TODO(b/148460708): reduce memory usage further
     # TODO(kitaev): there should be a higher-level API (like vmap) that does
     #     batching, instead of needing 3 separate manual implementations here.
+
+    # Notes regarding the implementation:
+    # (a) Multiple heads or examples are batched together. There are three
+    #     different regimes possible: one head at a time (for long sequences and
+    #     expensive attention types), several attention heads at a time (for
+    #     long sequences but less-expensive attention types), and several
+    #     examples at a time (for large batches of shorter sequences). For the
+    #     time being, each of these regimes has its own code.
+    # (b) Python loops produce large computation graphs when jitted, so the
+    #     default is to use a JAX loop instead.
+    # (c) No intermediate quantities are cached for the backward pass. Instead,
+    #     the forward pass is re-computed when doing backprop. This approach is
+    #     often called "checkpointing" or "rematerialization". When not all
+    #     examples or heads fit in memory simultaneously, the implementation
+    #     should be [FW-BW-1] and NOT [FW-BW-2], because the latter has worse
+    #     memory locality. I don't think JAX autodiff can synthesize [FW-BW-1]
+    #     automatically, so the looping for the backward pass is done manually.
+    #
+    #     [FW-BW-1] for example, head in zip(examples, heads):
+    #                 forward(example, head)
+    #                 backward(example, head)  # uses intermediates from forward
+    #
+    #     [FW-BW-2] for example, head in zip(examples, heads):
+    #                 forward(example, head)
+    #               for example, head in zip(examples, heads):
+    #                 backward(example, head)
 
     have_single_input = not isinstance(inputs, (tuple, list))
     if have_single_input:
