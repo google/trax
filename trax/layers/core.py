@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Trax layers library."""
+"""Core layer types, such as `Dense`, `Embedding`, and `Dropout`."""
 
 import numpy as np
 
@@ -29,15 +29,15 @@ class Dense(base.Layer):
   """A dense (a.k.a. fully-connected, affine) layer.
 
   Dense layers are the prototypical example of a trainable layer, i.e., a layer
-  with trainable "weights". Each node in a dense layer computes a weighted sum
-  of all node values from the preceding layer and adds to that sum a
-  node-specific "bias" term. The full layer computation is expressed compactly
-  in linear algebra as an affine map $$y = W x + b$$, where $$W$$ is a matrix
-  and $$y$$, $$x$$, and $$b$$ are vectors. The layer is trained, or "learns",
-  by updating the values in $$W$$ and $$b$$.
+  with trainable weights. Each node in a dense layer computes a weighted sum of
+  all node values from the preceding layer and adds to that sum a node-specific
+  bias term. The full layer computation is expressed compactly in linear
+  algebra as an affine map `y = Wx + b`, where `W` is a matrix and `y`, `x`,
+  and `b` are vectors. The layer is trained, or "learns", by updating the
+  values in `W` and `b`.
 
-  Less commonly, a dense layer can be used as a pure linear map, by omitting
-  the bias term: $$y = W x$$.
+  Less commonly, a dense layer can omit the bias term and be a pure linear map:
+  `y = Wx`.
   """
 
   def __init__(self,
@@ -45,17 +45,21 @@ class Dense(base.Layer):
                kernel_initializer=init.GlorotUniformInitializer(),
                bias_initializer=init.RandomNormalInitializer(1e-6),
                use_bias=True):
-    """Returns a dense / fully connected layer of width `n_units`.
+    """Returns a dense (fully connected) layer of width `n_units`.
+
+    A dense layer maps collections of `R^m` vectors to `R^n`, where `n`
+    (`= n_units`) is fixed at layer creation time, and `m` is set at layer
+    initialization time.
 
     Args:
-      n_units: Number of nodes in the layer, also known as the "width" of the
+      n_units: Number of nodes in the layer, also known as the width of the
           layer.
       kernel_initializer: Function that creates a matrix of (random) initial
-          connection weights ($$W$$) for the layer.
+          connection weights `W` for the layer.
       bias_initializer: Function that creates a vector of (random) initial
-          bias weights ($$b$$) for the layer.
-      use_bias: If True, compute an affine map: $$y = W x + b$$; else compute
-          a linear map: $$y = W x$$.
+          bias weights `b` for the layer.
+      use_bias: If `True`, compute an affine map `y = Wx + b`; else compute
+          a linear map `y = Wx`.
     """
     super().__init__(name=f'Dense_{n_units}')
     self._n_units = n_units
@@ -64,6 +68,18 @@ class Dense(base.Layer):
     self._use_bias = use_bias
 
   def forward(self, x, weights):
+    """Executes this layer as part of a forward pass through the model.
+
+    Args:
+      x: Tensor of same shape and dtype as the input signature used to
+          initialize this layer.
+      weights: Tuple `(w, b)` for layers created with `use_bias=True`, or
+          tensor `w` for layers created with `use_bias=False`.
+
+    Returns:
+      Tensor of same shape and dtype as the input, except the final dimension
+      is the layer's `n_units` value.
+    """
     if self._use_bias:
       if not isinstance(weights, (tuple, list)):
         raise ValueError(f'Weights should be a (w, b) tuple or list; '
@@ -75,13 +91,13 @@ class Dense(base.Layer):
       return jnp.dot(x, w)  # Linear map.
 
   def new_weights(self, input_signature):
-    """Returns new (randomly initialized) weights for this layer.
+    """Returns newly initialized weights for this layer.
 
-    In the default case (`use_bias=True`), weights are a `(w, b)` tuple.
-    If `use_bias` is false, weights are a `w` tensor.
+    Weights are a `(w, b)` tuple for layers created with `use_bias=True` (the
+    default case), or a `w` tensor for layers created with `use_bias=False`.
 
     Args:
-      input_signature: ShapeDtype instance characterizing the input this layer
+      input_signature: `ShapeDtype` instance characterizing the input this layer
           should compute on.
     """
     shape_w = (input_signature.shape[-1], self._n_units)
@@ -106,19 +122,19 @@ class Embedding(base.Layer):
                kernel_initializer=init.RandomNormalInitializer(1.0)):
     """Returns an embedding layer with given vocabulary size and vector size.
 
-    The layer clips input values (token ids) to the legal range:
-    `[0, vocab_size)`. That is, negative token ids all clip to 0 before being
-    mapped to a vector, and token ids with value vocab_size or greater all
-    clip to vocab_size - 1 before being mapped to a vector. In effect, both
-    id `0  and id `vocab_size - 1` are potentially overloaded as
-    out-of-vocabulary token ids.
+    The layer clips input values (token ids) to the range `[0, vocab_size)`.
+    That is, negative token ids all clip to `0` before being mapped to a
+    vector, and token ids with value `vocab_size` or greater all clip to
+    `vocab_size - 1` before being mapped to a vector. In effect, both id `0`
+    and id `vocab_size - 1` are potentially overloaded as out-of-vocabulary
+    token ids.
 
     TODO(jonni): Is this the behavior we want going forward?
 
     Args:
       d_feature: Dimensionality/depth of the output vectors.
-      vocab_size: Size (number of different token ids) of the input vocabulary.
-          The layer will handle tokens whose id's are in range(vocab_size).
+      vocab_size: Size of the input vocabulary. The layer will assign a unique
+          vector to each id in `range(vocab_size)`.
       kernel_initializer: Function that creates (random) initial vectors for
           the embedding.
     """
@@ -128,9 +144,20 @@ class Embedding(base.Layer):
     self._kernel_initializer = kernel_initializer
 
   def forward(self, x, weights):
+    """Returns embedding vectors corresponding to input token id's.
+
+    Args:
+      x: Tensor of token id's.
+      weights: Tensor of shape `(vocab_size, d_feature)`, where row `i`
+          contains the vector for token id `i`.
+
+    Returns:
+      Tensor of embedding vectors.
+    """
     return jnp.take(weights, x, axis=0)
 
   def new_weights(self, input_signature):
+    """Returns tensor of newly initialized embedding vectors."""
     del input_signature
     shape_w = (self._vocab_size, self._d_feature)
     # TODO(lukaszkaiser): do we split self.rng for consistency? Add a method?
@@ -139,9 +166,25 @@ class Embedding(base.Layer):
 
 
 class Dropout(base.Layer):
-  """Dropout."""
+  """A layer that stochastically ignores a subset of inputs each training step.
+
+  In training, to compensate for the fraction of input values dropped (`rate`),
+  all surviving values are multiplied by `1 / (1 - rate)`.
+
+  This layer is active only during training (`mode='train'`). In other
+  circumstances it is a no-op.
+  """
 
   def __init__(self, rate=0.0, name='dropout', mode='train'):
+    """Creates a dropout layer with the given target drop rate.
+
+    Args:
+      rate: Stochastic rate (probability) for dropping an activation value
+          from the preceding layer (setting it to zero).
+      name: **DEPRECATED** Custom name for this instance.
+      mode: If `'train'`, this layer will perform dropout; else, it will pass
+          all values through unaltered.
+    """
     super(Dropout, self).__init__()
     self._initial_rate = rate
     # TODO(lukaszkaiser): remove the name property by the end of September'19.
@@ -150,12 +193,21 @@ class Dropout(base.Layer):
     self._mode = mode
 
   def new_weights(self, input_signature):
+    """Sets layer-specific internal state."""
     del input_signature
     self.state = {self._name: jnp.array(self._initial_rate)}
     return base.EMPTY_WEIGHTS
 
   def forward(self, x, weights):
-    """Execute dropout."""
+    """Executes this layer as part of a forward pass through the model.
+
+    Args:
+      x: Tensor of activations.
+      weights: Ignored/not used.
+
+    Returns:
+      Tensor of same shape and dtype as the input.
+    """
     if self._mode != 'train':
       return x
     state, rng = self.state, self.rng
