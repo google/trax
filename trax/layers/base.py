@@ -456,12 +456,7 @@ class Layer:
   # pylint: disable=protected-access
   def _do_custom_gradients(self, x, weights, state, rng):
     """Calls this layer for a forward pass, but with custom gradients."""
-    assert math.backend_name() == 'jax', (
-        'Custom gradients are only supported in JAX for now.')
 
-    # See this link for how custom transformations are defined in JAX:
-    # https://jax.readthedocs.io/en/latest/jax.html#jax.custom_transforms
-    @jax.custom_transforms
     def _do_forward(y, weights):
       old_weights, old_state, old_rng = self._weights, self._state, self._rng
       res = self.forward(y, weights)
@@ -469,9 +464,6 @@ class Layer:
       self._weights, self._state, self._rng = old_weights, old_state, old_rng
       return res, s
 
-    # This is the custom gradient (vector-jacobian product in JAX) function.
-    # For the exact specification of this custom transformation see this link:
-    # https://jax.readthedocs.io/en/latest/jax.html#jax.defjvp_all
     def do_forward_vjp(y, weights):
       """Custom gradient (vjp) function."""
       old_weights, old_state, old_rng = self._weights, self._state, self._rng
@@ -484,9 +476,11 @@ class Layer:
         return res
       return (output, new_state), vjpfun
 
-    jax.defvjp_all(_do_forward, do_forward_vjp)
-    output, state = _do_forward(x, weights)
-    state = jax.lax.stop_gradient(state)
+    do_forward = math.custom_grad(do_forward_vjp, _do_forward)
+
+    output, state = do_forward(x, weights)
+    # TODO(lukaszkaiser): Investigate why we need this stop_gradient
+    state = math.stop_gradient(state)
     return output, state
 
 

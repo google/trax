@@ -98,6 +98,14 @@ def grad(*args, **kwargs):
   return backend()['grad'](*args, **kwargs)
 
 
+def vjp(*args, **kwargs):
+  return backend()['vjp'](*args, **kwargs)
+
+
+def custom_grad(*args, **kwargs):
+  return backend()['custom_grad'](*args, **kwargs)
+
+
 def pmap(*args, **kwargs):
   return backend()['pmap'](*args, **kwargs)
 

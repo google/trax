@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import functools
 from absl import flags
+from absl.testing import parameterized
 
 import numpy as np
 import tensorflow.compat.v2 as tf
@@ -66,7 +67,19 @@ def train_step(params, inputs, targets, learning_rate=0.1):
   return new_w, new_b
 
 
-class ExtensionsTest(tf.test.TestCase):
+def uniform(rng, shape, dtype):
+  if np.issubdtype(dtype, np.integer):
+    minval = None
+  else:
+    minval = 0
+  return array_ops.asarray(rng.uniform(shape=shape, dtype=dtype, minval=minval))
+
+
+def to_tf(a):
+  return tf.nest.map_structure(lambda x: x.data, a)
+
+
+class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
 
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(ExtensionsTest, self).__init__(methodName)
@@ -83,6 +96,104 @@ class ExtensionsTest(tf.test.TestCase):
   def _hasGPU(self):
     physical_devices = tf.config.experimental.list_physical_devices("GPU")
     return physical_devices
+
+  def testCustomGrad(self):
+    """Test for custom_grad."""
+    x_shape = (tf.TensorShape([10]), tf.TensorShape([1, 10]))
+    y_shape = (tf.TensorShape([]))
+    dtype = np.float32
+    scale1 = 5.0
+    scale2 = 6.0
+
+    def fwd(a, b):
+      return array_ops.sum(math_ops.sqrt(math_ops.exp(a)) + b)
+
+    @extensions.custom_grad
+    def f(a, b):
+      y = fwd(a, b)
+      def vjp(dy):
+        return dy * scale1 * a, dy * scale2 * b
+      return y, vjp
+
+    rng = tf.random.Generator.from_seed(1234)
+    x, dy = tf.nest.map_structure(lambda shape: uniform(rng, shape, dtype),
+                                  [x_shape, y_shape])
+    expected_y = fwd(*x)
+    expected_dx = (dy * scale1 * x[0], dy * scale2 * x[1])
+    y, vjp = extensions.vjp(f, *x)
+    dx = vjp(dy)
+    self.assertAllClose(to_tf(expected_y), to_tf(y))
+    self.assertAllClose(to_tf(expected_dx), to_tf(dx))
+
+  @parameterized.named_parameters(
+      [(("_%s_%s_%s" % (decorator_id, x_struct,  # pylint: disable=g-complex-comprehension
+                        y_struct)).replace(" ", "").replace("None", ""),
+        decorator, x_struct, y_struct)
+       for y_struct in [[None, ()], (None, (), [], (None, ((), None)))]
+       for x_struct in [(None, ()), (((), ()), [None, None], [], (None, ()))]
+       for decorator_id, decorator in enumerate([lambda f: f, extensions.jit])
+      ])
+  def testCustomGradStructure(self, decorator, x_struct, y_struct):
+    """Tests that custom_grad can handle structured inputs/outputs."""
+    def zeros(x):
+      return tf.nest.map_structure(lambda _: array_ops.zeros([], np.float32), x)
+    def get_struct(x):
+      return tf.nest.map_structure(lambda _: None, x)
+
+    @extensions.custom_grad
+    def f(*x):
+      del x
+      def vjp(dy):
+        self.assertEqual(y_struct, get_struct(dy))
+        return zeros(x_struct)
+      return zeros(y_struct), vjp
+
+    x, dy = zeros([x_struct, y_struct])
+    @decorator
+    def run(x, dy):
+      y, vjp = extensions.vjp(f, *x)
+      dx = vjp(dy)
+      return dx, y
+    dx, y = run(x, dy)
+    self.assertEqual(x_struct, get_struct(dx))
+    self.assertEqual(y_struct, get_struct(y))
+
+  @parameterized.named_parameters(
+      [("_%s" % has_aux, has_aux) for has_aux in [True, False]])
+  def testVjp(self, has_aux):
+    x_shape = (tf.TensorShape([10]), tf.TensorShape([1, 10]))
+    y_shape = (tf.TensorShape([]))
+    dtype = np.float32
+
+    def f(a, b):
+      y = array_ops.sum(math_ops.sqrt(math_ops.exp(a)) + b)
+      if has_aux:
+        return y, array_ops.asarray(1)
+      else:
+        return y
+
+    rng = tf.random.Generator.from_seed(1234)
+    x, dy_list = tf.nest.map_structure(lambda shape: uniform(rng, shape, dtype),
+                                       [x_shape, [y_shape] * 2])
+    tf_x = to_tf(x)
+    outputs = extensions.vjp(f, *x, has_aux=has_aux)
+    if has_aux:
+      y, vjp, aux = outputs
+    else:
+      y, vjp = outputs
+    with tf.GradientTape(persistent=True) as tape:
+      tape.watch(tf_x)
+      outputs = f(*x)
+      if has_aux:
+        expected_y, expected_aux = outputs
+        self.assertAllClose(to_tf(expected_aux), to_tf(aux))
+      else:
+        expected_y = outputs
+    self.assertAllClose(to_tf(expected_y), to_tf(y))
+    for dy in dy_list:
+      expected_dx = tape.gradient(to_tf(expected_y), tf_x,
+                                  output_gradients=to_tf(dy))
+      self.assertAllClose(expected_dx, to_tf(vjp(dy)))
 
   def testGrad(self):
     def f(a, b):
