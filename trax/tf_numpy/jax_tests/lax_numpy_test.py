@@ -1895,10 +1895,9 @@ class LaxBackedNumpyTests(jtu.TestCase):
 
   # TODO(mattjj): test other ndarray-like method overrides
 
-  @jtu.disable
   def testOnpMean(self):
     # from https://github.com/google/jax/issues/125
-    x = lax.add(lnp.eye(3, dtype=lnp.float_), 0.)
+    x = lnp.add(lnp.eye(3, dtype=lnp.float_), 0.)
     ans = onp.mean(x)
     self.assertAllClose(ans, onp.array(1./3), check_dtypes=False)
 
@@ -2263,7 +2262,6 @@ class LaxBackedNumpyTests(jtu.TestCase):
     result = api.grad(test_fail)(x)
     assert not onp.any(onp.isnan(result))
 
-  @jtu.disable
   def testIssue453(self):
     # https://github.com/google/jax/issues/453
     a = onp.arange(6) + 1
@@ -2287,12 +2285,10 @@ class LaxBackedNumpyTests(jtu.TestCase):
         lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
 
-  @jtu.disable
   def testLongLong(self):
-    self.assertAllClose(onp.int64(7), api.jit(lambda x: x)(onp.longlong(7)),
-                        check_dtypes=True)
+    self.assertAllClose(
+        onp.int64(7), npe.jit(lambda x: x)(onp.longlong(7)), check_dtypes=True)
 
-  @jtu.disable
   def testArange(self):
     # test cases inspired by dask tests at
     # https://github.com/dask/dask/blob/master/dask/array/tests/test_creation.py#L92
@@ -2306,27 +2302,31 @@ class LaxBackedNumpyTests(jtu.TestCase):
                         onp.arange(53, 5, -3, dtype=lnp.int_),
                         check_dtypes=True)
     # TODO(mattjj): make these tests work when enable_x64=True
-    # self.assertAllClose(lnp.arange(77, dtype=float),
-    #                     onp.arange(77, dtype=float), check_dtypes=True)
-    # self.assertAllClose(lnp.arange(2, 13, dtype=int),
-    #                     onp.arange(2, 13, dtype=int), check_dtypes=True)
+    self.assertAllClose(
+        lnp.arange(77, dtype=float),
+        onp.arange(77, dtype=float),
+        check_dtypes=True)
+    self.assertAllClose(
+        lnp.arange(2, 13, dtype=int),
+        onp.arange(2, 13, dtype=int),
+        check_dtypes=True)
     self.assertAllClose(lnp.arange(0, 1, -0.5),
                         onp.arange(0, 1, -0.5, dtype=lnp.float_),
                         check_dtypes=True)
 
     self.assertRaises(TypeError, lambda: lnp.arange())
 
-    # test that lnp.arange(N) doesn't instantiate an ndarray
-    self.assertFalse(type(lnp.arange(77)) == type(onp.arange(77)))
-    self.assertTrue(type(lnp.arange(77)) == type(lax.iota(onp.int32, 77)))
+    # # The following have been disabled since they test JAX specific behavior
+    # # test that lnp.arange(N) doesn't instantiate an ndarray
+    # self.assertFalse(type(lnp.arange(77)) == type(onp.arange(77)))
+    # self.assertTrue(type(lnp.arange(77)) == type(lax.iota(onp.int32, 77)))
 
-    # test that lnp.arange(N, dtype=int32) doesn't instantiate an ndarray
-    self.assertFalse(type(lnp.arange(77, dtype=lnp.int32)) ==
-                     type(onp.arange(77, dtype=onp.int32)))
-    self.assertTrue(type(lnp.arange(77, dtype=lnp.int32)) ==
-                    type(lax.iota(onp.int32, 77)))
+    # # test that lnp.arange(N, dtype=int32) doesn't instantiate an ndarray
+    # self.assertFalse(type(lnp.arange(77, dtype=lnp.int32)) ==
+    #                  type(onp.arange(77, dtype=onp.int32)))
+    # self.assertTrue(type(lnp.arange(77, dtype=lnp.int32)) ==
+    #                 type(lax.iota(onp.int32, 77)))
 
-  @jtu.disable
   def testIssue830(self):
     a = lnp.arange(4, dtype=lnp.complex64)
     self.assertEqual(a.dtype, lnp.complex64)
@@ -2335,14 +2335,12 @@ class LaxBackedNumpyTests(jtu.TestCase):
     assert lnp.allclose(lnp.eye(5000), onp.eye(5000))
     self.assertEqual(0, onp.sum(lnp.eye(1050) - onp.eye(1050)))
 
-  @jtu.disable
   def testIssue746(self):
     lnp.arange(12).reshape(3, 4)  # doesn't crash
 
-  @jtu.disable
   def testIssue764(self):
     x = lnp.linspace(190, 200, 4)
-    f = api.grad(lambda x: lnp.sum(lnp.tanh(x)))
+    f = npe.grad(lambda x: lnp.sum(lnp.tanh(x)))
     # Expected values computed with autograd in float64 precision.
     expected = onp.array([3.71669453e-165, 4.72999108e-168, 6.01954653e-171,
                           7.66067839e-174], onp.float64)
@@ -2363,7 +2361,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
   @jtu.disable
   def testIssue777(self):
     x = lnp.linspace(-200, 0, 4, dtype=onp.float32)
-    f = api.grad(lambda x: lnp.sum(1 / (1 + lnp.exp(-x))))
+    f = npe.grad(lambda x: lnp.sum(1 / (1 + lnp.exp(-x))))
     self.assertAllClose(f(x), onp.array([0., 0., 0., 0.25], dtype=onp.float32),
                         check_dtypes=True)
 
@@ -2375,21 +2373,20 @@ class LaxBackedNumpyTests(jtu.TestCase):
       for op in ("sqrt", "arccos", "arcsin", "arctan", "sin", "cos", "tan",
                  "sinh", "cosh", "tanh", "arccosh", "arcsinh", "arctanh", "exp",
                  "log", "expm1", "log1p")))
-  @jtu.disable
   def testMathSpecialFloatValues(self, op, dtype):
     onp_op = getattr(onp, op)
     lnp_op = getattr(lnp, op)
-    dtype = onp.dtype(dtypes.canonicalize_dtype(dtype)).type
+    dtype = onp.dtype(lnp.canonicalize_dtype(dtype)).type
     for x in (onp.nan, -onp.inf, -100., -2., -1., 0., 1., 2., 100., onp.inf,
               lnp.finfo(dtype).max, onp.sqrt(lnp.finfo(dtype).max),
               onp.sqrt(lnp.finfo(dtype).max) * 2.):
-      if onp.isnan(x) and op in ("sinh", "cosh", "expm1", "exp"):
-        # TODO(b/133842876, b/133842870): these return wrong outputs on CPU for
-        # NaN inputs.
-        continue
       if (op in ("sin", "cos", "tan", "arctan") and
           jtu.device_under_test() == "tpu"):
         continue  # TODO(b/132196789, b/134175194): fix and reenable.
+      # TODO(b/158006398): fix and reenable.
+      if (op in ("cosh", "arccosh", "arcsinh", "arcsin", "sinh", "arccos",
+                 "arctan", "arctanh") and dtype == onp.float16):
+        continue
       x = dtype(x)
       expected = onp_op(x)
       actual = lnp_op(x)
@@ -2397,11 +2394,10 @@ class LaxBackedNumpyTests(jtu.TestCase):
       self.assertAllClose(expected, actual, check_dtypes=True, atol=tol,
                           rtol=tol)
 
-  @jtu.disable
   def testIssue883(self):
     # from https://github.com/google/jax/issues/883
 
-    @partial(api.jit, static_argnums=(1,))
+    @partial(npe.jit, static_argnums=(1,))
     def f(x, v):
       return x
 
@@ -2410,10 +2406,10 @@ class LaxBackedNumpyTests(jtu.TestCase):
     first_call = f(x, v)
     second_call = f(x, v)  # doesn't crash
 
-  @jtu.disable
   def testReductionOfOutOfBoundsAxis(self):  # Issue 888
     x = lnp.ones((3, 4))
-    self.assertRaises(ValueError, lambda: lnp.sum(x, axis=2))
+    self.assertRaises(
+        tf.errors.InvalidArgumentError, lambda: lnp.sum(x, axis=2))
 
   @jtu.disable
   def testIssue956(self):
@@ -2476,7 +2472,6 @@ class LaxBackedNumpyTests(jtu.TestCase):
     self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True, atol=tol,
                           rtol=tol)
 
-  @jtu.disable
   def testIssue967(self):
     self.assertRaises(TypeError, lambda: lnp.zeros(1.5))
 
