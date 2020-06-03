@@ -131,19 +131,20 @@ def value_loss_given_predictions(value_prediction,
   """Computes the value loss given the prediction of the value function.
 
   Args:
-    value_prediction: jnp.ndarray of shape (B, T+1, 1)
-    rewards: jnp.ndarray of shape (B, T) of rewards.
-    reward_mask: jnp.ndarray of shape (B, T), the mask over rewards.
-    gamma: float, discount factor.
-    epsilon: float, clip-fraction, used if value_value_prediction_old isn't None
-    value_prediction_old: jnp.ndarray of shape (B, T+1, 1) of value predictions
-      using the old parameters. If provided, we incorporate this in the loss as
-      well. This is from the OpenAI baselines implementation.
+    value_prediction: `jnp.ndarray` of shape `(B, T+1, 1)`.
+    rewards: `jnp.ndarray` of shape `(B, T)` of rewards.
+    reward_mask: `jnp.ndarray` of shape `(B, T)`, the mask over rewards.
+    gamma: `float`, discount factor.
+    epsilon: `float`, clip-fraction, used if `value_value_prediction_old` isn't
+        `None`.
+    value_prediction_old: `jnp.ndarray` of shape `(B, T+1, 1)` of value
+        predictions using the old parameters. If provided, we incorporate this
+        in the loss as well. This is from the OpenAI baselines implementation.
 
   Returns:
-    Pair (value_loss, summaries), where value_loss is the average L2 value loss,
-      averaged over instances where reward_mask is 1. Summaries is a dict of
-      summaries collected during value loss computation.
+    `(value_loss, summaries)` pair, where `value_loss` is the average L2 value
+    loss, averaged over instances where `reward_mask` is 1. Summaries is a dict
+    of summaries collected during value loss computation.
   """
 
   B, T = rewards.shape  # pylint: disable=invalid-name
@@ -174,21 +175,21 @@ def value_loss_given_predictions(value_prediction,
 
 
 def deltas(predicted_values, rewards, mask, gamma):
-  r"""Computes TD-residuals from V(s) and rewards.
+  r"""Computes TD-residuals from `V(s)` and `rewards`.
 
   Where a `delta`, i.e. a td-residual is defined as:
 
-  delta_{b,t} = r_{b,t} + \gamma * v_{b,t+1} - v_{b,t}.
+  `delta_{b,t} = r_{b,t} + \gamma * v_{b,t+1} - v_{b,t}`.
 
   Args:
-    predicted_values: ndarray of shape (B, T+1). NOTE: Expects axis 2 was
-      squeezed. These represent V(s_bt) for b < B and t < T+1
-    rewards: ndarray of shape (B, T) of rewards.
-    mask: ndarray of shape (B, T) of mask for rewards.
-    gamma: float, discount factor.
+    predicted_values: `ndarray` of shape `(B, T+1)`. NOTE: Expects axis 2 was
+        squeezed. These represent `V(s_bt)` for `b < B` and `t < T+1`.
+    rewards: `ndarray` of shape `(B, T)` of rewards.
+    mask: `ndarray` of shape `(B, T)` of mask for rewards.
+    gamma: `float`, discount factor.
 
   Returns:
-    ndarray of shape (B, T) of one-step TD-residuals.
+    `ndarray` of shape `(B, T)` of one-step TD-residuals.
   """
 
   # Predicted values at time t, cutting off the last to have shape (B, T).
@@ -205,17 +206,17 @@ def gae_advantages(td_deltas, mask, lambda_, gamma):
 
   The formula for a GAE advantage estimator is as follows:
 
-  A_{bt} = \sum_{l=0}^{\infty}(\gamma * \lambda)^{l}(\delta_{b,t+l}).
+  `A_{bt} = \sum_{l=0}^{\infty}(\gamma * \lambda)^{l}(\delta_{b,t+l})`.
 
   Internally we just call rewards_to_go, since it is the same computation.
 
   Args:
-    td_deltas: jnp.ndarray of shape (B, T) of one step TD-residuals.
-    mask: jnp.ndarray of shape (B, T) of mask for the residuals. It maybe the
-      case that the `td_deltas` are already masked correctly since they are
-      produced by `deltas(...)`
-    lambda_: float, lambda parameter for GAE estimators.
-    gamma: float, lambda parameter for GAE estimators.
+    td_deltas: `jnp.ndarray` of shape `(B, T)` of one step TD-residuals.
+    mask: `jnp.ndarray` of shape `(B, T)` of mask for the residuals. It may be
+        the case that the `td_deltas` are already masked correctly since they
+        are produced by `deltas(...)`.
+    lambda_: `float`, lambda parameter for GAE estimators.
+    gamma: `float`, lambda parameter for GAE estimators.
 
   Returns:
     GAE advantage estimates.
@@ -228,14 +229,15 @@ def chosen_probabs(probab_actions, actions):
   """Picks out the probabilities of the actions along batch and time-steps.
 
   Args:
-    probab_actions: ndarray of shape `[B, T, C, A]`, where
-      probab_actions[b, t, i] contains the log-probability of action = i at
-      the t^th time-step in the b^th trajectory.
-    actions: ndarray of shape `[B, T]`, with each entry in [0, A) denoting
-      which action was chosen in the b^th trajectory's t^th time-step.
+    probab_actions: `ndarray` of shape `(B, T, C, A)`, where
+      `probab_actions[b, t, i]` contains the log-probability of `action = i`
+      at the `t^th` time-step in the `b^th` trajectory.
+    actions: `ndarray` of shape `(B, T)`, with each entry in `(0, A)` denoting
+      which action was chosen in the `b^th` trajectory's `t^th` time-step.
 
   Returns:
-    `[B, T, C, A]` ndarray with the log-probabilities of the chosen actions.
+    `ndarray` of shape `(B, T, C, A)` with the log-probabilities of the chosen
+    actions.
   """
   B, T, C = actions.shape  # pylint: disable=invalid-name
   assert (B, T, C) == probab_actions.shape[:3]
@@ -249,18 +251,17 @@ def compute_probab_ratios(p_new, p_old, actions, action_mask):
   """Computes the probability ratios for each time-step in a trajectory.
 
   Args:
-    p_new: ndarray of shape [B, T, A] of the log-probabilities that the
+    p_new: `ndarray` of shape `(B, T, A)` of the log-probabilities that the
       policy network assigns to all the actions at each time-step in each batch
       using the old parameters.
-    p_old: ndarray of shape [B, T, A], same as above, but using old policy
+    p_old: `ndarray` of shape `(B, T, A)`, same as above, but using old policy
       network parameters.
-    actions: ndarray of shape [B, T] where each element is from [0, A).
-    action_mask: ndarray of shape [B, T] masking over probabilities.
+    actions: `ndarray` of shape `(B, T)` where each element is from `(0, A)`.
+    action_mask: `ndarray` of shape `(B, T)` masking over probabilities.
 
   Returns:
-    probab_ratios: ndarray of shape [B, T], where
-    probab_ratios_{b,t,} = p_new_{b,t,action_{b,t}} /
-                           p_old_{b,t,action_{b,t}}
+    `ndarray` of shape `(B, T)`, where `probab_ratios_{b,t,} =
+    p_new_{b,t,action_{b,t}} / p_old_{b,t,action_{b,t}}`
   """
 
   B, T, C = actions.shape  # pylint: disable=invalid-name

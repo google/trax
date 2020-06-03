@@ -25,7 +25,7 @@ from trax.rl.trajectory import replay_buffer
 def pad_array_to_length(list_of_ndarrays: List[np.ndarray],
                         t_final: int,
                         back: bool = True):
-  """Pad list of (t_variable, *SHAPE) elements to (t_final, *SHAPE)."""
+  """Pads list of `(t_variable, *SHAPE)` elements to `(t_final, *SHAPE)`."""
   # Each element of `list_of_ndarrays` is of shape: (t, *underlying_shape)
   # where `t` changes but `underlying_shape` doesn't.
   underlying_shape = list_of_ndarrays[0].shape[1:]

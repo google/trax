@@ -60,38 +60,38 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
                q_value_n_samples=1,
                vocab_size=2,
                **kwargs):  # Arguments of PolicyTrainer come here.
-    """Configures the actor-critic Trainer.
+    """Configures the actor-critic trainer.
 
     Args:
-      task: RLTask instance to use
-      value_model: the model to use for the value function
-      value_optimizer: the optimizer to train the value model
-      value_lr_schedule: lr schedule for value model training
-      value_batch_size: batch size for value model training
-      value_train_steps_per_epoch: how many steps are we using to
-        train the value model in each epoch
-      value_evals_per_epoch: number of value trainer evaluations per RL
-          epoch - only affects metric reporting.
-      value_eval_steps: number of value trainer steps per evaluation -
+      task: `RLTask` instance to use.
+      value_model: Model to use for the value function.
+      value_optimizer: Optimizer to train the value model.
+      value_lr_schedule: lr schedule for value model training.
+      value_batch_size: Batch size for value model training.
+      value_train_steps_per_epoch: Number of steps are we using to train the
+          value model in each epoch.
+      value_evals_per_epoch: Number of value trainer evaluations per RL epoch;
           only affects metric reporting.
-      n_shared_layers: how many layers to share between value and
-        policy models
-      added_policy_slice_length: how much longer should slices of
-        trajectories be for policy than for value training; this
-        is useful for TD calculations and only affect the length
-        of elements produced for policy batches; value batches
-        have maximum length set by max_slice_length in **kwargs
-     n_replay_epochs: how many last epochs to take into the replay buffer;
-        only makes sense for off-policy algorithms
-     scale_value_targets: whether to scale targets for the value function by
-        1 / (1 - gamma)
-     q_value: whether to use Q-values as baselines
-     q_value_aggregate_max: whether to aggregate Q-values with max (or mean)
-     q_value_n_samples: number of samples to average over when calculating
-        baselines based on Q-values
-     vocab_size: used only with discrete actions and when q_value is set to True
-        The number is passed to tl.Embeeding
-     **kwargs: arguments for PolicyTrainer super-class
+      value_eval_steps: Number of value trainer steps per evaluation; only
+          affects metric reporting.
+      n_shared_layers: Number of layers to share between value and policy
+          models.
+      added_policy_slice_length: How much longer should slices of
+          trajectories be for policy than for value training; this
+          is useful for TD calculations and only affect the length
+          of elements produced for policy batches; value batches
+          have maximum length set by `max_slice_length` in `**kwargs`.
+      n_replay_epochs: Number of last epochs to take into the replay buffer;
+          only makes sense for off-policy algorithms.
+      scale_value_targets: If `True`, scale value function targets by
+          `1 / (1 - gamma)`.
+      q_value: If `True`, use Q-values as baselines.
+      q_value_aggregate_max: If `True`, aggregate Q-values with max (or mean).
+      q_value_n_samples: Number of samples to average over when calculating
+          baselines based on Q-values.
+      vocab_size: Embedding vocabulary size (passed to `tl.Embedding`); used
+          only with discrete actions and when `q_value` is `True`.
+      **kwargs: Arguments for `PolicyTrainer` superclass.
     """
     self._n_shared_layers = n_shared_layers
     self._value_batch_size = value_batch_size
