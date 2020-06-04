@@ -19,6 +19,7 @@
 import copy
 import inspect
 import pickle
+import random
 import traceback
 
 import jax
@@ -104,7 +105,7 @@ class Layer:
     # Python `int` here instead of `math.random.get_prng` (also note that
     # different backends' `get_prng` may return different shapes so they can't
     # be used interchangeably).
-    self._rng = int(np.random.randint(0, 2**31 - 1))
+    self._rng = random.randint(0, 2**31 - 1)
     self._weights = EMPTY_WEIGHTS  # cached weights
     self._state = EMPTY_STATE
     # record root call site for custom error messages:
