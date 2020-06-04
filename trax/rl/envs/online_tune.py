@@ -13,12 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Lint as: python3
 """Utility functions for OnlineTuneEnv."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import math
 import numpy as np
 
 
@@ -26,8 +24,9 @@ LEARNING_RATE_METRIC = ('train', 'training/learning_rate')
 
 
 def historical_metric_values(
-    history, metric, observation_range=(-np.inf, np.inf)):
+    history, metric, observation_range=(-math.inf, math.inf)):
   """Converts a metric stream from a trax History object into a numpy array."""
+  # Use math.inf rather than np.inf in default value to help Sphinx autodoc.
   metric_sequence = history.get(*metric)
   metric_values = np.array([
       metric_value for (_, metric_value) in metric_sequence
