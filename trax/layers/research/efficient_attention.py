@@ -143,7 +143,11 @@ def attend(
     assert kv_chunk_len is None or kv_chunk_len == q_chunk_len
     k = q
     kv_chunk_len = q_chunk_len
-    kv_info = q_info
+    if kv_info is None:
+      kv_info = q_info
+    elif kv_chunk_len is not None:
+      # kv_info is not None, but reshape as required.
+      kv_info = np.reshape(kv_info, (-1, kv_chunk_len))
   elif kv_chunk_len is not None:
     k = np.reshape(k, (-1, kv_chunk_len, k.shape[-1]))
     kv_info = np.reshape(kv_info, (-1, kv_chunk_len))
@@ -1085,6 +1089,7 @@ class LSHSelfAttention(SelfAttention):
   def __init__(self,
                n_heads=2, d_qk=64, d_v=64, share_qk='unused',
                causal=False,
+               masked=False,
                chunk_len=None, n_chunks_before=1, n_chunks_after=0,
                n_hashes=1,
                n_buckets=256,
@@ -1100,6 +1105,7 @@ class LSHSelfAttention(SelfAttention):
     super().__init__(
         n_heads=n_heads, d_qk=d_qk, d_v=d_v, share_qk=True,
         causal=causal,
+        masked=masked,
         chunk_len=chunk_len,
         n_chunks_before=n_chunks_before, n_chunks_after=n_chunks_after,
         mode=mode,
@@ -1132,7 +1138,7 @@ class LSHSelfAttention(SelfAttention):
       buckets_idx = np.zeros((), dtype=np.int32)
       return (buckets, buckets_idx, rng)
 
-  def hash_vectors(self, vecs, rng):
+  def hash_vectors(self, vecs, rng, mask=None):
     # See https://arxiv.org/pdf/1509.02897.pdf
     # We sample a different random rotation for each round of hashing to
     # decrease the probability of hash misses.
@@ -1171,6 +1177,10 @@ class LSHSelfAttention(SelfAttention):
           buckets += cur_product * np.argmax(rv, axis=-1)
         cur_product *= factor
 
+    if mask is not None:
+      n_buckets += 1  # Create an extra bucket for padding tokens only
+      buckets = np.where(mask[None, :], buckets, n_buckets - 1)
+
     # buckets is now (self.n_hashes, seqlen). Next we add offsets so that
     # bucket numbers from different hashing rounds don't overlap.
     offsets = tie_in(buckets, np.arange(self.n_hashes))
@@ -1179,7 +1189,8 @@ class LSHSelfAttention(SelfAttention):
 
     return buckets
 
-  def forward_unbatched(self, x, *, weights, state, rng, update_state):
+  def forward_unbatched(self, x, mask=None, *, weights, state, rng,
+                        update_state):
     attend_rng, output_rng = math.random.split(rng)
     w_q, w_v, w_o = weights
 
@@ -1189,7 +1200,7 @@ class LSHSelfAttention(SelfAttention):
     if update_state:
       _, old_hash_rng = state
       hash_rng, hash_subrng = math.random.split(old_hash_rng)
-      buckets = self.hash_vectors(q, hash_subrng)
+      buckets = self.hash_vectors(q, hash_subrng, mask)
       state = (buckets, hash_rng)
     else:
       buckets, _ = state
@@ -1213,15 +1224,24 @@ class LSHSelfAttention(SelfAttention):
     sq = np.take(q, st, axis=0)
     sv = np.take(v, st, axis=0)
 
-    mask_fn = functools.partial(
-        mask_self_attention, causal=self.causal, exclude_self=True)
+    mask_fn = functools.partial(mask_self_attention, causal=self.causal,
+                                exclude_self=True, masked=self.masked)
     q_info = st
+
+    assert (mask is not None) == self.masked
+    kv_info = None
+    if self.masked:
+      # mask is a boolean array (True means "is valid token")
+      smask = np.take(mask, st, axis=0)
+      ones_like_mask = tie_in(x, np.ones_like(smask, dtype=np.int32))
+      kv_info = q_info * np.where(smask, ones_like_mask, -ones_like_mask)
+
     so, slogits = attend(
         sq, k=None, v=sv,
         q_chunk_len=self.chunk_len,
         n_chunks_before=self.n_chunks_before,
         n_chunks_after=self.n_chunks_after,
-        mask_fn=mask_fn, q_info=q_info,
+        mask_fn=mask_fn, q_info=q_info, kv_info=kv_info,
         dropout=self.attention_dropout, rng=attend_rng,
         )
 

@@ -25,6 +25,10 @@ from trax.layers.combinators import (  # pylint: disable=g-multiple-import
 from trax.math import numpy as np
 from trax.math import random
 
+# TODO(afrozm): Move pvt fns here.
+from trax.models.transformer import (  # pylint: disable=g-multiple-import
+    _ConcatWithPadding, _MaskOfRightShiftedArray,
+    _StripFromConcatenateWithPadding)
 
 # Layers are always CamelCase, but functions in general are snake_case
 # pylint: disable=invalid-name
@@ -714,8 +718,8 @@ def ReformerShortenLM(vocab_size,
   # pylint: enable=g-long-lambda
 
 
-def EncoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, ff_dropout,
-                 mode):
+def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
+                 ff_dropout, mode):
   """Returns a list of layers that implements a Reformer encoder block.
 
   The input to the layer is a pair, (activations, mask), where the mask was
@@ -726,6 +730,7 @@ def EncoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, ff_dropout,
     d_model: int:  depth of embedding
     d_ff: int: depth of feed-forward layer
     n_heads: int: number of attention heads
+    attention_type: subclass of tl.BaseCausalAttention: attention class to use
     dropout: float: dropout rate (how much to drop out)
     ff_activation: the non-linearity in feed-forward layer
     ff_dropout: the dropout rate in feed-forward layer
@@ -740,9 +745,9 @@ def EncoderBlock(d_model, d_ff, n_heads, dropout, ff_activation, ff_dropout,
     # to 'eval' mode instead.
     mode = 'eval'
 
-  attention = tl.SelfAttention(
+  attention = attention_type(
       n_heads=n_heads, d_qk=d_model//n_heads, d_v=d_model//n_heads,
-      masked=True,
+      masked=True, causal=False,
       attention_dropout=dropout, output_dropout=dropout,
       mode=mode)
   attention_half_residual = ReversibleHalfResidualV2(
@@ -881,10 +886,13 @@ def Reformer(input_vocab_size,
     output_vocab_size = input_vocab_size
   out_encoder = PositionalEncoder(output_vocab_size, mode)
 
+  # pylint: disable=g-complex-comprehension
   encoder_blocks = [
       EncoderBlock(
-          d_model, d_ff, n_heads, dropout, ff_activation, ff_dropout, mode)
+          d_model, d_ff, n_heads, tl.SelfAttention, dropout, ff_activation,
+          ff_dropout, mode)
       for _ in range(n_encoder_layers)]
+  # pylint: enable=g-complex-comprehension
 
   encoder = tl.Serial([
       in_encoder,
@@ -929,3 +937,182 @@ def Reformer(input_vocab_size,
       tl.Dense(output_vocab_size),          # vec_d .....
       tl.LogSoftmax(),                      # vec_d .....
   )
+
+
+def ReformerNoEncDecAttention(input_vocab_size,
+                              output_vocab_size=None,
+                              d_model=512,
+                              d_ff=2048,
+                              d_attention_key=64,
+                              d_attention_value=64,
+                              n_encoder_layers=6,
+                              n_decoder_layers=6,
+                              n_heads=8,
+                              dropout=0.1,
+                              max_len=2048,
+                              encoder_attention_type=tl.SelfAttention,
+                              encoder_decoder_attention_type=tl.SelfAttention,
+                              axial_pos_shape=(),
+                              d_axial_pos_embs=None,
+                              ff_activation=tl.Relu,
+                              ff_use_sru=0,
+                              ff_chunk_size=0,
+                              ff_dropout=None,
+                              mode='train'):
+  """Reversible transformer encoder-decoder model.
+
+  This model expects an input pair: source, target.
+
+  At the moment, this model supports dot-product attention only. For the
+  attention types in the Reformer paper, see ReformerLM.
+
+  Args:
+    input_vocab_size: int: vocab size of the source.
+    output_vocab_size: int (optional): vocab size of the target. If None, the
+      source and target are assumed to have the same vocab.
+    d_model: int:  depth of embedding
+    d_ff: int: depth of feed-forward layer
+    d_attention_key: int: depth of key vector for each attention head
+    d_attention_value: int: depth of value vector for each attention head
+    n_encoder_layers: int: number of encoder layers
+    n_decoder_layers: int: number of decoder layers
+    n_heads: int: number of attention heads
+    dropout: float: dropout rate (how much to drop out)
+    max_len: int: maximum symbol length for positional encoding
+    encoder_attention_type: class: attention class to use, such as SelfAttention
+    encoder_decoder_attention_type: class: attention class to use, such as
+      SelfAttention
+    axial_pos_shape: tuple of ints: input shape to use for the axial position
+      encoding. If unset, axial position encoding is disabled.
+    d_axial_pos_embs: tuple of ints: depth of position embedding for each axis.
+      Tuple length must match axial_pos_shape, and values must sum to d_model.
+    ff_activation: the non-linearity in feed-forward layer
+    ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
+    ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
+    ff_dropout: float: (optional) separate dropout rate at feed-forward
+      nonlinearity. This is called relu_dropout in T2T.
+    mode: str: 'train' or 'eval'
+
+  Returns:
+    A Reformer model as a layer that maps from a target, source pair to
+    activations over a vocab set.
+  """
+  # The current API for custom gradients assumes that a layer must be
+  # differentiable wrt all of its inputs, but the Transformer puts bool-dtype
+  # masks on the stack. This causes jax to error, even though the so-called
+  # "gradient" wrt the masks is never actually computed.
+  # TODO(kitaev): remove this hack.
+  jax.api._check_inexact_input_vjp = lambda x: None  # pylint: disable=protected-access
+
+  def PositionalEncoder(vocab_size, mode):  # tokens --> vectors
+    if not axial_pos_shape:
+      positional_encoding = tl.PositionalEncoding(
+          max_len=max_len, dropout=dropout, mode=mode)
+    else:
+      assert d_axial_pos_embs is not None
+      positional_encoding = tl.AxialPositionalEncoding(
+          shape=axial_pos_shape, d_embs=d_axial_pos_embs,
+          dropout_broadcast_dims=tuple(range(1, len(axial_pos_shape) + 1)),
+          dropout=dropout, mode=mode)
+
+    return [
+        tl.Embedding(d_model, vocab_size),
+        BroadcastedDropout(rate=dropout, mode=mode),
+        positional_encoding,
+    ]
+
+  # TODO(kitaev): The regular trax Transformer shares vocab embeddings and
+  # position embeddings between the encoder and decoder if output_vocab_size is
+  # None. This isn't supported here because (a) Trax shares weights by sharing
+  # layer instances, but we need two separate instances to have mode == 'eval'
+  # for the encoder but mode == 'predict' for the decoder; and (b) tl.Cache does
+  # not work if its sublayers participate in any weight sharing.
+
+  # Mode 'predict' means that the decoder should be run one token at a time.
+  # The encoder only ever runs over full sequences, which is why it's switched
+  # to 'eval' mode instead.
+  in_encoder = PositionalEncoder(
+      input_vocab_size, mode='eval' if mode == 'predict' else mode)
+  if output_vocab_size is None:
+    output_vocab_size = input_vocab_size
+  out_encoder = PositionalEncoder(output_vocab_size, mode)
+
+  # pylint: disable=g-complex-comprehension
+  encoder_blocks = [
+      EncoderBlock(
+          d_model, d_ff, n_heads, encoder_attention_type, dropout,
+          ff_activation, ff_dropout, mode)
+      for _ in range(n_encoder_layers)]
+  # pylint: enable=g-complex-comprehension
+
+  encoder = tl.Serial([                # tok_e mask_e tok_e tok_d tok_d
+      in_encoder,                      # vec_e mask_e tok_e tok_d tok_d
+      tl.Dup(),                        # vec_e1 vec_e2 mask_e tok_e tok_d tok_d
+      tl.ReversibleSerial(encoder_blocks),
+      tl.Fn('XYAvg', lambda x, y: (x + y) / 2.0),
+      tl.LayerNorm(),
+  ])
+  if mode == 'predict':
+    encoder = tl.Cache(encoder)
+
+  decoder_blocks = []
+
+  if isinstance(encoder_decoder_attention_type, (tuple, list)):
+    assert n_decoder_layers % len(encoder_decoder_attention_type) == 0
+  else:
+    encoder_decoder_attention_type = [encoder_decoder_attention_type]
+  for layer_idx in range(n_decoder_layers):
+    layer_attention_type = encoder_decoder_attention_type[
+        layer_idx % len(encoder_decoder_attention_type)]
+    decoder_block = DecoderBlock(
+        d_model, d_ff, d_attention_key, d_attention_value, n_heads,
+        attention_type=layer_attention_type,
+        dropout=dropout,
+        ff_activation=ff_activation,
+        ff_use_sru=ff_use_sru,
+        ff_chunk_size=ff_chunk_size,
+        mode=mode)
+    decoder_blocks.append(decoder_block)
+
+  # Assemble and return the model.
+  return tl.Serial(
+      # Input: encoder_side_tokens, decoder_side_tokens
+      # Copy decoder tokens for use in loss.
+      tl.Select([0, 0, 1, 1]),                  # tok_e tok_e tok_d tok_d
+      tl.Branch([], [tl.PaddingMask(),
+                     tl.Fn('Squeeze',
+                           lambda x: np.squeeze(x, (1, 2)), n_out=1)]),
+      #                                         # tok_e mask_e tok_e tok_d tok_d
+
+      # Encode.
+      encoder,                                  # vec_e mask_e tok_e tok_d tok_d
+
+      # Decode.
+      tl.Select([3, 0, 1, 2]),                 #  tok_d vec_e mask_e tok_e tok_d
+      tl.ShiftRight(mode=mode),                # stok_d vec_e mask_e tok_e tok_d
+      tl.Branch(
+          [],
+          _MaskOfRightShiftedArray()
+      ),                                # stok_d mask_d vec_e mask_e tok_e tok_d
+      out_encoder,                      # svec_d mask_d vec_e mask_e tok_e tok_d
+
+      # Concat encoder and decoder, given their masks.
+      tl.Select([2, 0, 3, 1]),          # svec_d mask_d vec_e mask_e tok_e tok_d
+      _ConcatWithPadding(),                        # vec_ed tok_e tok_d
+
+      # Run (encoder and) decoder blocks.
+      tl.Dup(),                                    # vec_ed1 vec_ed2 tok_e tok_d
+      tl.ReversibleSerial(decoder_blocks),         # vec_ed1 vec_ed2 tok_e tok_d
+      tl.Fn('XYAvg',
+            lambda x, y: (x + y) / 2.0),           # vec_ed tok_e tok_d
+      tl.LayerNorm(),                              # vec_ed tok_e tok_d
+
+      # Separate out the encoder part from the concatenated vector.
+      tl.Select([0, 1, 2, 2]),                     # vec_ed tok_e tok_d tok_d
+      _StripFromConcatenateWithPadding(),          # vec_d tok_d
+
+      # Map to output vocab.
+      tl.Dense(output_vocab_size),                 # vec_d tok_d
+      tl.LogSoftmax(),                             # vec_d tok_d
+  )
+

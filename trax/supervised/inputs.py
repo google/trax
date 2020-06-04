@@ -122,7 +122,9 @@ def batcher(data_streams=gin.REQUIRED, variable_shapes=True,
             batch_size_per_device=32, batch_size=None, eval_batch_size=32,
             bucket_length=32, buckets=None,
             buckets_include_inputs_in_length=False,
-            batch_shuffle_size=None, max_eval_length=None):
+            batch_shuffle_size=None, max_eval_length=None,
+            # TODO(afrozm): Unify padding logic.
+            strict_pad_on_len=False):
   """Batcher: create trax Inputs from single-example data-streams."""
   # TODO(lukaszkaiser, jonni): revisit arguments, their semantics and naming.
   # For now leaving the arguments as in batch_fn to reduce gin config changes.
@@ -135,17 +137,17 @@ def batcher(data_streams=gin.REQUIRED, variable_shapes=True,
       train_stream(), True, n_devices, variable_shapes,
       batch_size_per_device, batch_size, eval_batch_size,
       bucket_length, buckets, buckets_include_inputs_in_length,
-      batch_shuffle_size, max_eval_length)
+      batch_shuffle_size, max_eval_length, strict_pad_on_len)
   batch_eval_stream = lambda n_devices: batch_fn(
       eval_stream(), False, n_devices, variable_shapes,
       batch_size_per_device, batch_size, eval_batch_size,
       bucket_length, buckets, buckets_include_inputs_in_length,
-      batch_shuffle_size, max_eval_length)
+      batch_shuffle_size, max_eval_length, strict_pad_on_len)
   batch_train_eval_stream = lambda n_devices: batch_fn(
       train_stream(), False, n_devices, variable_shapes,
       batch_size_per_device, batch_size, eval_batch_size,
       bucket_length, buckets, buckets_include_inputs_in_length,
-      batch_shuffle_size, max_eval_length)
+      batch_shuffle_size, max_eval_length, strict_pad_on_len)
   # pylint: enable=g-long-lambda
   return Inputs(train_stream=batch_train_stream,
                 eval_stream=batch_eval_stream,
@@ -156,7 +158,8 @@ def batch_fn(dataset, training, n_devices, variable_shapes,
              batch_size_per_device=32, batch_size=None, eval_batch_size=32,
              bucket_length=32, buckets=None,
              buckets_include_inputs_in_length=False,
-             batch_shuffle_size=None, max_eval_length=None):
+             batch_shuffle_size=None, max_eval_length=None,
+             strict_pad_on_len=False):
   """Batching function."""
   # TODO(lukaszkaiser, jonni): revisit arguments, their semantics and naming.
   # After that, create a proper doc-string; we may also not need to pass both
@@ -209,7 +212,7 @@ def batch_fn(dataset, training, n_devices, variable_shapes,
       return max(target.shape[0], other_length)
     boundaries, batch_sizes = buckets
     dataset = bucket_by_length(
-        dataset, example_length, boundaries, batch_sizes)
+        dataset, example_length, boundaries, batch_sizes, strict_pad_on_len)
   else:
     logging.info('Not Bucketing cur_batch_size %d.', cur_batch_size)
     dataset = batch_data(dataset, cur_batch_size)
@@ -274,7 +277,7 @@ def batch_data(generator, batch_size):
       buf = []
 
 
-def pad_to_max_dims(tensors, boundary=None):
+def pad_to_max_dims(tensors, boundary=None, strict_pad_on_len=False):
   """Pad a tuple of tensors to a joint dimension and return their batch.
 
   For example, a pair of tensors of shape (2, 10) and (3, 9) will be padded
@@ -294,10 +297,40 @@ def pad_to_max_dims(tensors, boundary=None):
   Args:
     tensors: a tuple or list of tensors to pad
     boundary: int or None; if given, expand the padded dimensions to this size
+    strict_pad_on_len: bool; if true we pad on the length dimension, dim[0]
+      strictly as a multiple of boundary.
 
   Returns:
     a tensor, the tensors padded together
   """
+  # TODO(afrozm): Unify this later.
+  if strict_pad_on_len or isinstance(boundary, (list, tuple)):
+    ndim = tensors[0].ndim
+    if not isinstance(boundary, (list, tuple)):
+      boundary = [boundary] * ndim
+
+    if ndim != len(boundary):
+      raise ValueError(f'ndim != len(boundary) - '
+                       f'ndim({ndim}) vs boundary({boundary}) '
+                       f'len(boundary) = {len(boundary)}.')
+
+    max_len_per_dim = [0] * ndim
+    for tensor in tensors:
+      max_len_per_dim = [
+          max(e, s) for e, s in zip(tensor.shape, max_len_per_dim)]
+
+    # Round everything up to a multiple of boundary in the respective dimension.
+    len_per_dim = [
+        max_len_per_dim[i] if not b else b * math.ceil(max_len_per_dim[i] / b)
+        for i, b in enumerate(boundary)]
+
+    padded_tensors = [
+        np.pad(t, [(0, len_per_dim[i] - t.shape[i]) for i in range(ndim)],
+               mode='constant', constant_values=t.dtype.type(0))
+        for t in tensors]
+
+    return np.stack(padded_tensors)
+
   max_len_to_pad = []
   padding_needed = False
   dim = len(tensors[0].shape)
@@ -326,7 +359,8 @@ def pad_to_max_dims(tensors, boundary=None):
   return np.stack(padded_tensors)
 
 
-def bucket_by_length(generator, length_fn, boundaries, batch_sizes):
+def bucket_by_length(generator, length_fn, boundaries, batch_sizes,
+                     strict_pad_on_len=False):
   """Bucket by length, like tf.data.experimental.bucket_by_sequence_length.
 
   Args:
@@ -334,6 +368,8 @@ def bucket_by_length(generator, length_fn, boundaries, batch_sizes):
     length_fn: a function taking the example and returning the length.
     boundaries: a list of bucket boundaries.
     batch_sizes: a list of batch sizes.
+    strict_pad_on_len: bool; if true we pad on the length dimension, dim[0]
+      strictly as a multiple of boundary.
 
   Yields:
     An input batch, which comes from one of the buckets.
@@ -348,7 +384,8 @@ def bucket_by_length(generator, length_fn, boundaries, batch_sizes):
     if len(buckets[bucket_idx]) == batch_sizes[bucket_idx]:
       batch = zip(*buckets[bucket_idx])
       boundary = boundaries[bucket_idx] - 1 if bucket_idx < max_idx else None
-      padded_batch = tuple(pad_to_max_dims(x, boundary) for x in batch)
+      padded_batch = tuple(
+          pad_to_max_dims(x, boundary, strict_pad_on_len) for x in batch)
       yield padded_batch
       buckets[bucket_idx] = []
 

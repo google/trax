@@ -87,7 +87,10 @@ class AxialPositionalEncoding(layer_base.Layer):
 
   def new_weights(self, input_signature):
     d_feature = input_signature.shape[-1]
-    assert sum(self._d_embs) == d_feature
+    if sum(self._d_embs) != d_feature:
+      raise ValueError(
+          f'sum(self._d_embs) != d_feature: '
+          f'sum({self._d_embs}) vs d_feature: {d_feature}')
 
     rngs = math.random.split(self.rng, len(self._d_embs))
     weights = []

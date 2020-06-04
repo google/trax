@@ -87,6 +87,40 @@ class InputsTest(parameterized.TestCase):
     padded4 = inputs.pad_to_max_dims(tensors4, 12)
     self.assertEqual(padded4.shape, (2, 4, 12))
 
+  def test_pad_to_max_dims_boundary_list(self):
+    tensors = [np.zeros((1, 15, 31)), np.ones((2, 10, 35)), np.ones((4, 2, 3))]
+    padded_tensors = inputs.pad_to_max_dims(tensors, boundary=(None, 15, 20))
+    # no boundary, only max in the first dim, 15 is already the max len in
+    # second dim, last dim padded to multiple of 20.
+    # The outer dim is the batch here.
+    self.assertEqual(padded_tensors.shape, (3, 4, 15, 40))
+
+  def test_pad_to_max_dims_strict_pad_on_len(self):
+    tensors = [np.ones((15,)), np.ones((12,)), np.ones((14,))]
+    padded_tensors = inputs.pad_to_max_dims(
+        tensors, boundary=10, strict_pad_on_len=True)
+    self.assertEqual(padded_tensors.shape, (3, 20))
+
+  def test_bucket_by_length(self):
+    def fake_generator(length, num_examples=1):
+      for _ in range(num_examples):
+        yield (np.ones((length,)), np.ones((length,)))
+
+    def length_function(example):
+      return max(example[0].shape[0], example[1].shape[0])
+
+    batches = list(inputs.bucket_by_length(fake_generator(5, 6),
+                                           length_function,
+                                           [20 + 1],
+                                           [2],
+                                           strict_pad_on_len=True))
+
+    # We'll get three batches of 2 examples each.
+    self.assertLen(batches, 3)
+    self.assertIsInstance(batches[0], tuple)
+    self.assertLen(batches[0], 2)
+    self.assertEqual((2, 20), batches[0][0].shape)
+    self.assertEqual((2, 20), batches[0][1].shape)
 
 if __name__ == '__main__':
   absltest.main()
