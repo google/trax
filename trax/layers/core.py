@@ -219,6 +219,17 @@ class Dropout(base.Layer):
 
 
 def Flatten(n_axes_to_keep=1):
+  """Returns a layer that combines one or more trailing axes of a tensor.
+
+  Flattening keeps all the values of the input tensor, but reshapes it by
+  collapsing one or more trailing axes into a single axis. For example, a
+  `Flatten(n_axes_to_keep=2)` layer would map a tensor with shape `(2, 3, 5, 7,
+  11)` to the same values with shape `(2, 3, 385)`.
+
+  Args:
+    n_axes_to_keep: Number of leading axes to leave unchanged when reshaping;
+        collapse only the axes after these.
+  """
   layer_name = f'Flatten_keep{n_axes_to_keep}'
   def f(x):  # pylint: disable=invalid-name
     in_rank = len(x.shape)
@@ -230,39 +241,91 @@ def Flatten(n_axes_to_keep=1):
 
 
 def Exp():
+  """Returns a layer that computes the element-wise exponential of a tensor."""
   return Fn('Exp', lambda x: jnp.exp(x))  # pylint: disable=unnecessary-lambda
 
 
 def LogSoftmax(axis=-1):
-  """Layer that applies log softmax: log-normalize along the given axis."""
+  """Returns a layer that applies log softmax along one tensor axis.
+
+  `LogSoftmax` acts on a group of values and normalizes them to look like a set
+  of log probability values. (Probability values must be non-negative, and as
+  a set must sum to 1. A group of log probability values can be seen as the
+  natural logarithm function applied to a set of probability values.)
+
+  Args:
+    axis: Axis along which values are grouped for computing log softmax.
+  """
   return Fn('LogSoftmax',
             lambda x: x - math.logsumexp(x, axis, keepdims=True))
 
 
 def Softmax(axis=-1):
-  """Layer that applies softmax: exponentiate and normalize along given axis."""
+  """Returns a layer that applies softmax along one tensor axis.
+
+  `Softmax` acts on a group of values and normalizes them to look like a set
+  of probability values. (Probability values must be non-negative, and as a
+  set must sum to 1.)
+
+  Args:
+    axis: Axis along which values are grouped for computing softmax.
+  """
   return Fn('Softmax',
             lambda x: jnp.exp(x - math.logsumexp(x, axis, keepdims=True)))
 
 
 def ToFloat():
+  """Returns a layer that changes the dtype of a tensor to `float32`."""
   return Fn('ToFloat', lambda x: x.astype(np.float32))
 
 
 def Mean(axis=-1, keepdims=False):
+  """Returns a layer that computes mean values using one tensor axis.
+
+  `Mean` uses one tensor axis to form groups of values and replaces each group
+  with the mean value of that group. The resulting values can either remain
+  in their own size 1 axis (`keepdims=True`), or that axis can be removed from
+  the overall tensor (default `keepdims=False`), lowering the rank of the
+  tensor by one.
+
+  Args:
+    axis: Axis along which values are grouped for computing a mean.
+    keepdims: If `True`, keep the resulting size 1 axis as a separate tensor
+        axis; else, remove that axis.
+  """
   return Fn('Mean', lambda x: jnp.mean(x, axis=axis, keepdims=keepdims))
 
 
 def Sum(axis=-1, keepdims=False):
+  """Returns a layer that computes sums using one tensor axis.
+
+  `Sum` uses one tensor axis to form groups of values and replaces each group
+  with the sum of that group. The resulting sum values can either remain in
+  their own size 1 axis (`keepdims=True`), or that axis can be removed from the
+  overall tensor (default `keepdims=False`), lowering the rank of the tensor by
+  one.
+
+  Args:
+    axis: Axis along which values are grouped for computing a sum.
+    keepdims: If `True`, keep the resulting size 1 axis as a separate tensor
+        axis; else, remove that axis.
+  """
   return Fn('Sum', lambda x: jnp.sum(x, axis=axis, keepdims=keepdims))
 
 
 def Negate():
+  """Returns a layer that computes the element-wise negation of a tensor."""
   return Fn('Negate', lambda x: -x)
 
 
 def log_gaussian_pdf(x, mu, sigma):  # pylint: disable=invalid-name
-  """Compute log N(x | mu, sigma)."""
+  """Returns `log N(x | mu, sigma)`.
+
+  Args:
+    x: <tbd>
+    mu: <tbd>
+    sigma: <tbd>
+  """
   a = mu.shape[-1] * jnp.log(2 * jnp.pi)
   _, b = jnp.linalg.slogdet(sigma)
   y = jnp.linalg.solve(sigma, x - mu)
@@ -274,7 +337,13 @@ def log_gaussian_pdf(x, mu, sigma):  # pylint: disable=invalid-name
 
 
 def log_gaussian_diag_pdf(x, mu, diag_sigma):  # pylint: disable=invalid-name
-  """Compute log N(x | mu, eye(diag_sigma))."""
+  """Returns `log N(x | mu, eye(diag_sigma))`.
+
+  Args:
+    x: <tbd>
+    mu: <tbd>
+    diag_sigma: <tbd>
+  """
   a = mu.shape[-1] * jnp.log(2 * jnp.pi)
   b = jnp.sum(jnp.log(diag_sigma), axis=-1)
   y = x - mu / diag_sigma
@@ -286,7 +355,13 @@ def log_gaussian_diag_pdf(x, mu, diag_sigma):  # pylint: disable=invalid-name
 
 
 def multigaussian_loss(preds, targets, ngauss=1):  # pylint: disable=invalid-name
-  """Compute mixture of gaussians loss."""
+  """Returns a mixture of gaussians loss.
+
+  Args:
+    preds: <tbd>
+    targets: <tbd>
+    ngauss: <tbd>
+  """
   ndims = targets.shape[-1]
   logits = preds[:, :ngauss]
   mus = preds[:, ngauss:ngauss*(ndims + 1)]
@@ -301,7 +376,12 @@ def multigaussian_loss(preds, targets, ngauss=1):  # pylint: disable=invalid-nam
 
 
 def gumbel_sample(log_probs, temperature=1.0):  # pylint: disable=invalid-name
-  """Gumbel sampling from a categorical distribution, with temperature."""
+  """Returns a Gumbel sample from a categorical distribution, with temperature.
+
+  Args:
+    log_probs: <tbd>
+    temperature: <tbd>
+  """
   # This is equivalent to sampling from a softmax with temperature.
   u = np.random.uniform(low=1e-6, high=1.0 - 1e-6, size=log_probs.shape)
   g = -np.log(-np.log(u))
