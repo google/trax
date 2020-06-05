@@ -253,7 +253,7 @@ class TrainTask:
           1+ data (input value) tensors followed by 1 label (target value)
           tensor.  All tensors are NumPy ndarrays or their JAX counterparts.
       loss_layer: Layer that computes a scalar value (the "loss") by comparing
-          model output $$\hat{y}=f(x)$$ to the target $$y$$.
+          model output :math:`\hat{y}=f(x)` to the target :math:`y`.
       optimizer: Optimizer object that computes model weight updates from
           loss-function gradients.
     """
@@ -301,7 +301,7 @@ class EvalTask:
           1+ data tensors (NumPy ndarrays) followed by 1 label (target value)
           tensor.
       metrics: List of layers; each computes a scalar value per batch by
-          comparing model output $$\hat{y}=f(x)$$ to the target $$y$$.
+          comparing model output :math:`\hat{y}=f(x)` to the target :math:`y`.
       names: List of names, one for each item in `metrics`, in matching order,
           to be used when recording/reporting eval output. If None, generate
           default names: 'metric_0', 'metric_1', ...

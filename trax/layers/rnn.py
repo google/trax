@@ -182,23 +182,26 @@ def GeneralGRUCell(candidate_transform,
                    sigmoid_bias=0.5):
   r"""Parametrized Gated Recurrent Unit (GRU) cell construction.
 
-  GRU update equations:
-  $$ Update gate: u_t = \sigmoid(U' * s_{t-1} + B') $$
-  $$ Reset gate: r_t = \sigmoid(U'' * s_{t-1} + B'') $$
-  $$ Candidate memory: c_t = \tanh(U * (r_t \odot s_{t-1}) + B) $$
-  $$ New State: s_t = u_t \odot s_{t-1} + (1 - u_t) \odot c_t $$
+  GRU update equations for update gate, reset gate, candidate memory, and new
+  state:
 
-  See combinators.Gate for details on the gating function.
+  .. math::
+    u_t &= \sigma(U' \times s_{t-1} + B') \\
+    r_t &= \sigma(U'' \times s_{t-1} + B'') \\
+    c_t &= \tanh(U \times (r_t \odot s_{t-1}) + B) \\
+    s_t &= u_t \odot s_{t-1} + (1 - u_t) \odot c_t
+
+  See `combinators.Gate` for details on the gating function.
 
 
   Args:
     candidate_transform: Transform to apply inside the Candidate branch. Applied
       before nonlinearities.
     memory_transform_fn: Optional transformation on the memory before gating.
-    gate_nonlinearity: Function to use as gate activation. Allows trying
-      alternatives to Sigmoid, such as HardSigmoid.
-    candidate_nonlinearity: Nonlinearity to apply after candidate branch. Allows
-      trying alternatives to traditional Tanh, such as HardTanh
+    gate_nonlinearity: Function to use as gate activation; allows trying
+      alternatives to `Sigmoid`, such as `HardSigmoid`.
+    candidate_nonlinearity: Nonlinearity to apply after candidate branch; allows
+      trying alternatives to traditional `Tanh`, such as `HardTanh`.
     dropout_rate_c: Amount of dropout on the transform (c) gate. Dropout works
       best in a GRU when applied exclusively to this branch.
     sigmoid_bias: Constant to add before sigmoid gates. Generally want to start
@@ -243,14 +246,16 @@ def InnerSRUCell():
 
 
 def SRU(n_units, activation=None):
-  """SRU (Simple Recurrent Unit) layer as in https://arxiv.org/abs/1709.02755.
+  r"""SRU (Simple Recurrent Unit) layer as in https://arxiv.org/abs/1709.02755.
 
   As defined in the paper:
-  (1) y_t = W x_t (+ B optionally, which we do)
-  (2) f_t = sigmoid(Wf x_t + bf)
-  (3) r_t = sigmoid(Wr x_t + br)
-  (4) c_t = f_t * c_{t-1} + (1 - f_t) * y_t
-  (5) h_t = r_t * activation(c_t) + (1 - r_t) * x_t
+
+  .. math::
+    y_t &= W x_t + B \quad \hbox{(include $B$ optionally)} \\
+    f_t &= \sigma(Wf x_t + bf) \\
+    r_t &= \sigma(Wr x_t + br) \\
+    c_t &= f_t \times c_{t-1} + (1 - f_t) \times y_t \\
+    h_t &= r_t \times \hbox{activation}(c_t) + (1 - r_t) \times x_t
 
   We assume the input is of shape [batch, length, depth] and recurrence
   happens on the length dimension. This returns a single layer. It's best
