@@ -540,30 +540,44 @@ def _FeedForwardBlock(d_model, d_ff, dropout, layer_idx, mode, activation):
 def _ConcatWithPadding():
   """Concatenates two length padded (B, L, H) arrays (of different lenghts)."""
 
+  # Implementational Note: An earlier version of `F` made `mask_concat` the
+  # same shape as `enc_pad_dec_pad` and then sorted `enc_pad_dec_pad` with key
+  # as `mask_concat` all with no stoppage of gradients. This version just sorts
+  # `mask_concat` and stops gradients and then uses advanced indexing to select
+  # out the stuff needed from `enc_pad_dec_pad`. Even with advanced indexing we
+  # have to be careful to not select on arange(H) in the end, this blows up.
+
   # Arg shapes: (B, L1, H), (B, L2, H), (B, L1) & (B, L2)
   def F(vec_e, vec_d, mask_e, mask_d):
     # pylint: disable=invalid-name
-    L1 = mask_e.shape[1]
-    L2 = mask_d.shape[1]
+    B, L1, H = vec_e.shape
+    L2 = vec_d.shape[1]
     # pylint: enable=invalid-name
+
+    assert (B, L2, H) == vec_d.shape, f'{(B, L2, H)} != {vec_e.shape}'
+    assert (B, L1) == mask_e.shape, f'{(B, L1)} != {mask_e.shape}'
+    assert (B, L2) == mask_d.shape, f'{(B, L2)} != {mask_d.shape}'
 
     # [-(L1+L2), -L2) but with padding 0-ed out - (B, L1).
     mask_e_key = jnp.arange(-(L1 + L2), -L2) * mask_e
     # [-L2,0) but with padding 0-ed out - (B, L2).
     mask_d_key = jnp.arange(-L2, 0) * mask_d
 
-    # Shape (B, L1+L2, H)
-    enc_dec_concat = jnp.concatenate([vec_e, vec_d], axis=1)
-    # Shape (B, L1+L2)
+    # Shapes of `mask_concat` and `idxs` (B, L = L1+L2)
     mask_concat = jnp.concatenate([mask_e_key, mask_d_key], axis=1)
-    # Make `mask_concat` the same shape as `enc_dec_concat`
-    mask_concat = (
-        mask_concat[..., jnp.newaxis] +
-        jnp.zeros_like(enc_dec_concat, dtype=jnp.int32))
-    # Sort on `mask_concat` so padding with key=0 goes to the right end, axis=1.
-    _, enc_dec_pad = math.sort_key_val(mask_concat, enc_dec_concat, 1)
+    _, idxs = math.sort_key_val(
+        mask_concat,                     # (B, L)
+        # jnp.arange(L1 + L2)[None, ...] -- (1, L) why does this not work?
+        jnp.broadcast_to(jnp.arange(L1 + L2), mask_concat.shape),
+        1)                               # sort on L
+    idxs = math.stop_gradient(idxs)
 
-    return enc_dec_pad
+    # Shape (B, L, H)
+    enc_pad_dec_pad = jnp.concatenate([vec_e, vec_d], axis=1)
+
+    # Taking along indices supplied by `idxs` moves padding to the end.
+    enc_dec_padpad = enc_pad_dec_pad[jnp.arange(B)[:, None], idxs]
+    return enc_dec_padpad
 
   return tl.Fn('ConcatWithPadding', F, n_out=1)
 
