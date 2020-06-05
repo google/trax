@@ -22,9 +22,9 @@ from __future__ import print_function
 import numpy as np
 import tensorflow.compat.v2 as tf
 
-from trax.tf_numpy.numpy import array_ops
-from trax.tf_numpy.numpy import arrays
-from trax.tf_numpy.numpy import math_ops
+from trax.tf_numpy.numpy_impl import array_ops
+from trax.tf_numpy.numpy_impl import arrays
+from trax.tf_numpy.numpy_impl import math_ops
 
 
 class LogicTest(tf.test.TestCase):

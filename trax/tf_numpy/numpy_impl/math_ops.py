@@ -25,10 +25,10 @@ import six
 
 import tensorflow.compat.v2 as tf
 
-from trax.tf_numpy.numpy import array_ops
-from trax.tf_numpy.numpy import arrays
-from trax.tf_numpy.numpy import dtypes
-from trax.tf_numpy.numpy import utils
+from trax.tf_numpy.numpy_impl import array_ops
+from trax.tf_numpy.numpy_impl import arrays
+from trax.tf_numpy.numpy_impl import dtypes
+from trax.tf_numpy.numpy_impl import utils
 
 
 @utils.np_doc_only(np.dot)

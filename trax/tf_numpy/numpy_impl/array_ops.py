@@ -24,9 +24,9 @@ import numpy as np
 import six
 import tensorflow.compat.v2 as tf
 
-from trax.tf_numpy.numpy import arrays as arrays_lib
-from trax.tf_numpy.numpy import dtypes
-from trax.tf_numpy.numpy import utils
+from trax.tf_numpy.numpy_impl import arrays as arrays_lib
+from trax.tf_numpy.numpy_impl import dtypes
+from trax.tf_numpy.numpy_impl import utils
 
 
 def empty(shape, dtype=float):  # pylint: disable=redefined-outer-name

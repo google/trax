@@ -25,9 +25,9 @@ import numpy as np
 from six.moves import range
 import tensorflow.compat.v2 as tf
 
-from trax.tf_numpy.numpy import array_ops
-from trax.tf_numpy.numpy import arrays
-from trax.tf_numpy.numpy import math_ops
+from trax.tf_numpy.numpy_impl import array_ops
+from trax.tf_numpy.numpy_impl import arrays
+from trax.tf_numpy.numpy_impl import math_ops
 
 
 class MathTest(tf.test.TestCase, parameterized.TestCase):

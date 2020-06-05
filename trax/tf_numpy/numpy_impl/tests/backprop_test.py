@@ -21,9 +21,9 @@ from __future__ import print_function
 
 import tensorflow.compat.v2 as tf
 
-from trax.tf_numpy.numpy import array_ops
+from trax.tf_numpy.numpy_impl import array_ops
 # Required for operator overloads
-from trax.tf_numpy.numpy import math_ops  # pylint: disable=unused-import
+from trax.tf_numpy.numpy_impl import math_ops  # pylint: disable=unused-import
 
 
 class BackpropTest(tf.test.TestCase):

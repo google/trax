@@ -21,7 +21,7 @@ from __future__ import print_function
 
 import tensorflow.compat.v2 as tf
 
-from trax.tf_numpy.numpy import utils
+from trax.tf_numpy.numpy_impl import utils
 
 
 class UtilsTest(tf.test.TestCase):

@@ -17,7 +17,7 @@
 import numpy as np
 import tensorflow.compat.v2 as tf
 
-from trax.tf_numpy.numpy import utils
+from trax.tf_numpy.numpy_impl import utils
 
 
 DEFAULT_RANDN_DTYPE = np.float32

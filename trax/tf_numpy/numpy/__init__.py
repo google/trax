@@ -19,20 +19,26 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow import newaxis
-
-from trax.tf_numpy.numpy import random
-
 # pylint: disable=wildcard-import
-from trax.tf_numpy.numpy.array_ops import *
-from trax.tf_numpy.numpy.arrays import ndarray
-from trax.tf_numpy.numpy.dtypes import *
-from trax.tf_numpy.numpy.math_ops import *
-from trax.tf_numpy.numpy.utils import finfo
-from trax.tf_numpy.numpy.utils import promote_types
-from trax.tf_numpy.numpy.utils import result_type
-# pylint: enable=wildcard-import
+# pylint: disable=g-import-not-at-top
 
-max = amax
-min = amin
-round = around  # pylint: disable=redefined-builtin,undefined-variable
+try:
+  from tensorflow.python.ops.numpy_ops import *
+except Exception:  # pylint: disable=broad-except
+  from tensorflow import newaxis
+
+  from trax.tf_numpy.numpy_impl import random
+
+  # pylint: disable=wildcard-import
+  from trax.tf_numpy.numpy_impl.array_ops import *
+  from trax.tf_numpy.numpy_impl.arrays import *
+  from trax.tf_numpy.numpy_impl.dtypes import *
+  from trax.tf_numpy.numpy_impl.math_ops import *
+  from trax.tf_numpy.numpy_impl.utils import finfo
+  from trax.tf_numpy.numpy_impl.utils import promote_types
+  from trax.tf_numpy.numpy_impl.utils import result_type
+  # pylint: enable=wildcard-import
+
+  max = amax  # pylint: disable=redefined-builtin,undefined-variable
+  min = amin  # pylint: disable=redefined-builtin,undefined-variable
+  round = around  # pylint: disable=redefined-builtin,undefined-variable

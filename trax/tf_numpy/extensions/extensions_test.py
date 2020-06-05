@@ -27,11 +27,7 @@ import numpy as np
 import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy import extensions
-from trax.tf_numpy.numpy import array_ops
-from trax.tf_numpy.numpy import arrays
-from trax.tf_numpy.numpy import math_ops
-from trax.tf_numpy.numpy import random
-from trax.tf_numpy.numpy.array_ops import asarray
+import trax.tf_numpy.numpy as tf_np
 
 FLAGS = flags.FLAGS
 
@@ -39,14 +35,14 @@ flags.DEFINE_bool("requires_tpu", False, "Requires TPU.")
 
 
 def generate_params_inputs_targets(num_examples=1000):
-  params = (arrays.tensor_to_ndarray(tf.constant(5.)),
-            arrays.tensor_to_ndarray(tf.constant(0.)))
+  params = (tf_np.tensor_to_ndarray(tf.constant(5.)),
+            tf_np.tensor_to_ndarray(tf.constant(0.)))
 
-  params_true = (arrays.tensor_to_ndarray(tf.constant(3.)),
-                 arrays.tensor_to_ndarray(tf.constant(2.)))
+  params_true = (tf_np.tensor_to_ndarray(tf.constant(3.)),
+                 tf_np.tensor_to_ndarray(tf.constant(2.)))
 
-  inputs = arrays.tensor_to_ndarray(tf.random.normal(shape=[num_examples]))
-  noise = arrays.tensor_to_ndarray(tf.random.normal(shape=[num_examples]))
+  inputs = tf_np.tensor_to_ndarray(tf.random.normal(shape=[num_examples]))
+  noise = tf_np.tensor_to_ndarray(tf.random.normal(shape=[num_examples]))
   targets = inputs * params_true[0] + params_true[1] + noise
 
   return params, params_true, inputs, targets
@@ -55,7 +51,7 @@ def generate_params_inputs_targets(num_examples=1000):
 def loss_fn(params, inputs, targets):
   predicted = params[0] * inputs + params[1]
   loss = tf.reduce_mean(input_tensor=tf.square(predicted - targets))
-  return arrays.tensor_to_ndarray(loss)
+  return tf_np.tensor_to_ndarray(loss)
 
 
 def train_step(params, inputs, targets, learning_rate=0.1):
@@ -72,7 +68,7 @@ def uniform(rng, shape, dtype):
     minval = None
   else:
     minval = 0
-  return array_ops.asarray(rng.uniform(shape=shape, dtype=dtype, minval=minval))
+  return tf_np.asarray(rng.uniform(shape=shape, dtype=dtype, minval=minval))
 
 
 def to_tf(a):
@@ -106,13 +102,15 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
     scale2 = 6.0
 
     def fwd(a, b):
-      return array_ops.sum(math_ops.sqrt(math_ops.exp(a)) + b)
+      return tf_np.sum(tf_np.sqrt(tf_np.exp(a)) + b)
 
     @extensions.custom_grad
     def f(a, b):
       y = fwd(a, b)
+
       def vjp(dy):
         return dy * scale1 * a, dy * scale2 * b
+
       return y, vjp
 
     rng = tf.random.Generator.from_seed(1234)
@@ -125,50 +123,63 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
     self.assertAllClose(to_tf(expected_y), to_tf(y))
     self.assertAllClose(to_tf(expected_dx), to_tf(dx))
 
-  @parameterized.named_parameters(
-      [(("_%s_%s_%s" % (decorator_id, x_struct,  # pylint: disable=g-complex-comprehension
-                        y_struct)).replace(" ", "").replace("None", ""),
-        decorator, x_struct, y_struct)
-       for y_struct in [[None, ()], (None, (), [], (None, ((), None)))]
-       for x_struct in [(None, ()), (((), ()), [None, None], [], (None, ()))]
-       for decorator_id, decorator in enumerate([lambda f: f, extensions.jit])
-      ])
+  @parameterized.named_parameters([
+      (  # pylint: disable=g-complex-comprehension
+          (
+              "_%s_%s_%s" % (
+                  decorator_id,
+                  x_struct,
+                  y_struct)).replace(" ", "").replace("None", ""),
+          decorator,
+          x_struct,
+          y_struct)
+      for y_struct in [[None, ()], (None, (), [], (None, ((), None)))]
+      for x_struct in [(None, ()), (((), ()), [None, None], [], (None, ()))]
+      for decorator_id, decorator in enumerate([lambda f: f, extensions.jit])
+  ])
   def testCustomGradStructure(self, decorator, x_struct, y_struct):
     """Tests that custom_grad can handle structured inputs/outputs."""
+
     def zeros(x):
-      return tf.nest.map_structure(lambda _: array_ops.zeros([], np.float32), x)
+      return tf.nest.map_structure(lambda _: tf_np.zeros([], np.float32), x)
+
     def get_struct(x):
       return tf.nest.map_structure(lambda _: None, x)
 
     @extensions.custom_grad
     def f(*x):
       del x
+
       def vjp(dy):
         self.assertEqual(y_struct, get_struct(dy))
         return zeros(x_struct)
+
       return zeros(y_struct), vjp
 
     x, dy = zeros([x_struct, y_struct])
+
     @decorator
     def run(x, dy):
       y, vjp = extensions.vjp(f, *x)
       dx = vjp(dy)
       return dx, y
+
     dx, y = run(x, dy)
     self.assertEqual(x_struct, get_struct(dx))
     self.assertEqual(y_struct, get_struct(y))
 
-  @parameterized.named_parameters(
-      [("_%s" % has_aux, has_aux) for has_aux in [True, False]])
+  @parameterized.named_parameters([
+      ("_%s" % has_aux, has_aux) for has_aux in [True, False]
+  ])
   def testVjp(self, has_aux):
     x_shape = (tf.TensorShape([10]), tf.TensorShape([1, 10]))
     y_shape = (tf.TensorShape([]))
     dtype = np.float32
 
     def f(a, b):
-      y = array_ops.sum(math_ops.sqrt(math_ops.exp(a)) + b)
+      y = tf_np.sum(tf_np.sqrt(tf_np.exp(a)) + b)
       if has_aux:
-        return y, array_ops.asarray(1)
+        return y, tf_np.asarray(1)
       else:
         return y
 
@@ -191,89 +202,104 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
         expected_y = outputs
     self.assertAllClose(to_tf(expected_y), to_tf(y))
     for dy in dy_list:
-      expected_dx = tape.gradient(to_tf(expected_y), tf_x,
-                                  output_gradients=to_tf(dy))
+      expected_dx = tape.gradient(
+          to_tf(expected_y), tf_x, output_gradients=to_tf(dy))
       self.assertAllClose(expected_dx, to_tf(vjp(dy)))
 
   def testGrad(self):
+
     def f(a, b):
-      return array_ops.sum(math_ops.sqrt(math_ops.exp(a)) + b)
+      return tf_np.sum(tf_np.sqrt(tf_np.exp(a)) + b)
 
     g = extensions.grad(f)
+
     def compare(a, b):
       with tf.GradientTape() as tape:
         tape.watch(a.data)
         r = f(a, b)
       expected = tape.gradient(r.data, a.data)
       self.assertAllEqual(expected, g(a, b))
+
     shape = [10]
-    a = random.randn(*shape)
-    b = random.randn(*shape)
+    a = tf_np.random.randn(*shape)
+    b = tf_np.random.randn(*shape)
     compare(a, b)
 
   def testGradNonArrayOutput(self):
+
     def f(_):
       return 1.0
+
     g = extensions.grad(f)
-    with self.assertRaisesWithPredicateMatch(
-        ValueError, r"result .* must be an ndarray"):
-      g(asarray(1.0))
+    with self.assertRaisesWithPredicateMatch(ValueError,
+                                             r"result .* must be an ndarray"):
+      g(tf_np.asarray(1.0))
 
   def testGradNonScalarOutput(self):
+
     def f(a):
       return a
+
     g = extensions.grad(f)
-    with self.assertRaisesWithPredicateMatch(
-        ValueError, r"result .* must be a scalar"):
-      g(asarray([1.0, 2.0]))
+    with self.assertRaisesWithPredicateMatch(ValueError,
+                                             r"result .* must be a scalar"):
+      g(tf_np.asarray([1.0, 2.0]))
+
     @extensions.jit
     def g_jitted(a):
       return extensions.grad(f)(a)
-    g_jitted(asarray(1.0))
-    with self.assertRaisesWithPredicateMatch(
-        ValueError, r"result .* must be a scalar"):
-      g_jitted(asarray([1.0, 2.0]))
+
+    g_jitted(tf_np.asarray(1.0))
+    with self.assertRaisesWithPredicateMatch(ValueError,
+                                             r"result .* must be a scalar"):
+      g_jitted(tf_np.asarray([1.0, 2.0]))
 
   def testJit(self):
+
     def f(a, b):
-      return array_ops.sum(math_ops.sqrt(math_ops.exp(a)) + b)
+      return tf_np.sum(tf_np.sqrt(tf_np.exp(a)) + b)
 
     f_jitted = extensions.jit(f)
     shape = [10]
-    a = random.randn(*shape)
-    b = random.randn(*shape)
+    a = tf_np.random.randn(*shape)
+    b = tf_np.random.randn(*shape)
     self.assertAllClose(f(a, b), f_jitted(a, b))
     # Call again since the code path is different on second call
     self.assertAllClose(f(a, b), f_jitted(a, b))
 
   def testJitNoUnnecessaryTracing(self):
+
     def num_traces(f):
-      return len(f.tf_function.
-                 _list_all_concrete_functions_for_serialization())
+      return len(f.tf_function._list_all_concrete_functions_for_serialization())
+
     def check_trace_only_once(arg1, arg2):
+
       @extensions.jit
       def f(a):
         return a + 1
+
       self.assertAllEqual(0, num_traces(f))
       f(arg1)
       self.assertAllEqual(1, num_traces(f))
       f(arg2)
       self.assertAllEqual(1, num_traces(f))
+
     check_trace_only_once(1, 2)
     check_trace_only_once(1.1, 2.1)
-    check_trace_only_once(asarray(1), asarray(2))
-    check_trace_only_once(tf.convert_to_tensor(value=1),
-                          tf.convert_to_tensor(value=2))
+    check_trace_only_once(tf_np.asarray(1), tf_np.asarray(2))
+    check_trace_only_once(
+        tf.convert_to_tensor(value=1), tf.convert_to_tensor(value=2))
 
   def _testEvalOnShapes(self, transformer):
+
     def f(a, b):
-      return array_ops.sum(math_ops.sqrt(math_ops.exp(a)) + b)
+      return tf_np.sum(tf_np.sqrt(tf_np.exp(a)) + b)
 
     f_prime = transformer(f)
     shape = [10]
     dtype = np.float16
-    a = array_ops.zeros(shape=shape, dtype=dtype)
-    b = array_ops.zeros(shape=shape, dtype=dtype)
+    a = tf_np.zeros(shape=shape, dtype=dtype)
+    b = tf_np.zeros(shape=shape, dtype=dtype)
     expected = f(a, b)
     got = f_prime(a, b)
     self.assertAllEqual(expected.shape, got.shape)
@@ -284,72 +310,97 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
     self.assertAllEqual(expected.dtype, got.dtype)
 
   def testEvalOnShapes(self):
+
     def transformer(f):
       return extensions.eval_on_shapes(f)
+
     self._testEvalOnShapes(transformer)
 
   def testJitOfEvalOnShapes(self):
     """Tests that eval_on_shapes can be called within jit."""
+
     def transformer(f):
+
       @extensions.jit
       def f_prime(a, b):
         shape_dtype = extensions.eval_on_shapes(f)(a, b)
-        return array_ops.zeros(shape=shape_dtype.shape, dtype=shape_dtype.dtype)
+        return tf_np.zeros(shape=shape_dtype.shape, dtype=shape_dtype.dtype)
+
       return f_prime
+
     self._testEvalOnShapes(transformer)
 
   def testEvalOnShapesNoUnnecessaryTracing(self):
+
     def num_traces(f):
-      return len(f._tf_function.
-                 _list_all_concrete_functions_for_serialization())
+      return len(
+          f._tf_function._list_all_concrete_functions_for_serialization())
+
     def check_trace_only_once(arg1, arg2):
+
       @extensions.eval_on_shapes
       def f(a):
         return a + 1
+
       self.assertAllEqual(0, num_traces(f))
       f(arg1)
       self.assertAllEqual(1, num_traces(f))
       f(arg2)
       self.assertAllEqual(1, num_traces(f))
+
     check_trace_only_once(1, 2)
     check_trace_only_once(1.1, 2.1)
-    check_trace_only_once(asarray(1), asarray(2))
-    check_trace_only_once(tf.convert_to_tensor(value=1),
-                          tf.convert_to_tensor(value=2))
+    check_trace_only_once(tf_np.asarray(1), tf_np.asarray(2))
+    check_trace_only_once(
+        tf.convert_to_tensor(value=1), tf.convert_to_tensor(value=2))
 
   def testConv(self):
-    y = extensions.conv(np.ones([5, 320, 480, 3], dtype=np.float32),
-                        np.ones([3, 4, 3, 11], dtype=np.float32), [1, 1],
-                        "SAME", ("NHWC", "HWIO", "NHWC"))
+    y = extensions.conv(
+        np.ones([5, 320, 480, 3], dtype=np.float32),
+        np.ones([3, 4, 3, 11], dtype=np.float32), [1, 1], "SAME",
+        ("NHWC", "HWIO", "NHWC"))
     self.assertAllClose(y.shape, [5, 320, 480, 11])
     self.assertAllClose(
-        y, tf.nn.conv2d(input=tf.ones([5, 320, 480, 3], dtype=tf.float32),
-                        filters=tf.ones([3, 4, 3, 11], dtype=tf.float32),
-                        strides=1,
-                        padding="SAME"))
+        y,
+        tf.nn.conv2d(
+            input=tf.ones([5, 320, 480, 3], dtype=tf.float32),
+            filters=tf.ones([3, 4, 3, 11], dtype=tf.float32),
+            strides=1,
+            padding="SAME"))
 
   def testAvgPool(self):
     y = extensions.avg_pool(np.ones([5, 320, 480, 3]), [3, 5], [2, 3], "VALID")
     self.assertAllEqual(
-        y, tf.nn.pool(input=tf.ones([5, 320, 480, 3]), window_shape=[3, 5],
-                      pooling_type="AVG", padding="VALID", strides=[2, 3],))
+        y,
+        tf.nn.pool(
+            input=tf.ones([5, 320, 480, 3]),
+            window_shape=[3, 5],
+            pooling_type="AVG",
+            padding="VALID",
+            strides=[2, 3],
+        ))
 
   def testMaxPool(self):
     y = extensions.max_pool(np.ones([5, 320, 480, 3]), [3, 5], [2, 3], "VALID")
     self.assertAllEqual(
-        y, tf.nn.pool(input=tf.ones([5, 320, 480, 3]), window_shape=[3, 5],
-                      pooling_type="MAX", padding="VALID", strides=[2, 3],))
+        y,
+        tf.nn.pool(
+            input=tf.ones([5, 320, 480, 3]),
+            window_shape=[3, 5],
+            pooling_type="MAX",
+            padding="VALID",
+            strides=[2, 3],
+        ))
 
   def testPrng(self):
-    self.assertAllEqual(asarray(123, np.int64), extensions.prng(123))
+    self.assertAllEqual(tf_np.asarray(123, np.int64), extensions.prng(123))
 
   def testUniform(self):
     minval = 0.43
     maxval = 3.10
     shape = [13, 34, 29]
     atol = 0.1
-    outputs = extensions.uniform(
-        123, shape, minval=minval, maxval=maxval)
+    outputs = extensions.uniform(123, shape, minval=minval, maxval=maxval)
     self.assertAllClose((minval + maxval) / 2.0, np.mean(outputs), atol=atol)
 
   def testNormal(self):
@@ -369,21 +420,23 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
   def testBernoulliWrongShape(self):
     mean = [0.1, 0.2]
     shape = [3]
-    with self.assertRaisesWithPredicateMatch(
-        tf.errors.InvalidArgumentError, r"Incompatible shapes"):
+    with self.assertRaisesWithPredicateMatch(tf.errors.InvalidArgumentError,
+                                             r"Incompatible shapes"):
       extensions.bernoulli(123, mean, shape)
 
   def testDatasetAsNumpy(self):
     arrs = extensions.dataset_as_numpy(
         [tf.constant([1, 2]), tf.constant([3, 4])])
     for a in arrs:
-      self.assertIsInstance(a, arrays.ndarray)
+      self.assertIsInstance(a, tf_np.ndarray)
     with self.assertRaisesWithPredicateMatch(
         ValueError,
         r"dataset_as_numpy must be run in eager mode outside tf.function"):
+
       @tf.function
       def f():
         return extensions.dataset_as_numpy([tf.constant([1, 2])])
+
       f()
 
   def _get_two_devices(self, require_same_type=False):
@@ -392,8 +445,8 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
       if len(tpus) == 2:
         res = tpus
       else:
-        raise ValueError("This test requires 2 TPU cores but %s are found"
-                         % len(tpus))
+        raise ValueError("This test requires 2 TPU cores but %s are found" %
+                         len(tpus))
     else:
       if len(tpus) == 2:
         res = tpus
@@ -471,11 +524,10 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
       return (extensions.psum(new_w) / n_devices,
               extensions.psum(new_b) / n_devices)
 
-    train_step_pmapped = extensions.pmap(
-        _train_and_reduce, devices=devices)
+    train_step_pmapped = extensions.pmap(_train_and_reduce, devices=devices)
 
     def replicate(x, num_devices=2):
-      return array_ops.broadcast_to(x, (num_devices,) + x.shape)
+      return tf_np.broadcast_to(x, (num_devices,) + x.shape)
 
     params = tf.nest.map_structure(replicate, params)
 
@@ -486,7 +538,7 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
 
       # New shape.
       new_shape_prefix = [num_devices, batch_size_per_device]
-      return array_ops.reshape(x, new_shape_prefix + x_shape[1:])
+      return tf_np.reshape(x, new_shape_prefix + x_shape[1:])
 
     inputs = tf.nest.map_structure(reshape, inputs)
     targets = tf.nest.map_structure(reshape, targets)
@@ -510,7 +562,7 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
     def reduce_sum(f):
       return extensions.psum(f)
 
-    data = array_ops.asarray(tf.convert_to_tensor(value=[1, 3]))
+    data = tf_np.asarray(tf.convert_to_tensor(value=[1, 3]))
     pmapped = extensions.pmap(reduce_sum, devices=devices)
     result = pmapped(data)
 
@@ -525,7 +577,7 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
     def reduce_mean(f):
       return extensions.pmean(f)
 
-    data = array_ops.asarray(tf.convert_to_tensor(value=[1, 3]))
+    data = tf_np.asarray(tf.convert_to_tensor(value=[1, 3]))
     pmapped = extensions.pmap(reduce_mean, devices=devices)
     result = pmapped(data)
 
@@ -538,7 +590,7 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
     def reduce_sum(f):
       return extensions.psum(f, axis_name="foo")
 
-    data = array_ops.asarray(tf.convert_to_tensor(value=[1, 3]))
+    data = tf_np.asarray(tf.convert_to_tensor(value=[1, 3]))
     pmapped = extensions.pmap(reduce_sum, axis_name="foo", devices=devices)
     pmapped(data)
 
@@ -548,7 +600,7 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
     def reduce_sum(f):
       return extensions.psum(f, axis_name="bar")
 
-    data = array_ops.asarray(tf.convert_to_tensor(value=[1, 3]))
+    data = tf_np.asarray(tf.convert_to_tensor(value=[1, 3]))
     with self.assertRaisesWithPredicateMatch(
         ValueError, r"axis_name (.*) is not equal to that of the surrounding"):
       pmapped = extensions.pmap(reduce_sum, axis_name="foo", devices=devices)
@@ -560,9 +612,9 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
     def f(x):
       return x + 1.0
 
-    data = array_ops.asarray(tf.convert_to_tensor(value=[1, 3]))
-    with self.assertRaisesWithPredicateMatch(
-        ValueError, r"Nested pmap is not supported"):
+    data = tf_np.asarray(tf.convert_to_tensor(value=[1, 3]))
+    with self.assertRaisesWithPredicateMatch(ValueError,
+                                             r"Nested pmap is not supported"):
       f = extensions.pmap(f, devices=devices)
       f = extensions.pmap(f, devices=devices)
       f(data)

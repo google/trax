@@ -26,8 +26,8 @@ from six.moves import range
 from six.moves import zip
 import tensorflow.compat.v2 as tf
 
-from trax.tf_numpy.numpy import array_ops
-from trax.tf_numpy.numpy import arrays
+from trax.tf_numpy.numpy_impl import array_ops
+from trax.tf_numpy.numpy_impl import arrays
 
 
 class ArrayCreationTest(tf.test.TestCase):

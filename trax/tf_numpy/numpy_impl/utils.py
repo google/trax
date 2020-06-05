@@ -23,8 +23,8 @@ import funcsigs
 import numpy as np
 import tensorflow.compat.v2 as tf
 
-from trax.tf_numpy.numpy import arrays
-from trax.tf_numpy.numpy import dtypes
+from trax.tf_numpy.numpy_impl import arrays
+from trax.tf_numpy.numpy_impl import dtypes
 
 
 tensor_to_ndarray = arrays.tensor_to_ndarray
