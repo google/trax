@@ -19,7 +19,6 @@
 import jax
 
 from trax import layers as tl
-from trax import math
 from trax.math import numpy as jnp
 
 
@@ -540,15 +539,8 @@ def _FeedForwardBlock(d_model, d_ff, dropout, layer_idx, mode, activation):
 def _ConcatWithPadding():
   """Concatenates two length padded (B, L, H) arrays (of different lenghts)."""
 
-  # Implementational Note: An earlier version of `F` made `mask_concat` the
-  # same shape as `enc_pad_dec_pad` and then sorted `enc_pad_dec_pad` with key
-  # as `mask_concat` all with no stoppage of gradients. This version just sorts
-  # `mask_concat` and stops gradients and then uses advanced indexing to select
-  # out the stuff needed from `enc_pad_dec_pad`. Even with advanced indexing we
-  # have to be careful to not select on arange(H) in the end, this blows up.
-
   # Arg shapes: (B, L1, H), (B, L2, H), (B, L1) & (B, L2)
-  def F(vec_e, vec_d, mask_e, mask_d):
+  def __ConcatWithPadding(vec_e, vec_d, mask_e, mask_d):
     # pylint: disable=invalid-name
     B, L1, H = vec_e.shape
     L2 = vec_d.shape[1]
@@ -558,28 +550,19 @@ def _ConcatWithPadding():
     assert (B, L1) == mask_e.shape, f'{(B, L1)} != {mask_e.shape}'
     assert (B, L2) == mask_d.shape, f'{(B, L2)} != {mask_d.shape}'
 
-    # [-(L1+L2), -L2) but with padding 0-ed out - (B, L1).
-    mask_e_key = jnp.arange(-(L1 + L2), -L2) * mask_e
-    # [-L2,0) but with padding 0-ed out - (B, L2).
-    mask_d_key = jnp.arange(-L2, 0) * mask_d
+    def _UpdateRow(x):
+      # row_e - (L1, H), row_d - (L2, H), row_mask_e - (L1,)
+      row_e, row_d, row_mask_e = x
+      # final_row - (L1+L2, H)
+      final_row = jnp.concatenate([row_e, jnp.zeros_like(row_d)], axis=0)
+      # Find the last real token/vector of the encoder.
+      e_idx = jnp.sum(row_mask_e, dtype=jnp.int32)
+      # Starting after that index, update with the decoder row.
+      return jax.lax.dynamic_update_slice(final_row, row_d, (e_idx, 0))
 
-    # Shapes of `mask_concat` and `idxs` (B, L = L1+L2)
-    mask_concat = jnp.concatenate([mask_e_key, mask_d_key], axis=1)
-    _, idxs = math.sort_key_val(
-        mask_concat,                     # (B, L)
-        # jnp.arange(L1 + L2)[None, ...] -- (1, L) why does this not work?
-        jnp.broadcast_to(jnp.arange(L1 + L2), mask_concat.shape),
-        1)                               # sort on L
-    idxs = math.stop_gradient(idxs)
+    return jax.lax.map(_UpdateRow, [vec_e, vec_d, mask_e])
 
-    # Shape (B, L, H)
-    enc_pad_dec_pad = jnp.concatenate([vec_e, vec_d], axis=1)
-
-    # Taking along indices supplied by `idxs` moves padding to the end.
-    enc_dec_padpad = enc_pad_dec_pad[jnp.arange(B)[:, None], idxs]
-    return enc_dec_padpad
-
-  return tl.Fn('ConcatWithPadding', F, n_out=1)
+  return tl.Fn('ConcatWithPadding', __ConcatWithPadding, n_out=1)
 
 
 def _MaskOfRightShiftedArray(n_shifts=1, mode='train'):
@@ -605,26 +588,27 @@ def _MaskOfRightShiftedArray(n_shifts=1, mode='train'):
 def _StripFromConcatenateWithPadding():
   """Strip out the leading encoder tokens from the concatenated array."""
 
-  # Shapes: (L1+L2, H), (L1,) and (L2,)
-  def F(vec_ed, tok_e, tok_d):
-    mask_e = tok_e != 0
-    # Actual length of encoder tokens <= L1
-    len_e = jnp.sum(mask_e)
-    # Padded length of decoder tokens, this is L2.
-    L2 = tok_d.shape[0]  # pylint: disable=invalid-name
+  def _StripEncToks(vec_ed, tok_e, tok_d):
+    # pylint: disable=invalid-name
+    B, L, H = vec_ed.shape
+    L1 = tok_e.shape[1]
+    L2 = tok_d.shape[1]
+    # pylint: enable=invalid-name
+    assert L == L1 + L2
+    assert (B, L1) == tok_e.shape
+    assert (B, L2) == tok_d.shape
 
-    # vec_ed is of type [eeedd00000], we will roll it len_e=3 in reverse.
-    # This gives us [dd00000eee] and now we take only the first L2 elements.
-    return jnp.roll(vec_ed, -len_e, axis=0)[:L2]
+    def _UpdateRow(x):
+      # (L, H), (L1, H) & (L2, H)
+      row_ed, row_e, _ = x
+      mask_e = row_e != 0
+      len_e = jnp.sum(mask_e, dtype=jnp.int32)
+      # In `row_ed` start where encoder tokens/vecs end, i.e. are index `len_e`
+      # and pick up (L2, H) tensor slice from there.
+      return jax.lax.dynamic_slice(row_ed, (len_e, 0), (L2, H))
 
-  # TODO(afrozm): Try to do this with sort_key_val instead of roll to get rid of
-  # the vmap.
-  def _F(vec_ed, tok_e, tok_d):
-    return jax.vmap(F)(vec_ed, tok_e, tok_d)
+    return jax.lax.map(_UpdateRow, [vec_ed, tok_e, tok_d])
 
-  # We could have written `tl.Fn(..., jax.vmap(F), ...)` here but Trax needs the
-  # top-level function (here: jax.vmap) to not have variable or named arguments,
-  # so we need a thin wrapper.
-  return tl.Fn('StripFromConcatenateWithPadding', _F, n_out=1)
+  return tl.Fn('StripFromConcatenateWithPadding', _StripEncToks, n_out=1)
 
 
