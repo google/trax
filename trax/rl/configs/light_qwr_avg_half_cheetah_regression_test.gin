@@ -1,0 +1,121 @@
+# Copyright 2020 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.lr_schedules
+import trax.models
+import trax.optimizers
+import trax.rl
+import trax.rl.distributions
+import trax.rl.normalization
+
+# Parameters for Gaussian:
+# ==============================================================================
+Gaussian.std = 0.4
+
+# Parameters for Policy:
+# ==============================================================================
+Policy.body = @trax.models.PureMLP
+Policy.head_init_range = 0.01
+Policy.normalizer = @trax.rl.normalization.Normalize
+
+# Parameters for Value:
+# ==============================================================================
+Value.body = @trax.models.PureMLP
+Value.normalizer = @trax.rl.normalization.Normalize
+Value.inject_actions_dim = 256
+
+# Parameters for Normalize:
+# ==============================================================================
+Normalize.sample_limit = 300000
+Normalize.epsilon = 1e-5
+
+# Parameters for PureMLP:
+# ==============================================================================
+PureMLP.flatten = False
+PureMLP.layer_widths = (256, 256)
+PureMLP.out_activation = True
+
+batch_size = 256
+train_steps = 1000
+policy_train_steps = %train_steps
+value_train_steps = %train_steps
+policy_lr = 0.0001
+value_lr = 0.001
+added_policy_slice_length = 1
+q_value_n_samples = 2
+
+# Parameters for Adam:
+# ==============================================================================
+Adam.weight_decay_rate = 0.0
+
+# Parameters for MultifactorSchedule:
+# ==============================================================================
+policy/MultifactorSchedule.constant = %policy_lr
+policy/MultifactorSchedule.factors = 'constant'
+value/MultifactorSchedule.constant = %value_lr
+value/MultifactorSchedule.factors = 'constant'
+
+# Parameters for Momentum:
+# ==============================================================================
+Momentum.weight_decay_rate = 0.0
+Momentum.nesterov = False
+
+# Parameters for RLTask:
+# ==============================================================================
+RLTask.env = "DM-HalfCheetah-v2"
+RLTask.initial_trajectories = 0
+RLTask.gamma = 0.99
+RLTask.max_steps = 1000
+
+# Parameters for td_lambda:
+# ==============================================================================
+td_lambda.lambda_ = 0.95
+
+# Parameters for SamplingAWRTrainer:
+# ==============================================================================
+SamplingAWRTrainer.value_model = @trax.models.Value
+SamplingAWRTrainer.value_optimizer = @trax.optimizers.Adam
+SamplingAWRTrainer.value_batch_size = %batch_size
+SamplingAWRTrainer.value_train_steps_per_epoch = %value_train_steps
+SamplingAWRTrainer.value_lr_schedule = @value/MultifactorSchedule
+SamplingAWRTrainer.value_evals_per_epoch = 1
+SamplingAWRTrainer.value_eval_steps = 10
+SamplingAWRTrainer.policy_model = @trax.models.Policy
+SamplingAWRTrainer.policy_optimizer = @trax.optimizers.Adam
+SamplingAWRTrainer.policy_batch_size = %batch_size
+SamplingAWRTrainer.policy_train_steps_per_epoch = %policy_train_steps
+SamplingAWRTrainer.policy_lr_schedule = @policy/MultifactorSchedule
+SamplingAWRTrainer.policy_evals_per_epoch = 1
+SamplingAWRTrainer.policy_eval_steps = 10
+SamplingAWRTrainer.n_trajectories_per_epoch = None
+SamplingAWRTrainer.n_interactions_per_epoch = 1000
+SamplingAWRTrainer.n_eval_episodes = 1
+SamplingAWRTrainer.eval_steps = [200, 1000]
+SamplingAWRTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
+SamplingAWRTrainer.beta = 1.0
+SamplingAWRTrainer.w_max = 20
+SamplingAWRTrainer.max_slice_length = 1
+SamplingAWRTrainer.added_policy_slice_length = %added_policy_slice_length
+SamplingAWRTrainer.n_replay_epochs = 50
+SamplingAWRTrainer.scale_value_targets = True
+SamplingAWRTrainer.n_shared_layers = 1
+SamplingAWRTrainer.q_value_n_samples = %q_value_n_samples
+SamplingAWRTrainer.q_value_aggregate_max = False
+SamplingAWRTrainer.reweight = False
+
+# Parameters for train_rl:
+# ==============================================================================
+train_rl.light_rl = True
+train_rl.light_rl_trainer = @trax.rl.SamplingAWRTrainer
+train_rl.n_epochs = 200
