@@ -2826,6 +2826,36 @@ class LaxBackedNumpyTests(jtu.TestCase):
         partial(lnp.inner, precision=HIGHEST),
         ones_1d, ones_1d)
 
+  @named_parameters(jtu.cases_from_list(
+      {"testcase_name":
+       "_{}_{}_{}_{}".format(
+           shape, jtu.dtype_str(key_dtype), jtu.dtype_str(value_dtype),
+           dimension).replace(" ", ""),
+       "shape": shape, "key_dtype": key_dtype, "value_dtype": value_dtype,
+       "dimension": dimension, "rng_factory": rng_factory}
+      for shape in all_shapes
+      for key_dtype in minus(number_dtypes, complex_dtypes)
+      for value_dtype in all_dtypes
+      for dimension in range(-len(shape), len(shape))
+      for rng_factory in [jtu.rand_default]))
+  @new_test
+  def testSortKeyValue(self, shape, key_dtype, value_dtype, dimension,
+                       rng_factory):
+    def onp_ref(keys, values):
+      idxs = list(onp.ix_(*[onp.arange(d) for d in keys.shape]))
+      idxs[dimension] = onp.argsort(keys, axis=dimension)
+      return keys[tuple(idxs)], values[tuple(idxs)]
+    rng = rng_factory()
+    args_maker = self._GetArgsMaker(
+        rng, [shape, shape], [key_dtype, value_dtype])
+    op = partial(npe.sort_key_val, dimension=dimension)
+    self._CheckAgainstNumpy(onp_ref, op, args_maker,
+                            check_dtypes=True)
+    # sort_key_val requires known rank
+    self._CompileAndCheck(op, args_maker, check_dtypes=True,
+                          check_incomplete_shape=True, check_unknown_rank=False)
+
+
 # Most grad tests are at the lax level (see lax_test.py), but we add some here
 # as needed for e.g. particular compound ops of interest.
 

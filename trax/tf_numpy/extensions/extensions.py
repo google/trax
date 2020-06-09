@@ -553,6 +553,49 @@ def max_pool(x, pool_size, strides, padding):
           padding=padding))
 
 
+def sort_key_val(keys, values, dimension=-1):
+  """Sorts keys along a dimension and applies same permutation to values.
+
+  Args:
+    keys: an array. The dtype must be comparable numbers (integers and reals).
+    values: an array, with the same shape of `keys`.
+    dimension: an `int`. The dimension along which to sort.
+
+  Returns:
+    Permuted keys and values.
+  """
+  keys = tf_np.asarray(keys)
+  values = tf_np.asarray(values)
+  rank = keys.ndim
+  if rank is None:
+    rank = values.ndim
+  if rank is None:
+    # We need to know the rank because tf.gather requires batch_dims to be `int`
+    raise ValueError("The rank of either keys or values must be known, but "
+                     "both are unknown (i.e. their shapes are both None).")
+  if dimension in (-1, rank - 1):
+    def maybe_swapaxes(a):
+      return a
+  else:
+    def maybe_swapaxes(a):
+      return tf_np.swapaxes(a, dimension, -1)
+  # We need to swap axes because tf.gather (and tf.gather_nd) supports
+  # batch_dims on the left but not on the right.
+  # TODO(wangpeng): Investigate whether we should do swapaxes or moveaxis.
+  keys = maybe_swapaxes(keys)
+  values = maybe_swapaxes(values)
+  idxs = tf_np.argsort(keys)
+  idxs = idxs.data
+  # Using tf.gather rather than np.take because the former supports batch_dims
+  def gather(a):
+    return tf_np.asarray(tf.gather(a.data, idxs, batch_dims=rank-1))
+  keys = gather(keys)
+  values = gather(values)
+  keys = maybe_swapaxes(keys)
+  values = maybe_swapaxes(values)
+  return keys, values
+
+
 # Use int64 instead of int32 to avoid TF's "int32 problem"
 _RNG_KEY_DTYPE = np.int64
 

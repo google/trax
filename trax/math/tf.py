@@ -121,6 +121,7 @@ TF_BACKEND = {
     'lt': lambda x, y: x < y,
     'avg_pool': tf_np_extensions.avg_pool,
     'max_pool': tf_np_extensions.max_pool,
+    'sort_key_val': tf_np_extensions.sort_key_val,
     'random_uniform': tf_np_extensions.uniform,
     'random_randint': tf_randint,
     'random_normal': tf_np_extensions.normal,
