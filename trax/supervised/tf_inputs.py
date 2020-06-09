@@ -25,6 +25,9 @@ from absl import logging
 import gin
 import numpy as np
 
+from t5.data import preprocessors as t5_processors
+from t5.data import sentencepiece_vocabulary as t5_spc_vocab
+from t5.data import utils as t5_utils
 from tensor2tensor import problems_colab as t2t_problems
 import tensorflow as tf   # pylint: disable=g-explicit-tensorflow-version-import
 import tensorflow_datasets as tfds
@@ -45,6 +48,7 @@ def no_preprocess(dataset, training):
 
 @gin.configurable()
 def data_streams(dataset_name, data_dir=None, preprocess_fn=no_preprocess,
+                 bare_preprocess_fn=None,
                  shuffle_buffer_size=1024, eval_holdout_size=0,
                  input_name=None, target_name=None):
   """Make data streams for TF datasets.
@@ -53,7 +57,10 @@ def data_streams(dataset_name, data_dir=None, preprocess_fn=no_preprocess,
     dataset_name: a TFDS or T2T dataset name. If it's a T2T dataset name, prefix
       with 't2t_'.
     data_dir: data directory.
-    preprocess_fn: function to use for pre-processing.
+    preprocess_fn: function to use for pre-processing after appending targets to
+      inputs.
+    bare_preprocess_fn: function to use for pre-processing before appending
+      targets to inputs.
     shuffle_buffer_size: size of the shuffle buffer.
     eval_holdout_size: float from 0 to <1; if >0 use this much of training data
       for evaluation (instead of looking for a pre-specified VALIDATION split).
@@ -71,8 +78,8 @@ def data_streams(dataset_name, data_dir=None, preprocess_fn=no_preprocess,
     """Create the stream, cache TF streams if needed."""
     if not cache:
       cache.append(_train_and_eval_streams(
-          dataset_name, data_dir, preprocess_fn, shuffle_buffer_size,
-          eval_holdout_size, input_name, target_name))
+          dataset_name, data_dir, preprocess_fn, bare_preprocess_fn,
+          shuffle_buffer_size, eval_holdout_size, input_name, target_name))
 
     (train_ds, eval_ds, input_name_c) = cache[0]
     dataset = eval_ds if which == 'eval' else train_ds
@@ -99,8 +106,8 @@ def dataset_to_stream(dataset, input_name):
 
 
 def _train_and_eval_streams(dataset, data_dir, preprocess_fn,
-                            shuffle_buffer_size, eval_holdout_size,
-                            input_name, target_name):
+                            bare_preprocess_fn, shuffle_buffer_size,
+                            eval_holdout_size, input_name, target_name):
   """Return train and eval batches with input name and shape."""
   (train_data, eval_data, keys) = _train_and_eval_dataset(
       dataset, data_dir, eval_holdout_size)
@@ -109,9 +116,11 @@ def _train_and_eval_streams(dataset, data_dir, preprocess_fn,
   else:
     input_names, target_names = [input_name], [target_name]
   train_batches = _shuffle_data(
-      train_data, target_names, True, shuffle_buffer_size, preprocess_fn)
+      train_data, target_names, True, shuffle_buffer_size, preprocess_fn,
+      bare_preprocess_fn)
   eval_batches = _shuffle_data(
-      eval_data, target_names, False, shuffle_buffer_size, preprocess_fn)
+      eval_data, target_names, False, shuffle_buffer_size, preprocess_fn,
+      bare_preprocess_fn)
   input_name = input_name or input_names[0]
   return (train_batches, eval_batches, input_name)
 
@@ -120,7 +129,8 @@ def _shuffle_data(dataset,
                   target_names,
                   training,
                   shuffle_buffer_size,
-                  preprocess_fn):
+                  preprocess_fn,
+                  bare_preprocess_fn):
   """Shuffle the given dataset and run pre-processing."""
   def append_targets(example):
     """Append targets to the example dictionary. Needed for Keras."""
@@ -130,6 +140,9 @@ def _shuffle_data(dataset,
     for name in target_names:
       targets[name] = example[name]
     return (example, targets)
+  # `bare_preprocess_fn` is called before appending targets etc.
+  if bare_preprocess_fn is not None:
+    dataset = bare_preprocess_fn(dataset)
   dataset = dataset.map(append_targets)
   # TODO(pkozakowski): Repeat both the training and evaluation set, so we don't
   # have incomplete batches during evaluation. This will be a problem when we
@@ -471,7 +484,7 @@ def c4_preprocess(dataset, training, max_target_length=-1,
     return features, features['targets']
 
   if tokenization == 'spc':
-    spm_path = DEFAULT_SPM_PATH if spm_path is None else spm_path
+    spm_path = spm_path or t5_utils.DEFAULT_SPM_PATH
     with tf.compat.v1.gfile.GFile(spm_path, 'rb') as f:
       spc_model = f.read()
     tokenizer = tf_text.SentencepieceTokenizer(model=spc_model)
@@ -484,6 +497,35 @@ def c4_preprocess(dataset, training, max_target_length=-1,
 
   if max_target_length > 0:
     dataset = dataset.filter(target_right_length)
+
+  return dataset
+
+
+@gin.configurable(blacklist=['dataset'])
+def c4_bare_preprocess_fn(dataset,
+                          spm_path=None,
+                          copy_plaintext=True,
+                          sequence_length=None):
+  """Returns a dataset that contains 'inputs' and 'targets' from C4."""
+  # Set target key to be equal to the text content.
+  dataset = t5_processors.rekey(
+      dataset, key_map={'targets': 'text', 'inputs': None})
+
+  # Vocabulary for tokenization.
+  vocab = t5_spc_vocab.SentencePieceVocabulary(
+      sentencepiece_model_file=spm_path or t5_utils.DEFAULT_SPM_PATH)
+  feature = t5_utils.Feature(vocab)
+  output_features = {'targets': feature, 'inputs': feature}
+
+  # Tokenize the targets.
+  dataset = t5_utils.encode_string_features(
+      dataset, output_features, keys=output_features,
+      copy_plaintext=copy_plaintext)
+
+  # Preprocess the tokens - the exact preprocessors are set via
+  dataset = t5_processors.unsupervised(dataset,
+                                       sequence_length=sequence_length,
+                                       output_features=output_features)
 
   return dataset
 

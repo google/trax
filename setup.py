@@ -44,6 +44,7 @@ setup(
         'numpy',
         'scipy',
         'six',
+        't5',
         'tensor2tensor',
         'tensorflow-datasets',
         'tensorflow-text',
