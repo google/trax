@@ -1626,10 +1626,9 @@ class LaxBackedNumpyTests(jtu.TestCase):
            onp.arange(3., dtype=lnp.float_)], lnp.float_),
       ])
       for ndmin in [None, onp.ndim(arg), onp.ndim(arg) + 1, onp.ndim(arg) + 2]))
-  @jtu.disable
   def testArray(self, arg, ndmin, dtype):
     args_maker = lambda: [arg]
-    dtype = dtypes.canonicalize_dtype(dtype)
+    dtype = lnp.canonicalize_dtype(dtype)
     if ndmin is not None:
       onp_fun = partial(onp.array, ndmin=ndmin, dtype=dtype)
       lnp_fun = partial(lnp.array, ndmin=ndmin)
@@ -1637,7 +1636,8 @@ class LaxBackedNumpyTests(jtu.TestCase):
       onp_fun = partial(onp.array, dtype=dtype)
       lnp_fun = lnp.array
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True,
+                          check_incomplete_shape=True, static_argnums=[0])
 
   def testIssue121(self):
     assert not onp.isscalar(lnp.array(3))

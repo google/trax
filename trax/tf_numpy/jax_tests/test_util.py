@@ -800,7 +800,8 @@ class TestCase(parameterized.TestCase):
                        atol=None,
                        check_eval_on_shapes=True,
                        check_incomplete_shape=False,
-                       check_unknown_rank=True):
+                       check_unknown_rank=True,
+                       static_argnums=()):
     """Compiles the function and checks the results.
 
     Args:
@@ -817,6 +818,8 @@ class TestCase(parameterized.TestCase):
         incomplete shapes (including those with and without a known rank).
       check_unknown_rank: (only has effect when check_incomplete_shape is True)
         whether to check that the function can handle unknown ranks.
+      static_argnums: indices of arguments to be treated as static arguments for
+        `jit` and `eval_on_shapes`.
     """
     args = args_maker()
 
@@ -841,7 +844,7 @@ class TestCase(parameterized.TestCase):
                                        python_ans)
     self.assertEqual(python_shapes, onp_shapes)
 
-    cfun = npe.jit(wrapped_fun)
+    cfun = npe.jit(wrapped_fun, static_argnums=static_argnums)
     python_should_be_executing = True
     monitored_ans = cfun(*args)
 
@@ -875,7 +878,7 @@ class TestCase(parameterized.TestCase):
     if check_eval_on_shapes:
       # Check that npe.eval_on_shapes can get complete output shapes given
       # complete input shapes.
-      cfun = npe.eval_on_shapes(fun)
+      cfun = npe.eval_on_shapes(fun, static_argnums=static_argnums)
       compiled_ans = cfun(*args)
       flat_python_ans = tf.nest.flatten(python_ans)
       flat_compiled_ans = tf.nest.flatten(compiled_ans)
@@ -895,14 +898,16 @@ class TestCase(parameterized.TestCase):
       # `shape`.
       if all(hasattr(x, 'shape') for x in args):
         specs = [tf.TensorSpec([None] * len(x.shape), x.dtype) for x in args]
-        cfun = npe.jit(fun, input_signature=specs)
+        cfun = npe.jit(
+            fun, static_argnums=static_argnums, input_signature=specs)
         compiled_ans = cfun(*args)
         self.assertAllClose(python_ans, compiled_ans, check_dtypes, atol, rtol)
 
       if check_unknown_rank:
         # Check unknown ranks.
         specs = [tf.TensorSpec(None, x.dtype) for x in args]
-        cfun = npe.jit(fun, input_signature=specs)
+        cfun = npe.jit(
+            fun, static_argnums=static_argnums, input_signature=specs)
         compiled_ans = cfun(*args)
         self.assertAllClose(python_ans, compiled_ans, check_dtypes, atol, rtol)
 
