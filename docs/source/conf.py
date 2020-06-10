@@ -215,6 +215,7 @@ autodoc_mock_imports = [
     'tensorflow_text',
     'matplotlib',
     'cloudpickle',
+    't5',
     # 'setup',
 ]
 
