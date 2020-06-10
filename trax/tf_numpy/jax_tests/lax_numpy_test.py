@@ -2639,7 +2639,6 @@ class LaxBackedNumpyTests(jtu.TestCase):
         # NB: numpy's geomspace gives nonsense results on integer types
         for dtype in inexact_dtypes + [None,]
         for rng_factory in [jtu.rand_default]))
-  @jtu.disable
   def testGeomspace(self, start_shape, stop_shape, num,
                     endpoint, dtype, rng_factory):
     rng = rng_factory()
@@ -2676,7 +2675,8 @@ class LaxBackedNumpyTests(jtu.TestCase):
                               check_dtypes=False, tol=tol)
       if dtype in (inexact_dtypes + [None,]):
         self._CompileAndCheck(lnp_op, args_maker,
-                              check_dtypes=False, atol=tol, rtol=tol)
+                              check_dtypes=False, atol=tol, rtol=tol,
+                              check_incomplete_shape=True)
 
   @jtu.disable
   def testDisableNumpyRankPromotionBroadcasting(self):
