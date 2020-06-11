@@ -28,7 +28,6 @@ import numpy as np
 from t5.data import preprocessors as t5_processors
 from t5.data import sentencepiece_vocabulary as t5_spc_vocab
 from t5.data import utils as t5_utils
-from tensor2tensor import problems_colab as t2t_problems
 import tensorflow as tf   # pylint: disable=g-explicit-tensorflow-version-import
 import tensorflow_datasets as tfds
 import tensorflow_text as tf_text
@@ -44,6 +43,12 @@ _MAX_SKIP_EXAMPLES = 1e5
 def no_preprocess(dataset, training):
   del training
   return dataset
+
+
+def t2t_problems():
+  # Load t2t problems on request only, this should save some import time.
+  from tensor2tensor import problems_colab as t2tp  # pylint: disable=g-import-not-at-top
+  return t2tp
 
 
 @gin.configurable()
@@ -233,7 +238,7 @@ def _train_and_eval_dataset_v1(problem_name, data_dir,
                                train_shuffle_files, eval_shuffle_files):
   """Return train and evaluation datasets, feature info and supervised keys."""
   with tf.device('cpu:0'):
-    problem = t2t_problems.problem(problem_name)
+    problem = t2t_problems().problem(problem_name)
     hparams = None
     if problem_name == 'video_bair_robot_pushing':
       hparams = problem.get_hparams()
@@ -553,7 +558,7 @@ def download_and_prepare(dataset_name, data_dir):
       data_dir = os.path.join(data_dir, dataset_name)
       tf.io.gfile.makedirs(data_dir)
       tf.io.gfile.makedirs(dl_dir)
-      t2t_problems.problem(
+      t2t_problems().problem(
           dataset_name[len('t2t_'):]).generate_data(data_dir, dl_dir)
     else:
       # Download and prepare TFDS dataset.
