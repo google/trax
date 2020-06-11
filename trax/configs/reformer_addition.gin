@@ -15,6 +15,7 @@
 import trax.models
 import trax.optimizers
 import trax.supervised.inputs
+import trax.supervised.tf_inputs
 import trax.supervised.trainer_lib
 
 vocab_size = 13  #  For addition, base = vocab_size - 3.
@@ -57,6 +58,7 @@ LSHSelfAttention.n_chunks_after = 0
 LSHSelfAttention.n_chunks_before = 1
 LSHSelfAttention.n_hashes = 2
 LSHSelfAttention.n_parallel_heads = 1
+LSHSelfAttention.max_length_for_buckets = 1024
 
 # Parameters for ReformerLM:
 # ==============================================================================
@@ -68,7 +70,7 @@ ReformerLM.n_heads = 4
 ReformerLM.n_layers = 3
 ReformerLM.ff_use_sru = 1
 ReformerLM.axial_pos_shape = 'fixed-base'
-# ReformerLM.attention_type = @LSHSelfAttention
+ReformerLM.attention_type = @LSHSelfAttention
 ReformerLM.vocab_size = %vocab_size
 
 # Parameters for train:

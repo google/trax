@@ -1100,6 +1100,7 @@ class LSHSelfAttention(SelfAttention):
                n_parallel_heads=1,
                use_python_loop=False,
                use_reference_code=False,
+               max_length_for_buckets=None,
               ):
     """Construct an LSH self-attention layer."""
     super().__init__(
@@ -1118,6 +1119,7 @@ class LSHSelfAttention(SelfAttention):
         )
     self.n_hashes = n_hashes
     self.n_buckets = n_buckets
+    self._max_length_for_buckets = max_length_for_buckets
 
   def create_state_unbatched(self, input_signature, rng):
     if isinstance(input_signature, (tuple, list)):
@@ -1129,8 +1131,8 @@ class LSHSelfAttention(SelfAttention):
     # for LSH, we haven't run experiments to demonstrate this. To be on the safe
     # side we include a per-head RNG in the state for the purpose of doing LSH.
     if not self.incremental:
-      buckets = np.zeros(
-          self.n_hashes * input_signature.shape[0], dtype=np.int32)
+      length = self._max_length_for_buckets or input_signature.shape[0]
+      buckets = np.zeros(self.n_hashes * length, dtype=np.int32)
       return (buckets, rng)
     else:
       buckets = np.zeros(
@@ -1201,9 +1203,18 @@ class LSHSelfAttention(SelfAttention):
       _, old_hash_rng = state
       hash_rng, hash_subrng = math.random.split(old_hash_rng)
       buckets = self.hash_vectors(q, hash_subrng, mask)
-      state = (buckets, hash_rng)
+      s_buckets = buckets
+      if self._max_length_for_buckets:
+        length = self.n_hashes * self._max_length_for_buckets
+        if buckets.shape[0] < length:
+          s_buckets = np.concatenate(
+              [buckets, np.zeros(length - buckets.shape[0], dtype=np.int32)],
+              axis=0)
+      state = (s_buckets, hash_rng)
     else:
       buckets, _ = state
+      if self._max_length_for_buckets:
+        buckets = buckets[:self.n_hashes * x.shape[0]]
 
     seqlen = x.shape[0]
     assert int(buckets.shape[0]) == self.n_hashes * seqlen
