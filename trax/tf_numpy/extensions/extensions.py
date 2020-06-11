@@ -79,7 +79,9 @@ def _canonicalize_jit_arg(x):
       # TODO(wangpeng): Revisit this design and see whether we can improve `jit`
       #   and tf.function.
       dtype = most_precise_int_dtype(x)
-      return tf_np.convert_to_tensor(value=x, dtype=dtype)
+      if dtype is None and isinstance(x, float):
+        dtype = tf_np.default_float_type()
+      return tf.convert_to_tensor(value=x, dtype=dtype)
     except (TypeError, ValueError):
       return x
 
@@ -372,6 +374,7 @@ def eval_on_shapes(f, static_argnums=()):
   #   graph, so that we don't waste computation and memory when we just want
   #   shape inference.
   tf_f = jit(f, static_argnums=static_argnums).tf_function
+
   # pylint: disable=missing-docstring
   def f_return(*args):
 
@@ -574,11 +577,14 @@ def sort_key_val(keys, values, dimension=-1):
     raise ValueError("The rank of either keys or values must be known, but "
                      "both are unknown (i.e. their shapes are both None).")
   if dimension in (-1, rank - 1):
+
     def maybe_swapaxes(a):
       return a
   else:
+
     def maybe_swapaxes(a):
       return tf_np.swapaxes(a, dimension, -1)
+
   # We need to swap axes because tf.gather (and tf.gather_nd) supports
   # batch_dims on the left but not on the right.
   # TODO(wangpeng): Investigate whether we should do swapaxes or moveaxis.
@@ -586,9 +592,11 @@ def sort_key_val(keys, values, dimension=-1):
   values = maybe_swapaxes(values)
   idxs = tf_np.argsort(keys)
   idxs = idxs.data
+
   # Using tf.gather rather than np.take because the former supports batch_dims
   def gather(a):
-    return tf_np.asarray(tf.gather(a.data, idxs, batch_dims=rank-1))
+    return tf_np.asarray(tf.gather(a.data, idxs, batch_dims=rank - 1))
+
   keys = gather(keys)
   values = gather(values)
   keys = maybe_swapaxes(keys)
@@ -807,6 +815,54 @@ def _get_instance_key():
     return _INSTANCE_KEY
 
 
+# Don't use a namedtuple since nest considers that a tuple and unflattens and
+# flattens it.
+class ShardedNdArray(object):
+  """Wrapper over ndarray that can contain tensors on multiple devices.
+
+    This is returned by extensions.pmap, and contains the individual tensors on
+    different devices.
+  """
+
+  def __init__(self, tensors):
+    """Initializes the ShardedNdArray.
+
+    Note that the tensors should be ordered in the way the pmap producing these
+    tensors is run.
+
+    Args:
+      tensors: list or tuple of eager tensors, one for each device.
+    """
+
+    if not isinstance(tensors, (list, tuple)) or not tensors:
+      raise ValueError(
+          "Unable to create a ShardedNdArray without a list of tensors.")
+    self.tensors = tensors
+    self.n_devices = len(tensors)
+
+  def __getitem__(self, i):
+    return self.tensors[i]
+
+  @property
+  def shape(self):
+    return (self.n_devices,) + self.tensors[0]._shape_tuple()  # pylint: disable=protected-access
+
+  @property
+  def dtype(self):
+    return self.tensors[0].dtype
+
+
+def convert_sharded_tensor_to_eager_tensor(value, *args, **kwargs):
+  del args, kwargs
+  # TODO(nareshmodi): Consider a collective op to gather the tensors from the
+  # various devices for performance reasons.
+  return tf.stack(value.tensors)
+
+
+tf.register_tensor_conversion_function(ShardedNdArray,
+                                       convert_sharded_tensor_to_eager_tensor)
+
+
 class _PmapConfig(threading.local):
   """Simple config used to maintain state related to a current pmap call."""
 
@@ -1020,7 +1076,7 @@ def pmap(f, axis_name=None, devices=None):
             with tf.device(device):
               updated_arg = tf.identity(updated_arg)
           flattened_per_device_args[j].append(updated_arg)
-      elif isinstance(arg, tf_np.ShardedNdArray):
+      elif isinstance(arg, ShardedNdArray):
         for device_args, tensor in zip(flattened_per_device_args, arg.tensors):
           device_args.append(tensor)
       else:
@@ -1049,7 +1105,7 @@ def pmap(f, axis_name=None, devices=None):
             flattened_results[j][i],
             tf.Tensor), ("currently only tensor return items are supported")
         tensors.append(flattened_results[j][i])
-      final_tree.append(tf_np.ShardedNdArray(tensors))
+      final_tree.append(ShardedNdArray(tensors))
 
     final_actual_result = tf.nest.pack_sequence_as(results[0], final_tree)
 

@@ -35,14 +35,14 @@ flags.DEFINE_bool("requires_tpu", False, "Requires TPU.")
 
 
 def generate_params_inputs_targets(num_examples=1000):
-  params = (tf_np.tensor_to_ndarray(tf.constant(5.)),
-            tf_np.tensor_to_ndarray(tf.constant(0.)))
+  params = (tf_np.asarray(tf.constant(5.)),
+            tf_np.asarray(tf.constant(0.)))
 
-  params_true = (tf_np.tensor_to_ndarray(tf.constant(3.)),
-                 tf_np.tensor_to_ndarray(tf.constant(2.)))
+  params_true = (tf_np.asarray(tf.constant(3.)),
+                 tf_np.asarray(tf.constant(2.)))
 
-  inputs = tf_np.tensor_to_ndarray(tf.random.normal(shape=[num_examples]))
-  noise = tf_np.tensor_to_ndarray(tf.random.normal(shape=[num_examples]))
+  inputs = tf_np.asarray(tf.random.normal(shape=[num_examples]))
+  noise = tf_np.asarray(tf.random.normal(shape=[num_examples]))
   targets = inputs * params_true[0] + params_true[1] + noise
 
   return params, params_true, inputs, targets
@@ -51,7 +51,7 @@ def generate_params_inputs_targets(num_examples=1000):
 def loss_fn(params, inputs, targets):
   predicted = params[0] * inputs + params[1]
   loss = tf.reduce_mean(input_tensor=tf.square(predicted - targets))
-  return tf_np.tensor_to_ndarray(loss)
+  return tf_np.asarray(loss)
 
 
 def train_step(params, inputs, targets, learning_rate=0.1):
