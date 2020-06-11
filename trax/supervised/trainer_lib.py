@@ -35,7 +35,6 @@ import gin
 
 import jax
 import numpy
-import six
 import tensorflow.compat.v2 as tf
 from trax import history as trax_history
 from trax import jaxboard
@@ -407,7 +406,7 @@ class Trainer(object):
         metric_values = [float(metric_values)]
       for m, v in zip(self._metrics, metric_values):
         metrics[m] += v
-    return {m: v / count for (m, v) in six.iteritems(metrics)}, state
+    return {m: v / count for (m, v) in metrics.items()}, state
 
   def update_model_state(self, key, value):
     """Updates model state based on nontrainable_params."""
@@ -501,7 +500,7 @@ class Trainer(object):
     """Log metrics to summary writer and history."""
     history = self._history
     rjust_len = max([0] + [len(name) for name in metrics])
-    for name, value in six.iteritems(metrics):
+    for name, value in metrics.items():
       self.log_step('%s %s | % .8f' % (
           log_prefix.ljust(5), name.rjust(rjust_len), value))
       full_name = 'metrics/' + name
