@@ -45,7 +45,7 @@ class SkippingSerial(tl.Serial):
   def new_weights(self, input_signature):
     """Add a step-counter to the state. Initialize with 0."""
     weights = super(SkippingSerial, self).new_weights(input_signature)
-    self.state = (0, self.state)
+    self._state = (0, self._state)
     return weights
 
   @tl.Layer.state.setter
@@ -89,7 +89,8 @@ class SkippingSerial(tl.Serial):
     if self._mode == 'train':
       # warmup goes from 1.0 at start to 0.0 at skipping_warmup_steps and after
       w_steps = float(self._skipping_warmup_steps)
-      warmup = np.maximum(0.0, (w_steps - step.astype(np.float32)) / w_steps)
+      f_step = np.array(step, dtype=np.float32)
+      warmup = np.maximum(0.0, (w_steps - f_step) / w_steps)
       # low is the minimum number of layers to *not* skip, from n_layers to 0
       low = warmup * float(n_layers)
       # high should be so that (high - n_layers) / high = 1.0 - skip_fraction
@@ -106,12 +107,14 @@ class SkippingSerial(tl.Serial):
     cur_layer_idx = 0.0
     for layer, p, s, rng in zip(self.sublayers, weights, layers_state, rngs):
       inputs = _inputs_from_stack(layer, stack)
-      outputs, s = math.cond(  # Skip (do identity) if > n_forward_layers.
-          pred=(math.lt(cur_layer_idx, n_forward_layers)),
-          true_operand=(inputs, p, s, rng),  # This tuple is t below.
-          true_fun=(lambda t: layer.pure_fn(t[0], t[1], t[2], t[3])),  # pylint: disable=cell-var-from-loop
-          false_operand=(inputs, p, s, rng),
-          false_fun=(lambda t: (t[0], t[2])),  # return (inputs, state)
+      def CondF(t):
+        o, s = layer.pure_fn(t[0], t[1], t[2], t[3])  # pylint: disable=cell-var-from-loop
+        return o, t[1], s, t[3]
+      outputs, _, s, _ = math.cond(
+          math.lt(cur_layer_idx, n_forward_layers),
+          CondF,
+          lambda x: x,
+          (inputs, p, s, rng)
       )
       stack = _outputs_onto_stack(layer, outputs, stack)
       new_state.append(s)

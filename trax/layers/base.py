@@ -157,7 +157,9 @@ class Layer:
       docstring.
     """
     weights = self.weights if weights is None else weights
-    state = self.state if state is None else state
+    if state is not None:
+      self.state = state  # Needed if the model wasn't fully initialized.
+    state = self.state
     rng = self.rng if rng is None else rng
     rng = math.random.get_prng(0) if rng is None else rng
 
@@ -417,7 +419,7 @@ class Layer:
       return outputs, s
 
     except Exception as e:
-      name, trace = self._name, _short_traceback()
+      name, trace = self._name, _short_traceback(skip=1)
       raise LayerError(name, 'pure_fn',
                        self._caller, signature(x), trace) from e
 
