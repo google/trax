@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import gin
-import six
 
 from trax.models import atari_cnn
 from trax.models import mlp
