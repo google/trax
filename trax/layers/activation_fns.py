@@ -33,8 +33,10 @@ def Relu():
   r"""Returns a layer that computes the Rectified Linear Unit (ReLU) function.
 
   .. math::
-      f(x) & = 0 \qquad & x \leq 0 \\
-           & = x        & x > 0
+      f(x) = \left\{ \begin{array}{cl}
+          0 & \text{if}\ x \leq 0, \\
+          x & \text{otherwise}.
+      \end{array} \right.
   """
   return Fn('Relu', lambda x: np.maximum(x, np.zeros_like(x)))
 
@@ -43,8 +45,10 @@ def ParametricRelu(a=1.):
   r"""Returns a layer that computes a ReLU function with the given slope.
 
   .. math::
-      f(x) & = 0         & x \leq 0 \\
-           & = ax \qquad & x > 0
+      f(x) = \left\{ \begin{array}{cl}
+          0  & \text{if}\ x \leq 0, \\
+          ax & \text{otherwise}.
+      \end{array} \right.
 
   Args:
     a: Slope of line for positive inputs.
@@ -56,8 +60,10 @@ def LeakyRelu(a=0.01):
   r"""Returns a ReLU-like layer with linear nonzero outputs for negative inputs.
 
   .. math::
-      f(x) & = ax \qquad & x \leq 0 \\
-           & = x         & x > 0
+      f(x) = \left\{ \begin{array}{cl}
+          ax & \text{if}\ x \leq 0, \\
+          x  & \text{otherwise}.
+      \end{array} \right.
 
   Args:
     a: Slope of line for negative inputs.
@@ -69,10 +75,12 @@ def Elu(a=1.):
   r"""Returns a ReLU-like layer with exponential outputs for negative inputs.
 
   .. math::
-      f(x) & = a \cdot (e^x - 1) \qquad & x \leq 0 \\
-           & = x                        & x > 0
+      f(x) = \left\{ \begin{array}{cl}
+          a \cdot (e^x - 1) & \text{if}\ x \leq 0, \\
+          x                 & \text{otherwise}.
+      \end{array} \right.
 
-  (Asymptotically, :math:`f(x)\rightarrow -a` as :math:`x\rightarrow - \infty`.
+  (Asymptotically, :math:`f(x)\rightarrow -a` as :math:`x\rightarrow - \infty`.)
 
   Args:
     a: Coefficient multiplying the exponential, for negative inputs.
@@ -85,8 +93,10 @@ def Selu(alpha=1.6732632423543772848170429916717,
   r"""Returns an `Elu`-like layer with an additional scaling/slope parameter.
 
   .. math::
-      f(x) & = \lambda \cdot \alpha \cdot (e^x - 1) \qquad & x \leq 0 \\
-           & = \lambda \cdot x                             & x > 0
+      f(x) = \left\{ \begin{array}{cl}
+          \lambda \cdot \alpha \cdot (e^x - 1) & \text{if}\ x \leq 0, \\
+          \lambda \cdot x                      & \text{otherwise}.
+      \end{array} \right.
 
   Args:
     alpha: Coefficient multiplying the exponential, for negative inputs.
@@ -141,9 +151,11 @@ def HardSigmoid():
   r"""Returns a layer that computes a linear approximation to `Sigmoid`.
 
   .. math::
-      f(x) & = 0 \qquad & x \leq 0 \\
-           & = x        & 0 < x < 1 \\
-           & = 1        & x \geq 1
+      f(x) = \left\{ \begin{array}{cl}
+          0 & \text{if}\ x \leq 0, \\
+          x & \text{if}\ 0 < x < 1, \\
+          1 & \text{otherwise}.
+      \end{array} \right.
   """
   return Fn('HardSigmoid', lambda x: np.maximum(0, np.minimum(1, (1 + x))))
 
@@ -152,9 +164,11 @@ def HardTanh():
   r"""Returns a layer that computes a linear approximation to `Tanh`.
 
   .. math::
-      f(x) & = -1 \qquad & x \leq -1 \\
-           & = x         & -1 < x < 1 \\
-           & = 1         & x \geq 1
+      f(x) = \left\{ \begin{array}{cl}
+          -1 & \text{if}\ x \leq 0, \\
+          x  & \text{if}\ -1 < x < 1, \\
+          1  & \text{otherwise}.
+      \end{array} \right.
   """
   return Fn('HardTanh', lambda x: np.maximum(-1, np.minimum(1, x)))
 
