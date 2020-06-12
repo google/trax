@@ -33,7 +33,7 @@ class BatchNorm(base.Layer):
     self._momentum = momentum
     self._mode = mode
 
-  def forward(self, x, weights):
+  def forward(self, x):
     """Computes batch normalization as part of a forward pass in the model."""
     running_mean, running_var, n_batches = self.state
     if self._mode == 'train':
@@ -47,7 +47,7 @@ class BatchNorm(base.Layer):
       var = running_var
 
     z = self._z_score(x, mean, var)
-    beta, gamma = self._beta_gamma_with_correct_axes(x, weights)
+    beta, gamma = self._beta_gamma_with_correct_axes(x, self.weights)
 
     # Return the z rescaled by the parameters if requested.
     if self._center and self._scale:
@@ -64,8 +64,8 @@ class BatchNorm(base.Layer):
                       f'Batch norm should not change the dtype.')
     return output
 
-  def new_weights(self, input_signature):
-    """Helper to initialize batch norm weights."""
+  def init_weights_and_state(self, input_signature):
+    """Helper to initialize batch norm weights and state."""
     axis = self._axis
     axis = (axis,) if jnp.isscalar(axis) else axis
     input_shape = input_signature.shape
@@ -82,9 +82,8 @@ class BatchNorm(base.Layer):
     running_mean = jnp.zeros(stats_shape, dtype=jnp.float32)
     running_var = jnp.ones(stats_shape, dtype=jnp.float32)
     n_batches = jnp.zeros((), dtype=jnp.int64)
-    weights = (beta, gamma)
+    self.weights = (beta, gamma)
     self.state = (running_mean, running_var, n_batches)
-    return weights
 
   def _fast_mean_and_variance(self, x):
     mean = jnp.mean(x, self._axis, keepdims=True)
@@ -121,19 +120,19 @@ class LayerNorm(base.Layer):
     super().__init__()
     self._epsilon = epsilon
 
-  def forward(self, x, weights):
-    scale, bias = weights
+  def forward(self, x):
+    scale, bias = self.weights
     mean = jnp.mean(x, axis=-1, keepdims=True)
     sub = x - mean
     variance = jnp.mean(sub * sub, axis=-1, keepdims=True)
     norm_inputs = sub / jnp.sqrt(variance + self._epsilon)
     return norm_inputs * scale + bias
 
-  def new_weights(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     features = input_signature.shape[-1]
     scale = jnp.ones(features, dtype=input_signature.dtype)
     bias = jnp.zeros(features, dtype=input_signature.dtype)
-    return scale, bias
+    self.weights = scale, bias
 
 
 class FilterResponseNorm(base.Layer):
@@ -166,8 +165,8 @@ class FilterResponseNorm(base.Layer):
     self._init_learnt_epsilon = jnp.array(init_learnt_epsilon,
                                           dtype=jnp.float32)
 
-  def forward(self, inputs, weights):
-    gamma, beta, epsilon_l = weights
+  def forward(self, inputs):
+    gamma, beta, epsilon_l = self.weights
 
     epsilon = self._init_epsilon
     if epsilon_l is not base.EMPTY_WEIGHTS:
@@ -182,7 +181,7 @@ class FilterResponseNorm(base.Layer):
 
     return gamma * xhat + beta
 
-  def new_weights(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     # Usually (B, W, H, C)
     shape = input_signature.shape
     num_channels = shape[-1]
@@ -194,4 +193,4 @@ class FilterResponseNorm(base.Layer):
     if self._learn_epsilon:
       epsilon_l = (self._init_learnt_epsilon,)
 
-    return gamma, beta, epsilon_l
+    self.weights = gamma, beta, epsilon_l

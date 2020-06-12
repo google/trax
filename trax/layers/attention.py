@@ -102,17 +102,15 @@ class PureAttention(base.Layer):
     self._dropout = dropout
     self._mode = mode
 
-  def forward(self, inputs, weights):
+  def forward(self, inputs):
     """Returns attention-computed activations, unmodified mask, and state.
 
     Args:
       inputs: Tuple of (queries, keys, values, mask).
-      weights: Not used; should be empty tuple or list.
 
     Returns:
       The pair (activations, mask).
     """
-    del weights
     q, k, v, mask = inputs
 
     batch_size = q.shape[0]
@@ -260,8 +258,7 @@ class DotProductCausalAttention(base.Layer):
     self._dropout = dropout
     self._mode = mode
 
-  def forward(self, inputs, weights):
-    del weights
+  def forward(self, inputs):
     q, k, v = inputs
 
     if self._mode == 'predict':
@@ -283,11 +280,10 @@ class DotProductCausalAttention(base.Layer):
         q, k, v, mask, dropout=self._dropout, mode=self._mode, rng=self.rng)
     return res
 
-  def new_weights(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     if self._mode == 'predict':
       max_len = 2048  # Hardcoded.  TODO(pkozakowski): Pass it from the model.
       self.state = _fast_inference_init_state(input_signature, max_len)
-    return base.EMPTY_WEIGHTS
 
 
 def zero_pad(x, pad, axis):
@@ -347,11 +343,11 @@ class PositionalEncoding(base.Layer):
     self._dropout_broadcast_dims = dropout_broadcast_dims
     self._mode = mode
 
-  def forward(self, inputs, weights):
+  def forward(self, inputs):
     if self._mode != 'predict':
       x = inputs
       symbol_size = jnp.shape(x)[1]
-      px = weights[:, :symbol_size, :]
+      px = self.weights[:, :symbol_size, :]
       if self._dropout == 0:
         return x + px
       else:
@@ -377,16 +373,16 @@ class PositionalEncoding(base.Layer):
       state = self.state
       if inputs.shape[1] == 1:
         self.state = state + 1
-        return inputs + jnp.expand_dims(weights[0, state, :], 1)
+        return inputs + jnp.expand_dims(self.weights[0, state, :], 1)
       else:
         emb = []
         for i in range(inputs.shape[0]):
           emb.append(jax.lax.dynamic_slice_in_dim(
-              weights[0], state[i], inputs.shape[1], axis=0))
+              self.weights[0], state[i], inputs.shape[1], axis=0))
         self.state = state + inputs.shape[1]
         return inputs + jnp.stack(emb, 0)
 
-  def new_weights(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     d_feature = input_signature.shape[-1]
     pe = np.zeros((self._max_len, d_feature), dtype=np.float32)
     position = np.arange(0, self._max_len)[:, np.newaxis]
@@ -395,11 +391,10 @@ class PositionalEncoding(base.Layer):
     pe[:, 0::2] = np.sin(position * div_term)
     pe[:, 1::2] = np.cos(position * div_term)
     pe = pe[np.newaxis, :, :]  # [1, self._max_len, d_feature]
-    weights = jnp.array(pe)  # Trainable parameters, initialized above.
+    self.weights = jnp.array(pe)  # Trainable parameters, initialized above.
     if self._mode == 'predict':
       batch_size = input_signature.shape[0]
       self.state = jnp.zeros((batch_size,), dtype=jnp.int32)
-    return weights
 
 
 def _fast_inference_init_state(input_signature, buffer_length):

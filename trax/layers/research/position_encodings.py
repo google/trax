@@ -48,10 +48,10 @@ class AxialPositionalEncoding(layer_base.Layer):
     self._dropout_broadcast_dims = dropout_broadcast_dims
     self._mode = mode
 
-  def forward(self, inputs, weights):
+  def forward(self, inputs):
     rng, state = self.rng, self.state
     embs = []
-    for ax_emb in weights:
+    for ax_emb in self.weights:
       ax_emb = jnp.broadcast_to(
           ax_emb, (inputs.shape[0],) + self._shape + (ax_emb.shape[-1],))
       embs.append(ax_emb)
@@ -85,7 +85,7 @@ class AxialPositionalEncoding(layer_base.Layer):
       multiplier = keep.astype(inputs.dtype) / keep_prob
       return inputs + jnp.reshape(emb * multiplier, inputs.shape)
 
-  def new_weights(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     d_feature = input_signature.shape[-1]
     if sum(self._d_embs) != d_feature:
       raise ValueError(
@@ -102,7 +102,7 @@ class AxialPositionalEncoding(layer_base.Layer):
       weights.append(ax_emb)
 
     self.state = 0 if self._mode == 'predict' else layer_base.EMPTY_STATE
-    return tuple(weights)
+    self.weights = tuple(weights)
 
 
 class FixedBasePositionalEncoding(layer_base.Layer):
@@ -119,7 +119,7 @@ class FixedBasePositionalEncoding(layer_base.Layer):
     self._start_from_zero_one_in = start_from_zero_one_in
     self._base_dropout_one_in = base_dropout_one_in
 
-  def forward(self, x, weights):
+  def forward(self, x):
     rng = self.rng
     batch_size, length = x.shape[0], x.shape[1]
     max_pos = min(self._bases)**self._n_digits
@@ -141,7 +141,7 @@ class FixedBasePositionalEncoding(layer_base.Layer):
       for i in range(self._n_digits):
         cur_indices = jnp.mod(cur_positions, base)
         cur_positions = cur_positions // base
-        s = weights[bn][i]
+        s = self.weights[bn][i]
         pos_embeddings.append(cur_indices.astype(jnp.float32)[:, :, None] * s)
       embeddings = jnp.concatenate(pos_embeddings, axis=-1)
       if self._mode == 'train':
@@ -153,13 +153,13 @@ class FixedBasePositionalEncoding(layer_base.Layer):
     res = sum(res) + jnp.zeros_like(x)
     return jnp.concatenate([x, res], axis=-1)
 
-  def new_weights(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     d_feature = input_signature.shape[-1]
     assert d_feature % self._n_digits == 0
     d_weight = d_feature // self._n_digits
-    return [[self._initializer((1, d_weight), rng)
-             for rng in math.random.split(self.rng, self._n_digits)]
-            for _ in self._bases]
+    self.weights = [[self._initializer((1, d_weight), rng)
+                     for rng in math.random.split(self.rng, self._n_digits)]
+                    for _ in self._bases]
 
 
 def threefry_2x32_prf(key, x: jnp.ndarray) -> jnp.ndarray:
@@ -332,7 +332,7 @@ class InfinitePositionalEncoding(layer_base.Layer):
     assert embeddings.shape == (hi - lo, depth), embeddings.shape
     return embeddings
 
-  def forward(self, inputs, weights):
+  def forward(self, inputs):
     rng, state = self.rng, self.state
     d_feature = inputs.shape[-1]
     input_len = inputs.shape[-2]
@@ -352,13 +352,13 @@ class InfinitePositionalEncoding(layer_base.Layer):
     # TODO(tying): check that XLA swaps matmul(slice(x)) -> slice(matmul(x)),
     # or inline this code into get_embeddings/get_noise
     if self._transform == 'diag':
-      emb = emb * jax.nn.softplus(weights)
+      emb = emb * jax.nn.softplus(self.weights)
     elif self._transform == 'any':
-      emb = emb @ weights
+      emb = emb @ self.weights
     self.state = state
     return inputs + emb
 
-  def new_weights(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     d_feature = input_signature.shape[-1]
     if self._transform == 'diag':
       # Initialize it to a small value because JAX has a bug in softplus.
@@ -372,7 +372,7 @@ class InfinitePositionalEncoding(layer_base.Layer):
     if self._mode == 'predict':
       batch_size = input_signature.shape[0]
       self.state = jnp.zeros((batch_size,), dtype=jnp.int32), self.rng
-    return weights
+    self.weights = weights
 
 
 class TimeBinPositionalEncoding(layer_base.Layer):
@@ -411,7 +411,7 @@ class TimeBinPositionalEncoding(layer_base.Layer):
     assert embeddings.shape == t.shape + (self.num_features,), embeddings.shape
     return embeddings
 
-  def forward(self, inputs, weights):
+  def forward(self, inputs):
     state = self.state
     depth = inputs.shape[-1]
 
@@ -437,8 +437,7 @@ class TimeBinPositionalEncoding(layer_base.Layer):
     self.state = state
     return inputs
 
-  def new_weights(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     if self._mode == 'predict':
       batch_size = input_signature.shape[0]
       self.state = jnp.zeros((batch_size,), dtype=jnp.int32)
-    return layer_base.EMPTY_WEIGHTS

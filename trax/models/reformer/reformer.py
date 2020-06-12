@@ -45,9 +45,8 @@ class BroadcastedDropout(tl.Layer):
     self._broadcast_dims = broadcast_dims
     self._mode = mode
 
-  def forward(self, x, weights):
+  def forward(self, x):
     """Dropout, with broadcasting to save memory."""
-    del weights
     if self._mode == 'train' and self._rate > 0.0:
       noise_shape = list(x.shape)
       for dim in self._broadcast_dims:
@@ -130,12 +129,12 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
       running_total -= layer.n_out
     self._n_in = self._n_out = running_max + 1
 
-  def forward(self, xs, weights):
+  def forward(self, xs):
     rngs = _split_rngs(self.rng, len(self.sublayers))
     accumulator, *context = xs
     stack = context = tuple(context)
     new_state = []
-    for layer, w, s, rng in zip(self.sublayers, weights, self.state, rngs):
+    for layer, w, s, rng in zip(self.sublayers, self.weights, self.state, rngs):
       inputs = _inputs_from_stack(layer, stack)
       outputs, s = layer.pure_fn(inputs, w, s, rng)
       stack = _outputs_onto_stack(layer, outputs, stack)
@@ -222,7 +221,7 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
     return stack, (stack_ct, weights_ct)
 
   # pylint: disable=protected-access
-  def new_weights(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     stack = input_signature[1:]
     if len(stack) == 1:
       stack = stack[0]
@@ -234,12 +233,12 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
 
     if self.attention_layer is None:
       self.state = (state,)
-      return (weights,)
+      self.weights = (weights,)
     else:
       inputs = _inputs_from_stack(self.attention_layer, stack)
       attn_weights, attn_state = self.attention_layer.init(inputs)
       self.state = (state, attn_state)
-      return (weights, attn_weights)
+      self.weights = (weights, attn_weights)
   # pylint: enable=protected-access
 
 

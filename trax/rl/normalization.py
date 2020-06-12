@@ -85,12 +85,10 @@ class Normalize(tl.Layer):
     self._epsilon = epsilon
     self._mode = mode
 
-  def new_weights(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     self.state = running_mean_and_variance_init(input_signature.shape[2:])
-    return tl.EMPTY_WEIGHTS
 
-  def forward(self, inputs, weights):
-    del weights
+  def forward(self, inputs):
     state = self.state
     observations = inputs
     if self._mode == 'collect':

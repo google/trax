@@ -44,13 +44,7 @@ class BaseLayerTest(parameterized.TestCase):
     x = np.array([[1, 2, 3, 4, 5],
                   [10, 20, 30, 40, 50]])
     with self.assertRaises(NotImplementedError):
-      _ = layer.forward(x, base.EMPTY_WEIGHTS)
-
-  def test_new_weights_returns_empty(self):
-    layer = base.Layer()
-    input_signature = shapes.ShapeDtype((2, 5))
-    weights = layer.new_weights(input_signature)
-    self.assertEmpty(weights)
+      _ = layer.forward(x)
 
   def test_init_returns_empty_weights_and_state(self):
     layer = base.Layer()
@@ -78,7 +72,7 @@ class BaseLayerTest(parameterized.TestCase):
 
     class IdWithZeroGrad(base.Layer):
 
-      def forward(self, x, weights):
+      def forward(self, x):
         return x
 
       @property
@@ -105,7 +99,7 @@ class BaseLayerTest(parameterized.TestCase):
 
     class IdWithIdGrad(base.Layer):
 
-      def forward(self, x, weights):
+      def forward(self, x):
         return x
 
       @property
@@ -131,11 +125,11 @@ class BaseLayerTest(parameterized.TestCase):
 
     class Constant(base.Layer):
 
-      def new_weights(self, input_signature):
-        return 123
+      def init_weights_and_state(self, input_signature):
+        self.weights = 123
 
-      def forward(self, inputs, weights):
-        return weights
+      def forward(self, inputs):
+        return self.weights
 
     layer = Constant()
     layer.init(input_signature=shapes.ShapeDtype(()))
@@ -163,7 +157,7 @@ class PureLayerTest(absltest.TestCase):
 
     # Use PureLayer.forward.
     in_1 = np.array([3, 4])
-    out_1 = layer.forward(in_1, base.EMPTY_WEIGHTS)
+    out_1 = layer.forward(in_1)
     self.assertEqual(out_1.tolist(), [6, 8])
 
     # Use Layer.pure_fn
@@ -199,7 +193,7 @@ class FnTest(absltest.TestCase):
     self.assertEqual(y0.tolist(), [11, 22, 33, 44, 55])
     self.assertEqual(y1.tolist(), [10, 20, 30, 40, 50])
 
-    y2, y3 = layer.forward((x0, x1), base.EMPTY_WEIGHTS)
+    y2, y3 = layer.forward((x0, x1))
     self.assertEqual(y2.tolist(), [11, 22, 33, 44, 55])
     self.assertEqual(y3.tolist(), [10, 20, 30, 40, 50])
 
@@ -213,8 +207,8 @@ class FnTest(absltest.TestCase):
     layer = base.Fn(
         '2in2out',
         lambda x, y: (x + y, jnp.concatenate([x, y], axis=0)), n_out=2)
-    weights = layer.new_weights(None)
-    self.assertEmpty(weights)
+    layer.init_weights_and_state(None)
+    self.assertEmpty(layer.weights)
     self.assertEmpty(layer.state)
 
 

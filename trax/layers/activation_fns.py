@@ -185,20 +185,19 @@ def Softplus():
 class ThresholdedLinearUnit(base.Layer):
   """Thresholded Linear Unit, c.f. https://arxiv.org/pdf/1911.09737.pdf ."""
 
-  def new_weights(self, input_signature):
-    """Returns a tuple containing a single weight, initialized to zero."""
+  def init_weights_and_state(self, input_signature):
+    """Returns a single weight, initialized to zero."""
     del input_signature
-    return (np.zeros((), dtype=np.float32),)
+    self.weights = np.zeros((), dtype=np.float32)
 
-  def forward(self, inputs, weights):
+  def forward(self, inputs):
     """Executes this layer as part of a forward pass through the model.
 
     Args:
       inputs: Tensor.
-      weights: Tuple containing a single element.
 
     Returns:
       Tensor of same shape and dtype as the input.
     """
-    threshold = weights[0]
+    threshold = self.weights
     return np.maximum(inputs, threshold)

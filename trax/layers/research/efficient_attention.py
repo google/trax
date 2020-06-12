@@ -323,7 +323,7 @@ class EfficientAttentionBase(base.Layer):
     self.use_python_loop = use_python_loop
     self.use_reference_code = use_reference_code
 
-  def new_weights(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     if not isinstance(input_signature, (tuple, list)):
       input_signature = (input_signature,)
     input_signature_unbatched = math.nested_map(
@@ -356,7 +356,7 @@ class EfficientAttentionBase(base.Layer):
       state = (mem_end, mem, state)
 
     self.state = state
-    return weights
+    self.weights = weights
 
   def create_weights_unbatched(self, input_signature, rng):
     raise NotImplementedError(
@@ -404,17 +404,16 @@ class EfficientAttentionBase(base.Layer):
     raise NotImplementedError(
         'Fast inference is not implemented for this attention type.')
 
-  def forward(self, inputs, weights):
+  def forward(self, inputs):
     """Computes this layer's output as part of a forward pass through the model.
 
     Args:
       inputs: Layer inputs (subclasses may use different inputs)
-      weights: Layer weights
 
     Returns:
       A tuple (output, new_state).
     """
-    state, rng = self.state, self.rng
+    weights, state, rng = self.weights, self.state, self.rng
     if not self.use_reference_code:
       # By default, an efficient, batched implementation is used.
       output, new_state, _, _ = self.forward_and_or_backward(

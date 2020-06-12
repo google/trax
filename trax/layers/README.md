@@ -8,11 +8,11 @@ All layers inherit from the Layer class and generally need to implement 2
 methods:
 
 ```python
-def forward(self, inputs, weights):
+def forward(self, inputs):
   """Computes the layer's output as part of a forward pass through the model."""
 
-def new_weights(self, input_signature):
-    """Returns new weights suitable for inputs with the given signature.
+def init_weights_and_state(self, input_signature):
+    """Initializes weights and state for inputs with the given signature."""
 ```
 
 The base Layer class wraps these functions and provides initialization
@@ -21,19 +21,17 @@ and call functions to be used as follows.
 ```python
 layer = MyLayer()
 x = np.zeros(10)
-layer.initialize_once(signature(x))
+layer.init(signature(x))
 output = layer(x)
 ```
 
-## Decorator
+## Fn layer
 
-To create simple layers, especially ones without parameters, use the layer
-decorator.
+To create simple layers without parameters, use the Fn layer.
 
 ```python
-@base.layer()
-def Relu(x, **unused_kwargs):
-  return np.maximum(x, 0.)
+def Relu(x):
+  return Fn('Relu', lambda x: np.maximum(x, np.zeros_like(x)))
 ```
 
 ## Parameter sharing
@@ -45,8 +43,6 @@ standard_mlp = layers.Serial(layers.Dense(10), layers.Dense(10))
 layer = Dense(10)
 shared_parameters_mlp = layers.Serial(layer, layer)
 ```
-For this reason, if you call `layer.initialize_once(...)` for the second time
-on an already initialized layer, it will not re-initialize the layer.
 
 ## Core layers
 

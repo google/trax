@@ -52,8 +52,8 @@ class Conv(base.Layer):
     msg = 'Convolutions on more than 4 dimensions only supported in NHWC.'
     assert self._lhs_spec == self._out_spec == 'NHWC', msg
 
-  def forward(self, x, weights):
-    w, b = weights
+  def forward(self, x):
+    w, b = self.weights
     x_shape = list(x.shape)
     if len(x_shape) > 4:
       self._check_nhwc()
@@ -73,7 +73,7 @@ class Conv(base.Layer):
             input_shape[self._lhs_spec.index('C')] if c == 'I' else
             next(kernel_size_iter) for c in self._rhs_spec]
 
-  def new_weights(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     input_shape = input_signature.shape
     if len(input_shape) > 4:
       self._check_nhwc()
@@ -85,7 +85,7 @@ class Conv(base.Layer):
     rng1, rng2 = math.random.split(self.rng, 2)
     w = self._kernel_initializer(kernel_shape, rng1)
     b = self._bias_initializer(bias_shape, rng2)
-    return (w, b)
+    self.weights = (w, b)
 
 
 class CausalConv(Conv):
@@ -108,7 +108,7 @@ class CausalConv(Conv):
         kernel_initializer=kernel_initializer,
         bias_initializer=bias_initializer)
 
-  def forward(self, x, weights):
+  def forward(self, x):
     assert self._padding == 'VALID'
     # Left pad with 0s. Applying an unmasked valid convolution on top of this
     # yields a causal convolution.
@@ -117,7 +117,7 @@ class CausalConv(Conv):
     effective_kernel_size = int((self._kernel_size[0] - 1) * rate + 1)
     pad = effective_kernel_size - 1
     x_leftpad = np.pad(x, pad_width=[[0, 0], [pad, 0], [0, 0]], mode='constant')
-    return super(CausalConv, self).forward(x_leftpad, weights)
+    return super(CausalConv, self).forward(x_leftpad)
 
 
 def Conv1d(filters, kernel_size, stride=1, padding='VALID',

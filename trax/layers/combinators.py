@@ -54,9 +54,9 @@ class Serial(base.Layer):
       self._weights = tuple(l.weights for l in sublayers)
       self._state = tuple(l.state for l in sublayers)
 
-  def forward(self, xs, weights):
+  def forward(self, xs):
     self._validate_forward_inputs(xs)
-    state = self.state
+    state, weights = self.state, self.weights
     rngs = _split_rngs(self.rng, self._n_layers)
     if not self.sublayers:  # No-op: leave args unchanged.
       return xs
@@ -82,7 +82,7 @@ class Serial(base.Layer):
     return stack
 
   # pylint: disable=protected-access
-  def new_weights(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     weights = []
     states = []
     # In the code below, stack, inputs, and outputs are abstract (shapes and
@@ -97,7 +97,7 @@ class Serial(base.Layer):
       weights.append(weights_or_empty)
       states.append(state)
     self._state = states
-    return weights
+    self._weights = weights
   # pylint: enable=protected-access
 
   @base.Layer.weights.setter
@@ -196,10 +196,10 @@ class Parallel(base.Layer):
     self._weights = tuple(l.weights for l in sublayers)
     self._state = tuple(l.state for l in sublayers)
 
-  def forward(self, inputs, weights):
+  def forward(self, inputs):
     n_layers, layers = self._n_layers, self.sublayers
     sublayer_inputs = self._allot_to_sublayers(inputs)
-    state = self.state
+    state, weights = self.state, self.weights
     rngs = _split_rngs(self.rng, n_layers)
     if len(sublayer_inputs) != n_layers:
       raise ValueError(
@@ -231,7 +231,7 @@ class Parallel(base.Layer):
     self._state = tuple(new_state)
     return output
 
-  def new_weights(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     sublayer_signatures = self._allot_to_sublayers(input_signature)
     inits = [layer.init(signature, use_cache=True)
              for layer, signature
@@ -239,9 +239,7 @@ class Parallel(base.Layer):
     if inits:
       weights, state = tuple(zip(*inits))
       self._state = state
-      return weights
-    else:
-      return base.EMPTY_WEIGHTS
+      self._weights = weights
 
   @base.Layer.weights.setter
   def weights(self, weights):
@@ -313,8 +311,7 @@ class Concatenate(base.Layer):
     self._n_items = n_items
     self._axis = axis
 
-  def forward(self, xs, weights):
-    del weights
+  def forward(self, xs):
     return jnp.concatenate(xs, self._axis)
 
 
@@ -326,8 +323,7 @@ class Split(base.Layer):
     self._n_items = n_items
     self._axis = axis
 
-  def forward(self, inputs, weights):
-    del weights
+  def forward(self, inputs):
     return tuple(jnp.split(inputs, self._n_items, self._axis))
 
 
@@ -374,7 +370,8 @@ class Scan(base.Layer):
     """Returns the unique sublayer managed by this layer."""
     return self._sublayers[0]
 
-  def forward(self, inputs, weights):
+  def forward(self, inputs):
+    weights = self.weights
     if isinstance(inputs, list):
       inputs = tuple(inputs)  # so that inputs structure matches outputs
     n_carry = self._n_carry
@@ -399,7 +396,7 @@ class Scan(base.Layer):
     self.state = new_state
     return res  # Put outputs and carry back on stack.
 
-  def new_weights(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     n_carry = self._n_carry
     if n_carry == 0:
       if isinstance(input_signature, (list, tuple)):
@@ -410,16 +407,17 @@ class Scan(base.Layer):
         layer_sig = ShapeDtype(_shape_without_axis(input_signature, self._axis),
                                input_signature.dtype)
       weights, state = self.sublayer.init(layer_sig)
-      self.state = state
-      return weights
-    xs = input_signature[:-n_carry]
-    init = input_signature[-n_carry:]
-    xs_slices = [ShapeDtype(_shape_without_axis(x, self._axis), x.dtype)
-                 for x in xs]
-    layer_signature = tuple(xs_slices + list(init))
-    weights, state = self.sublayer.init(layer_signature, use_cache=True)
-    self.state = state
-    return weights
+      self._state = state
+      self._weights = weights
+    else:
+      xs = input_signature[:-n_carry]
+      init = input_signature[-n_carry:]
+      xs_slices = [ShapeDtype(_shape_without_axis(x, self._axis), x.dtype)
+                   for x in xs]
+      layer_signature = tuple(xs_slices + list(init))
+      weights, state = self.sublayer.init(layer_signature, use_cache=True)
+      self._state = state
+      self._weights = weights
 
 
 def Branch(*layers, name='Branch'):
@@ -636,8 +634,8 @@ class Cache(base.Layer):
     """Returns the unique sublayer managed by this layer."""
     return self._sublayers[0]
 
-  def forward(self, inputs, weights):
-    state = self.state
+  def forward(self, inputs):
+    state, weights = self.state, self.weights
     if state[0] is ():  # pylint: disable=literal-comparison
       res, layer_state = self.sublayer.pure_fn(
           inputs, weights, state[1], self.rng)
@@ -646,10 +644,10 @@ class Cache(base.Layer):
     else:
       return state[0]
 
-  def new_weights(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     weights, layer_state = self.sublayer.init(input_signature, use_cache=True)
     self.state = ((), layer_state)
-    return weights
+    self._weights = weights
 
 
 class BatchLeadingAxes(base.Layer):
@@ -674,19 +672,19 @@ class BatchLeadingAxes(base.Layer):
     """Returns the unique sublayer managed by this layer."""
     return self._sublayers[0]
 
-  def forward(self, inputs, weights):
+  def forward(self, inputs):
     batched_axes_shape = list(inputs.shape[:-self._n_last_axes_to_keep])
     batched_shape = [-1] + list(inputs.shape[-self._n_last_axes_to_keep:])
     inputs = jnp.reshape(inputs, batched_shape)
     res, layer_state = self.sublayer.pure_fn(
-        inputs, weights, self.state, self.rng)
+        inputs, self.weights, self.state, self.rng)
     self.state = layer_state
     return jnp.reshape(res, batched_axes_shape + list(res.shape[1:]))
 
-  def new_weights(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     weights, layer_state = self.sublayer.init(input_signature, use_cache=True)
     self.state = layer_state
-    return weights
+    self._weights = weights
 
 
 # All module-private helper functions are below.

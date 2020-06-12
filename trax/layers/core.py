@@ -67,30 +67,28 @@ class Dense(base.Layer):
     self._bias_initializer = bias_initializer
     self._use_bias = use_bias
 
-  def forward(self, x, weights):
+  def forward(self, x):
     """Executes this layer as part of a forward pass through the model.
 
     Args:
       x: Tensor of same shape and dtype as the input signature used to
           initialize this layer.
-      weights: Tuple `(w, b)` for layers created with `use_bias=True`, or
-          tensor `w` for layers created with `use_bias=False`.
 
     Returns:
       Tensor of same shape and dtype as the input, except the final dimension
       is the layer's `n_units` value.
     """
     if self._use_bias:
-      if not isinstance(weights, (tuple, list)):
+      if not isinstance(self.weights, (tuple, list)):
         raise ValueError(f'Weights should be a (w, b) tuple or list; '
-                         f'instead got: {weights}')
-      w, b = weights
+                         f'instead got: {self.weights}')
+      w, b = self.weights
       return jnp.dot(x, w) + b  # Affine map.
     else:
-      w = weights
+      w = self.weights
       return jnp.dot(x, w)  # Linear map.
 
-  def new_weights(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     """Returns newly initialized weights for this layer.
 
     Weights are a `(w, b)` tuple for layers created with `use_bias=True` (the
@@ -107,9 +105,9 @@ class Dense(base.Layer):
 
     if self._use_bias:
       b = self._bias_initializer(shape_b, rng_b)
-      return (w, b)
+      self.weights = (w, b)
     else:
-      return w
+      self.weights = w
 
 
 class Embedding(base.Layer):
@@ -143,26 +141,24 @@ class Embedding(base.Layer):
     self._vocab_size = vocab_size
     self._kernel_initializer = kernel_initializer
 
-  def forward(self, x, weights):
+  def forward(self, x):
     """Returns embedding vectors corresponding to input token id's.
 
     Args:
       x: Tensor of token id's.
-      weights: Tensor of shape `(vocab_size, d_feature)`, where row `i`
-          contains the vector for token id `i`.
 
     Returns:
       Tensor of embedding vectors.
     """
-    return jnp.take(weights, x, axis=0)
+    return jnp.take(self.weights, x, axis=0)
 
-  def new_weights(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     """Returns tensor of newly initialized embedding vectors."""
     del input_signature
     shape_w = (self._vocab_size, self._d_feature)
     # TODO(lukaszkaiser): do we split self.rng for consistency? Add a method?
     w = self._kernel_initializer(shape_w, self.rng)
-    return w
+    self.weights = w
 
 
 class Dropout(base.Layer):
@@ -192,18 +188,16 @@ class Dropout(base.Layer):
     self._name = 'dropout_' + name
     self._mode = mode
 
-  def new_weights(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     """Sets layer-specific internal state."""
     del input_signature
     self.state = {self._name: jnp.array(self._initial_rate)}
-    return base.EMPTY_WEIGHTS
 
-  def forward(self, x, weights):
+  def forward(self, x):
     """Executes this layer as part of a forward pass through the model.
 
     Args:
       x: Tensor of activations.
-      weights: Ignored/not used.
 
     Returns:
       Tensor of same shape and dtype as the input.

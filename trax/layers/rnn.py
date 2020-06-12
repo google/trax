@@ -47,14 +47,14 @@ class LSTMCell(base.Layer):
     self._kernel_initializer = kernel_initializer
     self._bias_initializer = bias_initializer
 
-  def forward(self, inputs, weights):
+  def forward(self, inputs):
     x, lstm_state = inputs
 
     # LSTM state consists of c and h.
     c, h = jnp.split(lstm_state, 2, axis=-1)
 
     # Dense layer on the concatenation of x and h.
-    w, b = weights
+    w, b = self.weights
     y = jnp.dot(jnp.concatenate([x, h], axis=-1), w) + b
 
     # i = input_gate, j = new_input, f = forget_gate, o = output_gate
@@ -64,7 +64,7 @@ class LSTMCell(base.Layer):
     new_h = jnp.tanh(new_c) * math.sigmoid(o)
     return new_h, jnp.concatenate([new_c, new_h], axis=-1)
 
-  def new_weights(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     # LSTM state last dimension must be twice n_units.
     assert input_signature[1].shape[-1] == 2 * self._n_units
     # The dense layer input is the input and half of the lstm state.
@@ -72,7 +72,7 @@ class LSTMCell(base.Layer):
     rng1, rng2 = math.random.split(self.rng, 2)
     w = self._kernel_initializer((input_shape, 4 * self._n_units), rng1)
     b = self._bias_initializer((4 * self._n_units,), rng2) + self._forget_bias
-    return (w, b)
+    self.weights = (w, b)
 
 
 def MakeZeroState(depth_multiplier=1):
@@ -111,11 +111,11 @@ class GRUCell(base.Layer):
     self._kernel_initializer = kernel_initializer
     self._bias_initializer = bias_initializer
 
-  def forward(self, inputs, weights):
+  def forward(self, inputs):
     x, gru_state = inputs
 
     # Dense layer on the concatenation of x and h.
-    w1, b1, w2, b2 = weights
+    w1, b1, w2, b2 = self.weights
     y = jnp.dot(jnp.concatenate([x, gru_state], axis=-1), w1) + b1
 
     # Update and reset gates.
@@ -127,7 +127,7 @@ class GRUCell(base.Layer):
     new_gru_state = u * gru_state + (1 - u) * jnp.tanh(c)
     return new_gru_state, new_gru_state
 
-  def new_weights(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     # State last dimension must be n_units.
     assert input_signature[1].shape[-1] == self._n_units
     # The dense layer input is the input and half of the GRU state.
@@ -137,7 +137,7 @@ class GRUCell(base.Layer):
     b1 = self._bias_initializer((2 * self._n_units,), rng2) + self._forget_bias
     w2 = self._kernel_initializer((input_shape, self._n_units), rng3)
     b2 = self._bias_initializer((self._n_units,), rng4)
-    return (w1, b1, w2, b2)
+    self.weights = (w1, b1, w2, b2)
 
 
 def GRU(n_units):

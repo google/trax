@@ -159,7 +159,7 @@ class EmbeddingTest(absltest.TestCase):
     _, _ = layer.init(None)
 
     # Default weights sampled from Gaussian, mu = 0, sigma = 1.
-    w = layer.new_weights(None)
+    w = layer.weights
     self.assertEqual(w.shape, (20, 5))
     self.assertLess(np.abs(np.mean(w)), .4)  # .4 is 4 sigma deviation
 
@@ -199,8 +199,8 @@ class DropoutTest(absltest.TestCase):
 
   def test_new_weights(self):
     layer = tl.Dropout(rate=0.1, mode='train')
-    w = layer.new_weights(None)
-    self.assertEmpty(w)
+    layer.init(None)
+    self.assertEmpty(layer.weights)
 
 
 class FlattenTest(absltest.TestCase):

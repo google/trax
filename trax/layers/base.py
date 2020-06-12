@@ -49,11 +49,11 @@ class Layer:
   common). Authors of new layer subclasses typically override at most two
   methods of the base `Layer` class:
 
-    `forward(inputs, weights)`:
+    `forward(inputs)`:
       Computes this layer's output as part of a forward pass through the model.
 
-    `new_weights(self, input_signature)`:
-      Returns new weights suitable for inputs with the given signature.
+    `init_weights_and_state(self, input_signature)`:
+      Initializes weights and state for inputs with the given signature.
 
   A small subset of layer types are combinators -- they organize the computation
   of their sublayers, e.g., applying their sublayers in series or in parallel.
@@ -175,22 +175,18 @@ class Layer:
     self.weights = weights
     return outputs
 
-  def forward(self, inputs, weights):
+  def forward(self, inputs):
     """Computes this layer's output as part of a forward pass through the model.
 
     Authors of new layer subclasses should override this method to define the
-    forward computation that their layer performs. If you need to use
-    local non-trainable state or randomness, use `self.rng` for the random seed
-    (no need to set it) and use `self.state` for non-trainable state (and set it
-    to the new value).
+    forward computation that their layer performs. Use `self.weights` to access
+    trainable weights of this layer. If you need to use local non-trainable
+    state or randomness, use `self.rng` for the random seed (no need to set it)
+    and use `self.state` for non-trainable state (and set it to the new value).
 
     Args:
       inputs: Zero or more input tensors, packaged as described in the `Layer`
           class docstring.
-      weights: A tuple or list of trainable weights, with one element for this
-          layer if this layer has no sublayers, or one for each sublayer if
-          this layer has sublayers. If a layer (or sublayer) has no trainable
-          weights, the corresponding weights element is an empty tuple.
 
     Returns:
       Zero or more output tensors, packaged as described in the `Layer` class
@@ -198,19 +194,19 @@ class Layer:
     """
     raise NotImplementedError
 
-  def new_weights(self, input_signature):
-    """Returns new weights suitable for inputs with the given signature.
+  def init_weights_and_state(self, input_signature):
+    """Initializes weights and state for inputs with the given signature.
 
     Authors of new layer subclasses should override this method if their layer
-    uses trainable weights or non-trainable state. To initialize non-trainable
-    state, set `self.state` to the intended value.
+    uses trainable weights or non-trainable state. To initialize trainable
+    weights, set `self.weights` and to initialize non-trainable state,
+    set `self.state` to the intended value.
 
     Args:
       input_signature: A `ShapeDtype` instance (if this layer takes one input)
           or a list/tuple of `ShapeDtype` instances; signatures of inputs.
     """
     del input_signature
-    return EMPTY_WEIGHTS
 
   @property
   def has_backward(self):
@@ -270,15 +266,14 @@ class Layer:
 
       if rng is not None:
         self.rng = rng
-      weights = self.new_weights(input_signature)
-      self._weights = weights
+      self.init_weights_and_state(input_signature)
 
       if use_cache:
         self._init_cached = True
       else:
         self._clear_init_cache()
 
-      return (weights, self.state)
+      return (self._weights, self.state)
 
     except Exception as e:
       name, trace = self._name, _short_traceback(skip=3)
@@ -408,7 +403,7 @@ class Layer:
         self._weights, self._state = weights, state
 
       if not self.has_backward:
-        outputs = self.forward(x, weights)
+        outputs = self.forward(x)
         s = self.state
       else:
         outputs, s = self._do_custom_gradients(x, weights, state, rng=rng)
@@ -462,7 +457,8 @@ class Layer:
 
     def _do_forward(y, weights):
       old_weights, old_state, old_rng = self._weights, self._state, self._rng
-      res = self.forward(y, weights)
+      self._weights = weights
+      res = self.forward(y)
       s = self._state
       self._weights, self._state, self._rng = old_weights, old_state, old_rng
       return res, s
@@ -470,7 +466,8 @@ class Layer:
     def do_forward_vjp(y, weights):
       """Custom gradient (vjp) function."""
       old_weights, old_state, old_rng = self._weights, self._state, self._rng
-      output = self.forward(y, weights)
+      self._weights = weights
+      output = self.forward(y)
       new_state = self._state
       self._weights, self._state, self._rng = old_weights, old_state, old_rng
       def vjpfun(grad):
@@ -497,9 +494,8 @@ def layer(n_in=1, n_out=1, name=None):
       self._kwargs = kwargs  # pylint: disable=protected-access
       Layer.__init__(self, n_in=n_in, n_out=n_out, name=name)
 
-    def _forward(self, inputs, weights):
+    def _forward(self, inputs):
       """Uses this layer as part of a forward pass through the model."""
-      del weights
       _validate_forward_input(inputs, n_in)
       raw_output = raw_fn(inputs, **self._kwargs)  # pylint: disable=protected-access
       output = () if _is_empty(raw_output) else raw_output
@@ -537,14 +533,12 @@ class PureLayer(Layer):
     super().__init__(n_in, n_out, name)
     self._forward_fn = forward_fn
 
-  def forward(self, inputs, weights):
+  def forward(self, inputs):
     """Overrides `Layer.forward`.
 
     Args:
       inputs: Zero or more input tensors, packaged as described in the `Layer`
           class docstring.
-      weights: Trainable weights in general, but this subclass doesn't use
-          weights, so the only acceptable value is an empty tuple/list.
 
     Returns:
       Zero or more output tensors, packaged as described in the `Layer` class

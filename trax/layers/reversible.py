@@ -56,10 +56,11 @@ class ReversibleLayer(base.Layer):
       gradient signal for the weights.
     """
     def _do_forward(x, weights):
-      old_state, old_rng = self._state, self._rng
+      old_weights, old_state, old_rng = self._weights, self._state, self._rng
       self._state, self._rng = state, rng
-      res = self.forward(x, weights)
-      self._state, self._rng = old_state, old_rng
+      self._weights = weights
+      res = self.forward(x)
+      self._weights, self._state, self._rng = old_weights, old_state, old_rng
       return res
 
     reconstructed_x = self.reverse(output, weights, state, new_state, rng)
@@ -84,15 +85,14 @@ class ReversibleSwap(ReversibleLayer):
   def __init__(self):
     super().__init__(n_in=2, n_out=2)
 
-  def forward(self, inputs, weights):
-    del weights
+  def forward(self, inputs):
     x0, x1 = inputs
     return x1, x0
 
   def reverse(self, output, weights=(), state=(), new_state=(), rng=None):
-    del state, new_state, rng
+    del state, new_state, rng, weights
     # Swap is its own inverse, except that reverse doesn't return the state.
-    return self.forward(output, weights)
+    return self.forward(output)
 
 
 class ReversibleSerial(ReversibleLayer, cb.Serial):

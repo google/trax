@@ -28,13 +28,12 @@ from trax.math import numpy as np
 
 class AddBias(tl.Layer):
 
-  def forward(self, inputs, weights):
+  def forward(self, inputs):
     x = inputs
-    return x + weights
+    return x + self.weights
 
-  def new_weights(self, input_signature, rng):
-    del rng
-    return np.zeros(input_signature.shape[-1])
+  def init_weights_and_state(self, input_signature):
+    self.weights = np.zeros(input_signature.shape[-1])
 
 
 def BERTClassifierHead(n_classes):
