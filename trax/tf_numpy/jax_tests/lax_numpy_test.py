@@ -2011,7 +2011,6 @@ class LaxBackedNumpyTests(jtu.TestCase):
       for axis in itertools.chain(range(len(x_shape)), [-1], [None])
       for dtype in default_dtypes
       for rng_factory in [jtu.rand_default]))
-  @jtu.disable
   def testTakeAlongAxis(self, x_shape, i_shape, dtype, axis, rng_factory):
     rng = rng_factory()
     i_shape = onp.array(i_shape)
@@ -2032,7 +2031,8 @@ class LaxBackedNumpyTests(jtu.TestCase):
     if hasattr(onp, "take_along_axis"):
       onp_op = lambda x, i: onp.take_along_axis(x, i, axis=axis)
       self._CheckAgainstNumpy(lnp_op, onp_op, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_op, args_maker, check_dtypes=True)
+    self._CompileAndCheck(lnp_op, args_maker, check_dtypes=True,
+                          check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_shape={}_n={}_increasing={}".format(
