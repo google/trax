@@ -1,46 +1,22 @@
-trax.math package
-=================
+trax.math
+=========
 
-Submodules
-----------
-
-trax.math.backend module
-------------------------
+backend
+-------
 
 .. automodule:: trax.math.backend
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.math.jax module
---------------------
+jax
+---
 
 .. automodule:: trax.math.jax
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.math.numpy module
-----------------------
+numpy
+-----
 
 .. automodule:: trax.math.numpy
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.math.tf module
--------------------
+tf
+--
 
 .. automodule:: trax.math.tf
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-
-Module contents
----------------
-
-.. automodule:: trax.math
-    :members:
-    :undoc-members:
-    :show-inheritance:

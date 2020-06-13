@@ -198,6 +198,9 @@ epub_exclude_files = ['search.html']
 autodoc_member_order = 'bysource'
 
 autodoc_default_options = {
+    'members': None,  # Include all public members.
+    'undoc-members': True,  # Include members that lack docstrings.
+    'show-inheritance': True,
     'special-members': '__call__, __init__',
 }
 

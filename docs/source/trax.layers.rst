@@ -1,117 +1,72 @@
-trax.layers package
-===================
+trax.layers
+===========
 
-Subpackages
------------
-
-.. toctree::
-
-    trax.layers.research
-
-Submodules
-----------
-
-trax.layers.activation\_fns module
-----------------------------------
-
-.. automodule:: trax.layers.activation_fns
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-trax.layers.attention module
-----------------------------
-
-.. automodule:: trax.layers.attention
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-trax.layers.base module
------------------------
-
-.. automodule:: trax.layers.base
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-trax.layers.combinators module
-------------------------------
-
-.. automodule:: trax.layers.combinators
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-trax.layers.convolution module
-------------------------------
-
-.. automodule:: trax.layers.convolution
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-trax.layers.core module
------------------------
-
-.. automodule:: trax.layers.core
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-trax.layers.initializers module
--------------------------------
-
-.. automodule:: trax.layers.initializers
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-trax.layers.metrics module
---------------------------
-
-.. automodule:: trax.layers.metrics
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-trax.layers.normalization module
---------------------------------
-
-.. automodule:: trax.layers.normalization
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-trax.layers.pooling module
---------------------------
-
-.. automodule:: trax.layers.pooling
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-trax.layers.reversible module
------------------------------
-
-.. automodule:: trax.layers.reversible
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-trax.layers.rnn module
-----------------------
-
-.. automodule:: trax.layers.rnn
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-
-Module contents
+activation\_fns
 ---------------
 
-.. automodule:: trax.layers
-    :members:
-    :undoc-members:
-    :show-inheritance:
+.. automodule:: trax.layers.activation_fns
+
+attention
+---------
+
+.. automodule:: trax.layers.attention
+
+base
+----
+
+.. automodule:: trax.layers.base
+
+combinators
+-----------
+
+.. automodule:: trax.layers.combinators
+
+convolution
+-----------
+
+.. automodule:: trax.layers.convolution
+
+core
+----
+
+.. automodule:: trax.layers.core
+
+initializers
+------------
+
+.. automodule:: trax.layers.initializers
+
+metrics
+-------
+
+.. automodule:: trax.layers.metrics
+
+normalization
+-------------
+
+.. automodule:: trax.layers.normalization
+
+pooling
+-------
+
+.. automodule:: trax.layers.pooling
+
+reversible
+----------
+
+.. automodule:: trax.layers.reversible
+
+rnn
+---
+
+.. automodule:: trax.layers.rnn
+
+research.efficient\_attention
+-----------------------------
+
+.. automodule:: trax.layers.research.efficient_attention
+
+research.position\_encodings
+----------------------------
+
+.. automodule:: trax.layers.research.position_encodings

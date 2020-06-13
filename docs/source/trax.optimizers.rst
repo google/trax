@@ -1,62 +1,32 @@
-trax.optimizers package
-=======================
+trax.optimizers
+===============
 
-Submodules
-----------
-
-trax.optimizers.adafactor module
---------------------------------
+adafactor
+---------
 
 .. automodule:: trax.optimizers.adafactor
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.optimizers.adam module
----------------------------
+adam
+----
 
 .. automodule:: trax.optimizers.adam
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.optimizers.base module
----------------------------
+base
+----
 
 .. automodule:: trax.optimizers.base
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.optimizers.momentum module
--------------------------------
+momentum
+--------
 
 .. automodule:: trax.optimizers.momentum
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.optimizers.rms\_prop module
---------------------------------
+rms\_prop
+---------
 
 .. automodule:: trax.optimizers.rms_prop
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.optimizers.sm3 module
---------------------------
+sm3
+---
 
 .. automodule:: trax.optimizers.sm3
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-
-Module contents
----------------
-
-.. automodule:: trax.optimizers
-    :members:
-    :undoc-members:
-    :show-inheritance:

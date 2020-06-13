@@ -1,107 +1,60 @@
-trax package
-============
-
-Subpackages
------------
+trax
+====
 
 .. toctree::
+    layers.* <trax.layers>
+    math.* <trax.math>
+    models.* <trax.models>
+    optimizers.* <trax.optimizers>
+    rl.* <trax.rl>
+    supervised.* <trax.supervised>
 
-    trax.layers
-    trax.math
-    trax.models
-    trax.optimizers
-    trax.rl
-    trax.supervised
-    trax.tf_numpy
-
-Submodules
-----------
-
-trax.history module
--------------------
+history
+-------
 
 .. automodule:: trax.history
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.jaxboard module
---------------------
+jaxboard
+--------
 
 .. automodule:: trax.jaxboard
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.lr\_schedules module
--------------------------
+lr\_schedules
+-------------
 
 .. automodule:: trax.lr_schedules
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.rl\_trainer module
------------------------
+rl\_trainer
+-----------
 
 .. automodule:: trax.rl_trainer
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.shapes module
-------------------
+shapes
+------
 
 .. automodule:: trax.shapes
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.test\_utils module
------------------------
+test\_utils
+-----------
 
 .. automodule:: trax.test_utils
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.trainer module
--------------------
+trainer
+-------
 
 .. automodule:: trax.trainer
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.trainer\_flags module
---------------------------
+trainer\_flags
+--------------
 
 .. automodule:: trax.trainer_flags
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.trax2keras module
-----------------------
+trax2keras
+----------
 
 .. automodule:: trax.trax2keras
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.utils module
------------------
+utils
+-----
 
 .. automodule:: trax.utils
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-
-Module contents
----------------
-
-.. automodule:: trax
-    :members:
-    :undoc-members:
-    :show-inheritance:

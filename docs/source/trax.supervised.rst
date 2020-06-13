@@ -1,62 +1,32 @@
-trax.supervised package
-=======================
+trax.supervised
+===============
 
-Submodules
-----------
-
-trax.supervised.inputs module
------------------------------
+inputs
+------
 
 .. automodule:: trax.supervised.inputs
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.supervised.lr\_functions module
-------------------------------------
+lr\_functions
+-------------
 
 .. automodule:: trax.supervised.lr_functions
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.supervised.pretrain\_finetune module
------------------------------------------
+pretrain\_finetune
+------------------
 
 .. automodule:: trax.supervised.pretrain_finetune
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.supervised.tf\_inputs module
----------------------------------
+tf\_inputs
+----------
 
 .. automodule:: trax.supervised.tf_inputs
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.supervised.trainer\_lib module
------------------------------------
+trainer\_lib
+------------
 
 .. automodule:: trax.supervised.trainer_lib
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.supervised.training module
--------------------------------
+training
+--------
 
 .. automodule:: trax.supervised.training
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-
-Module contents
----------------
-
-.. automodule:: trax.supervised
-    :members:
-    :undoc-members:
-    :show-inheritance:

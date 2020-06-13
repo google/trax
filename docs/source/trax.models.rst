@@ -1,86 +1,57 @@
-trax.models package
-===================
+trax.models
+===========
 
-Subpackages
------------
-
-.. toctree::
-
-    trax.models.reformer
-    trax.models.research
-
-Submodules
+atari\_cnn
 ----------
 
-trax.models.atari\_cnn module
------------------------------
-
 .. automodule:: trax.models.atari_cnn
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.models.beam\_search module
--------------------------------
+beam\_search
+------------
 
 .. automodule:: trax.models.beam_search
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.models.mlp module
-----------------------
+mlp
+---
 
 .. automodule:: trax.models.mlp
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.models.neural\_gpu module
-------------------------------
+neural\_gpu
+-----------
 
 .. automodule:: trax.models.neural_gpu
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.models.resnet module
--------------------------
+resnet
+------
 
 .. automodule:: trax.models.resnet
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.models.rl module
----------------------
+rl
+--
 
 .. automodule:: trax.models.rl
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.models.rnn module
-----------------------
+rnn
+---
 
 .. automodule:: trax.models.rnn
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.models.transformer module
-------------------------------
+transformer
+-----------
 
 .. automodule:: trax.models.transformer
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
+reformer.reformer
+-----------------
 
-Module contents
----------------
+.. automodule:: trax.models.reformer.reformer
 
-.. automodule:: trax.models
-    :members:
-    :undoc-members:
-    :show-inheritance:
+research.bert
+-------------
+
+.. automodule:: trax.models.research.bert
+
+research.skipping\_transformer
+------------------------------
+
+.. automodule:: trax.models.research.skipping_transformer

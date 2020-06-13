@@ -1,197 +1,143 @@
 trax.rl package
 ===============
 
-Subpackages
------------
-
-.. toctree::
-
-    trax.rl.envs
-
-Submodules
-----------
-
-trax.rl.actor\_critic module
-----------------------------
+actor\_critic
+-------------
 
 .. automodule:: trax.rl.actor_critic
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.rl.actor\_critic\_joint module
------------------------------------
+actor\_critic\_joint
+--------------------
 
 .. automodule:: trax.rl.actor_critic_joint
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.rl.advantages module
--------------------------
+advantages
+----------
 
 .. automodule:: trax.rl.advantages
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.rl.awr\_trainer module
----------------------------
+awr\_trainer
+------------
 
 .. automodule:: trax.rl.awr_trainer
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.rl.awr\_utils module
--------------------------
+awr\_utils
+----------
 
 .. automodule:: trax.rl.awr_utils
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.rl.base\_trainer module
-----------------------------
+base\_trainer
+-------------
 
 .. automodule:: trax.rl.base_trainer
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.rl.distributions module
-----------------------------
+distributions
+-------------
 
 .. automodule:: trax.rl.distributions
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.rl.normalization module
-----------------------------
+normalization
+-------------
 
 .. automodule:: trax.rl.normalization
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.rl.online\_tune module
----------------------------
+online\_tune
+------------
 
 .. automodule:: trax.rl.online_tune
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.rl.policy\_based\_trainer module
--------------------------------------
+policy\_based\_trainer
+----------------------
 
 .. automodule:: trax.rl.policy_based_trainer
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.rl.policy\_based\_utils module
------------------------------------
+policy\_based\_utils
+--------------------
 
 .. automodule:: trax.rl.policy_based_utils
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.rl.ppo module
-------------------
+ppo
+---
 
 .. automodule:: trax.rl.ppo
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.rl.ppo\_trainer module
----------------------------
+ppo\_trainer
+------------
 
 .. automodule:: trax.rl.ppo_trainer
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.rl.rl\_layers module
--------------------------
+rl\_layers
+----------
 
 .. automodule:: trax.rl.rl_layers
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.rl.serialization\_utils module
------------------------------------
+serialization\_utils
+--------------------
 
 .. automodule:: trax.rl.serialization_utils
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.rl.simple module
----------------------
+simple
+------
 
 .. automodule:: trax.rl.simple
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
-trax.rl.simple\_trainer module
-------------------------------
-
-.. automodule:: trax.rl.simple_trainer
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-trax.rl.simulated\_env\_problem module
---------------------------------------
-
-.. automodule:: trax.rl.simulated_env_problem
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-trax.rl.space\_serializer module
---------------------------------
-
-.. automodule:: trax.rl.space_serializer
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-trax.rl.task module
--------------------
-
-.. automodule:: trax.rl.task
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-trax.rl.trainers module
------------------------
-
-.. automodule:: trax.rl.trainers
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-trax.rl.training module
------------------------
-
-.. automodule:: trax.rl.training
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-
-Module contents
+simple\_trainer
 ---------------
 
-.. automodule:: trax.rl
-    :members:
-    :undoc-members:
-    :show-inheritance:
+.. automodule:: trax.rl.simple_trainer
+
+simulated\_env\_problem
+-----------------------
+
+.. automodule:: trax.rl.simulated_env_problem
+
+space\_serializer
+-----------------
+
+.. automodule:: trax.rl.space_serializer
+
+task
+----
+
+.. automodule:: trax.rl.task
+
+trainers
+--------
+
+.. automodule:: trax.rl.trainers
+
+training
+--------
+
+.. automodule:: trax.rl.training
+
+
+envs.async\_trajectory\_collector
+---------------------------------
+
+.. automodule:: trax.rl.envs.async_trajectory_collector
+
+envs.async\_trajectory\_collector\_lib
+--------------------------------------
+
+.. automodule:: trax.rl.envs.async_trajectory_collector_lib
+
+envs.fake\_env
+--------------
+
+.. automodule:: trax.rl.envs.fake_env
+
+envs.online\_tune
+-----------------
+
+.. automodule:: trax.rl.envs.online_tune
+
+envs.online\_tune\_env
+----------------------
+
+.. automodule:: trax.rl.envs.online_tune_env
+
+envs.online\_tune\_rl\_env
+--------------------------
+
+.. automodule:: trax.rl.envs.online_tune_rl_env
