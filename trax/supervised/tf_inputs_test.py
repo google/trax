@@ -45,9 +45,13 @@ def _test_dataset_ints(lengths):
       generator, output_types=types, output_shapes=shapes)
 
 
-def _c4_dataset(split='train'):
+def _load_dataset(name, split='train'):
   return tfds.load(
-      name='c4', split=split, data_dir=_TESTDATA, shuffle_files=False)
+      name=name, split=split, data_dir=_TESTDATA, shuffle_files=False)
+
+
+def _c4_dataset(split='train'):
+  return _load_dataset('c4', split=split)
 
 
 def _spm_path():
@@ -116,8 +120,7 @@ class TFInputsTest(tf.test.TestCase):
     text = example['text']
 
     # This should convert the dataset to an inputs/targets that are tokenized.
-    dataset = tf_inputs.c4_bare_preprocess_fn(
-        dataset, spm_path=os.path.join(_TESTDATA, 'sentencepiece.model'))
+    dataset = tf_inputs.c4_bare_preprocess_fn(dataset, spm_path=_spm_path())
 
     example = list(tfds.as_numpy(dataset.take(1)))[0]
 
@@ -173,9 +176,8 @@ class TFInputsTest(tf.test.TestCase):
 
     # Preprocess using the sentencepiece model in testdata.
     spc_proc_dataset = tf_inputs.c4_preprocess(
-        load_c4_dataset(), False, 2048,
-        tokenization='spc',
-        spm_path=os.path.join(_TESTDATA, 'sentencepiece.model'))
+        load_c4_dataset(), False, 2048, tokenization='spc',
+        spm_path=_spm_path())
 
     spc_proc_count, spc_lengths = examine_processed_dataset(spc_proc_dataset)
 
@@ -191,8 +193,7 @@ class TFInputsTest(tf.test.TestCase):
   def test_c4(self):
     gin.bind_parameter('c4_preprocess.max_target_length', 2048)
     gin.bind_parameter('c4_preprocess.tokenization', 'spc')
-    gin.bind_parameter('c4_preprocess.spm_path',
-                       os.path.join(_TESTDATA, 'sentencepiece.model'))
+    gin.bind_parameter('c4_preprocess.spm_path', _spm_path())
 
     # Just make sure this doesn't throw.
     _ = tf_inputs.data_streams(
@@ -235,8 +236,7 @@ class TFInputsTest(tf.test.TestCase):
   def test_c4_pretrain(self):
     _t5_gin_config()
 
-    gin.bind_parameter('c4_bare_preprocess_fn.spm_path',
-                       os.path.join(_TESTDATA, 'sentencepiece.model'))
+    gin.bind_parameter('c4_bare_preprocess_fn.spm_path', _spm_path())
 
     gin.bind_parameter('batcher.batch_size_per_device', 8)
     gin.bind_parameter('batcher.eval_batch_size', 8)
@@ -247,6 +247,59 @@ class TFInputsTest(tf.test.TestCase):
     _ = tf_inputs.data_streams(
         'c4', data_dir=_TESTDATA, input_name='inputs', target_name='targets',
         bare_preprocess_fn=tf_inputs.c4_bare_preprocess_fn)
+
+  def test_generic_text_dataset_preprocess_fn(self):
+    dataset = _load_dataset('squad')
+
+    example, = tfds.as_numpy(dataset.take(1))
+
+    self.assertNotIn('inputs', example)
+    self.assertNotIn('targets', example)
+
+    proc_dataset = tf_inputs.generic_text_dataset_preprocess_fn(
+        dataset, spm_path=_spm_path(),
+        text_preprocess_fn=t5_processors.squad,
+        copy_plaintext=True)
+
+    proc_example, = tfds.as_numpy(proc_dataset.take(1))
+
+    self.assertIn('inputs', proc_example)
+    self.assertIn('targets', proc_example)
+
+    self.assertEqual(proc_example['inputs'].dtype, np.int64)
+    self.assertEqual(proc_example['targets'].dtype, np.int64)
+
+  def test_inputs_using_generic_text_dataset_preprocess_fn(self):
+
+    gin.bind_parameter(
+        'generic_text_dataset_preprocess_fn.spm_path', _spm_path())
+    gin.bind_parameter(
+        'generic_text_dataset_preprocess_fn.copy_plaintext', True)
+    gin.bind_parameter(
+        'generic_text_dataset_preprocess_fn.text_preprocess_fn',
+        t5_processors.squad)
+
+    # Just make sure this doesn't throw.
+    def data_streams():
+      return tf_inputs.data_streams(
+          'squad', data_dir=_TESTDATA, input_name='inputs',
+          target_name='targets',
+          bare_preprocess_fn=tf_inputs.generic_text_dataset_preprocess_fn)
+
+    squad_inputs = inputs.batcher(
+        data_streams=data_streams,
+        batch_size_per_device=2,
+        eval_batch_size=2,
+        max_eval_length=50,
+    )
+
+    n_devices = 3
+    train_stream = squad_inputs.train_stream(n_devices)
+    inps, tgts = next(train_stream)
+
+    # We can only assert that the batch dim gets divided by n_devices.
+    self.assertEqual(inps.shape[0] % n_devices, 0)
+    self.assertEqual(tgts.shape[0] % n_devices, 0)
 
 
 if __name__ == '__main__':

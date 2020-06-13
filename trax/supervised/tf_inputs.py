@@ -527,10 +527,36 @@ def c4_bare_preprocess_fn(dataset,
       dataset, output_features, keys=output_features,
       copy_plaintext=copy_plaintext)
 
-  # Preprocess the tokens - the exact preprocessors are set via
+  # Preprocess the tokens - the exact preprocessors are set via gin.
   dataset = t5_processors.unsupervised(dataset,
                                        sequence_length=sequence_length,
                                        output_features=output_features)
+
+  return dataset
+
+
+@gin.configurable(blacklist=['dataset'])
+def generic_text_dataset_preprocess_fn(dataset,
+                                       text_preprocess_fn=None,
+                                       spm_path=None,
+                                       copy_plaintext=False):
+  """Applies a text preprocess fn and tokenizes the dataset."""
+
+  # The assumption is that `text_preprocess_fn` finally gives us a dataset
+  # which has `inputs` and `targets`.
+  if text_preprocess_fn is not None:
+    dataset = text_preprocess_fn(dataset)
+
+  # Vocabulary for tokenization.
+  vocab = t5_spc_vocab.SentencePieceVocabulary(
+      sentencepiece_model_file=spm_path or t5_utils.DEFAULT_SPM_PATH)
+  feature = t5_utils.Feature(vocab)
+  output_features = {'targets': feature, 'inputs': feature}
+
+  # Tokenize the inputs and targets.
+  dataset = t5_utils.encode_string_features(
+      dataset, output_features, keys=output_features,
+      copy_plaintext=copy_plaintext)
 
   return dataset
 
