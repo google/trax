@@ -186,7 +186,7 @@ class ThresholdedLinearUnit(base.Layer):
   """Thresholded Linear Unit, c.f. https://arxiv.org/pdf/1911.09737.pdf ."""
 
   def init_weights_and_state(self, input_signature):
-    """Returns a single weight, initialized to zero."""
+    """Initializes this layer's single weight to zero."""
     del input_signature
     self.weights = np.zeros((), dtype=np.float32)
 

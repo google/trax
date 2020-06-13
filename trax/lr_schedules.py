@@ -26,17 +26,9 @@ function that takes a step and returns a dict with entry 'learning_rate'.
 # TODO(pkozakowski): Revisit the decision to control nontrainable parameters
 # using LR schedules, or at least rename the module.
 
-import random
-import time
-
-from absl import logging
 import gin
-import gym
 
-from trax import layers as tl
-from trax import models as trax_models
 from trax.math import numpy as np
-from trax.math import random as jax_random
 
 
 # We use a mix of CamelCase and not in this module.
@@ -156,140 +148,8 @@ def EvalAdjustingSchedule(history,
   return MultifactorSchedule(history, constant=adjusted)
 
 
-@gin.configurable(blacklist=['history'])
-def PolicySchedule(
-    history,
-    observation_metrics=(
-        ('train', 'metrics/accuracy'),
-        ('train', 'metrics/loss'),
-        ('eval', 'metrics/accuracy'),
-        ('eval', 'metrics/loss'),
-    ),
-    include_controls_in_observation=False,
-    control_configs=(
-        # (name, start, (low, high), flip)
-        ('learning_rate', 1e-3, (1e-9, 10.0), False),
-    ),
-    observation_range=(0.0, 10.0),
-    action_multipliers=(1.0 / 1.5, 1.0 / 1.25, 1.0, 1.25, 1.5),
-    policy_and_value_model=trax_models.FrameStackMLP,
-    policy_and_value_two_towers=False,
-    policy_and_value_vocab_size=None,
-    policy_dir=gin.REQUIRED,
-    temperature=1.0,
-):
-  """Learning rate schedule controlled by a learned policy.
-
-  Args:
-    history: the history of training and evaluation (History object).
-    observation_metrics: list of pairs (mode, metric), as in the History object.
-    include_controls_in_observation: bool, whether to include the controls in
-      observations.
-    control_configs: control configs, see trax.rl.envs.OnlineTuneEnv.
-    observation_range: tuple (low, high), range to clip the metrics to.
-    action_multipliers: sequence of LR multipliers that policy actions
-      correspond to.
-    policy_and_value_model: Trax model to use as the policy.
-    policy_and_value_two_towers: bool, whether the action distribution and value
-      prediction is computed by separate model towers.
-    policy_and_value_vocab_size: vocabulary size of a policy and value network
-      operating on serialized representation. If None, use raw continuous
-      representation.
-    policy_dir: directory with the policy checkpoint.
-    temperature: temperature for sampling from the policy.
-
-  Returns:
-    a function nontrainable_params(step): float -> {'name': float}, the
-    step-dependent schedule for nontrainable parameters.
-  """
-
-  # Turn the history into observations for the policy. If we don't have any,
-  # return the initial learning rate.
-  start_time = time.time()
-  observations = online_tune.history_to_observations(
-      history, observation_metrics, observation_range,
-      control_configs if include_controls_in_observation else None
-  )
-  logging.vlog(
-      1, 'Building observations took %0.2f sec.', time.time() - start_time)
-  if observations.shape[0] == 0:
-    controls = {
-        name: start_value
-        for (name, start_value, _, _) in control_configs
-    }
-    return lambda _: controls
-
-  # Build the policy network and load its parameters.
-  start_time = time.time()
-  (low, high) = observation_range
-  observation_space = gym.spaces.Box(
-      shape=observations.shape[1:], low=low, high=high
-  )
-  action_space = gym.spaces.MultiDiscrete(
-      nvec=(len(action_multipliers),) * len(control_configs)
-  )
-  (net, _) = policy_based_utils.policy_and_value_net(
-      bottom_layers_fn=policy_and_value_model,
-      observation_space=observation_space,
-      action_space=action_space,
-      vocab_size=policy_and_value_vocab_size,
-      two_towers=policy_and_value_two_towers,
-  )
-  logging.vlog(
-      1, 'Building the policy network took %0.2f sec.', time.time() - start_time
-  )
-  start_time = time.time()
-  # (opt_state, state, epoch, opt_step, history)
-  (opt_state, state, _, _, _) = policy_based_utils.maybe_restore_opt_state(
-      policy_dir
-  )
-  assert opt_state is not None, 'Policy checkpoint not found.'
-  (params, _, _) = opt_state
-  logging.vlog(
-      1, 'Restoring the policy parameters took %0.2f sec.',
-      time.time() - start_time
-  )
-
-  # Run the policy and sample an action.
-  seed = random.randint(0, 2**31 - 1)
-  rng = jax_random.get_prng(seed=seed)
-  start_time = time.time()
-
-  n_timesteps = observations.shape[0]
-  # (log_probs, value_preds, state, rng)
-  (log_probs, _, _, _) = policy_based_utils.run_policy(
-      policy_and_value_net_apply=net,
-      observations=np.array([observations]),
-      lengths=np.array([n_timesteps]),
-      weights=params,
-      state=state,
-      rng=rng,
-      action_space=action_space,
-  )
-
-  logging.vlog(
-      1, 'Running the policy took %0.2f sec.', time.time() - start_time
-  )
-  # Sample from the action distribution for the last timestep.
-  assert log_probs.shape == (1, len(control_configs), len(action_multipliers))
-  action = tl.gumbel_sample(log_probs[0], temperature)
-
-  # Get new controls.
-  controls = {
-      # name: value
-      control_config[0]: online_tune.update_control(  # pylint: disable=g-complex-comprehension
-          control_config, control_action, history, action_multipliers)
-      for (control_action, control_config) in zip(action, control_configs)
-  }
-  return lambda _: controls
-
-
 # pylint: disable=g-import-not-at-top
-# These dependencies are here to break the circular dependency from this
-# module, to itself via online_tune/policy_based_utils -> trainer_lib ->
-# lr_schedules.
-from trax.rl import online_tune
-from trax.rl import policy_based_utils
+# These dependencies are here to break the circular dependencies.
 from trax.supervised import lr_functions
 # pylint: enable=g-import-not-at-top
 

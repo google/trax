@@ -27,10 +27,6 @@ python trax/rl_trainer.py \
   --alsologtostderr
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import multiprocessing
 import os
 
@@ -46,9 +42,7 @@ from tensor2tensor.envs import env_problem_utils
 from trax import math
 from trax import rl  # pylint: disable=unused-import
 from trax import trainer_flags  # pylint: disable=unused-import
-from trax.rl import envs as rl_envs  # pylint: disable=unused-import
 from trax.rl import task as rl_task
-from trax.rl import trainers as rl_trainers
 from trax.rl import training as light_trainers
 from trax.tf_numpy import numpy as tf_np
 
@@ -70,11 +64,11 @@ def train_rl(
     rendered_env=False,
     resize=False,
     resize_dims=(105, 80),
-    trainer_class=rl_trainers.PPO,
+    trainer_class=None,
     n_epochs=10000,
     trajectory_dump_dir=None,
     num_actions=None,
-    light_rl=False,
+    light_rl=True,
     light_rl_trainer=light_trainers.RLTrainer,
 ):
   """Train the RL agent.
@@ -105,6 +99,11 @@ def train_rl(
   if light_rl:
     task = rl_task.RLTask()
     env_name = task.env_name
+  else:
+    # TODO(lukaszkaiser): remove the name light and all references.
+    # It was kept for now to make sure all regression tests pass first,
+    # so that if we need to revert we save some work.
+    raise ValueError('Non-light RL is deprecated.')
 
 
   if FLAGS.jax_debug_nans:
