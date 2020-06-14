@@ -85,7 +85,7 @@ class Categorical(Distribution):
 
   @property
   def n_inputs(self):
-    return jnp.prod(self._shape, dtype=jnp.int32) * self._n_categories
+    return np.prod(self._shape, dtype=jnp.int32) * self._n_categories
 
   def _unflatten_inputs(self, inputs):
     return jnp.reshape(
@@ -130,7 +130,7 @@ class Gaussian(Distribution):
 
   @property
   def n_inputs(self):
-    return jnp.prod(self._shape, dtype=jnp.int32)
+    return np.prod(self._shape, dtype=jnp.int32)
 
   def sample(self, inputs, temperature=1.0):
     if temperature == 0:
@@ -150,7 +150,7 @@ class Gaussian(Distribution):
         -jnp.sum((point - inputs) ** 2, axis=-1) / (2 * self._std ** 2) -
         # Normalizing constant.
         ((jnp.log(self._std) + jnp.log(jnp.sqrt(2 * jnp.pi)))
-         * jnp.prod(self._shape))
+         * np.prod(self._shape))
     )
 
   # At that point self._std is not learnable, hence
