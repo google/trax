@@ -221,8 +221,7 @@ def permute_via_gather(val, permutation, inverse_permutation, axis=0):
       # faster than scatters (at least in the regime the LSH attention uses).
       return (np.take(permuted_grad, inverse_permutation, axis=axis),)
     return permuted, vjpfun
-  permute = jax.custom_transforms(permute_impl)
-  jax.defvjp_all(permute, permute_vjp)
+  permute = math.custom_grad(permute_vjp, permute_impl)
   return permute(val)
 
 
@@ -230,17 +229,16 @@ def permute_via_sort(val, keys, inverse_keys, axis=0):
   """Permutation helper for LSH attention."""
   def permute_impl(val):
     # On TPU, sorting scalars by key is faster than a gather.
-    _, permuted = jax.lax.sort_key_val(keys, val, dimension=axis)
+    _, permuted = math.sort_key_val(keys, val, dimension=axis)
     return permuted
   def permute_vjp(val):
     permuted = permute_impl(math.stop_gradient(val))
     def vjpfun(permuted_grad):
-      _, val_grad = jax.lax.sort_key_val(
+      _, val_grad = math.sort_key_val(
           inverse_keys, permuted_grad, dimension=axis)
       return (val_grad,)
     return permuted, vjpfun
-  permute = jax.custom_transforms(permute_impl)
-  jax.defvjp_all(permute, permute_vjp)
+  permute = math.custom_grad(permute_vjp, permute_impl)
   return permute(val)
 
 
@@ -1156,11 +1154,17 @@ class LSHSelfAttention(SelfAttention):
         n_buckets *= factor
 
     rotations_shape = (vecs.shape[-1], self.n_hashes, rot_size // 2)
-
     rng = math.stop_gradient(tie_in(vecs, rng))
     random_rotations = math.random.normal(rng, rotations_shape).astype(
         np.float32)
-    rotated_vecs = np.einsum('tf,fhb->htb', vecs, random_rotations)
+    if math.backend_name() == 'jax':
+      rotated_vecs = np.einsum('tf,fhb->htb', vecs, random_rotations)
+    else:
+      random_rotations = np.reshape(random_rotations,
+                                    [-1, self.n_hashes * (rot_size // 2)])
+      rotated_vecs = np.dot(vecs, random_rotations)
+      rotated_vecs = np.reshape(rotated_vecs, [-1, self.n_hashes, rot_size//2])
+      rotated_vecs = np.transpose(rotated_vecs, (1, 0, 2))
 
     if isinstance(self.n_buckets, int) or len(self.n_buckets) == 1:
       rotated_vecs = np.concatenate([rotated_vecs, -rotated_vecs], axis=-1)
@@ -1223,9 +1227,9 @@ class LSHSelfAttention(SelfAttention):
     buckets_and_t = math.stop_gradient(buckets_and_t)
 
     # Hash-based sort ("s" at the start of variable names means "sorted")
-    sbuckets_and_t, sticker = jax.lax.sort_key_val(
+    sbuckets_and_t, sticker = math.sort_key_val(
         buckets_and_t, ticker, dimension=-1)
-    _, undo_sort = jax.lax.sort_key_val(sticker, ticker, dimension=-1)
+    _, undo_sort = math.sort_key_val(sticker, ticker, dimension=-1)
     sbuckets_and_t = math.stop_gradient(sbuckets_and_t)
     sticker = math.stop_gradient(sticker)
     undo_sort = math.stop_gradient(undo_sort)
@@ -1352,7 +1356,7 @@ class LSHSelfAttention(SelfAttention):
         arange_seqlen > (q_start + q_len),
         -(seqlen + arange_seqlen), arange_seqlen)
     kv_priorities = kv_priorities + seqlen * is_valid_target.astype(np.int32)
-    _, kv_indices = jax.lax.sort_key_val(kv_priorities, arange_seqlen)
+    _, kv_indices = math.sort_key_val(kv_priorities, arange_seqlen)
     kv_indices = kv_indices[
         -self.n_hashes * self.chunk_len * (1 + self.n_chunks_before):]
     assert self.n_chunks_after == 0
