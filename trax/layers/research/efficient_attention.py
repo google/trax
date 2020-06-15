@@ -689,7 +689,7 @@ class EfficientAttentionBase(base.Layer):
         def fn_closed_over_nd_inp(d_inp, *args):
           inp = join_differentiable(d_inp, nd_inp)
           return fn(inp, *args)
-        return jax.vjp(fn_closed_over_nd_inp, d_inp, *args, has_aux=has_aux)
+        return math.vjp(fn_closed_over_nd_inp, d_inp, *args, has_aux=has_aux)
 
     if n_parallel_heads == 1:
       def run_inner(idx, loop_val):

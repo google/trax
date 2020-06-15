@@ -51,9 +51,14 @@ class BroadcastedDropout(tl.Layer):
       noise_shape = list(x.shape)
       for dim in self._broadcast_dims:
         noise_shape[dim] = 1
-      keep_prob = jax.lax.tie_in(self.rng, 1.0 - self._rate)
+      if math.backend_name() == 'jax':
+        keep_prob = jax.lax.tie_in(self.rng, 1.0 - self._rate)
+      else:
+        keep_prob = 1.0 - self._rate
       keep = random.bernoulli(self.rng, keep_prob, tuple(noise_shape))
-      multiplier = keep.astype(x.dtype) / jax.lax.tie_in(keep, keep_prob)
+      if math.backend_name() == 'jax':
+        keep_prob = jax.lax.tie_in(keep, keep_prob)
+      multiplier = keep.astype(x.dtype) / keep_prob
       return x * multiplier
     else:
       return x
@@ -173,7 +178,7 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
 
     stack = context
     inputs = _inputs_from_stack(self.compute_residual, stack)
-    outputs, compute_residual_vjpfun, outputs_aux = jax.vjp(
+    outputs, compute_residual_vjpfun, outputs_aux = math.vjp(
         call_compute_residual, inputs, weights[0], has_aux=True)
     if outputs_aux is not None:
       n_differentiable_outputs = len(outputs)
@@ -650,7 +655,8 @@ def Reformer(input_vocab_size,
   # masks on the stack. This causes jax to error, even though the so-called
   # "gradient" wrt the masks is never actually computed.
   # TODO(kitaev): remove this hack.
-  jax.api._check_inexact_input_vjp = lambda x: None  # pylint: disable=protected-access
+  if math.backend_name() == 'jax':
+    jax.api._check_inexact_input_vjp = lambda x: None  # pylint: disable=protected-access
 
   def PositionalEncoder(vocab_size, mode):  # tokens --> vectors
     # TODO(kitaev): axial positional encoding is better for very long sequences.
@@ -794,7 +800,8 @@ def ReformerNoEncDecAttention(input_vocab_size,
   # masks on the stack. This causes jax to error, even though the so-called
   # "gradient" wrt the masks is never actually computed.
   # TODO(kitaev): remove this hack.
-  jax.api._check_inexact_input_vjp = lambda x: None  # pylint: disable=protected-access
+  if math.backend_name() == 'jax':
+    jax.api._check_inexact_input_vjp = lambda x: None  # pylint: disable=protected-access
 
   def PositionalEncoder(vocab_size, mode):  # tokens --> vectors
     if not axial_pos_shape:
