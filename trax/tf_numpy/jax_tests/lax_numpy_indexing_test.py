@@ -40,6 +40,7 @@ from absl.testing import parameterized
 
 import numpy as onp
 
+import trax.tf_numpy.extensions as npe
 import trax.tf_numpy.numpy as jnp
 
 from trax.tf_numpy.jax_tests.config import config
@@ -480,10 +481,10 @@ class IndexingTest(jtu.TestCase):
       for rng_factory in [jtu.rand_default])
   @jtu.disable
   def testDynamicIndexingWithSlicesErrors(self, shape, dtype, rng_factory, indexer):
-    rng = rng_factory(self.rng())
+    rng = rng_factory()
     unpacked_indexer, pack_indexer = self._ReplaceSlicesWithTuples(indexer)
 
-    @api.jit
+    @npe.jit
     def fun(x, unpacked_indexer):
       indexer = pack_indexer(unpacked_indexer)
       return x[indexer]
@@ -554,7 +555,7 @@ class IndexingTest(jtu.TestCase):
     tol = 1e-2 if jnp.finfo(dtype).bits == 32 else None
     unpacked_indexer, pack_indexer = self._ReplaceSlicesWithTuples(indexer)
 
-    @api.jit
+    @npe.jit
     def fun(unpacked_indexer, x):
       indexer = pack_indexer(unpacked_indexer)
       return x[indexer]
@@ -572,8 +573,6 @@ class IndexingTest(jtu.TestCase):
       for rng_factory in [jtu.rand_default])
   @jtu.disable
   def testAdvancedIntegerIndexing(self, shape, dtype, rng_factory, indexer):
-    # TODO(rohanj): Revisit passing in self.rng() to this to customize further.
-    # This would need updating lax_numpy_test as well.
     rng = rng_factory()
     args_maker = lambda: [rng(shape, dtype), indexer]
     fun = lambda x, idx: jnp.asarray(x)[idx]
@@ -634,7 +633,7 @@ class IndexingTest(jtu.TestCase):
       for rng_factory in [jtu.rand_default])
   @jtu.disable
   def testAdvancedIntegerIndexingGrads(self, shape, dtype, rng_factory, indexer):
-    rng = rng_factory(self.rng())
+    rng = rng_factory()
     tol = 1e-2 if jnp.finfo(dtype).bits == 32 else None
     arg = rng(shape, dtype)
     fun = lambda x: jnp.asarray(x)[indexer]
@@ -650,7 +649,7 @@ class IndexingTest(jtu.TestCase):
       for rng_factory in [jtu.rand_default])
   @jtu.disable
   def testMixedAdvancedIntegerIndexing(self, shape, dtype, rng_factory, indexer):
-    rng = rng_factory(self.rng())
+    rng = rng_factory()
     indexer_with_dummies = [e if isinstance(e, onp.ndarray) else ()
                             for e in indexer]
     substitutes = [(i, e) for i, e in enumerate(indexer)
@@ -669,7 +668,7 @@ class IndexingTest(jtu.TestCase):
     index_array = onp.array([0, 2, -1, 0])
 
     op = lambda x, index_array: x[..., index_array, :]
-    cop = api.jit(op)
+    cop = npe.jit(op)
 
     a1 = op(x, index_array)
     a2 = cop(x, index_array)
@@ -677,7 +676,7 @@ class IndexingTest(jtu.TestCase):
     self.assertAllClose(a1, a2, check_dtypes=True)
 
     op = lambda x, index_array: x[..., index_array, :, index_array, None]
-    cop = api.jit(op)
+    cop = npe.jit(op)
 
     a1 = op(x, index_array)
     a2 = cop(x, index_array)
@@ -685,7 +684,7 @@ class IndexingTest(jtu.TestCase):
     self.assertAllClose(a1, a2, check_dtypes=True)
 
     op = lambda x, index_array: x[index_array, ..., index_array[:, None], None]
-    cop = api.jit(op)
+    cop = npe.jit(op)
 
     a1 = op(x, index_array)
     a2 = cop(x, index_array)
@@ -699,7 +698,7 @@ class IndexingTest(jtu.TestCase):
       a, b, c = x
       return a + b + c
 
-    cfoo = api.jit(foo)
+    cfoo = npe.jit(foo)
 
     a1 = foo(onp.arange(3))
     a2 = cfoo(onp.arange(3))
@@ -753,7 +752,7 @@ class IndexingTest(jtu.TestCase):
   def testBooleanIndexingDynamicShapeError(self):
     x = onp.zeros(3)
     i = onp.array([True, True, False])
-    self.assertRaises(IndexError, lambda: api.jit(lambda x, i: x[i])(x, i))
+    self.assertRaises(IndexError, lambda: npe.jit(lambda x, i: x[i])(x, i))
 
   @jtu.disable
   def testIssue187(self):
@@ -761,7 +760,7 @@ class IndexingTest(jtu.TestCase):
     x[[0, 2, 4], [0, 2, 4]]  # doesn't crash
 
     x = onp.arange(25).reshape((5, 5))
-    ans = api.jit(lambda x: x[[0, 2, 4], [0, 2, 4]])(x)
+    ans = npe.jit(lambda x: x[[0, 2, 4], [0, 2, 4]])(x)
     expected = x[[0, 2, 4], [0, 2, 4]]
     self.assertAllClose(ans, expected, check_dtypes=False)
 
@@ -800,7 +799,7 @@ class IndexingTest(jtu.TestCase):
       _ = x[0, 0]  # JAX indexing
     with self.assertRaisesRegex(IndexError,
                                 "index is out of bounds for axis .* with size 0"):
-      api.jit(lambda i: x[0, i])(0)  # JAX indexing under jit
+      npe.jit(lambda i: x[0, i])(0)  # JAX indexing under jit
 
   @jtu.disable
   def testBooleanIndexingWithEmptyResult(self):
@@ -822,7 +821,7 @@ class IndexingTest(jtu.TestCase):
     with self.assertRaisesRegex(TypeError, BAD_INDEX_TYPE_ERROR):
       jnp.zeros((2, 2))[(0, 0.)]
     with self.assertRaisesRegex(TypeError, BAD_INDEX_TYPE_ERROR):
-      api.jit(lambda idx: jnp.zeros((2, 2))[idx])((0, 0.))
+      npe.jit(lambda idx: jnp.zeros((2, 2))[idx])((0, 0.))
     with self.assertRaisesRegex(TypeError, BAD_INDEX_TYPE_ERROR):
       ops.index_add(jnp.zeros(2), 0., 1.)
     with self.assertRaisesRegex(TypeError, BAD_INDEX_TYPE_ERROR):
