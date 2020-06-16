@@ -25,7 +25,7 @@ from __future__ import print_function
 try:
   # pylint: disable=g-direct-tensorflow-import
   from tensorflow.python.ops.numpy_ops import *
-except Exception:  # pylint: disable=broad-except
+except ImportError:
   from tensorflow import newaxis
 
   from trax.tf_numpy.numpy_impl import random

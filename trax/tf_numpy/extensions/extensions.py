@@ -569,9 +569,9 @@ def sort_key_val(keys, values, dimension=-1):
   """
   keys = tf_np.asarray(keys)
   values = tf_np.asarray(values)
-  rank = keys.ndim
+  rank = keys.data.shape.ndims
   if rank is None:
-    rank = values.ndim
+    rank = values.data.shape.ndims
   if rank is None:
     # We need to know the rank because tf.gather requires batch_dims to be `int`
     raise ValueError("The rank of either keys or values must be known, but "
