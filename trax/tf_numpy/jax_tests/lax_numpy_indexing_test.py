@@ -55,6 +55,13 @@ config.parse_flags_with_absl()
 # pylint: disable=undefined-variable
 
 
+def subvals(lst, replace):
+  lst = list(lst)
+  for i, v in replace:
+    lst[i] = v
+  return tuple(lst)
+
+
 float_dtypes = [onp.float32, onp.float64]
 int_dtypes = [onp.int32, onp.int64]
 bool_types = [onp.bool_]
@@ -438,8 +445,8 @@ class IndexingTest(jtu.TestCase):
       isnone = [i for i, elt in enumerate(triple) if elt is None]
       zeros = itertools.repeat(0)
       nones = itertools.repeat(None)
-      out = util.subvals(triple, zip(isnone, zeros))
-      return out, lambda out: slice(*util.subvals(out, zip(isnone, nones)))
+      out = subvals(triple, zip(isnone, zeros))
+      return out, lambda out: slice(*subvals(out, zip(isnone, nones)))
     elif isinstance(idx, (tuple, list)) and idx:
       t = type(idx)
       elts, packs = zip(*map(self._ReplaceSlicesWithTuples, idx))
@@ -505,9 +512,10 @@ class IndexingTest(jtu.TestCase):
       for shape, indexer in index_specs
       for dtype in all_dtypes
       for rng_factory in [jtu.rand_default])
-  @jtu.disable
   def testDynamicIndexingWithIntegers(self, shape, dtype, rng_factory, indexer):
-    rng = rng_factory(self.rng())
+    # TODO(rohanj): Revisit passing in self.rng() to this to customize further.
+    # This would need updating lax_numpy_test as well.
+    rng = rng_factory()
     unpacked_indexer, pack_indexer = self._ReplaceSlicesWithTuples(indexer)
 
     def fun(x, unpacked_indexer):
@@ -564,7 +572,9 @@ class IndexingTest(jtu.TestCase):
       for rng_factory in [jtu.rand_default])
   @jtu.disable
   def testAdvancedIntegerIndexing(self, shape, dtype, rng_factory, indexer):
-    rng = rng_factory(self.rng())
+    # TODO(rohanj): Revisit passing in self.rng() to this to customize further.
+    # This would need updating lax_numpy_test as well.
+    rng = rng_factory()
     args_maker = lambda: [rng(shape, dtype), indexer]
     fun = lambda x, idx: jnp.asarray(x)[idx]
     self._CompileAndCheck(fun, args_maker, check_dtypes=True)
@@ -648,7 +658,7 @@ class IndexingTest(jtu.TestCase):
     args_maker = lambda: [rng(shape, dtype), indexer_with_dummies]
 
     def fun(x, indexer_with_dummies):
-      idx = type(indexer)(util.subvals(indexer_with_dummies, substitutes))
+      idx = type(indexer)(subvals(indexer_with_dummies, substitutes))
       return jnp.asarray(x)[idx]
 
     self._CompileAndCheck(fun, args_maker, check_dtypes=True)
