@@ -16,11 +16,9 @@
 # Lint as: python3
 """Base layer class."""
 
-import copy
 import inspect
 import pickle
 import random
-import traceback
 
 import jax
 import numpy as np
@@ -108,12 +106,6 @@ class Layer:
     self._rng = random.randint(0, 2**31 - 1)
     self._weights = EMPTY_WEIGHTS  # cached weights
     self._state = EMPTY_STATE
-    # record root call site for custom error messages:
-    frame = _find_frame(inspect.currentframe())
-    # Turns out that frame can mutate in time, so we just copy what we need.
-    self._caller = {'filename': copy.copy(frame.f_code.co_filename),
-                    'lineno': int(frame.f_lineno)}
-    del frame  # Just in case.
     self._init_cached = False
     self._jit_cache = {}
 
@@ -260,25 +252,19 @@ class Layer:
     Returns:
       A `(weights, state)` tuple.
     """
-    try:
-      if self._init_cached and use_cache:
-        return (GET_WEIGHTS_FROM_CACHE, GET_STATE_FROM_CACHE)
+    if self._init_cached and use_cache:
+      return (GET_WEIGHTS_FROM_CACHE, GET_STATE_FROM_CACHE)
 
-      if rng is not None:
-        self.rng = rng
-      self.init_weights_and_state(input_signature)
+    if rng is not None:
+      self.rng = rng
+    self.init_weights_and_state(input_signature)
 
-      if use_cache:
-        self._init_cached = True
-      else:
-        self._clear_init_cache()
+    if use_cache:
+      self._init_cached = True
+    else:
+      self._clear_init_cache()
 
-      return (self._weights, self.state)
-
-    except Exception as e:
-      name, trace = self._name, _short_traceback(skip=3)
-      raise LayerError(name, 'init', self._caller,
-                       input_signature, trace) from e
+    return (self._weights, self.state)
 
   def init_from_file(self, file_name, weights_only=False):
     """Initializes this layer and its sublayers from a pickled checkpoint.
@@ -392,31 +378,25 @@ class Layer:
       promised by this layer, and are packaged as described in the `Layer`
       class docstring.
     """
-    try:
-      old_weights, old_state, old_rng = self.weights, self.state, self.rng
-      self._rng = rng
-      if weights is GET_WEIGHTS_FROM_CACHE and state is GET_STATE_FROM_CACHE:  # pylint: disable=literal-comparison
-        weights = self._weights
-        state = self._state
-      else:
-        # In this case, we're called for the first time: cache weights.
-        self._weights, self._state = weights, state
+    old_weights, old_state, old_rng = self.weights, self.state, self.rng
+    self._rng = rng
+    if weights is GET_WEIGHTS_FROM_CACHE and state is GET_STATE_FROM_CACHE:  # pylint: disable=literal-comparison
+      weights = self._weights
+      state = self._state
+    else:
+      # In this case, we're called for the first time: cache weights.
+      self._weights, self._state = weights, state
 
-      if not self.has_backward:
-        outputs = self.forward(x)
-        s = self.state
-      else:
-        outputs, s = self._do_custom_gradients(x, weights, state, rng=rng)
-        self._state = s
-      self._rng = old_rng
-      if not use_cache:
-        self.weights, self.state = old_weights, old_state
-      return outputs, s
-
-    except Exception as e:
-      name, trace = self._name, _short_traceback(skip=1)
-      raise LayerError(name, 'pure_fn',
-                       self._caller, signature(x), trace) from e
+    if not self.has_backward:
+      outputs = self.forward(x)
+      s = self.state
+    else:
+      outputs, s = self._do_custom_gradients(x, weights, state, rng=rng)
+      self._state = s
+    self._rng = old_rng
+    if not use_cache:
+      self.weights, self.state = old_weights, old_state
+    return outputs, s
 
   def output_signature(self, input_signature):
     """Returns output signature this layer would give for `input_signature`."""
@@ -436,20 +416,15 @@ class Layer:
       shape and type of the output (if this layer has one output) or a tuple
       of `ShapeDtype` instances (if this layer has more than one output).
     """
-    try:
-      # Note: By using rng_signature in place of an rng, we avoid computing and
-      # permanently storing in global memory a large number of dropout masks.
-      # TODO(jonni): Check if using an rng still carries this cost.
-      dummy_rng = math.random.get_prng(0)
-      rng_signature = ShapeDtype(dummy_rng.shape, dummy_rng.dtype)
-      weight_signature = nested_map(signature, self.weights)
-      forward_infer_shapes = math.abstract_eval(self.pure_fn)
-      return forward_infer_shapes(
-          input_signature, weight_signature, self.state, rng_signature)
-    except Exception as e:
-      name, trace = self._name, _short_traceback(skip=3)
-      raise LayerError(name, '_forward_abstract', self._caller, input_signature,
-                       trace) from e
+    # Note: By using rng_signature in place of an rng, we avoid computing and
+    # permanently storing in global memory a large number of dropout masks.
+    # TODO(jonni): Check if using an rng still carries this cost.
+    dummy_rng = math.random.get_prng(0)
+    rng_signature = ShapeDtype(dummy_rng.shape, dummy_rng.dtype)
+    weight_signature = nested_map(signature, self.weights)
+    forward_infer_shapes = math.abstract_eval(self.pure_fn)
+    return forward_infer_shapes(
+        input_signature, weight_signature, self.state, rng_signature)
 
   # pylint: disable=protected-access
   def _do_custom_gradients(self, x, weights, state, rng):
@@ -597,31 +572,6 @@ def Fn(name, f, n_out=1):  # pylint: disable=invalid-name
   return PureLayer(_forward, n_in=n_in, n_out=n_out, name=name)
 
 
-class LayerError(Exception):
-  """Exception raised in the layer stack."""
-
-  def __init__(self, layer_name, function_name, caller,
-               input_signature, traceback_string):
-    self._layer_name = layer_name
-    self._function_name = function_name
-    self._caller = caller  # Python inspect object with init caller info.
-    self._traceback = traceback_string
-    self._input_signature = input_signature
-    super(LayerError, self).__init__(self.message)
-
-  @property
-  def message(self):
-    """Assembles current layer context into an error message."""
-    prefix = 'Exception passing through layer '
-    prefix += '%s (in %s):\n' % (self._layer_name, self._function_name)
-    short_path = '[...]/' + '/'.join(
-        self._caller['filename'].split('/')[-3:])
-    caller = '  layer created in file %s, line %d\n' % (short_path,
-                                                        self._caller['lineno'])
-    shapes_str = '  layer input shapes: %s\n\n' % str(self._input_signature)
-    return prefix + caller + shapes_str + self._traceback
-
-
 def to_list(outputs):
   """Converts layer outputs to a nested list, for easier equality testing.
 
@@ -657,65 +607,6 @@ def _is_empty(container):
   if container is None:
     raise ValueError('Argument "container" is None.')
   return isinstance(container, (list, tuple)) and len(container) == 0  # pylint: disable=g-explicit-length-test
-
-
-def _find_frame(frame):
-  """Find the frame with the caller on the stack."""
-  # TODO(lukaszkaiser): rewrite this function in a systematic way.
-  # We want to find the first place where the layer was called
-  # that is *not* an __init__ function of an inheriting layer.
-  # We also need to exclude a few decorator functions.
-  while frame.f_code.co_name in ['__init__', 'gin_wrapper', '_validate',
-                                 '_validate_forward_inputs', '_init']:
-    # We only skip __init__ in internal layers, return otherwise.
-    try:
-      dirname = frame.f_code.co_filename.split('/')[-2]
-    except IndexError:
-      # Notebook cells have dummy filenames that do not contain any slashes
-      dirname = frame.f_code.co_filename
-    if dirname != 'layers' and frame.f_code.co_name == '__init__':
-      return frame
-    # If we are in an init, move up.
-    frame = frame.f_back
-  return frame
-
-
-def _shorten_file_path(line):
-  """Shorten file path in error lines for more readable tracebacks."""
-  start = line.lower().find('file')
-  if start < 0:
-    return line
-  first_quote = line.find('"', start)
-  if first_quote < 0:
-    return line
-  second_quote = line.find('"', first_quote + 1)
-  if second_quote < 0:
-    return line
-  path = line[first_quote + 1:second_quote]
-  new_path = '/'.join(path.split('/')[-3:])
-  return line[:first_quote] + '[...]/' + new_path + line[second_quote + 1:]
-
-
-def _short_traceback(skip=3):
-  """Cleaned-up form of traceback."""
-  counter, res = 0, []
-  # Skipping 3 lines by default: the top (useless) and self-call.
-  # In python 3, we need to set chain to False (it doesn't exist in python 2).
-  lines = traceback.format_exc(chain=False).splitlines()[skip:]  # pylint: disable=unexpected-keyword-arg
-  for l in lines:
-    if l.startswith('trax.layers.base.LayerError'):
-      l = l[len('trax.layers.base.'):]  # Remove the trax.layers.base prefix.
-    res.append(_shorten_file_path(l))
-    if counter % 2 == 1:
-      res.append('')
-    counter += 1
-    # If we see a LayerError, the traceback has already been processed.
-    if l.startswith('LayerError'):
-      # Skip 4 back except last as these are internal base-layer calls.
-      res = res[:-4] + [res[-1]]
-      res += lines[counter:]
-      break
-  return '\n'.join(res)
 
 
 def _random_values(input_signature, rng):

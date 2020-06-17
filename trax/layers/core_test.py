@@ -31,7 +31,7 @@ class DenseTest(absltest.TestCase):
     x = np.array([1, 2, 3])
 
     # Without init, layer lacks the weights it needs for forward computation.
-    with self.assertRaises(tl.LayerError):
+    with self.assertRaises(ValueError):
       _ = layer(x)
 
   def test_call_uses_and_caches_supplied_weights(self):
@@ -226,7 +226,7 @@ class FlattenTest(absltest.TestCase):
 
   def test_keep_too_many_raises_error(self):
     layer = tl.Flatten(n_axes_to_keep=5)
-    with self.assertRaises(tl.LayerError):
+    with self.assertRaises(ValueError):
       x = np.ones((1, 2, 3, 4, 5))
       _ = layer(x)
 

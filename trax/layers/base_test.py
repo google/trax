@@ -36,7 +36,7 @@ class BaseLayerTest(parameterized.TestCase):
     layer = base.Layer()
     x = np.array([[1, 2, 3, 4, 5],
                   [10, 20, 30, 40, 50]])
-    with self.assertRaisesRegex(base.LayerError, 'NotImplementedError'):
+    with self.assertRaises(NotImplementedError):
       _ = layer(x)
 
   def test_forward_raises_error(self):
