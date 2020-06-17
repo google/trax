@@ -102,7 +102,13 @@ def set_tf_xla_forced_compile(b):
 
 def _tf_jit(*args, **kwargs):
   kwargs['xla_forced_compile'] = tf_xla_forced_compile_enabled()
+  kwargs.pop('donate_argnums', None)  # donate_argnums not used in TF
   return tf_np_extensions.jit(*args, **kwargs)
+
+
+def _tf_pmap(*args, **kwargs):
+  kwargs.pop('donate_argnums', None)  # donate_argnums not used in TF
+  return tf_np_extensions.pmap(*args, **kwargs)
 
 
 TF_BACKEND = {
@@ -130,6 +136,6 @@ TF_BACKEND = {
     'random_split': tf_np_extensions.split,
     'dataset_as_numpy': tf_np_extensions.dataset_as_numpy,
     'device_count': lambda: max(len(tf_np_extensions.accelerators()), 1),
-    'pmap': tf_np_extensions.pmap,
+    'pmap': _tf_pmap,
     'psum': tf_np_extensions.psum,
 }

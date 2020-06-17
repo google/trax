@@ -347,8 +347,10 @@ class Trainer(object):
     opt_state.opt_params.update(opt_param_updates)
 
     # Run the update.
-    (weights, slots, stat), self._model_state, self._rngs = self._jit_update_fn(
-        self._step, opt_state, batch, self._model_state, self._rngs)
+    weights, slots, opt_params = opt_state
+    (weights, slots), stat, self._model_state, self._rngs = self._jit_update_fn(
+        (weights, slots), self._step, opt_params, batch,
+        self._model_state, self._rngs)
     self._model_state = self._map_to_state_dicts(self._state_dicts_update)
     self._opt_state = opt_state._replace(weights=weights, slots=slots)
     if self._should_log_now():
@@ -467,7 +469,7 @@ class Trainer(object):
       weights_file = os.path.join(output_dir, '{}_{}.pkl'.format(prefix, step))
       self._save_state_dict(trainer_state_dict, weights_file)
 
-  def save_computation_graphs(self, save_backward_graph):
+  def save_computation_graphs(self):
     """Dump computation graphs to files."""
     if self.n_devices != 1:
       return  # TODO(lukaszkaiser): make this work with more devices.
@@ -483,15 +485,6 @@ class Trainer(object):
       f.write(forward_computation.as_hlo_text())
     with tf.io.gfile.GFile(os.path.join(output_dir, 'forward.dot'), 'w') as f:
       f.write(forward_computation.as_hlo_dot_graph())
-    backward_computation = jax.xla_computation(self._jit_update_fn)(
-        self._step, self._opt_state, batch, self._model_state,
-        self._rngs)
-    with tf.io.gfile.GFile(os.path.join(output_dir, 'backward.txt'), 'w') as f:
-      f.write(backward_computation.as_hlo_text())
-    if save_backward_graph:  # Backward graphs can be large so we guard it.
-      with tf.io.gfile.GFile(
-          os.path.join(output_dir, 'backward.dot'), 'w') as f:
-        f.write(backward_computation.as_hlo_dot_graph())
 
   def log_step(self, step_message):
     log('Step % 6d: %s' % (self.step, step_message))
@@ -619,7 +612,6 @@ def train(output_dir,
           eval_frequency=100,
           random_seed=None,
           save_graphs=True,
-          save_backward_graph=False,
           nontrainable_param_map=None,
           id_to_mask=None,
           metrics=None,
@@ -647,7 +639,6 @@ def train(output_dir,
       steps). If None or 0, eval disabled.
     random_seed: the random seed to use; time/os dependent if None (default).
     save_graphs: bool, if True, save computation graph to file.
-    save_backward_graph: bool, if True, save backward graph to file too.
     nontrainable_param_map: dict, mapping from model nontrainable parameter
       names to control names in PolicySchedule.
     id_to_mask: id to mask out (None by default).
@@ -692,7 +683,7 @@ def train(output_dir,
       if trainer.step == 1:
         # Save computation graph (single-device only for now)
         if (save_graphs and math.backend_name() == 'jax'):
-          trainer.save_computation_graphs(save_backward_graph)
+          trainer.save_computation_graphs()
 
         # Save Gin config
         trainer.save_gin()
@@ -727,21 +718,25 @@ def _jit_update_fn(predict_fn, loss_fn, optimizer, n_devices, jit=True):
     res = model_and_loss(batch, weights=weights, state=state, rng=rng)
     return res, model_and_loss.state
   if n_devices == 1:  # TODO(lukaszkaiser): remove branch when not needed.
-    def single_update(i, opt_state, batch, state, rng):
-      weights, slots, opt_params = opt_state
+    def single_update(weights_and_slots, i, opt_params, batch, state, rng):
+      weights, slots = weights_and_slots
       rng, subrng = jax_random.split(rng[0])
       grad_fn = math.grad(model_and_loss_call, has_aux=True)
       grads, state = grad_fn(weights, batch, state, rng)
-      return optimizer.tree_update(
-          i, grads, weights, slots, opt_params), state, [subrng]
-    return math.jit(single_update) if jit else single_update
+      new_weights, new_slots, stats = optimizer.tree_update(
+          i, grads, weights, slots, opt_params)
+      return (new_weights, new_slots), stats, state, [subrng]
+    if jit:
+      return math.jit(single_update, donate_argnums=(0,))
+    else:
+      return single_update
 
   # Else, for n_devices > 1:
-  @functools.partial(math.pmap, axis_name='batch')
-  def mapped_update(i, opt_state, batch, state, rng):
+  @functools.partial(math.pmap, axis_name='batch', donate_argnums=(0,))
+  def mapped_update(weights_and_slots, i, opt_params, batch, state, rng):
     """This is a multi-device version of the update function above."""
     # We assume all tensors have the first dimension = n_devices.
-    weights, slots, opt_params = opt_state
+    weights, slots = weights_and_slots
     rng, subrng = jax_random.split(rng)
     grad_fn = math.grad(model_and_loss_call, has_aux=True)
     grads, state = grad_fn(weights, batch, state, rng)
@@ -752,11 +747,13 @@ def _jit_update_fn(predict_fn, loss_fn, optimizer, n_devices, jit=True):
     grads = jax.tree_util.tree_map(
         lambda g: math.psum(g, 'batch') / math.psum(np.array(1.0), 'batch'),
         grads)
-    return optimizer.tree_update(
-        i, grads, weights, slots, opt_params), state, subrng
+    new_weights, new_slots, stats = optimizer.tree_update(
+        i, grads, weights, slots, opt_params)
+    return (new_weights, new_slots), stats, state, subrng
 
-  def update(i, opt_state, batch, state, rng):
-    return mapped_update(np.repeat(i, n_devices), opt_state, batch, state, rng)
+  def update(weights_and_slots, i, opt_params, batch, state, rng):
+    return mapped_update(weights_and_slots, np.repeat(i, n_devices),
+                         opt_params, batch, state, rng)
 
   return update
 
