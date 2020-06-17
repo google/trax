@@ -826,6 +826,32 @@ class LaxBackedNumpyTests(jtu.TestCase):
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_{}_{}_{}".format(
+          name,
+          jtu.format_shape_dtype_string(lhs_shape, lhs_dtype),
+          jtu.format_shape_dtype_string(rhs_shape, rhs_dtype)),
+       "lhs_shape": lhs_shape, "lhs_dtype": lhs_dtype,
+       "rhs_shape": rhs_shape, "rhs_dtype": rhs_dtype,
+       "rng_factory": rng_factory}
+      for rng_factory in [jtu.rand_default]
+      for name, lhs_shape, rhs_shape in [
+          ("vector-vector", (3,), (3,)),
+          ("vector-matrix", (9,), (3, 3)),
+          ("matrix-matrix", (3, 3), (3, 3)),
+          ("tensor-vector", (5, 3, 2), (30,))]
+      for lhs_dtype, rhs_dtype in CombosWithReplacement(number_dtypes, 2)))
+  @new_test
+  def testVDot(self, lhs_shape, lhs_dtype, rhs_shape, rhs_dtype, rng_factory):
+    rng = rng_factory()
+    args_maker = lambda: [rng(lhs_shape, lhs_dtype), rng(rhs_shape, rhs_dtype)]
+    tol = {onp.float16: 1e-2, onp.float32: 2e-2, onp.float64: 1e-12,
+           onp.complex128: 1e-12}
+    self._CheckAgainstNumpy(onp.vdot, lnp.vdot, args_maker,
+                            check_dtypes=True, tol=tol)
+    self._CompileAndCheck(lnp.vdot, args_maker, check_dtypes=True, atol=tol,
+                          rtol=tol, check_incomplete_shape=True)
+
+  @named_parameters(jtu.cases_from_list(
+      {"testcase_name": "_{}_{}_{}".format(
           jtu.format_shape_dtype_string(lhs_shape, lhs_dtype),
           jtu.format_shape_dtype_string(rhs_shape, rhs_dtype),
           axes),
