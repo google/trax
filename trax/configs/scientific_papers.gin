@@ -1,0 +1,163 @@
+# Copyright 2020 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.models
+import trax.optimizers
+import trax.supervised.inputs
+import trax.supervised.tf_inputs
+import trax.supervised.trainer_lib
+
+# Macros:
+# ==============================================================================
+# Maximum length of an input sequence.
+max_len = 16384
+axial_pos_shape  = (128, 128)  # should multiply out to max_len
+attn_kv = 128
+n_layers = 8 # TODO(wgaj): used to be 12
+dropout = 0.2
+d_model = 512
+d_axial_pos_embs = (256, 256)  # should sum to d_model
+d_ff = 4096
+n_heads = 8
+ff_chunk_size = 0
+attn_type = @LSHSelfAttention
+
+
+# Parameters for LSHSelfAttention:
+# ==============================================================================
+LSHSelfAttention.attention_dropout = 0.2
+LSHSelfAttention.chunk_len = 256
+LSHSelfAttention.n_buckets = 512
+LSHSelfAttention.n_chunks_after = 0
+LSHSelfAttention.n_chunks_before = 1
+LSHSelfAttention.n_hashes = 2
+LSHSelfAttention.n_parallel_heads = 1
+LSHSelfAttention.predict_drop_len = 128
+LSHSelfAttention.predict_mem_len = %max_len
+
+
+# Parameters for get_t5_preprocessor_by_name:
+# ==============================================================================
+rekey/get_t5_preprocessor_by_name.name = 'rekey'
+rekey/get_t5_preprocessor_by_name.fn_kwargs = {'key_map': {'inputs': 'article', 'targets': 'abstract'}}
+
+
+# Parameters for batcher:
+# ==============================================================================
+batcher.data_streams = @tf_inputs.data_streams
+batcher.max_eval_length = %max_len
+batcher.buckets = ([16385], [8, 1])
+batcher.strict_pad_on_len = True
+
+# Parameters for data_streams:
+# ==============================================================================
+data_streams.data_dir = None
+data_streams.dataset_name = 'scientific_papers/arxiv:1.1.1'
+data_streams.bare_preprocess_fn = @trax.supervised.tf_inputs.generic_text_dataset_preprocess_fn
+data_streams.input_name = 'inputs'
+data_streams.target_name = 'targets'
+
+
+# Parameters for filter_dataset_on_len:
+# ==============================================================================
+filter_dataset_on_len.len_map = {'inputs': (1, 16384), 'targets': (1, 16384)}
+filter_dataset_on_len.filter_on_eval = True
+
+
+# Parameters for truncate_dataset_on_len:
+# ==============================================================================
+truncate_dataset_on_len.len_map = {'inputs': 16384, 'targets': 16384}
+truncate_dataset_on_len.truncate_on_eval = True
+
+
+# Parameters for generic_text_dataset_preprocess_fn:
+# ==============================================================================
+generic_text_dataset_preprocess_fn.text_preprocess_fns = [
+    @rekey/get_t5_preprocessor_by_name()
+]
+generic_text_dataset_preprocess_fn.token_preprocess_fns = [
+    @trax.supervised.tf_inputs.truncate_dataset_on_len,
+    @trax.supervised.tf_inputs.filter_dataset_on_len,
+]
+
+
+# Parameters for MultifactorSchedule:
+# ==============================================================================
+MultifactorSchedule.constant = 1.0
+MultifactorSchedule.factors = 'constant * linear_warmup * rsqrt_decay'
+MultifactorSchedule.warmup_steps = 50000
+
+# Parameters for Adafactor:
+# ==============================================================================
+Adafactor.beta1 = 0.0
+Adafactor.decay_rate = 0.9  # Used to be 0.8
+Adafactor.clipping_threshold = 1.0
+Adafactor.epsilon1 = 1e-30
+Adafactor.epsilon2 = 0.001
+Adafactor.factored = True
+Adafactor.multiply_by_parameter_scale = True
+
+# Parameters for train:
+# ==============================================================================
+train.eval_frequency = 500
+train.eval_steps = 10
+train.model = @trax.models.ReformerNoEncDecAttention
+train.steps = 1000000
+train.optimizer = @trax.optimizers.Adafactor
+train.id_to_mask = 0
+
+# We are using T5's 32k SPM model by default.
+vocab_size = 32000
+
+# Parameters for ReformerNoEncDecAttention:
+# ==============================================================================
+ReformerNoEncDecAttention.d_model = %d_model  # was  512
+ReformerNoEncDecAttention.d_ff = %d_ff        # was 2048
+ReformerNoEncDecAttention.dropout = %dropout  # was  0.1
+ReformerNoEncDecAttention.ff_activation = @trax.layers.Relu
+ReformerNoEncDecAttention.ff_dropout = 0.1
+ReformerNoEncDecAttention.ff_chunk_size = %ff_chunk_size
+ReformerNoEncDecAttention.max_len = %max_len
+ReformerNoEncDecAttention.mode = 'train'
+ReformerNoEncDecAttention.n_heads = %n_heads
+ReformerNoEncDecAttention.n_encoder_layers = %n_layers
+ReformerNoEncDecAttention.n_decoder_layers = %n_layers
+ReformerNoEncDecAttention.input_vocab_size = %vocab_size
+ReformerNoEncDecAttention.d_attention_key = %attn_kv    # d_model // n_heads
+ReformerNoEncDecAttention.d_attention_value = %attn_kv  # d_model // n_heads
+ReformerNoEncDecAttention.encoder_attention_type = @LSHSelfAttention
+ReformerNoEncDecAttention.encoder_decoder_attention_type = @LSHSelfAttention
+ReformerNoEncDecAttention.axial_pos_shape  = %axial_pos_shape
+ReformerNoEncDecAttention.d_axial_pos_embs = %d_axial_pos_embs
+
+# Parameters for ReformerLM:
+# ==============================================================================
+ReformerLM.attention_type = %attn_type
+ReformerLM.d_attention_key = %attn_kv
+ReformerLM.d_attention_value = %attn_kv
+ReformerLM.d_model = %d_model
+ReformerLM.d_ff = %d_ff
+ReformerLM.dropout = %dropout
+ReformerLM.ff_activation = @Relu
+ReformerLM.max_len = %max_len
+ReformerLM.mode = 'train'
+ReformerLM.n_heads = %n_heads
+ReformerLM.n_layers = %n_layers
+ReformerLM.vocab_size = %vocab_size
+ReformerLM.axial_pos_shape = %axial_pos_shape
+ReformerLM.d_axial_pos_embs= %d_axial_pos_embs
+
+# Parameters for Predict
+# ==============================================================================
+# predict_answers.model = @trax.models.ReformerLM
