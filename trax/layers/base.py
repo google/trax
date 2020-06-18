@@ -275,10 +275,11 @@ class Layer:
 
       return (self._weights, self.state)
 
-    except Exception as e:
+    except Exception:
+      # Skipping 3 lines as it's always the uninteresting internal call.
       name, trace = self._name, _short_traceback(skip=3)
       raise LayerError(name, 'init', self._caller,
-                       input_signature, trace) from e
+                       input_signature, trace) from None
 
   def init_from_file(self, file_name, weights_only=False):
     """Initializes this layer and its sublayers from a pickled checkpoint.
@@ -413,10 +414,11 @@ class Layer:
         self.weights, self.state = old_weights, old_state
       return outputs, s
 
-    except Exception as e:
-      name, trace = self._name, _short_traceback(skip=1)
+    except Exception:
+      # Skipping 3 lines as it's always the uninteresting internal call.
+      name, trace = self._name, _short_traceback(skip=3)
       raise LayerError(name, 'pure_fn',
-                       self._caller, signature(x), trace) from e
+                       self._caller, signature(x), trace) from None
 
   def output_signature(self, input_signature):
     """Returns output signature this layer would give for `input_signature`."""
@@ -446,10 +448,11 @@ class Layer:
       forward_infer_shapes = math.abstract_eval(self.pure_fn)
       return forward_infer_shapes(
           input_signature, weight_signature, self.state, rng_signature)
-    except Exception as e:
-      name, trace = self._name, _short_traceback(skip=3)
+    except Exception:
+      # Skipping 13 lines which are all JAX abstract'ifying wrappers.
+      name, trace = self._name, _short_traceback(skip=13)
       raise LayerError(name, '_forward_abstract', self._caller, input_signature,
-                       trace) from e
+                       trace) from None
 
   # pylint: disable=protected-access
   def _do_custom_gradients(self, x, weights, state, rng):
