@@ -437,6 +437,26 @@ def wmt_concat_preprocess(dataset, training,
   return dataset
 
 
+@gin.configurable(blacklist=['dataset', 'training'])
+def lm_token_preprocessing(dataset, training):
+  """Concatenates inputs, 0, targets, with masking only for targets."""
+  del training
+
+  def concat_and_add_mask(x):
+    inp = x['inputs']
+    targets = x['targets']
+    pad = tf.expand_dims(tf.zeros_like(inp[0]), axis=0)
+    concat = tf.concat([inp, pad, targets], axis=0)
+    mask = tf.concat([tf.zeros_like(inp), pad, tf.ones_like(targets)], axis=0)
+    x['inputs'] = concat
+    x['targets'] = concat
+    x['mask'] = mask
+    return x
+
+  dataset = dataset.map(concat_and_add_mask)
+  return dataset
+
+
 @gin.configurable(blacklist=['hparams'])
 def bair_robot_pushing_hparams(
     hparams=None, video_num_input_frames=1, video_num_target_frames=15
@@ -553,7 +573,7 @@ def filter_dataset_on_len(dataset, training, len_map=None,
     len_map: optional dict of str to (int, int). We filter examples where a
       feature's size is beyond the specified bounds. Ex:
       {'inputs': (1, 512), 'targets': (64, 128)} will keep only those examples
-      where 1 <= tf.size(inputs) <= 512 and 64 <= tf.size(targets) <= 128.
+      where 1 <= len(inputs) <= 512 and 64 <= len(targets) <= 128.
     filter_on_eval: bool if true, we will filter in eval mode also.
 
   Returns:
@@ -568,7 +588,7 @@ def filter_dataset_on_len(dataset, training, len_map=None,
     # TODO(afrozm): Investigate `cell-var-from-loop` - since this is WAI and
     # there is a test too.
     def within_bounds(x, key, len_bounds):
-      size = tf.size(x[key])
+      size = tf.shape(x[key])[0]
       min_len, max_len = len_bounds
       return (min_len <= size) and (size <= max_len)
     dataset = dataset.filter(lambda x: within_bounds(x, k, bounds))
@@ -605,6 +625,22 @@ def truncate_dataset_on_len(dataset, training, len_map=None,
     return x
 
   return dataset.map(truncate_example)
+
+
+@gin.configurable(blacklist=['dataset', 'training'])
+def pad_dataset_to_length(dataset, training, len_map=None):
+  """Pad features less than specified length to specified length."""
+  del training
+  def pad_to_len(x):
+    for key, max_len in len_map.items():
+      x_shape = tf.shape(x[key])
+      x_len = x_shape[0]
+      if x_len < max_len:
+        pad_shape = [max_len - x_len,]
+        zeros = tf.zeros(pad_shape, dtype=x[key].dtype)
+        x[key] = tf.concat([x[key], zeros], 0)
+    return x
+  return dataset.map(pad_to_len)
 
 
 @gin.configurable(blacklist=['dataset', 'training'])

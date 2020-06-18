@@ -360,5 +360,53 @@ class TFInputsTest(tf.test.TestCase):
         dataset,
         {'inputs': 'That is bad.', 'targets': 'That is good.'})
 
+  def test_pad_dataset_to_length(self):
+    ds = _test_dataset_ints([5, 6, 7], [6, 7, 8])
+    ds1 = tf_inputs.pad_dataset_to_length(
+        ds, True, len_map={'inputs': 7, 'targets': 10})
+
+    expected_ds = [
+        {
+            'inputs': np.array([1, 1, 1, 1, 1, 0, 0], dtype=np.int64),
+            'targets': np.array([1, 1, 1, 1, 1, 1, 0, 0, 0, 0], dtype=np.int64),
+        },
+        {
+            'inputs': np.array([1, 1, 1, 1, 1, 1, 0], dtype=np.int64),
+            'targets': np.array([1, 1, 1, 1, 1, 1, 1, 0, 0, 0], dtype=np.int64),
+        },
+        {
+            'inputs': np.array([1, 1, 1, 1, 1, 1, 1], dtype=np.int64),
+            'targets': np.array([1, 1, 1, 1, 1, 1, 1, 1, 0, 0], dtype=np.int64),
+        },
+    ]
+
+    t5_test_utils.assert_dataset(ds1, expected_ds)
+
+  def test_lm_token_preprocessing(self):
+    ds = _test_dataset_ints([1, 2, 3], [3, 2, 1])
+    ds1 = tf_inputs.lm_token_preprocessing(ds, True)
+
+    # pylint: disable=bad-whitespace
+    expected_ds = [
+        {
+            'inputs':  np.array([1, 0, 1, 1, 1], dtype=np.int64),
+            'targets': np.array([1, 0, 1, 1, 1], dtype=np.int64),
+            'mask':    np.array([0, 0, 1, 1, 1], dtype=np.int64),
+        },
+        {
+            'inputs':  np.array([1, 1, 0, 1, 1], dtype=np.int64),
+            'targets': np.array([1, 1, 0, 1, 1], dtype=np.int64),
+            'mask':    np.array([0, 0, 0, 1, 1], dtype=np.int64),
+        },
+        {
+            'inputs':  np.array([1, 1, 1, 0, 1], dtype=np.int64),
+            'targets': np.array([1, 1, 1, 0, 1], dtype=np.int64),
+            'mask':    np.array([0, 0, 0, 0, 1], dtype=np.int64),
+        },
+    ]
+    # pylint: enable=bad-whitespace
+
+    t5_test_utils.assert_dataset(ds1, expected_ds)
+
 if __name__ == '__main__':
   tf.test.main()
