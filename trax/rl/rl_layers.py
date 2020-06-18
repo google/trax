@@ -109,16 +109,25 @@ def ClippedObjective(probs_ratio, advantages, epsilon):
   return clipped_objective
 
 
-def PPOObjective(dist_inputs, values, returns, actions, old_log_probs,
-                 log_prob_fun, epsilon, normalize_advantages):
+def PPOObjective(dist_inputs, values, returns, dones, rewards,
+                 actions, old_log_probs, log_prob_fun, epsilon,
+                 normalize_advantages):
   """PPO Objective."""
   # dist_inputs of the shape float32[128,1,18]
   # values of the shape float32[128,1,1]
   # returns of the shape float32[128,1,1]
+  # dones of the shape float32[128,1,1]
+  # rewards of the shape int32[128,1,1]
   # actions of the shape int32[128,1]
   # and old_log_probs of the shape float32[128,1]
   returns = returns.squeeze(axis=2)
   values = values.squeeze(axis=2)
+  dones = dones.squeeze(axis=2)
+  rewards = rewards.squeeze(axis=2)
+  assert rewards.shape == dones.shape, (
+      f'returns.shape was {returns.shape} and values.shape was {returns.shape}')
+  assert dones.shape == values.shape, (
+      f'returns.shape was {returns.shape} and values.shape was {returns.shape}')
   assert returns.shape == values.shape, (
       f'returns.shape was {returns.shape} and values.shape was {values.shape}')
   assert returns.shape == old_log_probs.shape, (
@@ -130,6 +139,11 @@ def PPOObjective(dist_inputs, values, returns, actions, old_log_probs,
       f'probs_ratio.shape was {probs_ratio.shape} and'
       f'old_log_probs.shape was {old_log_probs.shape}')
 
+  # jaxified versions of
+  # returns[dones] = rewards[dones]
+  # values[dones] = 0
+  returns = jnp.where(dones, rewards, returns)
+  values = jnp.where(dones, jnp.zeros_like(values), values)
   advantages = returns - values
   if normalize_advantages:
     advantages = advantages - jnp.mean(advantages)
@@ -162,6 +176,7 @@ def A2CObjective(dist_inputs, values, returns,
   # dist_inputs of the shape float32[128,1,18]
   # values of the shape float32[128,1,1]
   # returns of the shape float32[128,1,1]
+  # dones of the shape int32[128,1,1]
   # actions of the shape int32[128,1]
   # and mask of the shape float32[128,1]
   # We have to squeeze values and returns, because we

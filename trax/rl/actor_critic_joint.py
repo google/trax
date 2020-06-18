@@ -260,6 +260,8 @@ class PPOJointTrainer(ActorCriticJointTrainer):
       # the network output shape.
       yield (np_trajectory.observations,         # Inputs to the value model.
              np_trajectory.returns[:, :, None],
+             np_trajectory.dones[:, :, None],
+             np_trajectory.rewards[:, :, None],
              np_trajectory.actions,
              old_log_probs,
              np_trajectory.mask)
@@ -267,7 +269,8 @@ class PPOJointTrainer(ActorCriticJointTrainer):
   @property
   def joint_loss(self):
     """Joint policy and value loss."""
-    def f(dist_inputs, values, returns, actions, old_log_probs, mask):
+    def f(dist_inputs, values, returns, dones, rewards,
+          actions, old_log_probs, mask):
       """Definition of the Proximal Policy Optimization loss."""
       del mask  # TODO(lukaszkaiser): make PPO work with Transformer
       # We have dist_inputs of the shape float32[128,1,18]
@@ -276,10 +279,18 @@ class PPOJointTrainer(ActorCriticJointTrainer):
           f'but expected length of the tensor shape is 3')
       # values of the shape float32[128,1,1]
       # returns of the shape float32[128,1,1]
+      # dones of the shape int32[128,1,1]
+      # rewards of the shape float32[128,1,1]
       # and old_log_probs of the shape float32[128,1]
       assert values.shape == returns.shape, (
           f'values.shape was {values.shape}'
           f'returns.shape was {returns.shape}')
+      assert values.shape == dones.shape, (
+          f'values.shape was {values.shape}'
+          f'returns.shape was {dones.shape}')
+      assert rewards.shape == dones.shape, (
+          f'values.shape was {values.shape}'
+          f'returns.shape was {dones.shape}')
       assert returns.shape[0:2] == old_log_probs.shape, (
           f'returns.shape was {returns.shape}'
           f'old_log_probs.shape was {old_log_probs.shape}')
@@ -294,7 +305,8 @@ class PPOJointTrainer(ActorCriticJointTrainer):
           f'returns.shape was {returns.shape}')
 
       ppo_objective = rl_layers.PPOObjective(
-          dist_inputs, stop_gradient(values), returns, actions, old_log_probs,
+          dist_inputs, stop_gradient(values), returns, dones, rewards,
+          actions, old_log_probs,
           log_prob_fun=self._policy_dist.log_prob,
           epsilon=self._epsilon,
           normalize_advantages=self._normalize_advantages)
@@ -335,8 +347,8 @@ class PPOJointTrainer(ActorCriticJointTrainer):
           log_prob_fun=self._policy_dist.log_prob)
       return jnp.mean(probs_ratio)
 
-    def f(dist_inputs, values, returns, actions, old_log_probs):
-      del values, returns
+    def f(dist_inputs, values, returns, dones, rewards, actions, old_log_probs):
+      del values, returns, dones, rewards
       return ProbsRatioMean(dist_inputs, actions, old_log_probs)
     return tl.Fn('ProbsRatioMean', f)
 
@@ -350,8 +362,8 @@ class PPOJointTrainer(ActorCriticJointTrainer):
           log_prob_fun=self._policy_dist.log_prob)
       return jnp.mean(jnp.abs(probs_ratio - 1) > self._epsilon)
 
-    def f(dist_inputs, values, returns, actions, old_log_probs):
-      del values, returns
+    def f(dist_inputs, values, returns, dones, rewards, actions, old_log_probs):
+      del values, returns, dones, rewards
       return ClipFraction(dist_inputs, actions, old_log_probs)
     return tl.Fn('ClipFraction', f)
   # pylint: enable=invalid-name
@@ -359,8 +371,8 @@ class PPOJointTrainer(ActorCriticJointTrainer):
   @property
   def entropy_loss(self):
     """Entropy layer."""
-    def f(dist_inputs, values, returns, actions):
-      del values, returns
+    def f(dist_inputs, values, returns, dones, rewards, actions):
+      del values, returns, dones, rewards
       return rl_layers.EntropyLoss(
           dist_inputs, actions, log_prob_fun=self._policy_dist.log_prob,
           entropy_coeff=self._entropy_coeff,
@@ -370,8 +382,9 @@ class PPOJointTrainer(ActorCriticJointTrainer):
   @property
   def approximate_kl_divergence(self):
     """Approximate KL divergence."""
-    def f(dist_inputs, values, returns, actions, old_log_probs):
-      del values, returns
+    def f(dist_inputs, values, returns, dones, rewards,
+          actions, old_log_probs):
+      del values, returns, dones, rewards
       return rl_layers.ApproximateKLDivergence(
           dist_inputs,
           actions,
@@ -381,8 +394,9 @@ class PPOJointTrainer(ActorCriticJointTrainer):
 
   @property
   def unclipped_objective_mean(self):
-    def f(dist_inputs, values, returns, actions, old_log_probs):
+    def f(dist_inputs, values, returns, dones, rewards, actions, old_log_probs):
       """Unclipped objective Mean from the PPO algorithm."""
+      del dones, rewards
       advantages = returns - values
       probs_ratio = rl_layers.ProbsRatio(
           dist_inputs, actions, old_log_probs,
@@ -398,8 +412,9 @@ class PPOJointTrainer(ActorCriticJointTrainer):
 
   @property
   def clipped_objective_mean(self):
-    def f(dist_inputs, values, returns, actions, old_log_probs):
+    def f(dist_inputs, values, returns, dones, rewards, actions, old_log_probs):
       """Clipped objective from the PPO algorithm."""
+      del dones, rewards
       advantages = returns - values
       probs_ratio = rl_layers.ProbsRatio(
           dist_inputs, actions, old_log_probs,
@@ -416,9 +431,9 @@ class PPOJointTrainer(ActorCriticJointTrainer):
   @property
   def ppo_objective(self):
     """PPO objective with local parameters."""
-    def f(dist_inputs, values, returns, actions, old_log_probs):
+    def f(dist_inputs, values, returns, dones, rewards, actions, old_log_probs):
       return rl_layers.PPOObjective(
-          dist_inputs, values, returns, actions, old_log_probs,
+          dist_inputs, values, returns, dones, rewards, actions, old_log_probs,
           log_prob_fun=self._policy_dist.log_prob,
           epsilon=self._epsilon,
           normalize_advantages=self._normalize_advantages)
@@ -427,10 +442,10 @@ class PPOJointTrainer(ActorCriticJointTrainer):
   @property
   def ppo_objective_mean(self):
     """PPO objective mean."""
-    def f(dist_inputs, values, returns, actions, old_log_probs):
+    def f(dist_inputs, values, returns, dones, rewards, actions, old_log_probs):
       """Clipped objective from the PPO algorithm."""
       ppo_objective = rl_layers.PPOObjective(
-          dist_inputs, values, returns, actions, old_log_probs,
+          dist_inputs, values, returns, dones, rewards, actions, old_log_probs,
           log_prob_fun=self._policy_dist.log_prob,
           epsilon=self._epsilon,
           normalize_advantages=self._normalize_advantages)
@@ -478,6 +493,8 @@ class A2CJointTrainer(ActorCriticJointTrainer):
       # the network output shape.
       yield (np_trajectory.observations,         # Inputs to the value model.
              np_trajectory.returns[:, :, None],
+             np_trajectory.dones[:, :, None],
+             np_trajectory.rewards[:, :, None],
              np_trajectory.actions,
              jnp.zeros_like(np_trajectory.mask),
              np_trajectory.mask)
@@ -485,9 +502,10 @@ class A2CJointTrainer(ActorCriticJointTrainer):
   @property
   def joint_loss(self):
     """Joint policy and value loss."""
-    def f(dist_inputs, values, returns, actions, old_log_probs, mask):
+    def f(dist_inputs, values, returns, dones, rewards,
+          actions, old_log_probs, mask):
       """Definition of the A2C loss."""
-      del old_log_probs
+      del dones, rewards, old_log_probs
 
       # Typically we have dist_inputs of the shape float32[128,1,18]
       assert len(dist_inputs.shape) == 3, (
@@ -543,8 +561,8 @@ class A2CJointTrainer(ActorCriticJointTrainer):
   @property
   def entropy_loss(self):
     """Entropy layer."""
-    def f(dist_inputs, values, returns, actions):
-      del values, returns
+    def f(dist_inputs, values, returns, dones, rewards, actions):
+      del values, returns, dones, rewards
       return rl_layers.EntropyLoss(
           dist_inputs, actions, log_prob_fun=self._policy_dist.log_prob,
           entropy_coeff=self._entropy_coeff,
@@ -554,8 +572,9 @@ class A2CJointTrainer(ActorCriticJointTrainer):
   @property
   def approximate_kl_divergence(self):
     """Approximate KL divergence."""
-    def f(dist_inputs, values, returns, actions, old_log_probs):
-      del values, returns
+    def f(dist_inputs, values, returns, dones, rewards,
+          actions, old_log_probs):
+      del values, returns, dones, rewards
       return rl_layers.ApproximateKLDivergence(
           dist_inputs,
           actions,
@@ -568,19 +587,25 @@ class A2CJointTrainer(ActorCriticJointTrainer):
     """A2C objective with local parameters."""
     return tl.Fn(
         'A2CObjective',
-        lambda dist_inputs, values, returns, actions, old_log_probs, mask:
-        rl_layers.A2CObjective(
-            dist_inputs, values, returns, actions, mask,
+        lambda dist_inputs, values, returns, dones, rewards, actions, \
+        old_log_probs, mask: rl_layers.A2CObjective(
+            dist_inputs,
+            values,
+            returns,
+            actions,
+            mask,
             log_prob_fun=self._policy_dist.log_prob,
             normalize_advantages=self._normalize_advantages),
         n_out=1)
 
   @property
   def a2c_objective_mean(self):
-    """PPO objective mean."""
-    def f(dist_inputs, values, returns, actions, old_log_probs, mask):
+    """A2C objective mean."""
+    def f(dist_inputs, values, returns, dones, rewards,
+          actions, old_log_probs, mask):
       """A2C objective mean."""
-      del old_log_probs
+      # TODO(henrykm): include dones, rewards
+      del old_log_probs, dones, rewards
       a2c_objective = rl_layers.A2CObjective(
           dist_inputs, values, returns, actions, mask,
           log_prob_fun=self._policy_dist.log_prob,
