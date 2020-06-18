@@ -116,18 +116,22 @@ def _train_and_eval_streams(dataset, data_dir, preprocess_fn,
   """Return train and eval batches with input name and shape."""
   (train_data, eval_data, keys) = _train_and_eval_dataset(
       dataset, data_dir, eval_holdout_size)
-  if keys is not None:
-    input_names, target_names = keys[0], keys[1]
-  else:
-    input_names, target_names = [input_name], [target_name]
+  # If provided select input_name/target_name else fall back to keys if that is
+  # available, else [None].
+  input_names = ([input_name] if input_name is not None
+                 else keys[0] if keys is not None
+                 else [None])
+  target_names = ([target_name] if target_name is not None
+                  else keys[1] if keys is not None
+                  else [None])
+
   train_batches = _shuffle_data(
       train_data, target_names, True, shuffle_buffer_size, preprocess_fn,
       bare_preprocess_fn)
   eval_batches = _shuffle_data(
       eval_data, target_names, False, shuffle_buffer_size, preprocess_fn,
       bare_preprocess_fn)
-  input_name = input_name or input_names[0]
-  return (train_batches, eval_batches, input_name)
+  return (train_batches, eval_batches, input_names[0])
 
 
 def _shuffle_data(dataset,
@@ -147,7 +151,7 @@ def _shuffle_data(dataset,
     return (example, targets)
   # `bare_preprocess_fn` is called before appending targets etc.
   if bare_preprocess_fn is not None:
-    dataset = bare_preprocess_fn(dataset)
+    dataset = bare_preprocess_fn(dataset, training)
   dataset = dataset.map(append_targets)
   # TODO(pkozakowski): Repeat both the training and evaluation set, so we don't
   # have incomplete batches during evaluation. This will be a problem when we
@@ -506,12 +510,15 @@ def c4_preprocess(dataset, training, max_target_length=-1,
   return dataset
 
 
-@gin.configurable(blacklist=['dataset'])
+@gin.configurable(blacklist=['dataset', 'training'])
 def c4_bare_preprocess_fn(dataset,
+                          training=True,
                           spm_path=None,
                           copy_plaintext=True,
                           sequence_length=None):
   """Returns a dataset that contains 'inputs' and 'targets' from C4."""
+  # Same processing whether eval or train.
+  del training
   # Set target key to be equal to the text content.
   dataset = t5_processors.rekey(
       dataset, key_map={'targets': 'text', 'inputs': None})
@@ -535,17 +542,119 @@ def c4_bare_preprocess_fn(dataset,
   return dataset
 
 
-@gin.configurable(blacklist=['dataset'])
-def generic_text_dataset_preprocess_fn(dataset,
-                                       text_preprocess_fn=None,
-                                       spm_path=None,
-                                       copy_plaintext=False):
-  """Applies a text preprocess fn and tokenizes the dataset."""
+@gin.configurable(blacklist=['dataset', 'training'])
+def filter_dataset_on_len(dataset, training, len_map=None,
+                          filter_on_eval=False):
+  """Filters a dataset of lengths given in `len_map`.
 
-  # The assumption is that `text_preprocess_fn` finally gives us a dataset
+  Args:
+    dataset: `tf.data.Dataset` the dataset to filter.
+    training: bool, true if we are in training mode.
+    len_map: optional dict of str to (int, int). We filter examples where a
+      feature's size is beyond the specified bounds. Ex:
+      {'inputs': (1, 512), 'targets': (64, 128)} will keep only those examples
+      where 1 <= tf.size(inputs) <= 512 and 64 <= tf.size(targets) <= 128.
+    filter_on_eval: bool if true, we will filter in eval mode also.
+
+  Returns:
+    a filtered `tf.data.Dataset`.
+  """
+  if (len_map is None) or (not training and not filter_on_eval):
+    return dataset
+
+  assert isinstance(len_map, dict)
+  for k, bounds in len_map.items():
+    # pylint: disable=cell-var-from-loop
+    # TODO(afrozm): Investigate `cell-var-from-loop` - since this is WAI and
+    # there is a test too.
+    def within_bounds(x, key, len_bounds):
+      size = tf.size(x[key])
+      min_len, max_len = len_bounds
+      return (min_len <= size) and (size <= max_len)
+    dataset = dataset.filter(lambda x: within_bounds(x, k, bounds))
+    # pylint: enable=cell-var-from-loop
+
+  return dataset
+
+
+@gin.configurable(blacklist=['dataset', 'training'])
+def truncate_dataset_on_len(dataset, training, len_map=None,
+                            truncate_on_eval=False):
+  """Truncates features in an example to lengths given in `len_map`.
+
+  Args:
+    dataset: `tf.data.Dataset` the dataset to filter.
+    training: bool, true if we are in training mode.
+    len_map: optional dict of str to int, we truncate examples where a feature's
+      size is beyond the max. Ex: {'inputs': 512, 'targets': 64} will truncate
+      examples to be within those bounds.
+    truncate_on_eval: bool if true, we will truncate in eval mode also.
+
+  Returns:
+    a filtered `tf.data.Dataset`.
+  """
+  if (len_map is None) or (not training and not truncate_on_eval):
+    return dataset
+
+  assert isinstance(len_map, dict)
+  def truncate_example(x):
+    for key, max_len in len_map.items():
+      x_len = tf.shape(x[key])[0]
+      if x_len > max_len:
+        x[key] = x[key][:max_len, ...]
+    return x
+
+  return dataset.map(truncate_example)
+
+
+@gin.configurable(blacklist=['dataset', 'training'])
+def generic_text_dataset_preprocess_fn(dataset,
+                                       training=True,
+                                       text_preprocess_fns=None,
+                                       token_preprocess_fns=None,
+                                       spm_path=None,
+                                       copy_plaintext=False,
+                                       debug_print_examples=False,
+                                       debug_print_examples_rate=0.01):
+  """Pre-processes, tokenizes and post-processes a `tf.data.Dataset`.
+
+  Args:
+    dataset: `tf.data.Dataset` to process.
+    training: boolean, set to True if training, False otherwise.
+    text_preprocess_fns: None or list of callables: `tf.data.Dataset`, bool ->
+      `tf.data.Dataset` this operates before tokenization. Typically used to
+      select which fields we want to learn over or change something into
+      "text to text" form.
+    token_preprocess_fns: None or list of callables: `tf.data.Dataset`, bool ->
+      `tf.data.Dataset`, this operates after tokenization. Since this can view
+      the tokenized fields, this can be used to filter on length etc.
+    spm_path: None or str, path to a sentencepiece model to use for tokenization
+      by default uses the 32k vocabulary from T5.
+    copy_plaintext: bool, if True retains the original fields after
+      tokenization.
+    debug_print_examples: bool, if True this prints examples to the logging
+      stream for inspection, both before and after tokenization.
+    debug_print_examples_rate: float, [0, 1.0], on average this fraction of
+      dataset examples will be printed out in each phase i.e. pre and post
+      tokenization.
+
+  Returns:
+    a `tf.data.Dataset` with all the preprocessing and tokenization performed.
+  """
+
+  # The assumption is that `text_preprocess_fns` finally gives us a dataset
   # which has `inputs` and `targets`.
-  if text_preprocess_fn is not None:
-    dataset = text_preprocess_fn(dataset)
+  if text_preprocess_fns is not None:
+    for text_preprocess_fn in text_preprocess_fns:
+      dataset = text_preprocess_fn(dataset, training)
+
+  # Print debugging examples if needed before tokenization.
+  if debug_print_examples:
+    def print_examples(x):
+      if np.random.uniform() < debug_print_examples_rate:
+        tf.print(x, output_stream=logging.info)
+      return x
+    dataset = dataset.map(print_examples)
 
   # Vocabulary for tokenization.
   vocab = t5_spc_vocab.SentencePieceVocabulary(
@@ -558,7 +667,50 @@ def generic_text_dataset_preprocess_fn(dataset,
       dataset, output_features, keys=output_features,
       copy_plaintext=copy_plaintext)
 
+  # Apply the token-preprocessors.
+  if token_preprocess_fns is not None:
+    for token_preprocess_fn in token_preprocess_fns:
+      dataset = token_preprocess_fn(dataset, training)
+
+  if debug_print_examples:
+    def print_examples_and_shapes(x):
+      if np.random.uniform() < debug_print_examples_rate:
+        tf.print({'inputs_shape': tf.size(x['inputs']),
+                  'targets_shape': tf.size(x['targets']),
+                  'inputs': x['inputs'],
+                  'targets': x['targets'],}, output_stream=logging.info)
+      return x
+    dataset = dataset.map(print_examples_and_shapes)
+
   return dataset
+
+
+@gin.configurable
+def get_t5_preprocessor_by_name(name=None, fn_kwargs=None):
+  """Returns a closure of any T5 preprocessor function with its arguments.
+
+  The main use-case is to use this (with gin scopes) to make any preprocessor
+  function available in a gin file to configure and use.
+
+  See: `TFInputs.test_gin_configurable_preprocessors`
+
+  Args:
+    name: str, name of the preprocessor function to configure.
+    fn_kwargs: optional dictionary, the arguments to configure, these will be
+      partially applied to the function given by `name`.
+
+  Returns:
+    a closure of the preprocessor function along with its arguments, this
+    function takes two arguments only, dataset and boolean training and ignores
+    the training and calls the t5 processor with the dataset (and closed over
+    arguments only).
+  """
+
+  assert name is not None
+  f = getattr(t5_processors, name)
+  if fn_kwargs is not None:
+    f = functools.partial(f, **fn_kwargs)
+  return lambda ds, unused_training: f(ds)
 
 
 def download_and_prepare(dataset_name, data_dir):

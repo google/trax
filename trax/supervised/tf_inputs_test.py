@@ -22,6 +22,7 @@ import os
 import gin
 import numpy as np
 from t5.data import preprocessors as t5_processors
+from t5.data import test_utils as t5_test_utils
 import tensorflow as tf
 import tensorflow_datasets as tfds
 from trax.supervised import inputs  # pylint: disable=unused-import
@@ -32,15 +33,15 @@ pkg_dir, _ = os.path.split(__file__)
 _TESTDATA = os.path.join(pkg_dir, 'testdata')
 
 
-def _test_dataset_ints(lengths):
-  """Create a test dataset of int64 tensors of shape [length]."""
+def _test_dataset_ints(inp_lengths, tgt_lengths):
+  """Create a test dataset of int64 tensors of given shapes."""
   def generator():
-    """Sample generator of sequences of shape [length] of type int64."""
-    for length in lengths:
-      x = np.zeros([length], dtype=np.int64)
-      yield (x, x)  # Inputs and targets are the same here.
-  types = (tf.int64, tf.int64)
-  shapes = (tf.TensorShape([None]), tf.TensorShape([None]))
+    for inp_len, tgt_len in zip(inp_lengths, tgt_lengths):
+      inp = np.ones([inp_len], dtype=np.int64)
+      tgt = np.ones([tgt_len], dtype=np.int64)
+      yield {'inputs': inp, 'targets': tgt}
+  types = {'inputs': tf.int64, 'targets': tf.int64}
+  shapes = {'inputs': tf.TensorShape([None]), 'targets': tf.TensorShape([None])}
   return tf.data.Dataset.from_generator(
       generator, output_types=types, output_shapes=shapes)
 
@@ -258,8 +259,10 @@ class TFInputsTest(tf.test.TestCase):
 
     proc_dataset = tf_inputs.generic_text_dataset_preprocess_fn(
         dataset, spm_path=_spm_path(),
-        text_preprocess_fn=t5_processors.squad,
-        copy_plaintext=True)
+        text_preprocess_fns=[lambda ds, training: t5_processors.squad(ds)],
+        copy_plaintext=True,
+        debug_print_examples=True,
+        debug_print_examples_rate=1.0)
 
     proc_example, = tfds.as_numpy(proc_dataset.take(1))
 
@@ -269,38 +272,93 @@ class TFInputsTest(tf.test.TestCase):
     self.assertEqual(proc_example['inputs'].dtype, np.int64)
     self.assertEqual(proc_example['targets'].dtype, np.int64)
 
+  # TODO(afrozm): Why does this test take so much time?
   def test_inputs_using_generic_text_dataset_preprocess_fn(self):
 
     gin.bind_parameter(
         'generic_text_dataset_preprocess_fn.spm_path', _spm_path())
     gin.bind_parameter(
-        'generic_text_dataset_preprocess_fn.copy_plaintext', True)
-    gin.bind_parameter(
-        'generic_text_dataset_preprocess_fn.text_preprocess_fn',
-        t5_processors.squad)
+        'generic_text_dataset_preprocess_fn.text_preprocess_fns',
+        [lambda ds, training: t5_processors.squad(ds)])
 
     # Just make sure this doesn't throw.
     def data_streams():
       return tf_inputs.data_streams(
           'squad', data_dir=_TESTDATA, input_name='inputs',
           target_name='targets',
-          bare_preprocess_fn=tf_inputs.generic_text_dataset_preprocess_fn)
+          bare_preprocess_fn=tf_inputs.generic_text_dataset_preprocess_fn,
+          shuffle_buffer_size=1)
+
+    n_devices = 3
 
     squad_inputs = inputs.batcher(
         data_streams=data_streams,
-        batch_size_per_device=2,
-        eval_batch_size=2,
-        max_eval_length=50,
+        max_eval_length=512,
+        buckets=([513,], [n_devices, n_devices])
     )
 
-    n_devices = 3
-    train_stream = squad_inputs.train_stream(n_devices)
-    inps, tgts = next(train_stream)
+    eval_stream = squad_inputs.eval_stream(n_devices)
+    inps, tgts = next(eval_stream)
 
     # We can only assert that the batch dim gets divided by n_devices.
     self.assertEqual(inps.shape[0] % n_devices, 0)
     self.assertEqual(tgts.shape[0] % n_devices, 0)
 
+  def test_filter_dataset_on_len(self):
+    # {1, 2}, {2, 4}, {3, 6} ... {10, 20}
+    ds = _test_dataset_ints(range(1, 11), range(2, 21, 2))
+
+    ds1 = tf_inputs.filter_dataset_on_len(
+        ds, True, {'inputs': [4, 8], 'targets': [14, 20]})
+    # Only {7, 14} and {8, 16} satisfy this.
+    self.assertLen(list(ds1.as_numpy_iterator()), 2)
+
+    ds2 = tf_inputs.filter_dataset_on_len(
+        ds, False, len_map={'inputs': [4, 8], 'targets': [14, 20]},
+        filter_on_eval=False)
+    # This is eval and we aren't supposed to filter it.
+    self.assertLen(list(ds2.as_numpy_iterator()), 10)
+
+    ds3 = tf_inputs.filter_dataset_on_len(
+        ds, False, len_map={'inputs': [4, 8], 'targets': [14, 20]},
+        filter_on_eval=True)
+    # This is eval and we are asked to filter it.
+    self.assertLen(list(ds3.as_numpy_iterator()), 2)
+
+  def test_truncate_dataset_on_len(self):
+    ds = _test_dataset_ints([5, 6, 7], [8, 9, 10])
+    ds1 = tf_inputs.truncate_dataset_on_len(
+        ds, True, len_map={'inputs': 6, 'targets': 4})
+    expected_ds = _test_dataset_ints([5, 6, 6], [4, 4, 4])
+
+    # training, should filter.
+    t5_test_utils.assert_dataset(ds1, list(expected_ds.as_numpy_iterator()))
+
+    # not Training, shouldn't filter.
+    ds2 = tf_inputs.truncate_dataset_on_len(
+        ds, False, len_map={'inputs': 6, 'targets': 4})
+    t5_test_utils.assert_dataset(ds2, list(ds.as_numpy_iterator()))
+
+    # not Training, but asked to filter, should filter.
+    ds3 = tf_inputs.truncate_dataset_on_len(
+        ds, False, len_map={'inputs': 6, 'targets': 4}, truncate_on_eval=True)
+    t5_test_utils.assert_dataset(ds3, list(expected_ds.as_numpy_iterator()))
+
+  def test_get_t5_preprocessor_by_name(self):
+    gin.clear_config()
+
+    gin.parse_config("""
+      get_t5_preprocessor_by_name.name = 'rekey'
+      get_t5_preprocessor_by_name.fn_kwargs = {'key_map': {'inputs': 'other', 'targets': 'text'}}
+    """)
+    prep_rekey = tf_inputs.get_t5_preprocessor_by_name()
+    og_dataset = tf.data.Dataset.from_tensors({
+        'text': 'That is good.', 'other': 'That is bad.'})
+    training = True
+    dataset = prep_rekey(og_dataset, training)
+    t5_test_utils.assert_dataset(
+        dataset,
+        {'inputs': 'That is bad.', 'targets': 'That is good.'})
 
 if __name__ == '__main__':
   tf.test.main()
