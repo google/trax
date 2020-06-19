@@ -29,11 +29,9 @@
 
 
 import collections
-import enum
 from functools import partial
 import itertools
 import unittest
-import warnings
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -418,26 +416,11 @@ class IndexingTest(jtu.TestCase):
     # This would need updating lax_numpy_test as well.
     rng = rng_factory()
     args_maker = lambda: [rng(shape, dtype)]
-    fun = lambda x: x[indexer]
-    self._CompileAndCheck(fun, args_maker, check_dtypes=True)
-
-  @parameterized.named_parameters({
-      "testcase_name":
-          "{}_inshape={}_indexer={}".format(name,
-                                            jtu.format_shape_dtype_string(
-                                                shape, dtype), indexer),
-      "shape": shape, "dtype": dtype, "rng_factory": rng_factory, "indexer": indexer
-  } for name, index_specs in STATIC_INDEXING_GRAD_TESTS
-    for shape, indexer in index_specs
-    for dtype in float_dtypes
-    for rng_factory in [jtu.rand_default])
-  @jtu.disable
-  def testStaticIndexingGrads(self, shape, dtype, rng_factory, indexer):
-    rng = rng_factory()
-    tol = 1e-2 if jnp.finfo(dtype).bits == 32 else None
-    arg = rng(shape, dtype)
-    fun = lambda x: x[indexer]**2
-    check_grads(fun, (arg,), 2, tol, tol, tol)
+    onp_fun = lambda x: x[indexer]
+    jnp_fun = lambda x: jnp.asarray(x)[indexer]
+    self._CheckAgainstNumpy(onp_fun, jnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(jnp_fun, args_maker, check_dtypes=True,
+                          check_incomplete_shape=True)
 
   def _ReplaceSlicesWithTuples(self, idx):
     """Helper method to replace slices with tuples for dynamic indexing args."""
@@ -479,18 +462,21 @@ class IndexingTest(jtu.TestCase):
       for shape, indexer in index_specs
       for dtype in all_dtypes
       for rng_factory in [jtu.rand_default])
-  @jtu.disable
-  def testDynamicIndexingWithSlicesErrors(self, shape, dtype, rng_factory, indexer):
+  def testDynamicIndexingWithSlices(self, shape, dtype, rng_factory, indexer):
     rng = rng_factory()
     unpacked_indexer, pack_indexer = self._ReplaceSlicesWithTuples(indexer)
 
-    @npe.jit
-    def fun(x, unpacked_indexer):
+    def onp_fun(x, unpacked_indexer):
       indexer = pack_indexer(unpacked_indexer)
       return x[indexer]
 
+    jnp_fun = lambda x, idx: onp_fun(jnp.asarray(x), idx)
+
     args_maker = lambda: [rng(shape, dtype), unpacked_indexer]
-    self.assertRaises(IndexError, lambda: fun(*args_maker()))
+    self._CheckAgainstNumpy(onp_fun, jnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(jnp_fun, args_maker, check_dtypes=True,
+                          check_eval_on_shapes=False,
+                          check_incomplete_shape=True)
 
   @parameterized.named_parameters(
       {"testcase_name": "{}_inshape={}_indexer={}"
@@ -519,49 +505,16 @@ class IndexingTest(jtu.TestCase):
     rng = rng_factory()
     unpacked_indexer, pack_indexer = self._ReplaceSlicesWithTuples(indexer)
 
-    def fun(x, unpacked_indexer):
+    def onp_fun(x, unpacked_indexer):
       indexer = pack_indexer(unpacked_indexer)
       return x[indexer]
+
+    jnp_fun = lambda x, idx: onp_fun(jnp.asarray(x), idx)
 
     args_maker = lambda: [rng(shape, dtype), unpacked_indexer]
-    self._CompileAndCheck(fun, args_maker, check_dtypes=True)
-
-  @parameterized.named_parameters(
-      {"testcase_name": "{}_inshape={}_indexer={}"
-       .format(name, jtu.format_shape_dtype_string(shape, dtype), indexer),
-       "shape": shape, "dtype": dtype, "rng_factory": rng_factory, "indexer": indexer}
-      for name, index_specs in [
-          ("OneIntIndex",
-           [IndexSpec(shape=(3,), indexer=1),
-            IndexSpec(shape=(3, 3), indexer=0),
-            IndexSpec(shape=(3, 4, 5), indexer=2),
-            IndexSpec(shape=(3,), indexer=-1),
-            IndexSpec(shape=(3,), indexer=-2),
-            ]),
-          ("TwoIntIndices",
-           [IndexSpec(shape=(3, 3), indexer=(2, 1)),
-            IndexSpec(shape=(3, 4, 5), indexer=(1, 2)),
-            IndexSpec(shape=(3, 4, 5), indexer=(-1, 2)),
-            ]),
-          ("ThreeIntIndices",
-           [IndexSpec((3, 4, 5), indexer=(1, 2, 3))]),
-      ]
-      for shape, indexer in index_specs
-      for dtype in float_dtypes
-      for rng_factory in [jtu.rand_default])
-  @jtu.disable
-  def testDynamicIndexingWithIntegersGrads(self, shape, dtype, rng_factory, indexer):
-    rng = rng_factory(self.rng())
-    tol = 1e-2 if jnp.finfo(dtype).bits == 32 else None
-    unpacked_indexer, pack_indexer = self._ReplaceSlicesWithTuples(indexer)
-
-    @npe.jit
-    def fun(unpacked_indexer, x):
-      indexer = pack_indexer(unpacked_indexer)
-      return x[indexer]
-
-    arr = rng(shape, dtype)
-    check_grads(partial(fun, unpacked_indexer), (arr,), 2, tol, tol, tol)
+    self._CheckAgainstNumpy(onp_fun, jnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(jnp_fun, args_maker, check_dtypes=True,
+                          check_incomplete_shape=True)
 
   @parameterized.named_parameters(
       {"testcase_name": "{}_inshape={}_indexer={}"
@@ -571,73 +524,15 @@ class IndexingTest(jtu.TestCase):
       for shape, indexer in index_specs
       for dtype in all_dtypes
       for rng_factory in [jtu.rand_default])
-  @jtu.disable
   def testAdvancedIntegerIndexing(self, shape, dtype, rng_factory, indexer):
     rng = rng_factory()
     args_maker = lambda: [rng(shape, dtype), indexer]
-    fun = lambda x, idx: jnp.asarray(x)[idx]
-    self._CompileAndCheck(fun, args_maker, check_dtypes=True)
+    onp_fun = lambda x, idx: x[idx]
+    jnp_fun = lambda x, idx: onp_fun(jnp.asarray(x), idx)
 
-  @parameterized.named_parameters(
-      {"testcase_name": "{}_inshape={}_indexer={}"
-       .format(name, jtu.format_shape_dtype_string(shape, dtype), indexer),
-       "shape": shape, "dtype": dtype, "rng_factory": rng_factory, "indexer": indexer}
-      for name, index_specs in [
-          ("One1DIntArrayIndex",
-           [IndexSpec(shape=(3,), indexer=onp.array([0, 1])),
-            IndexSpec(shape=(3, 3), indexer=onp.array([1, 2, 1])),
-            IndexSpec(shape=(3, 4, 5), indexer=onp.array([0, 2, 0, 1])),
-            IndexSpec(shape=(3,), indexer=onp.array([-1, 1])),
-            IndexSpec(shape=(3,), indexer=onp.array([-2, -1])),
-            ]),
-          ("One2DIntArrayIndex",
-           [IndexSpec(shape=(3,), indexer=onp.array([[0, 0]])),
-            IndexSpec(shape=(3, 3), indexer=onp.array([[1, 2, 1],
-                                                       [0, 1, -1]])),
-            IndexSpec(shape=(3, 4, 5), indexer=onp.array([[0, 2, 0, 1],
-                                                          [-1, -2, 1, 0]])),
-            ]),
-          ("Two1DIntArrayIndicesNoBroadcasting",
-           [IndexSpec(shape=(3, 3), indexer=[onp.array([0, 1]),
-                                             onp.array([1, 2])]),
-            IndexSpec(shape=(3, 4, 5), indexer=[onp.array([0, 2, 0, 1]),
-                                                onp.array([-1, 0, -1, 2])]),
-            ]),
-          ("Two1DIntArrayIndicesWithBroadcasting",
-           [IndexSpec(shape=(3, 3), indexer=[onp.array([[0, 1]]),
-                                             onp.array([1, 2])]),
-            IndexSpec(shape=(3, 4, 5), indexer=[onp.array([[0, 2, 0, 1]]),
-                                                onp.array([-1, 0, -1, 2])]),
-            ]),
-          ("ListOfPythonInts",
-           [IndexSpec(shape=(3,), indexer=[0, 1, 0]),
-            IndexSpec(shape=(3, 4, 5), indexer=[0, -1]),
-            ]),
-          ("ListOfListsOfPythonInts",
-           [IndexSpec(shape=(3, 4, 5), indexer=[[0, 1]]),
-            IndexSpec(shape=(3, 4, 5), indexer=[[[0], [-1]], [[2, 3, 0, 3]]]),
-            ]),
-          ("ListOfPythonIntsAndIntArrays",
-           [IndexSpec(shape=(3, 4, 5), indexer=[0, onp.array([0, 1])]),
-            IndexSpec(shape=(3, 4, 5), indexer=[0, 1,
-                                                onp.array([[2, 3, 0, 3]])]),
-            ]),
-          ("ListOfListsOfPythonIntsAndIntArrays",
-           [IndexSpec(shape=(3, 4, 5), indexer=[[0, 1], onp.array([0])]),
-            IndexSpec(shape=(3, 4, 5), indexer=[[[0], [-1]],
-                                                onp.array([[2, 3, 0, 3]])]),
-            ]),
-      ]
-      for shape, indexer in index_specs
-      for dtype in float_dtypes
-      for rng_factory in [jtu.rand_default])
-  @jtu.disable
-  def testAdvancedIntegerIndexingGrads(self, shape, dtype, rng_factory, indexer):
-    rng = rng_factory()
-    tol = 1e-2 if jnp.finfo(dtype).bits == 32 else None
-    arg = rng(shape, dtype)
-    fun = lambda x: jnp.asarray(x)[indexer]
-    check_grads(fun, (arg,), 2, tol, tol, eps=1.)
+    self._CheckAgainstNumpy(onp_fun, jnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(jnp_fun, args_maker, check_dtypes=True,
+                          check_incomplete_shape=True)
 
   @parameterized.named_parameters(
       {"testcase_name": "{}_inshape={}_indexer={}"
@@ -647,7 +542,6 @@ class IndexingTest(jtu.TestCase):
       for shape, indexer in index_specs
       for dtype in all_dtypes
       for rng_factory in [jtu.rand_default])
-  @jtu.disable
   def testMixedAdvancedIntegerIndexing(self, shape, dtype, rng_factory, indexer):
     rng = rng_factory()
     indexer_with_dummies = [e if isinstance(e, onp.ndarray) else ()
@@ -656,13 +550,16 @@ class IndexingTest(jtu.TestCase):
                    if not isinstance(e, onp.ndarray)]
     args_maker = lambda: [rng(shape, dtype), indexer_with_dummies]
 
-    def fun(x, indexer_with_dummies):
+    def np_fun(x, indexer_with_dummies):
       idx = type(indexer)(subvals(indexer_with_dummies, substitutes))
-      return jnp.asarray(x)[idx]
+      return x[idx]
 
-    self._CompileAndCheck(fun, args_maker, check_dtypes=True)
+    jnp_fun = lambda x, idx: np_fun(jnp.asarray(x), idx)
 
-  @jtu.disable
+    self._CheckAgainstNumpy(np_fun, jnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(jnp_fun, args_maker, check_dtypes=True,
+                          check_incomplete_shape=True)
+
   def testAdvancedIndexingManually(self):
     x = onp.random.RandomState(0).randn(3, 4, 5)
     index_array = onp.array([0, 2, -1, 0])
@@ -691,70 +588,64 @@ class IndexingTest(jtu.TestCase):
 
     self.assertAllClose(a1, a2, check_dtypes=True)
 
-  @jtu.disable
+  # Note that we don't currently allow __iter__ in graph mode. So this test only
+  # iterates over eager tensor.
   def testUnpacking(self):
 
     def foo(x):
       a, b, c = x
       return a + b + c
 
-    cfoo = npe.jit(foo)
-
     a1 = foo(onp.arange(3))
-    a2 = cfoo(onp.arange(3))
+    a2 = foo(jnp.arange(3))
 
     self.assertAllClose(a1, a2, check_dtypes=True)
 
-  @jtu.disable
   def testBooleanIndexingArray1D(self):
     idx = onp.array([True, True, False])
-    x = api.device_put(onp.arange(3))
+    x = jnp.asarray(onp.arange(3))
     ans = x[idx]
     expected = onp.arange(3)[idx]
     self.assertAllClose(ans, expected, check_dtypes=False)
 
-  @jtu.disable
   def testBooleanIndexingList1D(self):
     idx = [True, True, False]
-    x = api.device_put(onp.arange(3))
+    x = jnp.asarray(onp.arange(3))
     ans = x[idx]
     expected = onp.arange(3)[idx]
     self.assertAllClose(ans, expected, check_dtypes=False)
 
-  @jtu.disable
   def testBooleanIndexingArray2DBroadcast(self):
     idx = onp.array([True, True, False, True])
     x = onp.arange(8).reshape(4, 2)
-    ans = api.device_put(x)[idx]
+    ans = jnp.asarray(x)[idx]
     expected = x[idx]
     self.assertAllClose(ans, expected, check_dtypes=False)
 
-  @jtu.disable
   def testBooleanIndexingList2DBroadcast(self):
     idx = [True, True, False, True]
     x = onp.arange(8).reshape(4, 2)
-    ans = api.device_put(x)[idx]
+    ans = jnp.asarray(x)[idx]
     expected = x[idx]
     self.assertAllClose(ans, expected, check_dtypes=False)
 
-  @jtu.disable
   def testBooleanIndexingArray2D(self):
     idx = onp.array([[True, False],
                      [False, True],
                      [False, False],
                      [True, True]])
     x = onp.arange(8).reshape(4, 2)
-    ans = api.device_put(x)[idx]
+    ans = jnp.asarray(x)[idx]
     expected = x[idx]
     self.assertAllClose(ans, expected, check_dtypes=False)
 
-  @jtu.disable
-  def testBooleanIndexingDynamicShapeError(self):
+  def testBooleanIndexingDynamicShape(self):
     x = onp.zeros(3)
     i = onp.array([True, True, False])
-    self.assertRaises(IndexError, lambda: npe.jit(lambda x, i: x[i])(x, i))
+    ans = x[i]
+    expected = jnp.asarray(x)[i]
+    self.assertAllClose(ans, expected, check_dtypes=True)
 
-  @jtu.disable
   def testIssue187(self):
     x = jnp.ones((5, 5))
     x[[0, 2, 4], [0, 2, 4]]  # doesn't crash
@@ -764,26 +655,7 @@ class IndexingTest(jtu.TestCase):
     expected = x[[0, 2, 4], [0, 2, 4]]
     self.assertAllClose(ans, expected, check_dtypes=False)
 
-  @jtu.disable
-  def testJVPOfGradOfIndexing(self):
-    # Should return a value, even though we didn't pass a symbolic zero as the
-    # index tangent.
-    x = jnp.ones((3, 4), jnp.float32)
-    i = jnp.ones((3,), jnp.int32)
-    f = lambda x, i: jnp.sum(x[i])
-    primals, tangents = api.jvp(api.grad(f), (x, i), (x, onp.zeros_like(i)))
-    expected = onp.broadcast_to(
-      onp.array([0, 3, 0], dtype=onp.float32)[:, None], (3, 4))
-    self.assertAllClose(expected, primals, check_dtypes=True)
-    self.assertAllClose(onp.zeros_like(x), tangents, check_dtypes=True)
-
-  @jtu.disable
-  def testTrivialGatherIsntGenerated(self):
-    # https://github.com/google/jax/issues/1621
-    jaxpr = api.make_jaxpr(lambda x: x[:, None])(onp.arange(4))
-    self.assertEqual(len(jaxpr.jaxpr.eqns), 1)
-    self.assertNotIn('gather', str(jaxpr))
-
+  # TODO(agarwal): Fix this use case.
   @jtu.disable
   def testIndexingEmptyDimension(self):
     # Issue 2671: XLA error when indexing into dimension of size 0
@@ -801,9 +673,8 @@ class IndexingTest(jtu.TestCase):
                                 "index is out of bounds for axis .* with size 0"):
       npe.jit(lambda i: x[0, i])(0)  # JAX indexing under jit
 
-  @jtu.disable
   def testBooleanIndexingWithEmptyResult(self):
-    # based on a TensorFlow Probability test that started failing after #1622
+    # based on a TensorFlow Probability test that started failing after #1623
     x = jnp.array([-1])
     mask = jnp.array([False])
     ans = x[mask]  # doesn't crash
@@ -811,231 +682,23 @@ class IndexingTest(jtu.TestCase):
     expected =  onp.array([-1])[onp.array([False])]
     self.assertAllClose(ans, expected, check_dtypes=False)
 
-  @jtu.disable
   def testFloatIndexingError(self):
-    BAD_INDEX_TYPE_ERROR = "Indexer must have integer or boolean type, got indexer with type"
-    with self.assertRaisesRegex(TypeError, BAD_INDEX_TYPE_ERROR):
+    error_regex = "only integers, slices.*are valid indices"
+    # Verify onp behavior
+    with self.assertRaisesRegex(IndexError, error_regex):
+      _ = onp.zeros((2, 2))[(0, 0.)]
+    # Test jnp
+    with self.assertRaisesRegex(IndexError, error_regex):
       jnp.zeros(2)[0.]
-    with self.assertRaisesRegex(TypeError, BAD_INDEX_TYPE_ERROR):
+    with self.assertRaisesRegex(IndexError, error_regex):
       jnp.zeros((2, 2))[(0, 0.)]
-    with self.assertRaisesRegex(TypeError, BAD_INDEX_TYPE_ERROR):
-      jnp.zeros((2, 2))[(0, 0.)]
-    with self.assertRaisesRegex(TypeError, BAD_INDEX_TYPE_ERROR):
+    # Test with jit
+    with self.assertRaisesRegex(IndexError, error_regex):
       npe.jit(lambda idx: jnp.zeros((2, 2))[idx])((0, 0.))
-    with self.assertRaisesRegex(TypeError, BAD_INDEX_TYPE_ERROR):
-      ops.index_add(jnp.zeros(2), 0., 1.)
-    with self.assertRaisesRegex(TypeError, BAD_INDEX_TYPE_ERROR):
-      ops.index_update(jnp.zeros(2), 0., 1.)
 
-
-  @jtu.disable
   def testIndexOutOfBounds(self):  # https://github.com/google/jax/issues/2245
     array = jnp.ones(5)
     self.assertAllClose(array, array[:10], check_dtypes=True)
-
-
-def _broadcastable_shapes(shape):
-  """Returns all shapes that broadcast to `shape`."""
-  def f(rshape):
-    yield []
-    if rshape:
-      for s in f(rshape[1:]):
-        yield rshape[0:1] + s
-      if rshape[0] != 1:
-        for s in f(rshape[1:]):
-          yield [1] + s
-  for x in f(list(reversed(shape))):
-    yield list(reversed(x))
-
-@suppress_deprecated_indexing_warnings()
-def _update_shape(shape, indexer):
-  return onp.zeros(shape)[indexer].shape
-
-
-class UpdateOps(enum.Enum):
-  UPDATE = 0
-  ADD = 1
-  MUL = 2
-  MIN = 3
-  MAX = 4
-
-  @suppress_deprecated_indexing_warnings()
-  def onp_fn(op, indexer, x, y):
-    x = x.copy()
-    x[indexer] = {
-      UpdateOps.UPDATE: lambda: y,
-      UpdateOps.ADD: lambda: x[indexer] + y,
-      UpdateOps.MUL: lambda: x[indexer] * y,
-      UpdateOps.MIN: lambda: onp.minimum(x[indexer], y),
-      UpdateOps.MAX: lambda: onp.maximum(x[indexer], y),
-    }[op]()
-    return x
-
-  def jax_fn(op, indexer, x, y):
-    return {
-      UpdateOps.UPDATE: ops.index_update,
-      UpdateOps.ADD: ops.index_add,
-      UpdateOps.MUL: ops.index_mul,
-      UpdateOps.MIN: ops.index_min,
-      UpdateOps.MAX: ops.index_max,
-    }[op](x, indexer, y)
-
-  def sugar_fn(op, indexer, x, y):
-    x = jnp.array(x)
-    return {
-      UpdateOps.UPDATE: x.at[indexer].set,
-      UpdateOps.ADD: x.at[indexer].add,
-      UpdateOps.MUL: x.at[indexer].mul,
-      UpdateOps.MIN: x.at[indexer].min,
-      UpdateOps.MAX: x.at[indexer].max,
-    }[op](y)
-
-
-class IndexedUpdateTest(jtu.TestCase):
-
-  @parameterized.named_parameters(jtu.cases_from_list({
-      "testcase_name": "{}_inshape={}_indexer={}_update={}_sugared={}_op={}".format(
-          name, jtu.format_shape_dtype_string(shape, dtype), indexer,
-          jtu.format_shape_dtype_string(update_shape, update_dtype), sugared, op.name),
-       "shape": shape, "dtype": dtype, "rng_factory": rng_factory, "indexer": indexer,
-       "update_shape": update_shape, "update_dtype": update_dtype,
-       "op": op, "sugared": sugared
-  } for name, index_specs in STATIC_INDEXING_TESTS
-    for shape, indexer in index_specs
-    for op in UpdateOps
-    for dtype in (all_dtypes if op == UpdateOps.UPDATE else default_dtypes)
-    for update_shape in _broadcastable_shapes(_update_shape(shape, indexer))
-    for update_dtype in ([dtype] if op == UpdateOps.ADD else all_dtypes)
-    for sugared in [True, False]
-    for rng_factory in [jtu.rand_default]))
-  @jtu.disable
-  def testStaticIndexing(self, shape, dtype, update_shape, update_dtype,
-                         rng_factory, indexer, sugared, op):
-    rng = rng_factory()
-    args_maker = lambda: [rng(shape, dtype), rng(update_shape, update_dtype)]
-    onp_fn = lambda x, y: UpdateOps.onp_fn(op, indexer, x, y)
-    if sugared:
-      jax_fn = lambda x, y: UpdateOps.sugar_fn(op, indexer, x, y)
-    else:
-      jax_fn = lambda x, y: UpdateOps.jax_fn(op, indexer, x, y)
-    self._CheckAgainstNumpy(onp_fn, jax_fn, args_maker, check_dtypes=True)
-    self._CompileAndCheck(jax_fn, args_maker, check_dtypes=True)
-
-  @parameterized.named_parameters(jtu.cases_from_list({
-      "testcase_name": "{}_inshape={}_indexer={}_update={}_sugared={}_op={}".format(
-          name, jtu.format_shape_dtype_string(shape, dtype), indexer,
-          jtu.format_shape_dtype_string(update_shape, update_dtype), sugared, op.name),
-       "shape": shape, "dtype": dtype, "rng_factory": rng_factory, "indexer": indexer,
-       "update_shape": update_shape, "update_dtype": update_dtype,
-       "op": op, "sugared": sugared
-  } for name, index_specs in ADVANCED_INDEXING_TESTS_NO_REPEATS
-    for shape, indexer in index_specs
-    for op in UpdateOps
-    for dtype in (all_dtypes if op == UpdateOps.UPDATE else default_dtypes)
-    for update_shape in _broadcastable_shapes(_update_shape(shape, indexer))
-    for update_dtype in ([dtype] if op == UpdateOps.ADD else all_dtypes)
-    for sugared in [True, False]
-    for rng_factory in [jtu.rand_default]))
-  @jtu.disable
-  def testAdvancedIndexing(self, shape, dtype, update_shape, update_dtype,
-                           rng_factory, indexer, sugared, op):
-    rng = rng_factory()
-    args_maker = lambda: [rng(shape, dtype), rng(update_shape, update_dtype)]
-    onp_fn = lambda x, y: UpdateOps.onp_fn(op, indexer, x, y)
-    if sugared:
-      jax_fn = lambda x, y: UpdateOps.sugar_fn(op, indexer, x, y)
-    else:
-      jax_fn = lambda x, y: UpdateOps.jax_fn(op, indexer, x, y)
-    self._CheckAgainstNumpy(onp_fn, jax_fn, args_maker, check_dtypes=True)
-    self._CompileAndCheck(jax_fn, args_maker, check_dtypes=True)
-
-  @parameterized.named_parameters(jtu.cases_from_list({
-      "testcase_name": "{}_inshape={}_indexer={}_update={}_op={}".format(
-          name, jtu.format_shape_dtype_string(shape, dtype), indexer,
-          jtu.format_shape_dtype_string(update_shape, update_dtype), op.name),
-       "shape": shape, "dtype": dtype, "rng_factory": rng_factory, "indexer": indexer,
-       "update_shape": update_shape, "update_dtype": update_dtype,
-       "op": op, "sugared": sugared
-  } for name, index_specs in MIXED_ADVANCED_INDEXING_TESTS_NO_REPEATS
-    for shape, indexer in index_specs
-    for op in UpdateOps
-    for dtype in (all_dtypes if op == UpdateOps.UPDATE else default_dtypes)
-    for update_shape in _broadcastable_shapes(_update_shape(shape, indexer))
-    for update_dtype in ([dtype] if op == UpdateOps.ADD else all_dtypes)
-    for sugared in [True, False]
-    for rng_factory in [jtu.rand_default]))
-  @jtu.disable
-  def testMixedAdvancedIndexing(self, shape, dtype, update_shape, update_dtype,
-                                rng_factory, indexer, sugared, op):
-    rng = rng_factory()
-    args_maker = lambda: [rng(shape, dtype), rng(update_shape, update_dtype)]
-    onp_fn = lambda x, y: UpdateOps.onp_fn(op, indexer, x, y)
-    if sugared:
-      jax_fn = lambda x, y: UpdateOps.sugar_fn(op, indexer, x, y)
-    else:
-      jax_fn = lambda x, y: UpdateOps.jax_fn(op, indexer, x, y)
-    self._CheckAgainstNumpy(onp_fn, jax_fn, args_maker, check_dtypes=True)
-    self._CompileAndCheck(jax_fn, args_maker, check_dtypes=True)
-
-  @parameterized.named_parameters(jtu.cases_from_list({
-      "testcase_name": "{}_inshape={}_indexer={}_update={}_op={}".format(
-          name, jtu.format_shape_dtype_string(shape, dtype), indexer,
-          jtu.format_shape_dtype_string(update_shape, update_dtype), op.name),
-       "shape": shape, "dtype": dtype, "rng_factory": rng_factory, "indexer": indexer,
-       "update_shape": update_shape, "update_dtype": update_dtype,
-       "op": op
-  } for name, index_specs in STATIC_INDEXING_TESTS
-    for shape, indexer in index_specs
-    for op in [UpdateOps.ADD, UpdateOps.MUL, UpdateOps.UPDATE]
-    for dtype in float_dtypes
-    for update_shape in _broadcastable_shapes(_update_shape(shape, indexer))
-    for update_dtype in ([dtype] if op == UpdateOps.ADD else float_dtypes)
-    for rng_factory in [jtu.rand_default]))
-  @jtu.skip_on_devices("tpu")  # TODO(mattjj,phawkins): tpu issues
-  @jtu.disable
-  def testStaticIndexingGrads(self, shape, dtype, update_shape, update_dtype,
-                              rng_factory, indexer, op):
-    rng = rng_factory()
-    jax_fn = lambda x, y: UpdateOps.jax_fn(op, indexer, x, y)
-    x = rng(shape, dtype)
-    y = rng(update_shape, update_dtype)
-    check_grads(jax_fn, (x, y), 2, rtol=1e-3, atol=1e-3, eps=1.)
-
-  @jtu.disable
-  def testSegmentSumBehavior(self):
-    # testAdvancedIndexing compares against NumPy, and as a result doesn't check
-    # repeated indices. This test is just a simple manual check, based on
-    # https://www.tensorflow.org/api_docs/python/tf/math/segment_sum
-    data = onp.array([5, 1, 7, 2, 3, 4, 1, 3])
-    segment_ids = onp.array([0, 0, 0, 1, 2, 2, 3, 3])
-
-    ans = ops.index_add(onp.zeros(onp.max(segment_ids) + 1), segment_ids, data)
-    expected = onp.array([13, 2, 7, 4])
-    self.assertAllClose(ans, expected, check_dtypes=False)
-
-  @jtu.disable
-  def testSegmentSum(self):
-    data = onp.array([5, 1, 7, 2, 3, 4, 1, 3])
-    segment_ids = onp.array([0, 0, 0, 1, 2, 2, 3, 3])
-
-    # test with explicit num_segments
-    ans = ops.segment_sum(data, segment_ids, num_segments=4)
-    expected = onp.array([13, 2, 7, 4])
-    self.assertAllClose(ans, expected, check_dtypes=False)
-
-    # test without explicit num_segments
-    ans = ops.segment_sum(data, segment_ids)
-    expected = onp.array([13, 2, 7, 4])
-    self.assertAllClose(ans, expected, check_dtypes=False)
-
-  @jtu.disable
-  def testIndexDtypeError(self):
-    # https://github.com/google/jax/issues/2795
-    jnp.array(1)  # get rid of startup warning
-    with warnings.catch_warnings(record=True) as w:
-      warnings.simplefilter("error")
-      jnp.zeros(5).at[::2].set(1)
-      self.assertLen(w, 0)
 
 
 if __name__ == "__main__":
