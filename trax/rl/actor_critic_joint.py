@@ -505,7 +505,7 @@ class A2CJointTrainer(ActorCriticJointTrainer):
     def f(dist_inputs, values, returns, dones, rewards,
           actions, old_log_probs, mask):
       """Definition of the A2C loss."""
-      del dones, rewards, old_log_probs
+      del old_log_probs
 
       # Typically we have dist_inputs of the shape float32[128,1,18]
       assert len(dist_inputs.shape) == 3, (
@@ -532,7 +532,7 @@ class A2CJointTrainer(ActorCriticJointTrainer):
       a2c_objective = rl_layers.A2CObjective(
           dist_inputs,
           stop_gradient(values),
-          returns, actions, mask,
+          returns, dones, rewards, actions, mask,
           log_prob_fun=self._policy_dist.log_prob,
           normalize_advantages=self._normalize_advantages)
 
@@ -592,6 +592,8 @@ class A2CJointTrainer(ActorCriticJointTrainer):
             dist_inputs,
             values,
             returns,
+            dones,
+            rewards,
             actions,
             mask,
             log_prob_fun=self._policy_dist.log_prob,
@@ -605,9 +607,9 @@ class A2CJointTrainer(ActorCriticJointTrainer):
           actions, old_log_probs, mask):
       """A2C objective mean."""
       # TODO(henrykm): include dones, rewards
-      del old_log_probs, dones, rewards
+      del old_log_probs
       a2c_objective = rl_layers.A2CObjective(
-          dist_inputs, values, returns, actions, mask,
+          dist_inputs, values, returns, dones, rewards, actions, mask,
           log_prob_fun=self._policy_dist.log_prob,
           normalize_advantages=self._normalize_advantages)
       return jnp.mean(a2c_objective)

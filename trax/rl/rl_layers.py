@@ -125,9 +125,9 @@ def PPOObjective(dist_inputs, values, returns, dones, rewards,
   dones = dones.squeeze(axis=2)
   rewards = rewards.squeeze(axis=2)
   assert rewards.shape == dones.shape, (
-      f'returns.shape was {returns.shape} and values.shape was {returns.shape}')
+      f'rewards.shape was {rewards.shape} and dones.shape was {dones.shape}')
   assert dones.shape == values.shape, (
-      f'returns.shape was {returns.shape} and values.shape was {returns.shape}')
+      f'dones.shape was {dones.shape} and values.shape was {values.shape}')
   assert returns.shape == values.shape, (
       f'returns.shape was {returns.shape} and values.shape was {values.shape}')
   assert returns.shape == old_log_probs.shape, (
@@ -159,18 +159,18 @@ def PPOObjective(dist_inputs, values, returns, dones, rewards,
 
   clipped_objective = ClippedObjective(probs_ratio, advantages, epsilon)
   assert clipped_objective.shape == advantages.shape, (
-      f'old_log_probs.shape was {old_log_probs.shape} and'
-      f'clipped_objective.shape was {clipped_objective.shape}')
+      f'clipped_objective.shape was {clipped_objective.shape} and'
+      f'advantages.shape was {advantages.shape}')
 
   ppo_objective = jnp.minimum(unclipped_objective, clipped_objective)
   assert ppo_objective.shape == advantages.shape, (
-      f'old_log_probs.shape was {old_log_probs.shape} and'
-      f'ppo_objective.shape was {ppo_objective.shape}')
+      f'ppo_objective.shape was {ppo_objective.shape} and'
+      f'advantages.shape was {advantages.shape}')
 
   return ppo_objective
 
 
-def A2CObjective(dist_inputs, values, returns,
+def A2CObjective(dist_inputs, values, returns, dones, rewards,
                  actions, mask, log_prob_fun, normalize_advantages):
   """Definition of the Advantage Actor Critic (A2C) loss."""
   # dist_inputs of the shape float32[128,1,18]
@@ -184,7 +184,12 @@ def A2CObjective(dist_inputs, values, returns,
   # and all of them should be of the same dimension
   values = values.squeeze(axis=2)
   returns = returns.squeeze(axis=2)
-
+  dones = dones.squeeze(axis=2)
+  rewards = rewards.squeeze(axis=2)
+  assert rewards.shape == dones.shape, (
+      f'rewards.shape was {rewards.shape} and dones.shape was {dones.shape}')
+  assert dones.shape == values.shape, (
+      f'dones.shape was {dones.shape} and values.shape was {values.shape}')
   assert returns.shape == values.shape, (
       f'returns.shape was {returns.shape} and values.shape was {values.shape}')
   assert values.shape == mask.shape, (
@@ -198,6 +203,11 @@ def A2CObjective(dist_inputs, values, returns,
       f'new_log_probs.shape was {new_log_probs.shape} and mask.shape was '
       f'{mask.shape}')
 
+  # jaxified versions of
+  # returns[dones] = rewards[dones]
+  # values[dones] = 0
+  returns = jnp.where(dones, rewards, returns)
+  values = jnp.where(dones, jnp.zeros_like(values), values)
   advantages = returns - values
   if normalize_advantages:
     advantages = advantages - jnp.mean(advantages)
