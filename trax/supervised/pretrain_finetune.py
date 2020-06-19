@@ -319,7 +319,7 @@ def finetune(output_dir, model=gin.REQUIRED, dataset_name=gin.REQUIRED,
   trainer = Trainer(
       model, loss_fn,
       optimizer=trax.optimizers.Adam,
-      lr_schedule=trax.lr_schedules.MultifactorSchedule,
+      lr_schedule=trax.supervised.lr_schedules.MultifactorSchedule,
       inputs=glue_inputs,
       output_dir=output_dir,
       random_seed=None,

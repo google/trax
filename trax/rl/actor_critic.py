@@ -24,13 +24,13 @@ import numpy as np
 import tensorflow as tf
 
 from trax import layers as tl
-from trax import lr_schedules as lr
 from trax import math
 from trax import shapes
 from trax import supervised
 from trax.math import numpy as jnp
 from trax.rl import advantages as rl_advantages
 from trax.rl import training as rl_training
+from trax.supervised import lr_schedules as lr
 
 
 class ActorCriticTrainer(rl_training.PolicyTrainer):

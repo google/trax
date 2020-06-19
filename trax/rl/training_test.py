@@ -24,12 +24,12 @@ from absl.testing import absltest
 import tensorflow as tf
 
 from trax import layers as tl
-from trax import lr_schedules
 from trax import models
 from trax import optimizers as opt
 from trax import test_utils
 from trax.rl import task as rl_task
 from trax.rl import training
+from trax.supervised import lr_schedules
 
 
 class TrainingTest(absltest.TestCase):

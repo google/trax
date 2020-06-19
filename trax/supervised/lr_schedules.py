@@ -23,9 +23,6 @@ That is, they are functions that take a trax.history.History and return a
 function that takes a step and returns a dict with entry 'learning_rate'.
 """
 
-# TODO(pkozakowski): Revisit the decision to control nontrainable parameters
-# using LR schedules, or at least rename the module.
-
 import gin
 
 from trax.math import numpy as np

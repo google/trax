@@ -27,13 +27,13 @@ import numpy as np
 import tensorflow as tf
 
 from trax import jaxboard
-from trax import lr_schedules as lr
 from trax import math
 from trax import shapes
 from trax import supervised
 from trax.rl import distributions
 from trax.rl import normalization  # So gin files see it. # pylint: disable=unused-import
 from trax.rl import task as rl_task
+from trax.supervised import lr_schedules as lr
 
 
 class RLTrainer:

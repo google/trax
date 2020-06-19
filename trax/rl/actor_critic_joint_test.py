@@ -21,12 +21,12 @@ import functools
 from absl.testing import absltest
 
 from trax import layers as tl
-from trax import lr_schedules
 from trax import models
 from trax import optimizers as opt
 from trax import test_utils
 from trax.rl import actor_critic_joint
 from trax.rl import task as rl_task
+from trax.supervised import lr_schedules
 
 
 

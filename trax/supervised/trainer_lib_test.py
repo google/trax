@@ -15,10 +15,6 @@
 
 """Tests for trax.supervised.trainer_lib."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 import functools
 import os
@@ -34,12 +30,12 @@ from tensorflow.compat.v2 import test
 from tensorflow.compat.v2.io import gfile
 
 from trax import layers
-from trax import lr_schedules as lr
 from trax import math
 from trax import models
 from trax import optimizers as trax_opt
 from trax.math import numpy as np
 from trax.supervised import inputs as inputs_lib
+from trax.supervised import lr_schedules as lr
 from trax.supervised import trainer_lib
 from trax.tf_numpy import numpy as tf_np
 

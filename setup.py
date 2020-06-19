@@ -38,7 +38,7 @@ setup(
         'absl-py',
         'funcsigs',
         'gin-config',
-        'gym==0.14.0',
+        'gym',
         'jax',
         'jaxlib',
         'numpy',

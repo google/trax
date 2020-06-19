@@ -36,16 +36,16 @@ import gin
 import jax
 import numpy
 import tensorflow.compat.v2 as tf
-from trax import history as trax_history
 from trax import jaxboard
 from trax import layers as tl
-from trax import lr_schedules as lr
 from trax import math
 from trax import optimizers as trax_opt
 from trax.math import numpy as np
 from trax.math import random as jax_random
 from trax.shapes import ShapeDtype
+from trax.supervised import history as trax_history
 from trax.supervised import inputs as trax_inputs
+from trax.supervised import lr_schedules as lr
 
 
 # TODO(afrozm): Maybe flatten everything from OptState into TrainerState.

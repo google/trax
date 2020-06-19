@@ -19,7 +19,6 @@
 import functools
 
 from trax import layers as tl
-from trax import lr_schedules as lr
 from trax import supervised
 from trax.math import numpy as jnp
 from trax.math import stop_gradient
@@ -27,6 +26,7 @@ from trax.rl import actor_critic
 from trax.rl import distributions
 from trax.rl import rl_layers
 from trax.rl import training as rl_training
+from trax.supervised import lr_schedules as lr
 
 
 # pylint: disable=g-long-lambda
