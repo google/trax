@@ -181,7 +181,13 @@ def batch_fn(dataset, training, n_devices, variable_shapes,
                            bucket_length * 16]
       if not training:
         max_eval_length = max_eval_length or bucket_length * 32
-        bucket_boundaries[-1] = max_eval_length
+        # Set last bucket boundary to be max_eval_length, cut off boundaries
+        # that are larger than this.
+        bucket_boundaries = (
+            [b for b in bucket_boundaries if b < max_eval_length] +
+            [max_eval_length]
+        )
+        bucket_boundaries.append(max_eval_length)
       # We will pad to boundaries which pads to bucket_boundary - 1: add 1 here.
       bucket_boundaries = [b + 1 for b in bucket_boundaries]
       bucket_batch_sizes = [cur_batch_size * 4, cur_batch_size * 2,
@@ -192,6 +198,10 @@ def batch_fn(dataset, training, n_devices, variable_shapes,
         # The last bucket batch size is always 1, but the one-but-last is
         # sized to accomodate the final length = bucket_boundaries[-1], which
         # we changed for eval above -- so adjusting here too.
+
+        # Resize if needed, since bucket_batch_sizes may not be the same size
+        # anymore.
+        bucket_batch_sizes = bucket_batch_sizes[:len(bucket_boundaries)] + [1]
         bucket_batch_sizes[-2] = cur_batch_size // max_eval_length
       # Make batch sizes divisible by n_devices.
       bucket_batch_sizes = [max(b // n_devices, 1) * n_devices
@@ -304,7 +314,8 @@ def pad_to_max_dims(tensors, boundary=None, strict_pad_on_len=False):
     a tensor, the tensors padded together
   """
   # TODO(afrozm): Unify this later.
-  if strict_pad_on_len or isinstance(boundary, (list, tuple)):
+  if ((boundary is not None) and
+      (strict_pad_on_len or isinstance(boundary, (list, tuple)))):
     ndim = tensors[0].ndim
     if not isinstance(boundary, (list, tuple)):
       boundary = [boundary] * ndim
@@ -376,14 +387,16 @@ def bucket_by_length(generator, length_fn, boundaries, batch_sizes,
   """
   buckets = [[] for _ in range(len(batch_sizes))]
   boundaries = boundaries + [math.inf]  # Max boundary is unlimited.
-  max_idx = len(boundaries)
   for example in generator:
     length = length_fn(example)
+    # `bucket_idx` will always be < len(boundaries), since boundaries is right
+    # padded by `math.inf`.
     bucket_idx = min([i for i, b in enumerate(boundaries) if length < b])
     buckets[bucket_idx].append(example)
     if len(buckets[bucket_idx]) == batch_sizes[bucket_idx]:
       batch = zip(*buckets[bucket_idx])
-      boundary = boundaries[bucket_idx] - 1 if bucket_idx < max_idx else None
+      boundary = boundaries[bucket_idx] - 1
+      boundary = None if boundary == math.inf else boundary
       padded_batch = tuple(
           pad_to_max_dims(x, boundary, strict_pad_on_len) for x in batch)
       yield padded_batch
