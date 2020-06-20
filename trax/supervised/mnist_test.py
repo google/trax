@@ -20,8 +20,6 @@ import itertools
 
 from absl.testing import absltest
 
-import numpy as np
-
 from trax import layers as tl
 from trax.optimizers import adafactor
 from trax.supervised import inputs
@@ -65,24 +63,9 @@ class MnistTest(absltest.TestCase):
 def _mnist_dataset():
   """Loads (and caches) the standard MNIST data set."""
   streams = tf_inputs.data_streams('mnist')
-  return _add_weights(inputs.batcher(streams, variable_shapes=False,
-                                     batch_size_per_device=256,
-                                     eval_batch_size=256))
-
-
-def _add_weights(trax_inputs):
-  """Add weights to inputs."""
-  def _weight_stream(input_stream):
-    """Add weights to the given stream."""
-    for example in input_stream:
-      inp, targets = example
-      weights = np.ones_like(targets).astype(np.float32)
-      yield (inp, targets, weights)
-  return inputs.Inputs(
-      train_stream=lambda n: _weight_stream(trax_inputs.train_stream(n)),
-      eval_stream=lambda n: _weight_stream(trax_inputs.eval_stream(n)),
-      train_eval_stream=lambda n: _weight_stream(  # pylint: disable=g-long-lambda
-          trax_inputs.train_eval_stream(n)))
+  return inputs.batcher(streams, variable_shapes=False,
+                        batch_size_per_device=256,
+                        eval_batch_size=256)
 
 
 if __name__ == '__main__':

@@ -23,6 +23,7 @@ batcher.data_streams = @tf_inputs.data_streams
 batcher.batch_size_per_device = 256
 batcher.eval_batch_size = 256
 batcher.max_eval_length = 2048
+batcher.id_to_mask = 0
 
 # Parameters for data_streams:
 # ==============================================================================
@@ -49,7 +50,6 @@ train.eval_steps = 1
 train.model = @trax.models.TransformerLM
 train.optimizer = @trax.optimizers.Adafactor
 train.steps = 50000
-train.id_to_mask = 0
 
 # Parameters for TransformerLM:
 # ==============================================================================

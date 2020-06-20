@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import trax.supervised.lr_schedules
 import trax.models
 import trax.optimizers
+import trax.supervised.lr_schedules
 import trax.supervised.tf_inputs
 import trax.supervised.trainer_lib
 
@@ -26,6 +26,7 @@ batcher.eval_batch_size = 64
 batcher.max_eval_length = 512
 batcher.bucket_length = 32
 batcher.buckets_include_inputs_in_length=True
+batcher.id_to_mask = 0
 
 # Parameters for data_streams:
 # ==============================================================================
@@ -51,7 +52,6 @@ Adam.weight_decay_rate = 0.0
 # ==============================================================================
 train.eval_frequency = 1000
 train.eval_steps = 10
-train.id_to_mask = 0
 train.model = @trax.models.LSTMSeq2SeqAttn
 train.optimizer = @trax.optimizers.Adam
 train.lr_schedule = @lr_schedules.warmup

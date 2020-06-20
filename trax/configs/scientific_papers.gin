@@ -59,6 +59,7 @@ batcher.data_streams = @tf_inputs.data_streams
 batcher.max_eval_length = %max_len
 batcher.buckets = ([16385], [8, 1])
 batcher.strict_pad_on_len = True
+batcher.id_to_mask = 0
 
 # Parameters for data_streams:
 # ==============================================================================
@@ -115,7 +116,6 @@ train.eval_steps = 10
 train.model = @trax.models.ReformerNoEncDecAttention
 train.steps = 1000000
 train.optimizer = @trax.optimizers.Adafactor
-train.id_to_mask = 0
 
 # We are using T5's 32k SPM model by default.
 vocab_size = 32000

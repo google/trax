@@ -60,7 +60,10 @@ def _test_inputs(n_classes, with_weights=False, input_shape=(6, 6, 3)):
       else:
         yield inputs, targets
 
-  return inputs_lib.Inputs(input_stream)
+  def input_stream_masked(n_devices):
+    return inputs_lib.add_weights_and_mask(input_stream(n_devices))
+
+  return inputs_lib.Inputs(input_stream_masked)
 
 
 

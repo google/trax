@@ -84,7 +84,6 @@ class Trainer(object):
                output_dir=None, random_seed=None, n_devices=None,
                checkpoints_at=None, should_save_checkpoints=True,
                should_write_summaries=True, nontrainable_param_map=None,
-               id_to_mask=None,
                metrics=None, checkpoint_highest=None, checkpoint_lowest=None):
 
     self._is_chief, self._n_devices, rng = (
@@ -97,15 +96,11 @@ class Trainer(object):
       self._should_write_summaries = False
     self._checkpoint_highest = checkpoint_highest
     self._checkpoint_lowest = checkpoint_lowest
-    self._id_to_mask = id_to_mask
     self._metrics_dict = metrics if metrics is not None else _DEFAULT_METRICS
     # Inputs is either an Inputs instance or a function that returns it.
     self._inputs = inputs
     if callable(inputs):  # If we pass a function, e.g., through gin, call it.
       self._inputs = inputs()
-    # Mask id_to_mask and add weights if needed.
-    # TODO(lukaszkaiser, jonni): move this out of Trainer to input processing.
-    self._inputs = _add_weights_and_mask(self._inputs, id_to_mask)
     # Initialize the learning rate to a dummy value. It will be set in reset().
     opt = optimizer(learning_rate=0.0)
 
@@ -613,7 +608,6 @@ def train(output_dir,
           random_seed=None,
           save_graphs=True,
           nontrainable_param_map=None,
-          id_to_mask=None,
           metrics=None,
           checkpoint_highest=None,
           checkpoint_lowest=None,
@@ -641,7 +635,6 @@ def train(output_dir,
     save_graphs: bool, if True, save computation graph to file.
     nontrainable_param_map: dict, mapping from model nontrainable parameter
       names to control names in PolicySchedule.
-    id_to_mask: id to mask out (None by default).
     metrics: optionally override the default metrics dictionary.
     checkpoint_highest: save the checkpoint highest at this metric.
     checkpoint_lowest: save the checkpoint lowest at this metric.
@@ -654,13 +647,13 @@ def train(output_dir,
     return custom_train_fn(output_dir, model=model)
 
   n_devices = num_devices()
-  # TODO(lukaszkaiser): remove has_weights and id_to_mask (configure loss).
   trainer = trainer_class(model, loss_fn, optimizer, lr_schedule, inputs,
                           output_dir,
-                          random_seed=random_seed, n_devices=n_devices,
+                          random_seed=random_seed,
+                          n_devices=n_devices,
                           checkpoints_at=checkpoints_at,
                           nontrainable_param_map=nontrainable_param_map,
-                          metrics=metrics, id_to_mask=id_to_mask,
+                          metrics=metrics,
                           checkpoint_lowest=checkpoint_lowest,
                           checkpoint_highest=checkpoint_highest)
 
@@ -970,41 +963,3 @@ def unpickle_from_file(file_path, gzip=False):
       with gzip_lib.GzipFile(fileobj=f, compresslevel=2) as gzipf:
         obj = pickle.load(gzipf)
   return obj
-
-
-def _add_weights_and_mask(inputs, id_to_mask):
-  """Add weights to inputs without weights and masks by id if requested.
-
-  Each of the (train, eval, train_eval) streams of inputs is augmented in
-  the following way:
-  * if the stream consists of pairs (inputs, targets), a loss mask is added
-    that is creates as a tensor of ones of the same shape as targets
-  * if id_to_mask is not None, and the stream (after the previous point) has
-    triples (inputs, targets, weights), the weights are multipled by a 0/1 mask
-    that is 0 iff targets is equal to id_to_mask (1 otherwise).
-
-  Args:
-    inputs: a trax_inputs.Inputs object to operate on
-    id_to_mask: int or None, id to pad in targets if not None
-
-  Returns:
-    a trax_inputs.Inputs object with augmented streams
-  """
-  def _with_masks(input_stream):
-    """Create masks for the given stream."""
-    for example in input_stream:
-      if len(example) > 3 or len(example) < 2:
-        assert id_to_mask is None, 'Cannot automatically mask this stream.'
-        yield example
-      else:
-        if len(example) == 2:
-          weights = numpy.ones_like(example[1]).astype(numpy.float32)
-        else:
-          weights = example[2].astype(numpy.float32)
-        mask = 1.0 - numpy.equal(example[1], id_to_mask).astype(np.float32)
-        weights *= mask
-        yield (example[0], example[1], weights)
-  return trax_inputs.Inputs(
-      train_stream=lambda n: _with_masks(inputs.train_stream(n)),
-      eval_stream=lambda n: _with_masks(inputs.eval_stream(n)),
-      train_eval_stream=lambda n: _with_masks(inputs.train_eval_stream(n)))

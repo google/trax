@@ -327,7 +327,6 @@ def finetune(output_dir, model=gin.REQUIRED, dataset_name=gin.REQUIRED,
       checkpoints_at=None,
       nontrainable_param_map=None,
       metrics=metrics,
-      id_to_mask=None,
       checkpoint_lowest=None,
       checkpoint_highest=None,
       )

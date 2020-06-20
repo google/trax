@@ -35,6 +35,7 @@ batcher.batch_size_per_device = 128
 batcher.eval_batch_size = 64
 batcher.max_eval_length = %max_length
 batcher.buckets_include_inputs_in_length=True
+batcher.id_to_mask = 0
 
 # Parameters for data_streams:
 # ==============================================================================
@@ -73,7 +74,6 @@ train.model = @trax.models.Transformer
 # T5 pretrains on C4 for 2^19 steps. Our batches are ~ 1/9th the size.
 train.steps = 524288
 train.optimizer = @trax.optimizers.Adafactor
-train.id_to_mask = 0
 
 # Corresponds roughly to T5 'large' ~ 770m params, i.e. T5's `bi_v1_large.gin`.
 d_model = 1024

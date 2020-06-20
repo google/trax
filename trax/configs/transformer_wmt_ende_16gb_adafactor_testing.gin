@@ -24,6 +24,7 @@ batcher.batch_size_per_device = 128
 batcher.eval_batch_size = 64
 batcher.max_eval_length = 1024
 batcher.buckets_include_inputs_in_length=True
+batcher.id_to_mask = 0
 
 # Parameters for data_streams:
 # ==============================================================================
@@ -59,7 +60,6 @@ train.eval_steps = 10
 train.model = @trax.models.Transformer
 train.steps = 100000
 train.optimizer = @trax.optimizers.Adafactor
-train.id_to_mask = 0
 
 # Parameters for Transformer:
 # ==============================================================================

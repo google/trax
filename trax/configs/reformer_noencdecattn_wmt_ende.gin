@@ -29,6 +29,7 @@ batcher.buckets_include_inputs_in_length = True
 batcher.max_eval_length = %MAX_EVAL_LENGTH
 batcher.buckets = %BUCKETS
 batcher.strict_pad_on_len = True
+batcher.id_to_mask = 0
 
 # Parameters for data_streams:
 # ==============================================================================
@@ -58,7 +59,6 @@ wmt_preprocess.max_eval_length = %MAX_EVAL_LENGTH
 # ==============================================================================
 train.eval_frequency = 1000
 train.eval_steps = 10
-train.id_to_mask = 0
 train.model = @trax.models.ReformerNoEncDecAttention
 train.optimizer = @trax.optimizers.Adam
 train.steps = 1000000

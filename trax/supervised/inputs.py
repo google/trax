@@ -124,7 +124,7 @@ def batcher(data_streams=gin.REQUIRED, variable_shapes=True,
             buckets_include_inputs_in_length=False,
             batch_shuffle_size=None, max_eval_length=None,
             # TODO(afrozm): Unify padding logic.
-            strict_pad_on_len=False):
+            id_to_mask=None, strict_pad_on_len=False):
   """Batcher: create trax Inputs from single-example data-streams."""
   # TODO(lukaszkaiser, jonni): revisit arguments, their semantics and naming.
   # For now leaving the arguments as in batch_fn to reduce gin config changes.
@@ -137,17 +137,17 @@ def batcher(data_streams=gin.REQUIRED, variable_shapes=True,
       train_stream(), True, n_devices, variable_shapes,
       batch_size_per_device, batch_size, eval_batch_size,
       bucket_length, buckets, buckets_include_inputs_in_length,
-      batch_shuffle_size, max_eval_length, strict_pad_on_len)
+      batch_shuffle_size, max_eval_length, id_to_mask, strict_pad_on_len)
   batch_eval_stream = lambda n_devices: batch_fn(
       eval_stream(), False, n_devices, variable_shapes,
       batch_size_per_device, batch_size, eval_batch_size,
       bucket_length, buckets, buckets_include_inputs_in_length,
-      batch_shuffle_size, max_eval_length, strict_pad_on_len)
+      batch_shuffle_size, max_eval_length, id_to_mask, strict_pad_on_len)
   batch_train_eval_stream = lambda n_devices: batch_fn(
       train_stream(), False, n_devices, variable_shapes,
       batch_size_per_device, batch_size, eval_batch_size,
       bucket_length, buckets, buckets_include_inputs_in_length,
-      batch_shuffle_size, max_eval_length, strict_pad_on_len)
+      batch_shuffle_size, max_eval_length, id_to_mask, strict_pad_on_len)
   # pylint: enable=g-long-lambda
   return Inputs(train_stream=batch_train_stream,
                 eval_stream=batch_eval_stream,
@@ -159,7 +159,7 @@ def batch_fn(dataset, training, n_devices, variable_shapes,
              bucket_length=32, buckets=None,
              buckets_include_inputs_in_length=False,
              batch_shuffle_size=None, max_eval_length=None,
-             strict_pad_on_len=False):
+             id_to_mask=None, strict_pad_on_len=False):
   """Batching function."""
   # TODO(lukaszkaiser, jonni): revisit arguments, their semantics and naming.
   # After that, create a proper doc-string; we may also not need to pass both
@@ -228,7 +228,7 @@ def batch_fn(dataset, training, n_devices, variable_shapes,
     dataset = batch_data(dataset, cur_batch_size)
   if training and batch_shuffle_size is not None:
     dataset = shuffle_data(dataset, batch_shuffle_size)
-  return dataset
+  return add_weights_and_mask(dataset, id_to_mask)
 
 
 def shuffle_data(samples, queue_size):
@@ -401,6 +401,37 @@ def bucket_by_length(generator, length_fn, boundaries, batch_sizes,
           pad_to_max_dims(x, boundary, strict_pad_on_len) for x in batch)
       yield padded_batch
       buckets[bucket_idx] = []
+
+
+def add_weights_and_mask(generator, id_to_mask=None):
+  """Add weights to inputs without weights and masks by id if requested.
+
+  The generator stream is augmented in the following way:
+  * if the stream consists of pairs (inputs, targets), a loss mask is added
+    that is creates as a tensor of ones of the same shape as targets
+  * if id_to_mask is not None, and the stream (after the previous point) has
+    triples (inputs, targets, weights), the weights are multipled by a 0/1 mask
+    that is 0 iff targets is equal to id_to_mask (1 otherwise).
+
+  Args:
+    generator: a python stream of tuples
+    id_to_mask: int or None, id to pad in targets if not None
+
+  Yields:
+    examples from the augmented stream
+  """
+  for example in generator:
+    if len(example) > 3 or len(example) < 2:
+      assert id_to_mask is None, 'Cannot automatically mask this stream.'
+      yield example
+    else:
+      if len(example) == 2:
+        weights = np.ones_like(example[1]).astype(np.float32)
+      else:
+        weights = example[2].astype(np.float32)
+      mask = 1.0 - np.equal(example[1], id_to_mask).astype(np.float32)
+      weights *= mask
+      yield (example[0], example[1], weights)
 
 
 # Example input functions.

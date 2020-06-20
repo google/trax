@@ -298,7 +298,7 @@ class TFInputsTest(tf.test.TestCase):
     )
 
     eval_stream = squad_inputs.eval_stream(n_devices)
-    inps, tgts = next(eval_stream)
+    inps, tgts, _ = next(eval_stream)
 
     # We can only assert that the batch dim gets divided by n_devices.
     self.assertEqual(inps.shape[0] % n_devices, 0)

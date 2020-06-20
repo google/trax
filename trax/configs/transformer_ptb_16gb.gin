@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import trax.supervised.lr_schedules
 import trax.models
 import trax.optimizers
+import trax.supervised.lr_schedules
 import trax.supervised.tf_inputs
 import trax.supervised.trainer_lib
 
@@ -24,6 +24,7 @@ batcher.data_streams = @tf_inputs.data_streams
 batcher.batch_size_per_device = 64
 batcher.eval_batch_size = 512
 batcher.max_eval_length = 2048
+batcher.id_to_mask = 0
 
 # Parameters for data_streams:
 # ==============================================================================
@@ -50,7 +51,6 @@ train.eval_steps = 2
 train.model = @trax.models.TransformerLM
 train.optimizer = @trax.optimizers.Adafactor
 train.steps = 20000
-train.id_to_mask = 0
 
 # Parameters for TransformerLM:
 # ==============================================================================
