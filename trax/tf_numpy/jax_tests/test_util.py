@@ -39,6 +39,7 @@ from typing import Dict, Sequence, Union
 import sys
 import unittest
 import warnings
+import zlib
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -730,6 +731,15 @@ def cases_from_gens(*gens):
 
 class TestCase(parameterized.TestCase):
   """Base class for tests including numerical checks and boilerplate."""
+
+  # copied from jax.test_util
+  def setUp(self):
+    super(TestCase, self).setUp()
+    self._rng = npr.RandomState(zlib.adler32(self._testMethodName.encode()))
+
+  # copied from jax.test_util
+  def rng(self):
+    return self._rng
 
   # TODO(mattjj): this obscures the error messages from failures, figure out how
   # to re-enable it
