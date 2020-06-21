@@ -23,7 +23,6 @@ from trax import math
 from trax.layers.combinators import (  # pylint: disable=g-multiple-import
     _split_rngs, _inputs_from_stack, _outputs_onto_stack)
 from trax.math import numpy as np
-from trax.math import random
 
 # TODO(afrozm): Move pvt fns here.
 from trax.models.transformer import (  # pylint: disable=g-multiple-import
@@ -34,36 +33,6 @@ from trax.models.transformer import (  # pylint: disable=g-multiple-import
 # pylint: disable=invalid-name
 
 
-class BroadcastedDropout(tl.Layer):
-  """Layer constructor function for a broadcasted dropout layer."""
-
-  def __init__(self, rate=0.0, mode='train', broadcast_dims=(-2,)):
-    super(BroadcastedDropout, self).__init__()
-    self._rate = rate
-    if self._rate >= 1.0:
-      raise ValueError('Dropout rate (%f) must be lower than 1.' % rate)
-    self._broadcast_dims = broadcast_dims
-    self._mode = mode
-
-  def forward(self, x):
-    """Dropout, with broadcasting to save memory."""
-    if self._mode == 'train' and self._rate > 0.0:
-      noise_shape = list(x.shape)
-      for dim in self._broadcast_dims:
-        noise_shape[dim] = 1
-      if math.backend_name() == 'jax':
-        keep_prob = jax.lax.tie_in(self.rng, 1.0 - self._rate)
-      else:
-        keep_prob = 1.0 - self._rate
-      keep = random.bernoulli(self.rng, keep_prob, tuple(noise_shape))
-      if math.backend_name() == 'jax':
-        keep_prob = jax.lax.tie_in(keep, keep_prob)
-      multiplier = keep.astype(x.dtype) / keep_prob
-      return x * multiplier
-    else:
-      return x
-
-
 def FeedForward(d_model, d_ff, dropout, activation, act_dropout, mode):
   """Feed-forward block with layer normalization at start."""
   if act_dropout is None:
@@ -71,10 +40,10 @@ def FeedForward(d_model, d_ff, dropout, activation, act_dropout, mode):
   return [
       tl.LayerNorm(),
       tl.Dense(d_ff),
-      BroadcastedDropout(rate=act_dropout, mode=mode),  # pylint: disable=no-value-for-parameter
+      tl.Dropout(rate=act_dropout, shared_axes=[-2], mode=mode),  # pylint: disable=no-value-for-parameter
       activation(),
       tl.Dense(d_model),
-      BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
+      tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),  # pylint: disable=no-value-for-parameter
   ]
 
 
@@ -354,7 +323,7 @@ def ReformerLM(vocab_size,
 
   positional_embedder = [
       tl.Embedding(d_emb, vocab_size),
-      BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
+      tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),  # pylint: disable=no-value-for-parameter
       positional_encoding,
   ]
 
@@ -385,7 +354,7 @@ def ReformerLM(vocab_size,
       # TODO(kitaev): Test whether dropout should go before or after the
       # LayerNorm, and whether dropout broadcasting is needed here.
       tl.LayerNorm(),
-      BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
+      tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),  # pylint: disable=no-value-for-parameter
       tl.Dense(vocab_size),
       tl.LogSoftmax(),
   )
@@ -458,7 +427,7 @@ def ReformerShortenLM(vocab_size,
 
   positional_embedder = [
       tl.Embedding(d_embedding, vocab_size),
-      BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
+      tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),  # pylint: disable=no-value-for-parameter
       positional_encoding,
   ]
 
@@ -501,7 +470,7 @@ def ReformerShortenLM(vocab_size,
       tl.ReversibleSerial(decoder_blocks),
       tl.Select([0], n_in=2),
       tl.LayerNorm(),
-      BroadcastedDropout(rate=dropout, mode=mode),  # pylint: disable=no-value-for-parameter
+      tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),  # pylint: disable=no-value-for-parameter
       tl.Dense(shorten_factor * d_embedding),
       tl.Fn('ProlongBack', lambda x: np.reshape(  # Prolong back.
           x, (x.shape[0], x.shape[1] * shorten_factor, -1)), n_out=1),
@@ -664,7 +633,7 @@ def Reformer(input_vocab_size,
         max_len=max_len, dropout=dropout, mode=mode)
     return [
         tl.Embedding(d_model, vocab_size),
-        BroadcastedDropout(rate=dropout, mode=mode),
+        tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),
         positional_encoding,
     ]
 
@@ -816,7 +785,7 @@ def ReformerNoEncDecAttention(input_vocab_size,
 
     return [
         tl.Embedding(d_model, vocab_size),
-        BroadcastedDropout(rate=dropout, mode=mode),
+        tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),
         positional_encoding,
     ]
 

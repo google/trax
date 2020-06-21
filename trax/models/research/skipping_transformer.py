@@ -154,7 +154,7 @@ def SkippingTransformerLM(vocab_size,
   """
   embedder = [
       tl.Embedding(d_model, vocab_size),
-      tl.Dropout(rate=dropout, name='embedding', mode=mode),
+      tl.Dropout(rate=dropout, mode=mode),
       tl.PositionalEncoding(max_len=max_len, mode=mode),
   ]
 
@@ -163,7 +163,7 @@ def SkippingTransformerLM(vocab_size,
       embedder,
       SkippingSerial([
           transformer._DecoderBlock(  # pylint: disable=g-complex-comprehension,protected-access
-              d_model, d_ff, n_heads, dropout, i, mode, ff_activation)
+              d_model, d_ff, n_heads, dropout, [], mode, ff_activation)
           for i in range(n_layers)], mode=mode),
       tl.LayerNorm(),
       tl.Dense(vocab_size),

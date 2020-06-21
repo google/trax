@@ -61,7 +61,7 @@ def RNNLM(vocab_size,
   return tl.Serial(
       tl.ShiftRight(mode=mode),
       tl.Embedding(d_model, vocab_size),
-      tl.Dropout(rate=dropout, name='embedding', mode=mode),
+      tl.Dropout(rate=dropout, mode=mode),
       tl.Branch([], zero_state),
       tl.Scan(MultiRNNCell(), axis=1),
       tl.Select([0], n_in=2),  # Drop RNN state.

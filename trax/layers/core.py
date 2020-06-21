@@ -16,6 +16,7 @@
 # Lint as: python3
 """Core layer types, such as `Dense`, `Embedding`, and `Dropout`."""
 
+import jax
 import numpy as np
 
 from trax import math
@@ -167,25 +168,27 @@ class Dropout(base.Layer):
   In training, to compensate for the fraction of input values dropped (`rate`),
   all surviving values are multiplied by `1 / (1 - rate)`.
 
+  The parameter `shared_axes` allows to specify a list of axes on which
+  the mask will be shared: we will use size 1 on those axes for dropout mask
+  and broadcast it. Sharing reduces randomness, but can save memory.
+
   This layer is active only during training (`mode='train'`). In other
   circumstances it is a no-op.
   """
 
-  def __init__(self, rate=0.0, name='dropout', mode='train'):
+  def __init__(self, rate=0.0, shared_axes=None, mode='train'):
     """Creates a dropout layer with the given target drop rate.
 
     Args:
       rate: Stochastic rate (probability) for dropping an activation value
           from the preceding layer (setting it to zero).
-      name: **DEPRECATED** Custom name for this instance.
+      shared_axes: List of axes on which the mask is shared.
       mode: If `'train'`, this layer will perform dropout; else, it will pass
           all values through unaltered.
     """
     super(Dropout, self).__init__()
     self._initial_rate = rate
-    # TODO(lukaszkaiser): remove the name property by the end of September'19.
-    # It's only needed for a specific purpose in the short term, will go.
-    self._name = 'dropout_' + name
+    self._shared_axes = [] if shared_axes is None else shared_axes
     self._mode = mode
 
   def init_weights_and_state(self, input_signature):
@@ -208,8 +211,18 @@ class Dropout(base.Layer):
     rate = self._initial_rate
     if isinstance(state, dict) and self._name in state:
       rate = state[self._name]
-    keep = math.random.bernoulli(rng, 1.0 - rate, x.shape)
-    return jnp.where(keep, x / (1.0 - rate), jnp.zeros_like(x))
+    mask_shape = list(x.shape)
+    for axis in self._shared_axes:
+      mask_shape[axis] = 1
+    if math.backend_name() == 'jax':
+      keep_prob = jax.lax.tie_in(self.rng, 1.0 - rate)
+    else:
+      keep_prob = 1.0 - rate
+    keep = math.random.bernoulli(rng, keep_prob, tuple(mask_shape))
+    if math.backend_name() == 'jax':
+      keep_prob = jax.lax.tie_in(keep, keep_prob)
+    mask = keep.astype(x.dtype) / keep_prob
+    return x * mask
 
 
 def Flatten(n_axes_to_keep=1):
