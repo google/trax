@@ -163,7 +163,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       # Predict with weights loaded from file.
       inputs = inputs.train_stream(1)
       model = model_fn()
-      model.init_from_file(os.path.join(output_dir, 'model.pkl'))
+      model.init_from_file(os.path.join(output_dir, 'model.pkl.gz'))
       model(next(inputs)[0])
 
   @parameterized.parameters(BACKENDS)

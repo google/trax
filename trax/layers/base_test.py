@@ -136,6 +136,22 @@ class BaseLayerTest(parameterized.TestCase):
     layer(0, n_accelerators=1)
     layer(0, n_accelerators=1)
 
+  def test_weights_and_state_signature(self):
+
+    class MyLayer(base.Layer):
+
+      def init_weights_and_state(self, input_signature):
+        self.weights = jnp.zeros((2, 3))
+        self.state = jnp.ones(input_signature.shape)
+
+      def forward(self, inputs):
+        return self.weights + self.state
+
+    layer = MyLayer()
+    w, s = layer.weights_and_state_signature(jnp.zeros((3, 4)))
+    self.assertEqual(w.shape, (2, 3))
+    self.assertEqual(s.shape, (3, 4))
+
   def test_custom_name(self):
     layer = base.Layer()
     self.assertIn('Layer', str(layer))

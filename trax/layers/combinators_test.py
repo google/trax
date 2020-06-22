@@ -102,6 +102,26 @@ class SerialTest(absltest.TestCase):
     self.assertIsInstance(model.weights, tuple)
     self.assertLen(model.weights, 3)
 
+  def test_flat_weights_and_state(self):
+    model = tl.Serial(tl.Dup(), tl.Dense(5), tl.Serial(tl.Dense(7), tl.Dup()))
+    sample_input_signature = shapes.signature(np.zeros((2, 3)))
+    model.init(sample_input_signature)
+    flat_weights, flat_state = tl.flatten_weights_and_state(
+        model.weights, model.state)
+    # Model has 2 pairs of trainable weights: (w, b) for the 2 dense layers.
+    # So after making them flat, there are 4 trainable weights.
+    self.assertLen(flat_weights, 4)
+    self.assertEmpty(flat_state)
+    model2 = tl.Serial(tl.Dense(5), tl.Dup(), tl.Dense(7))
+    sig = model2.weights_and_state_signature(sample_input_signature)
+    weights2, state2 = tl.unflatten_weights_and_state(
+        flat_weights, flat_state, sig)
+    model2.weights = weights2
+    model2.state = state2
+    self.assertLen(model2.weights, 3)
+    self.assertEqual(model.weights[1], model2.weights[0])
+    self.assertEqual(model.weights[2][0], model2.weights[2])
+
   def test_shared_weights(self):
     layer = tl.Dense(5)
     model = tl.Serial(layer, layer)

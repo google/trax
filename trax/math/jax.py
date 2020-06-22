@@ -15,10 +15,6 @@
 
 """Trax math: JAX backend."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import jax
 from jax import lax
 from jax import random as jax_random
@@ -298,29 +294,42 @@ def tree_leaves(tree, ignore_nones=True):
   return [flat for flat in flattened if (not ignore_nones) or flat is not None]
 
 
-def tree_unflatten(flat, tree):
+def tree_unflatten(flat, tree, copy_from_tree=None):
   """Unflatten a list into a tree given the tree shape as second argument.
 
   Args:
     flat: a flat list of elements to be assembled into a tree.
     tree: a tree with the structure we want to have in the new tree.
+    copy_from_tree: optional list of elements that we just copy from tree.
+      This argument is used when the flat version does not contain all elements
+      of the expected tree but just a subset, while the rest are filled from
+      the tree itself. It allows to omit "unnecessary" elements. For example,
+      consider trees (A, (B, X), X) and (X, (A, X), B) where X is some element
+      we do not care about. Flattening the first tree and removing X will yield
+      a flat list [A, B] and the second tree can then be reconstructed from this
+      list and the tree (X, (E, X), E) with copy_from_tree=[X]. One example
+      where this is used is the weights-tree of a model, where layers with no
+      weights have () in the tree and we use copy_from_tree=[()] to restore
+      a model from a file that only has a list of trainable weights.
 
   Returns:
     A pair (new_tree, rest_of_flat) where the new tree that has the structure
     of tree but with leaves from flat, and the remaining elements of flat if
     more were provided than the number of leaves of tree (useful for recursion).
   """
+  if copy_from_tree is not None and tree in copy_from_tree:
+    return tree, flat
   if isinstance(tree, (list, tuple)):
     new_tree, rest = [], flat
     for t in tree:
-      new_t, rest = tree_unflatten(rest, t)
+      new_t, rest = tree_unflatten(rest, t, copy_from_tree=copy_from_tree)
       new_tree.append(new_t)
     new_tree = tuple(new_tree) if isinstance(tree, tuple) else new_tree
     return new_tree, rest
   if isinstance(tree, dict):
     new_tree, rest = {}, flat
     for k in tree:
-      new_v, rest = tree_unflatten(rest, tree[k])
+      new_v, rest = tree_unflatten(rest, tree[k], copy_from_tree=copy_from_tree)
       new_tree[k] = new_v
     return new_tree, rest
   return flat[0], flat[1:]

@@ -107,6 +107,7 @@ class Trainer(object):
     # Setup the model.
     model_train = model(mode='train')
     model_predict_eval = model(mode='eval')
+    self._m = tl.Serial(model_train, loss_fn)
 
     # Setup state.
     rng, init_rng = jax_random.split(rng)
@@ -143,6 +144,7 @@ class Trainer(object):
         ShapeDtype(s, d) for (s, d) in zip(*self._inputs.example_shape_dtype)
     )
     model_predict_eval.init(example_signature)
+    self._input_signature = example_signature
     output_signature = model_predict_eval.output_signature(example_signature)
     m_weights, m_state = metrics_in_parallel.init(output_signature)
     self._metrics_weights = self._for_n_devices(m_weights)
@@ -245,7 +247,7 @@ class Trainer(object):
 
     Args:
       output_dir: Output directory.
-      init_checkpoint: Initial checkpoint to use (default $output_dir/model.pkl)
+      init_checkpoint: Initial checkpoint (default $output_dir/model.pkl.gz)
     """
     self.close()
     self._output_dir = output_dir
@@ -274,7 +276,7 @@ class Trainer(object):
 
     # Restore the training state.
     if output_dir is not None:
-      state = load_trainer_state(output_dir, init_checkpoint)
+      state = load_trainer_state(output_dir, self._m, init_checkpoint)
     else:
       state = TrainerState(step=None, opt_state=None,
                            history=trax_history.History(), model_state=None)
@@ -435,7 +437,7 @@ class Trainer(object):
               jaxboard.markdownify_operative_config_str(config_str))
 
   def _save_state_dict(self, trainer_state_dict, weights_file):
-    pickle_to_file(trainer_state_dict, weights_file)
+    pickle_to_file(trainer_state_dict, weights_file, gzip=True)
     log('Model saved to %s' % weights_file, stdout=False)
 
   def save_state(self, keep, prefix='model'):
@@ -451,17 +453,16 @@ class Trainer(object):
     step, history, model_state = self._step, self._history, self._model_state
     output_dir = self._output_dir
 
-    weights_file = os.path.join(output_dir, prefix + '.pkl')
+    weights_file = os.path.join(output_dir, prefix + '.pkl.gz')
 
     # This dict will be stored as the model.
-    trainer_state_dict = make_trainer_state_dict(step,
-                                                 opt_state,
-                                                 history,
-                                                 model_state)
+    trainer_state_dict = make_trainer_state_dict(
+        step, opt_state, history, model_state, self._input_signature)
     self._save_state_dict(trainer_state_dict, weights_file)
 
     if keep:
-      weights_file = os.path.join(output_dir, '{}_{}.pkl'.format(prefix, step))
+      weights_file = os.path.join(output_dir,
+                                  '{}_{}.pkl.gz'.format(prefix, step))
       self._save_state_dict(trainer_state_dict, weights_file)
 
   def save_computation_graphs(self):
@@ -830,7 +831,8 @@ def epochs(total_steps, steps_to_skip, epoch_steps):
 def make_trainer_state_dict(step,
                             opt_state,
                             history,
-                            model_state):
+                            model_state,
+                            input_signature):
   """Creates a trainer state dictionary to save to disk.
 
   Args:
@@ -838,40 +840,36 @@ def make_trainer_state_dict(step,
     opt_state: OptState namedtuple
     history: `trax.history.History`, the history object.
     model_state: A nested structure of the model state.
+    input_signature: signature of model inputs.
 
   Returns:
     A dictionary with the fields of TrainerState and OptState flattened.
   """
-
+  flat_weights, flat_state = tl.flatten_weights_and_state(
+      opt_state.weights, model_state)
   return {
       'step': step,
-      'weights': opt_state.weights[0],
-      'loss_weights': opt_state.weights[1],
+      'flat_weights': flat_weights,
       'slots': opt_state.slots,
       'opt_params': opt_state.opt_params,
       'history': history,
-      'state': model_state[0],
-      'loss_state': model_state[1],
-      'version_timestamp': 'Jan-13-2020'  # To update in the future if needed.
+      'flat_state': flat_state,
+      'input_signature': input_signature,
+      'version_timestamp': 'Jun-18-2020'  # To update in the future if needed.
   }
 
 
-def trainer_state_from_dict(trainer_state_dict):
+def trainer_state_from_dict(trainer_state_dict, model):
   """Given the trainer state dictionary, returns `TrainerState`."""
   # TODO(afrozm): This becomes simpler if OptState is flattened into
   # TrainerState.
   step = trainer_state_dict['step']
   history = trainer_state_dict['history']
-  # TODO(lukaszkaiser): remove the first branch after everyone ports to 'state'.
-  if 'model_state' in trainer_state_dict:
-    model_state = trainer_state_dict['model_state']
-  else:
-    model_state = (trainer_state_dict['state'],
-                   trainer_state_dict['loss_state'])
-  weights = trainer_state_dict['weights']
-  # TODO(lukaszkaiser): remove the next 2 lines after 'loss_weights' is in use.
-  if 'loss_weights' in trainer_state_dict:
-    weights = (weights, trainer_state_dict['loss_weights'])
+  input_signature = trainer_state_dict['input_signature']
+  weights_and_state_sig = model.weights_and_state_signature(input_signature)
+  weights, model_state = tl.unflatten_weights_and_state(
+      trainer_state_dict['flat_weights'], trainer_state_dict['flat_state'],
+      weights_and_state_sig)
   opt_state = OptState(
       weights=weights,
       slots=trainer_state_dict['slots'],
@@ -880,19 +878,18 @@ def trainer_state_from_dict(trainer_state_dict):
                       history=history, model_state=model_state)
 
 
-def load_trainer_state(output_dir, weights_file=None):
+def load_trainer_state(output_dir, model, weights_file=None):
   """Returns a TrainerState instance loaded from the given `output_dir`."""
   if weights_file is None:
-    weights_file = os.path.join(output_dir, 'model.pkl')
+    weights_file = os.path.join(output_dir, 'model.pkl.gz')
     if not tf.io.gfile.exists(weights_file):
       return TrainerState(step=None, opt_state=None,
                           history=trax_history.History(), model_state=None)
   elif not tf.io.gfile.exists(weights_file):
     raise ValueError('File not found: %s' % weights_file)
 
-  with tf.io.gfile.GFile(weights_file, 'rb') as f:
-    trainer_state_dict = pickle.load(f)
-  trainer_state = trainer_state_from_dict(trainer_state_dict)
+  trainer_state_dict = unpickle_from_file(weights_file, gzip=True)
+  trainer_state = trainer_state_from_dict(trainer_state_dict, model)
   log('Model loaded from %s at step %d' % (weights_file, trainer_state.step))
   logging.debug('From loaded model : history = %s', trainer_state.history)
   return trainer_state

@@ -194,7 +194,7 @@ class Dropout(base.Layer):
   def init_weights_and_state(self, input_signature):
     """Sets layer-specific internal state."""
     del input_signature
-    self.state = {self._name: jnp.array(self._initial_rate)}
+    self.state = jnp.array(self._initial_rate)
 
   def forward(self, x):
     """Executes this layer as part of a forward pass through the model.
