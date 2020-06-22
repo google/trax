@@ -25,6 +25,8 @@ from __future__ import print_function
 try:
   # pylint: disable=g-direct-tensorflow-import
   from tensorflow.python.ops.numpy_ops import *
+  from tensorflow import bfloat16
+
 except ImportError:
   from tensorflow import newaxis
 
