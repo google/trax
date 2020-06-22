@@ -813,15 +813,18 @@ class LaxBackedNumpyTests(jtu.TestCase):
     rng = rng_factory()
     def onp_fun(x, y):
       dtype = lnp.promote_types(lhs_dtype, rhs_dtype)
-      return onp.matmul(x, y).astype(dtype)
+      return (onp.matmul(x, y).astype(dtype),
+              onp.array(x).__matmul__(y).astype(dtype))
+    def lnp_fun(x, y):
+      return lnp.matmul(x, y), lnp.array(x).__matmul__(y)
     args_maker = lambda: [rng(lhs_shape, lhs_dtype), rng(rhs_shape, rhs_dtype)]
     tol = {onp.float16: 1e-2, onp.float32: 2e-2, onp.float64: 1e-12,
            onp.complex128: 1e-12}
     if jtu.device_under_test() == "tpu":
       tol[onp.float32] = tol[onp.complex64] = 4e-2
-    self._CheckAgainstNumpy(onp_fun, lnp.matmul, args_maker,
+    self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker,
                             check_dtypes=True, tol=tol)
-    self._CompileAndCheck(lnp.matmul, args_maker, check_dtypes=True, atol=tol,
+    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True, atol=tol,
                           rtol=tol, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
