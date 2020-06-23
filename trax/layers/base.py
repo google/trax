@@ -242,11 +242,17 @@ class Layer:
   # Begin public callable interface.
 
   def init(self, input_signature, rng=None, use_cache=False):
-    """Initializes this layer and its sublayers recursively.
+    """Initializes weights/state of this layer and its sublayers recursively.
 
-    This method is designed to initialize each layer instance once, even if the
-    same layer instance occurs in multiple places in the network. This enables
-    weight sharing to be implemented as layer sharing.
+    Initialization creates layer weights and state, for layers that use them.
+    It derives the necessary array shapes and data types from the layer's input
+    signature, which is itself just shape and data type information.
+
+    For layers without weights or state, this method safely does nothing.
+
+    This method is designed to create weights/state only once for each layer
+    instance, even if the same layer instance occurs in multiple places in the
+    network. This enables weight sharing to be implemented as layer sharing.
 
     Args:
       input_signature: `ShapeDtype` instance (if this layer takes one input)
