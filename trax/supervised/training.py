@@ -230,11 +230,8 @@ def _model_with_metrics(model, eval_task):
   """
   # TODO(jonni): Redo this function as part of an initialization refactor?
   metrics_layer = tl.Branch(*eval_task.metrics)
-  data_signature = shapes.signature(eval_task.sample_batch[:-1])
-  label_signature = shapes.signature(eval_task.sample_batch[-1])
-  metrics_input_signature = (
-      shapes.splice_signatures(model.output_signature(data_signature),
-                               label_signature))
+  eval_data_signature = shapes.signature(eval_task.sample_batch)
+  metrics_input_signature = model.output_signature(eval_data_signature)
   _, _ = metrics_layer.init(metrics_input_signature)
 
   model_with_metrics = tl.Serial(model, metrics_layer)
