@@ -211,19 +211,6 @@ def np_doc(np_fun):
   def decorator(f):
     """The decorator."""
     sig = funcsigs.signature(f)
-    for name, param in sig.parameters.items():
-      np_param = np_sig.parameters.get(name)
-      if np_param is None:
-        raise TypeError('Cannot find parameter "%s" in the numpy function\'s '
-                        'signature' % name)
-      if not _is_compatible_param_kind(param.kind, np_param.kind):
-        raise TypeError('Parameter "%s" is of kind %s while in numpy it is of '
-                        'kind %s' % (name, param.kind, np_param.kind))
-      has_default = (param.default != funcsigs.Parameter.empty)
-      np_has_default = (np_param.default != funcsigs.Parameter.empty)
-      if has_default != np_has_default:
-        raise TypeError('Parameter "%s" should%s have a default value' %
-                        (name, '' if np_has_default else ' not'))
     unsupported_params = []
     for name in np_sig.parameters:
       if name not in sig.parameters:
