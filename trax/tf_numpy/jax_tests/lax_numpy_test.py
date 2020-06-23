@@ -814,9 +814,12 @@ class LaxBackedNumpyTests(jtu.TestCase):
     def onp_fun(x, y):
       dtype = lnp.promote_types(lhs_dtype, rhs_dtype)
       return (onp.matmul(x, y).astype(dtype),
-              onp.array(x).__matmul__(y).astype(dtype))
+              onp.array(x).__matmul__(y).astype(dtype),
+              onp.array(y).__rmatmul__(x).astype(dtype))
     def lnp_fun(x, y):
-      return lnp.matmul(x, y), lnp.array(x).__matmul__(y)
+      return (lnp.matmul(x, y),
+              lnp.array(x).__matmul__(y),
+              lnp.array(y).__rmatmul__(x))
     args_maker = lambda: [rng(lhs_shape, lhs_dtype), rng(rhs_shape, rhs_dtype)]
     tol = {onp.float16: 1e-2, onp.float32: 2e-2, onp.float64: 1e-12,
            onp.complex128: 1e-12}
