@@ -38,7 +38,7 @@ def Relu():
           x & \text{otherwise}.
       \end{array} \right.
   """
-  return Fn('Relu', lambda x: np.maximum(x, np.zeros_like(x)))
+  return Fn('Relu', lambda x: np.where(x <= 0, np.zeros_like(x), x))
 
 
 def ParametricRelu(a=1.):
