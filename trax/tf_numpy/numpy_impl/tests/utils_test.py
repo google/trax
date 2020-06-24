@@ -46,24 +46,6 @@ Documentation for `numpy.np_fun`:
 np_fun docstring."""
     self.assertEqual(f.__doc__, expected)
 
-  def testNpDocErrors(self):
-    def np_fun(x, y=1, **kwargs):
-      return
-    # pylint: disable=unused-variable
-    with self.assertRaisesRegexp(TypeError, 'Cannot find parameter'):
-      @utils.np_doc(np_fun)
-      def f1(a):
-        return
-    with self.assertRaisesRegexp(TypeError, 'is of kind'):
-      @utils.np_doc(np_fun)
-      def f2(x, kwargs):
-        return
-    with self.assertRaisesRegexp(
-        TypeError, 'Parameter "y" should have a default value'):
-      @utils.np_doc(np_fun)
-      def f3(x, y):
-        return
-
 
 if __name__ == '__main__':
   tf.enable_v2_behavior()
