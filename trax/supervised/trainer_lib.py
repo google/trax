@@ -15,10 +15,6 @@
 
 """Trax main training functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import functools
 import gzip as gzip_lib
@@ -83,7 +79,7 @@ class Trainer(object):
   def __init__(self, model, loss_fn, optimizer, lr_schedule, inputs,
                output_dir=None, random_seed=None, n_devices=None,
                checkpoints_at=None, should_save_checkpoints=True,
-               should_write_summaries=True, nontrainable_param_map=None,
+               should_write_summaries=True,
                metrics=None, checkpoint_highest=None, checkpoint_lowest=None):
 
     self._is_chief, self._n_devices, rng = (
@@ -107,33 +103,21 @@ class Trainer(object):
     # Setup the model.
     model_train = model(mode='train')
     model_predict_eval = model(mode='eval')
-    self._m = tl.Serial(model_train, loss_fn)
+    self._model_with_loss = tl.Serial(model_train, loss_fn)
 
     # Setup state.
     rng, init_rng = jax_random.split(rng)
     self._rngs = np.stack(jax_random.split(rng, self._n_devices))
+    shapes, dtypes = self._inputs.example_shape_dtype
+    input_signature = tuple(ShapeDtype(s, d) for (s, d) in zip(shapes, dtypes))
 
-    def new_opt_state_and_model_state(shape_dtype, rng):
+    def new_opt_state_and_model_state():
       """Returns optimizer and model states suitable for training a model."""
-      # Combine inputs and targets on the stack.
-      shapes, dtypes = shape_dtype
-      input_signature = tuple(ShapeDtype(s, d)
-                              for (s, d) in zip(shapes, dtypes))
-      # We need to create a new model instance and not reuse `model_train` here,
-      # because `m.init` puts cached parameter values in `m` hence the
-      # next call of `m.init` will give wrong results.
-      m = tl.Serial(model(mode='train'), loss_fn)
-      weights, state = m.init(input_signature, rng=rng)
+      weights, state = self._model_with_loss.init(input_signature, rng=init_rng)
       (slots, opt_params) = opt.tree_init(weights)
       return (OptState(weights, slots, opt_params), state)
 
-    if _is_jit_init():
-      # JIT parameter initialization to avoid memory fragmentation
-      new_opt_state_and_model_state = math.jit(new_opt_state_and_model_state,
-                                               static_argnums=(0,))
-    self._new_opt_state_and_model_state = (
-        lambda: new_opt_state_and_model_state(  # pylint: disable=g-long-lambda
-            self._inputs.example_shape_dtype, init_rng))
+    self._new_opt_state_and_model_state = new_opt_state_and_model_state
 
     # Arrange and initialize metrics layers.
     self._metrics = list(sorted(self._metrics_dict.keys()))
@@ -163,10 +147,6 @@ class Trainer(object):
     # control all optimizer parameters and model state, so let's rename them
     # accordingly.
     self._lr_schedule = lr_schedule
-
-    if nontrainable_param_map is None:
-      nontrainable_param_map = {}
-    self._nontrainable_param_map = nontrainable_param_map
 
     # Those fields will be set in reset().
     self._output_dir = None
@@ -276,7 +256,8 @@ class Trainer(object):
 
     # Restore the training state.
     if output_dir is not None:
-      state = load_trainer_state(output_dir, self._m, init_checkpoint)
+      state = load_trainer_state(output_dir, self._model_with_loss,
+                                 init_checkpoint)
     else:
       state = TrainerState(step=None, opt_state=None,
                            history=trax_history.History(), model_state=None)
@@ -409,17 +390,9 @@ class Trainer(object):
 
   def update_model_state(self, key, value):
     """Updates model state based on nontrainable_params."""
-    # Translate model state keys to nontrainable param names.
-    if key in self._nontrainable_param_map:
-      p_name = self._nontrainable_param_map[key]
-    else:
-      # If a key is not in mapping, it stays the same.
-      p_name = key
+    p_name = key
     if p_name in self.nontrainable_params:
-      if self._step == 0:
-        log('Mapping model state key {} to nontrainable param {}.'
-            ''.format(key, p_name))
-        return self._for_n_devices(np.array(self.nontrainable_params[p_name]))
+      return self._for_n_devices(np.array(self.nontrainable_params[p_name]))
     return value
 
   def update_nontrainable_params(self):
@@ -608,7 +581,6 @@ def train(output_dir,
           eval_frequency=100,
           random_seed=None,
           save_graphs=True,
-          nontrainable_param_map=None,
           metrics=None,
           checkpoint_highest=None,
           checkpoint_lowest=None,
@@ -634,8 +606,6 @@ def train(output_dir,
       steps). If None or 0, eval disabled.
     random_seed: the random seed to use; time/os dependent if None (default).
     save_graphs: bool, if True, save computation graph to file.
-    nontrainable_param_map: dict, mapping from model nontrainable parameter
-      names to control names in PolicySchedule.
     metrics: optionally override the default metrics dictionary.
     checkpoint_highest: save the checkpoint highest at this metric.
     checkpoint_lowest: save the checkpoint lowest at this metric.
@@ -653,7 +623,6 @@ def train(output_dir,
                           random_seed=random_seed,
                           n_devices=n_devices,
                           checkpoints_at=checkpoints_at,
-                          nontrainable_param_map=nontrainable_param_map,
                           metrics=metrics,
                           checkpoint_lowest=checkpoint_lowest,
                           checkpoint_highest=checkpoint_highest)
@@ -693,13 +662,6 @@ def train(output_dir,
 @gin.configurable
 def num_devices(value=None):
   """Returns how many devices to use (if None, default, use all available)."""
-  return value
-
-
-@gin.configurable
-def _is_jit_init(value=None):
-  if value is None:
-    value = math.backend_name() == 'jax'
   return value
 
 
