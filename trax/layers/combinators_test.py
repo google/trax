@@ -143,6 +143,14 @@ class SerialTest(absltest.TestCase):
     weights, _ = model.init(shapes.signature(sample_input))
     self.assertIs(weights[1][0], tl.GET_WEIGHTS_FROM_CACHE)
 
+  def test_shared_weights_for_shared_serial(self):
+    layer = tl.Serial(tl.Dense(5), tl.Dense(5))
+    model = tl.Serial(layer, layer)
+    sample_input = np.array([1, 2, 3, 4, 5])
+    weights, _ = model.init(shapes.signature(sample_input))
+    self.assertIsNot(weights[0], tl.GET_WEIGHTS_FROM_CACHE)
+    self.assertIs(weights[1], tl.GET_WEIGHTS_FROM_CACHE)
+
   def test_state(self):
     model = tl.Serial(tl.Dense(4), tl.Dense(5), tl.Dense(7))
     self.assertIsInstance(model.state, tuple)
@@ -228,6 +236,19 @@ class ParallelTest(absltest.TestCase):
     sample_input = (np.array([1, 2, 3, 4, 5]), np.array([1, 2, 3, 4, 5]))
     weights, _ = model.init(shapes.signature(sample_input))
     self.assertIs(weights[1][0], tl.GET_WEIGHTS_FROM_CACHE)
+
+  def test_shared_weights_for_shared_parallel(self):
+    layer = tl.Parallel(tl.Dense(5), tl.Dense(7))
+    model = tl.Parallel(layer, layer)
+    sample_input = [
+        np.array([1, 2, 3]),
+        np.array([10, 20, 30]),
+        np.array([100, 200, 300]),
+        np.array([1000, 2000, 3000]),
+    ]
+    weights, _ = model.init(shapes.signature(sample_input))
+    self.assertIsNot(weights[0], tl.GET_WEIGHTS_FROM_CACHE)
+    self.assertIs(weights[1], tl.GET_WEIGHTS_FROM_CACHE)
 
   def test_state(self):
     model = tl.Parallel(tl.Dense(3), tl.Dense(5))
