@@ -26,7 +26,7 @@ attn_type = [
     @LSHSelfAttention,
     @SelfAttention,
 ]
-attn_kv = 128
+attn_kv = 64  # Use 128 if more memory is available
 n_layers = 12
 dropout = 0.2
 
@@ -87,6 +87,7 @@ SelfAttention.attention_dropout = 0.2
 # SelfAttention.chunk_len: see top
 SelfAttention.n_chunks_after = 0
 # SelfAttention.n_chunks_before: see top
+SelfAttention.n_parallel_heads = 1
 
 # Parameters for LSHSelfAttention:
 # ==============================================================================
@@ -106,7 +107,7 @@ ReformerLM.attention_type = %attn_type
 ReformerLM.d_attention_key = %attn_kv
 ReformerLM.d_attention_value = %attn_kv
 ReformerLM.d_model = 1024
-ReformerLM.d_ff = 4096
+ReformerLM.d_ff = 2048  # Use 4096 if more memory is available
 ReformerLM.dropout = %dropout
 ReformerLM.ff_activation = @trax.layers.Relu
 ReformerLM.max_len = 65536
