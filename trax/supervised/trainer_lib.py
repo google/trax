@@ -92,6 +92,11 @@ class Trainer(object):
       self._should_write_summaries = False
     self._checkpoint_highest = checkpoint_highest
     self._checkpoint_lowest = checkpoint_lowest
+    if metrics is not None:
+      self._metrics_dict = metrics
+    else:
+      self._metrics_dict = _DEFAULT_METRICS
+      self._metrics_dict['loss'] = loss_fn
     self._metrics_dict = metrics if metrics is not None else _DEFAULT_METRICS
     # Inputs is either an Inputs instance or a function that returns it.
     self._inputs = inputs
