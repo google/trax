@@ -245,7 +245,7 @@ class Parallel(base.Layer):
   @base.Layer.weights.setter
   def weights(self, weights):
     """Recursively sets weights on this layer and all sublayers."""
-    if weights == base.EMPTY_WEIGHTS:
+    if weights == base.GET_WEIGHTS_FROM_CACHE:
       return
     self._weights = weights
     assert len(weights) == self._n_layers
@@ -255,6 +255,8 @@ class Parallel(base.Layer):
   @base.Layer.state.setter
   def state(self, state):
     """Recursively sets non-param state on this layer and all sublayers."""
+    if state == base.GET_STATE_FROM_CACHE:
+      return
     self._state = state
     assert len(state) == self._n_layers
     for layer, sublayer_state in zip(self.sublayers, state):

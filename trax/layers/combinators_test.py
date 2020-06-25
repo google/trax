@@ -147,9 +147,13 @@ class SerialTest(absltest.TestCase):
     layer = tl.Serial(tl.Dense(5), tl.Dense(5))
     model = tl.Serial(layer, layer)
     sample_input = np.array([1, 2, 3, 4, 5])
+    # Init gives weights reflecting weight sharing.
     weights, _ = model.init(shapes.signature(sample_input))
     self.assertIsNot(weights[0], tl.GET_WEIGHTS_FROM_CACHE)
     self.assertIs(weights[1], tl.GET_WEIGHTS_FROM_CACHE)
+    # Forward pass runs successfully.
+    y = model(sample_input)
+    self.assertEqual(y.shape, (5,))
 
   def test_state(self):
     model = tl.Serial(tl.Dense(4), tl.Dense(5), tl.Dense(7))
@@ -246,9 +250,16 @@ class ParallelTest(absltest.TestCase):
         np.array([100, 200, 300]),
         np.array([1000, 2000, 3000]),
     ]
+    # Init gives weights reflecting weight sharing.
     weights, _ = model.init(shapes.signature(sample_input))
     self.assertIsNot(weights[0], tl.GET_WEIGHTS_FROM_CACHE)
     self.assertIs(weights[1], tl.GET_WEIGHTS_FROM_CACHE)
+    # Forward pass runs successfully.
+    y0, y1, y2, y3 = model(sample_input)
+    self.assertEqual(y0.shape, (5,))
+    self.assertEqual(y1.shape, (7,))
+    self.assertEqual(y2.shape, (5,))
+    self.assertEqual(y3.shape, (7,))
 
   def test_state(self):
     model = tl.Parallel(tl.Dense(3), tl.Dense(5))
