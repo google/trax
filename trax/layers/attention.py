@@ -20,6 +20,7 @@ import jax
 import numpy as np
 
 from trax import math
+from trax.layers import activation_fns
 from trax.layers import base
 from trax.layers import combinators as cb
 from trax.layers import core
@@ -58,7 +59,7 @@ def Attention(d_feature, n_heads=1, dropout=0.0, mode='train'):
   )
 
 
-def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train'):
+def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train', qkv_nn_depth=1):
   """Returns a layer that maps (q, k, v, mask) to (activations, mask).
 
   See `Attention` above for further context/details.
@@ -69,12 +70,26 @@ def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train'):
     dropout: Probababilistic rate for internal dropout applied to attention
         activations (based on query-key pairs) before dotting them with values.
     mode: Either 'train' or 'eval'.
+    qkv_nn_depth: number of alternating dense and elu layers to use to build
+        the queries, keys, and values for deep nonlinear QKV learning.
+        If 1 (default), no nonlinear transform is applied.
   """
+  
+  def build_head():
+    """Convenience constructor for neural network that produces queries, keys, and values
+    
+    Alternates between Dense and Relu layers for qkv_nn_depth
+    """
+    return cb.Serial(*[
+        core.Dense(d_feature) if i % 2 == 1 else activation_fns.Elu()
+        for i in range(qkv_nn_depth)
+    ])
+  
   return cb.Serial(
       cb.Parallel(
-          core.Dense(d_feature),
-          core.Dense(d_feature),
-          core.Dense(d_feature),
+          build_head(),
+          build_head(),
+          build_head(),
       ),
       PureAttention(  # pylint: disable=no-value-for-parameter
           n_heads=n_heads, dropout=dropout, mode=mode),
