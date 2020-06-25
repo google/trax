@@ -111,13 +111,17 @@ class Trainer(object):
     shapes, dtypes = self._inputs.example_shape_dtype
     input_signature = tuple(ShapeDtype(s, d) for (s, d) in zip(shapes, dtypes))
 
-    def new_opt_state_and_model_state():
+    def new_opt_state_and_model_state(rng):
       """Returns optimizer and model states suitable for training a model."""
-      weights, state = self._model_with_loss.init(input_signature, rng=init_rng)
+      weights, state = self._model_with_loss.init(input_signature, rng=rng)
       (slots, opt_params) = opt.tree_init(weights)
       return (OptState(weights, slots, opt_params), state)
 
-    self._new_opt_state_and_model_state = new_opt_state_and_model_state
+    if math.backend_name() == 'jax':
+      # JIT parameter initialization to avoid memory fragmentation
+      new_opt_state_and_model_state = math.jit(new_opt_state_and_model_state)
+    self._new_opt_state_and_model_state = (
+        lambda: new_opt_state_and_model_state(init_rng))
 
     # Arrange and initialize metrics layers.
     self._metrics = list(sorted(self._metrics_dict.keys()))
