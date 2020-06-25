@@ -164,11 +164,11 @@ class Loop:
     optimizer = self._task.optimizer
     opt_params = optimizer._init_opt_params  # pylint: disable=protected-access
 
-    gradients, state = (
+    gradients, updated_state = (
         self._gradients_and_state_fn(batch, weights, state, self.new_rng()))
-    weights, slots, _ = (
+    updated_weights, updated_slots, _ = (
         optimizer.tree_update(step, gradients, weights, slots, opt_params))
-    return weights, state, slots
+    return updated_weights, updated_state, updated_slots
 
   def _run_evals(self, weights, state):
     """Runs and records evals for this training session.
