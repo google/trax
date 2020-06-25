@@ -29,9 +29,9 @@ noise_density = 0.15
 # Parameters for batcher:
 # ==============================================================================
 batcher.data_streams = @tf_inputs.data_streams
-# With this, we get an average of weights_per_core = 900, so 900*8 = 7200 tokens
+# With 128, we get an average of weights_per_core = 900, so 900*8 = 7200 tokens
 # per batch on a 2x2 TPU on average per step. T5's batch is ~65k tokens/batch.
-batcher.batch_size_per_device = 128
+batcher.batch_size_per_device = 64
 batcher.eval_batch_size = 64
 batcher.max_eval_length = %max_length
 batcher.buckets_include_inputs_in_length=True
@@ -47,10 +47,10 @@ data_streams.bare_preprocess_fn=@trax.supervised.tf_inputs.c4_bare_preprocess_fn
 
 # Parameters for MultifactorSchedule:
 # ==============================================================================
-MultifactorSchedule.constant = 1.0
+MultifactorSchedule.constant = 0.2357
 MultifactorSchedule.factors = 'constant * rsqrt_decay'
 # NOTE: T5's batch is 9x bigger, maybe this should be 9x-ed as well?
-MultifactorSchedule.warmup_steps = 10000
+MultifactorSchedule.warmup_steps = 180000
 
 # Parameters for Adafactor:
 # ==============================================================================
@@ -74,6 +74,8 @@ train.model = @trax.models.Transformer
 # T5 pretrains on C4 for 2^19 steps. Our batches are ~ 1/9th the size.
 train.steps = 524288
 train.optimizer = @trax.optimizers.Adafactor
+train.checkpoint_highest = 'accuracy'
+train.checkpoint_lowest = 'loss'
 
 # Corresponds roughly to T5 'large' ~ 770m params, i.e. T5's `bi_v1_large.gin`.
 d_model = 1024

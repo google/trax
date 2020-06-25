@@ -134,6 +134,7 @@ class TFInputsTest(tf.test.TestCase):
     self.assertIsInstance(example['targets'], np.ndarray)
     self.assertEqual(example['targets'].dtype, np.int64)
     self.assertGreater(len(example['targets']), 0)
+    self.assertEqual(example['targets'][-1], 1)  # we add EOS at the end.
 
     # Inputs exist but is empty because t5 preprocessors' unsupervised wasn't
     # gin configured with any.

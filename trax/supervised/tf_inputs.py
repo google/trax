@@ -537,8 +537,6 @@ def c4_bare_preprocess_fn(dataset,
                           copy_plaintext=True,
                           sequence_length=None):
   """Returns a dataset that contains 'inputs' and 'targets' from C4."""
-  # Same processing whether eval or train.
-  del training
   # Set target key to be equal to the text content.
   dataset = t5_processors.rekey(
       dataset, key_map={'targets': 'text', 'inputs': None})
@@ -558,6 +556,9 @@ def c4_bare_preprocess_fn(dataset,
   dataset = t5_processors.unsupervised(dataset,
                                        sequence_length=sequence_length,
                                        output_features=output_features)
+
+  # Add EOS.
+  dataset = add_eos_to_output_features(dataset, training)
 
   return dataset
 
@@ -641,6 +642,22 @@ def pad_dataset_to_length(dataset, training, len_map=None):
         x[key] = tf.concat([x[key], zeros], 0)
     return x
   return dataset.map(pad_to_len)
+
+
+@gin.configurable(blacklist=['dataset', 'training'])
+def add_eos_to_output_features(dataset, training,
+                               output_features='targets', eos=1):
+  """Adds `EOS` to all features in `output_features`."""
+  del training
+  if not isinstance(output_features, (list, tuple)):
+    output_features = [output_features]
+
+  def add_eos(x):
+    for output_feature in output_features:
+      x[output_feature] = tf.concat([x[output_feature], [eos]], axis=0)
+    return x
+
+  return dataset.map(add_eos)
 
 
 @gin.configurable(blacklist=['dataset', 'training'])
