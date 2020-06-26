@@ -105,8 +105,8 @@ class Layer:
     # different backends' `get_prng` may return different shapes so they can't
     # be used interchangeably).
     self._rng = random.randint(0, 2**31 - 1)
-    self._weights = EMPTY_WEIGHTS  # cached weights
-    self._state = EMPTY_STATE
+    self._weights = EMPTY_WEIGHTS  # By default no trainable weights.
+    self._state = EMPTY_STATE  # By default no non-trainable state.
     # record root call site for custom error messages:
     frame = _find_frame(inspect.currentframe())
     # Turns out that frame can mutate in time, so we just copy what we need.
