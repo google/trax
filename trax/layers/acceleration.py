@@ -67,12 +67,12 @@ class Accelerate(base.Layer):
   def pure_fn(self, x, weights, state, rng, use_cache=False):
     """Calls self.sublayer.pure_fn in an accelerated way."""
     # Check if we can divide x evenly across devices.
-    reminder = x.shape[0] % self._n_devices
-    if reminder == 0:  # If yes, run the accelerated sublayer.pure_fn.
+    remainder = x.shape[0] % self._n_devices
+    if remainder == 0:  # If yes, run the accelerated sublayer.pure_fn.
       return self._jit_pure_fn(x, weights, state, rng)
     # If not, pad first.
     pad_widths = [(0, 0)] * len(x.shape)
-    pad_widths[0] = (0, self._n_devices - reminder)
+    pad_widths[0] = (0, self._n_devices - remainder)
     padded_x = jnp.pad(x, pad_widths, mode='constant',
                        constant_values=x.dtype.type(0))
     # Run and un-pad.
@@ -128,7 +128,7 @@ def jit_forward(forward, n_devices, do_mean=True):
     return model_predict
 
   def predict(x, weights, state, rng):
-    """Predict function JIT-compileds and parallelized as requested."""
+    """Predict function JIT-compiled and parallelized as requested."""
     res, state = _combine_devices(model_predict(
         reshape_by_device(x, n_devices),
         weights,
