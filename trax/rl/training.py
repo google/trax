@@ -21,12 +21,12 @@ import os
 import pickle
 import time
 
-from absl import logging
 import gin
 import numpy as np
 import tensorflow as tf
 
 from trax import jaxboard
+from trax import layers as tl
 from trax import math
 from trax import shapes
 from trax import supervised
@@ -235,11 +235,8 @@ class RLTrainer:
 
   def close(self):
     if self._sw is None:
-      logging.info('Asked to close non-existent SummaryWriter, no-op.')
       return
-    logging.info('Closing SummaryWriter.')
     self._sw.close()
-    logging.info('Closed SummaryWriter.')
     self._sw = None
 
 
@@ -315,10 +312,12 @@ class PolicyTrainer(RLTrainer):
         output_dir=output_dir,
         metrics=self.policy_metrics,
     )
-    self._policy_collect_model = policy_model(mode='collect')
+    self._policy_collect_model = tl.Accelerate(
+        policy_model(mode='collect'), n_devices=1)
     policy_batch = next(self.policy_batches_stream())
     self._policy_collect_model.init(shapes.signature(policy_batch))
-    self._policy_eval_model = policy_model(mode='eval')  # Not collecting stats
+    self._policy_eval_model = tl.Accelerate(
+        policy_model(mode='eval'), n_devices=1)  # Not collecting stats
     self._policy_eval_model.init(shapes.signature(policy_batch))
     if self._task._initial_trajectories == 0:
       self._task.remove_epoch(0)
@@ -343,11 +342,11 @@ class PolicyTrainer(RLTrainer):
     if temperature != 1.0:  # When evaluating (t != 1.0), don't collect stats
       model = self._policy_eval_model
       model.state = self._policy_collect_model.state
-    model.weights = self._policy_trainer.model_weights
+    model.replicate_weights(self._policy_trainer.model_weights)
     tr_slice = trajectory[-self._max_slice_length:]
     trajectory_np = tr_slice.to_np(timestep_to_np=self.task.timestep_to_np)
     # Add batch dimension to trajectory_np and run the model.
-    pred = model(trajectory_np.observations[None, ...], n_accelerators=1)
+    pred = model(trajectory_np.observations[None, ...])
     # Pick element 0 from the batch (the only one), last (current) timestep.
     pred = pred[0, -1, :]
     sample = self._policy_dist.sample(pred, temperature=temperature)

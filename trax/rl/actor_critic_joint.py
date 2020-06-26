@@ -111,7 +111,8 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
                  'explained_variance': self.explained_variance,
                  'log_probs_mean': self.log_probs_mean,
                  'preferred_move': self.preferred_move})
-    self._eval_model = self._joint_model(mode='eval')
+    self._eval_model = tl.Accelerate(
+        self._joint_model(mode='eval'), n_devices=1)
     example_batch = next(self.batches_stream())
     self._eval_model.init(example_batch)
 
@@ -179,13 +180,13 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
   def policy(self, trajectory, temperature=1.0):
     """Chooses an action to play after a trajectory."""
     model = self._eval_model
-    model.weights = self._trainer.model_weights
+    model.replicate_weights(self._trainer.model_weights)
     # The two lines below along with the copying
     # before return make the TPU happy
     tr_slice = trajectory[-self._max_slice_length:]
     trajectory_np = tr_slice.to_np(timestep_to_np=self.task.timestep_to_np)
     # Add batch dimension to trajectory_np and run the model.
-    pred = model(trajectory_np.observations[None, ...], n_accelerators=1)[0]
+    pred = model(trajectory_np.observations[None, ...])[0]
     # Pick element 0 from the batch (the only one), last (current) timestep.
     pred = pred[0, -1, :]
     sample = self._policy_dist.sample(pred, temperature=temperature)

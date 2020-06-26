@@ -23,13 +23,11 @@ import pickle
 import random
 import traceback
 
-import jax
 import numpy as np
 import tensorflow as tf
 
 from trax import math
 from trax.math import nested_map
-from trax.math import numpy as jnp
 from trax.shapes import ShapeDtype
 from trax.shapes import signature
 
@@ -132,7 +130,7 @@ class Layer:
     else:
       return name_str
 
-  def __call__(self, x, weights=None, state=None, rng=None, n_accelerators=0):
+  def __call__(self, x, weights=None, state=None, rng=None):
     """Makes layers callable; for use in tests or interactive settings.
 
     This convenience method helps library users play with, test, or otherwise
@@ -151,27 +149,17 @@ class Layer:
       state: State or `None`; if `None`, use self's cached state value.
       rng: Single-use random number generator (JAX PRNG key), or `None`;
           if `None`, use a default computed from an integer 0 seed.
-      n_accelerators: Number of accelerators to target.
 
     Returns:
       Zero or more output tensors, packaged as described in the `Layer` class
       docstring.
     """
     weights = self.weights if weights is None else weights
+    rng = self.rng if rng is None else rng
     if state is not None:
       self.state = state  # Needed if the model wasn't fully initialized.
     state = self.state
-    rng = self.rng if rng is None else rng
-    rng = math.random.get_prng(0) if rng is None else rng
-
-    forward_w_s_r = self.pure_fn
-    # TODO(lukaszkaiser): n_accelerators is experimental, to decide on API
-    if n_accelerators:
-      if n_accelerators not in self._jit_cache:
-        self._jit_cache[n_accelerators] = (
-            jit_forward(forward_w_s_r, n_accelerators))
-      forward_w_s_r = self._jit_cache[n_accelerators]
-    outputs, new_state = forward_w_s_r(x, weights, state, rng)
+    outputs, new_state = self.pure_fn(x, weights, state, rng)
     self.state = new_state
     self.weights = weights
     return outputs
@@ -799,108 +787,3 @@ def _shapes(x):
     except Exception:  # pylint: disable=broad-except
       return ()
   return tuple(nested_map(shape, x))
-
-
-def jit_forward(forward, n_devices, do_mean=True):
-  """Returns a JIT-compiled forward function running on `n_devices`."""
-  model_predict = _accelerate(forward, n_devices)
-  if n_devices == 1:
-    return model_predict
-
-  def predict(x, weights, state, rng):
-    """Predict function JIT-compileds and parallelized as requested."""
-    res, state = _combine_devices(model_predict(
-        reshape_by_device(x, n_devices),
-        weights,
-        state,
-        jnp.stack(math.random.split(rng, n_devices))))
-    if do_mean:
-      return math.nested_map(lambda y: jnp.mean(y, axis=0), res), state
-    else:
-      return res, state
-
-  return predict
-
-
-def _combine_devices(x_tuple):
-  """Combines multi-device tensors into a single batch."""
-  def f(x):
-    if len(x.shape) < 2:
-      return x  # No extra batch dimension: use devices as batch, so return.
-    batch_size = x.shape[0] * x.shape[1]
-    return math.numpy.reshape(x, [batch_size] + list(x.shape[2:]))
-  return math.nested_map(f, x_tuple)
-
-
-def _accelerate(f, n_devices):
-  """JIT-compiled version of `f` running on `n_devices`."""
-  if n_devices == 1:
-    return math.jit(f)
-
-  return math.pmap(f, axis_name='batch')
-
-
-def reshape_by_device(x, n_devices):
-  """Reshapes possibly nested `x` into a shape `(n_devices, ...)`."""
-  def f(x):
-    x_shape = list(x.shape)
-    batch_size = x_shape[0]
-    batch_size_per_device = batch_size // n_devices
-    if batch_size_per_device * n_devices != batch_size:
-      raise ValueError(f'Number of devices ({n_devices}) does not evenly '
-                       f'divide batch size ({batch_size}).')
-    new_shape_prefix = [n_devices, batch_size_per_device]
-    return math.numpy.reshape(x, new_shape_prefix + x_shape[1:])
-  return math.nested_map(f, x)
-
-
-def for_n_devices(x, n_devices):
-  """Replicates/broadcasts `x` for `n_devices`."""
-  def f(x):
-    if n_devices > 1 and math.backend_name() == 'jax':
-      return _multi_device_put(x)
-    elif n_devices > 1:
-      return jnp.broadcast_to(x, (n_devices,) + x.shape)
-    else:
-      return x
-  return math.nested_map(f, x)
-
-
-def _multi_device_put(x, devices=None):
-  """Memory efficient multi-device replication / broadcast in JAX.
-
-  JAX uses a ShardedDeviceArray class that holds a list of device buffers
-  on separate devices for use with pmap'd computations.  Sharded arrays
-  are explicitly used to eliminate unnecessary inter-device transfer of
-  memory buffers between use in pmap'd computations.  The JAX API currently
-  does not have a multi-device 'put' function that copies a buffer onto
-  N devices in a memory-efficient fashion, so we implement our own here.
-
-  Args:
-    x: jax DeviceArray or numpy ndarray to be replicated.
-    devices: a jax.devices() list or subset thereof of devices to
-      replicate onto.  Should match the list passed to any pmaps
-      ingesting the replicated array.
-
-  Returns:
-    A ShardedDeviceArray with
-    dtype = x.dtype and shape = (n_devices,) + x.shape
-    that's backed by replicated device_buffers on each local device.
-  """
-  # Convert _FilledConstants that don't have device_buffer, etc.
-  if type(x) != jax.xla.DeviceArray:  # pylint: disable=unidiomatic-typecheck
-    x = jnp.array(x)
-  # Calculate the abstract shape of the replicated array.
-  if not devices:
-    devices = jax.local_devices()
-  n_devices = len(devices)
-  x_aval = jax.xla.abstractify(x)
-  broadcast_x_aval = jax.abstract_arrays.ShapedArray(
-      (n_devices,) + x_aval.shape,
-      x_aval.dtype)
-  # Create copies of the underlying device buffer for each local device.
-  broadcast_buffers = [
-      jax.interpreters.xla.device_put(x, dv)
-      for dv in devices
-  ]
-  return jax.pxla.ShardedDeviceArray(broadcast_x_aval, broadcast_buffers)

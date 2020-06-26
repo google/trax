@@ -121,21 +121,6 @@ class BaseLayerTest(parameterized.TestCase):
       self.assertEqual(grad.shape, (9, 17))  # Gradient for each input.
       self.assertEqual(sum(sum(grad)), sum(sum(random_input)))  # Same as input.
 
-  def test_accelerated_forward_called_twice(self):
-
-    class Constant(base.Layer):
-
-      def init_weights_and_state(self, input_signature):
-        self.weights = 123
-
-      def forward(self, inputs):
-        return self.weights
-
-    layer = Constant()
-    layer.init(input_signature=shapes.ShapeDtype(()))
-    layer(0, n_accelerators=1)
-    layer(0, n_accelerators=1)
-
   def test_weights_and_state_signature(self):
 
     class MyLayer(base.Layer):
