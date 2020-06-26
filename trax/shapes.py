@@ -15,10 +15,6 @@
 
 """Core class and functions for handling data abstractly as shapes/dtypes."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import tensorflow as tf
 
@@ -98,7 +94,9 @@ def signature(obj):
   """
   if isinstance(obj, (list, tuple)):
     output = tuple(signature(x) for x in obj)
-    return output[0] if len(output) == 1 else output
+    return output if isinstance(obj, tuple) else list(output)
+  elif isinstance(obj, dict):
+    return {k: signature(v) for (k, v) in obj.items()}
   else:
     return ShapeDtype(obj.shape, obj.dtype)
 

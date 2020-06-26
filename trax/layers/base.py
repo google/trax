@@ -455,10 +455,11 @@ class Layer:
       # TODO(jonni): Check if using an rng still carries this cost.
       dummy_rng = math.random.get_prng(0)
       rng_signature = ShapeDtype(dummy_rng.shape, dummy_rng.dtype)
-      weight_signature = nested_map(signature, self.weights)
+      weights_signature = nested_map(signature, self.weights)
+      state_signature = nested_map(signature, self.state)
       forward_infer_shapes = math.abstract_eval(self.pure_fn)
       return forward_infer_shapes(
-          input_signature, weight_signature, self.state, rng_signature)
+          input_signature, weights_signature, state_signature, rng_signature)
     except Exception:
       # Skipping 13 lines which are all JAX abstract'ifying wrappers.
       name, trace = self._name, _short_traceback(skip=13)
