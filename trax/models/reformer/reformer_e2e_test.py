@@ -30,7 +30,7 @@ from trax.supervised import trainer_lib
 
 pkg_dir, _ = os.path.split(__file__)
 _TESTDATA = os.path.join(pkg_dir, 'testdata')
-_CONFIG_DIR = os.path.join(pkg_dir, '../../configs/')
+_CONFIG_DIR = os.path.join(pkg_dir, '../../supervised/configs/')
 
 
 class ReformerE2ETest(absltest.TestCase):
@@ -38,6 +38,7 @@ class ReformerE2ETest(absltest.TestCase):
   def setUp(self):
     super().setUp()
     gin.clear_config()
+    gin.add_config_file_search_path(_CONFIG_DIR)
 
   @contextlib.contextmanager
   def tmp_dir(self):
@@ -53,7 +54,7 @@ class ReformerE2ETest(absltest.TestCase):
     n_layers = 2
     d_ff = 32
 
-    gin.parse_config_file(os.path.join(_CONFIG_DIR, 'reformer_wmt_ende.gin'))
+    gin.parse_config_file('reformer_wmt_ende.gin')
 
     gin.bind_parameter('data_streams.data_dir', _TESTDATA)
     gin.bind_parameter('batcher.batch_size_per_device', batch_size_per_device)
@@ -73,8 +74,7 @@ class ReformerE2ETest(absltest.TestCase):
     n_layers = 2
     d_ff = 32
 
-    gin.parse_config_file(os.path.join(_CONFIG_DIR,
-                                       'reformer_noencdecattn_wmt_ende.gin'))
+    gin.parse_config_file('reformer_noencdecattn_wmt_ende.gin')
 
     gin.bind_parameter('data_streams.data_dir', _TESTDATA)
     gin.bind_parameter('batcher.batch_size_per_device', batch_size_per_device)
