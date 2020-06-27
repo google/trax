@@ -16,6 +16,7 @@
 # Lint as: python3
 """Inference methods for autoregressive models (see the Search class)."""
 # TODO(kitaev): this file needs style cleanup.
+# TODO(jonni): Avoid 3 numpy's: jnp, onp, np
 
 import collections
 import functools
@@ -26,8 +27,8 @@ from jax import numpy as jnp
 import numpy as onp
 
 from trax import layers as tl
-import trax.math
-from trax.math import numpy as np  # TODO(jonni): Avoid 3 numpy's: jnp, onp, np
+import trax.fastmath
+from trax.fastmath import numpy as np
 from trax.shapes import ShapeDtype
 
 # Constants
@@ -497,7 +498,7 @@ class Search:
 
     # Fix tree structure of the state (there's a tuple vs. list mismatch)
     initial_state = jax.tree_unflatten(
-        state_structure, trax.math.tree_leaves(initial_state))
+        state_structure, trax.fastmath.tree_leaves(initial_state))
 
     return initial_state
 
@@ -556,7 +557,7 @@ class Search:
         [batch_size, beam_size] beam-search scores.
       The highest-scoring sequence will be at index -1 along the beam_size axis.
     """
-    n_devices = trax.math.device_count()
+    n_devices = trax.fastmath.device_count()
     if inputs is not None and targets_prefix is not None:
       pad_to = batch_size
       batch_size = inputs.shape[0]

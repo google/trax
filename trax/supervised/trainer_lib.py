@@ -32,12 +32,12 @@ import gin
 import jax
 import numpy
 import tensorflow.compat.v2 as tf
+from trax import fastmath
 from trax import jaxboard
 from trax import layers as tl
-from trax import math
 from trax import optimizers as trax_opt
-from trax.math import numpy as np
-from trax.math import random as jax_random
+from trax.fastmath import numpy as np
+from trax.fastmath import random as jax_random
 from trax.shapes import ShapeDtype
 from trax.supervised import history as trax_history
 from trax.supervised import inputs as trax_inputs
@@ -117,9 +117,10 @@ class Trainer(object):
       (slots, opt_params) = opt.tree_init(weights)
       return (OptState(weights, slots, opt_params), state)
 
-    if math.backend_name() == 'jax':
+    if fastmath.backend_name() == 'jax':
       # JIT parameter initialization to avoid memory fragmentation
-      new_opt_state_and_model_state = math.jit(new_opt_state_and_model_state)
+      new_opt_state_and_model_state = (
+          fastmath.jit(new_opt_state_and_model_state))
     self._new_opt_state_and_model_state = (
         lambda: new_opt_state_and_model_state(init_rng))
 
@@ -177,7 +178,7 @@ class Trainer(object):
     weights = self._opt_state.weights[0]
     if self.n_devices > 1:
       unreplicate = lambda x: x[0]
-      weights = math.nested_map(unreplicate, weights)
+      weights = fastmath.nested_map(unreplicate, weights)
     return weights
 
   @model_weights.setter
@@ -195,7 +196,7 @@ class Trainer(object):
     state = self._model_state[0]
     if self.n_devices > 1:
       unreplicate = lambda x: x[0]
-      state = math.nested_map(unreplicate, state)
+      state = fastmath.nested_map(unreplicate, state)
     return state
 
   @model_state.setter
@@ -218,7 +219,7 @@ class Trainer(object):
     # TODO(lukaszkaiser): it makes no sense to use an accelerator (e.g. TPU)
     # in op-by-op mode just to compute the learning rate. However, there
     # should be a cleaner approach that forceably swapping out the backend.
-    with math.use_backend('numpy'):
+    with fastmath.use_backend('numpy'):
       return self._lr_fn(self._step)
 
   def reset(self, output_dir, init_checkpoint=None):
@@ -324,7 +325,7 @@ class Trainer(object):
     # TODO(pkozakowski): Optimizer parameters get polluted with model state,
     # which doesn't break anything but is weird. Filter it out.
     opt_param_updates = self._for_n_devices(
-        math.nested_map(np.array, self.nontrainable_params))
+        fastmath.nested_map(np.array, self.nontrainable_params))
     opt_state = self._opt_state
     opt_state.opt_params.update(opt_param_updates)
 
@@ -414,10 +415,10 @@ class Trainer(object):
     opt_state = self._opt_state
     if self.n_devices > 1:
       first_replica = lambda x: x[0]
-      opt_state = OptState(*math.nested_map(first_replica, opt_state))
+      opt_state = OptState(*fastmath.nested_map(first_replica, opt_state))
     # This line, while optional, allows JAX to transfer arrays from the device
     # to the host in parallel, which is particularly important for cloud TPU.
-    if math.backend_name() == 'jax':
+    if fastmath.backend_name() == 'jax':
       opt_state = jax.device_get(opt_state)
     step, history, model_state = self._step, self._history, self._model_state
     output_dir = self._output_dir
@@ -473,7 +474,7 @@ class Trainer(object):
     sizes = _sizes(opt_state.weights)
     if self.n_devices > 1:
       unreplicate = lambda x: x[0]
-      single_weights = math.nested_map(unreplicate, opt_state.weights)
+      single_weights = fastmath.nested_map(unreplicate, opt_state.weights)
       sizes = _sizes(single_weights)
     total_size = _nested_reduce(sum, sizes)
     self.log_step('Total number of trainable weights: %d' % total_size)
@@ -492,7 +493,7 @@ class Trainer(object):
       n_devices: The passed in value of n_devices or a computed default.
       random_seed: The passed in value of random_seed or a computed default.
     """
-    if math.backend_name() == 'jax':
+    if fastmath.backend_name() == 'jax':
       host_id = jax.host_id()
       host_count = jax.host_count()
     else:
@@ -500,10 +501,10 @@ class Trainer(object):
       host_count = 1
     is_chief = (host_id == 0)
 
-    device_count = math.device_count()
+    device_count = fastmath.device_count()
     n_devices = n_devices or device_count
     # TODO(lukaszkaiser): remove this restriction when possible.
-    if n_devices != device_count and math.backend_name() == 'jax':
+    if n_devices != device_count and fastmath.backend_name() == 'jax':
       raise ValueError('JAX cannot work yet with n_devices != all devices: '
                        '%d != %d' % (n_devices, device_count))
 
@@ -622,7 +623,7 @@ def train(output_dir,
       # Bookkeeping we do at the first step
       if trainer.step == 1:
         # Save computation graph (single-device only for now)
-        if (save_graphs and math.backend_name() == 'jax'):
+        if (save_graphs and fastmath.backend_name() == 'jax'):
           trainer.save_computation_graphs()
 
         # Save Gin config
@@ -654,31 +655,32 @@ def _jit_update_fn(predict_fn, loss_fn, optimizer, n_devices, jit=True):
     def single_update(weights_and_slots, i, opt_params, batch, state, rng):
       weights, slots = weights_and_slots
       rng, subrng = jax_random.split(rng[0])
-      grad_fn = math.grad(model_and_loss_call, has_aux=True)
+      grad_fn = fastmath.grad(model_and_loss_call, has_aux=True)
       grads, state = grad_fn(weights, batch, state, rng)
       new_weights, new_slots, stats = optimizer.tree_update(
           i, grads, weights, slots, opt_params)
       return (new_weights, new_slots), stats, state, [subrng]
     if jit:
-      return math.jit(single_update, donate_argnums=(0,))
+      return fastmath.jit(single_update, donate_argnums=(0,))
     else:
       return single_update
 
   # Else, for n_devices > 1:
-  @functools.partial(math.pmap, axis_name='batch', donate_argnums=(0,))
+  @functools.partial(fastmath.pmap, axis_name='batch', donate_argnums=(0,))
   def mapped_update(weights_and_slots, i, opt_params, batch, state, rng):
     """This is a multi-device version of the update function above."""
     # We assume all tensors have the first dimension = n_devices.
     weights, slots = weights_and_slots
     rng, subrng = jax_random.split(rng)
-    grad_fn = math.grad(model_and_loss_call, has_aux=True)
+    grad_fn = fastmath.grad(model_and_loss_call, has_aux=True)
     grads, state = grad_fn(weights, batch, state, rng)
     # We do a psum(1.0) here instead of `n_devices` since `n_devices` is just
     # the number of devices on this host machine, however psum goes over all
     # devices of all hosts (ex: a TPU pod) and we need to be averaging over all
     # of them.
     grads = jax.tree_util.tree_map(
-        lambda g: math.psum(g, 'batch') / math.psum(np.array(1.0), 'batch'),
+        lambda g: (  # pylint: disable=g-long-lambda
+            fastmath.psum(g, 'batch') / fastmath.psum(np.array(1.0), 'batch')),
         grads)
     new_weights, new_slots, stats = optimizer.tree_update(
         i, grads, weights, slots, opt_params)
@@ -709,10 +711,10 @@ def _jit_compute_loss_fn(predict_fn, loss_fn, n_devices, jit=True):
       rng, subrng = jax_random.split(rng[0])
       loss_val, state = loss_fn(opt_state[0], batch, predict_fn, state, rng)
       return loss_val, state, [subrng]
-    return math.jit(single_compute_loss) if jit else single_compute_loss
+    return fastmath.jit(single_compute_loss) if jit else single_compute_loss
 
   # Else, for n_devices > 1:
-  @functools.partial(math.pmap, axis_name='batch')
+  @functools.partial(fastmath.pmap, axis_name='batch')
   def mapped_compute_loss(opt_state, batch, state, rng):
     """This is a multi-device version of the update function above."""
     # We assume all tensors have the first dimension = n_devices.
@@ -868,7 +870,7 @@ def _sizes(x):
       return x.size
     except Exception:  # pylint: disable=broad-except
       return 0
-  return math.nested_map(size, x)
+  return fastmath.nested_map(size, x)
 
 
 def _repeat_stream(stream, n_devices):

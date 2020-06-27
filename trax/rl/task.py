@@ -23,7 +23,7 @@ import gin
 import gym
 import numpy as np
 
-from trax import math
+from trax import fastmath
 from trax.supervised import trainer_lib
 
 
@@ -144,7 +144,7 @@ class Trajectory(object):
 
   def _default_timestep_to_np(self, ts):
     """Default way to convert timestep to numpy."""
-    return math.nested_map(np.array, TimeStepNp(
+    return fastmath.nested_map(np.array, TimeStepNp(
         observation=ts.observation,
         action=ts.action,
         dist_inputs=ts.dist_inputs,
@@ -177,7 +177,7 @@ class Trajectory(object):
     def stack(x):
       if not x:
         return None
-      return math.nested_stack(x)
+      return fastmath.nested_stack(x)
 
     return TrajectoryNp(**{  # pylint: disable=g-complex-comprehension
         key: stack(value) for (key, value) in [
@@ -701,7 +701,7 @@ class RLTask:
         # is the shape of the observation space (self.observation_space.shape).
         # We stop the recursion at level 1, so we pass lists of arrays into
         # pad().
-        yield math.nested_map(pad, TrajectoryNp(
+        yield fastmath.nested_map(pad, TrajectoryNp(
             observations=obs,
             actions=act,
             dist_inputs=dinp,

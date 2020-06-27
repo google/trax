@@ -19,11 +19,11 @@
 import jax
 import numpy as np
 
-from trax import math
+from trax import fastmath
+from trax.fastmath import numpy as jnp
 from trax.layers import base
 from trax.layers import initializers as init
 from trax.layers.base import Fn
-from trax.math import numpy as jnp
 
 
 class Dense(base.Layer):
@@ -101,7 +101,7 @@ class Dense(base.Layer):
     """
     shape_w = (input_signature.shape[-1], self._n_units)
     shape_b = (self._n_units,)
-    rng_w, rng_b = math.random.split(self.rng, 2)
+    rng_w, rng_b = fastmath.random.split(self.rng, 2)
     w = self._kernel_initializer(shape_w, rng_w)
 
     if self._use_bias:
@@ -214,12 +214,12 @@ class Dropout(base.Layer):
     mask_shape = list(x.shape)
     for axis in self._shared_axes:
       mask_shape[axis] = 1
-    if math.backend_name() == 'jax':
+    if fastmath.backend_name() == 'jax':
       keep_prob = jax.lax.tie_in(self.rng, 1.0 - rate)
     else:
       keep_prob = 1.0 - rate
-    keep = math.random.bernoulli(rng, keep_prob, tuple(mask_shape))
-    if math.backend_name() == 'jax':
+    keep = fastmath.random.bernoulli(rng, keep_prob, tuple(mask_shape))
+    if fastmath.backend_name() == 'jax':
       keep_prob = jax.lax.tie_in(keep, keep_prob)
     mask = keep.astype(x.dtype) / keep_prob
     return x * mask
@@ -264,7 +264,7 @@ def LogSoftmax(axis=-1):
     axis: Axis along which values are grouped for computing log softmax.
   """
   return Fn('LogSoftmax',
-            lambda x: x - math.logsumexp(x, axis, keepdims=True))
+            lambda x: x - fastmath.logsumexp(x, axis, keepdims=True))
 
 
 def Softmax(axis=-1):
@@ -278,7 +278,7 @@ def Softmax(axis=-1):
     axis: Axis along which values are grouped for computing softmax.
   """
   return Fn('Softmax',
-            lambda x: jnp.exp(x - math.logsumexp(x, axis, keepdims=True)))
+            lambda x: jnp.exp(x - fastmath.logsumexp(x, axis, keepdims=True)))
 
 
 def ToFloat():
@@ -374,12 +374,12 @@ def multigaussian_loss(preds, targets, ngauss=1):  # pylint: disable=invalid-nam
   mus = preds[:, ngauss:ngauss*(ndims + 1)]
   sigmas = preds[:, ngauss(ndims + 1):]
   sigmas = sigmas * sigmas + 1e-6  # Make positive.
-  loglogits = logits - math.logsumexp(logits, axis=-1, keepdims=True)
+  loglogits = logits - fastmath.logsumexp(logits, axis=-1, keepdims=True)
   mus = jnp.reshape(mus, [-1, ngauss, ndims])
   sigmas = jnp.reshape(sigmas, [-1, ngauss, ndims])
   targets = jnp.reshape(targets, [-1, 1, ndims])
   glogprobs = log_gaussian_diag_pdf(targets, mus, sigmas)
-  return math.logsumexp(loglogits + glogprobs, axis=-1)
+  return fastmath.logsumexp(loglogits + glogprobs, axis=-1)
 
 
 def gumbel_sample(log_probs, temperature=1.0):  # pylint: disable=invalid-name

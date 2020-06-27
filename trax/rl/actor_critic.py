@@ -23,11 +23,11 @@ import gym
 import numpy as np
 import tensorflow as tf
 
+from trax import fastmath
 from trax import layers as tl
-from trax import math
 from trax import shapes
 from trax import supervised
-from trax.math import numpy as jnp
+from trax.fastmath import numpy as jnp
 from trax.rl import advantages as rl_advantages
 from trax.rl import training as rl_training
 from trax.supervised import lr_schedules as lr
@@ -133,8 +133,8 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
                                       vocab_size=self._vocab_size)
     self._value_eval_model = value_model(mode='eval')
     self._value_eval_model.init(self._value_model_signature)
-    self._value_eval_jit = tl.jit_forward(self._value_eval_model.pure_fn,
-                                          math.device_count(), do_mean=False)
+    self._value_eval_jit = tl.jit_forward(
+        self._value_eval_model.pure_fn, fastmath.device_count(), do_mean=False)
 
     # Initialize policy training.
     super(ActorCriticTrainer, self).__init__(task, **kwargs)
@@ -211,7 +211,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
       log_probs = None
       inputs = (observations,)
 
-    n_devices = math.device_count()
+    n_devices = fastmath.device_count()
     weights = tl.for_n_devices(self._value_eval_model.weights, n_devices)
     state = tl.for_n_devices(self._value_eval_model.state, n_devices)
     rng = self._value_eval_model.rng
@@ -696,7 +696,7 @@ def SamplingAWRLoss(beta, w_max, reweight=False, sampled_all_discrete=False):  #
   """Definition of the Advantage Weighted Regression (AWR) loss."""
   def f(log_probs, advantages, old_log_probs, mask):
     if reweight:  # Use new policy weights for sampled actions instead.
-      mask *= jnp.exp(math.stop_gradient(log_probs) - old_log_probs)
+      mask *= jnp.exp(fastmath.stop_gradient(log_probs) - old_log_probs)
     if sampled_all_discrete:  # Actions were sampled uniformly; weight them.
       mask *= jnp.exp(old_log_probs)
     weights = jnp.minimum(awr_weights(advantages, beta), w_max)

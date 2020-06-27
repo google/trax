@@ -26,8 +26,8 @@ import traceback
 import numpy as np
 import tensorflow as tf
 
-from trax import math
-from trax.math import nested_map
+from trax import fastmath
+from trax.fastmath import nested_map
 from trax.shapes import ShapeDtype
 from trax.shapes import signature
 
@@ -101,7 +101,7 @@ class Layer:
     self._name = name or self.__class__.__name__
     self._sublayers = ()  # Default is no sublayers.
     # This may run before some backends (e.g. JAX) are initialized, so we use
-    # Python `int` here instead of `math.random.get_prng` (also note that
+    # Python `int` here instead of `fastmath.random.get_prng` (also note that
     # different backends' `get_prng` may return different shapes so they can't
     # be used interchangeably).
     self._rng = random.randint(0, 2**31 - 1)
@@ -358,7 +358,7 @@ class Layer:
 
   def weights_and_state_signature(self, input_signature):
     """Return a pair containing the signatures of weights and state."""
-    abstract_init = math.abstract_eval(self.init)
+    abstract_init = fastmath.abstract_eval(self.init)
     return abstract_init(input_signature)
 
   @property
@@ -366,7 +366,7 @@ class Layer:
     """Returns a single-use random number generator without advancing it."""
     # TODO(lukaszkaiser, jonni): be even more explicit that we're not advancing.
     if isinstance(self._rng, int):
-      self._rng = math.random.get_prng(self._rng)
+      self._rng = fastmath.random.get_prng(self._rng)
     return self._rng
 
   @rng.setter
@@ -375,7 +375,7 @@ class Layer:
     self._rng = rng
     sublayers = self.sublayers
     if sublayers:
-      rngs = math.random.split(rng, len(sublayers))
+      rngs = fastmath.random.split(rng, len(sublayers))
       for sublayer, rng in zip(sublayers, rngs):
         sublayer.rng = rng
 
@@ -463,11 +463,11 @@ class Layer:
       # Note: By using rng_signature in place of an rng, we avoid computing and
       # permanently storing in global memory a large number of dropout masks.
       # TODO(jonni): Check if using an rng still carries this cost.
-      dummy_rng = math.random.get_prng(0)
+      dummy_rng = fastmath.random.get_prng(0)
       rng_signature = ShapeDtype(dummy_rng.shape, dummy_rng.dtype)
       weights_signature = nested_map(signature, self.weights)
       state_signature = nested_map(signature, self.state)
-      forward_infer_shapes = math.abstract_eval(self.pure_fn)
+      forward_infer_shapes = fastmath.abstract_eval(self.pure_fn)
       return forward_infer_shapes(
           input_signature, weights_signature, state_signature, rng_signature)
     except Exception:
@@ -501,11 +501,11 @@ class Layer:
         return res
       return (output, new_state), vjpfun
 
-    do_forward = math.custom_grad(do_forward_vjp, _do_forward)
+    do_forward = fastmath.custom_grad(do_forward_vjp, _do_forward)
 
     output, state = do_forward(x, weights)
     # TODO(lukaszkaiser): Investigate why we need this stop_gradient
-    state = math.stop_gradient(state)
+    state = fastmath.stop_gradient(state)
     return output, state
 
 
@@ -652,12 +652,12 @@ def flatten_weights_and_state(weights, state):
   def _is_empty_weight(x):
     return (x is EMPTY_WEIGHTS or
             (isinstance(x, dict) and x == GET_WEIGHTS_FROM_CACHE))
-  flat_weights = [w for w in math.tree_flatten(weights)
+  flat_weights = [w for w in fastmath.tree_flatten(weights)
                   if not _is_empty_weight(w)]
   def _is_empty_state(x):
     return (x is EMPTY_STATE or
             (isinstance(x, dict) and x == GET_STATE_FROM_CACHE))
-  flat_state = [s for s in math.tree_flatten(state)
+  flat_state = [s for s in fastmath.tree_flatten(state)
                 if not _is_empty_state(s)]
   return flat_weights, flat_state
 
@@ -667,13 +667,13 @@ def unflatten_weights_and_state(
   """Un-flatten weights and state given their signatures."""
   weights_tree, state_tree = weights_and_state_signature
   weights_to_copy = [EMPTY_WEIGHTS, GET_WEIGHTS_FROM_CACHE]
-  weights, _ = math.tree_unflatten(flat_weights, weights_tree,
-                                   copy_from_tree=weights_to_copy)
+  weights, _ = fastmath.tree_unflatten(flat_weights, weights_tree,
+                                       copy_from_tree=weights_to_copy)
   state = None
   if not weights_only:
     states_to_copy = [EMPTY_STATE, GET_STATE_FROM_CACHE]
-    state, _ = math.tree_unflatten(flat_state, state_tree,
-                                   copy_from_tree=states_to_copy)
+    state, _ = fastmath.tree_unflatten(flat_state, state_tree,
+                                       copy_from_tree=states_to_copy)
   return weights, state
 
 
@@ -787,9 +787,9 @@ def _random_values(input_signature, rng):
   if isinstance(input_signature, ShapeDtype):
     shape, dtype = input_signature.shape, input_signature.dtype
     if np.issubdtype(dtype, np.integer):
-      return math.random.bernoulli(rng, 0.5, shape).astype(np.int32)
+      return fastmath.random.bernoulli(rng, 0.5, shape).astype(np.int32)
     else:
-      return math.random.uniform(rng, shape, minval=-1.0, maxval=1.0)
+      return fastmath.random.uniform(rng, shape, minval=-1.0, maxval=1.0)
   elif isinstance(input_signature, (list, tuple)):
     return tuple(_random_values(x, rng) for x in input_signature)
   else:

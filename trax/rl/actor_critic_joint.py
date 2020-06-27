@@ -20,8 +20,8 @@ import functools
 
 from trax import layers as tl
 from trax import supervised
-from trax.math import numpy as jnp
-from trax.math import stop_gradient
+from trax.fastmath import numpy as jnp
+from trax.fastmath import stop_gradient
 from trax.rl import actor_critic
 from trax.rl import distributions
 from trax.rl import rl_layers

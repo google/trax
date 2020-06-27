@@ -16,7 +16,7 @@
 # Lint as: python3
 """Adam optimizer class."""
 
-from trax.math import numpy as np
+from trax.fastmath import numpy as jnp
 from trax.optimizers import base as opt_base
 
 
@@ -48,8 +48,8 @@ class Adam(opt_base.Optimizer):
     )
 
   def init(self, weights):
-    m = np.zeros_like(weights)
-    v = np.zeros_like(weights)
+    m = jnp.zeros_like(weights)
+    v = jnp.zeros_like(weights)
     return m, v
 
   def update(self, step, grads, weights, slots, opt_params):
@@ -64,5 +64,5 @@ class Adam(opt_base.Optimizer):
     mhat = m / (1 - b1 ** (step + 1))  # Bias correction.
     vhat = v / (1 - b2 ** (step + 1))
     new_weights = (1 - weight_decay_rate) * weights - (
-        learning_rate * mhat / (np.sqrt(vhat) + eps)).astype(weights.dtype)
+        learning_rate * mhat / (jnp.sqrt(vhat) + eps)).astype(weights.dtype)
     return new_weights, (m, v)

@@ -15,8 +15,8 @@
 
 """Trax top level import."""
 
+from trax import fastmath
 from trax import layers
-from trax import math
 from trax import models
 from trax import optimizers
 from trax import shapes

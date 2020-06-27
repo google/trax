@@ -13,11 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Trax math: pure numpy backend."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Trax fast math: pure numpy backend."""
 
 import numpy as np
 

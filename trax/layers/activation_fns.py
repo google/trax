@@ -23,10 +23,10 @@ practice of separating the activation function as its own layer, which enables
 easier experimentation across different activation functions.
 """
 
-from trax import math
+from trax import fastmath
+from trax.fastmath import numpy as jnp
 from trax.layers import base
 from trax.layers.base import Fn
-from trax.math import numpy as np
 
 
 def Relu():
@@ -38,7 +38,7 @@ def Relu():
           x & \text{otherwise}.
       \end{array} \right.
   """
-  return Fn('Relu', lambda x: np.where(x <= 0, np.zeros_like(x), x))
+  return Fn('Relu', lambda x: jnp.where(x <= 0, jnp.zeros_like(x), x))
 
 
 def ParametricRelu(a=1.):
@@ -53,7 +53,7 @@ def ParametricRelu(a=1.):
   Args:
     a: Slope of line for positive inputs.
   """
-  return Fn('ParametricRelu', lambda x: np.maximum(a * x, np.zeros_like(x)))
+  return Fn('ParametricRelu', lambda x: jnp.maximum(a * x, jnp.zeros_like(x)))
 
 
 def LeakyRelu(a=0.01):
@@ -68,7 +68,7 @@ def LeakyRelu(a=0.01):
   Args:
     a: Slope of line for negative inputs.
   """
-  return Fn('LeakyRelu', lambda x: np.where(x >= 0, x, a * x))
+  return Fn('LeakyRelu', lambda x: jnp.where(x >= 0, x, a * x))
 
 
 def Elu(a=1.):
@@ -85,7 +85,7 @@ def Elu(a=1.):
   Args:
     a: Coefficient multiplying the exponential, for negative inputs.
   """
-  return Fn('Elu', lambda x: np.where(x > 0, x, a * np.expm1(x)))
+  return Fn('Elu', lambda x: jnp.where(x > 0, x, a * jnp.expm1(x)))
 
 
 def Selu(alpha=1.6732632423543772848170429916717,
@@ -102,7 +102,7 @@ def Selu(alpha=1.6732632423543772848170429916717,
     alpha: Coefficient multiplying the exponential, for negative inputs.
     lmbda: Coefficient scaling the whole function.
   """
-  return Fn('Selu', lambda x: lmbda * np.where(x > 0, x, alpha * np.expm1(x)))
+  return Fn('Selu', lambda x: lmbda * jnp.where(x > 0, x, alpha * jnp.expm1(x)))
 
 
 def Gelu():
@@ -111,7 +111,7 @@ def Gelu():
   .. math::
       f(x) = \frac{x}{2} \cdot (1 + \hbox{erf}(\frac{x}{\sqrt{2}}))
   """
-  return Fn('Gelu', lambda x: x * 0.5 * (1.0 + math.erf(x / np.sqrt(2.0))))
+  return Fn('Gelu', lambda x: x * 0.5 * (1.0 + fastmath.erf(x / jnp.sqrt(2.0))))
 
 
 def FastGelu():
@@ -123,7 +123,7 @@ def FastGelu():
   where :math:`a = 0.7978845608` and :math:`b = 0.044715`.
   """
   def f(x):  # pylint: disable=invalid-name
-    return 0.5 * x * (1 + np.tanh(x * 0.7978845608 * (1 + 0.044715 * x * x)))
+    return 0.5 * x * (1 + jnp.tanh(x * 0.7978845608 * (1 + 0.044715 * x * x)))
   return Fn('FastGelu', f)
 
 
@@ -134,7 +134,7 @@ def Sigmoid():
   .. math::
       f(x) = \frac{1}{1 + e^{-x}}
   """
-  return Fn('Sigmoid', lambda x: math.expit(x))
+  return Fn('Sigmoid', lambda x: fastmath.expit(x))
 
 
 def Tanh():
@@ -143,7 +143,7 @@ def Tanh():
   .. math::
       f(x) = \frac{e^x - e^{-x}}{e^x + e^{-x}}
   """
-  return Fn('Tanh', lambda x: np.tanh(x))
+  return Fn('Tanh', lambda x: jnp.tanh(x))
 # pylint: enable=unnecessary-lambda
 
 
@@ -157,7 +157,7 @@ def HardSigmoid():
           1 & \text{otherwise}.
       \end{array} \right.
   """
-  return Fn('HardSigmoid', lambda x: np.maximum(0, np.minimum(1, (1 + x))))
+  return Fn('HardSigmoid', lambda x: jnp.maximum(0, jnp.minimum(1, (1 + x))))
 
 
 def HardTanh():
@@ -170,7 +170,7 @@ def HardTanh():
           1  & \text{otherwise}.
       \end{array} \right.
   """
-  return Fn('HardTanh', lambda x: np.maximum(-1, np.minimum(1, x)))
+  return Fn('HardTanh', lambda x: jnp.maximum(-1, jnp.minimum(1, x)))
 
 
 def Softplus():
@@ -179,7 +179,7 @@ def Softplus():
   .. math::
       f(x) = \ln(e^x + 1)
   """
-  return Fn('Softplus', lambda x: np.logaddexp(x, 0.))
+  return Fn('Softplus', lambda x: jnp.logaddexp(x, 0.))
 
 
 class ThresholdedLinearUnit(base.Layer):
@@ -188,7 +188,7 @@ class ThresholdedLinearUnit(base.Layer):
   def init_weights_and_state(self, input_signature):
     """Initializes this layer's single weight to zero."""
     del input_signature
-    self.weights = np.zeros((), dtype=np.float32)
+    self.weights = jnp.zeros((), dtype=jnp.float32)
 
   def forward(self, inputs):
     """Executes this layer as part of a forward pass through the model.
@@ -200,4 +200,4 @@ class ThresholdedLinearUnit(base.Layer):
       Tensor of same shape and dtype as the input.
     """
     threshold = self.weights
-    return np.maximum(inputs, threshold)
+    return jnp.maximum(inputs, threshold)

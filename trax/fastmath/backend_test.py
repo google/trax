@@ -13,11 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for trax.math."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Tests for trax.fastmath."""
 
 import collections
 
@@ -25,7 +21,7 @@ import gin
 import jax.numpy as jnp
 import numpy as onp
 from tensorflow import test
-import trax.math as math
+from trax import fastmath
 
 
 _TestNamedtuple = collections.namedtuple('_TestNamedtuple', ['x'])
@@ -41,20 +37,20 @@ class BackendTest(test.TestCase):
     gin.parse_config_files_and_bindings(None, bindings)
 
   def test_backend_imports_correctly(self):
-    backend = math.backend()
+    backend = fastmath.backend()
     self.assertEqual(jnp, backend['np'])
     self.assertNotEqual(onp, backend['np'])
 
     self.override_gin("backend.name = 'numpy'")
 
-    backend = math.backend()
+    backend = fastmath.backend()
     self.assertNotEqual(jnp, backend['np'])
     self.assertEqual(onp, backend['np'])
 
   def test_numpy_backend_delegation(self):
     # Assert that we are getting JAX's numpy backend.
-    backend = math.backend()
-    numpy = math.numpy
+    backend = fastmath.backend()
+    numpy = fastmath.numpy
     self.assertEqual(jnp, backend['np'])
 
     # Assert that `numpy` calls the appropriate gin configured functions and
@@ -67,8 +63,8 @@ class BackendTest(test.TestCase):
 
     self.override_gin("backend.name = 'numpy'")
 
-    backend = math.backend()
-    numpy = math.numpy
+    backend = fastmath.backend()
+    numpy = fastmath.numpy
     self.assertEqual(onp, backend['np'])
 
     # Assert that `numpy` calls the appropriate gin configured functions and
@@ -80,7 +76,7 @@ class BackendTest(test.TestCase):
   def test_nested_map(self):
     inp = {'a': ([0, 1], 2), 'b': _TestNamedtuple(3)}
     out = {'a': ([1, 2], 3), 'b': _TestNamedtuple(4)}
-    self.assertEqual(math.nested_map(lambda x: x + 1, inp), out)
+    self.assertEqual(fastmath.nested_map(lambda x: x + 1, inp), out)
 
   def test_nested_stack(self):
     inp = [
@@ -88,7 +84,7 @@ class BackendTest(test.TestCase):
         {'a': ([1, 2], 3), 'b': _TestNamedtuple(4)},
     ]
     out = {'a': ([[0, 1], [1, 2]], [2, 3]), 'b': _TestNamedtuple([3, 4])}
-    onp.testing.assert_equal(math.nested_stack(inp), out)
+    onp.testing.assert_equal(fastmath.nested_stack(inp), out)
 
 
 if __name__ == '__main__':

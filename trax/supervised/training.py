@@ -35,8 +35,8 @@ Trax provides classes for training supervised models:
 from absl import logging
 import numpy as np
 
+from trax import fastmath
 from trax import layers as tl
-from trax import math
 from trax import shapes
 
 
@@ -101,15 +101,15 @@ class Loop:
     _, _ = task.optimizer.tree_init(self._model_in_training.weights)
 
     self._gradients_and_state_fn = (
-        math.jit(math.grad(self._model_in_training.pure_fn,
-                           argnums=1,  # arg1 of pure_fn: weights
-                           has_aux=True)))  # return (gradients, state)
+        fastmath.jit(fastmath.grad(self._model_in_training.pure_fn,
+                                   argnums=1,  # arg1 of pure_fn: weights
+                                   has_aux=True)))  # return (gradients, state)
 
     if eval_task is not None:
       model_with_metrics = _model_with_metrics(model, eval_task)
       self._eval_weights = model_with_metrics.weights[1]  # just the eval part
       self._eval_state = model_with_metrics.state[1]  # just the eval part
-      self._metrics_fn = math.jit(model_with_metrics.pure_fn)
+      self._metrics_fn = fastmath.jit(model_with_metrics.pure_fn)
 
   def run(self, n_steps=1):
     """Runs this training loop for n steps.
@@ -144,7 +144,7 @@ class Loop:
   def new_rng(self):
     """Returns a new single-use random number generator (JAX PRNG key)."""
     rng = self._model_in_training.rng
-    rng1, rng2 = math.random.split(rng)
+    rng1, rng2 = fastmath.random.split(rng)
     self._model_in_training.rng = rng1
     return rng2
 

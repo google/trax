@@ -21,10 +21,10 @@ from absl.testing import parameterized
 
 import numpy as np
 
-from trax import math
+from trax import fastmath
 from trax import shapes
+from trax.fastmath import numpy as jnp
 from trax.layers import base
-from trax.math import numpy as jnp
 
 
 BACKENDS = ['jax', 'tf']
@@ -82,15 +82,15 @@ class BaseLayerTest(parameterized.TestCase):
       def backward(self, inputs, output, grad, weights, state, new_state, rng):
         return (jnp.zeros_like(grad), ())
 
-    with math.use_backend(backend_name):
+    with fastmath.use_backend(backend_name):
       layer = IdWithZeroGrad()
-      rng = math.random.get_prng(0)
+      rng = fastmath.random.get_prng(0)
       input_signature = shapes.ShapeDtype((9, 17))
-      random_input = math.random.uniform(rng, input_signature.shape,
-                                         minval=-1.0, maxval=1.0)
+      random_input = fastmath.random.uniform(rng, input_signature.shape,
+                                             minval=-1.0, maxval=1.0)
       layer.init(input_signature)
       f = lambda x: jnp.mean(layer(x))
-      grad = math.grad(f)(random_input)
+      grad = fastmath.grad(f)(random_input)
       self.assertEqual(grad.shape, (9, 17))  # Gradient for each input.
       self.assertEqual(sum(sum(grad * grad)), 0.0)  # Each one is 0.
 
@@ -109,15 +109,15 @@ class BaseLayerTest(parameterized.TestCase):
       def backward(self, inputs, output, grad, weights, state, new_state, rng):
         return (inputs, ())
 
-    with math.use_backend(backend_name):
+    with fastmath.use_backend(backend_name):
       layer = IdWithIdGrad()
-      rng = math.random.get_prng(0)
+      rng = fastmath.random.get_prng(0)
       input_signature = shapes.ShapeDtype((9, 17))
-      random_input = math.random.uniform(rng, input_signature.shape,
-                                         minval=-1.0, maxval=1.0)
+      random_input = fastmath.random.uniform(rng, input_signature.shape,
+                                             minval=-1.0, maxval=1.0)
       layer.init(input_signature)
       f = lambda x: jnp.mean(layer(x))
-      grad = math.grad(f)(random_input)
+      grad = fastmath.grad(f)(random_input)
       self.assertEqual(grad.shape, (9, 17))  # Gradient for each input.
       self.assertEqual(sum(sum(grad)), sum(sum(random_input)))  # Same as input.
 

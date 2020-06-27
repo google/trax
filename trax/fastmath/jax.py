@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Trax math: JAX backend."""
+"""Trax fast math: JAX backend."""
 
 import jax
 from jax import lax
@@ -62,7 +62,7 @@ def _pooling_general(inputs, reducer, init_val, rescaler=None,
   dims = (1,) + pool_size + (1,)  # NHWC
   strides = (1,) + spatial_strides + (1,)
   out = lax.reduce_window(inputs, init_val, reducer, dims, strides, padding)
-  return rescale(out, inputs) if rescale else out
+  return rescale(out, inputs) if rescale else out  # pylint: disable=not-callable
 
 
 def jax_max_pool(x, pool_size, strides, padding):

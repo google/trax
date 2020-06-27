@@ -27,19 +27,19 @@ python trax/rl_trainer.py \
   --alsologtostderr
 """
 
+import faulthandler
 import multiprocessing
 import os
 
 from absl import app
 from absl import flags
 from absl import logging
-import faulthandler
 import gin
 import jax
 from jax.config import config
 from tensor2tensor import envs  # pylint: disable=unused-import
 from tensor2tensor.envs import env_problem_utils
-from trax import math
+from trax import fastmath
 from trax import rl  # pylint: disable=unused-import
 from trax import trainer_flags  # pylint: disable=unused-import
 from trax.rl import task as rl_task
@@ -133,7 +133,7 @@ def train_rl(
         logging.info('Trainer is now closed.')
 
     if FLAGS.jax_debug_nans or FLAGS.disable_jit:
-      math.disable_jit()
+      fastmath.disable_jit()
       with jax.disable_jit():
         light_training_loop()
     else:
@@ -197,7 +197,7 @@ def train_rl(
     trainer.training_loop(n_epochs=n_epochs)
 
   if FLAGS.jax_debug_nans or FLAGS.disable_jit:
-    math.disable_jit()
+    fastmath.disable_jit()
     with jax.disable_jit():
       run_training_loop()
   else:

@@ -20,10 +20,10 @@ import logging
 import jax
 import numpy as np
 import trax
-from trax import math
+from trax import fastmath
+from trax.fastmath import numpy as jnp
 from trax.layers import base as layer_base
 from trax.layers import initializers as init
-from trax.math import numpy as jnp
 
 
 class AxialPositionalEncoding(layer_base.Layer):
@@ -78,10 +78,10 @@ class AxialPositionalEncoding(layer_base.Layer):
       for dim in self._dropout_broadcast_dims:
         noise_shape[dim] = 1
       keep_prob = 1.0 - self._dropout
-      if math.backend_name() == 'jax':
+      if fastmath.backend_name() == 'jax':
         keep_prob = jax.lax.tie_in(
             inputs, jnp.full((), keep_prob, dtype=inputs.dtype))
-      keep = math.random.bernoulli(rng, keep_prob, tuple(noise_shape))
+      keep = fastmath.random.bernoulli(rng, keep_prob, tuple(noise_shape))
       multiplier = keep.astype(inputs.dtype) / keep_prob
       return inputs + jnp.reshape(emb * multiplier, inputs.shape)
 
@@ -92,7 +92,7 @@ class AxialPositionalEncoding(layer_base.Layer):
           f'sum(self._d_embs) != d_feature: '
           f'sum({self._d_embs}) vs d_feature: {d_feature}')
 
-    rngs = math.random.split(self.rng, len(self._d_embs))
+    rngs = fastmath.random.split(self.rng, len(self._d_embs))
     weights = []
     for ax, (ax_rng, d_emb) in enumerate(zip(rngs, self._d_embs)):
       ax_shape = [1] * len(self._shape)
@@ -123,7 +123,7 @@ class FixedBasePositionalEncoding(layer_base.Layer):
     rng = self.rng
     batch_size, length = x.shape[0], x.shape[1]
     max_pos = min(self._bases)**self._n_digits
-    rng1, rng2, rng3 = math.random.split(rng, 3)
+    rng1, rng2, rng3 = fastmath.random.split(rng, 3)
     assert length < max_pos, 'length (%d) >= max_pos (%d)' % (length, max_pos)
     positions = jnp.arange(0, length)[None, :]
     if self._mode == 'train':
@@ -158,7 +158,7 @@ class FixedBasePositionalEncoding(layer_base.Layer):
     assert d_feature % self._n_digits == 0
     d_weight = d_feature // self._n_digits
     self.weights = [[self._initializer((1, d_weight), rng)
-                     for rng in math.random.split(self.rng, self._n_digits)]
+                     for rng in fastmath.random.split(self.rng, self._n_digits)]
                     for _ in self._bases]
 
 
@@ -310,7 +310,7 @@ class InfinitePositionalEncoding(layer_base.Layer):
     # Get random phases:
     if self._affine:
       assert rng is not None
-      cycles = cycles + trax.math.random.uniform(
+      cycles = cycles + trax.fastmath.random.uniform(
           rng, (1, depth,), minval=0, maxval=1)
 
     # Convert from cycles to radians:

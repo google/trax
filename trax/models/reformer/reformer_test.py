@@ -22,8 +22,8 @@ from absl.testing import absltest
 import gin
 import numpy as np
 
+from trax import fastmath
 from trax import layers as tl
-from trax import math
 from trax import shapes
 from trax.models.reformer import reformer
 
@@ -70,7 +70,7 @@ class ReformerTest(absltest.TestCase):
     self.assertEqual([y.shape for y in ys], [(1, 8, 16), (1, 8)])
 
   def test_reformer_lm_forward_shape_tf(self):
-    with math.use_backend('tf'):
+    with fastmath.use_backend('tf'):
       vocab_size = 16
       timebin_attn = self._timebin_self_attention_fn(use_reference_code=True)
       model = reformer.ReformerLM(
@@ -108,20 +108,20 @@ class ReformerTest(absltest.TestCase):
     x = np.ones((1, 65536)).astype(np.int32)
     weights, state = model.init(shapes.signature(x))
 
-    @math.jit
+    @fastmath.jit
     def mock_training_step(x, weights, state, rng):
       def compute_mock_loss(weights):
         logits, new_state = model.pure_fn(x, weights, state, rng)
-        loss = math.numpy.mean(logits[..., 0])
+        loss = fastmath.numpy.mean(logits[..., 0])
         return loss, (new_state, logits)
-      gradients, (new_state, logits) = math.grad(
+      gradients, (new_state, logits) = fastmath.grad(
           compute_mock_loss, has_aux=True)(weights)
-      new_weights = math.nested_map_multiarg(
+      new_weights = fastmath.nested_map_multiarg(
           lambda w, g: w - 1e-4 * g, weights, gradients)
       return new_weights, new_state, logits
 
     weights, state, logits = mock_training_step(
-        x, weights, state, math.random.get_prng(0))
+        x, weights, state, fastmath.random.get_prng(0))
     self.assertEqual(logits.shape, (1, 65536, 256))
 
   def test_reformer_no_enc_dec_attention_one_step(self):
@@ -167,22 +167,22 @@ class ReformerTest(absltest.TestCase):
          np.ones((1, max_len)).astype(np.int32)]
     weights, state = model.init(shapes.signature(x))
 
-    @math.jit
+    @fastmath.jit
     def mock_training_step(x, weights, state, rng):
       def compute_mock_loss(weights):
         logits_and_dec_toks, new_state = model.pure_fn(x, weights, state, rng)
         # This returns [logits, decoder tokens]
         logits = logits_and_dec_toks[0]
-        loss = math.numpy.mean(logits[..., 0])
+        loss = fastmath.numpy.mean(logits[..., 0])
         return loss, (new_state, logits)
-      gradients, (new_state, logits) = math.grad(
+      gradients, (new_state, logits) = fastmath.grad(
           compute_mock_loss, has_aux=True)(weights)
-      new_weights = math.nested_map_multiarg(
+      new_weights = fastmath.nested_map_multiarg(
           lambda w, g: w - 1e-4 * g, weights, gradients)
       return new_weights, new_state, logits
 
     weights, state, logits = mock_training_step(
-        x, weights, state, math.random.get_prng(0))
+        x, weights, state, fastmath.random.get_prng(0))
 
     self.assertEqual(logits.shape, (1, max_len, vocab_size))
 

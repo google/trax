@@ -16,8 +16,8 @@
 # Lint as: python3
 """Trax normalization layers."""
 
+from trax.fastmath import numpy as jnp
 from trax.layers import base
-from trax.math import numpy as jnp
 
 
 class BatchNorm(base.Layer):

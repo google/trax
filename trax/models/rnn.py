@@ -17,7 +17,7 @@
 """RNNs."""
 
 from trax import layers as tl
-from trax.math import numpy as jnp
+from trax.fastmath import numpy as jnp
 
 
 def RNNLM(vocab_size,

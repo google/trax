@@ -40,12 +40,12 @@ TODO(jonni): Explain masks and weighting.
 
 import jax
 
-from trax import math
+from trax import fastmath
 from trax import shapes
+from trax.fastmath import numpy as jnp
 from trax.layers import combinators as cb
 from trax.layers import core
 from trax.layers.base import Fn
-from trax.math import numpy as np
 
 
 def L2Loss():
@@ -53,7 +53,7 @@ def L2Loss():
     shapes.assert_same_shape(y_hat, y)
     shapes.assert_same_shape(y, mask)
     l2 = mask * (y_hat - y)**2
-    return np.sum(l2) / np.sum(mask)
+    return jnp.sum(l2) / jnp.sum(mask)
   return Fn('L2Loss', f)
 
 
@@ -92,10 +92,10 @@ def SumOfWeights():
 def _Accuracy(axis=-1):
   """Returns a layer to score matches of predicted versus target categories."""
   def f(y_hat, target_category):  # pylint: disable=invalid-name
-    predicted_category = np.argmax(y_hat, axis=axis)
+    predicted_category = jnp.argmax(y_hat, axis=axis)
     # TODO(pkozakowski): This assertion breaks some tests. Fix and uncomment.
     # shapes.assert_same_shape(predicted_category, target_category)
-    return np.equal(predicted_category, target_category).astype(np.float32)
+    return jnp.equal(predicted_category, target_category).astype(jnp.float32)
   return Fn('_Accuracy', f)
 
 
@@ -104,22 +104,22 @@ def _CrossEntropy():
   def f(y_hat, target_category):  # pylint: disable=invalid-name
     # TODO(pkozakowski): This assertion breaks some tests. Fix and uncomment.
     # shapes.assert_shape_equals(target_category, y_hat.shape[:-1])
-    return -1.0 * np.sum(y_hat * one_hot(target_category, y_hat.shape[-1]),
-                         axis=-1)
+    return -1.0 * jnp.sum(y_hat * one_hot(target_category, y_hat.shape[-1]),
+                          axis=-1)
   return Fn('_CrossEntropy', f)
 
 
 def _WeightedMean():
   """Returns a layer to compute weighted mean over all values in the input."""
   def f(values, weights):  # pylint: disable=invalid-name
-    return np.sum(values * weights) / np.sum(weights)
+    return jnp.sum(values * weights) / jnp.sum(weights)
   return Fn('_WeightedMean', f)
 
 
 def WeightedSum():
   """Returns a layer to compute weighted sum over all values in the input."""
   def f(values, weights):  # pylint: disable=invalid-name
-    return np.sum(values * weights)
+    return jnp.sum(values * weights)
   return Fn('WeightedSum', f)
 
 
@@ -132,10 +132,10 @@ def _WeightedSequenceMean():
     axis_to_sum = list(range(1, len(not_correct.shape)))
     # Summing not-correct on all axes but batch. We're summing 0s and 1s,
     # so the sum is 0 if it's all 0 and >=1 in all other cases.
-    not_correct_seq = np.sum(not_correct, axis=axis_to_sum)
+    not_correct_seq = jnp.sum(not_correct, axis=axis_to_sum)
     # Sequence is correct if not_correct_seq is 0, reverting here.
-    correct_seq = 1.0 - np.minimum(1.0, not_correct_seq)
-    return np.mean(correct_seq)  # Mean over batch.
+    correct_seq = 1.0 - jnp.minimum(1.0, not_correct_seq)
+    return jnp.mean(correct_seq)  # Mean over batch.
   return Fn('_WeightedSequenceMean', f)
 
 
@@ -151,10 +151,10 @@ def _WeightedMaskedMean(metric_layer, final_layer_override=None):
 
 
 # TODO(jonni): Figure out the right name and home for this function.
-def one_hot(x, n_categories, dtype=np.float32):  # pylint: disable=invalid-name
+def one_hot(x, n_categories, dtype=jnp.float32):  # pylint: disable=invalid-name
   """Makes a one-hot array (n+1 dims) from an int-categorical array (n dims)."""
-  indices_less_than_n = np.arange(n_categories)
-  if math.backend_name() == 'jax':
+  indices_less_than_n = jnp.arange(n_categories)
+  if fastmath.backend_name() == 'jax':
     # Work around a jax broadcasting issue.
     indices_less_than_n = jax.lax.tie_in(x, indices_less_than_n)
-  return np.array(x[..., np.newaxis] == indices_less_than_n, dtype)
+  return jnp.array(x[..., jnp.newaxis] == indices_less_than_n, dtype)

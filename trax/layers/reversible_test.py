@@ -20,7 +20,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import numpy as np
 
-from trax import math
+from trax import fastmath
 import trax.layers as tl
 
 
@@ -31,7 +31,7 @@ class ReversibleLayerTest(parameterized.TestCase):
 
   @parameterized.named_parameters([('_' + b, b) for b in BACKENDS])
   def test_reversible_swap(self, backend_name):
-    with math.use_backend(backend_name):
+    with fastmath.use_backend(backend_name):
       layer = tl.ReversibleSwap()
       xs = [np.array([1, 2]), np.array([10, 20])]
       ys = layer(xs)

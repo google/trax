@@ -18,11 +18,11 @@
 
 import jax
 
+from trax import fastmath
 from trax import layers as tl
-from trax import math
+from trax.fastmath import numpy as jnp
 from trax.layers.combinators import (  # pylint: disable=g-multiple-import
     _split_rngs, _inputs_from_stack, _outputs_onto_stack)
-from trax.math import numpy as np
 
 # TODO(afrozm): Move pvt fns here.
 from trax.models.transformer import (  # pylint: disable=g-multiple-import
@@ -57,12 +57,12 @@ def ChunkedFeedForward(d_model, d_ff, dropout, activation, act_dropout,
     batch_times_length = x.shape[0] * x.shape[1]
     assert batch_times_length % chunk_size == 0
     n_chunks = batch_times_length // chunk_size
-    return np.reshape(x, [n_chunks, 1, chunk_size] + list(x.shape[2:]))
+    return jnp.reshape(x, [n_chunks, 1, chunk_size] + list(x.shape[2:]))
   return [
       tl.Dup(),  # Just to have shape for later after scan.
       tl.Fn('ReshapeToChunks', reshape_to_chunks, n_out=1),
       tl.Scan(tl.Serial(ff), axis=0, n_carry=0, remat=True),
-      tl.Fn('ReshapeXToY', lambda x, y: np.reshape(x, y.shape))
+      tl.Fn('ReshapeXToY', lambda x, y: jnp.reshape(x, y.shape))
   ]
 
 
@@ -147,7 +147,7 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
 
     stack = context
     inputs = _inputs_from_stack(self.compute_residual, stack)
-    outputs, compute_residual_vjpfun, outputs_aux = math.vjp(
+    outputs, compute_residual_vjpfun, outputs_aux = fastmath.vjp(
         call_compute_residual, inputs, weights[0], has_aux=True)
     if outputs_aux is not None:
       n_differentiable_outputs = len(outputs)
@@ -182,7 +182,7 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
         self.compute_residual.n_out, self.compute_residual.n_in)
     if not isinstance(stack_ct, (tuple, list)):
       stack_ct = (stack_ct,)
-    stack_ct = (accumulator_output_ct,) + math.nested_map_multiarg(
+    stack_ct = (accumulator_output_ct,) + fastmath.nested_map_multiarg(
         lambda x, y: x+y, context_ct[:len(stack_ct)], stack_ct
         ) + context_ct[len(stack_ct):]
 
@@ -463,7 +463,7 @@ def ReformerShortenLM(vocab_size,
       # the future. Shifting twice to [00][AB] solves the problem as the first
       # "big" symbol becomes all-0 and the rest is shifted enough.
       tl.ShiftRight(n_shifts=shorten_factor - 1),
-      tl.Fn('Shorten', lambda x: np.reshape(  # Shorten -- move to depth.
+      tl.Fn('Shorten', lambda x: jnp.reshape(  # Shorten -- move to depth.
           x, (x.shape[0], x.shape[1] // shorten_factor, -1)), n_out=1),
       tl.Dense(d_model),
       tl.Dup(),  # Stack has (short_x, short_x, x)
@@ -472,7 +472,7 @@ def ReformerShortenLM(vocab_size,
       tl.LayerNorm(),
       tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),  # pylint: disable=no-value-for-parameter
       tl.Dense(shorten_factor * d_embedding),
-      tl.Fn('ProlongBack', lambda x: np.reshape(  # Prolong back.
+      tl.Fn('ProlongBack', lambda x: jnp.reshape(  # Prolong back.
           x, (x.shape[0], x.shape[1] * shorten_factor, -1)), n_out=1),
       tl.Concatenate(),  # Concatenate with just the embeddings.
       tl.CausalConv(d_embedding),
@@ -624,7 +624,7 @@ def Reformer(input_vocab_size,
   # masks on the stack. This causes jax to error, even though the so-called
   # "gradient" wrt the masks is never actually computed.
   # TODO(kitaev): remove this hack.
-  if math.backend_name() == 'jax':
+  if fastmath.backend_name() == 'jax':
     jax.api._check_inexact_input_vjp = lambda x: None  # pylint: disable=protected-access
 
   def PositionalEncoder(vocab_size, mode):  # tokens --> vectors
@@ -683,7 +683,7 @@ def Reformer(input_vocab_size,
       tl.Select([0, 1, 1]),                 # tok_e tok_d tok_d
       tl.Branch([], [tl.PaddingMask(),
                      tl.Fn('Squeeze',
-                           lambda x: np.squeeze(x, (1, 2)), n_out=1)]),
+                           lambda x: jnp.squeeze(x, (1, 2)), n_out=1)]),
       #                                     # tok_e mask  tok_d .....
 
       # Encode.
@@ -769,7 +769,7 @@ def ReformerNoEncDecAttention(input_vocab_size,
   # masks on the stack. This causes jax to error, even though the so-called
   # "gradient" wrt the masks is never actually computed.
   # TODO(kitaev): remove this hack.
-  if math.backend_name() == 'jax':
+  if fastmath.backend_name() == 'jax':
     jax.api._check_inexact_input_vjp = lambda x: None  # pylint: disable=protected-access
 
   def PositionalEncoder(vocab_size, mode):  # tokens --> vectors
@@ -849,7 +849,7 @@ def ReformerNoEncDecAttention(input_vocab_size,
       tl.Select([0, 0, 1, 1]),                  # tok_e tok_e tok_d tok_d
       tl.Branch([], [tl.PaddingMask(),
                      tl.Fn('Squeeze',
-                           lambda x: np.squeeze(x, (1, 2)), n_out=1)]),
+                           lambda x: jnp.squeeze(x, (1, 2)), n_out=1)]),
       #                                         # tok_e mask_e tok_e tok_d tok_d
 
       # Encode.

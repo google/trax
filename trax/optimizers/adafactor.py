@@ -16,7 +16,7 @@
 # Lint as: python3
 """Adafactor optimizer class."""
 
-from trax.math import numpy as np
+from trax.fastmath import numpy as jnp
 from trax.optimizers import base as opt_base
 
 
@@ -75,21 +75,21 @@ class Adafactor(opt_base.Optimizer):
   @staticmethod
   def _decay_rate_pow(i, exponent=0.8):
     """Default Adafactor second-moment decay schedule."""
-    t = np.array(i, np.float32) + 1.0
+    t = jnp.array(i, jnp.float32) + 1.0
     return 1.0 - t**(-exponent)
 
   def init(self, weights):
     shape = weights.shape
     slots = []
     if self._factored and len(shape) >= 2:
-      v_row = np.zeros(shape[:-1], dtype=np.float32)
-      v_col = np.zeros(shape[:-2] + shape[-1:], dtype=np.float32)
+      v_row = jnp.zeros(shape[:-1], dtype=jnp.float32)
+      v_col = jnp.zeros(shape[:-2] + shape[-1:], dtype=jnp.float32)
       slots.extend([v_row, v_col])
     else:
-      v = np.zeros_like(weights)
+      v = jnp.zeros_like(weights)
       slots.append(v)
     if self._do_momentum:
-      m = np.zeros_like(weights)
+      m = jnp.zeros_like(weights)
       slots.append(m)
     return slots
 
@@ -105,23 +105,25 @@ class Adafactor(opt_base.Optimizer):
     decay_rate = self._decay_rate_pow(step, exponent=decay_rate)
     update_scale = learning_rate
     if self._multiply_by_parameter_scale:
-      update_scale *= np.maximum(
-          np.sqrt(np.mean(weights * weights)), epsilon2)
+      update_scale *= jnp.maximum(
+          jnp.sqrt(jnp.mean(weights * weights)), epsilon2)
     mixing_rate = 1.0 - decay_rate
 
     grads_sqr = grads * grads + epsilon1
     if self._factored and len(weights.shape) >= 2:
       v_row = slots.pop(0)
       v_col = slots.pop(0)
-      new_v_row = decay_rate * v_row + mixing_rate * np.mean(grads_sqr, axis=-1)
-      new_v_col = decay_rate * v_col + mixing_rate * np.mean(grads_sqr, axis=-2)
+      new_v_row = (
+          decay_rate * v_row + mixing_rate * jnp.mean(grads_sqr, axis=-1))
+      new_v_col = (
+          decay_rate * v_col + mixing_rate * jnp.mean(grads_sqr, axis=-2))
       updates.extend([new_v_row, new_v_col])
-      row_col_mean = np.mean(new_v_row, axis=-1, keepdims=True)
+      row_col_mean = jnp.mean(new_v_row, axis=-1, keepdims=True)
       row_factor = (new_v_row / row_col_mean)**-0.5
       col_factor = (new_v_col)**-0.5
       y = (
-          grads * np.expand_dims(row_factor, axis=-1) *
-          np.expand_dims(col_factor, axis=-2))
+          grads * jnp.expand_dims(row_factor, axis=-1) *
+          jnp.expand_dims(col_factor, axis=-2))
     else:
       v = slots.pop(0)
       new_v = decay_rate * v + mixing_rate * grads_sqr
@@ -130,7 +132,7 @@ class Adafactor(opt_base.Optimizer):
 
     if self._do_clipping:
       clipping_denom = (
-          np.maximum(1.0, np.sqrt(np.mean(y * y)) / clipping_threshold))
+          jnp.maximum(1.0, jnp.sqrt(jnp.mean(y * y)) / clipping_threshold))
       y /= clipping_denom
 
     subtrahend = update_scale * y

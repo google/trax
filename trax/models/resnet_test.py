@@ -19,7 +19,7 @@
 from absl.testing import absltest
 import numpy as np
 
-from trax import math
+from trax import fastmath
 from trax import shapes
 from trax.models import resnet
 

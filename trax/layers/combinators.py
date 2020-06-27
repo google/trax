@@ -16,10 +16,10 @@
 # Lint as: python3
 """Combinators for composing layers."""
 
-from trax import math
+from trax import fastmath
+from trax.fastmath import numpy as jnp
 from trax.layers import base
 from trax.layers.base import Fn
-from trax.math import numpy as jnp
 from trax.shapes import ShapeDtype
 
 
@@ -397,8 +397,8 @@ class Scan(base.Layer):
       init = (inputs[-n_carry:], self.state)
     else:
       xs, init = inputs, ([], self.state)
-    ys, (carry, new_state) = math.scan(scannable_fn, xs, init,
-                                       axis=self._axis, remat=self._remat)
+    ys, (carry, new_state) = fastmath.scan(scannable_fn, xs, init,
+                                           axis=self._axis, remat=self._remat)
     res = ys + carry if n_carry > 0 else ys
     self.state = new_state
     return res  # Put outputs and carry back on stack.
@@ -748,7 +748,7 @@ def _ensure_sublayers(layers):
 def _split_rngs(rng, n_copies):
   if rng is None:
     return (None,) * n_copies
-  return math.random.split(rng, n_copies)
+  return fastmath.random.split(rng, n_copies)
 
 
 def _inputs_from_stack(layer, stack, n_in=None):

@@ -31,8 +31,8 @@ from jax.config import config
 
 import numpy as np
 
+from trax import fastmath
 from trax import layers as tl
-from trax import math
 from trax import shapes
 from trax.models.reformer import reformer
 
@@ -89,7 +89,7 @@ class ReformerMemoryTest(absltest.TestCase):
         return loss, (new_state, logits)
       gradients, (new_state, logits) = jax.grad(
           compute_mock_loss, has_aux=True)(weights)
-      new_weights = math.nested_map_multiarg(
+      new_weights = fastmath.nested_map_multiarg(
           lambda w, g: w - 1e-4 * g, weights, gradients)
       return new_weights, new_state, logits
 

@@ -16,7 +16,7 @@
 # Lint as: python3
 """Implementations of reversible layers."""
 
-from trax import math
+from trax import fastmath
 from trax.layers import base
 from trax.layers import combinators as cb
 
@@ -64,7 +64,7 @@ class ReversibleLayer(base.Layer):
       return res
 
     reconstructed_x = self.reverse(output, weights, state, new_state, rng)
-    _, vjpfun = math.vjp(_do_forward, reconstructed_x, weights)
+    _, vjpfun = fastmath.vjp(_do_forward, reconstructed_x, weights)
     x_weights_grad = vjpfun(grad)
     return reconstructed_x, x_weights_grad
 
@@ -113,7 +113,7 @@ class ReversibleSerial(ReversibleLayer, cb.Serial):
   def reverse(self, output, weights=(), state=(), new_state=(), rng=None):
     rngs = (None,) * self._n_layers
     if rng is not None:
-      rngs = math.random.split(rng, self._n_layers)
+      rngs = fastmath.random.split(rng, self._n_layers)
 
     stack = output
     for layer, p, s, ns, rng in reversed(list(zip(
@@ -129,7 +129,7 @@ class ReversibleSerial(ReversibleLayer, cb.Serial):
                        rng=None):
     rngs = (None,) * self._n_layers
     if rng is not None:
-      rngs = math.random.split(rng, self._n_layers)
+      rngs = fastmath.random.split(rng, self._n_layers)
 
     stack = output
     stack_grad = grad

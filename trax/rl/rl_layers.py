@@ -19,7 +19,7 @@
   Wrapping happens with help of the function tl.Fn.
 """
 
-from trax.math import numpy as jnp
+from trax.fastmath import numpy as jnp
 
 
 def ValueLoss(values, returns, value_loss_coeff):

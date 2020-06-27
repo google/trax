@@ -17,9 +17,9 @@
 """Accelerate layer that allows for fast computation on accelerators."""
 
 import jax
-from trax import math
+from trax import fastmath
+from trax.fastmath import numpy as jnp
 from trax.layers import base
-from trax.math import numpy as jnp
 
 
 class Accelerate(base.Layer):
@@ -55,7 +55,7 @@ class Accelerate(base.Layer):
   def __init__(self, layer, n_devices=None):
     super(Accelerate, self).__init__(n_in=layer.n_in, n_out=layer.n_out)
     self._sublayers = [layer]
-    self._n_devices = n_devices or math.device_count()
+    self._n_devices = n_devices or fastmath.device_count()
     self._jit_pure_fn = jit_forward(
         layer.pure_fn, self._n_devices, do_mean=False)
 
@@ -94,7 +94,7 @@ class Accelerate(base.Layer):
     """Return a single-device version of x using the first component only."""
     if self._n_devices < 2:
       return x
-    return math.nested_map(lambda y: y[0], x)
+    return fastmath.nested_map(lambda y: y[0], x)
 
   @property
   def weights(self):
@@ -133,9 +133,9 @@ def jit_forward(forward, n_devices, do_mean=True):
         reshape_by_device(x, n_devices),
         weights,
         state,
-        jnp.stack(math.random.split(rng, n_devices))))
+        jnp.stack(fastmath.random.split(rng, n_devices))))
     if do_mean:
-      return math.nested_map(lambda y: jnp.mean(y, axis=0), res), state
+      return fastmath.nested_map(lambda y: jnp.mean(y, axis=0), res), state
     else:
       return res, state
 
@@ -148,16 +148,16 @@ def _combine_devices(x_tuple):
     if len(x.shape) < 2:
       return x  # No extra batch dimension: use devices as batch, so return.
     batch_size = x.shape[0] * x.shape[1]
-    return math.numpy.reshape(x, [batch_size] + list(x.shape[2:]))
-  return math.nested_map(f, x_tuple)
+    return jnp.reshape(x, [batch_size] + list(x.shape[2:]))
+  return fastmath.nested_map(f, x_tuple)
 
 
 def _accelerate(f, n_devices):
   """JIT-compiled version of `f` running on `n_devices`."""
   if n_devices == 1:
-    return math.jit(f)
+    return fastmath.jit(f)
 
-  return math.pmap(f, axis_name='batch')
+  return fastmath.pmap(f, axis_name='batch')
 
 
 def reshape_by_device(x, n_devices):
@@ -170,20 +170,20 @@ def reshape_by_device(x, n_devices):
       raise ValueError(f'Number of devices ({n_devices}) does not evenly '
                        f'divide batch size ({batch_size}).')
     new_shape_prefix = [n_devices, batch_size_per_device]
-    return math.numpy.reshape(x, new_shape_prefix + x_shape[1:])
-  return math.nested_map(f, x)
+    return jnp.reshape(x, new_shape_prefix + x_shape[1:])
+  return fastmath.nested_map(f, x)
 
 
 def for_n_devices(x, n_devices):
   """Replicates/broadcasts `x` for `n_devices`."""
   def f(x):
-    if n_devices > 1 and math.backend_name() == 'jax':
+    if n_devices > 1 and fastmath.backend_name() == 'jax':
       return _multi_device_put(x)
     elif n_devices > 1:
       return jnp.broadcast_to(x, (n_devices,) + x.shape)
     else:
       return x
-  return math.nested_map(f, x)
+  return fastmath.nested_map(f, x)
 
 
 def _multi_device_put(x, devices=None):

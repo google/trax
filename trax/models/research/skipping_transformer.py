@@ -16,13 +16,13 @@
 # Lint as: python3
 """Layer-Skipping Transformer Models."""
 
+from trax import fastmath
 from trax import layers as tl
-from trax import math
+from trax.fastmath import numpy as jnp
+from trax.fastmath import random
 from trax.layers.combinators import _inputs_from_stack
 from trax.layers.combinators import _outputs_onto_stack
 from trax.layers.combinators import _split_rngs
-from trax.math import numpy as np
-from trax.math import random
 from trax.models import transformer
 
 
@@ -83,14 +83,14 @@ class SkippingSerial(tl.Serial):
                        '({})'.format(len(layers_state), n_layers))
 
     # TODO(chowdhery): try different strategies, also try running not all
-    # layers backwards by using math.stop_gradient where needed.
+    # layers backwards by using fastmath.stop_gradient where needed.
 
     # Calculate how many layers to run forward.
     if self._mode == 'train':
       # warmup goes from 1.0 at start to 0.0 at skipping_warmup_steps and after
       w_steps = float(self._skipping_warmup_steps)
-      f_step = np.array(step, dtype=np.float32)
-      warmup = np.maximum(0.0, (w_steps - f_step) / w_steps)
+      f_step = jnp.array(step, dtype=jnp.float32)
+      warmup = jnp.maximum(0.0, (w_steps - f_step) / w_steps)
       # low is the minimum number of layers to *not* skip, from n_layers to 0
       low = warmup * float(n_layers)
       # high should be so that (high - n_layers) / high = 1.0 - skip_fraction
@@ -98,9 +98,9 @@ class SkippingSerial(tl.Serial):
       # (after warmup); so high - n_layers = high - high * skip_fraction
       high = float(n_layers) / self._skip_fraction
       # We want the same rng0 on all cores.
-      if math.device_count() > 1:
-        rng0 = math.psum(rng0, 'batch')
-      n_forward_layers = random.uniform(rng0, (), np.float32, low, high)
+      if fastmath.device_count() > 1:
+        rng0 = fastmath.psum(rng0, 'batch')
+      n_forward_layers = random.uniform(rng0, (), jnp.float32, low, high)
     else:
       n_forward_layers = float(n_layers)
     # Run layers skipping after a certain number.
@@ -110,8 +110,8 @@ class SkippingSerial(tl.Serial):
       def CondF(t):
         o, s = layer.pure_fn(t[0], t[1], t[2], t[3])  # pylint: disable=cell-var-from-loop
         return o, t[1], s, t[3]
-      outputs, _, s, _ = math.cond(
-          math.lt(cur_layer_idx, n_forward_layers),
+      outputs, _, s, _ = fastmath.cond(
+          fastmath.lt(cur_layer_idx, n_forward_layers),
           CondF,
           lambda x: x,
           (inputs, p, s, rng)

@@ -20,7 +20,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import numpy as np
 
-from trax import math
+from trax import fastmath
 from trax import shapes
 import trax.layers as tl
 
@@ -40,7 +40,7 @@ class BatchNormTest(parameterized.TestCase):
       ('tf64', 'tf', np.float64),
   )
   def test_forward_dtype(self, backend, dtype):
-    with math.use_backend(backend):
+    with fastmath.use_backend(backend):
       layer = tl.BatchNorm()
       x = np.ones((3, 2, 7)).astype(dtype)
       _, _ = layer.init(shapes.signature(x))
@@ -103,7 +103,7 @@ class LayerNormTest(parameterized.TestCase):
       ('tf64', 'tf', np.float64),
   )
   def test_forward_dtype(self, backend, dtype):
-    with math.use_backend(backend):
+    with fastmath.use_backend(backend):
       layer = tl.LayerNorm()
       x = np.ones((3, 2, 7)).astype(dtype)
       _, _ = layer.init(shapes.signature(x))

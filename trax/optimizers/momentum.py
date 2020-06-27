@@ -16,7 +16,7 @@
 # Lint as: python3
 """Nesterov momentum optimizer (also known as Nesterov Accelerated Gradient)."""
 
-from trax.math import numpy as np
+from trax.fastmath import numpy as jnp
 from trax.optimizers import base
 
 
@@ -53,7 +53,7 @@ class Momentum(base.Optimizer):
     self._nesterov = nesterov
 
   def init(self, weights):
-    return np.zeros_like(weights)
+    return jnp.zeros_like(weights)
 
   def update(self, step, grads, weights, velocity, opt_params):
     del step

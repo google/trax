@@ -19,12 +19,12 @@
 import jax
 import numpy as np
 
-from trax import math
+from trax import fastmath
+from trax.fastmath import numpy as jnp
 from trax.layers import base
 from trax.layers import combinators as cb
 from trax.layers import core
 from trax.layers.base import Fn
-from trax.math import numpy as jnp
 
 
 # Layers are always CamelCase, but functions in general are snake_case
@@ -178,16 +178,16 @@ def DotProductAttention(queries, keys, values, mask, dropout, mode, rng):
     # We must ensure that both mask and the -1e9 constant have a data dependency
     # on the input. Broadcasted copies of these use a lot of memory, so they
     # should be computed at runtime (rather than being global constants).
-    if math.backend_name() == 'jax':
+    if fastmath.backend_name() == 'jax':
       mask = jax.lax.tie_in(dots, mask)
     # JAX's `full_like` already ties in -1e9 to dots.
     dots = jnp.where(mask, dots, jnp.full_like(dots, -1e9))
   # Softmax.
-  dots = jnp.exp(dots - math.logsumexp(dots, axis=-1, keepdims=True))
+  dots = jnp.exp(dots - fastmath.logsumexp(dots, axis=-1, keepdims=True))
   if dropout >= 1.0:
     raise ValueError('Dropout rates must be lower than 1.')
   if dropout is not None and dropout > 0.0 and mode == 'train':
-    keep = math.random.bernoulli(rng, 1.0 - dropout, dots.shape)
+    keep = fastmath.random.bernoulli(rng, 1.0 - dropout, dots.shape)
     dots = jnp.where(keep, dots / (1.0 - dropout), jnp.zeros_like(dots))
   out = jnp.matmul(dots, values)
   return out
@@ -269,7 +269,7 @@ class DotProductCausalAttention(base.Layer):
       # Not all backends define jnp.tril. However, using np.tril is inefficient
       # in that it creates a large global constant. TODO(kitaev): try to find an
       # alternative that works across all backends.
-      if math.backend_name() == 'jax':
+      if fastmath.backend_name() == 'jax':
         mask = jnp.tril(
             jnp.ones((1, mask_size, mask_size), dtype=np.bool_), k=0)
       else:
@@ -355,9 +355,10 @@ class PositionalEncoding(base.Layer):
         for dim in self._dropout_broadcast_dims:
           noise_shape[dim] = 1
         keep_prob = 1.0 - self._dropout
-        if math.backend_name() == 'jax':
+        if fastmath.backend_name() == 'jax':
           keep_prob = jax.lax.tie_in(x, jnp.full((), keep_prob, dtype=x.dtype))
-        keep = math.random.bernoulli(self.rng, keep_prob, tuple(noise_shape))
+        keep = fastmath.random.bernoulli(self.rng, keep_prob,
+                                         tuple(noise_shape))
         multiplier = keep.astype(x.dtype) / keep_prob
         return x + px * multiplier
     else:
@@ -414,9 +415,9 @@ def _fast_inference_init_state(input_signature, buffer_length):
 
 def _fast_inference_update_state(inputs, state):
   """Updates state of a causal attention layer for fast inference."""
-  if math.backend_name() != 'jax':
+  if fastmath.backend_name() != 'jax':
     raise ValueError(f'JAX backend is required in predict mode, but found '
-                     f'backend ({math.backend_nameO()}).')
+                     f'backend ({fastmath.backend_nameO()}).')
   for x in inputs:
     if x.shape[1] != 1:
       raise ValueError(f'In predict mode, input sequence must have length 1, '

@@ -25,7 +25,7 @@ function that takes a step and returns a dict with entry 'learning_rate'.
 
 import gin
 
-from trax.math import numpy as np
+from trax.fastmath import numpy as jnp
 from trax.supervised import lr_functions
 
 
@@ -103,21 +103,21 @@ def MultifactorSchedule(history=None,
       if name == 'constant':
         ret *= constant
       elif name == 'linear_warmup':
-        ret *= np.minimum(1.0, step / warmup_steps)
+        ret *= jnp.minimum(1.0, step / warmup_steps)
       elif name == 'rsqrt_decay':
-        ret /= np.sqrt(np.maximum(step, warmup_steps))
+        ret /= jnp.sqrt(jnp.maximum(step, warmup_steps))
       elif name == 'rsqrt_normalized_decay':
-        ret *= np.sqrt(warmup_steps)
-        ret /= np.sqrt(np.maximum(step, warmup_steps))
+        ret *= jnp.sqrt(warmup_steps)
+        ret /= jnp.sqrt(jnp.maximum(step, warmup_steps))
       elif name == 'decay_every':
         ret *= (decay_factor ** (step//steps_per_decay))
       elif name == 'cosine_decay':
-        progress = np.maximum(
+        progress = jnp.maximum(
             0.0, (step - warmup_steps) / float(steps_per_cycle))
-        ret *= (0.5 * (1.0 + np.cos(np.pi * (progress % 1.0))))
+        ret *= (0.5 * (1.0 + jnp.cos(jnp.pi * (progress % 1.0))))
       else:
         raise ValueError('Unknown factor %s.' % name)
-    ret = np.asarray(ret, dtype=np.float32)
+    ret = jnp.asarray(ret, dtype=jnp.float32)
     return {'learning_rate': ret}
 
   return learning_rate

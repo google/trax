@@ -23,10 +23,10 @@ import numpy as onp
 
 import tensorflow.compat.v2 as tf
 
+from trax import fastmath as math_lib
 from trax import layers
-from trax import math as math_lib
 from trax import trax2keras
-from trax.math import numpy as np
+from trax.fastmath import numpy as jnp
 from trax.models import mlp
 from trax.models import transformer
 from trax.trax2keras import read_values
@@ -147,7 +147,7 @@ class Trax2KerasTest(tf.test.TestCase, parameterized.TestCase):
         # `g` may be `tf.IndexedSlices`, so we need to `convert_to_tensor`
         # before multiplication.
         weights = tf.nest.map_structure(
-            lambda w, g: w + np.asarray(lr * tf.convert_to_tensor(g), w.dtype),
+            lambda w, g: w + jnp.asarray(lr * tf.convert_to_tensor(g), w.dtype),
             weights, trax_grads)
         rng = rng_updater(rng)
         with tf.GradientTape() as keras_tape:

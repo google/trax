@@ -20,10 +20,10 @@ import functools
 import itertools
 import operator
 
-from trax import math
+from trax import fastmath
+from trax.fastmath import numpy as jnp
 from trax.layers import base
 from trax.layers import initializers as init
-from trax.math import numpy as np
 
 
 class Conv(base.Layer):
@@ -58,12 +58,12 @@ class Conv(base.Layer):
     if len(x_shape) > 4:
       self._check_nhwc()
       new_batch_dim = functools.reduce(operator.mul, x_shape[:-3])
-      x = np.reshape(x, [new_batch_dim] + x_shape[-3:])
-    res = math.conv(
+      x = jnp.reshape(x, [new_batch_dim] + x_shape[-3:])
+    res = fastmath.conv(
         x, w, self._strides, self._padding, self._dimension_numbers,
         self._one) + b
     if len(x_shape) > 4:
-      res = np.reshape(res, x_shape[:-3] + list(res.shape[-3:]))
+      res = jnp.reshape(res, x_shape[:-3] + list(res.shape[-3:]))
     return res
 
   def _kernel_shape(self, input_shape):
@@ -82,7 +82,7 @@ class Conv(base.Layer):
     kernel_shape = self._kernel_shape(input_shape)
     bias_shape = [self._filters if c == 'C' else 1 for c in self._out_spec]
     bias_shape = tuple(itertools.dropwhile(lambda x: x == 1, bias_shape))
-    rng1, rng2 = math.random.split(self.rng, 2)
+    rng1, rng2 = fastmath.random.split(self.rng, 2)
     w = self._kernel_initializer(kernel_shape, rng1)
     b = self._bias_initializer(bias_shape, rng2)
     self.weights = (w, b)
@@ -116,7 +116,8 @@ class CausalConv(Conv):
     rate = 1
     effective_kernel_size = int((self._kernel_size[0] - 1) * rate + 1)
     pad = effective_kernel_size - 1
-    x_leftpad = np.pad(x, pad_width=[[0, 0], [pad, 0], [0, 0]], mode='constant')
+    x_leftpad = (
+        jnp.pad(x, pad_width=[[0, 0], [pad, 0], [0, 0]], mode='constant'))
     return super(CausalConv, self).forward(x_leftpad)
 
 

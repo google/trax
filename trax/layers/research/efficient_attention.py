@@ -37,16 +37,16 @@ revealed several limitations, which this code attempts to address:
 import functools
 import jax
 
-from trax import math
+from trax import fastmath
+from trax.fastmath import numpy as np
 from trax.layers import base
-from trax.math import numpy as np
 
 
 ####################################################### Functions
 
 
 def tie_in(x, y):
-  if math.backend_name() == 'jax':
+  if fastmath.backend_name() == 'jax':
     return jax.lax.tie_in(x, y)
   return y
 
@@ -84,14 +84,14 @@ def mask_self_attention(
     dots, q_info, kv_info, causal=True, exclude_self=True, masked=False):
   """Performs masking for self-attention."""
   if causal:
-    mask = math.lt(q_info, kv_info).astype(np.float32)
+    mask = fastmath.lt(q_info, kv_info).astype(np.float32)
     dots = dots - 1e9 * mask
   if exclude_self:
     mask = np.equal(q_info, kv_info).astype(np.float32)
     dots = dots - 1e5 * mask
   if masked:
     zeros_like_kv_info = tie_in(kv_info, np.zeros_like(kv_info))
-    mask = math.lt(kv_info, zeros_like_kv_info).astype(np.float32)
+    mask = fastmath.lt(kv_info, zeros_like_kv_info).astype(np.float32)
     dots = dots - 1e9 * mask
   return dots
 
@@ -177,7 +177,7 @@ def attend(
     dots = mask_fn(dots, q_info[..., :, None], kv_info[..., None, :])
 
   # Softmax.
-  dots_logsumexp = math.logsumexp(dots, axis=-1, keepdims=True)
+  dots_logsumexp = fastmath.logsumexp(dots, axis=-1, keepdims=True)
   dots = np.exp(dots - dots_logsumexp)
 
   if dropout > 0.0:
@@ -186,7 +186,7 @@ def attend(
     dropout_shape = (dots.shape[-2], dots.shape[-1])
     # TODO(kitaev): verify that tie-in is safe to remove (in light of jax fix)
     keep_prob = tie_in(dots, 1.0 - dropout)
-    keep = math.random.bernoulli(rng, keep_prob, dropout_shape)
+    keep = fastmath.random.bernoulli(rng, keep_prob, dropout_shape)
     multiplier = keep.astype(dots.dtype) / tie_in(keep, keep_prob)
     dots = dots * multiplier
 
@@ -202,7 +202,7 @@ def apply_broadcasted_dropout(vecs, dropout_rate, rng):
   if dropout_rate > 0.0:
     assert rng is not None
     keep_prob = tie_in(vecs, 1.0 - dropout_rate)
-    keep = math.random.bernoulli(rng, keep_prob, (vecs.shape[-1],))
+    keep = fastmath.random.bernoulli(rng, keep_prob, (vecs.shape[-1],))
     multiplier = keep.astype(vecs.dtype) / tie_in(keep, keep_prob)
     return vecs * multiplier
   else:
@@ -214,14 +214,14 @@ def permute_via_gather(val, permutation, inverse_permutation, axis=0):
   def permute_impl(val):
     return np.take(val, permutation, axis=axis)
   def permute_vjp(val):
-    permuted = permute_impl(math.stop_gradient(val))
+    permuted = permute_impl(fastmath.stop_gradient(val))
     def vjpfun(permuted_grad):
       # JAX autodiff would synthesize a scatter operation because it doesn't
       # know that the indices are a permutatation. However on TPU, gathers are
       # faster than scatters (at least in the regime the LSH attention uses).
       return (np.take(permuted_grad, inverse_permutation, axis=axis),)
     return permuted, vjpfun
-  permute = math.custom_grad(permute_vjp, permute_impl)
+  permute = fastmath.custom_grad(permute_vjp, permute_impl)
   return permute(val)
 
 
@@ -229,16 +229,16 @@ def permute_via_sort(val, keys, inverse_keys, axis=0):
   """Permutation helper for LSH attention."""
   def permute_impl(val):
     # On TPU, sorting scalars by key is faster than a gather.
-    _, permuted = math.sort_key_val(keys, val, dimension=axis)
+    _, permuted = fastmath.sort_key_val(keys, val, dimension=axis)
     return permuted
   def permute_vjp(val):
-    permuted = permute_impl(math.stop_gradient(val))
+    permuted = permute_impl(fastmath.stop_gradient(val))
     def vjpfun(permuted_grad):
-      _, val_grad = math.sort_key_val(
+      _, val_grad = fastmath.sort_key_val(
           inverse_keys, permuted_grad, dimension=axis)
       return (val_grad,)
     return permuted, vjpfun
-  permute = math.custom_grad(permute_vjp, permute_impl)
+  permute = fastmath.custom_grad(permute_vjp, permute_impl)
   return permute(val)
 
 
@@ -324,28 +324,28 @@ class EfficientAttentionBase(base.Layer):
   def init_weights_and_state(self, input_signature):
     if not isinstance(input_signature, (tuple, list)):
       input_signature = (input_signature,)
-    input_signature_unbatched = math.nested_map(
+    input_signature_unbatched = fastmath.nested_map(
         lambda x: type(x)(shape=x.shape[1:], dtype=x.dtype),
         input_signature)
     batch_size = int(input_signature[0].shape[0])
 
     weights = []
-    weight_rngs = math.random.split(self.rng, self.n_heads)
+    weight_rngs = fastmath.random.split(self.rng, self.n_heads)
     for i in range(self.n_heads):
       weights.append(self.create_weights_unbatched(input_signature_unbatched,
                                                    weight_rngs[i]))
     state = []
-    state_rngs = math.random.split(self.rng, self.n_heads * batch_size)
+    state_rngs = fastmath.random.split(self.rng, self.n_heads * batch_size)
     for i in range(self.n_heads * batch_size):
       state.append(self.create_state_unbatched(input_signature_unbatched,
                                                state_rngs[i]))
 
     stack_along_axis_0 = lambda *x: np.stack(x, axis=0)
-    weights = math.nested_map_multiarg(stack_along_axis_0, *weights)
-    state = math.nested_map_multiarg(stack_along_axis_0, *state)
+    weights = fastmath.nested_map_multiarg(stack_along_axis_0, *weights)
+    state = fastmath.nested_map_multiarg(stack_along_axis_0, *state)
 
     if self.incremental:
-      mem = math.nested_map(
+      mem = fastmath.nested_map(
           lambda x: np.zeros(  # pylint: disable=g-long-lambda
               x.shape[:1] + (self.predict_mem_len,) + x.shape[2:],
               dtype=x.dtype),
@@ -437,9 +437,9 @@ class EfficientAttentionBase(base.Layer):
     for example_idx in range(batch_size):
       for head_idx in range(self.n_heads):
         # pylint: disable=cell-var-from-loop
-        single_inputs = math.nested_map(lambda x: x[example_idx], inputs)
-        single_weights = math.nested_map(lambda w: w[head_idx], weights)
-        single_state = math.nested_map(
+        single_inputs = fastmath.nested_map(lambda x: x[example_idx], inputs)
+        single_weights = fastmath.nested_map(lambda w: w[head_idx], weights)
+        single_state = fastmath.nested_map(
             lambda s: s[example_idx * self.n_heads + head_idx], state)
         # pylint: enable=cell-var-from-loop
         if self.incremental:
@@ -455,8 +455,8 @@ class EfficientAttentionBase(base.Layer):
         output_accum[example_idx] = output_accum[example_idx] + single_out
 
     output = np.stack(output_accum, 0)
-    if new_state and math.tree_leaves(new_state[0]):
-      new_state = math.nested_map_multiarg(
+    if new_state and fastmath.tree_leaves(new_state[0]):
+      new_state = fastmath.nested_map_multiarg(
           lambda *s: np.stack(s, 0), *new_state)
     else:
       new_state = state
@@ -484,7 +484,7 @@ class EfficientAttentionBase(base.Layer):
       mem = jax.lax.cond(
           pred=do_roll_mem,
           true_operand=mem,
-          true_fun=lambda x: math.nested_map(roll_mem, x),
+          true_fun=lambda x: fastmath.nested_map(roll_mem, x),
           false_operand=mem,
           false_fun=lambda x: x,
       )
@@ -497,7 +497,7 @@ class EfficientAttentionBase(base.Layer):
         else:
           return jax.lax.dynamic_update_slice_in_dim(
               mem_element, new_vals, mem_end, axis=1)
-      inputs = math.nested_map_multiarg(update_mem, mem, inputs)
+      inputs = fastmath.nested_map_multiarg(update_mem, mem, inputs)
       return inputs, state, mem_end, inputs, mem_end + seqlen
     else:
       assert seqlen > self.predict_drop_len or seqlen == self.predict_mem_len
@@ -507,7 +507,7 @@ class EfficientAttentionBase(base.Layer):
       # language model given a long prefix. Note that if we're not at the start
       # of the sequence, the code here won't work.
       new_flat_mem = []
-      for inp in math.tree_leaves(inputs):
+      for inp in fastmath.tree_leaves(inputs):
         assert inp.shape[1] == seqlen
         if seqlen == self.predict_mem_len:
           new_mem_val = inp
@@ -533,7 +533,7 @@ class EfficientAttentionBase(base.Layer):
         return jax.lax.cond(
             pred=jax.lax.eq(mem_end, 0), true_operand=x, true_fun=lambda x: x,
             false_operand=x, false_fun=lambda x: x * np.nan)
-      inputs = math.nested_map(replace_with_nan_if_not_seq_start, inputs)
+      inputs = fastmath.nested_map(replace_with_nan_if_not_seq_start, inputs)
       return inputs, state, 0, mem, np.minimum(seqlen, self.predict_mem_len)
 
   @property
@@ -638,8 +638,8 @@ class EfficientAttentionBase(base.Layer):
 
       forward_unbatched = functools.partial(
           self.incremental_forward_unbatched,
-          q_start=math.stop_gradient(q_start),
-          q_len=math.stop_gradient(seqlen),
+          q_start=fastmath.stop_gradient(q_start),
+          q_len=fastmath.stop_gradient(seqlen),
           rng=rng, update_state=update_state)
 
     # Adjust degree of parallelism based on the batch size.
@@ -648,32 +648,32 @@ class EfficientAttentionBase(base.Layer):
       n_parallel_heads = self.n_parallel_heads
 
     def tree_update(tree, indices, new_values):
-      return math.nested_map_multiarg(
+      return fastmath.nested_map_multiarg(
           lambda x, y: jax.ops.index_update(x, jax.ops.index[indices], y),
           tree, new_values)
 
     def tree_add(tree, indices, new_values):
-      return math.nested_map_multiarg(
+      return fastmath.nested_map_multiarg(
           lambda x, y: jax.ops.index_add(x, jax.ops.index[indices], y),
           tree, new_values)
 
     if compute_grad:
-      inputs_is_differentiable = math.nested_map(
+      inputs_is_differentiable = fastmath.nested_map(
           lambda x: np.issubdtype(x.dtype, np.inexact), inputs)
       def split_differentiable(xs):
-        differentiable_xs = math.nested_map_multiarg(
+        differentiable_xs = fastmath.nested_map_multiarg(
             lambda x, is_differentiable: x if is_differentiable else None,
             xs, inputs_is_differentiable)
-        non_differentiable_xs = math.nested_map_multiarg(
+        non_differentiable_xs = fastmath.nested_map_multiarg(
             lambda x, is_differentiable: None if is_differentiable else x,
             xs, inputs_is_differentiable)
         return differentiable_xs, non_differentiable_xs
       def join_differentiable(differentiable_xs, non_differentiable_xs):
         """Reconstitute inputs pytree from differentiable/non-d. partitions."""
-        differentiable_leaves = math.tree_leaves(differentiable_xs)
-        non_differentiable_leaves = math.tree_leaves(non_differentiable_xs)
+        differentiable_leaves = fastmath.tree_leaves(differentiable_xs)
+        non_differentiable_leaves = fastmath.tree_leaves(non_differentiable_xs)
         leaves = []
-        for is_differentiable in math.tree_leaves(inputs_is_differentiable):
+        for is_differentiable in fastmath.tree_leaves(inputs_is_differentiable):
           if is_differentiable:
             leaves.append(differentiable_leaves.pop(0))
           else:
@@ -687,7 +687,8 @@ class EfficientAttentionBase(base.Layer):
         def fn_closed_over_nd_inp(d_inp, *args):
           inp = join_differentiable(d_inp, nd_inp)
           return fn(inp, *args)
-        return math.vjp(fn_closed_over_nd_inp, d_inp, *args, has_aux=has_aux)
+        return fastmath.vjp(fn_closed_over_nd_inp, d_inp, *args,
+                            has_aux=has_aux)
 
     if n_parallel_heads == 1:
       def run_inner(idx, loop_val):
@@ -696,13 +697,13 @@ class EfficientAttentionBase(base.Layer):
         example_idx = idx // self.n_heads
         head_idx = idx % self.n_heads
 
-        i_h = math.nested_map(lambda x: x[example_idx], inputs)
-        w_h = math.nested_map(lambda w: w[head_idx], weights)
-        s_h = math.nested_map(lambda s: s[idx], state)
+        i_h = fastmath.nested_map(lambda x: x[example_idx], inputs)
+        w_h = fastmath.nested_map(lambda w: w[head_idx], weights)
+        s_h = fastmath.nested_map(lambda s: s[idx], state)
 
         def forward_fn(i_h, w_h):
           return forward_unbatched(
-              *i_h, weights=w_h, state=math.stop_gradient(s_h))
+              *i_h, weights=w_h, state=fastmath.stop_gradient(s_h))
 
         if compute_grad:
           o_h, backward_fn, s_h = vjp(forward_fn, i_h, w_h, has_aux=True)
@@ -733,9 +734,9 @@ class EfficientAttentionBase(base.Layer):
         head_range = head_idx_lo + jax.lax.iota(np.int32, n_parallel_heads)
         state_range = idx + jax.lax.iota(np.int32, n_parallel_heads)
 
-        i_mh = math.nested_map(lambda x: x[example_idx], inputs)
-        w_mh = math.nested_map(lambda w: w[head_range], weights)
-        s_mh = math.nested_map(lambda s: s[state_range], state)
+        i_mh = fastmath.nested_map(lambda x: x[example_idx], inputs)
+        w_mh = fastmath.nested_map(lambda w: w[head_range], weights)
+        s_mh = fastmath.nested_map(lambda s: s[state_range], state)
         def forward_unbatched_h(i_h, w_h, s_h):
           return forward_unbatched(*i_h, weights=w_h, state=s_h)
         def forward_fn(i_mh, w_mh):
@@ -782,8 +783,8 @@ class EfficientAttentionBase(base.Layer):
             np.int32, n_parallel_heads // self.n_heads)
         state_range = idx + jax.lax.iota(np.int32, n_parallel_heads)
 
-        i_mex = math.nested_map(lambda x: x[example_range], inputs)
-        s_mex = math.nested_map(
+        i_mex = fastmath.nested_map(lambda x: x[example_range], inputs)
+        s_mex = fastmath.nested_map(
             lambda s: np.reshape(s[state_range],  # pylint: disable=g-long-lambda
                                  (-1, self.n_heads) + s.shape[1:]),
             state)
@@ -791,7 +792,7 @@ class EfficientAttentionBase(base.Layer):
           o_mex, new_s_mex = jax.vmap(
               forward_single_example, in_axes=(0, None, 0), out_axes=(0, 0))(
                   i_mex, w_all, s_mex)
-          new_s_mex = math.nested_map(
+          new_s_mex = fastmath.nested_map(
               lambda s: np.reshape(s, (n_parallel_heads,) + s.shape[2:]),
               new_s_mex)
           return o_mex, new_s_mex
@@ -811,7 +812,7 @@ class EfficientAttentionBase(base.Layer):
           s_all = tree_update(s_all, state_range, s_mex)
         if compute_grad:
           i_ct_all = tree_update(i_ct_all, example_range, i_ct_mex)
-          w_ct_all = math.nested_map_multiarg(
+          w_ct_all = fastmath.nested_map_multiarg(
               lambda old_all, delta_all: old_all + delta_all,
               w_ct_all, w_ct_mex)
         return (o_all, s_all, i_ct_all, w_ct_all)
@@ -823,9 +824,9 @@ class EfficientAttentionBase(base.Layer):
     if update_state:
       s_all = state
     if compute_grad:
-      i_ct_all = math.nested_map(np.zeros_like, inputs)
+      i_ct_all = fastmath.nested_map(np.zeros_like, inputs)
       i_ct_all, i_nondifferentiable_dummy_ct = split_differentiable(i_ct_all)
-      w_ct_all = math.nested_map(np.zeros_like, weights)
+      w_ct_all = fastmath.nested_map(np.zeros_like, weights)
 
     loop_val = (o_all, s_all, i_ct_all, w_ct_all)
 
@@ -943,13 +944,13 @@ class SelfAttention(EfficientAttentionBase):
     # This initialization type is for parity with previous Trax & tensor2tensor
     # Transformers; it's not clear if it's strictly needed for model accuracy.
     lim = np.sqrt(6.0 / (shape[0] + shape[1] * self.n_heads))
-    return math.random.uniform(rng, shape, np.float32, -lim, lim)
+    return fastmath.random.uniform(rng, shape, np.float32, -lim, lim)
 
   def create_weights_unbatched(self, input_signature, rng):
     if isinstance(input_signature, (tuple, list)):
       input_signature = input_signature[0]
     d_model = input_signature.shape[-1]
-    rng_q, rng_k, rng_v, rng_o = math.random.split(rng, 4)
+    rng_q, rng_k, rng_v, rng_o = fastmath.random.split(rng, 4)
     w_q = self._kernel_initializer((d_model, self.d_qk), rng_q)
     if not self.share_qk:
       w_k = self._kernel_initializer((d_model, self.d_qk), rng_k)
@@ -973,7 +974,7 @@ class SelfAttention(EfficientAttentionBase):
   def forward_unbatched(self, x, mask=None, *,
                         weights, state, rng, update_state):
     del update_state
-    attend_rng, output_rng = math.random.split(rng)
+    attend_rng, output_rng = fastmath.random.split(rng)
     if self.bias:
       if self.share_qk:
         w_q, w_v, w_o, b_q, b_v = weights
@@ -1026,7 +1027,7 @@ class SelfAttention(EfficientAttentionBase):
                                     q_start, q_len,
                                     weights, state, rng, update_state):
     del update_state
-    attend_rng, output_rng = math.random.split(rng)
+    attend_rng, output_rng = fastmath.random.split(rng)
     if self.share_qk:
       w_q, w_v, w_o = weights
     else:
@@ -1154,10 +1155,10 @@ class LSHSelfAttention(SelfAttention):
         n_buckets *= factor
 
     rotations_shape = (vecs.shape[-1], self.n_hashes, rot_size // 2)
-    rng = math.stop_gradient(tie_in(vecs, rng))
-    random_rotations = math.random.normal(rng, rotations_shape).astype(
+    rng = fastmath.stop_gradient(tie_in(vecs, rng))
+    random_rotations = fastmath.random.normal(rng, rotations_shape).astype(
         np.float32)
-    if math.backend_name() == 'jax':
+    if fastmath.backend_name() == 'jax':
       rotated_vecs = np.einsum('tf,fhb->htb', vecs, random_rotations)
     else:
       random_rotations = np.reshape(random_rotations,
@@ -1196,7 +1197,7 @@ class LSHSelfAttention(SelfAttention):
 
   def forward_unbatched(self, x, mask=None, *, weights, state, rng,
                         update_state):
-    attend_rng, output_rng = math.random.split(rng)
+    attend_rng, output_rng = fastmath.random.split(rng)
     w_q, w_v, w_o = weights
 
     q = np.matmul(x, w_q)
@@ -1204,7 +1205,7 @@ class LSHSelfAttention(SelfAttention):
 
     if update_state:
       _, old_hash_rng = state
-      hash_rng, hash_subrng = math.random.split(old_hash_rng)
+      hash_rng, hash_subrng = fastmath.random.split(old_hash_rng)
       buckets = self.hash_vectors(q, hash_subrng, mask)
       s_buckets = buckets
       if self._max_length_for_buckets:
@@ -1224,15 +1225,15 @@ class LSHSelfAttention(SelfAttention):
 
     ticker = tie_in(x, np.arange(self.n_hashes * seqlen))
     buckets_and_t = seqlen * buckets + (ticker % seqlen)
-    buckets_and_t = math.stop_gradient(buckets_and_t)
+    buckets_and_t = fastmath.stop_gradient(buckets_and_t)
 
     # Hash-based sort ("s" at the start of variable names means "sorted")
-    sbuckets_and_t, sticker = math.sort_key_val(
+    sbuckets_and_t, sticker = fastmath.sort_key_val(
         buckets_and_t, ticker, dimension=-1)
-    _, undo_sort = math.sort_key_val(sticker, ticker, dimension=-1)
-    sbuckets_and_t = math.stop_gradient(sbuckets_and_t)
-    sticker = math.stop_gradient(sticker)
-    undo_sort = math.stop_gradient(undo_sort)
+    _, undo_sort = fastmath.sort_key_val(sticker, ticker, dimension=-1)
+    sbuckets_and_t = fastmath.stop_gradient(sbuckets_and_t)
+    sticker = fastmath.stop_gradient(sticker)
+    undo_sort = fastmath.stop_gradient(undo_sort)
 
     st = (sticker % seqlen)
     sq = np.take(q, st, axis=0)
@@ -1267,7 +1268,7 @@ class LSHSelfAttention(SelfAttention):
     if self.n_hashes > 1:
       o = np.reshape(o, (self.n_hashes, seqlen, o.shape[-1]))
       logits = np.reshape(logits, (self.n_hashes, seqlen, 1))
-      probs = np.exp(logits - math.logsumexp(logits, axis=0, keepdims=True))
+      probs = np.exp(logits - fastmath.logsumexp(logits, axis=0, keepdims=True))
       o = np.sum(o * probs, axis=0)
 
     assert o.shape == (seqlen, w_v.shape[-1])
@@ -1329,7 +1330,7 @@ class LSHSelfAttention(SelfAttention):
         false_fun=lambda x: x,
     )
 
-    attend_rng, output_rng = math.random.split(rng)
+    attend_rng, output_rng = fastmath.random.split(rng)
     w_q, w_v, w_o = weights
 
     q_range = q_start + tie_in(x, jax.lax.iota(np.int32, q_len))
@@ -1356,7 +1357,7 @@ class LSHSelfAttention(SelfAttention):
         arange_seqlen > (q_start + q_len),
         -(seqlen + arange_seqlen), arange_seqlen)
     kv_priorities = kv_priorities + seqlen * is_valid_target.astype(np.int32)
-    _, kv_indices = math.sort_key_val(kv_priorities, arange_seqlen)
+    _, kv_indices = fastmath.sort_key_val(kv_priorities, arange_seqlen)
     kv_indices = kv_indices[
         -self.n_hashes * self.chunk_len * (1 + self.n_chunks_before):]
     assert self.n_chunks_after == 0
@@ -1423,12 +1424,12 @@ class EncDecAttention(EfficientAttentionBase):
     # This initialization type is for parity with previous Trax & tensor2tensor
     # Transformers; it's not clear if it's strictly needed for model accuracy.
     lim = np.sqrt(6.0 / (shape[0] + shape[1] * self.n_heads))
-    return math.random.uniform(rng, shape, np.float32, -lim, lim)
+    return fastmath.random.uniform(rng, shape, np.float32, -lim, lim)
 
   def create_weights_unbatched(self, input_signature, rng):
     d_model = input_signature[0].shape[-1]
     d_kv_antecedent = input_signature[1].shape[-1]
-    rng_q, rng_k, rng_v, rng_o = math.random.split(rng, 4)
+    rng_q, rng_k, rng_v, rng_o = fastmath.random.split(rng, 4)
     w_q = self._kernel_initializer((d_model, self.d_qk), rng_q)
     w_k = self._kernel_initializer((d_kv_antecedent, self.d_qk), rng_k)
     w_v = self._kernel_initializer((d_kv_antecedent, self.d_v), rng_v)
@@ -1438,7 +1439,7 @@ class EncDecAttention(EfficientAttentionBase):
   def forward_unbatched(self, q_antecedent, kv_antecedent, mask=None, *,
                         weights, state, rng, update_state):
     del update_state
-    attend_rng, output_rng = math.random.split(rng)
+    attend_rng, output_rng = fastmath.random.split(rng)
     w_q, w_k, w_v, w_o = weights
 
     q = np.matmul(q_antecedent, w_q)

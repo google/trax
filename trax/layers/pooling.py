@@ -16,7 +16,7 @@
 # Lint as: python3
 """Trax pooling layers."""
 
-from trax import math
+from trax import fastmath
 from trax.layers.base import Fn
 
 
@@ -49,7 +49,7 @@ def MaxPool(pool_size=(2, 2), strides=None, padding='VALID'):
   """
   layer_name = f'MaxPool{pool_size}'.replace(' ', '')
   def f(x):
-    return math.max_pool(
+    return fastmath.max_pool(
         x, pool_size=pool_size, strides=strides, padding=padding)
   return Fn(layer_name, f)
 
@@ -82,7 +82,7 @@ def SumPool(pool_size=(2, 2), strides=None, padding='VALID'):
   """
   layer_name = f'SumPool{pool_size}'.replace(' ', '')
   def f(x):
-    return math.sum_pool(
+    return fastmath.sum_pool(
         x, pool_size=pool_size, strides=strides, padding=padding)
   return Fn(layer_name, f)
 
@@ -115,6 +115,6 @@ def AvgPool(pool_size=(2, 2), strides=None, padding='VALID'):
   """
   layer_name = f'AvgPool{pool_size}'.replace(' ', '')
   def f(x):
-    return math.avg_pool(
+    return fastmath.avg_pool(
         x, pool_size=pool_size, strides=strides, padding=padding)
   return Fn(layer_name, f)

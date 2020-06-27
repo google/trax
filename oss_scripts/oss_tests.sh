@@ -64,7 +64,7 @@ set_status
 pytest trax/layers/initializers_test.py
 set_status
 
-pytest --disable-warnings trax/math
+pytest --disable-warnings trax/fastmath
 set_status
 
 pytest --disable-warnings trax/models
@@ -94,8 +94,8 @@ set_status
 # Catch-all for futureproofing.
 
 pytest --disable-warnings \
+  --ignore=trax/fastmath \
   --ignore=trax/layers \
-  --ignore=trax/math \
   --ignore=trax/models \
   --ignore=trax/optimizers \
   --ignore=trax/rl \

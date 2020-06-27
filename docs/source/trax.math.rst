@@ -1,22 +1,22 @@
-trax.math
+trax.fastmath
 =========
 
 backend
 -------
 
-.. automodule:: trax.math.backend
+.. automodule:: trax.fastmath.backend
 
 jax
 ---
 
-.. automodule:: trax.math.jax
+.. automodule:: trax.fastmath.jax
 
 numpy
 -----
 
-.. automodule:: trax.math.numpy
+.. automodule:: trax.fastmath.numpy
 
 tf
 --
 
-.. automodule:: trax.math.tf
+.. automodule:: trax.fastmath.tf

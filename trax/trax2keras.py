@@ -15,18 +15,14 @@
 
 """Trax-to-Keras converter."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 
 import tensorflow.compat.v2 as tf
 
-from trax import math as math_lib
+from trax import fastmath as math_lib
 from trax import shapes as shapes_lib
+from trax.fastmath import numpy as jnp
 from trax.layers import base
-from trax.math import numpy as np
 
 
 def _replace_none_batch(x, batch_size=None):
@@ -54,7 +50,7 @@ def to_tensors(args):
 
 
 def to_arrays(args):
-  return math_lib.nested_map(np.asarray, args)
+  return math_lib.nested_map(jnp.asarray, args)
 
 
 class TraxKerasLayer(tf.keras.layers.Layer):
@@ -102,15 +98,15 @@ class TraxKerasLayer(tf.keras.layers.Layer):
   ...
   ```
 
-  `TraxKeraLayer` uses `tf.Variable` to store weights, not shared with the
+  `TraxKerasLayer` uses `tf.Variable` to store weights, not shared with the
   original Trax layer (which uses tensors to store weights), so using
-  `TraxKeraLayer` may double the memory footprint. This problem can be solved by
-  making sure that the Trax layer's weights/state are cleared whenever
+  `TraxKerasLayer` may double the memory footprint. This problem can be solved
+  by making sure that the Trax layer's weights/state are cleared whenever
   `tf.Variable.assign` (and `tf.Variable.assign_add` etc.) is called, because
   `tf.Variable` is copy-on-write by default.
 
   Mutations in those `tf.Variable`s won't affect the Trax layer's weights, but
-  `TraxKeraLayer`'s forward function calls the Trax layer's forward function,
+  `TraxKerasLayer`'s forward function calls the Trax layer's forward function,
   which caches the weights in the Trax layer object, so a forward pass may
   change the weights cached in the original Trax layer.
 
@@ -139,13 +135,13 @@ class TraxKerasLayer(tf.keras.layers.Layer):
         with a different `batch_size`.
       initializer_rng: (optional) an RNG key used to create the weights and
         state if `trax_layer` doesn't have them. If `None`,
-        `trax.math.random.get_prng(0)` will be used.
+        `trax.fastmath.random.get_prng(0)` will be used.
       rng: (optional) an RNG key for the forward function (aka the "forward
-        key"). If `None`, `trax.math.random.get_prng(0)` will be used.
+        key"). If `None`, `trax.fastmath.random.get_prng(0)` will be used.
       rng_updater: (optional) a function of type rng_key -> rng_key, used to
         update the forward key after each forward pass. If `None`, the function
-        `lambda x: trax.math.random.split(x, 1)[0]` will be used, which advances
-        the RNG key.
+        `lambda x: trax.fastmath.random.split(x, 1)[0]` will be used, which
+        advances the RNG key.
       dtype: (optional) the dtype of the inputs. See the `dtype` argument of
         `tf.keras.layers.Layer.__init__` for details.
     """

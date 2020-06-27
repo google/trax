@@ -31,7 +31,7 @@ from t5.data import utils as t5_utils
 import tensorflow as tf   # pylint: disable=g-explicit-tensorflow-version-import
 import tensorflow_datasets as tfds
 import tensorflow_text as tf_text
-from trax import math
+from trax import fastmath
 
 
 # How many examples from the stream to skip at random during training.
@@ -98,7 +98,7 @@ def data_streams(dataset_name, data_dir=None, preprocess_fn=no_preprocess,
 def dataset_to_stream(dataset, input_name):
   """Takes a tf.Dataset and creates a numpy stream of ready batches."""
   # All input-pipeline processing should be on CPU.
-  for example in math.dataset_as_numpy(dataset):
+  for example in fastmath.dataset_as_numpy(dataset):
     features = example[0]
     inp, out = features[input_name], example[1]
     mask = features['mask'] if 'mask' in features else None

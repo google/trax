@@ -24,7 +24,7 @@ from absl import logging
 import gin
 import numpy as np
 
-from trax.math import numpy as jnp
+from trax.fastmath import numpy as jnp
 
 
 class Inputs(object):

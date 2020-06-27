@@ -21,7 +21,7 @@ import gym
 import numpy as np
 
 from trax import layers as tl
-from trax.math import numpy as jnp
+from trax.fastmath import numpy as jnp
 
 
 class Distribution:

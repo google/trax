@@ -22,7 +22,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import numpy as np
 
-from trax import math
+from trax import fastmath
 from trax import shapes
 from trax.models import transformer
 
@@ -87,7 +87,7 @@ class TransformerTest(parameterized.TestCase):
 
 
   def _test_fast_inference(self, length):
-    with math.use_backend('jax'):
+    with fastmath.use_backend('jax'):
       vocab_size = 16
       model_fn = functools.partial(
           transformer.TransformerLM,
@@ -95,7 +95,7 @@ class TransformerTest(parameterized.TestCase):
       )
       model_slow = model_fn(mode='eval')
       model_fast = model_fn(mode='predict')
-      rng = math.random.get_prng(0)
+      rng = fastmath.random.get_prng(0)
       batch_size = 2
       input_signature = shapes.ShapeDtype((batch_size, 1), np.int32)
       # Given the same rng, both models initialize with the same parameters.

@@ -2,8 +2,8 @@ trax
 ====
 
 .. toctree::
+    fastmath.* <trax.fastmath>
     layers.* <trax.layers>
-    math.* <trax.math>
     models.* <trax.models>
     optimizers.* <trax.optimizers>
     rl.* <trax.rl>

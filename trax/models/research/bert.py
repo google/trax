@@ -19,9 +19,9 @@
 import jax
 import tensorflow as tf
 
+from trax import fastmath
 from trax import layers as tl
-from trax import math
-from trax.math import numpy as np
+from trax.fastmath import numpy as np
 
 # pylint: disable=invalid-name
 
@@ -192,7 +192,7 @@ class PretrainedBERT(tl.Serial):
         ckpt.get_tensor('bert/pooler/dense/bias'),
     ]
 
-    for a, b in zip(math.tree_leaves(weights), new_w):
+    for a, b in zip(fastmath.tree_leaves(weights), new_w):
       assert a.shape == b.shape, (
           f'Expected shape {a.shape}, got shape {b.shape}')
     weights = jax.tree_unflatten(jax.tree_structure(weights), new_w)

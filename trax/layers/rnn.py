@@ -16,14 +16,14 @@
 # Lint as: python3
 """Implementations of common recurrent neural network cells (RNNs)."""
 
-from trax import math
+from trax import fastmath
+from trax.fastmath import numpy as jnp
 from trax.layers import activation_fns
 from trax.layers import base
 from trax.layers import combinators as cb
 from trax.layers import convolution
 from trax.layers import core
 from trax.layers import initializers
-from trax.math import numpy as jnp
 
 
 class LSTMCell(base.Layer):
@@ -60,8 +60,8 @@ class LSTMCell(base.Layer):
     # i = input_gate, j = new_input, f = forget_gate, o = output_gate
     i, j, f, o = jnp.split(y, 4, axis=-1)
 
-    new_c = c * math.sigmoid(f) + math.sigmoid(i) * jnp.tanh(j)
-    new_h = jnp.tanh(new_c) * math.sigmoid(o)
+    new_c = c * fastmath.sigmoid(f) + fastmath.sigmoid(i) * jnp.tanh(j)
+    new_h = jnp.tanh(new_c) * fastmath.sigmoid(o)
     return new_h, jnp.concatenate([new_c, new_h], axis=-1)
 
   def init_weights_and_state(self, input_signature):
@@ -69,7 +69,7 @@ class LSTMCell(base.Layer):
     assert input_signature[1].shape[-1] == 2 * self._n_units
     # The dense layer input is the input and half of the lstm state.
     input_shape = input_signature[0].shape[-1] + self._n_units
-    rng1, rng2 = math.random.split(self.rng, 2)
+    rng1, rng2 = fastmath.random.split(self.rng, 2)
     w = self._kernel_initializer((input_shape, 4 * self._n_units), rng1)
     b = self._bias_initializer((4 * self._n_units,), rng2) + self._forget_bias
     self.weights = (w, b)
@@ -119,7 +119,7 @@ class GRUCell(base.Layer):
     y = jnp.dot(jnp.concatenate([x, gru_state], axis=-1), w1) + b1
 
     # Update and reset gates.
-    u, r = jnp.split(math.sigmoid(y), 2, axis=-1)
+    u, r = jnp.split(fastmath.sigmoid(y), 2, axis=-1)
 
     # Candidate.
     c = jnp.dot(jnp.concatenate([x, r * gru_state], axis=-1), w2) + b2
@@ -132,7 +132,7 @@ class GRUCell(base.Layer):
     assert input_signature[1].shape[-1] == self._n_units
     # The dense layer input is the input and half of the GRU state.
     input_shape = input_signature[0].shape[-1] + self._n_units
-    rng1, rng2, rng3, rng4 = math.random.split(self.rng, 4)
+    rng1, rng2, rng3, rng4 = fastmath.random.split(self.rng, 4)
     w1 = self._kernel_initializer((input_shape, 2 * self._n_units), rng1)
     b1 = self._bias_initializer((2 * self._n_units,), rng2) + self._forget_bias
     w2 = self._kernel_initializer((input_shape, self._n_units), rng3)

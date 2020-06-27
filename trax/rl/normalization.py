@@ -19,8 +19,8 @@
 import gin
 import numpy as np
 
+from trax import fastmath
 from trax import layers as tl
-from trax import math
 
 
 def running_mean_init(shape, fill_value=0):
@@ -98,7 +98,7 @@ class Normalize(tl.Layer):
         # Update statistics for each observation separately for simplicity.
         # Currently during data collection the batch size is 1 anyway.
         count = running_mean_and_variance_get_count(state)
-        state = math.cond(
+        state = fastmath.cond(
             count < self._sample_limit,
             true_operand=(observation, state),
             true_fun=lambda args: running_mean_and_variance_update(*args),

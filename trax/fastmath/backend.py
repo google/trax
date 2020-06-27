@@ -13,18 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Trax math: all the primitive functions needed."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Trax fast math: basic ops/functions."""
 
 import contextlib
 
 import gin
-from trax.math.jax import JAX_BACKEND
-from trax.math.numpy import NUMPY_BACKEND
-from trax.math.tf import TF_BACKEND
+from trax.fastmath.jax import JAX_BACKEND
+from trax.fastmath.numpy import NUMPY_BACKEND
+from trax.fastmath.tf import TF_BACKEND
 
 
 def backend_name():

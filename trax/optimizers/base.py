@@ -16,9 +16,9 @@
 # Lint as: python3
 """Trax base optimizer class."""
 
-from trax import math
+from trax import fastmath
+from trax.fastmath import numpy as jnp
 from trax.layers import base as layers
-from trax.math import numpy as np
 
 
 class Optimizer(object):
@@ -53,7 +53,7 @@ class Optimizer(object):
     """
     init_opt_params['learning_rate'] = learning_rate
     self._init_opt_params = {
-        name: np.array(value) for (name, value) in init_opt_params.items()
+        name: jnp.array(value) for (name, value) in init_opt_params.items()
     }
     self._slots = None
     # Gradient clipping happens with respect to the norm of the whole gradient
@@ -109,7 +109,7 @@ class Optimizer(object):
       learning rate, momentum).
     """
     self._slots = [self.init(weight)
-                   for weight in math.tree_flatten(weight_tree)]
+                   for weight in fastmath.tree_flatten(weight_tree)]
     return (
         self._slots,
         self._init_opt_params,
@@ -132,41 +132,41 @@ class Optimizer(object):
       weights for the whole model (in a tree matching the model's layer
       structure) and `slots` are the updated optimizer slot values.
     """
-    grads_flat = math.tree_flatten(grad_tree)
+    grads_flat = fastmath.tree_flatten(grad_tree)
     grads_norm = self._l2_norm(grads_flat)
     if self._clip_grad_norm is not None:
       max_norm = self._clip_grad_norm
-      grads_flat = [np.where(grads_norm < max_norm,  # pylint: disable=g-complex-comprehension
-                             g,
-                             g * (max_norm / grads_norm))
+      grads_flat = [jnp.where(grads_norm < max_norm,  # pylint: disable=g-complex-comprehension
+                              g,
+                              g * (max_norm / grads_norm))
                     for g in grads_flat]
-    weights_flat = math.tree_flatten(weight_tree)
+    weights_flat = fastmath.tree_flatten(weight_tree)
     weights_norm = self._l2_norm(weights_flat)
     updated_pairs = [
         self._update_and_check(step, grad, weight, slot, opt_params)
         for (grad, weight, slot) in zip(grads_flat, weights_flat, slots)
     ]
     new_weights_flat, self.slots = zip(*updated_pairs)
-    new_weights, _ = math.tree_unflatten(new_weights_flat, weight_tree)
+    new_weights, _ = fastmath.tree_unflatten(new_weights_flat, weight_tree)
     metrics = {'gradients_l2': grads_norm, 'weights_l2': weights_norm}
     return new_weights, self.slots, metrics
 
   def _l2_norm(self, flat_list):
     """Returns the aggregate L2 norm of a list of tensors."""
-    if math.backend_name() == 'jax':
-      norm = np.sqrt(sum(np.vdot(x, x) for x in flat_list))
+    if fastmath.backend_name() == 'jax':
+      norm = jnp.sqrt(sum(jnp.vdot(x, x) for x in flat_list))
     else:  # TODO(lukaszkaiser): add vdot to TF-numpy
-      norm = np.sqrt(sum(np.sum(x*x) for x in flat_list))
+      norm = jnp.sqrt(sum(jnp.sum(x*x) for x in flat_list))
     return norm
 
   def _update_and_check(self, step, grads, weights, slots, opt_params):
     """Updates a single weight array and checks types."""
     new_weights, new_slots = self.update(
         step, grads, weights, slots, opt_params)
-    if isinstance(weights, np.ndarray):
-      if not isinstance(new_weights, np.ndarray):
+    if isinstance(weights, jnp.ndarray):
+      if not isinstance(new_weights, jnp.ndarray):
         raise ValueError(
-            f'New weight values should be of type np.ndarray or a subclass; '
+            f'New weight values should be of type jnp.ndarray or a subclass; '
             f'instead got {type(new_weights)}.')
       if new_weights.dtype != weights.dtype:
         raise ValueError(
@@ -196,12 +196,12 @@ class SGD(Optimizer):
 
 def l2_norm(tree):
   """Compute the l2 norm of a pytree of arrays. Useful for weight decay."""
-  leaves = math.tree_flatten(tree)
-  return np.sqrt(sum(np.vdot(x, x) for x in leaves))
+  leaves = fastmath.tree_flatten(tree)
+  return jnp.sqrt(sum(jnp.vdot(x, x) for x in leaves))
 
 
 def clip_grads(grad_tree, max_norm):
   """Clip gradients stored as a pytree of arrays to maximum norm `max_norm`."""
   norm = l2_norm(grad_tree)
-  normalize = lambda g: np.where(norm < max_norm, g, g * (max_norm / norm))
+  normalize = lambda g: jnp.where(norm < max_norm, g, g * (max_norm / norm))
   return layers.nested_map(grad_tree, normalize)

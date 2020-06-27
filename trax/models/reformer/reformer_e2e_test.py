@@ -46,7 +46,7 @@ class ReformerE2ETest(absltest.TestCase):
     gfile.rmtree(tmp)
 
   def test_reformer_wmt_ende(self):
-    trax.math.disable_jit()
+    trax.fastmath.disable_jit()
 
     batch_size_per_device = 2
     steps = 1
@@ -66,7 +66,7 @@ class ReformerE2ETest(absltest.TestCase):
       _ = trainer_lib.train(output_dir=output_dir)
 
   def test_reformer_noencdecattn_wmt_ende(self):
-    trax.math.disable_jit()
+    trax.fastmath.disable_jit()
 
     batch_size_per_device = 1  # Ignored, but needs to be set.
     steps = 1

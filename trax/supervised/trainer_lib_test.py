@@ -29,11 +29,11 @@ import tensorflow.compat.v2 as tf
 from tensorflow.compat.v2 import test
 from tensorflow.compat.v2.io import gfile
 
+from trax import fastmath
 from trax import layers
-from trax import math
 from trax import models
 from trax import optimizers as trax_opt
-from trax.math import numpy as np
+from trax.fastmath import numpy as jnp
 from trax.supervised import inputs as inputs_lib
 from trax.supervised import lr_schedules as lr
 from trax.supervised import trainer_lib
@@ -47,14 +47,15 @@ def _test_inputs(n_classes, with_weights=False, input_shape=(6, 6, 3)):
 
   def input_stream(n_devices):
     del n_devices
-    key = math.random.get_prng(0)
+    key = fastmath.random.get_prng(0)
     while True:
-      keys = math.random.split(key, 4)
+      keys = fastmath.random.split(key, 4)
       key = keys[0]
-      inputs = math.random.uniform(keys[1], [batch_size] + list(input_shape))
-      targets = math.random.randint(
-          keys[2], [batch_size], dtype=np.int32, minval=0, maxval=n_classes)
-      weights = math.random.uniform(keys[3], [batch_size])
+      inputs = fastmath.random.uniform(
+          keys[1], [batch_size] + list(input_shape))
+      targets = fastmath.random.randint(
+          keys[2], [batch_size], dtype=jnp.int32, minval=0, maxval=n_classes)
+      weights = fastmath.random.uniform(keys[3], [batch_size])
       if with_weights:
         yield inputs, targets, weights
       else:
@@ -83,7 +84,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
   def _test_train_eval_predict(self, backend_name):
     if xla_bridge.device_count() > 1 and backend_name == 'tf':
       self.skipTest("tf-numpy backend does't support multi-devices yet.")
-    with math.use_backend(backend_name), self.tmp_dir() as output_dir:
+    with fastmath.use_backend(backend_name), self.tmp_dir() as output_dir:
       # Prepare model and inputs
       n_classes = 4
       steps = 2
@@ -121,8 +122,8 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       state = state.model_state[0]
       if xla_bridge.device_count() > 1:
         unreplicate = lambda x: x[0]
-        weights = math.nested_map(unreplicate, weights)
-        state = math.nested_map(unreplicate, state)
+        weights = fastmath.nested_map(unreplicate, weights)
+        state = fastmath.nested_map(unreplicate, state)
       model(next(inputs)[0], weights=weights, state=state)
 
   @parameterized.parameters(BACKENDS)
@@ -133,7 +134,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
   def test_train_eval_predict_sm3(self, backend_name):
     if xla_bridge.device_count() > 1 and backend_name == 'tf':
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with math.use_backend(backend_name), self.tmp_dir() as output_dir:
+    with fastmath.use_backend(backend_name), self.tmp_dir() as output_dir:
       # Prepare model and inputs
       n_classes = 4
       steps = 2
@@ -170,7 +171,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
   def test_train_restart(self, backend_name):
     if xla_bridge.device_count() > 1 and backend_name == 'tf':
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with math.use_backend(backend_name), self.tmp_dir() as output_dir:
+    with fastmath.use_backend(backend_name), self.tmp_dir() as output_dir:
       # Prepare model and inputs
       n_classes = 4
       steps = 2
@@ -202,7 +203,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
   def test_train_with_weights(self, backend_name):
     if xla_bridge.device_count() > 1 and backend_name == 'tf':
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with math.use_backend(backend_name), self.tmp_dir() as output_dir:
+    with fastmath.use_backend(backend_name), self.tmp_dir() as output_dir:
       # Prepare model and inputs
       n_classes = 4
       steps = 2
@@ -226,7 +227,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
   def test_reset_twice(self, backend_name):
     if xla_bridge.device_count() > 1 and backend_name == 'tf':
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with math.use_backend(backend_name), self.tmp_dir() as output_dir1, \
+    with fastmath.use_backend(backend_name), self.tmp_dir() as output_dir1, \
           self.tmp_dir() as output_dir2:
       n_classes = 4
       model_fn = functools.partial(
@@ -249,10 +250,10 @@ class TraxTest(test.TestCase, parameterized.TestCase):
   def test_tf_xla_forced_compile(self):
     # TODO(wangpeng): re-enable this test
     self.skipTest('Needs --config=cuda to pass this test')
-    old_flag = math.tf_math.tf_xla_forced_compile_enabled()
-    math.tf_math.set_tf_xla_forced_compile(True)
+    old_flag = fastmath.tf_math.tf_xla_forced_compile_enabled()
+    fastmath.tf_math.set_tf_xla_forced_compile(True)
     self._test_train_eval_predict('tf')
-    math.tf_math.set_tf_xla_forced_compile(old_flag)
+    fastmath.tf_math.set_tf_xla_forced_compile(old_flag)
 
   def test_no_int32_or_uint32_returned(self):
     """Tests that Trainer._jit_update_fn doesn't return int32 or uint32.
@@ -263,7 +264,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
     """
     if xla_bridge.device_count() > 1:
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with math.use_backend('tf'), self.tmp_dir() as output_dir:
+    with fastmath.use_backend('tf'), self.tmp_dir() as output_dir:
       n_classes = 1001
       model_fn = functools.partial(models.Resnet50,
                                    n_output_classes=n_classes)
@@ -282,8 +283,8 @@ class TraxTest(test.TestCase, parameterized.TestCase):
                 trainer._model_state, trainer._rngs)
       arrays = tf.nest.flatten(arrays)
       for x in arrays:
-        if isinstance(x, np.ndarray) and (x.dtype == np.int32 or
-                                          x.dtype == np.uint32):
+        if isinstance(x, jnp.ndarray) and (x.dtype == jnp.int32 or
+                                           x.dtype == jnp.uint32):
           raise ValueError('Found an array of int32 or uint32: %s' % x)
 
 

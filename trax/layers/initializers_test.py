@@ -19,7 +19,7 @@
 from absl.testing import absltest
 import numpy as np
 
-from trax import math
+from trax import fastmath
 from trax import test_utils
 import trax.layers as tl
 
@@ -28,7 +28,7 @@ INPUT_SHAPE = (5, 7, 20)
 
 
 def rng():  # Can't be a constant, because JAX has to init itself in main first.
-  return math.random.get_prng(0)
+  return fastmath.random.get_prng(0)
 
 
 class InitializersTest(absltest.TestCase):
