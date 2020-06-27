@@ -78,7 +78,7 @@ class DenseTest(absltest.TestCase):
     model = tl.Serial(layer, layer)
     sample_input = np.array([1, 2, 3, 4, 5])
     weights, _ = model.init(shapes.signature(sample_input))
-    self.assertIs(weights[1], tl.EMPTY_WEIGHTS)
+    self.assertIs(weights[1], tl.GET_WEIGHTS_FROM_CACHE)
 
   def test_call_no_bias(self):
     layer = tl.Dense(4, use_bias=False)

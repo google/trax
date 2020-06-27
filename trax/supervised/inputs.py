@@ -64,6 +64,11 @@ class Inputs(object):
         a python generator of batches from
         the training set used for evaluation (if None, use train_stream).
     """
+    if not callable(train_stream):
+      raise ValueError('Trax Inputs should be initialized with a function. '
+                       'Did you forget the n_devices argument? If your inputs '
+                       'do not use it, try lambda _: [your-inputs].')
+
     self._train_stream = train_stream
     self._eval_stream = eval_stream or self._train_stream
 
@@ -228,7 +233,7 @@ def batch_fn(dataset, training, n_devices, variable_shapes,
     dataset = batch_data(dataset, cur_batch_size)
   if training and batch_shuffle_size is not None:
     dataset = shuffle_data(dataset, batch_shuffle_size)
-  return add_weights_and_mask(dataset, id_to_mask)
+  return add_loss_weights(dataset, id_to_mask)
 
 
 def shuffle_data(samples, queue_size):
@@ -403,7 +408,7 @@ def bucket_by_length(generator, length_fn, boundaries, batch_sizes,
       buckets[bucket_idx] = []
 
 
-def add_weights_and_mask(generator, id_to_mask=None):
+def add_loss_weights(generator, id_to_mask=None):
   """Add weights to inputs without weights and masks by id if requested.
 
   The generator stream is augmented in the following way:

@@ -26,6 +26,36 @@ function that takes a step and returns a dict with entry 'learning_rate'.
 import gin
 
 from trax.math import numpy as np
+from trax.supervised import lr_functions
+
+
+@gin.configurable(blacklist=['history'])
+def constant(history, value):
+  """Returns an LR schedule that is constant from time (step) 1 to infinity."""
+  del history
+  return _from_lr_function(lr_functions.constant, value)
+
+
+@gin.configurable(blacklist=['history'])
+def warmup(history, n_warmup_steps, max_value):
+  """Returns an LR schedule with linear warm-up followed by constant value.
+
+  Args:
+    history: training history (unused in this schedule)
+    n_warmup_steps: Number of steps during which the learning rate rises on
+        a line connecting (0, 0) and (n_warmup_steps, max_value).
+    max_value: Value for learning rate after warm-up has finished.
+  """
+  del history
+  return _from_lr_function(lr_functions.warmup, n_warmup_steps, max_value)
+
+
+@gin.configurable(blacklist=['history'])
+def warmup_and_rsqrt_decay(history, n_warmup_steps, max_value):
+  """Returns an LR schedule with warm-up + reciprocal square root decay."""
+  del history
+  return _from_lr_function(lr_functions.warmup_and_rsqrt_decay,
+                           n_warmup_steps, max_value)
 
 
 # We use a mix of CamelCase and not in this module.
@@ -145,33 +175,8 @@ def EvalAdjustingSchedule(history,
   return MultifactorSchedule(history, constant=adjusted)
 
 
-# pylint: disable=g-import-not-at-top
-# These dependencies are here to break the circular dependencies.
-from trax.supervised import lr_functions
-# pylint: enable=g-import-not-at-top
-
-
 def _from_lr_function(lr_fn, *args):
   """Compatibility layer: creates a learning rate from lr_functions function."""
   def learning_rate(step):
     return {'learning_rate': lr_fn(*args)(step)}
   return learning_rate
-
-
-@gin.configurable(blacklist=['history'])
-def constant(history, value):
-  del history
-  return _from_lr_function(lr_functions.constant, value)
-
-
-@gin.configurable(blacklist=['history'])
-def warmup(history, n_warmup_steps, max_value):
-  del history
-  return _from_lr_function(lr_functions.warmup, n_warmup_steps, max_value)
-
-
-@gin.configurable(blacklist=['history'])
-def warmup_and_rsqrt_decay(history, n_warmup_steps, max_value):
-  del history
-  return _from_lr_function(lr_functions.warmup_and_rsqrt_decay,
-                           n_warmup_steps, max_value)

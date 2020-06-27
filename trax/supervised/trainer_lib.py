@@ -333,7 +333,6 @@ class Trainer(object):
     (weights, slots), stat, self._model_state, self._rngs = self._jit_update_fn(
         (weights, slots), self._step, opt_params, batch,
         self._model_state, self._rngs)
-    self._model_state = self._map_to_state_dicts(self._state_dicts_update)
     self._opt_state = opt_state._replace(weights=weights, slots=slots)
     if self._should_log_now():
       for name, value in stat.items():
@@ -391,13 +390,6 @@ class Trainer(object):
       for m, v in zip(self._metrics, metric_values):
         metrics[m] += v
     return {m: v / count for (m, v) in metrics.items()}, state
-
-  def update_model_state(self, key, value):
-    """Updates model state based on nontrainable_params."""
-    p_name = key
-    if p_name in self.nontrainable_params:
-      return self._for_n_devices(np.array(self.nontrainable_params[p_name]))
-    return value
 
   def update_nontrainable_params(self):
     self._lr_fn = self._lr_schedule(self._history)
@@ -518,25 +510,6 @@ class Trainer(object):
     if random_seed is None and host_count > 1:
       random_seed = int(1e6 * (host_id + time.time())) % 2**32
     return is_chief, n_devices, init_random_number_generators(random_seed)
-
-  def _map_to_state_dicts(self, f):
-    """Map the function f to all dicts in model state."""
-    # TODO(jonni): Can we replace _nested_map with math.nested_map?
-    def _nested_map(f, x):
-      if isinstance(x, list):
-        return [_nested_map(f, y) for y in x]
-      if isinstance(x, tuple):
-        return tuple([_nested_map(f, y) for y in x])
-      if isinstance(x, dict) and len(x) == 1:
-        return f(x)
-      return x
-    return _nested_map(f, self._model_state)
-
-  def _state_dicts_update(self, state_dict):
-    assert len(state_dict.keys()) == 1
-    key = list(state_dict.keys())[0]
-    value = state_dict[key]
-    return {key: self.update_model_state(key, value)}
 
   def _should_save_now(self):
     return self._should_save_checkpoints and self._step in self._checkpoints_at
@@ -883,6 +856,8 @@ def _nested_reduce(f, x):
     return f([_nested_reduce(f, y) for y in x])
   if isinstance(x, tuple):
     return f([_nested_reduce(f, y) for y in x])
+  if isinstance(x, dict):
+    return f([_nested_reduce(f, v) for (_, v) in x.items()])
   return x
 
 

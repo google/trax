@@ -32,11 +32,11 @@ from trax.shapes import ShapeDtype
 from trax.shapes import signature
 
 
-# TODO(lukaszkaiser): distinguish the 2 kinds below and add more tests.
+# TODO(lukaszkaiser): should we use special objects for these for clarity?
 EMPTY_WEIGHTS = ()    # Used for layers that have no trainable weights.
 EMPTY_STATE = ()      # Used for layers that have no non-trainable state.
-GET_WEIGHTS_FROM_CACHE = ()  # Used to mark that the weights are shared.
-GET_STATE_FROM_CACHE = ()    # Used to mark that the state is shared.
+GET_WEIGHTS_FROM_CACHE = {'__marker_for_cached_weights_': ()}
+GET_STATE_FROM_CACHE = {'__marker_for_cached_state_': ()}
 
 
 class Layer:
@@ -341,6 +341,8 @@ class Layer:
 
   @weights.setter
   def weights(self, weights):
+    if isinstance(weights, dict) and weights == GET_WEIGHTS_FROM_CACHE:
+      return
     self._weights = weights
 
   @property
@@ -350,6 +352,8 @@ class Layer:
 
   @state.setter
   def state(self, state):
+    if isinstance(state, dict) and state != GET_STATE_FROM_CACHE:
+      return
     self._state = state
 
   def weights_and_state_signature(self, input_signature):
@@ -407,11 +411,15 @@ class Layer:
     try:
       old_weights, old_state, old_rng = self.weights, self.state, self.rng
       self._rng = rng
-      if weights is GET_WEIGHTS_FROM_CACHE and state is GET_STATE_FROM_CACHE:  # pylint: disable=literal-comparison
+      # The isinstance check is only needed when == is overloaded, as in TF.
+      if (isinstance(weights, dict) and isinstance(state, dict) and
+          weights == GET_WEIGHTS_FROM_CACHE and state == GET_STATE_FROM_CACHE):
+        was_cached = True
         weights = self._weights
         state = self._state
       else:
         # In this case, we're called for the first time: cache weights.
+        was_cached = False
         self._weights, self._state = weights, state
 
       if not self.has_backward:
@@ -423,6 +431,8 @@ class Layer:
       self._rng = old_rng
       if not use_cache:
         self.weights, self.state = old_weights, old_state
+      if was_cached:  # If the layer was shared, return a state marking this.
+        s = GET_STATE_FROM_CACHE
       return outputs, s
 
     except Exception:
@@ -639,10 +649,16 @@ class LayerError(Exception):
 
 def flatten_weights_and_state(weights, state):
   """Flatten weights and state into lists, excluding empty and cached ones."""
+  def _is_empty_weight(x):
+    return (x is EMPTY_WEIGHTS or
+            (isinstance(x, dict) and x == GET_WEIGHTS_FROM_CACHE))
   flat_weights = [w for w in math.tree_flatten(weights)
-                  if not (w is EMPTY_WEIGHTS or w is GET_WEIGHTS_FROM_CACHE)]
+                  if not _is_empty_weight(w)]
+  def _is_empty_state(x):
+    return (x is EMPTY_STATE or
+            (isinstance(x, dict) and x == GET_STATE_FROM_CACHE))
   flat_state = [s for s in math.tree_flatten(state)
-                if not (s is EMPTY_STATE or s is GET_STATE_FROM_CACHE)]
+                if not _is_empty_state(s)]
   return flat_weights, flat_state
 
 
