@@ -13,7 +13,6 @@ env:
     - TF_LATEST="2.2.*"
   matrix:
     - TF_VERSION="2.2.*"
-    - TF_VERSION="tf-nightly"
 install:
   - ./oss_scripts/oss_pip_install.sh
 script:
