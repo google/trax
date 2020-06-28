@@ -67,7 +67,12 @@ set_status
 pytest --disable-warnings trax/fastmath
 set_status
 
-pytest --disable-warnings trax/models
+# Disabled tests are quasi integration tests.
+pytest --disable-warnings \
+  --ignore=trax/models/reformer/reformer_e2e_test.py \
+  --ignore=trax/models/reformer/reformer_memory_test.py \
+  --ignore=trax/models/reformer/reformer_oom_test.py \
+  trax/models
 set_status
 
 pytest --disable-warnings trax/optimizers
