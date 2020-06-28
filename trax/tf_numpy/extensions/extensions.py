@@ -668,6 +668,38 @@ def prng(s):
   return tf_np.asarray(s, dtype=_RNG_KEY_DTYPE)
 
 
+def stateless_split(seed, num=2):
+  """Splits an RNG seed into `num` new seeds by adding a leading axis.
+
+  Example:
+
+  >>> seed = [1, 2]
+  >>> new_seeds = tf.random.experimental.stateless_split(seed, num=3)
+  >>> print(new_seeds)
+  tf.Tensor(
+  [[1105988140 1738052849]
+   [-335576002  370444179]
+   [  10670227 -246211131]], shape=(3, 2), dtype=int32)
+  >>> tf.random.stateless_normal(shape=[3], seed=new_seeds[0, :])
+  <tf.Tensor: shape=(3,), dtype=float32, numpy=array([-0.59835213, -0.9578608 ,
+  0.9002807 ], dtype=float32)>
+
+  Args:
+    seed: an RNG seed (a tensor with shape [2] and dtype `int32` or
+      `int64`). (When using XLA, only `int32` is allowed.)
+    num: optional, a positive integer or scalar tensor indicating the number of
+      seeds to produce (default 2).
+
+  Returns:
+    A tensor with shape [num, 2] representing `num` new seeds. It will have the
+    same dtype as `seed` (if `seed` doesn't have an explict dtype, the dtype
+    will be determined by `tf.convert_to_tensor`).
+  """
+  seed = tf.convert_to_tensor(seed)
+  return tf.stateless_random_uniform(
+      shape=[num, 2], seed=seed, dtype=seed.dtype, minval=None, maxval=None)
+
+
 def split(state, num):
   """Creates new independent RNG states from an existing state.
 
@@ -680,7 +712,11 @@ def split(state, num):
   """
   state = tf_np.asarray(state, dtype=_RNG_KEY_DTYPE)
   state = _key2seed(state)
-  states = tf.random.experimental.stateless_split(state, num)
+  try:
+    states = tf.random.experimental.stateless_split(state, num)
+  except AttributeError as e:  # pylint: disable=unused-variable
+    # TODO(afrozm): For TF < 2.3 we need to do this. Delete once 2.3 launches.
+    states = stateless_split(state, num)
   states = tf.unstack(states, num)
   states = tf.nest.map_structure(_seed2key, states)
   return states
