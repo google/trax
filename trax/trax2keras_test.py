@@ -43,10 +43,15 @@ def dummy_inputs(rng, input_sig):
     if shape and shape[0] is None:
       shape = (2,) + tuple(shape[1:])
     if onp.issubdtype(sig.dtype, onp.integer):
-      minval = None
+      minval = 1
+      # Must specify maxval for integer dtype.
+      # TODO(afrozm): Revisit after TF 2.3
+      maxval = 10000
     else:
       minval = 0
-    return rng.uniform(shape=shape, dtype=sig.dtype, minval=minval)
+      maxval = 1
+    return rng.uniform(
+        shape=shape, dtype=sig.dtype, minval=minval, maxval=maxval)
   return math_lib.nested_map(f, input_sig)
 
 
