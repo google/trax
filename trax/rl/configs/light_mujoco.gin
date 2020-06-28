@@ -59,12 +59,12 @@ q_value_n_samples = 4
 # ==============================================================================
 Adam.weight_decay_rate = 0.0
 
-# Parameters for MultifactorSchedule:
+# Parameters for multifactor:
 # ==============================================================================
-policy/MultifactorSchedule.constant = %policy_lr
-policy/MultifactorSchedule.factors = 'constant'
-value/MultifactorSchedule.constant = %value_lr
-value/MultifactorSchedule.factors = 'constant'
+policy/multifactor.constant = %policy_lr
+policy/multifactor.factors = 'constant'
+value/multifactor.constant = %value_lr
+value/multifactor.factors = 'constant'
 
 # Parameters for Momentum:
 # ==============================================================================
@@ -88,14 +88,14 @@ AWRTrainer.value_model = @trax.models.Value
 AWRTrainer.value_optimizer = @trax.optimizers.Adam
 AWRTrainer.value_batch_size = %batch_size
 AWRTrainer.value_train_steps_per_epoch = %value_train_steps
-AWRTrainer.value_lr_schedule = @value/MultifactorSchedule
+AWRTrainer.value_lr_schedule = @value/multifactor
 AWRTrainer.value_evals_per_epoch = 1
 AWRTrainer.value_eval_steps = 10
 AWRTrainer.policy_model = @trax.models.Policy
 AWRTrainer.policy_optimizer = @trax.optimizers.Adam
 AWRTrainer.policy_batch_size = %batch_size
 AWRTrainer.policy_train_steps_per_epoch = %policy_train_steps
-AWRTrainer.policy_lr_schedule = @policy/MultifactorSchedule
+AWRTrainer.policy_lr_schedule = @policy/multifactor
 AWRTrainer.policy_evals_per_epoch = 1
 AWRTrainer.policy_eval_steps = 10
 AWRTrainer.n_trajectories_per_epoch = None
@@ -120,14 +120,14 @@ SamplingAWRTrainer.value_model = @trax.models.Value
 SamplingAWRTrainer.value_optimizer = @trax.optimizers.Adam
 SamplingAWRTrainer.value_batch_size = %batch_size
 SamplingAWRTrainer.value_train_steps_per_epoch = %value_train_steps
-SamplingAWRTrainer.value_lr_schedule = @value/MultifactorSchedule
+SamplingAWRTrainer.value_lr_schedule = @value/multifactor
 SamplingAWRTrainer.value_evals_per_epoch = 1
 SamplingAWRTrainer.value_eval_steps = 10
 SamplingAWRTrainer.policy_model = @trax.models.Policy
 SamplingAWRTrainer.policy_optimizer = @trax.optimizers.Adam
 SamplingAWRTrainer.policy_batch_size = %batch_size
 SamplingAWRTrainer.policy_train_steps_per_epoch = %policy_train_steps
-SamplingAWRTrainer.policy_lr_schedule = @policy/MultifactorSchedule
+SamplingAWRTrainer.policy_lr_schedule = @policy/multifactor
 SamplingAWRTrainer.policy_evals_per_epoch = 1
 SamplingAWRTrainer.policy_eval_steps = 10
 SamplingAWRTrainer.n_trajectories_per_epoch = None

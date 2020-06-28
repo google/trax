@@ -90,8 +90,8 @@ class ActorCriticTest(absltest.TestCase):
     body = lambda mode: tl.Serial(tl.Dense(64), tl.Relu())
     policy_model = functools.partial(models.Policy, body=body)
     value_model = functools.partial(models.Value, body=body)
-    lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
-        h, constant=1e-4, warmup_steps=100, factors='constant * linear_warmup')
+    lr = lambda: lr_schedules.multifactor(  # pylint: disable=g-long-lambda
+        constant=1e-4, warmup_steps=100, factors='constant * linear_warmup')
     trainer = actor_critic.A2CTrainer(
         task,
         n_shared_layers=1,
@@ -114,8 +114,8 @@ class ActorCriticTest(absltest.TestCase):
     task = rl_task.RLTask(
         'CartPole-v1', initial_trajectories=0, max_steps=200)
 
-    lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
-        h, constant=1e-3,
+    lr = lambda: lr_schedules.multifactor(  # pylint: disable=g-long-lambda
+        constant=1e-3,
         warmup_steps=100,
         factors='constant * linear_warmup')
 
@@ -147,8 +147,8 @@ class ActorCriticTest(absltest.TestCase):
     body = lambda mode: tl.Serial(tl.Dense(64), tl.Relu())
     policy_model = functools.partial(models.Policy, body=body)
     value_model = functools.partial(models.Value, body=body)
-    lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
-        h, constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
+    lr = lambda: lr_schedules.multifactor(  # pylint: disable=g-long-lambda
+        constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
     trainer = actor_critic.AWRTrainer(
         task,
         n_shared_layers=0,
@@ -181,8 +181,8 @@ class ActorCriticTest(absltest.TestCase):
     value_model = functools.partial(models.Value, body=body)
     # pylint: disable=g-long-lambda
     lr = (
-        lambda h: lr_schedules.MultifactorSchedule(
-            h, constant=1e-2, warmup_steps=100,
+        lambda: lr_schedules.multifactor(
+            constant=1e-2, warmup_steps=100,
             factors='constant * linear_warmup')
     )
     # pylint: enable=g-long-lambda
@@ -223,8 +223,8 @@ class ActorCriticTest(absltest.TestCase):
         d_model=2, d_ff=2, n_layers=1, n_heads=1, mode=mode)
     policy_model = functools.partial(models.Policy, body=body)
     value_model = functools.partial(models.Value, body=body)
-    lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
-        h, constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
+    lr = lambda: lr_schedules.multifactor(  # pylint: disable=g-long-lambda
+        constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
     trainer = actor_critic.AWRTrainer(
         task,
         n_shared_layers=0,
@@ -252,8 +252,8 @@ class ActorCriticTest(absltest.TestCase):
     body = lambda mode: tl.Serial(tl.Dense(2), tl.Relu())
     policy_model = functools.partial(models.Policy, body=body)
     value_model = functools.partial(models.Value, body=body)
-    lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
-        h, constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
+    lr = lambda: lr_schedules.multifactor(  # pylint: disable=g-long-lambda
+        constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
     trainer = actor_critic.SamplingAWRTrainer(
         task,
         n_shared_layers=0,
@@ -285,8 +285,8 @@ class ActorCriticTest(absltest.TestCase):
     body = lambda mode: tl.Serial(tl.Dense(2), tl.Relu())
     policy_model = functools.partial(models.Policy, body=body)
     value_model = functools.partial(models.Value, body=body)
-    lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
-        h, constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
+    lr = lambda: lr_schedules.multifactor(  # pylint: disable=g-long-lambda
+        constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
     trainer = actor_critic.SamplingAWRTrainer(
         task,
         n_shared_layers=0,
@@ -318,8 +318,8 @@ class ActorCriticTest(absltest.TestCase):
     body = lambda mode: tl.Serial(tl.Dense(2), tl.Relu())
     policy_model = functools.partial(models.Policy, body=body)
     value_model = functools.partial(models.Value, body=body)
-    lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
-        h, constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
+    lr = lambda: lr_schedules.multifactor(  # pylint: disable=g-long-lambda
+        constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
     trainer = actor_critic.SamplingAWRTrainer(
         task,
         n_shared_layers=0,

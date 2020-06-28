@@ -81,8 +81,8 @@ class ActorCriticJointTest(absltest.TestCase):
         models.PolicyAndValue,
         body=lambda mode: tl.Serial(tl.Dense(2), tl.Relu()),
     )
-    lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
-        h, constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
+    lr = lambda: lr_schedules.multifactor(  # pylint: disable=g-long-lambda
+        constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
 
     trainer = actor_critic_joint.PPOJointTrainer(
         task,
@@ -103,8 +103,8 @@ class ActorCriticJointTest(absltest.TestCase):
         models.PolicyAndValue,
         body=lambda mode: tl.Serial(tl.Dense(64), tl.Relu()),
     )
-    lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
-        h, constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
+    lr = lambda: lr_schedules.multifactor(  # pylint: disable=g-long-lambda
+        constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
     trainer = actor_critic_joint.AWRJointTrainer(
         task,
         joint_model=joint_model,
@@ -124,8 +124,8 @@ class ActorCriticJointTest(absltest.TestCase):
         models.PolicyAndValue,
         body=lambda mode: tl.Serial(tl.Dense(64), tl.Relu()),
     )
-    lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
-        h, constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
+    lr = lambda: lr_schedules.multifactor(  # pylint: disable=g-long-lambda
+        constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
     trainer = actor_critic_joint.A2CJointTrainer(
         task,
         joint_model=joint_model,

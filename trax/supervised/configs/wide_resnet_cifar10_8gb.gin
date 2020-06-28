@@ -33,11 +33,11 @@ data_streams.data_dir = None
 data_streams.dataset_name = 'cifar10'
 data_streams.preprocess_fn = @trax.supervised.tf_inputs.cifar10_augmentation_preprocess
 
-# Parameters for MultifactorSchedule:
+# Parameters for multifactor:
 # ==============================================================================
-EvalAdjustingSchedule.constant = 0.5
-MultifactorSchedule.factors = 'constant * linear_warmup'
-MultifactorSchedule.warmup_steps = 400
+multifactor.factors = 'constant * linear_warmup'
+multifactor.constant = 0.5
+multifactor.warmup_steps = 400
 
 # Parameters for Momentum:
 # ==============================================================================
@@ -57,37 +57,4 @@ train.eval_steps = 10
 train.model = @trax.models.WideResnet
 train.optimizer = @trax.optimizers.Momentum
 train.steps = 10000
-train.lr_schedule = @lr_schedules.EvalAdjustingSchedule
-
-# ==============================================================================
-# Parameters for the RL hyperparameter tuner; turn on with
-# train.lr_schedule=@lr_schedules.PolicySchedule and set
-# PolicySchedule.policy_dir.
-# ==============================================================================
-
-# Parameters for PolicySchedule:
-# ==============================================================================
-PolicySchedule.observation_metrics = (
-    ("train", "metrics/accuracy"),
-    ("train", "metrics/loss"),
-    ("eval", "metrics/accuracy"),
-    ("eval", "metrics/loss"),
-)
-PolicySchedule.include_controls_in_observation = False
-PolicySchedule.control_configs = (
-    ("learning_rate", 0.1, (1e-9, 10.0), False),
-    ("weight_decay_rate", 1e-5, (1e-9, 0.1), False),
-    ("mass", 0.9, (0.0, 0.99), True),
-)
-PolicySchedule.observation_range = (0.0, 10.0)
-PolicySchedule.action_multipliers = (0.5, 0.8, 0.95, 1.0, 1.05, 1.25, 2.0)
-PolicySchedule.policy_and_value_model = @trax.models.TransformerDecoder
-PolicySchedule.policy_and_value_two_towers = False
-
-# Parameters for TransformerDecoder:
-# ==============================================================================
-TransformerDecoder.d_model = 64
-TransformerDecoder.d_ff = 128
-TransformerDecoder.dropout = 0.0
-TransformerDecoder.n_heads = 2
-TransformerDecoder.n_layers = 2
+train.lr_schedule = @lr_schedules.multifactor()

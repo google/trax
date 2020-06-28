@@ -49,12 +49,12 @@ TransformerDecoder.dropout = 0.0
 TransformerDecoder.n_heads = 4
 TransformerDecoder.n_layers = 3
 
-# Parameters for MultifactorSchedule:
+# Parameters for multifactor:
 # ==============================================================================
-policy/MultifactorSchedule.constant = 5e-5
-policy/MultifactorSchedule.factors = 'constant'
-value/MultifactorSchedule.constant = 0.01
-value/MultifactorSchedule.factors = 'constant'
+policy/multifactor.constant = 5e-5
+policy/multifactor.factors = 'constant'
+value/multifactor.constant = 0.01
+value/multifactor.factors = 'constant'
 
 # Parameters for Adam:
 # ==============================================================================
@@ -77,14 +77,14 @@ AWRTrainer.value_model = @trax.models.Value
 AWRTrainer.value_optimizer = @trax.optimizers.Adam
 AWRTrainer.value_batch_size = 256
 AWRTrainer.value_train_steps_per_epoch = 200
-AWRTrainer.value_lr_schedule = @value/MultifactorSchedule
+AWRTrainer.value_lr_schedule = @value/multifactor
 AWRTrainer.value_evals_per_epoch = 10
 AWRTrainer.value_eval_steps = 10
 AWRTrainer.policy_model = @trax.models.Policy
 AWRTrainer.policy_optimizer = @trax.optimizers.Adam
 AWRTrainer.policy_batch_size = 256
 AWRTrainer.policy_train_steps_per_epoch = 1000
-AWRTrainer.policy_lr_schedule = @policy/MultifactorSchedule
+AWRTrainer.policy_lr_schedule = @policy/multifactor
 AWRTrainer.policy_evals_per_epoch = 10
 AWRTrainer.policy_eval_steps = 10
 AWRTrainer.n_trajectories_per_epoch = None
@@ -109,14 +109,14 @@ SamplingAWRTrainer.value_model = @trax.models.Value
 SamplingAWRTrainer.value_optimizer = @trax.optimizers.Adam
 SamplingAWRTrainer.value_batch_size = 256
 SamplingAWRTrainer.value_train_steps_per_epoch = 2000
-SamplingAWRTrainer.value_lr_schedule = @value/MultifactorSchedule
+SamplingAWRTrainer.value_lr_schedule = @value/multifactor
 SamplingAWRTrainer.value_evals_per_epoch = 10
 SamplingAWRTrainer.value_eval_steps = 10
 SamplingAWRTrainer.policy_model = @trax.models.Policy
 SamplingAWRTrainer.policy_optimizer = @trax.optimizers.Adam
 SamplingAWRTrainer.policy_batch_size = 256
 SamplingAWRTrainer.policy_train_steps_per_epoch = 4000
-SamplingAWRTrainer.policy_lr_schedule = @policy/MultifactorSchedule
+SamplingAWRTrainer.policy_lr_schedule = @policy/multifactor
 SamplingAWRTrainer.policy_evals_per_epoch = 10
 SamplingAWRTrainer.policy_eval_steps = 10
 SamplingAWRTrainer.n_trajectories_per_epoch = None

@@ -238,7 +238,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
           model=model_fn,
           loss_fn=layers.CrossEntropyLoss(),
           optimizer=trax_opt.SM3,
-          lr_schedule=lr.MultifactorSchedule,
+          lr_schedule=lr.multifactor(),
           inputs=inputs,
       )
 
@@ -273,7 +273,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
           model=model_fn,
           loss_fn=layers.CrossEntropyLoss(),
           optimizer=trax_opt.SM3,
-          lr_schedule=lr.MultifactorSchedule,
+          lr_schedule=lr.multifactor(),
           inputs=inputs,
       )
       trainer.reset(output_dir)

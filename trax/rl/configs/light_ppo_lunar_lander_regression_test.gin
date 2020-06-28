@@ -31,11 +31,11 @@ PureMLP.flatten = False
 PureMLP.layer_widths = (64,64)
 PureMLP.out_activation = True
 
-# Parameters for MultifactorSchedule:
+# Parameters for multifactor:
 # ==============================================================================
-MultifactorSchedule.constant = 0.0025
-MultifactorSchedule.factors = 'constant * linear_warmup'
-MultifactorSchedule.warmup_steps = 100
+multifactor.constant = 0.0025
+multifactor.factors = 'constant * linear_warmup'
+multifactor.warmup_steps = 100
 
 # Parameters for RLTask:
 # ==============================================================================
@@ -50,7 +50,7 @@ PPOJointTrainer.joint_model = @trax.models.PolicyAndValue
 PPOJointTrainer.optimizer = @trax.optimizers.Adam
 PPOJointTrainer.batch_size = 256
 PPOJointTrainer.train_steps_per_epoch = 200
-PPOJointTrainer.lr_schedule = @MultifactorSchedule
+PPOJointTrainer.lr_schedule = @multifactor
 PPOJointTrainer.n_trajectories_per_epoch = 20
 PPOJointTrainer.epsilon = 0.1
 PPOJointTrainer.value_loss_coeff = 0

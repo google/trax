@@ -36,7 +36,7 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
   def __init__(self, task,
                joint_model=None,
                optimizer=None,
-               lr_schedule=lr.MultifactorSchedule,
+               lr_schedule=lr.multifactor,
                batch_size=64,
                train_steps_per_epoch=500,
                supervised_evals_per_epoch=1,
@@ -79,7 +79,7 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
     self._n_trajectories_per_epoch = n_trajectories_per_epoch
     self._max_slice_length = max_slice_length
     self._policy_dist = distributions.create_distribution(task.action_space)
-    self._lr_schedule = lr_schedule
+    self._lr_schedule = lr_schedule()
     self._optimizer = optimizer
     self._normalize_advantages = normalize_advantages
     self._n_replay_epochs = n_replay_epochs

@@ -93,11 +93,11 @@ generic_text_dataset_preprocess_fn.token_preprocess_fns = [
 ]
 
 
-# Parameters for MultifactorSchedule:
+# Parameters for multifactor:
 # ==============================================================================
-MultifactorSchedule.constant = 1.0
-MultifactorSchedule.factors = 'constant * linear_warmup * rsqrt_decay'
-MultifactorSchedule.warmup_steps = 50000
+multifactor.constant = 1.0
+multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
+multifactor.warmup_steps = 50000
 
 # Parameters for Adafactor:
 # ==============================================================================

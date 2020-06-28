@@ -31,11 +31,11 @@ AtariCnnBody.kernel_initializer = @trax.layers.AtariConvInit
 AtariCnnBody.n_frames = 1
 AtariCnnBody.padding = 'VALID'
 
-# Parameters for MultifactorSchedule:
+# Parameters for multifactor:
 # ==============================================================================
-MultifactorSchedule.constant = 0.0001
-MultifactorSchedule.factors = 'constant * linear_warmup'
-MultifactorSchedule.warmup_steps = 100
+multifactor.constant = 0.0001
+multifactor.factors = 'constant * linear_warmup'
+multifactor.warmup_steps = 100
 
 # Parameters for RLTask:
 # ==============================================================================
@@ -52,7 +52,7 @@ PPOJointTrainer.joint_model = @trax.models.PolicyAndValue
 PPOJointTrainer.optimizer = @trax.optimizers.Adam
 PPOJointTrainer.batch_size = 256
 PPOJointTrainer.train_steps_per_epoch = 80
-PPOJointTrainer.lr_schedule = @MultifactorSchedule
+PPOJointTrainer.lr_schedule = @multifactor
 PPOJointTrainer.n_trajectories_per_epoch = 5
 PPOJointTrainer.epsilon = 0.1
 PPOJointTrainer.value_loss_coeff = 0.1

@@ -32,11 +32,11 @@ data_streams.dataset_name = 't2t_languagemodel_lm1b32k'
 data_streams.input_name = 'targets'
 data_streams.preprocess_fn = @trax.supervised.tf_inputs.lm1b_preprocess
 
-# Parameters for MultifactorSchedule:
+# Parameters for multifactor:
 # ==============================================================================
-MultifactorSchedule.constant = 0.001
-MultifactorSchedule.factors = 'constant * linear_warmup'
-MultifactorSchedule.warmup_steps = 8000
+multifactor.constant = 0.001
+multifactor.factors = 'constant * linear_warmup'
+multifactor.warmup_steps = 8000
 
 # Parameters for lm1b_preprocess:
 # ==============================================================================

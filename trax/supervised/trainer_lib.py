@@ -148,9 +148,6 @@ class Trainer(object):
     self._model_train = model_train
     self._model_predict_eval = model_predict_eval
     self._loss_fn = loss_fn
-    # TODO(pkozakowski): "Learning rate schedules" are currently able to control
-    # control all optimizer parameters and model state, so let's rename them
-    # accordingly.
     self._lr_schedule = lr_schedule
 
     # Those fields will be set in reset().
@@ -158,7 +155,6 @@ class Trainer(object):
     self._train_sw = None
     self._eval_sw = None
     self._history = None
-    self._lr_fn = None
     self._opt_state = None
     self._step = None
     self._model_state = None
@@ -214,13 +210,9 @@ class Trainer(object):
         model_state=self._model_state)
 
   @property
-  def nontrainable_params(self):
-    # TODO(afrozm): Give further thought to this name.
-    # TODO(lukaszkaiser): it makes no sense to use an accelerator (e.g. TPU)
-    # in op-by-op mode just to compute the learning rate. However, there
-    # should be a cleaner approach that forceably swapping out the backend.
+  def learning_rate(self):
     with fastmath.use_backend('numpy'):
-      return self._lr_fn(self._step)
+      return self._lr_schedule(self._step)
 
   def reset(self, output_dir, init_checkpoint=None):
     """Reset the model parameters.
@@ -268,7 +260,6 @@ class Trainer(object):
                            history=trax_history.History(), model_state=None)
     self._step = state.step or 0
     history = state.history
-    self._lr_fn = self._lr_schedule(history)
     self._history = history
     if state.opt_state:
       opt_state = state.opt_state
@@ -280,8 +271,6 @@ class Trainer(object):
     self._model_state = model_state
     if not state.opt_state and self._should_save_checkpoints:
       self.save_state(keep=False)
-
-    self.update_nontrainable_params()
 
   def train_epoch(self, n_steps, n_eval_steps):
     """Runs `n_steps` of training, with periodic logging, saving, and evals."""
@@ -299,8 +288,7 @@ class Trainer(object):
       if self._should_save_now():
         self.save_state(keep=True)
       if self._should_log_now():
-        for (name, value) in self.nontrainable_params.items():
-          self._train_sw.scalar('training/{}'.format(name), value)
+        self._train_sw.scalar('training/learning_rate', self.learning_rate)
 
     # At end of n_steps, do bookkeeping, run evals, and save state.
     elapsed_time = time.time() - start_time
@@ -322,10 +310,8 @@ class Trainer(object):
   def train_step(self, batch):
     """Run one training step and update self._opt_state."""
     # Calculate the current optimizer parameters.
-    # TODO(pkozakowski): Optimizer parameters get polluted with model state,
-    # which doesn't break anything but is weird. Filter it out.
     opt_param_updates = self._for_n_devices(
-        fastmath.nested_map(np.array, self.nontrainable_params))
+        {'learning_rate': np.array(self.learning_rate)})
     opt_state = self._opt_state
     opt_state.opt_params.update(opt_param_updates)
 
@@ -359,10 +345,9 @@ class Trainer(object):
     self.log_metrics(eval_metrics, self._eval_sw, 'eval')
     self.log_step('Finished evaluation')
 
-    # Save the optimizer weights in the history
-    for (name, value) in self.nontrainable_params.items():
-      self._history.append('train', 'training/{}'.format(name), self._step,
-                           value)
+    # Save the learning rate in history.
+    self._history.append('train', 'training/learning_rate',
+                         self._step, self.learning_rate)
 
   def evaluation_round(self, inputs_stream, weights, state, rng):
     """Evaluate.
@@ -391,9 +376,6 @@ class Trainer(object):
       for m, v in zip(self._metrics, metric_values):
         metrics[m] += v
     return {m: v / count for (m, v) in metrics.items()}, state
-
-  def update_nontrainable_params(self):
-    self._lr_fn = self._lr_schedule(self._history)
 
   def save_gin(self):
     assert self._output_dir is not None
@@ -551,7 +533,7 @@ def train(output_dir,
           loss_fn=tl.CrossEntropyLoss(),
           inputs=trax_inputs.batcher,
           optimizer=trax_opt.Adafactor,
-          lr_schedule=lr.MultifactorSchedule,
+          lr_schedule=lr.multifactor(),
           trainer_class=Trainer,
           steps=1000,
           checkpoints_at=None,
@@ -617,9 +599,6 @@ def train(output_dir,
     for epoch_steps in epochs(steps, trainer.step, epoch_steps):
       trainer.train_epoch(epoch_steps, eval_steps)
 
-      # Update nontrainable parameters with new history
-      trainer.update_nontrainable_params()
-
       # Bookkeeping we do at the first step
       if trainer.step == 1:
         # Save computation graph (single-device only for now)
@@ -661,7 +640,8 @@ def _jit_update_fn(predict_fn, loss_fn, optimizer, n_devices, jit=True):
           i, grads, weights, slots, opt_params)
       return (new_weights, new_slots), stats, state, [subrng]
     if jit:
-      return fastmath.jit(single_update, donate_argnums=(0,))
+      # TODO(lukaszkaiser): donate_argnums=(0,) when XLA supports it on GPU
+      return fastmath.jit(single_update)
     else:
       return single_update
 

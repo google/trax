@@ -46,12 +46,12 @@ data_streams.input_name = 'inputs'
 data_streams.target_name = 'targets'
 data_streams.bare_preprocess_fn=@trax.supervised.tf_inputs.c4_bare_preprocess_fn
 
-# Parameters for MultifactorSchedule:
+# Parameters for multifactor:
 # ==============================================================================
-MultifactorSchedule.constant = 1.0
-MultifactorSchedule.factors = 'constant * rsqrt_decay'
+multifactor.constant = 1.0
+multifactor.factors = 'constant * rsqrt_decay'
 # NOTE: T5's batch is 18x bigger, so we just 18x-ed their warmup steps (10k).
-MultifactorSchedule.warmup_steps = 180000
+multifactor.warmup_steps = 180000
 
 # Parameters for Adafactor:
 # ==============================================================================

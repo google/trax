@@ -31,11 +31,11 @@ data_streams.data_dir = None
 data_streams.dataset_name = 't2t_image_imagenet224'
 data_streams.preprocess_fn = @trax.supervised.tf_inputs.squeeze_targets_preprocess
 
-# Parameters for MultifactorSchedule:
+# Parameters for multifactor:
 # ==============================================================================
-EvalAdjustingSchedule.constant = 0.2
-MultifactorSchedule.factors = 'constant * linear_warmup'
-MultifactorSchedule.warmup_steps = 400
+multifactor.factors = 'constant * linear_warmup'
+multifactor.constant = 0.2
+multifactor.warmup_steps = 400
 
 # Parameters for Momentum:
 # ==============================================================================
@@ -53,5 +53,4 @@ train.eval_steps = 20
 train.model = @trax.models.Resnet50
 train.optimizer = @trax.optimizers.Momentum
 train.steps = 100000
-train.lr_schedule = @lr_schedules.EvalAdjustingSchedule
-
+train.lr_schedule = @lr_schedules.multifactor()

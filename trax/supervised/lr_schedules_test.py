@@ -20,13 +20,13 @@ import math
 
 from absl.testing import absltest
 
-from trax.supervised import lr_functions
+from trax.supervised import lr_schedules
 
 
 class LRFunctionsTest(absltest.TestCase):
 
   def test_warmup(self):
-    lr_fn = lr_functions.warmup(9, .01)
+    lr_fn = lr_schedules.warmup(9, .01)
 
     # Linear warm-up.
     self.assertAlmostEqual(.001, lr_fn(1))
@@ -42,7 +42,7 @@ class LRFunctionsTest(absltest.TestCase):
     self.assertAlmostEqual(.01, lr_fn(4000))
 
   def test_constant(self):
-    lr_fn = lr_functions.constant(.02)
+    lr_fn = lr_schedules.constant(.02)
     self.assertEqual(.02, lr_fn(1))
     self.assertEqual(.02, lr_fn(20))
     self.assertEqual(.02, lr_fn(300))
@@ -54,7 +54,7 @@ class LRFunctionsTest(absltest.TestCase):
     self.assertEqual(.02, lr_fn(900000000))
 
   def test_warmup_and_rsqrt_decay(self):
-    lr_fn = lr_functions.warmup_and_rsqrt_decay(24, .25)
+    lr_fn = lr_schedules.warmup_and_rsqrt_decay(24, .25)
 
     # Warm-up.
     self.assertAlmostEqual(.01, lr_fn(1))
@@ -71,8 +71,8 @@ class LRFunctionsTest(absltest.TestCase):
     self.assertAlmostEqual(.25 * (5 / math.sqrt(50000)), lr_fn(50000))
 
   def test_cosine_sawtooth(self):
-    tail_fn = lr_functions._CosineSawtoothTail(180, min_value=.1)
-    lr_fn = lr_functions._BodyAndTail(.3, tail_start=0, tail_fn=tail_fn)
+    tail_fn = lr_schedules._CosineSawtoothTail(180, min_value=.1)
+    lr_fn = lr_schedules._BodyAndTail(.3, tail_start=0, tail_fn=tail_fn)
 
     # First cycle
     self.assertAlmostEqual(.29998477, lr_fn(1))

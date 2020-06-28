@@ -54,7 +54,7 @@ train.eval_frequency = 1000
 train.eval_steps = 10
 train.model = @trax.models.LSTMSeq2SeqAttn
 train.optimizer = @trax.optimizers.Adam
-train.lr_schedule = @lr_schedules.warmup
+train.lr_schedule = @lr_schedules.warmup()
 train.steps = 250000
 
 # Parameters for LSTMSeq2SeqAttn:

@@ -46,7 +46,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
   def __init__(self, task,
                value_model=None,
                value_optimizer=None,
-               value_lr_schedule=lr.MultifactorSchedule,
+               value_lr_schedule=lr.multifactor,
                value_batch_size=64,
                value_train_steps_per_epoch=500,
                value_evals_per_epoch=1,
@@ -151,7 +151,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
     self._value_trainer = supervised.Trainer(
         model=value_model,
         optimizer=value_optimizer,
-        lr_schedule=value_lr_schedule,
+        lr_schedule=value_lr_schedule(),
         loss_fn=tl.L2Loss(),
         inputs=self._value_inputs,
         output_dir=value_output_dir,

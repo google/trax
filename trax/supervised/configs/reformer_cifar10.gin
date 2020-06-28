@@ -36,11 +36,11 @@ data_streams.data_dir = None
 data_streams.dataset_name = 'cifar10'
 data_streans.preprocess_fn = @trax.supervised.tf_inputs.cifar10_augmentation_flatten_preprocess
 
-# Parameters for MultifactorSchedule:
+# Parameters for multifactor:
 # ==============================================================================
-MultifactorSchedule.constant = 1.0
-MultifactorSchedule.factors = 'constant * linear_warmup * rsqrt_decay'
-MultifactorSchedule.warmup_steps = 8000
+multifactor.constant = 1.0
+multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
+multifactor.warmup_steps = 8000
 
 # Parameters for train:
 # ==============================================================================

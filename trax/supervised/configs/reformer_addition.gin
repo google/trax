@@ -45,11 +45,11 @@ addition_inputs.eval_min_length = 128
 addition_inputs.eval_max_length = 160
 addition_inputs.pad_to_multiple = 32
 
-# Parameters for MultifactorSchedule:
+# Parameters for multifactor:
 # ==============================================================================
-MultifactorSchedule.constant = 0.05
-MultifactorSchedule.factors = 'constant * linear_warmup * rsqrt_decay'
-MultifactorSchedule.warmup_steps = 4000
+multifactor.constant = 0.05
+multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
+multifactor.warmup_steps = 4000
 
 # Parameters for LSHSelfAttention:
 # ==============================================================================

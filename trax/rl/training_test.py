@@ -122,8 +122,8 @@ class TrainingTest(absltest.TestCase):
             tl.Dense(64), tl.Relu(), tl.Dense(64), tl.Relu()
         ),
     )
-    lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
-        h, constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
+    lr = lambda: lr_schedules.multifactor(  # pylint: disable=g-long-lambda
+        constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
     trainer = training.PolicyGradientTrainer(
         task,
         policy_model=model,

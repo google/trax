@@ -30,12 +30,12 @@ Value.body = @trax.models.AtariCnnBody
 # ==============================================================================
 AtariCnnBody.kernel_initializer = @trax.layers.AtariConvInit
 
-# Parameters for MultifactorSchedule:
+# Parameters for multifactor:
 # ==============================================================================
-value/MultifactorSchedule.constant = 0.0001
-value/MultifactorSchedule.factors = 'constant'
-policy/MultifactorSchedule.constant = 0.0001
-policy/MultifactorSchedule.factors = 'constant'
+value/multifactor.constant = 0.0001
+value/multifactor.factors = 'constant'
+policy/multifactor.constant = 0.0001
+policy/multifactor.factors = 'constant'
 
 # Parameters for RLTask:
 # ==============================================================================
@@ -52,12 +52,12 @@ PPOTrainer.value_model = @trax.models.Value
 PPOTrainer.value_optimizer = @trax.optimizers.Adam
 PPOTrainer.value_batch_size = 4
 PPOTrainer.value_train_steps_per_epoch = 10
-PPOTrainer.value_lr_schedule = @value/MultifactorSchedule
+PPOTrainer.value_lr_schedule = @value/multifactor
 PPOTrainer.policy_model = @trax.models.Policy
 PPOTrainer.policy_optimizer = @trax.optimizers.Adam
 PPOTrainer.policy_batch_size = 4
 PPOTrainer.policy_train_steps_per_epoch = 10
-PPOTrainer.policy_lr_schedule = @policy/MultifactorSchedule
+PPOTrainer.policy_lr_schedule = @policy/multifactor
 PPOTrainer.n_trajectories_per_epoch = 50
 
 # Parameters for train_rl:

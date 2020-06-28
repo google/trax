@@ -38,12 +38,12 @@ data_streams.data_dir = None
 data_streams.dataset_name = 't2t_image_imagenet64_gen_flat_rev'
 data_streams.input_name = 'targets'
 
-# Parameters for MultifactorSchedule:
+# Parameters for multifactor:
 # ==============================================================================
 # 0.03125 ~= 1024^-0.5 = d_model^-0.5
-MultifactorSchedule.constant = 0.03125
-MultifactorSchedule.factors = 'constant * linear_warmup * rsqrt_decay'
-MultifactorSchedule.warmup_steps = 8000
+multifactor.constant = 0.03125
+multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
+multifactor.warmup_steps = 8000
 
 # Parameters for Adam:
 # ==============================================================================

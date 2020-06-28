@@ -25,7 +25,7 @@ import trax.supervised.trainer_lib
 finetune.dataset_name = 'glue/cola'
 finetune.batch_size = 16
 finetune.num_train_epochs = 3.0
-MultifactorSchedule.constant = 3e-5
+multifactor.constant = 3e-5
 BERT.init_checkpoint = 'bert-base-uncased'
 train.custom_train_fn = @finetune
 train.model = @BERT

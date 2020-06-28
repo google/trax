@@ -34,11 +34,11 @@ sequence_copy_inputs.train_lengths = [%length]
 sequence_copy_inputs.eval_lengths = [%length]
 sequence_copy_inputs.reverse = False
 
-# Parameters for MultifactorSchedule:
+# Parameters for multifactor:
 # ==============================================================================
-MultifactorSchedule.constant = 0.001
-MultifactorSchedule.factors = 'constant * linear_warmup'
-MultifactorSchedule.warmup_steps = 8000
+multifactor.constant = 0.001
+multifactor.factors = 'constant * linear_warmup'
+multifactor.warmup_steps = 8000
 
 # Parameters for train:
 # ==============================================================================

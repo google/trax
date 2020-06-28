@@ -34,10 +34,10 @@ TransformerDecoder.d_ff = %depth
 TransformerDecoder.n_layers = 2
 TransformerDecoder.n_heads = 2
 		       
-# Parameters for MultifactorSchedule:
+# Parameters for multifactor:
 # ==============================================================================
-MultifactorSchedule.constant = 0.001
-MultifactorSchedule.factors = 'constant'
+multifactor.constant = 0.001
+multifactor.factors = 'constant'
 
 # Parameters for RLTask:
 # ==============================================================================
@@ -52,14 +52,14 @@ AWRTrainer.value_model = @trax.models.Value
 AWRTrainer.value_optimizer = @trax.optimizers.Adam
 AWRTrainer.value_batch_size = 32
 AWRTrainer.value_train_steps_per_epoch = 200
-AWRTrainer.value_lr_schedule = @value/MultifactorSchedule
+AWRTrainer.value_lr_schedule = @value/multifactor
 AWRTrainer.value_evals_per_epoch = 2
 AWRTrainer.value_eval_steps = 1
 AWRTrainer.policy_model = @trax.models.Policy
 AWRTrainer.policy_optimizer = @trax.optimizers.Adam
 AWRTrainer.policy_batch_size = 32
 AWRTrainer.policy_train_steps_per_epoch = 500
-AWRTrainer.policy_lr_schedule = @policy/MultifactorSchedule
+AWRTrainer.policy_lr_schedule = @policy/multifactor
 AWRTrainer.policy_evals_per_epoch = 2
 AWRTrainer.policy_eval_steps = 1
 AWRTrainer.n_trajectories_per_epoch = 200

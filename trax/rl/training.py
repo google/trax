@@ -249,7 +249,7 @@ class PolicyTrainer(RLTrainer):
   """
 
   def __init__(self, task, policy_model=None, policy_optimizer=None,
-               policy_lr_schedule=lr.MultifactorSchedule, policy_batch_size=64,
+               policy_lr_schedule=lr.multifactor, policy_batch_size=64,
                policy_train_steps_per_epoch=500, policy_evals_per_epoch=1,
                policy_eval_steps=1, n_eval_episodes=0,
                only_eval=False, max_slice_length=1, output_dir=None, **kwargs):
@@ -306,7 +306,7 @@ class PolicyTrainer(RLTrainer):
     self._policy_trainer = supervised.Trainer(
         model=policy_model,
         optimizer=policy_optimizer,
-        lr_schedule=policy_lr_schedule,
+        lr_schedule=policy_lr_schedule(),
         loss_fn=self.policy_loss,
         inputs=self._policy_inputs,
         output_dir=output_dir,

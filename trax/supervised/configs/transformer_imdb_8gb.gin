@@ -31,11 +31,11 @@ data_streams.dataset_name = 't2t_sentiment_imdb'
 data_streams.input_name = 'targets'
 data_streams.preprocess_fn = @trax.supervised.tf_inputs.lm1b_preprocess
 
-# Parameters for MultifactorSchedule:
+# Parameters for multifactor:
 # ==============================================================================
-MultifactorSchedule.constant = 0.1
-MultifactorSchedule.factors = 'constant * linear_warmup * rsqrt_decay'
-MultifactorSchedule.warmup_steps = 8000
+multifactor.constant = 0.1
+multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
+multifactor.warmup_steps = 8000
 
 # Parameters for lm1b_preprocess:
 # ==============================================================================

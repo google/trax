@@ -37,11 +37,11 @@ data_streams.dataset_name = 't2t_image_imagenet224'
 # TODO(afrozm): Make this work in the learn_epsilon = True setting.
 FilterResponseNorm.learn_epsilon = False
 
-# Parameters for MultifactorSchedule:
+# Parameters for multifactor:
 # ==============================================================================
-MultifactorSchedule.constant = 30.0
-MultifactorSchedule.factors = 'constant * linear_warmup * rsqrt_decay'
-MultifactorSchedule.warmup_steps = 30000
+multifactor.constant = 30.0
+multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
+multifactor.warmup_steps = 30000
 
 # Parameters for Momentum:
 # ==============================================================================
@@ -61,5 +61,4 @@ train.eval_steps = 20
 train.model = @trax.models.Resnet50
 train.optimizer = @trax.optimizers.Momentum
 train.steps = 300000
-train.lr_schedule = @lr_schedules.MultifactorSchedule
-
+train.lr_schedule = @lr_schedules.multifactor()

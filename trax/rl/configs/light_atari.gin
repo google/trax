@@ -25,12 +25,12 @@ Policy.body = @trax.models.AtariCnnBody
 # ==============================================================================
 Value.body = @trax.models.AtariCnnBody
 
-# Parameters for MultifactorSchedule:
+# Parameters for multifactor:
 # ==============================================================================
-value/MultifactorSchedule.constant = 0.0001
-value/MultifactorSchedule.factors = 'constant'
-policy/MultifactorSchedule.constant = 0.0001
-policy/MultifactorSchedule.factors = 'constant'
+value/multifactor.constant = 0.0001
+value/multifactor.factors = 'constant'
+policy/multifactor.constant = 0.0001
+policy/multifactor.factors = 'constant'
 
 # Parameters for RLTask:
 # ==============================================================================
@@ -50,14 +50,14 @@ AWRTrainer.value_model = @trax.models.Value
 AWRTrainer.value_optimizer = @trax.optimizers.Adam
 AWRTrainer.value_batch_size = 32
 AWRTrainer.value_train_steps_per_epoch = 1000
-AWRTrainer.value_lr_schedule = @value/MultifactorSchedule
+AWRTrainer.value_lr_schedule = @value/multifactor
 AWRTrainer.value_evals_per_epoch = 10
 AWRTrainer.value_eval_steps = 10
 AWRTrainer.policy_model = @trax.models.Policy
 AWRTrainer.policy_optimizer = @trax.optimizers.Adam
 AWRTrainer.policy_batch_size = 32
 AWRTrainer.policy_train_steps_per_epoch = 1000
-AWRTrainer.policy_lr_schedule = @policy/MultifactorSchedule
+AWRTrainer.policy_lr_schedule = @policy/multifactor
 AWRTrainer.policy_evals_per_epoch = 10
 AWRTrainer.policy_eval_steps = 10
 AWRTrainer.n_trajectories_per_epoch = 10
@@ -75,12 +75,12 @@ PPOTrainer.value_batch_size = 32
 PPOTrainer.value_train_steps_per_epoch = 10
 PPOTrainer.value_evals_per_epoch = 1
 PPOTrainer.value_eval_steps = 1
-PPOTrainer.value_lr_schedule = @value/MultifactorSchedule
+PPOTrainer.value_lr_schedule = @value/multifactor
 PPOTrainer.policy_model = @trax.models.Policy
 PPOTrainer.policy_optimizer = @trax.optimizers.Adam
 PPOTrainer.policy_batch_size = 32
 PPOTrainer.policy_train_steps_per_epoch = 10
-PPOTrainer.policy_lr_schedule = @policy/MultifactorSchedule
+PPOTrainer.policy_lr_schedule = @policy/multifactor
 PPOTrainer.policy_evals_per_epoch = 1
 PPOTrainer.policy_eval_steps = 1
 PPOTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
