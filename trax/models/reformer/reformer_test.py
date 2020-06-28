@@ -69,19 +69,6 @@ class ReformerTest(absltest.TestCase):
     ys = model(xs)
     self.assertEqual([y.shape for y in ys], [(1, 8, 16), (1, 8)])
 
-  def test_reformer_lm_forward_shape_tf(self):
-    with fastmath.use_backend('tf'):
-      vocab_size = 16
-      timebin_attn = self._timebin_self_attention_fn(use_reference_code=True)
-      model = reformer.ReformerLM(
-          vocab_size, d_model=32, d_ff=64, d_attention_key=16,
-          d_attention_value=16, n_layers=1, n_heads=2, max_len=64,
-          attention_type=timebin_attn)
-      xs = [np.ones((1, 64)).astype(np.int32),
-            np.ones((1, 64)).astype(np.int32)]
-      _, _ = model.init(shapes.signature(xs))
-      ys = model(xs)
-      self.assertEqual([y.shape for y in ys], [(1, 64, 16), (1, 64)])
 
   def test_reformer_lm_lsh(self):
     lsh_self_attention = self._lsh_self_attention_fn()

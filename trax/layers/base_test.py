@@ -28,6 +28,7 @@ from trax.layers import base
 
 
 BACKENDS = ['jax', 'tf']
+CUSTOM_GRAD_BACKENDS = ['jax']  # TODO(afrozm): Delete after TF 2.3
 
 
 class BaseLayerTest(parameterized.TestCase):
@@ -67,7 +68,7 @@ class BaseLayerTest(parameterized.TestCase):
     self.assertNotEqual(output_signature, (shapes.ShapeDtype((4, 7)),) * 3)
     self.assertNotEqual(output_signature, (shapes.ShapeDtype((5, 7)),) * 2)
 
-  @parameterized.named_parameters([('_' + b, b) for b in BACKENDS])
+  @parameterized.named_parameters([('_' + b, b) for b in CUSTOM_GRAD_BACKENDS])
   def test_custom_zero_grad(self, backend_name):
 
     class IdWithZeroGrad(base.Layer):
@@ -94,7 +95,7 @@ class BaseLayerTest(parameterized.TestCase):
       self.assertEqual(grad.shape, (9, 17))  # Gradient for each input.
       self.assertEqual(sum(sum(grad * grad)), 0.0)  # Each one is 0.
 
-  @parameterized.named_parameters([('_' + b, b) for b in BACKENDS])
+  @parameterized.named_parameters([('_' + b, b) for b in CUSTOM_GRAD_BACKENDS])
   def test_custom_id_grad(self, backend_name):
 
     class IdWithIdGrad(base.Layer):
