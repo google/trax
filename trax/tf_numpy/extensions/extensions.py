@@ -696,7 +696,7 @@ def stateless_split(seed, num=2):
     will be determined by `tf.convert_to_tensor`).
   """
   seed = tf.convert_to_tensor(seed)
-  return tf.random.stateless_random_uniform(
+  return tf.random.stateless_uniform(
       shape=[num, 2], seed=seed, dtype=seed.dtype, minval=None, maxval=None)
 
 
