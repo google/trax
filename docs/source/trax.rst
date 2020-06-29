@@ -9,20 +9,10 @@ trax
     rl.* <trax.rl>
     supervised.* <trax.supervised>
 
-history
--------
-
-.. automodule:: trax.history
-
 jaxboard
 --------
 
 .. automodule:: trax.jaxboard
-
-lr\_schedules
--------------
-
-.. automodule:: trax.lr_schedules
 
 rl\_trainer
 -----------
@@ -53,8 +43,3 @@ trax2keras
 ----------
 
 .. automodule:: trax.trax2keras
-
-utils
------
-
-.. automodule:: trax.utils

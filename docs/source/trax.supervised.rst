@@ -1,20 +1,20 @@
 trax.supervised
 ===============
 
+history
+-------
+
+.. automodule:: trax.supervised.history
+
 inputs
 ------
 
 .. automodule:: trax.supervised.inputs
 
-lr\_functions
+lr\_schedules
 -------------
 
-.. automodule:: trax.supervised.lr_functions
-
-pretrain\_finetune
-------------------
-
-.. automodule:: trax.supervised.pretrain_finetune
+.. automodule:: trax.supervised.lr_schedules
 
 tf\_inputs
 ----------
