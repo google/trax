@@ -20,8 +20,8 @@ A metric layer takes three inputs:
 
   - model output: Batch of predicted values (typically vectors).
   - targets: Batch of target values (e.g., categories or vectors).
-  - weights: Tensor that can assign different weights to different positions in.
-    the model output. One common use of weights is for masking -- assigning
+  - weights: Tensor that can assign different weights to different positions
+    in the model output. One common use of weights is for masking -- assigning
     weight 0 to positions that correspond to padding in the input so that they
     don't affect metrics.
 
