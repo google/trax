@@ -67,17 +67,29 @@ class Accelerate(base.Layer):
   def pure_fn(self, x, weights, state, rng, use_cache=False):
     """Calls self.sublayer.pure_fn in an accelerated way."""
     # Check if we can divide x evenly across devices.
-    remainder = x.shape[0] % self._n_devices
+    # Note: x can be a list/tuple because the underlying layer may take
+    # its input as a list/tuple, ex: (inputs, targets, weight).
+    if isinstance(x, (list, tuple)):
+      remainder = x[0].shape[0] % self._n_devices
+    else:
+      remainder = x.shape[0] % self._n_devices
     if remainder == 0:  # If yes, run the accelerated sublayer.pure_fn.
       return self._jit_pure_fn(x, weights, state, rng)
     # If not, pad first.
-    pad_widths = [(0, 0)] * len(x.shape)
-    pad_widths[0] = (0, self._n_devices - remainder)
-    padded_x = jnp.pad(x, pad_widths, mode='constant',
-                       constant_values=x.dtype.type(0))
+    def pad(z):
+      pad_widths = [(0, 0)] * len(z.shape)
+      pad_widths[0] = (0, self._n_devices - remainder)
+      return jnp.pad(z, pad_widths, mode='constant',
+                     constant_values=z.dtype.type(0))
+    padded_x = [pad(z) for z in x] if isinstance(x, (list, tuple)) else pad(x)
     # Run and un-pad.
     padded_y, state = self._jit_pure_fn(padded_x, weights, state, rng)
-    return padded_y[:x.shape[0]], state
+    if isinstance(x, (list, tuple)):
+      y = tuple(padded_z[:z.shape[0]] for (padded_z, z) in zip(padded_y, x))
+      y = list(y) if isinstance(x, list) else y
+    else:
+      y = padded_y[:x.shape[0]]
+    return y, state
 
   def init(self, input_signature):
     """Calls self.sublayer.init and replicated on multiple devices."""
@@ -129,11 +141,12 @@ def jit_forward(forward, n_devices, do_mean=True):
 
   def predict(x, weights, state, rng):
     """Predict function JIT-compiled and parallelized as requested."""
-    res, state = _combine_devices(model_predict(
+    res, state = model_predict(
         reshape_by_device(x, n_devices),
         weights,
         state,
-        jnp.stack(fastmath.random.split(rng, n_devices))))
+        jnp.stack(fastmath.random.split(rng, n_devices)))
+    res = _combine_devices(res)
     if do_mean:
       return fastmath.nested_map(lambda y: jnp.mean(y, axis=0), res), state
     else:

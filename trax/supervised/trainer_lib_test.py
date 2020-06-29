@@ -33,6 +33,7 @@ from trax import fastmath
 from trax import layers
 from trax import models
 from trax import optimizers as trax_opt
+from trax import shapes
 from trax.fastmath import numpy as jnp
 from trax.supervised import inputs as inputs_lib
 from trax.supervised import lr_schedules as lr
@@ -129,6 +130,40 @@ class TraxTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters(BACKENDS)
   def test_train_eval_predict(self, backend_name):
     self._test_train_eval_predict(backend_name)
+
+  def test_autoregressive_sample_transformerlm(self):
+    model = models.TransformerLM(10, d_model=32, d_ff=64, n_layers=1,
+                                 n_heads=2, mode='predict')
+    model.init(shapes.ShapeDtype((1, 1), dtype=jnp.int32))
+    s1 = trainer_lib.autoregressive_sample(
+        model, batch_size=1, eos_id=-1, max_length=10)
+    self.assertEqual(s1.shape[0], 1)
+    self.assertEqual(s1.shape[1], 10)
+    batch_per_device = 2 // fastmath.device_count()
+    model.init(shapes.ShapeDtype((batch_per_device, 1), dtype=jnp.int32))
+    s2 = trainer_lib.autoregressive_sample(
+        model, batch_size=2, max_length=10)
+    self.assertEqual(s2.shape[0], 2)
+    self.assertLess(s2.shape[1], 11)
+    model.init(shapes.ShapeDtype((1, 1), dtype=jnp.int32))
+    prefix = jnp.array([[1, 2, 3]])
+    s3 = trainer_lib.autoregressive_sample(model, eos_id=-1, max_length=10,
+                                           batch_size=1, prefix=prefix)
+    self.assertEqual(s3.shape[0], 1)
+    self.assertEqual(int(s3[0][0]), 1)
+    self.assertEqual(int(s3[0][1]), 2)
+    self.assertEqual(int(s3[0][2]), 3)
+
+  def test_autoregressive_sample_transformer(self):
+    model = models.Transformer(10, d_model=32, d_ff=64, n_encoder_layers=1,
+                               n_decoder_layers=1, n_heads=2, mode='predict')
+    inputs = jnp.ones((1, 3), dtype=jnp.int32)
+    model.init((shapes.signature(inputs),
+                shapes.ShapeDtype((1, 1), dtype=jnp.int32)))
+    s = trainer_lib.autoregressive_sample(model, inputs=inputs,
+                                          eos_id=-1, max_length=10)
+    self.assertEqual(s.shape[0], 1)
+    self.assertEqual(s.shape[1], 10)
 
   @parameterized.parameters(BACKENDS)
   def test_train_eval_predict_sm3(self, backend_name):
