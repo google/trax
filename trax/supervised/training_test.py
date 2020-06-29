@@ -42,9 +42,11 @@ class TrainingTest(test.TestCase):
         eval_at=lambda step_n: step_n % 2 == 0,
         eval_N=1)
     training_session = training.Loop(model, task, eval_task=eval_task)
-    self.assertIsNone(training_session.current_step())
-    training_session.run(n_steps=20)
-    self.assertEqual(20, training_session.current_step())
+    self.assertEqual(0, training_session.current_step)
+    training_session.run(n_steps=15)
+    self.assertEqual(15, training_session.current_step)
+    training_session.run(n_steps=5)
+    self.assertEqual(20, training_session.current_step)
 
   def test_train_dense_layer_with_momentum(self):
     """Trains with an optimizer that has slots / requires initialization."""
@@ -58,9 +60,26 @@ class TrainingTest(test.TestCase):
         eval_at=lambda step_n: step_n % 2 == 0,
         eval_N=1)
     training_session = training.Loop(model, task, eval_task=eval_task)
-    self.assertIsNone(training_session.current_step())
+    self.assertEqual(0, training_session.current_step)
     training_session.run(n_steps=20)
-    self.assertEqual(20, training_session.current_step())
+    self.assertEqual(20, training_session.current_step)
+
+  def test_train_dense_layer_evals(self):
+    """Trains a very simple network on a very simple task, 2 epochs."""
+    model = tl.Serial(tl.Dense(1))
+    task = training.TrainTask(
+        _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01))
+    eval_task = training.EvalTask(
+        _very_simple_data(),  # deliberately re-using training data
+        [tl.L2Loss()],
+        eval_at=lambda step_n: False,
+        eval_N=1)
+    training_session = training.Loop(model, task, eval_task=eval_task)
+    self.assertEqual(0, training_session.current_step)
+    training_session.run(n_steps=10)
+    self.assertEqual(10, training_session.current_step)
+    training_session.run_evals()
+    self.assertEqual(10, training_session.current_step)  # Unchanged
 
 
 def _very_simple_data():

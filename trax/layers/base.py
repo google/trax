@@ -311,6 +311,11 @@ class Layer:
   # Methods and properties below are reserved for internal use.
 
   @property
+  def name(self):
+    """Returns the name of this layer."""
+    return self._name
+
+  @property
   def n_in(self):
     """Returns how many tensors this layer expects as input."""
     return self._n_in

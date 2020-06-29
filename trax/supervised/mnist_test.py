@@ -57,7 +57,7 @@ class MnistTest(absltest.TestCase):
 
     training_session = training.Loop(mnist_model, task, eval_task=eval_task)
     training_session.run(n_steps=1000)
-    self.assertEqual(training_session.current_step(), 1000)
+    self.assertEqual(training_session.current_step, 1000)
 
 
 def _mnist_dataset():
