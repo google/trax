@@ -14,9 +14,11 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Classes for supervised learning/training in Trax.
+"""Simplified API (under development) for supervised learning/training in Trax.
 
-Trax provides classes for training supervised models:
+Trax authors expect that this module will replace `trainer_lib.Trainer`.
+
+Key classes:
 
   - Loop: Core training loop for an n-step training session, starting from
     random initialization.

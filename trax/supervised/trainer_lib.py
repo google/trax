@@ -13,7 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Trax main training functions."""
+"""Original API for supervised learning/training in Trax.
+
+Trax authors expect that the `supervised.training` module (under development)
+will replace `trainer_lib`.
+"""
 
 import collections
 import functools
