@@ -344,8 +344,6 @@ class Layer:
       - an empty tuple
       - a tensor (ndarray)
       - a nested structure of tuples and tensors
-
-    TODO(jonni): Simplify this picture (and underlying implementation).
     """
     return self._weights
 

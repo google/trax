@@ -6,38 +6,25 @@ trax
     layers.* <trax.layers>
     models.* <trax.models>
     optimizers.* <trax.optimizers>
-    rl.* <trax.rl>
     supervised.* <trax.supervised>
+    rl.* <trax.rl>
 
-jaxboard
---------
-
-.. automodule:: trax.jaxboard
-
-rl\_trainer
------------
-
-.. automodule:: trax.rl_trainer
 
 shapes
 ------
 
 .. automodule:: trax.shapes
 
-test\_utils
------------
-
-.. automodule:: trax.test_utils
-
 trainer
 -------
 
 .. automodule:: trax.trainer
 
-trainer\_flags
---------------
+rl\_trainer
+-----------
 
-.. automodule:: trax.trainer_flags
+.. automodule:: trax.rl_trainer
+
 
 trax2keras
 ----------

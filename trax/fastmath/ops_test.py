@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for trax.fastmath."""
+"""Tests for trax.fastmath.ops."""
 
 import collections
 

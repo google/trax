@@ -1,7 +1,7 @@
 trax.fastmath
 =============
 
-backend
--------
+ops
+---
 
-.. automodule:: trax.fastmath.backend
+.. automodule:: trax.fastmath.ops
