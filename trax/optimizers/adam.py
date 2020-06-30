@@ -21,22 +21,27 @@ from trax.optimizers import base as opt_base
 
 
 class Adam(opt_base.Optimizer):
-  """Adam optimizer."""
+  """Adam optimizer; described in https://arxiv.org/abs/1412.6980."""
 
   def __init__(self, learning_rate, weight_decay_rate=1e-5,  # pylint: disable=useless-super-delegation
                b1=0.9, b2=0.999, eps=1e-5, clip_grad_norm=None):
-    """Create the Adam optimizer.
+    """Creates an Adam optimizer.
 
     Args:
-      learning_rate: a postitive scalar value for the initial learning rate.
-      weight_decay_rate: rate at which to decay weights.
-      b1: optional, a positive scalar value for beta_1, the exponential decay
-        rate for the first moment estimates (default 0.9).
-      b2: optional, a positive scalar value for beta_2, the exponential decay
-         rate for the second moment estimates (default 0.999).
-      eps: optional, a positive scalar value for epsilon, a small constant for
-        numerical stability (default 1e-5).
-      clip_grad_norm: the number used for gradient clipping.
+      learning_rate: Initial (unadapted) learning rate; original paper calls
+          this 'Stepsize' and suggests .001 as a generally good value.
+      weight_decay_rate: Fraction of prior weight values to subtract on each
+          step; equivalent to multiplying each weight element by
+          `1 - weight_decay_rate`. (This is not part of the core Adam
+          algorithm.)
+      b1: Positive scalar value for beta_1, the exponential decay rate for the
+          first moment estimates (default 0.9).
+      b2: Positive scalar value for beta_2, the exponential decay rate for the
+          second moment estimates (default 0.999).
+      eps: Positive scalar value for epsilon, a small constant for numerical
+          stability (default 1e-5).
+      clip_grad_norm: Threshold value above which gradient clipping occurs.
+          (This is not part of the core Adam algorithm.)
     """
     super(Adam, self).__init__(
         learning_rate=learning_rate,
