@@ -90,7 +90,9 @@ def LSTM(n_units):
   return cb.Serial(
       cb.Branch([], zero_state),
       cb.Scan(LSTMCell(n_units=n_units), axis=1),
-      cb.Select([0], n_in=2)  # Drop RNN state.
+      cb.Select([0], n_in=2),  # Drop RNN state.
+      # Set the name to LSTM and don't print sublayers.
+      name=f'LSTM_{n_units}', sublayers_to_print=[]
   )
 
 
@@ -146,7 +148,9 @@ def GRU(n_units):
   return cb.Serial(
       cb.Branch([], zero_state),
       cb.Scan(GRUCell(n_units=n_units), axis=1),
-      cb.Select([0], n_in=2)  # Drop RNN state.
+      cb.Select([0], n_in=2),  # Drop RNN state.
+      # Set the name to GRU and don't print sublayers.
+      name=f'GRU_{n_units}', sublayers_to_print=[]
   )
 
 
@@ -280,7 +284,9 @@ def SRU(n_units, activation=None):
       cb.Scan(InnerSRUCell(), axis=1),
       cb.Select([0], n_in=2),                               # act(c), r, x
       activation or [],
-      base.Fn('FinalSRUGate', lambda c, r, x: c * r + x * (1 - r) * (3**0.5))
+      base.Fn('FinalSRUGate', lambda c, r, x: c * r + x * (1 - r) * (3**0.5)),
+      # Set the name to SRU and don't print sublayers.
+      name=f'SRU_{n_units}', sublayers_to_print=[]
   )
 
 

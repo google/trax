@@ -53,6 +53,14 @@ class RnnTest(absltest.TestCase):
     y = layer(x)
     self.assertEqual(y.shape, x.shape)
 
+  def test_names(self):
+    layer = tl.LSTM(3)
+    self.assertEqual('LSTM_3', str(layer))
+    layer = tl.GRU(5)
+    self.assertEqual('GRU_5', str(layer))
+    layer = tl.SRU(7)
+    self.assertEqual('SRU_7', str(layer))
+
 
 if __name__ == '__main__':
   absltest.main()

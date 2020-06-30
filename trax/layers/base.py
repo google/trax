@@ -88,17 +88,20 @@ class Layer:
   outputs are spliced back into the stack.
   """
 
-  def __init__(self, n_in=1, n_out=1, name=None):
+  def __init__(self, n_in=1, n_out=1, name=None, sublayers_to_print=None):
     """Creates a partially initialized, unconnected layer instance.
 
     Args:
       n_in: Number of inputs expected by this layer.
       n_out: Number of outputs promised by this layer.
-      name: Class-like name for this layer; for use in debugging.
+      name: Class-like name for this layer; for use when printing this layer.
+      sublayers_to_print: Sublayers to display when printing out this layer;
+        By default (when None) we display all sublayers.
     """
     self._n_in = n_in
     self._n_out = n_out
     self._name = name or self.__class__.__name__
+    self._sublayers_to_print = sublayers_to_print
     self._sublayers = ()  # Default is no sublayers.
     # This may run before some backends (e.g. JAX) are initialized, so we use
     # Python `int` here instead of `fastmath.random.get_prng` (also note that
@@ -124,6 +127,8 @@ class Layer:
     if n_in != 1: name_str += f'_in{n_in}'
     if n_out != 1: name_str += f'_out{n_out}'
     objs = self.sublayers
+    if self._sublayers_to_print is not None:
+      objs = self._sublayers_to_print
     if objs:
       objs_str = '\n'.join(indent_string(str(x)) for x in objs)
       return f'{name_str}[\n{objs_str}\n]'

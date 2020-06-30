@@ -42,8 +42,9 @@ class Serial(base.Layer):
   1-input 1-output no-op.
   """
 
-  def __init__(self, *sublayers, name=None):
-    super(Serial, self).__init__(name=name)
+  def __init__(self, *sublayers, name=None, sublayers_to_print=None):
+    super(Serial, self).__init__(
+        name=name, sublayers_to_print=sublayers_to_print)
 
     sublayers = _ensure_flat(sublayers)
     self._sublayers = sublayers
@@ -458,7 +459,8 @@ def Branch(*layers, name='Branch'):
     return layers[0]
   parallel_layer = Parallel(*layers)
   indices = [list(range(layer.n_in)) for layer in parallel_layer.sublayers]
-  return Serial(Select(_deep_flatten(indices)), parallel_layer, name=name)
+  return Serial(Select(_deep_flatten(indices)), parallel_layer,
+                name=name, sublayers_to_print=layers)
 
 
 def Residual(*layers, shortcut=None):

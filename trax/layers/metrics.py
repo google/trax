@@ -78,24 +78,28 @@ def L2Loss():
   return Fn('L2Loss', f)
 
 
-def AccuracyScalar():
+def Accuracy():
   """Returns a layer that computes mean category prediction accuracy."""
-  return cb.Serial(_Accuracy(), _WeightedMean())
+  return cb.Serial(_Accuracy(), _WeightedMean(),
+                   name='Accuracy', sublayers_to_print=[])
 
 
-def SequenceAccuracyScalar():
+def SequenceAccuracy():
   """Returns a layer that computes mean sequence prediction accuracy."""
-  return cb.Serial(_Accuracy(), _WeightedSequenceMean())
+  return cb.Serial(_Accuracy(), _WeightedSequenceMean(),
+                   name='SequenceAccuracy', sublayers_to_print=[])
 
 
 def CrossEntropyLoss():
   """Returns a layer that computes mean prediction-target cross entropy."""
-  return cb.Serial(_CrossEntropy(), _WeightedMean())
+  return cb.Serial(_CrossEntropy(), _WeightedMean(),
+                   name='CrossEntropyLoss', sublayers_to_print=[])
 
 
 def CrossEntropySum():
   """Returns a layer that computes sum of prediction-target cross entropies."""
-  return cb.Serial(_CrossEntropy(), WeightedSum())
+  return cb.Serial(_CrossEntropy(), WeightedSum(),
+                   name='CrossEntropySum', sublayers_to_print=[])
 
 
 def SumOfWeights():

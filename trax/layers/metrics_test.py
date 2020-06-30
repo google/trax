@@ -91,7 +91,7 @@ class MetricsTest(absltest.TestCase):
     self.assertEqual(y.shape, ())
 
   def test_accuracy_scalar(self):
-    layer = tl.AccuracyScalar()
+    layer = tl.Accuracy()
     xs = [np.ones((9, 4, 4, 20)),
           np.ones((9, 4, 4)),
           np.ones((9, 4, 4))]
@@ -117,6 +117,18 @@ class MetricsTest(absltest.TestCase):
     weights = np.array([[1., 0.], [0., 1.]])
     loss = layer((x, target, weights))
     np.testing.assert_allclose(loss, 0.5)
+
+  def test_names(self):
+    layer = tl.L2Loss()
+    self.assertEqual('L2Loss_in3', str(layer))
+    layer = tl.Accuracy()
+    self.assertEqual('Accuracy_in3', str(layer))
+    layer = tl.SequenceAccuracy()
+    self.assertEqual('SequenceAccuracy_in3', str(layer))
+    layer = tl.CrossEntropyLoss()
+    self.assertEqual('CrossEntropyLoss_in3', str(layer))
+    layer = tl.CrossEntropySum()
+    self.assertEqual('CrossEntropySum_in3', str(layer))
 
 
 if __name__ == '__main__':

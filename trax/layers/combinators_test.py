@@ -382,6 +382,11 @@ class BranchTest(absltest.TestCase):
     layer = tl.Branch(tl.Add(), DivideBy(0.5))
     self.assertIn('Branch', str(layer))
 
+  def test_printing_sublayers(self):
+    layer = tl.Branch(tl.Add(), tl.Add())
+    expected_result = 'Branch_in2_out2[\n  Add_in2\n  Add_in2\n]'
+    self.assertEqual(expected_result, str(layer))
+
 
 class SelectTest(absltest.TestCase):
 

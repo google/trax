@@ -50,8 +50,7 @@ class MnistTest(absltest.TestCase):
         adafactor.Adafactor(.02))
     eval_task = training.EvalTask(
         itertools.cycle(_mnist_dataset().eval_stream(1)),
-        [tl.CrossEntropyLoss(), tl.AccuracyScalar()],
-        metric_names=['CrossEntropyLoss', 'AccuracyScalar'],
+        [tl.CrossEntropyLoss(), tl.Accuracy()],
         n_eval_batches=10)
 
     training_session = training.Loop(mnist_model, task, eval_task=eval_task,
