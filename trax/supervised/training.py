@@ -76,7 +76,7 @@ class Loop:
   """
 
   def __init__(self, model, task, eval_model=None, eval_task=None,
-               output_dir=None, checkpoint_at=None):
+               output_dir=None, checkpoint_at=None, eval_at=None):
     """Configures a training `Loop`, including a random initialization.
 
     Args:
@@ -93,8 +93,10 @@ class Loop:
       output_dir: Path telling where to save outputs (evals and checkpoints).
           Can be None if both `eval_task` and `checkpoint_at` are None.
       checkpoint_at: Function (integer --> boolean) telling, for step n, whether
-          that step should have its checkpoint saved. If None, don't save any
-          checkpoints.
+          that step should have its checkpoint saved. If None, the default is
+          periodic checkpointing at `task.n_steps_per_checkpoint`.
+      eval_at: Function (integer --> boolean) that says, for training step n,
+          whether that step should run evals. If None, run when checkpointing.
     """
     self._task = task
     self._model = model
@@ -102,7 +104,11 @@ class Loop:
     self._eval_model = model if eval_model is None else eval_model
     self._eval_task = eval_task
     self._output_dir = output_dir
-    self._checkpoint_at = checkpoint_at or _never
+    default_fn = _at_step_1_and_periodically_at(task.n_steps_per_checkpoint)
+    self._checkpoint_at = checkpoint_at or default_fn
+    self._eval_at = eval_at or default_fn
+    if eval_task is None:
+      self._eval_at = _never
     self._step = 0
 
     batch_signature = shapes.signature(task.sample_batch)
@@ -140,6 +146,8 @@ class Loop:
       self._step += 1
       weights, state, slots = self._run_one_step(weights, state, slots)
       if self._eval_at(self._step):
+        self._model_in_training.weights = weights
+        self._model_in_training.state = state
         self._eval_model.weights = self._model.weights
         self.run_evals(weights, state)
       if self._checkpoint_at(self._step):
@@ -212,7 +220,7 @@ class Loop:
     metrics_weights = (model_weights, self._eval_weights)
     metrics_state = (model_state, self._eval_state)
 
-    n_batches = eval_task._eval_N  # pylint: disable=protected-access
+    n_batches = eval_task.n_eval_batches
     n_metrics = len(eval_task.metrics)
     sums = np.zeros((n_metrics,))
     for _ in range(n_batches):
@@ -222,14 +230,10 @@ class Loop:
           self._metrics_fn(batch, metrics_weights, metrics_state, rng))
       sums += metric_values
     averages = sums / n_batches
-    rjust_len = max([0] + [len(name) for name in eval_task.names])
-    for name, average_value in zip(eval_task.names, averages):
+    rjust_len = max([0] + [len(name) for name in eval_task.metric_names])
+    for name, average_value in zip(eval_task.metric_names, averages):
       self._log_step('%s %s | % .8f' % (
           'eval'.ljust(5), name.rjust(rjust_len), average_value))
-
-  def _eval_at(self, step_n):
-    """Returns True for training step n if evals should be run for that step."""
-    return self._eval_task is not None and self._eval_task.eval_at(step_n)
 
   def _log_step(self, msg):
     """Logs message, labeled with the current training step number."""
@@ -287,7 +291,8 @@ def _model_with_metrics(model, eval_task):
 class TrainTask:
   """A supervised task (labeled data + feedback mechanism) for training."""
 
-  def __init__(self, labeled_data, loss_layer, optimizer, lr_schedule=None):
+  def __init__(self, labeled_data, loss_layer, optimizer, lr_schedule=None,
+               n_steps_per_checkpoint=100):
     r"""Configures a training task.
 
     Args:
@@ -299,12 +304,14 @@ class TrainTask:
       optimizer: Optimizer object that computes model weight updates from
           loss-function gradients.
       lr_schedule: Learning rate schedule, a function step -> learning_rate.
+      n_steps_per_checkpoint: How many steps to run between checkpoints.
     """
     self._labeled_data = labeled_data
     self._loss_layer = loss_layer
     self._optimizer = optimizer
     self._lr_schedule = lr_schedule
     self._sample_batch = next(labeled_data)
+    self._n_steps_per_checkpoint = n_steps_per_checkpoint
 
   @property
   def labeled_data(self):
@@ -323,6 +330,10 @@ class TrainTask:
     return self._loss_layer
 
   @property
+  def n_steps_per_checkpoint(self):
+    return self._n_steps_per_checkpoint
+
+  @property
   def optimizer(self):
     return self._optimizer
 
@@ -337,14 +348,14 @@ class TrainTask:
 class EvalTask:
   """Labeled data plus scalar functions for (periodically) measuring a model.
 
-  An eval task specifies how (`labeled_data` + `metrics`) and when (`eval_at`)
-  to measure a model as it is training. The variance of each scalar output is
-  reduced by measuring over multiple (`eval_N`) batches and reporting the
-  average from those measurements.
+  An eval task specifies how (`labeled_data` + `metrics`) and with what
+  precision (`n_eval_batches`) to measure a model as it is training.
+  The variance of each scalar output is reduced by measuring over multiple
+  (`n_eval_batches`) batches and reporting the average from those measurements.
   """
 
   def __init__(self, labeled_data, metrics,
-               names=None, eval_at=None, eval_N=10):
+               metric_names=None, n_eval_batches=1):
     r"""Configures an eval task: named metrics run with a given data source.
 
     Args:
@@ -353,20 +364,16 @@ class EvalTask:
           tensor.
       metrics: List of layers; each computes a scalar value per batch by
           comparing model output :math:`\hat{y}=f(x)` to the target :math:`y`.
-      names: List of names, one for each item in `metrics`, in matching order,
-          to be used when recording/reporting eval output. If None, generate
-          default names using layer names from metrics.
-      eval_at: Function (integer --> boolean) that says, for training step n,
-          whether that step should run the evals. If None, never run evals.
-      eval_N: Integer N that specifies how many eval batches to run; the eval
-          output is then the average of the scalar outputs from the N batches.
+      metric_names: List of names, one for each item in `metrics`, in matching
+           order, to be used when recording/reporting eval output. If None,
+           generate default names using layer names from metrics.
+      n_eval_batches: Integer N that specifies how many eval batches to run;
+          the output is then the average of the outputs from the N batches.
     """
     self._labeled_data = labeled_data
     self._metrics = metrics
-    self._names = names or self._default_names()
-    # TODO(lukaszkaiser,jonni): have a default _eval_every or so.
-    self._eval_at = eval_at if eval_at is not None else _never
-    self._eval_N = eval_N  # pylint: disable=invalid-name
+    self._metric_names = metric_names or self._default_names()
+    self._n_eval_batches = n_eval_batches  # pylint: disable=invalid-name
 
     self._sample_batch = next(labeled_data)
     self._check_init_values()
@@ -388,21 +395,21 @@ class EvalTask:
     return self._metrics
 
   @property
-  def names(self):
-    return self._names
+  def metric_names(self):
+    return self._metric_names
 
   @property
-  def eval_at(self):
-    return self._eval_at
+  def n_eval_batches(self):
+    return self._n_eval_batches
 
   def _default_names(self):
     return [m.name for m in self._metrics]
 
   def _check_init_values(self):
-    if len(self._metrics) != len(self._names):
+    if len(self._metrics) != len(self._metric_names):
       raise ValueError(
           f'Number of metrics ({len(self._metrics)}) does not equal '
-          f'number of names ({len(self._names)}).')
+          f'number of metric names ({len(self._metric_names)}).')
 
 
 def _never(*args):
@@ -411,9 +418,11 @@ def _never(*args):
   return False
 
 
-def _step_1_only(step_n):
-  """Returns true for step 1 only."""
-  return step_n == 1
+def _at_step_1_and_periodically_at(period):
+  """A function that's true at 1 and n when n % period == 0."""
+  def _at_1_and_periodically(step_n):
+    return (step_n == 1) or (step_n > 0 and (step_n % period == 0))
+  return _at_1_and_periodically
 
 
 def _log(s, stdout=True):

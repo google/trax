@@ -38,10 +38,9 @@ class TrainingTest(test.TestCase):
     eval_task = training.EvalTask(
         _very_simple_data(),  # deliberately re-using training data
         [tl.L2Loss()],
-        names=['SGD.L2Loss'],
-        eval_at=lambda step_n: step_n % 2 == 0,
-        eval_N=1)
-    training_session = training.Loop(model, task, eval_task=eval_task)
+        metric_names=['SGD.L2Loss'])
+    training_session = training.Loop(model, task, eval_task=eval_task,
+                                     eval_at=lambda step_n: step_n % 2 == 0)
     self.assertEqual(0, training_session.current_step)
     training_session.run(n_steps=15)
     self.assertEqual(15, training_session.current_step)
@@ -56,10 +55,9 @@ class TrainingTest(test.TestCase):
     eval_task = training.EvalTask(
         _very_simple_data(),  # deliberately re-using training data
         [tl.L2Loss()],
-        names=['Momentum.L2Loss'],
-        eval_at=lambda step_n: step_n % 2 == 0,
-        eval_N=1)
-    training_session = training.Loop(model, task, eval_task=eval_task)
+        metric_names=['Momentum.L2Loss'])
+    training_session = training.Loop(model, task, eval_task=eval_task,
+                                     eval_at=lambda step_n: step_n % 2 == 0)
     self.assertEqual(0, training_session.current_step)
     training_session.run(n_steps=20)
     self.assertEqual(20, training_session.current_step)
@@ -71,10 +69,9 @@ class TrainingTest(test.TestCase):
         _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01))
     eval_task = training.EvalTask(
         _very_simple_data(),  # deliberately re-using training data
-        [tl.L2Loss()],
-        eval_at=lambda step_n: False,
-        eval_N=1)
-    training_session = training.Loop(model, task, eval_task=eval_task)
+        [tl.L2Loss()])
+    training_session = training.Loop(model, task, eval_task=eval_task,
+                                     eval_at=lambda step_n: False)
     self.assertEqual(0, training_session.current_step)
     training_session.run(n_steps=10)
     self.assertEqual(10, training_session.current_step)
