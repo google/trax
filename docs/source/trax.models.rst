@@ -6,11 +6,6 @@ atari\_cnn
 
 .. automodule:: trax.models.atari_cnn
 
-beam\_search
-------------
-
-.. automodule:: trax.models.beam_search
-
 mlp
 ---
 
