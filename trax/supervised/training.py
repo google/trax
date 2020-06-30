@@ -103,7 +103,7 @@ class Loop:
     self._model_in_training = tl.Serial(model, task.loss_layer)
     self._eval_model = model if eval_model is None else eval_model
     self._eval_task = eval_task
-    self._output_dir = output_dir
+    self._output_dir = os.path.expanduser(output_dir) if output_dir else None
     default_fn = _at_step_1_and_periodically_at(task.n_steps_per_checkpoint)
     self._checkpoint_at = checkpoint_at or default_fn
     self._eval_at = eval_at or default_fn
