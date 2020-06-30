@@ -27,14 +27,13 @@ class Serial(base.Layer):
   """Combinator that applies layers serially (by function composition).
 
   This combinator is commonly used to construct deep networks, e.g., like this:
-  ```
-  mlp = tl.Serial(
-    tl.Dense(128),
-    tl.Relu(),
-    tl.Dense(10),
-    tl.LogSoftmax()
-  )
-  ```
+
+  >>> mlp = tl.Serial(
+  >>>   tl.Dense(128),
+  >>>   tl.Relu(),
+  >>>   tl.Dense(10),
+  >>>   tl.LogSoftmax()
+  >>> )
 
   A Serial combinator uses stack semantics to manage data for its sublayers.
   Each sublayer sees only the inputs it needs and returns only the outputs it

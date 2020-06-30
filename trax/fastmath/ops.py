@@ -18,14 +18,12 @@
 
 Import these operations directly from fastmath and import fastmath.numpy as np:
 
-```
-from trax import fastmath
-from trax.fastmath import numpy as np
-
-x = np.array([1.0, 2.0])  # Use like numpy.
-y = np.exp(x)  # Common numpy ops are available and accelerated.
-z = fastmath.logsumexp(y)  # Special operations (below) available from fastmath.
-```
+>>> from trax import fastmath
+>>> from trax.fastmath import numpy as np
+>>>
+>>> x = np.array([1.0, 2.0])  # Use like numpy.
+>>> y = np.exp(x)  # Common numpy ops are available and accelerated.
+>>> z = fastmath.logsumexp(y)  # Special operations available from fastmath.
 
 Trax uses either TensorFlow 2 or JAX as backend for accelerating operations.
 You can select which one to use (e.g., for  debugging) with `use_backend`.
