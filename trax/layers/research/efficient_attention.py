@@ -258,44 +258,48 @@ class EfficientAttentionBase(base.Layer):
   def __init__(self, n_heads, n_in=1, n_parallel_heads=None,
                incremental=False, predict_mem_len=None, predict_drop_len=None,
                use_python_loop=False, use_reference_code=False):
-    """Construct an EfficientAttentionBase instance.
+    """Constructs an EfficientAttentionBase instance.
 
     Args:
-      n_heads: int: Number of attention heads
-      n_in: int: Number of inputs to the layer (default 1)
-      n_parallel_heads: int: Number of attention heads to compute in parallel.
-        if n_parallel_heads is None (default): The entire layer is computed with
-          maximum parallelism. This mode is the fastest, but also uses the most
-          memory. Start with this mode, but switch to one of the others if
-          memory runs out.
-        if n_parallel_heads is 1: Attention is computed one head at a time, and
-          one example at a time. This mode uses the least memory but is not as
-          fast as batched attention. Use this mode when working with very long
-          sequences, such that any amount of parallelism won't fit in memory.
-        if n_parallel_heads is a multiple of n_heads: Attention is computed for
-          sub-batches of (n_parallel_heads // n_heads) examples at a time.
-        if 1 < n_parallel_heads < n_heads: Attention is computed for several
-          heads at a time, but only within a single example. It must be the case
-          that n_heads is a multiple of n_parallel_heads. Use this mode for long
-          sequences, to strike a balance between parallelism and memory usage.
-      incremental: bool: Enables fast inference for self-attention types. Note
-        that this flag should *not* be set when doing encoder-decoder attention,
-        but only when doing self-attention.
-      predict_mem_len: int: Number of input positions to remember in a cache
-        when doing fast inference. Whenever the cache fills up, some input
-        elements will be forgotten.
-      predict_drop_len: int: Number of input elements to drop once the fast
-        inference input cache fills up.
-      use_python_loop: bool: Set to True to use a Python loop when iterating
-        over sub-batches of examples/heads (as opposed to a JAX/XLA loop). This
-        option will increase compilation time and jitted code size, potentially
-        drastically. Using it is not recommended except for testing/debugging.
-        In particular, note that enabling this option on TPU can decrease the
-        maximum model size that will fit in memory.
-      use_reference_code: bool: Set to True to fall back to the reference
-        implementation of batched attention. This option will increase
-        compilation time and jitted code size, potentially drastically. Using it
-        is not recommended except for testing/debugging.
+      n_heads: Number of attention heads.
+      n_in: Number of inputs to the layer (default 1).
+      n_parallel_heads: Number of attention heads to compute in parallel.
+
+          - If `n_parallel_heads` is None (default), the entire layer is
+            computed with maximum parallelism. This mode is the fastest, but
+            also uses the most memory. Start with this mode, but switch to one
+            of the others if memory runs out.
+          - If `n_parallel_heads` is 1, attention is computed one head at a
+            time, and one example at a time. This mode uses the least memory
+            but is not as fast as batched attention. Use this mode when working
+            with very long sequences, such that any amount of parallelism won't
+            fit in memory.
+          - If `n_parallel_heads` is a multiple of `n_heads`, attention is
+            computed for sub-batches of (`n_parallel_heads // n_heads`)
+            examples at a time.
+          - If `1 < n_parallel_heads < n_heads`, attention is computed for
+            several heads at a time, but only within a single example. It must
+            be the case that `n_heads` is a multiple of `n_parallel_heads`. Use
+            this mode for long sequences, to strike a balance between
+            parallelism and memory usage.
+      incremental: If `True`, enable fast inference for self-attention types.
+          Note that this flag should *not* be set when doing encoder-decoder
+          attention, but only when doing self-attention.
+      predict_mem_len: Number of input positions to remember in a cache
+          when doing fast inference. Whenever the cache fills up, some input
+          elements will be forgotten.
+      predict_drop_len: Number of input elements to drop once the fast
+          inference input cache fills up.
+      use_python_loop: Set to True to use a Python loop when iterating over
+          sub-batches of examples/heads (as opposed to a JAX/XLA loop).
+          This option will increase compilation time and jitted code size,
+          potentially drastically. Using it is not recommended except for
+          testing/debugging. In particular, note that enabling this option on
+          TPU can decrease the maximum model size that will fit in memory.
+      use_reference_code: Set to True to fall back to the reference
+          implementation of batched attention. This option will increase
+          compilation time and jitted code size, potentially drastically. Using
+          it is not recommended except for testing/debugging.
     """
     super().__init__(n_in=n_in, n_out=1)
     self.n_heads = n_heads

@@ -357,15 +357,15 @@ class Trainer(object):
     """Evaluate.
 
     Args:
-      inputs_stream: iterable of inputs to evaluate on.
-      weights: weights for each f in eval_fns.
-      state: state for each f in eval_fns.
-      rng: random number generator.
+      inputs_stream: Iterable of inputs to evaluate on.
+      weights: Weights for each f in eval_fns.
+      state: State for each f in eval_fns.
+      rng: Single-use random number generator (JAX PRNG key).
 
     Returns:
-      metrics: dict from metric name to metric value averaged over the number of
-        inputs.
-      state: end state for `predict_fn`.
+      Tuple of `(metrics, state)`. `metrics` is a dict from metric name to
+      metric value averaged over the number of inputs, and `state` is the end
+      state returned by this trainer's `predict_fn`.
     """
     metrics = collections.defaultdict(float)
     count = 0

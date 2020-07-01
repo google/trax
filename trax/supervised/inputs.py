@@ -412,18 +412,20 @@ def add_loss_weights(generator, id_to_mask=None):
   """Add weights to inputs without weights and masks by id if requested.
 
   The generator stream is augmented in the following way:
-  * if the stream consists of pairs (inputs, targets), a loss mask is added
-    that is creates as a tensor of ones of the same shape as targets
-  * if id_to_mask is not None, and the stream (after the previous point) has
-    triples (inputs, targets, weights), the weights are multipled by a 0/1 mask
-    that is 0 iff targets is equal to id_to_mask (1 otherwise).
+
+  - If the stream consists of pairs `(inputs, targets)`, a loss mask is added
+    that is creates as a tensor of ones of the same shape as targets.
+  - If `id_to_mask` is not `None`, and the stream (after the previous point)
+    has triples `(inputs, targets, weights)`, the weights are multipled by a
+    0/1 mask that is 0 iff targets is equal to `id_to_mask` (1 otherwise).
 
   Args:
-    generator: a python stream of tuples
-    id_to_mask: int or None, id to pad in targets if not None
+    generator: Stream of tuples.
+    id_to_mask: If not None, int-valued id that represents padding, as opposed
+        to true target id's.
 
   Yields:
-    examples from the augmented stream
+    Examples from the augmented stream.
   """
   for example in generator:
     if len(example) > 3 or len(example) < 2:

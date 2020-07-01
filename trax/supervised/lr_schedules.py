@@ -14,12 +14,17 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Learning rate (LR) schedules as functions of time (step number).
+r"""Learning rate (LR) schedules.
 
-In Trax a learning rate schedule is a function: step -> learning_rate.
+In Trax a learning rate schedule is a function:
+:math:`\text{step} \mapsto \text{learning_rate}`.
 This module provides helpers for constructing such functions. For example,
-  constant(0.001)
-returns a function that takes each step --> 0.001.
+
+.. code-block:: python
+
+    constant(0.001)
+
+returns a function that always returns `0.001`.
 """
 
 import math
