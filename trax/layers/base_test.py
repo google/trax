@@ -24,8 +24,7 @@ import numpy as np
 from trax import fastmath
 from trax import shapes
 from trax.fastmath import numpy as jnp
-from trax.layers import base
-
+import trax.layers as tl
 
 BACKENDS = ['jax', 'tf']
 CUSTOM_GRAD_BACKENDS = ['jax']  # TODO(afrozm): Delete after TF 2.3
@@ -34,35 +33,33 @@ CUSTOM_GRAD_BACKENDS = ['jax']  # TODO(afrozm): Delete after TF 2.3
 class BaseLayerTest(parameterized.TestCase):
 
   def test_call_raises_error(self):
-    layer = base.Layer()
-    x = np.array([[1, 2, 3, 4, 5],
-                  [10, 20, 30, 40, 50]])
-    with self.assertRaisesRegex(base.LayerError, 'NotImplementedError'):
+    layer = tl.Layer()
+    x = np.array([[1, 2, 3, 4, 5], [10, 20, 30, 40, 50]])
+    with self.assertRaisesRegex(tl.LayerError, 'NotImplementedError'):
       _ = layer(x)
 
   def test_forward_raises_error(self):
-    layer = base.Layer()
-    x = np.array([[1, 2, 3, 4, 5],
-                  [10, 20, 30, 40, 50]])
+    layer = tl.Layer()
+    x = np.array([[1, 2, 3, 4, 5], [10, 20, 30, 40, 50]])
     with self.assertRaises(NotImplementedError):
       _ = layer.forward(x)
 
   def test_init_returns_empty_weights_and_state(self):
-    layer = base.Layer()
+    layer = tl.Layer()
     input_signature = shapes.ShapeDtype((2, 5))
     weights, state = layer.init(input_signature)
     self.assertEmpty(weights)
     self.assertEmpty(state)
 
   def test_output_signature(self):
-    input_signature = (shapes.ShapeDtype((2, 3, 5)),
-                       shapes.ShapeDtype((2, 3, 5)))
-    layer = base.Fn('2in1out', lambda x, y: x + y)
+    input_signature = (shapes.ShapeDtype((2, 3, 5)), shapes.ShapeDtype(
+        (2, 3, 5)))
+    layer = tl.Fn('2in1out', lambda x, y: x + y)
     output_signature = layer.output_signature(input_signature)
     self.assertEqual(output_signature, shapes.ShapeDtype((2, 3, 5)))
 
     input_signature = shapes.ShapeDtype((5, 7))
-    layer = base.Fn('1in3out', lambda x: (x, 2 * x, 3 * x), n_out=3)
+    layer = tl.Fn('1in3out', lambda x: (x, 2 * x, 3 * x), n_out=3)
     output_signature = layer.output_signature(input_signature)
     self.assertEqual(output_signature, (shapes.ShapeDtype((5, 7)),) * 3)
     self.assertNotEqual(output_signature, (shapes.ShapeDtype((4, 7)),) * 3)
@@ -71,7 +68,7 @@ class BaseLayerTest(parameterized.TestCase):
   @parameterized.named_parameters([('_' + b, b) for b in CUSTOM_GRAD_BACKENDS])
   def test_custom_zero_grad(self, backend_name):
 
-    class IdWithZeroGrad(base.Layer):
+    class IdWithZeroGrad(tl.Layer):
 
       def forward(self, x):
         return x
@@ -87,8 +84,8 @@ class BaseLayerTest(parameterized.TestCase):
       layer = IdWithZeroGrad()
       rng = fastmath.random.get_prng(0)
       input_signature = shapes.ShapeDtype((9, 17))
-      random_input = fastmath.random.uniform(rng, input_signature.shape,
-                                             minval=-1.0, maxval=1.0)
+      random_input = fastmath.random.uniform(
+          rng, input_signature.shape, minval=-1.0, maxval=1.0)
       layer.init(input_signature)
       f = lambda x: jnp.mean(layer(x))
       grad = fastmath.grad(f)(random_input)
@@ -98,7 +95,7 @@ class BaseLayerTest(parameterized.TestCase):
   @parameterized.named_parameters([('_' + b, b) for b in CUSTOM_GRAD_BACKENDS])
   def test_custom_id_grad(self, backend_name):
 
-    class IdWithIdGrad(base.Layer):
+    class IdWithIdGrad(tl.Layer):
 
       def forward(self, x):
         return x
@@ -114,8 +111,8 @@ class BaseLayerTest(parameterized.TestCase):
       layer = IdWithIdGrad()
       rng = fastmath.random.get_prng(0)
       input_signature = shapes.ShapeDtype((9, 17))
-      random_input = fastmath.random.uniform(rng, input_signature.shape,
-                                             minval=-1.0, maxval=1.0)
+      random_input = fastmath.random.uniform(
+          rng, input_signature.shape, minval=-1.0, maxval=1.0)
       layer.init(input_signature)
       f = lambda x: jnp.mean(layer(x))
       grad = fastmath.grad(f)(random_input)
@@ -124,7 +121,7 @@ class BaseLayerTest(parameterized.TestCase):
 
   def test_weights_and_state_signature(self):
 
-    class MyLayer(base.Layer):
+    class MyLayer(tl.Layer):
 
       def init_weights_and_state(self, input_signature):
         self.weights = jnp.zeros((2, 3))
@@ -139,18 +136,18 @@ class BaseLayerTest(parameterized.TestCase):
     self.assertEqual(s.shape, (3, 4))
 
   def test_custom_name(self):
-    layer = base.Layer()
+    layer = tl.Layer()
     self.assertIn('Layer', str(layer))
     self.assertNotIn('CustomLayer', str(layer))
 
-    layer = base.Layer(name='CustomLayer')
+    layer = tl.Layer(name='CustomLayer')
     self.assertIn('CustomLayer', str(layer))
 
 
 class PureLayerTest(absltest.TestCase):
 
   def test_forward(self):
-    layer = base.PureLayer(lambda x: 2 * x)
+    layer = tl.PureLayer(lambda x: 2 * x)
 
     # Use Layer.__call__.
     in_0 = np.array([1, 2])
@@ -164,8 +161,7 @@ class PureLayerTest(absltest.TestCase):
 
     # Use Layer.pure_fn
     in_2 = np.array([5, 6])
-    out_2, _ = layer.pure_fn(
-        in_2, base.EMPTY_WEIGHTS, base.EMPTY_WEIGHTS, None)
+    out_2, _ = layer.pure_fn(in_2, tl.EMPTY_WEIGHTS, tl.EMPTY_WEIGHTS, None)
     self.assertEqual(out_2.tolist(), [10, 12])
 
 
@@ -173,20 +169,19 @@ class FnTest(absltest.TestCase):
 
   def test_bad_f_has_default_arg(self):
     with self.assertRaisesRegex(ValueError, 'default arg'):
-      _ = base.Fn('', lambda x, sth=None: x)
+      _ = tl.Fn('', lambda x, sth=None: x)
 
   def test_bad_f_has_keyword_arg(self):
     with self.assertRaisesRegex(ValueError, 'keyword arg'):
-      _ = base.Fn('', lambda x, **kwargs: x)
+      _ = tl.Fn('', lambda x, **kwargs: x)
 
   def test_bad_f_has_variable_arg(self):
     with self.assertRaisesRegex(ValueError, 'variable arg'):
-      _ = base.Fn('', lambda *args: args[0])
+      _ = tl.Fn('', lambda *args: args[0])
 
   def test_forward(self):
-    layer = base.Fn('SumAndMax',
-                    lambda x0, x1: (x0 + x1, jnp.maximum(x0, x1)),
-                    n_out=2)
+    layer = tl.Fn(
+        'SumAndMax', lambda x0, x1: (x0 + x1, jnp.maximum(x0, x1)), n_out=2)
 
     x0 = np.array([1, 2, 3, 4, 5])
     x1 = np.array([10, 20, 30, 40, 50])
@@ -199,16 +194,17 @@ class FnTest(absltest.TestCase):
     self.assertEqual(y2.tolist(), [11, 22, 33, 44, 55])
     self.assertEqual(y3.tolist(), [10, 20, 30, 40, 50])
 
-    (y4, y5), state = layer.pure_fn(
-        (x0, x1), base.EMPTY_WEIGHTS, base.EMPTY_STATE, None)
+    (y4, y5), state = layer.pure_fn((x0, x1), tl.EMPTY_WEIGHTS, tl.EMPTY_STATE,
+                                    None)
     self.assertEqual(y4.tolist(), [11, 22, 33, 44, 55])
     self.assertEqual(y5.tolist(), [10, 20, 30, 40, 50])
-    self.assertEqual(state, base.EMPTY_STATE)
+    self.assertEqual(state, tl.EMPTY_STATE)
 
   def test_weights_state(self):
-    layer = base.Fn(
+    layer = tl.Fn(
         '2in2out',
-        lambda x, y: (x + y, jnp.concatenate([x, y], axis=0)), n_out=2)
+        lambda x, y: (x + y, jnp.concatenate([x, y], axis=0)),
+        n_out=2)
     layer.init_weights_and_state(None)
     self.assertEmpty(layer.weights)
     self.assertEmpty(layer.state)

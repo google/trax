@@ -20,7 +20,7 @@ from absl.testing import absltest
 import numpy as np
 
 from trax import shapes
-import trax.layers as tl  # Flattened view for API users (hides subpackaging).
+import trax.layers as tl
 
 
 class DenseTest(absltest.TestCase):
@@ -43,8 +43,7 @@ class DenseTest(absltest.TestCase):
     w_init, b_init = layer.weights
 
     # Call the layer with externally specified weights.
-    w = np.array([[10000, 20000, 30000, 40000],
-                  [100, 200, 100, 200]])
+    w = np.array([[10000, 20000, 30000, 40000], [100, 200, 100, 200]])
     b = np.array([9, 8, 7, 6])
     y = layer(x, weights=(w, b))
 
@@ -85,9 +84,7 @@ class DenseTest(absltest.TestCase):
     x = np.array([2, 5, 3])
     _, _ = layer.init(shapes.signature(x))
 
-    w = np.array([[100, 200, 300, 400],
-                  [10, 10, 10, 10],
-                  [1, 2, 1, 2]])
+    w = np.array([[100, 200, 300, 400], [10, 10, 10, 10], [1, 2, 1, 2]])
     y = layer(x, weights=w)
     self.assertEqual(y.tolist(), [253, 456, 653, 856])
 
@@ -164,6 +161,7 @@ class EmbeddingTest(absltest.TestCase):
     self.assertLess(np.abs(np.mean(w)), .4)  # .4 is 4 sigma deviation
 
   def test_explicit_kernel_initializer(self):
+
     def f(shape, rng):
       del rng
       n_elements = np.prod(shape)
@@ -188,8 +186,8 @@ class DropoutTest(absltest.TestCase):
     n_remaining = np.count_nonzero(y)
     mu_of_remaining = 9000  # N * q:  10000 * .9
     sigma_of_remaining = 30  # sqrt(N * p * q):  sqrt(10000 * .1 * .9)
-    self.assertLess(np.abs(n_remaining - mu_of_remaining),
-                    4 * sigma_of_remaining)
+    self.assertLess(
+        np.abs(n_remaining - mu_of_remaining), 4 * sigma_of_remaining)
 
   def test_call_in_eval_mode_does_no_dropout(self):
     layer = tl.Dropout(rate=0.1, mode='eval')
@@ -238,7 +236,7 @@ class LogGaussianTest(absltest.TestCase):
     x = np.zeros((2, 5), dtype=np.float32)
     mu = x
     dsigma = np.eye(5)[None, :, :]
-    sigma = np.concatenate([dsigma, 2*dsigma], axis=0)
+    sigma = np.concatenate([dsigma, 2 * dsigma], axis=0)
     prob = tl.log_gaussian_pdf(x, mu, sigma)
     self.assertEqual(prob.shape, (2,))
     self.assertEqual(int(prob[0]), -4)
@@ -248,7 +246,7 @@ class LogGaussianTest(absltest.TestCase):
     x = np.zeros((2, 5), dtype=np.float32)
     mu = x
     sigma = np.ones((5,))[None, :]
-    sigma = np.concatenate([sigma, 2*sigma], axis=0)
+    sigma = np.concatenate([sigma, 2 * sigma], axis=0)
     prob = tl.log_gaussian_diag_pdf(x, mu, sigma)
     self.assertEqual(prob.shape, (2,))
     self.assertEqual(int(prob[0]), -4)
