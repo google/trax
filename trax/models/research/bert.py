@@ -75,8 +75,8 @@ def BERT(d_model=768,
   layer_norm_eps = 1e-12
   d_head = d_model // n_heads
 
-  word_embeddings = tl.Embedding(d_model, vocab_size)
-  type_embeddings = tl.Embedding(d_model, type_vocab_size)
+  word_embeddings = tl.Embedding(vocab_size, d_model)
+  type_embeddings = tl.Embedding(type_vocab_size, d_model)
   position_embeddings = tl.PositionalEncoding(max_len, mode=mode)
   embeddings = [
       tl.Select([0, 1, 0], n_in=3),  # Drops 'idx' input.

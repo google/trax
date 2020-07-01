@@ -325,7 +325,7 @@ def ReformerLM(vocab_size,
         dropout=dropout, mode=mode)
 
   positional_embedder = [
-      tl.Embedding(d_emb, vocab_size),
+      tl.Embedding(vocab_size, d_emb),
       tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),  # pylint: disable=no-value-for-parameter
       positional_encoding,
   ]
@@ -431,7 +431,7 @@ def ReformerShortenLM(vocab_size,
         dropout=dropout, mode=mode)
 
   positional_embedder = [
-      tl.Embedding(d_embedding, vocab_size),
+      tl.Embedding(vocab_size, d_embedding),
       tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),  # pylint: disable=no-value-for-parameter
       positional_encoding,
   ]
@@ -637,7 +637,7 @@ def Reformer(input_vocab_size,
     positional_encoding = tl.PositionalEncoding(
         max_len=max_len, dropout=dropout, mode=mode)
     return [
-        tl.Embedding(d_model, vocab_size),
+        tl.Embedding(vocab_size, d_model),
         tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),
         positional_encoding,
     ]
@@ -789,7 +789,7 @@ def ReformerNoEncDecAttention(input_vocab_size,
           dropout=dropout, mode=mode)
 
     return [
-        tl.Embedding(d_model, vocab_size),
+        tl.Embedding(vocab_size, d_model),
         tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),
         positional_encoding,
     ]

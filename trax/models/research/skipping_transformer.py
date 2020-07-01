@@ -153,7 +153,7 @@ def SkippingTransformerLM(vocab_size,
     to activations over a vocab set.
   """
   embedder = [
-      tl.Embedding(d_model, vocab_size),
+      tl.Embedding(vocab_size, d_model),
       tl.Dropout(rate=dropout, mode=mode),
       tl.PositionalEncoding(max_len=max_len, mode=mode),
   ]

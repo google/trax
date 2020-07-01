@@ -78,7 +78,8 @@ def Value(
       if is_discrete:
         encode_layer = tl.Parallel(
             tl.Dense(inject_actions_dim),
-            tl.Embedding(inject_actions_dim, vocab_size=vocab_size))
+            tl.Embedding(vocab_size, inject_actions_dim)
+        )
       else:
         encode_layer = tl.Parallel(
             tl.Dense(inject_actions_dim),

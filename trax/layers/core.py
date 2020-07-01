@@ -114,30 +114,26 @@ class Dense(base.Layer):
 class Embedding(base.Layer):
   """Trainable layer that maps discrete tokens/ids to vectors."""
 
-  # TODO(jonni): Consider reversing param order to: vocab_size, d_feature
   def __init__(self,
-               d_feature,
                vocab_size,
+               d_feature,
                kernel_initializer=init.RandomNormalInitializer(1.0)):
     """Returns an embedding layer with given vocabulary size and vector size.
 
     The layer clips input values (token ids) to the range `[0, vocab_size)`.
     That is, negative token ids all clip to `0` before being mapped to a
     vector, and token ids with value `vocab_size` or greater all clip to
-    `vocab_size - 1` before being mapped to a vector. In effect, both id `0`
-    and id `vocab_size - 1` are potentially overloaded as out-of-vocabulary
-    token ids.
-
-    TODO(jonni): Is this the behavior we want going forward?
+    `vocab_size - 1` before being mapped to a vector.
 
     Args:
-      d_feature: Dimensionality/depth of the output vectors.
       vocab_size: Size of the input vocabulary. The layer will assign a unique
           vector to each id in `range(vocab_size)`.
+      d_feature: Dimensionality/depth of the output vectors.
       kernel_initializer: Function that creates (random) initial vectors for
           the embedding.
     """
-    super().__init__()
+    # TODO(jonni): is the clipping behavior what we want going forward?
+    super().__init__(name=f'Embedding_{vocab_size}_{d_feature}')
     self._d_feature = d_feature  # feature dimensionality
     self._vocab_size = vocab_size
     self._kernel_initializer = kernel_initializer

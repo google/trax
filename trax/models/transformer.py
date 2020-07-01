@@ -55,7 +55,7 @@ def TransformerEncoder(vocab_size,
     activations over a set of output classes.
   """
   positional_encoder = [
-      tl.Embedding(d_model, vocab_size),
+      tl.Embedding(vocab_size, d_model),
       tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode),
       tl.PositionalEncoding(max_len=max_len)]
 
@@ -114,7 +114,7 @@ def TransformerDecoder(vocab_size=None,
     tensor to a continuous tensor.
   """
   positional_encoder = [
-      (tl.Embedding(d_model, vocab_size) if vocab_size is not None
+      (tl.Embedding(vocab_size, d_model) if vocab_size is not None
        else tl.Dense(d_model)),
       tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode),
       tl.PositionalEncoding(max_len=max_len)]
@@ -165,7 +165,7 @@ def TransformerLM(vocab_size,
     to activations over a vocab set.
   """
   positional_encoder = [
-      tl.Embedding(d_model, vocab_size),
+      tl.Embedding(vocab_size, d_model),
       tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode),
       tl.PositionalEncoding(max_len=max_len, mode=mode)]
 
@@ -223,7 +223,7 @@ def Transformer(input_vocab_size,
   """
   def PositionalEncoder(vocab_size):  # tokens --> vectors
     return [
-        tl.Embedding(d_model, vocab_size),
+        tl.Embedding(vocab_size, d_model),
         tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode),
         tl.PositionalEncoding(max_len=max_len),
     ]
@@ -315,7 +315,7 @@ def TransformerNoEncDecAttention(input_vocab_size,
   """
   def PositionalEncoder(vocab_size):  # tokens --> vectors
     return [
-        tl.Embedding(d_model, vocab_size),
+        tl.Embedding(vocab_size, d_model),
         tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode),
         tl.PositionalEncoding(max_len=max_len),
     ]

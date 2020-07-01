@@ -114,7 +114,7 @@ class DenseTest(absltest.TestCase):
 class EmbeddingTest(absltest.TestCase):
 
   def test_forward(self):
-    layer = tl.Embedding(3, 10)  # d_feature=3, vocab_size=10
+    layer = tl.Embedding(10, 3)  # vocab_size=10, d_feature=3
     _, _ = layer.init(None)  # Embedding init doesn't use input signature.
     x = np.array([2, 3, 5, 3, 2])
     y = layer(x)
@@ -130,7 +130,7 @@ class EmbeddingTest(absltest.TestCase):
     self.assertEqual(y[1].tolist(), y[3].tolist())
 
   def test_negative_inputs_clip_to_zero(self):
-    layer = tl.Embedding(3, 10)
+    layer = tl.Embedding(10, 3)
     _, _ = layer.init(None)
     x = np.array([0, 2, 3, -2, -3])
     y = layer(x)
@@ -140,7 +140,7 @@ class EmbeddingTest(absltest.TestCase):
     self.assertEqual(y[0].tolist(), y[4].tolist())
 
   def test_large_inputs_clip_to_upper_bound(self):
-    layer = tl.Embedding(3, 10)
+    layer = tl.Embedding(10, 3)
     _, _ = layer.init(None)
     x = np.array([2, 3, 9, 10, 20])
     y = layer(x)
@@ -152,7 +152,7 @@ class EmbeddingTest(absltest.TestCase):
     self.assertEqual(y[2].tolist(), y[4].tolist())
 
   def test_new_weights(self):
-    layer = tl.Embedding(5, 20)
+    layer = tl.Embedding(20, 5)
     _, _ = layer.init(None)
 
     # Default weights sampled from Gaussian, mu = 0, sigma = 1.
@@ -167,7 +167,7 @@ class EmbeddingTest(absltest.TestCase):
       n_elements = np.prod(shape)
       return np.arange(n_elements).reshape(shape)
 
-    layer = tl.Embedding(2, 5, kernel_initializer=f)
+    layer = tl.Embedding(5, 2, kernel_initializer=f)
     _, _ = layer.init(None)
     x = np.array([0, 1, 2, 3, 4])
     y = layer(x)
