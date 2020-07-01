@@ -61,42 +61,36 @@ class TraxKerasLayer(tf.keras.layers.Layer):
   `tf.Variable` to store weights and state (initialized according to the Trax
   layer), and uses the Trax layer's forward function as its forward function.
 
-  Consider this code snippet:
+  Consider this code snippet::
 
-  ```
-  keras_layer = TraxKerasLayer(trax_layer, initializer_rng=initializer_rng,
-                               rng=rng, rng_updater=rng_updater)
-  keras_layer.build(...)  # optional
-  outputs = keras_layer(inputs)
-  ```
+      keras_layer = TraxKerasLayer(trax_layer, initializer_rng=initializer_rng,
+                                   rng=rng, rng_updater=rng_updater)
+      keras_layer.build(...)  # optional
+      outputs = keras_layer(inputs)
 
   (Note that in Keras calling `Layer.build` is optional. If omitted, it will be
   called automatically by `Layer.__call__`.)
 
   If `trax_layer` already has weights at `build` time, the snippet is roughly
-  equivalent to:
+  equivalent to::
 
-  ```
-  weights = trax_layer.weights
-  state = trax_layer.state
-  keras_layer = tf.keras.layers.Layer()
-  keras_layer._weights = tf.Variable(weights)
-  keras_layer._state = tf.Variable(state)
-  keras_layer._rng = tf.Variable(rng)
-  outputs, new_state = trax_layer(inputs, keras_layer._weights,
-                                  keras_layer._state, keras_layer._rng)
-  keras_layer._state.assign(new_state)
-  keras_layer._rng.assign(rng_updater(rng))
-  ```
+      weights = trax_layer.weights
+      state = trax_layer.state
+      keras_layer = tf.keras.layers.Layer()
+      keras_layer._weights = tf.Variable(weights)
+      keras_layer._state = tf.Variable(state)
+      keras_layer._rng = tf.Variable(rng)
+      outputs, new_state = trax_layer(inputs, keras_layer._weights,
+                                      keras_layer._state, keras_layer._rng)
+      keras_layer._state.assign(new_state)
+      keras_layer._rng.assign(rng_updater(rng))
 
   If `trax_layer` doesn't have weights at `build` time, the snippet is roughly
-  equivalent to:
+  equivalent to::
 
-  ```
-  weights, state = trax_layer.init(..., rng=initializer_rng)
-  keras_layer = ...
-  ...
-  ```
+      weights, state = trax_layer.init(..., rng=initializer_rng)
+      keras_layer = ...
+      ...
 
   `TraxKerasLayer` uses `tf.Variable` to store weights, not shared with the
   original Trax layer (which uses tensors to store weights), so using

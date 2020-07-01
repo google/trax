@@ -111,6 +111,7 @@ def LSTMSeq2SeqAttn(input_vocab_size=256,
   an English sentence (tokenized) and its translation into German (tokenized).
 
   The model works as follows:
+
   * Input encoder runs on the input tokens and creates activations that
     are used as both keys and values in attention.
   * Pre-attention decoder runs on the targets and creates

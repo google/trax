@@ -69,12 +69,15 @@ def ChunkedFeedForward(d_model, d_ff, dropout, activation, act_dropout,
 class ReversibleHalfResidualV2(tl.ReversibleLayer):
   """Half of a RevNet-style residual that optionally performs attention.
 
-  When attention_layer is None, this layer has
-  the signature [accumulator, *context] -> [accumulator + f(context), *context].
+  When attention_layer is None, this layer has the signature ::
+
+      [accumulator, *context] -> [accumulator + f(context), *context]
+
   The attention_layer must be an instance of EfficientAttentionBase or one of
   its subclasses (see efficient_attention.py), or None.
 
   Attention is special-cased for the following two reasons:
+
   - LSH attention needs to save bucket assignments from the forward pass to the
     backward pass, for training stability. This requires special-casing it.
   - We can call attention_layer.forward_and_or_backward to compute its output
@@ -382,8 +385,10 @@ def ReformerShortenLM(vocab_size,
 
   When shorten_factor is F and processing an input of shape [batch, length],
   we embed the (shifted-right) input and then group each F elements (on length)
-  into a single vector -- so that in the end we process a tensor of shape
-    [batch, length // F, d_model]
+  into a single vector -- so that in the end we process a tensor of shape ::
+
+      [batch, length // F, d_model]
+
   almost until the end -- at the end it's un-shortend and a SRU is applied.
   This reduces the length processed inside the main model body, effectively
   making the model faster but possibly slightly less accurate.
