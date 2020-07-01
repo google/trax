@@ -537,7 +537,7 @@ def train(output_dir,
           loss_fn=tl.CrossEntropyLoss(),
           inputs=trax_inputs.batcher,
           optimizer=trax_opt.Adafactor,
-          lr_schedule=lr.multifactor(),
+          lr_schedule_fn=lr.multifactor,
           trainer_class=Trainer,
           steps=1000,
           checkpoints_at=None,
@@ -559,8 +559,8 @@ def train(output_dir,
       rng -> loss.
     inputs: callable returning trax.inputs.Inputs.
     optimizer: The optimizer (see optimizers/base.py for signature).
-    lr_schedule: A learning rate schedule as a function that takes history and
-      returns a function from step to learning rate (a float).
+    lr_schedule_fn: A learning rate schedule function, that when called returns
+      a function from step to learning rate (a float).
     trainer_class: The trainer class to use.
     steps: int, total number of training steps.
     checkpoints_at: list of integers. Save a checkpoint for each training step
@@ -582,7 +582,7 @@ def train(output_dir,
     return custom_train_fn(output_dir, model=model)
 
   n_devices = num_devices()
-  trainer = trainer_class(model, loss_fn, optimizer, lr_schedule, inputs,
+  trainer = trainer_class(model, loss_fn, optimizer, lr_schedule_fn(), inputs,
                           output_dir,
                           random_seed=random_seed,
                           n_devices=n_devices,

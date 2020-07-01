@@ -57,4 +57,3 @@ train.eval_steps = 10
 train.model = @trax.models.WideResnet
 train.optimizer = @trax.optimizers.Momentum
 train.steps = 10000
-train.lr_schedule = @lr_schedules.multifactor()
