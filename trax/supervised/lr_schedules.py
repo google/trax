@@ -18,9 +18,7 @@ r"""Learning rate (LR) schedules.
 
 In Trax a learning rate schedule is a function:
 :math:`\text{step} \mapsto \text{learning_rate}`.
-This module provides helpers for constructing such functions. For example,
-
-.. code-block:: python
+This module provides helpers for constructing such functions. For example::
 
     constant(0.001)
 
