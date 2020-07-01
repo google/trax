@@ -164,6 +164,26 @@ def grad(*args, **kwargs):
   return backend()['grad'](*args, **kwargs)
 
 
+def value_and_grad(*args, **kwargs):
+  """Computes the gradient of the specified function together with the value."""
+  if 'value_and_grad' in backend():
+    return backend()['value_and_grad'](*args, **kwargs)
+  grad_fn = grad(*args, **kwargs)
+  fn = args[0]
+  has_aux = False
+  if has_aux in kwargs:
+    has_aux = kwargs['has_aux']
+  if not has_aux:
+    def val_and_grad(*fn_args, **fn_kwargs):
+      return fn(*fn_args, **fn_kwargs), grad_fn(*fn_args, **fn_kwargs)
+    return val_and_grad
+  def val_and_grad_aux(*fn_args, **fn_kwargs):
+    g, aux = grad_fn(*fn_args, **fn_kwargs)
+    res, _ = fn(*fn_args, **fn_kwargs)
+    return (res, aux), g
+  return val_and_grad_aux
+
+
 def vjp(*args, **kwargs):
   """Computes the vector-Jacobian product for the specified function."""
   return backend()['vjp'](*args, **kwargs)

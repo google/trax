@@ -418,6 +418,7 @@ JAX_BACKEND = {
     'erf': jax_special.erf,
     'expit': jax_special.expit,
     'grad': jax.grad,
+    'value_and_grad': jax.value_and_grad,
     'jit': jax.jit,
     'logsumexp': jax_special.logsumexp,
     'lt': lax.lt,
