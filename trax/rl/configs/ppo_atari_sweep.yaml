@@ -14,7 +14,7 @@
 
 RLTask.gamma: [0.99]
 RLTask.env: ["boxing"]
-value__.MultifactorSchedule.constant: [0.0001, 0.001]
-value__.MultifactorSchedule.factors: ['constant']
-policy__.MultifactorSchedule.constant: [0.0001, 0.00025]
-policy__.MultifactorSchedule.factors: ['constant']
+value__.multifactor.constant: [0.0001, 0.001]
+value__.multifactor.factors: ['constant']
+policy__.multifactor.constant: [0.0001, 0.00025]
+policy__.multifactor.factors: ['constant']

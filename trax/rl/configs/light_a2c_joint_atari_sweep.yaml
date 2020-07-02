@@ -13,7 +13,7 @@
 # limitations under the License.
 
 A2CJointTrainer.train_steps_per_epoch: [40, 80]
-MultifactorSchedule.constant: [0.0007, 0.0001]
+multifactor.constant: [0.0007, 0.0001]
 A2CJointTrainer.value_loss_coeff: [0.1, 0.25]
 A2CJointTrainer.batch_size: [128, 256]
 A2CJointTrainer.n_trajectories_per_epoch: [5,]
