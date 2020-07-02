@@ -382,6 +382,9 @@ class Trainer(object):
     return {m: v / count for (m, v) in metrics.items()}, state
 
   def save_gin(self):
+    """"Saves the operative gin config, only if it is the chief."""
+    if not self._is_chief:
+      return
     assert self._output_dir is not None
     config_path = os.path.join(self._output_dir, 'config.gin')
     config_str = gin.operative_config_str()
@@ -486,6 +489,9 @@ class Trainer(object):
       host_id = 0
       host_count = 1
     is_chief = (host_id == 0)
+
+    logging.info('Initializing hosts and devices: host_id %d, host_count %d, '
+                 'is_chief %d', host_id, host_count, is_chief)
 
     device_count = fastmath.device_count()
     n_devices = n_devices or device_count
