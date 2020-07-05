@@ -16,10 +16,6 @@
 # Lint as: python3
 """Tests for importing Trax."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import absltest
 
 
@@ -30,7 +26,7 @@ class ImportTest(absltest.TestCase):
       # Import trax
       import trax  # pylint: disable=g-import-not-at-top
       # Access a few symbols.
-      dir(trax.math)
+      dir(trax.fastmath)
       dir(trax.layers)
       dir(trax.models)
     except ImportError as e:

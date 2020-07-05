@@ -19,12 +19,12 @@
 import jax
 import numpy as np
 
-from trax import math
+from trax import fastmath
+from trax.fastmath import numpy as jnp
 from trax.layers import base
 from trax.layers import combinators as cb
 from trax.layers import core
 from trax.layers.base import Fn
-from trax.math import numpy as jnp
 
 
 # Layers are always CamelCase, but functions in general are snake_case
@@ -36,6 +36,7 @@ def Attention(d_feature, n_heads=1, dropout=0.0, mode='train'):
 
   This layer type represents one pass of multi-head self-attention, best
   known for its central role in Transformer models. Internally, it:
+
     - maps activations to `(queries, keys, values)` triples,
     - splits `queries`, `keys`, and `values` into multiple 'heads',
     - computes per-head attention weights from per-head `(queries, keys)`,
@@ -86,6 +87,7 @@ class PureAttention(base.Layer):
 
   This layer type performs the inner workings of one pass of multi-head
   self-attention. It:
+
     - splits `queries`, `keys`, and `values` into multiple 'heads',
     - computes per-head attention weights from per-head `(queries, keys)`,
     - applies `mask` to screen out positions that come from padding tokens,
@@ -100,19 +102,15 @@ class PureAttention(base.Layer):
     self._dropout = dropout
     self._mode = mode
 
-  def forward_with_state(self, inputs, weights, state, rng):
+  def forward(self, inputs):
     """Returns attention-computed activations, unmodified mask, and state.
 
     Args:
       inputs: Tuple of (queries, keys, values, mask).
-      weights: Not used; should be empty tuple or list.
-      state: Not used; should be empty tuple or list.
-      rng: Single-use random number generator (JAX PRNG key).
 
     Returns:
-      Tuple of (outputs, state), where outputs is the pair (activations, mask).
+      The pair (activations, mask).
     """
-    del weights
     q, k, v, mask = inputs
 
     batch_size = q.shape[0]
@@ -145,9 +143,9 @@ class PureAttention(base.Layer):
                                            mask,
                                            dropout=self._dropout,
                                            mode=self._mode,
-                                           rng=rng)
+                                           rng=self.rng)
     merged_results = _merge_heads(per_head_results)
-    return (merged_results, mask), state
+    return (merged_results, mask)
 
 
 def DotProductAttention(queries, keys, values, mask, dropout, mode, rng):
@@ -180,16 +178,16 @@ def DotProductAttention(queries, keys, values, mask, dropout, mode, rng):
     # We must ensure that both mask and the -1e9 constant have a data dependency
     # on the input. Broadcasted copies of these use a lot of memory, so they
     # should be computed at runtime (rather than being global constants).
-    if math.backend_name() == 'jax':
+    if fastmath.backend_name() == 'jax':
       mask = jax.lax.tie_in(dots, mask)
     # JAX's `full_like` already ties in -1e9 to dots.
     dots = jnp.where(mask, dots, jnp.full_like(dots, -1e9))
   # Softmax.
-  dots = jnp.exp(dots - math.logsumexp(dots, axis=-1, keepdims=True))
+  dots = jnp.exp(dots - fastmath.logsumexp(dots, axis=-1, keepdims=True))
   if dropout >= 1.0:
     raise ValueError('Dropout rates must be lower than 1.')
   if dropout is not None and dropout > 0.0 and mode == 'train':
-    keep = math.random.bernoulli(rng, 1.0 - dropout, dots.shape)
+    keep = fastmath.random.bernoulli(rng, 1.0 - dropout, dots.shape)
     dots = jnp.where(keep, dots / (1.0 - dropout), jnp.zeros_like(dots))
   out = jnp.matmul(dots, values)
   return out
@@ -260,20 +258,18 @@ class DotProductCausalAttention(base.Layer):
     self._dropout = dropout
     self._mode = mode
 
-  def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
-                         state=base.EMPTY_STATE, rng=None):
-    del weights
+  def forward(self, inputs):
     q, k, v = inputs
 
     if self._mode == 'predict':
-      state = _fast_inference_update_state(inputs, state)
-      (k, v, mask, _) = state
+      self.state = _fast_inference_update_state(inputs, self.state)
+      (k, v, mask, _) = self.state
     else:
       mask_size = q.shape[-2]
       # Not all backends define jnp.tril. However, using np.tril is inefficient
       # in that it creates a large global constant. TODO(kitaev): try to find an
       # alternative that works across all backends.
-      if math.backend_name() == 'jax':
+      if fastmath.backend_name() == 'jax':
         mask = jnp.tril(
             jnp.ones((1, mask_size, mask_size), dtype=np.bool_), k=0)
       else:
@@ -281,15 +277,13 @@ class DotProductCausalAttention(base.Layer):
             np.ones((1, mask_size, mask_size), dtype=np.bool_), k=0)
 
     res = DotProductAttention(
-        q, k, v, mask, dropout=self._dropout, mode=self._mode, rng=rng)
-    return res, state
+        q, k, v, mask, dropout=self._dropout, mode=self._mode, rng=self.rng)
+    return res
 
-  def new_weights_and_state(self, input_signature):
-    weights, state = base.EMPTY_WEIGHTS, base.EMPTY_STATE
+  def init_weights_and_state(self, input_signature):
     if self._mode == 'predict':
       max_len = 2048  # Hardcoded.  TODO(pkozakowski): Pass it from the model.
-      state = _fast_inference_init_state(input_signature, max_len)
-    return weights, state
+      self.state = _fast_inference_init_state(input_signature, max_len)
 
 
 def zero_pad(x, pad, axis):
@@ -349,24 +343,24 @@ class PositionalEncoding(base.Layer):
     self._dropout_broadcast_dims = dropout_broadcast_dims
     self._mode = mode
 
-  def forward_with_state(self, inputs, weights=base.EMPTY_WEIGHTS,
-                         state=base.EMPTY_STATE, rng=None):
+  def forward(self, inputs):
     if self._mode != 'predict':
       x = inputs
       symbol_size = jnp.shape(x)[1]
-      px = weights[:, :symbol_size, :]
+      px = self.weights[:, :symbol_size, :]
       if self._dropout == 0:
-        return (x + px, state)
+        return x + px
       else:
         noise_shape = list(px.shape)
         for dim in self._dropout_broadcast_dims:
           noise_shape[dim] = 1
         keep_prob = 1.0 - self._dropout
-        if math.backend_name() == 'jax':
+        if fastmath.backend_name() == 'jax':
           keep_prob = jax.lax.tie_in(x, jnp.full((), keep_prob, dtype=x.dtype))
-        keep = math.random.bernoulli(rng, keep_prob, tuple(noise_shape))
+        keep = fastmath.random.bernoulli(self.rng, keep_prob,
+                                         tuple(noise_shape))
         multiplier = keep.astype(x.dtype) / keep_prob
-        return (x + px * multiplier, state)
+        return x + px * multiplier
     else:
       if self._dropout != 0:
         raise ValueError(f'In predict mode, but dropout rate '
@@ -377,16 +371,19 @@ class PositionalEncoding(base.Layer):
       # This positional encoding layer needs to store the index of the current
       # position then and increment it on each call -- that's how state is used
       # and updated below.
+      state = self.state
       if inputs.shape[1] == 1:
-        return (inputs + jnp.expand_dims(weights[0, state, :], 1), state + 1)
+        self.state = state + 1
+        return inputs + jnp.expand_dims(self.weights[0, state, :], 1)
       else:
         emb = []
         for i in range(inputs.shape[0]):
           emb.append(jax.lax.dynamic_slice_in_dim(
-              weights[0], state[i], inputs.shape[1], axis=0))
-        return inputs + jnp.stack(emb, 0), state + inputs.shape[1]
+              self.weights[0], state[i], inputs.shape[1], axis=0))
+        self.state = state + inputs.shape[1]
+        return inputs + jnp.stack(emb, 0)
 
-  def new_weights_and_state(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     d_feature = input_signature.shape[-1]
     pe = np.zeros((self._max_len, d_feature), dtype=np.float32)
     position = np.arange(0, self._max_len)[:, np.newaxis]
@@ -395,13 +392,10 @@ class PositionalEncoding(base.Layer):
     pe[:, 0::2] = np.sin(position * div_term)
     pe[:, 1::2] = np.cos(position * div_term)
     pe = pe[np.newaxis, :, :]  # [1, self._max_len, d_feature]
-    weights = jnp.array(pe)  # Trainable parameters, initialized above.
+    self.weights = jnp.array(pe)  # Trainable parameters, initialized above.
     if self._mode == 'predict':
       batch_size = input_signature.shape[0]
-      state = jnp.zeros((batch_size,), dtype=jnp.int32)
-    else:
-      state = base.EMPTY_STATE
-    return weights, state
+      self.state = jnp.zeros((batch_size,), dtype=jnp.int32)
 
 
 def _fast_inference_init_state(input_signature, buffer_length):
@@ -421,9 +415,9 @@ def _fast_inference_init_state(input_signature, buffer_length):
 
 def _fast_inference_update_state(inputs, state):
   """Updates state of a causal attention layer for fast inference."""
-  if math.backend_name() != 'jax':
+  if fastmath.backend_name() != 'jax':
     raise ValueError(f'JAX backend is required in predict mode, but found '
-                     f'backend ({math.backend_nameO()}).')
+                     f'backend ({fastmath.backend_nameO()}).')
   for x in inputs:
     if x.shape[1] != 1:
       raise ValueError(f'In predict mode, input sequence must have length 1, '

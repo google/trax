@@ -26,7 +26,14 @@ pip install -q -U setuptools
 # Make sure we have the latest version of numpy - avoid problems we were
 # seeing with Python 3
 pip install -q -U numpy
-pip install -q "tensorflow==$TF_VERSION"
+
+# Install appropriate version to tensorflow.
+if [[ "$TF_VERSION" == "tf-nightly"  ]]
+then
+  pip install tf-nightly;
+else
+  pip install -q "tensorflow==$TF_VERSION"
+fi
 
 # Just print the version again to make sure.
 python -c 'import tensorflow as tf; print(tf.__version__)'

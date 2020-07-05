@@ -12,18 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import trax.lr_schedules
+import trax.supervised.lr_schedules
 import trax.models
 import trax.optimizers
 import trax.rl
+import trax.rl.distributions
+import trax.rl.normalization
 
 # Parameters for Policy:
 # ==============================================================================
 Policy.body = @trax.models.PureMLP
+Policy.head_init_range = 0.01
+Policy.normalizer = @trax.rl.normalization.Normalize
 
 # Parameters for Value:
 # ==============================================================================
 Value.body = @trax.models.PureMLP
+Value.normalizer = @trax.rl.normalization.Normalize
+
+# Parameters for Normalize:
+# ==============================================================================
+Normalize.sample_limit = 30000
+Normalize.epsilon = 1e-5
 
 # Parameters for PureMLP:
 # ==============================================================================
@@ -31,10 +41,12 @@ PureMLP.flatten = False
 PureMLP.layer_widths = (64,)
 PureMLP.out_activation = True
 
-# Parameters for MultifactorSchedule:
+# Parameters for multifactor:
 # ==============================================================================
-MultifactorSchedule.constant = 0.01
-MultifactorSchedule.factors = 'constant'
+policy/multifactor.constant = 0.0001
+policy/multifactor.factors = 'constant'
+value/multifactor.constant = 0.001
+value/multifactor.factors = 'constant'
 
 # Parameters for RLTask:
 # ==============================================================================
@@ -55,7 +67,7 @@ PolicyGradientTrainer.policy_batch_size = 128
 PolicyGradientTrainer.policy_train_steps_per_epoch = 1
 PolicyGradientTrainer.policy_evals_per_epoch = 1
 PolicyGradientTrainer.policy_eval_steps = 1
-PolicyGradientTrainer.collect_per_epoch = 2
+PolicyGradientTrainer.n_trajectories_per_epoch = 2
 PolicyGradientTrainer.max_slice_length = 1
 
 # Parameters for PPOTrainer:
@@ -64,43 +76,50 @@ PPOTrainer.value_model = @trax.models.Value
 PPOTrainer.value_optimizer = @trax.optimizers.Adam
 PPOTrainer.value_batch_size = 32
 PPOTrainer.value_train_steps_per_epoch = 10
-PPOTrainer.value_lr_schedule = @value/MultifactorSchedule
+PPOTrainer.value_lr_schedule = @value/multifactor
 PPOTrainer.value_evals_per_epoch = 1
 PPOTrainer.value_eval_steps = 1
 PPOTrainer.policy_model = @trax.models.Policy
 PPOTrainer.policy_optimizer = @trax.optimizers.Adam
 PPOTrainer.policy_batch_size = 32
 PPOTrainer.policy_train_steps_per_epoch = 10
-PPOTrainer.policy_lr_schedule = @policy/MultifactorSchedule
+PPOTrainer.policy_lr_schedule = @policy/multifactor
 PPOTrainer.policy_evals_per_epoch = 1
 PPOTrainer.policy_eval_steps = 1
 PPOTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
-PPOTrainer.collect_per_epoch = 50
+PPOTrainer.n_trajectories_per_epoch = 50
 # PPOTrainer.max_slice_length = 0
+
+# Parameters for Momentum:
+# ==============================================================================
+Momentum.weight_decay_rate = 0.0
+Momentum.nesterov = False
+
 
 # Parameters for AWRTrainer:
 # ==============================================================================
 AWRTrainer.value_model = @trax.models.Value
-AWRTrainer.value_optimizer = @trax.optimizers.Adam
-AWRTrainer.value_batch_size = 32
-AWRTrainer.value_train_steps_per_epoch = 1000
-AWRTrainer.value_lr_schedule = @value/MultifactorSchedule
-AWRTrainer.value_evals_per_epoch = 10
+AWRTrainer.value_optimizer = @trax.optimizers.Momentum
+AWRTrainer.value_batch_size = 256
+AWRTrainer.value_train_steps_per_epoch = 40
+AWRTrainer.value_lr_schedule = @value/multifactor
+AWRTrainer.value_evals_per_epoch = 1
 AWRTrainer.value_eval_steps = 10
 AWRTrainer.policy_model = @trax.models.Policy
-AWRTrainer.policy_optimizer = @trax.optimizers.Adam
-AWRTrainer.policy_batch_size = 32
-AWRTrainer.policy_train_steps_per_epoch = 1000
-AWRTrainer.policy_lr_schedule = @policy/MultifactorSchedule
-AWRTrainer.policy_evals_per_epoch = 10
+AWRTrainer.policy_optimizer = @trax.optimizers.Momentum
+AWRTrainer.policy_batch_size = 256
+AWRTrainer.policy_train_steps_per_epoch = 1080
+AWRTrainer.policy_lr_schedule = @policy/multifactor
+AWRTrainer.policy_evals_per_epoch = 1
 AWRTrainer.policy_eval_steps = 10
-AWRTrainer.supervised_evals_per_epoch = 10
-AWRTrainer.supervised_eval_steps = 10
-AWRTrainer.collect_per_epoch = 10
+AWRTrainer.n_trajectories_per_epoch = 10
 AWRTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
 AWRTrainer.beta = 1.0
 AWRTrainer.w_max = 20
 AWRTrainer.max_slice_length = 1
+AWRTrainer.added_policy_slice_length = 10
+AWRTrainer.n_replay_epochs = 25
+AWRTrainer.scale_value_targets = True
 
 # Parameters for train_rl:
 # ==============================================================================

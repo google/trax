@@ -16,7 +16,12 @@
 """Supervised learning imports in Trax."""
 
 from trax.supervised import inputs
+from trax.supervised import lr_schedules
+from trax.supervised import tf_inputs
 from trax.supervised import trainer_lib
+from trax.supervised import training
 from trax.supervised.inputs import Inputs
 from trax.supervised.trainer_lib import train
 from trax.supervised.trainer_lib import Trainer
+from trax.supervised.training import EvalTask
+from trax.supervised.training import TrainTask

@@ -13,11 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Trax main training functions."""
+"""Original API for supervised learning/training in Trax.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+Trax authors expect that the `supervised.training` module (under development)
+will replace `trainer_lib`.
+"""
 
 import collections
 import functools
@@ -35,18 +35,17 @@ import gin
 
 import jax
 import numpy
-import six
 import tensorflow.compat.v2 as tf
-from trax import history as trax_history
+from trax import fastmath
 from trax import jaxboard
 from trax import layers as tl
-from trax import lr_schedules as lr
-from trax import math
 from trax import optimizers as trax_opt
-from trax.math import numpy as np
-from trax.math import random as jax_random
+from trax.fastmath import numpy as np
+from trax.fastmath import random as jax_random
 from trax.shapes import ShapeDtype
+from trax.supervised import history as trax_history
 from trax.supervised import inputs as trax_inputs
+from trax.supervised import lr_schedules as lr
 
 
 # TODO(afrozm): Maybe flatten everything from OptState into TrainerState.
@@ -67,8 +66,8 @@ OptState = collections.namedtuple('_OptState', [
 
 _DEFAULT_METRICS = {
     'loss': tl.CrossEntropyLoss(),
-    'accuracy': tl.AccuracyScalar(),
-    'sequence_accuracy': tl.SequenceAccuracyScalar(),
+    'accuracy': tl.Accuracy(),
+    'sequence_accuracy': tl.SequenceAccuracy(),
     'neg_log_perplexity': tl.Serial(tl.CrossEntropyLoss(), tl.Negate()),
     'weights_per_batch_per_core': tl.SumOfWeights(),
 }
@@ -84,8 +83,7 @@ class Trainer(object):
   def __init__(self, model, loss_fn, optimizer, lr_schedule, inputs,
                output_dir=None, random_seed=None, n_devices=None,
                checkpoints_at=None, should_save_checkpoints=True,
-               should_write_summaries=True, nontrainable_param_map=None,
-               id_to_mask=None,
+               should_write_summaries=True,
                metrics=None, checkpoint_highest=None, checkpoint_lowest=None):
 
     self._is_chief, self._n_devices, rng = (
@@ -98,58 +96,48 @@ class Trainer(object):
       self._should_write_summaries = False
     self._checkpoint_highest = checkpoint_highest
     self._checkpoint_lowest = checkpoint_lowest
-    self._id_to_mask = id_to_mask
     self._metrics_dict = metrics if metrics is not None else _DEFAULT_METRICS
     # Inputs is either an Inputs instance or a function that returns it.
     self._inputs = inputs
     if callable(inputs):  # If we pass a function, e.g., through gin, call it.
       self._inputs = inputs()
-    # Mask id_to_mask and add weights if needed.
-    # TODO(lukaszkaiser, jonni): move this out of Trainer to input processing.
-    self._inputs = _add_weights_and_mask(self._inputs, id_to_mask)
     # Initialize the learning rate to a dummy value. It will be set in reset().
     opt = optimizer(learning_rate=0.0)
 
     # Setup the model.
     model_train = model(mode='train')
     model_predict_eval = model(mode='eval')
+    self._model_with_loss = tl.Serial(model_train, loss_fn)
 
     # Setup state.
     rng, init_rng = jax_random.split(rng)
     self._rngs = np.stack(jax_random.split(rng, self._n_devices))
+    shapes, dtypes = self._inputs.example_shape_dtype
+    input_signature = tuple(ShapeDtype(s, d) for (s, d) in zip(shapes, dtypes))
 
-    def new_opt_state_and_model_state(shape_dtype, rng):
+    def new_opt_state_and_model_state(rng):
       """Returns optimizer and model states suitable for training a model."""
-      # Combine inputs and targets on the stack.
-      shapes, dtypes = shape_dtype
-      input_signature = tuple(ShapeDtype(s, d)
-                              for (s, d) in zip(shapes, dtypes))
-      # We need to create a new model instance and not reuse `model_train` here,
-      # because `m.initialize` puts cached parameter values in `m` and hence the
-      # next call of `m.initialize` will give wrong results.
-      m = tl.Serial(model(mode='train'), loss_fn)
-      m._set_rng_recursive(rng)  # pylint: disable=protected-access
-      weights, state = m.init(input_signature)
+      weights, state = self._model_with_loss.init(input_signature, rng=rng)
       (slots, opt_params) = opt.tree_init(weights)
       return (OptState(weights, slots, opt_params), state)
 
-    if _is_jit_init():
+    if fastmath.backend_name() == 'jax':
       # JIT parameter initialization to avoid memory fragmentation
-      new_opt_state_and_model_state = math.jit(new_opt_state_and_model_state,
-                                               static_argnums=(0,))
+      new_opt_state_and_model_state = (
+          fastmath.jit(new_opt_state_and_model_state))
     self._new_opt_state_and_model_state = (
-        lambda: new_opt_state_and_model_state(  # pylint: disable=g-long-lambda
-            self._inputs.example_shape_dtype, init_rng))
+        lambda: new_opt_state_and_model_state(init_rng))
 
     # Arrange and initialize metrics layers.
     self._metrics = list(sorted(self._metrics_dict.keys()))
     metrics_layers = [self._metrics_dict[m] for m in self._metrics]
     metrics_in_parallel = tl.Branch(*metrics_layers)
-    metrics_in_parallel._set_rng_recursive(init_rng)  # pylint: disable=protected-access
+    metrics_in_parallel.rng = init_rng
     example_signature = tuple(
         ShapeDtype(s, d) for (s, d) in zip(*self._inputs.example_shape_dtype)
     )
     model_predict_eval.init(example_signature)
+    self._input_signature = example_signature
     output_signature = model_predict_eval.output_signature(example_signature)
     m_weights, m_state = metrics_in_parallel.init(output_signature)
     self._metrics_weights = self._for_n_devices(m_weights)
@@ -164,21 +152,13 @@ class Trainer(object):
     self._model_train = model_train
     self._model_predict_eval = model_predict_eval
     self._loss_fn = loss_fn
-    # TODO(pkozakowski): "Learning rate schedules" are currently able to control
-    # control all optimizer parameters and model state, so let's rename them
-    # accordingly.
     self._lr_schedule = lr_schedule
-
-    if nontrainable_param_map is None:
-      nontrainable_param_map = {}
-    self._nontrainable_param_map = nontrainable_param_map
 
     # Those fields will be set in reset().
     self._output_dir = None
     self._train_sw = None
     self._eval_sw = None
     self._history = None
-    self._lr_fn = None
     self._opt_state = None
     self._step = None
     self._model_state = None
@@ -198,7 +178,7 @@ class Trainer(object):
     weights = self._opt_state.weights[0]
     if self.n_devices > 1:
       unreplicate = lambda x: x[0]
-      weights = math.nested_map(unreplicate, weights)
+      weights = fastmath.nested_map(unreplicate, weights)
     return weights
 
   @model_weights.setter
@@ -216,7 +196,7 @@ class Trainer(object):
     state = self._model_state[0]
     if self.n_devices > 1:
       unreplicate = lambda x: x[0]
-      state = math.nested_map(unreplicate, state)
+      state = fastmath.nested_map(unreplicate, state)
     return state
 
   @model_state.setter
@@ -234,13 +214,9 @@ class Trainer(object):
         model_state=self._model_state)
 
   @property
-  def nontrainable_params(self):
-    # TODO(afrozm): Give further thought to this name.
-    # TODO(lukaszkaiser): it makes no sense to use an accelerator (e.g. TPU)
-    # in op-by-op mode just to compute the learning rate. However, there
-    # should be a cleaner approach that forceably swapping out the backend.
-    with math.use_backend('numpy'):
-      return self._lr_fn(self._step)
+  def learning_rate(self):
+    with fastmath.use_backend('numpy'):
+      return self._lr_schedule(self._step)
 
   def reset(self, output_dir, init_checkpoint=None):
     """Reset the model parameters.
@@ -252,7 +228,7 @@ class Trainer(object):
 
     Args:
       output_dir: Output directory.
-      init_checkpoint: Initial checkpoint to use (default $output_dir/model.pkl)
+      init_checkpoint: Initial checkpoint (default $output_dir/model.pkl.gz)
     """
     self.close()
     self._output_dir = output_dir
@@ -281,13 +257,13 @@ class Trainer(object):
 
     # Restore the training state.
     if output_dir is not None:
-      state = load_trainer_state(output_dir, init_checkpoint)
+      state = load_trainer_state(output_dir, self._model_with_loss,
+                                 init_checkpoint)
     else:
       state = TrainerState(step=None, opt_state=None,
                            history=trax_history.History(), model_state=None)
     self._step = state.step or 0
     history = state.history
-    self._lr_fn = self._lr_schedule(history)
     self._history = history
     if state.opt_state:
       opt_state = state.opt_state
@@ -299,8 +275,6 @@ class Trainer(object):
     self._model_state = model_state
     if not state.opt_state and self._should_save_checkpoints:
       self.save_state(keep=False)
-
-    self.update_nontrainable_params()
 
   def train_epoch(self, n_steps, n_eval_steps):
     """Runs `n_steps` of training, with periodic logging, saving, and evals."""
@@ -318,8 +292,7 @@ class Trainer(object):
       if self._should_save_now():
         self.save_state(keep=True)
       if self._should_log_now():
-        for (name, value) in self.nontrainable_params.items():
-          self._train_sw.scalar('training/{}'.format(name), value)
+        self._train_sw.scalar('training/learning_rate', self.learning_rate)
 
     # At end of n_steps, do bookkeeping, run evals, and save state.
     elapsed_time = time.time() - start_time
@@ -341,17 +314,16 @@ class Trainer(object):
   def train_step(self, batch):
     """Run one training step and update self._opt_state."""
     # Calculate the current optimizer parameters.
-    # TODO(pkozakowski): Optimizer parameters get polluted with model state,
-    # which doesn't break anything but is weird. Filter it out.
     opt_param_updates = self._for_n_devices(
-        math.nested_map(np.array, self.nontrainable_params))
+        {'learning_rate': np.array(self.learning_rate)})
     opt_state = self._opt_state
     opt_state.opt_params.update(opt_param_updates)
 
     # Run the update.
-    (weights, slots, stat), self._model_state, self._rngs = self._jit_update_fn(
-        self._step, opt_state, batch, self._model_state, self._rngs)
-    self._model_state = self._map_to_state_dicts(self._state_dicts_update)
+    weights, slots, opt_params = opt_state
+    (weights, slots), stat, self._model_state, self._rngs = self._jit_update_fn(
+        (weights, slots), self._step, opt_params, batch,
+        self._model_state, self._rngs)
     self._opt_state = opt_state._replace(weights=weights, slots=slots)
     if self._should_log_now():
       for name, value in stat.items():
@@ -377,24 +349,23 @@ class Trainer(object):
     self.log_metrics(eval_metrics, self._eval_sw, 'eval')
     self.log_step('Finished evaluation')
 
-    # Save the optimizer weights in the history
-    for (name, value) in self.nontrainable_params.items():
-      self._history.append('train', 'training/{}'.format(name), self._step,
-                           value)
+    # Save the learning rate in history.
+    self._history.append('train', 'training/learning_rate',
+                         self._step, self.learning_rate)
 
   def evaluation_round(self, inputs_stream, weights, state, rng):
     """Evaluate.
 
     Args:
-      inputs_stream: iterable of inputs to evaluate on.
-      weights: weights for each f in eval_fns.
-      state: state for each f in eval_fns.
-      rng: random number generator.
+      inputs_stream: Iterable of inputs to evaluate on.
+      weights: Weights for each f in eval_fns.
+      state: State for each f in eval_fns.
+      rng: Single-use random number generator (JAX PRNG key).
 
     Returns:
-      metrics: dict from metric name to metric value averaged over the number of
-        inputs.
-      state: end state for `predict_fn`.
+      Tuple of `(metrics, state)`. `metrics` is a dict from metric name to
+      metric value averaged over the number of inputs, and `state` is the end
+      state returned by this trainer's `predict_fn`.
     """
     metrics = collections.defaultdict(float)
     count = 0
@@ -408,27 +379,12 @@ class Trainer(object):
         metric_values = [float(metric_values)]
       for m, v in zip(self._metrics, metric_values):
         metrics[m] += v
-    return {m: v / count for (m, v) in six.iteritems(metrics)}, state
-
-  def update_model_state(self, key, value):
-    """Updates model state based on nontrainable_params."""
-    # Translate model state keys to nontrainable param names.
-    if key in self._nontrainable_param_map:
-      p_name = self._nontrainable_param_map[key]
-    else:
-      # If a key is not in mapping, it stays the same.
-      p_name = key
-    if p_name in self.nontrainable_params:
-      if self._step == 0:
-        log('Mapping model state key {} to nontrainable param {}.'
-            ''.format(key, p_name))
-        return self._for_n_devices(np.array(self.nontrainable_params[p_name]))
-    return value
-
-  def update_nontrainable_params(self):
-    self._lr_fn = self._lr_schedule(self._history)
+    return {m: v / count for (m, v) in metrics.items()}, state
 
   def save_gin(self):
+    """"Saves the operative gin config, only if it is the chief."""
+    if not self._is_chief:
+      return
     assert self._output_dir is not None
     config_path = os.path.join(self._output_dir, 'config.gin')
     config_str = gin.operative_config_str()
@@ -440,7 +396,7 @@ class Trainer(object):
               jaxboard.markdownify_operative_config_str(config_str))
 
   def _save_state_dict(self, trainer_state_dict, weights_file):
-    pickle_to_file(trainer_state_dict, weights_file)
+    pickle_to_file(trainer_state_dict, weights_file, gzip=True)
     log('Model saved to %s' % weights_file, stdout=False)
 
   def save_state(self, keep, prefix='model'):
@@ -448,28 +404,27 @@ class Trainer(object):
     opt_state = self._opt_state
     if self.n_devices > 1:
       first_replica = lambda x: x[0]
-      opt_state = OptState(*math.nested_map(first_replica, opt_state))
+      opt_state = OptState(*fastmath.nested_map(first_replica, opt_state))
     # This line, while optional, allows JAX to transfer arrays from the device
     # to the host in parallel, which is particularly important for cloud TPU.
-    if math.backend_name() == 'jax':
+    if fastmath.backend_name() == 'jax':
       opt_state = jax.device_get(opt_state)
     step, history, model_state = self._step, self._history, self._model_state
     output_dir = self._output_dir
 
-    weights_file = os.path.join(output_dir, prefix + '.pkl')
+    weights_file = os.path.join(output_dir, prefix + '.pkl.gz')
 
     # This dict will be stored as the model.
-    trainer_state_dict = make_trainer_state_dict(step,
-                                                 opt_state,
-                                                 history,
-                                                 model_state)
+    trainer_state_dict = make_trainer_state_dict(
+        step, opt_state, history, model_state, self._input_signature)
     self._save_state_dict(trainer_state_dict, weights_file)
 
     if keep:
-      weights_file = os.path.join(output_dir, '{}_{}.pkl'.format(prefix, step))
+      weights_file = os.path.join(output_dir,
+                                  '{}_{}.pkl.gz'.format(prefix, step))
       self._save_state_dict(trainer_state_dict, weights_file)
 
-  def save_computation_graphs(self, save_backward_graph):
+  def save_computation_graphs(self):
     """Dump computation graphs to files."""
     if self.n_devices != 1:
       return  # TODO(lukaszkaiser): make this work with more devices.
@@ -482,18 +437,9 @@ class Trainer(object):
         batch, weights=weights, state=self._model_state[0],
         rng=self._rngs[0])
     with tf.io.gfile.GFile(os.path.join(output_dir, 'forward.txt'), 'w') as f:
-      f.write(forward_computation.GetHloText())
+      f.write(forward_computation.as_hlo_text())
     with tf.io.gfile.GFile(os.path.join(output_dir, 'forward.dot'), 'w') as f:
-      f.write(forward_computation.GetHloDotGraph())
-    backward_computation = jax.xla_computation(self._jit_update_fn)(
-        self._step, self._opt_state, batch, self._model_state,
-        self._rngs)
-    with tf.io.gfile.GFile(os.path.join(output_dir, 'backward.txt'), 'w') as f:
-      f.write(backward_computation.GetHloText())
-    if save_backward_graph:  # Backward graphs can be large so we guard it.
-      with tf.io.gfile.GFile(
-          os.path.join(output_dir, 'backward.dot'), 'w') as f:
-        f.write(backward_computation.GetHloDotGraph())
+      f.write(forward_computation.as_hlo_dot_graph())
 
   def log_step(self, step_message):
     log('Step % 6d: %s' % (self.step, step_message))
@@ -502,7 +448,7 @@ class Trainer(object):
     """Log metrics to summary writer and history."""
     history = self._history
     rjust_len = max([0] + [len(name) for name in metrics])
-    for name, value in six.iteritems(metrics):
+    for name, value in metrics.items():
       self.log_step('%s %s | % .8f' % (
           log_prefix.ljust(5), name.rjust(rjust_len), value))
       full_name = 'metrics/' + name
@@ -517,7 +463,7 @@ class Trainer(object):
     sizes = _sizes(opt_state.weights)
     if self.n_devices > 1:
       unreplicate = lambda x: x[0]
-      single_weights = math.nested_map(unreplicate, opt_state.weights)
+      single_weights = fastmath.nested_map(unreplicate, opt_state.weights)
       sizes = _sizes(single_weights)
     total_size = _nested_reduce(sum, sizes)
     self.log_step('Total number of trainable weights: %d' % total_size)
@@ -536,7 +482,7 @@ class Trainer(object):
       n_devices: The passed in value of n_devices or a computed default.
       random_seed: The passed in value of random_seed or a computed default.
     """
-    if math.backend_name() == 'jax':
+    if fastmath.backend_name() == 'jax':
       host_id = jax.host_id()
       host_count = jax.host_count()
     else:
@@ -544,35 +490,19 @@ class Trainer(object):
       host_count = 1
     is_chief = (host_id == 0)
 
-    device_count = math.device_count()
+    logging.info('Initializing hosts and devices: host_id %d, host_count %d, '
+                 'is_chief %d', host_id, host_count, is_chief)
+
+    device_count = fastmath.device_count()
     n_devices = n_devices or device_count
     # TODO(lukaszkaiser): remove this restriction when possible.
-    if n_devices != device_count and math.backend_name() == 'jax':
+    if n_devices != device_count and fastmath.backend_name() == 'jax':
       raise ValueError('JAX cannot work yet with n_devices != all devices: '
                        '%d != %d' % (n_devices, device_count))
 
     if random_seed is None and host_count > 1:
       random_seed = int(1e6 * (host_id + time.time())) % 2**32
     return is_chief, n_devices, init_random_number_generators(random_seed)
-
-  def _map_to_state_dicts(self, f):
-    """Map the function f to all dicts in model state."""
-    # TODO(jonni): Can we replace _nested_map with math.nested_map?
-    def _nested_map(f, x):
-      if isinstance(x, list):
-        return [_nested_map(f, y) for y in x]
-      if isinstance(x, tuple):
-        return tuple([_nested_map(f, y) for y in x])
-      if isinstance(x, dict) and len(x) == 1:
-        return f(x)
-      return x
-    return _nested_map(f, self._model_state)
-
-  def _state_dicts_update(self, state_dict):
-    assert len(state_dict.keys()) == 1
-    key = list(state_dict.keys())[0]
-    value = state_dict[key]
-    return {key: self.update_model_state(key, value)}
 
   def _should_save_now(self):
     return self._should_save_checkpoints and self._step in self._checkpoints_at
@@ -611,9 +541,9 @@ class Trainer(object):
 def train(output_dir,
           model=gin.REQUIRED,
           loss_fn=tl.CrossEntropyLoss(),
-          inputs=trax_inputs.inputs,
+          inputs=trax_inputs.batcher,
           optimizer=trax_opt.Adafactor,
-          lr_schedule=lr.MultifactorSchedule,
+          lr_schedule_fn=lr.multifactor,
           trainer_class=Trainer,
           steps=1000,
           checkpoints_at=None,
@@ -621,9 +551,6 @@ def train(output_dir,
           eval_frequency=100,
           random_seed=None,
           save_graphs=True,
-          save_backward_graph=False,
-          nontrainable_param_map=None,
-          id_to_mask=None,
           metrics=None,
           checkpoint_highest=None,
           checkpoint_lowest=None,
@@ -638,8 +565,8 @@ def train(output_dir,
       rng -> loss.
     inputs: callable returning trax.inputs.Inputs.
     optimizer: The optimizer (see optimizers/base.py for signature).
-    lr_schedule: A learning rate schedule as a function that takes history and
-      returns a function from step to learning rate (a float).
+    lr_schedule_fn: A learning rate schedule function, that when called returns
+      a function from step to learning rate (a float).
     trainer_class: The trainer class to use.
     steps: int, total number of training steps.
     checkpoints_at: list of integers. Save a checkpoint for each training step
@@ -649,10 +576,6 @@ def train(output_dir,
       steps). If None or 0, eval disabled.
     random_seed: the random seed to use; time/os dependent if None (default).
     save_graphs: bool, if True, save computation graph to file.
-    save_backward_graph: bool, if True, save backward graph to file too.
-    nontrainable_param_map: dict, mapping from model nontrainable parameter
-      names to control names in PolicySchedule.
-    id_to_mask: id to mask out (None by default).
     metrics: optionally override the default metrics dictionary.
     checkpoint_highest: save the checkpoint highest at this metric.
     checkpoint_lowest: save the checkpoint lowest at this metric.
@@ -665,13 +588,12 @@ def train(output_dir,
     return custom_train_fn(output_dir, model=model)
 
   n_devices = num_devices()
-  # TODO(lukaszkaiser): remove has_weights and id_to_mask (configure loss).
-  trainer = trainer_class(model, loss_fn, optimizer, lr_schedule, inputs,
+  trainer = trainer_class(model, loss_fn, optimizer, lr_schedule_fn(), inputs,
                           output_dir,
-                          random_seed=random_seed, n_devices=n_devices,
+                          random_seed=random_seed,
+                          n_devices=n_devices,
                           checkpoints_at=checkpoints_at,
-                          nontrainable_param_map=nontrainable_param_map,
-                          metrics=metrics, id_to_mask=id_to_mask,
+                          metrics=metrics,
                           checkpoint_lowest=checkpoint_lowest,
                           checkpoint_highest=checkpoint_highest)
 
@@ -687,14 +609,11 @@ def train(output_dir,
     for epoch_steps in epochs(steps, trainer.step, epoch_steps):
       trainer.train_epoch(epoch_steps, eval_steps)
 
-      # Update nontrainable parameters with new history
-      trainer.update_nontrainable_params()
-
       # Bookkeeping we do at the first step
       if trainer.step == 1:
         # Save computation graph (single-device only for now)
-        if (save_graphs and math.backend_name() == 'jax'):
-          trainer.save_computation_graphs(save_backward_graph)
+        if (save_graphs and fastmath.backend_name() == 'jax'):
+          trainer.save_computation_graphs()
 
         # Save Gin config
         trainer.save_gin()
@@ -714,13 +633,6 @@ def num_devices(value=None):
 
 
 @gin.configurable
-def _is_jit_init(value=None):
-  if value is None:
-    value = math.backend_name() == 'jax'
-  return value
-
-
-@gin.configurable
 def _jit_update_fn(predict_fn, loss_fn, optimizer, n_devices, jit=True):
   """Returns a (JIT-compiled) function that computes updates for one step."""
   model_and_loss = tl.Serial(predict_fn, loss_fn)
@@ -729,36 +641,44 @@ def _jit_update_fn(predict_fn, loss_fn, optimizer, n_devices, jit=True):
     res = model_and_loss(batch, weights=weights, state=state, rng=rng)
     return res, model_and_loss.state
   if n_devices == 1:  # TODO(lukaszkaiser): remove branch when not needed.
-    def single_update(i, opt_state, batch, state, rng):
-      weights, slots, opt_params = opt_state
+    def single_update(weights_and_slots, i, opt_params, batch, state, rng):
+      weights, slots = weights_and_slots
       rng, subrng = jax_random.split(rng[0])
-      grad_fn = math.grad(model_and_loss_call, has_aux=True)
+      grad_fn = fastmath.grad(model_and_loss_call, has_aux=True)
       grads, state = grad_fn(weights, batch, state, rng)
-      return optimizer.tree_update(
-          i, grads, weights, slots, opt_params), state, [subrng]
-    return math.jit(single_update) if jit else single_update
+      new_weights, new_slots, stats = optimizer.tree_update(
+          i, grads, weights, slots, opt_params)
+      return (new_weights, new_slots), stats, state, [subrng]
+    if jit:
+      # TODO(lukaszkaiser): donate_argnums=(0,) when XLA supports it on GPU
+      return fastmath.jit(single_update)
+    else:
+      return single_update
 
   # Else, for n_devices > 1:
-  @functools.partial(math.pmap, axis_name='batch')
-  def mapped_update(i, opt_state, batch, state, rng):
+  @functools.partial(fastmath.pmap, axis_name='batch', donate_argnums=(0,))
+  def mapped_update(weights_and_slots, i, opt_params, batch, state, rng):
     """This is a multi-device version of the update function above."""
     # We assume all tensors have the first dimension = n_devices.
-    weights, slots, opt_params = opt_state
+    weights, slots = weights_and_slots
     rng, subrng = jax_random.split(rng)
-    grad_fn = math.grad(model_and_loss_call, has_aux=True)
+    grad_fn = fastmath.grad(model_and_loss_call, has_aux=True)
     grads, state = grad_fn(weights, batch, state, rng)
     # We do a psum(1.0) here instead of `n_devices` since `n_devices` is just
     # the number of devices on this host machine, however psum goes over all
     # devices of all hosts (ex: a TPU pod) and we need to be averaging over all
     # of them.
     grads = jax.tree_util.tree_map(
-        lambda g: math.psum(g, 'batch') / math.psum(np.array(1.0), 'batch'),
+        lambda g: (  # pylint: disable=g-long-lambda
+            fastmath.psum(g, 'batch') / fastmath.psum(np.array(1.0), 'batch')),
         grads)
-    return optimizer.tree_update(
-        i, grads, weights, slots, opt_params), state, subrng
+    new_weights, new_slots, stats = optimizer.tree_update(
+        i, grads, weights, slots, opt_params)
+    return (new_weights, new_slots), stats, state, subrng
 
-  def update(i, opt_state, batch, state, rng):
-    return mapped_update(np.repeat(i, n_devices), opt_state, batch, state, rng)
+  def update(weights_and_slots, i, opt_params, batch, state, rng):
+    return mapped_update(weights_and_slots, np.repeat(i, n_devices),
+                         opt_params, batch, state, rng)
 
   return update
 
@@ -781,10 +701,10 @@ def _jit_compute_loss_fn(predict_fn, loss_fn, n_devices, jit=True):
       rng, subrng = jax_random.split(rng[0])
       loss_val, state = loss_fn(opt_state[0], batch, predict_fn, state, rng)
       return loss_val, state, [subrng]
-    return math.jit(single_compute_loss) if jit else single_compute_loss
+    return fastmath.jit(single_compute_loss) if jit else single_compute_loss
 
   # Else, for n_devices > 1:
-  @functools.partial(math.pmap, axis_name='batch')
+  @functools.partial(fastmath.pmap, axis_name='batch')
   def mapped_compute_loss(opt_state, batch, state, rng):
     """This is a multi-device version of the update function above."""
     # We assume all tensors have the first dimension = n_devices.
@@ -842,7 +762,8 @@ def epochs(total_steps, steps_to_skip, epoch_steps):
 def make_trainer_state_dict(step,
                             opt_state,
                             history,
-                            model_state):
+                            model_state,
+                            input_signature):
   """Creates a trainer state dictionary to save to disk.
 
   Args:
@@ -850,40 +771,36 @@ def make_trainer_state_dict(step,
     opt_state: OptState namedtuple
     history: `trax.history.History`, the history object.
     model_state: A nested structure of the model state.
+    input_signature: signature of model inputs.
 
   Returns:
     A dictionary with the fields of TrainerState and OptState flattened.
   """
-
+  flat_weights, flat_state = tl.flatten_weights_and_state(
+      opt_state.weights, model_state)
   return {
       'step': step,
-      'weights': opt_state.weights[0],
-      'loss_weights': opt_state.weights[1],
+      'flat_weights': flat_weights,
       'slots': opt_state.slots,
       'opt_params': opt_state.opt_params,
       'history': history,
-      'state': model_state[0],
-      'loss_state': model_state[1],
-      'version_timestamp': 'Jan-13-2020'  # To update in the future if needed.
+      'flat_state': flat_state,
+      'input_signature': input_signature,
+      'version_timestamp': 'Jun-18-2020'  # To update in the future if needed.
   }
 
 
-def trainer_state_from_dict(trainer_state_dict):
+def trainer_state_from_dict(trainer_state_dict, model):
   """Given the trainer state dictionary, returns `TrainerState`."""
   # TODO(afrozm): This becomes simpler if OptState is flattened into
   # TrainerState.
   step = trainer_state_dict['step']
   history = trainer_state_dict['history']
-  # TODO(lukaszkaiser): remove the first branch after everyone ports to 'state'.
-  if 'model_state' in trainer_state_dict:
-    model_state = trainer_state_dict['model_state']
-  else:
-    model_state = (trainer_state_dict['state'],
-                   trainer_state_dict['loss_state'])
-  weights = trainer_state_dict['weights']
-  # TODO(lukaszkaiser): remove the next 2 lines after 'loss_weights' is in use.
-  if 'loss_weights' in trainer_state_dict:
-    weights = (weights, trainer_state_dict['loss_weights'])
+  input_signature = trainer_state_dict['input_signature']
+  weights_and_state_sig = model.weights_and_state_signature(input_signature)
+  weights, model_state = tl.unflatten_weights_and_state(
+      trainer_state_dict['flat_weights'], trainer_state_dict['flat_state'],
+      weights_and_state_sig)
   opt_state = OptState(
       weights=weights,
       slots=trainer_state_dict['slots'],
@@ -892,19 +809,18 @@ def trainer_state_from_dict(trainer_state_dict):
                       history=history, model_state=model_state)
 
 
-def load_trainer_state(output_dir, weights_file=None):
+def load_trainer_state(output_dir, model, weights_file=None):
   """Returns a TrainerState instance loaded from the given `output_dir`."""
   if weights_file is None:
-    weights_file = os.path.join(output_dir, 'model.pkl')
+    weights_file = os.path.join(output_dir, 'model.pkl.gz')
     if not tf.io.gfile.exists(weights_file):
       return TrainerState(step=None, opt_state=None,
                           history=trax_history.History(), model_state=None)
   elif not tf.io.gfile.exists(weights_file):
     raise ValueError('File not found: %s' % weights_file)
 
-  with tf.io.gfile.GFile(weights_file, 'rb') as f:
-    trainer_state_dict = pickle.load(f)
-  trainer_state = trainer_state_from_dict(trainer_state_dict)
+  trainer_state_dict = unpickle_from_file(weights_file, gzip=True)
+  trainer_state = trainer_state_from_dict(trainer_state_dict, model)
   log('Model loaded from %s at step %d' % (weights_file, trainer_state.step))
   logging.debug('From loaded model : history = %s', trainer_state.history)
   return trainer_state
@@ -932,6 +848,8 @@ def _nested_reduce(f, x):
     return f([_nested_reduce(f, y) for y in x])
   if isinstance(x, tuple):
     return f([_nested_reduce(f, y) for y in x])
+  if isinstance(x, dict):
+    return f([_nested_reduce(f, v) for (_, v) in x.items()])
   return x
 
 
@@ -942,7 +860,7 @@ def _sizes(x):
       return x.size
     except Exception:  # pylint: disable=broad-except
       return 0
-  return math.nested_map(size, x)
+  return fastmath.nested_map(size, x)
 
 
 def _repeat_stream(stream, n_devices):
@@ -977,39 +895,49 @@ def unpickle_from_file(file_path, gzip=False):
   return obj
 
 
-def _add_weights_and_mask(inputs, id_to_mask):
-  """Add weights to inputs without weights and masks by id if requested.
-
-  Each of the (train, eval, train_eval) streams of inputs is augmented in
-  the following way:
-  * if the stream consists of pairs (inputs, targets), a loss mask is added
-    that is creates as a tensor of ones of the same shape as targets
-  * if id_to_mask is not None, and the stream (after the previous point) has
-    triples (inputs, targets, weights), the weights are multipled by a 0/1 mask
-    that is 0 iff targets is equal to id_to_mask (1 otherwise).
+def autoregressive_sample(model, prefix=None, inputs=None,
+                          batch_size=1, temperature=1.0,
+                          start_id=0, eos_id=1, max_length=100,
+                          accelerate=True):
+  """Perform aturegressive sampling from the provided model.
 
   Args:
-    inputs: a trax_inputs.Inputs object to operate on
-    id_to_mask: int or None, id to pad in targets if not None
+    model: instance of trax.Layer, the model to sample from (at mode='predict')
+    prefix: optional tensor [batch_size, L]: prefix for decoding
+    inputs: optional tensor [batch_size, M]: inputs to provide to the model
+    batch_size: how many batches to sample (default: 1)
+    temperature: sampling temperature (default: 1.0)
+    start_id: int, id for the start symbol fed at the beginning (default: 1)
+    eos_id: int, id of the end-of-sequence symbol used to stop (default: 1)
+    max_length: maximum length to sample (default: 100)
+    accelerate: whether to accelerate the model before decoding (default: True)
 
   Returns:
-    a trax_inputs.Inputs object with augmented streams
+    a tensor of ints of shape [batch_size, N] with N <= max_length containing
+    the autoregressively sampled output from the model
   """
-  def _with_masks(input_stream):
-    """Create masks for the given stream."""
-    for example in input_stream:
-      if len(example) > 3 or len(example) < 2:
-        assert id_to_mask is None, 'Cannot automatically mask this stream.'
-        yield example
-      else:
-        if len(example) == 2:
-          weights = numpy.ones_like(example[1]).astype(numpy.float32)
-        else:
-          weights = example[2].astype(numpy.float32)
-        mask = 1.0 - numpy.equal(example[1], id_to_mask).astype(np.float32)
-        weights *= mask
-        yield (example[0], example[1], weights)
-  return trax_inputs.Inputs(
-      train_stream=lambda n: _with_masks(inputs.train_stream(n)),
-      eval_stream=lambda n: _with_masks(inputs.eval_stream(n)),
-      train_eval_stream=lambda n: _with_masks(inputs.train_eval_stream(n)))
+  if prefix is not None and prefix.shape[0] != batch_size:
+    raise ValueError(f'Prefix batch size {prefix.shape[0]} != {batch_size}.')
+  if inputs is not None and inputs.shape[0] != batch_size:
+    raise ValueError(f'Inputs batch size {inputs.shape[0]} != {batch_size}.')
+  fast_model = tl.Accelerate(model) if accelerate else model
+  cur_symbol = np.full((batch_size, 1), start_id, dtype=np.int32)
+  result = []
+  for i in range(max_length):
+    model_input = cur_symbol if inputs is None else (inputs, cur_symbol)
+    logits = fast_model(model_input)
+    if inputs is not None:
+      logits = logits[0]  # Pick first element from model output (a pair here)
+    if prefix is not None and i < prefix.shape[1]:  # Read from prefix.
+      cur_prefix_symbol = prefix[:, i]
+      sample = cur_prefix_symbol[:, None]
+    else:
+      sample = tl.gumbel_sample(logits, temperature=temperature)
+    result.append(sample)
+    # Note: we're using 'predict' mode autoregressive models here, so history
+    # is caches in the model state and we are only feeding one symbol next.
+    cur_symbol = sample
+    # TODO(lukaszkaiser): extend stopping below to batch_sizes > 1.
+    if batch_size == 1 and int(sample[0, 0]) == eos_id:
+      break
+  return np.concatenate(result, axis=1)

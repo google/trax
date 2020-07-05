@@ -19,8 +19,8 @@
 import gin
 import numpy as np
 
+from trax import fastmath
 from trax import layers as tl
-from trax import math
 
 
 def running_mean_init(shape, fill_value=0):
@@ -85,16 +85,11 @@ class Normalize(tl.Layer):
     self._epsilon = epsilon
     self._mode = mode
 
-  def new_weights_and_state(self, input_signature):
-    state = running_mean_and_variance_init(input_signature.shape[2:])
-    return (tl.EMPTY_WEIGHTS, state)
+  def init_weights_and_state(self, input_signature):
+    self.state = running_mean_and_variance_init(input_signature.shape[2:])
 
-  def forward_with_state(
-      self, inputs, weights=tl.EMPTY_WEIGHTS, state=tl.EMPTY_STATE, rng=None
-  ):
-    del weights
-    del rng
-
+  def forward(self, inputs):
+    state = self.state
     observations = inputs
     if self._mode == 'collect':
       # Accumulate statistics only in the collect mode, i.e. when collecting
@@ -103,7 +98,7 @@ class Normalize(tl.Layer):
         # Update statistics for each observation separately for simplicity.
         # Currently during data collection the batch size is 1 anyway.
         count = running_mean_and_variance_get_count(state)
-        state = math.cond(
+        state = fastmath.cond(
             count < self._sample_limit,
             true_operand=(observation, state),
             true_fun=lambda args: running_mean_and_variance_update(*args),
@@ -114,4 +109,5 @@ class Normalize(tl.Layer):
     mean = running_mean_and_variance_get_mean(state)
     var = running_mean_and_variance_get_variance(state)
     norm_observations = (observations - mean) / (var ** 0.5 + self._epsilon)
-    return (norm_observations, state)
+    self.state = state
+    return norm_observations

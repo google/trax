@@ -17,7 +17,7 @@
 """RNNs."""
 
 from trax import layers as tl
-from trax.math import numpy as jnp
+from trax.fastmath import numpy as jnp
 
 
 def RNNLM(vocab_size,
@@ -60,8 +60,8 @@ def RNNLM(vocab_size,
 
   return tl.Serial(
       tl.ShiftRight(mode=mode),
-      tl.Embedding(d_model, vocab_size),
-      tl.Dropout(rate=dropout, name='embedding', mode=mode),
+      tl.Embedding(vocab_size, d_model),
+      tl.Dropout(rate=dropout, mode=mode),
       tl.Branch([], zero_state),
       tl.Scan(MultiRNNCell(), axis=1),
       tl.Select([0], n_in=2),  # Drop RNN state.
@@ -90,7 +90,7 @@ def GRULM(vocab_size=256,
   """
   return tl.Serial(
       tl.ShiftRight(mode=mode),
-      tl.Embedding(d_model, vocab_size),
+      tl.Embedding(vocab_size, d_model),
       [tl.GRU(d_model) for _ in range(n_layers)],
       tl.Dense(vocab_size),
       tl.LogSoftmax()
@@ -111,6 +111,7 @@ def LSTMSeq2SeqAttn(input_vocab_size=256,
   an English sentence (tokenized) and its translation into German (tokenized).
 
   The model works as follows:
+
   * Input encoder runs on the input tokens and creates activations that
     are used as both keys and values in attention.
   * Pre-attention decoder runs on the targets and creates
@@ -132,13 +133,13 @@ def LSTMSeq2SeqAttn(input_vocab_size=256,
     An LSTM sequence-to-sequence model with attention.
   """
   input_encoder = tl.Serial(
-      tl.Embedding(d_model, input_vocab_size),
+      tl.Embedding(input_vocab_size, d_model),
       [tl.LSTM(d_model) for _ in range(n_encoder_layers)],
   )
 
   pre_attention_decoder = tl.Serial(
       tl.ShiftRight(mode=mode),
-      tl.Embedding(d_model, target_vocab_size),
+      tl.Embedding(target_vocab_size, d_model),
       tl.LSTM(d_model),
   )
 

@@ -29,7 +29,7 @@ from absl import logging
 import gin
 import jax
 import tensorflow.compat.v2 as tf
-from trax import math
+from trax import fastmath
 from trax import trainer_flags  # pylint: disable=unused-import
 from trax.supervised import trainer_lib
 from trax.tf_numpy import numpy as tf_np
@@ -44,7 +44,7 @@ def _tf_setup_from_flags():
     tf.compat.v1.enable_eager_execution()
   if FLAGS.tf_xla:
     tf.config.optimizer.set_jit(True)
-    math.tf_math.set_tf_xla_forced_compile(FLAGS.tf_xla_forced_compile)
+    fastmath.tf_math.set_tf_xla_forced_compile(FLAGS.tf_xla_forced_compile)
   tf.config.optimizer.set_experimental_options({
       'pin_to_host_optimization': FLAGS.tf_opt_pin_to_host,
       'layout_optimizer': FLAGS.tf_opt_layout,
@@ -64,9 +64,9 @@ def _gin_parse_configs():
   configs = FLAGS.config or []
   # Override with --dataset and --model
   if FLAGS.dataset:
-    configs.append("inputs.dataset_name='%s'" % FLAGS.dataset)
-    if FLAGS.data_dir:
-      configs.append("inputs.data_dir='%s'" % FLAGS.data_dir)
+    configs.append("data_streams.dataset_name='%s'" % FLAGS.dataset)
+  if FLAGS.data_dir:
+    configs.append("data_streams.data_dir='%s'" % FLAGS.data_dir)
   if FLAGS.model:
     configs.append('train.model=@trax.models.%s' % FLAGS.model)
   gin.parse_config_files_and_bindings(FLAGS.config_file, configs)
@@ -81,7 +81,7 @@ def _output_dir_or_default():
 
   # Else, generate a default output dir (under the user's home directory).
   try:
-    dataset_name = gin.query_parameter('inputs.dataset_name')
+    dataset_name = gin.query_parameter('data_streams.dataset_name')
   except ValueError:
     dataset_name = 'random'
   output_name = '{model_name}_{dataset_name}_{timestamp}'.format(
@@ -98,12 +98,13 @@ def _output_dir_or_default():
 
 
 # TODO(afrozm): Share between trainer.py and rl_trainer.py
-def _jax_and_tf_configure_for_devices():
+def _jax_and_tf_configure_for_devices():  # pylint: disable=missing-function-docstring
   if FLAGS.use_tpu:
     jax.config.update('jax_platform_name', 'tpu')
     jax.config.update('jax_xla_backend', FLAGS.jax_xla_backend)
     jax.config.update('jax_backend_target', FLAGS.jax_backend_target)
-  if FLAGS.enable_eager_execution and math.backend_name() in ('numpy', 'jax'):
+  if (FLAGS.enable_eager_execution and
+      fastmath.backend_name() in ('numpy', 'jax')):
     # Numpy backend doesn't benefit from having the input pipeline run on GPU,
     # and jax backend has GPU memory contention if TF uses the GPU. Gin must be
     # set up first before determining the backend.
@@ -153,7 +154,7 @@ def main(_):
   _jax_and_tf_configure_for_devices()
 
   output_dir = _output_dir_or_default()
-  if FLAGS.use_tpu and math.backend_name() == 'tf':
+  if FLAGS.use_tpu and fastmath.backend_name() == 'tf':
     _train_using_tf(output_dir)
   else:
     trainer_lib.train(output_dir=output_dir)

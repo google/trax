@@ -17,28 +17,27 @@
 """Tests for RNNs."""
 
 from absl.testing import absltest
-from trax import layers as tl
-from trax import math
+import numpy as np
+
+from trax import shapes
 from trax.models import rnn
-from trax.shapes import ShapeDtype
 
 
 class RNNTest(absltest.TestCase):
 
   def test_rnnlm_forward_shape(self):
-    """Runs the RNN LM forward and checks output shape."""
-    input_signature = ShapeDtype((3, 28), dtype=math.numpy.int32)
     model = rnn.RNNLM(vocab_size=20, d_model=16)
-    final_shape = tl.check_shape_agreement(model, input_signature)
-    self.assertEqual((3, 28, 20), final_shape)
+    x = np.ones((3, 28)).astype(np.int32)
+    _, _ = model.init(shapes.signature(x))
+    y = model(x)
+    self.assertEqual(y.shape, (3, 28, 20))
 
   def test_grulm_forward_shape(self):
-    """Runs the GRU LM forward and checks output shape."""
-    input_signature = ShapeDtype((3, 28), dtype=math.numpy.int32)
     model = rnn.GRULM(vocab_size=20, d_model=16)
-    model.init(input_signature)
-    final_shape = tl.check_shape_agreement(model, input_signature)
-    self.assertEqual((3, 28, 20), final_shape)
+    x = np.ones((3, 28)).astype(np.int32)
+    _, _ = model.init(shapes.signature(x))
+    y = model(x)
+    self.assertEqual(y.shape, (3, 28, 20))
 
 
 if __name__ == '__main__':

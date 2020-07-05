@@ -17,18 +17,124 @@
 """Tests for conv layers."""
 
 from absl.testing import absltest
-from trax.layers import base
-from trax.layers import pooling
-from trax.shapes import ShapeDtype
+import numpy as np
+
+import trax.layers as tl
 
 
-class PoolingLayerTest(absltest.TestCase):
+class MaxPoolTest(absltest.TestCase):
 
-  def test_avg_pool(self):
-    input_signature = ShapeDtype((29, 4, 4, 20))
-    result_shape = base.check_shape_agreement(
-        pooling.AvgPool(pool_size=(2, 2), strides=(2, 2)), input_signature)
-    self.assertEqual(result_shape, (29, 2, 2, 20))
+  def test_forward_shape(self):
+    layer = tl.MaxPool(pool_size=(2, 2), strides=(1, 2))
+    x = np.ones((11, 6, 4, 17))
+    y = layer(x)
+    self.assertEqual(y.shape, (11, 5, 2, 17))
+
+  def test_forward(self):
+    layer = tl.MaxPool(pool_size=(2, 2), strides=(2, 2))
+    x = np.array([[
+        [[1, 2, 3], [4, 5, 6], [10, 20, 30], [40, 50, 60]],
+        [[4, 2, 3], [7, 1, 2], [40, 20, 30], [70, 10, 20]],
+    ]])
+    y = layer(x)
+    self.assertEqual(tl.to_list(y), [[[[7, 5, 6], [70, 50, 60]]]])
+
+  def test_padding_default(self):
+    layer = tl.MaxPool(pool_size=(3,), strides=(3,))
+
+    # Discard incomplete window at end: [[3, 6], [4, 5]].
+    x = np.array([[
+        [0, 9], [1, 8], [2, 7], [3, 6], [4, 5]
+    ]])
+    y = layer(x)
+    self.assertEqual(tl.to_list(y), [[[2, 9]]])
+
+  def test_padding_same(self):
+    layer = tl.MaxPool(pool_size=(3,), strides=(3,), padding='SAME')
+
+    # One padding position needed; add at end.
+    x = np.array([[
+        [0, 9], [1, 8], [2, 7], [3, 6], [4, 5]
+    ]])
+    y = layer(x)
+    self.assertEqual(tl.to_list(y), [[[2, 9], [4, 6]]])
+
+    # Two padding positions needed; add one at end and one at start.
+    x = np.array([[
+        [0, 9], [1, 8], [2, 7], [3, 6]
+    ]])
+    y = layer(x)
+    self.assertEqual(tl.to_list(y), [[[1, 9], [3, 7]]])
+
+
+class SumPoolTest(absltest.TestCase):
+
+  def test_forward_shape(self):
+    layer = tl.SumPool(pool_size=(2, 2), strides=(1, 2))
+    x = np.ones((11, 6, 4, 17))
+    y = layer(x)
+    self.assertEqual(y.shape, (11, 5, 2, 17))
+
+  def test_forward(self):
+    layer = tl.SumPool(pool_size=(2, 2), strides=(2, 2))
+    x = np.array([[
+        [[1, 2, 3], [4, 5, 6], [10, 20, 30], [40, 50, 60]],
+        [[4, 2, 3], [7, 1, 2], [40, 20, 30], [70, 10, 20]],
+    ]])
+    y = layer(x)
+    self.assertEqual(tl.to_list(y), [[[[16, 10, 14], [160, 100, 140]]]])
+
+  def test_padding_same(self):
+    layer = tl.SumPool(pool_size=(3,), strides=(3,), padding='SAME')
+
+    # One padding position needed; add at end.
+    x = np.array([[
+        [0, 9], [1, 8], [2, 7], [3, 6], [4, 5]
+    ]])
+    y = layer(x)
+    self.assertEqual(tl.to_list(y), [[[3, 24], [7, 11]]])
+
+    # Two padding positions needed; add one at end and one at start.
+    x = np.array([[
+        [0, 9], [1, 8], [2, 7], [3, 6]
+    ]])
+    y = layer(x)
+    self.assertEqual(tl.to_list(y), [[[1, 17], [5, 13]]])
+
+
+class AvgPoolTest(absltest.TestCase):
+
+  def test_forward_shape(self):
+    layer = tl.AvgPool(pool_size=(2, 2), strides=(1, 2))
+    x = np.ones((11, 6, 4, 17))
+    y = layer(x)
+    self.assertEqual(y.shape, (11, 5, 2, 17))
+
+  def test_forward(self):
+    layer = tl.AvgPool(pool_size=(2, 2), strides=(2, 2))
+    x = np.array([[
+        [[1, 2, 3], [4, 5, 6], [10, 20, 30], [40, 50, 60]],
+        [[4, 2, 3], [7, 1, 2], [40, 20, 30], [70, 10, 20]],
+    ]])
+    y = layer(x)
+    self.assertEqual(tl.to_list(y), [[[[4.0, 2.5, 3.5], [40, 25, 35]]]])
+
+  def test_padding_same(self):
+    layer = tl.AvgPool(pool_size=(3,), strides=(3,), padding='SAME')
+
+    # One padding position needed; add at end.
+    x = np.array([[
+        [0, 9], [1, 8], [2, 7], [3, 6], [4, 5]
+    ]])
+    y = layer(x)
+    self.assertEqual(tl.to_list(y), [[[1, 8], [3.5, 5.5]]])
+
+    # Two padding positions needed; add one at end and one at start.
+    x = np.array([[
+        [0, 9], [1, 8], [2, 7], [3, 6]
+    ]])
+    y = layer(x)
+    self.assertEqual(tl.to_list(y), [[[.5, 8.5], [2.5, 6.5]]])
 
 
 if __name__ == '__main__':

@@ -21,7 +21,7 @@ import gym
 import numpy as np
 
 from trax import layers as tl
-from trax.math import numpy as jnp
+from trax.fastmath import numpy as jnp
 
 
 class Distribution:
@@ -85,7 +85,7 @@ class Categorical(Distribution):
 
   @property
   def n_inputs(self):
-    return jnp.prod(self._shape, dtype=jnp.int32) * self._n_categories
+    return np.prod(self._shape, dtype=jnp.int32) * self._n_categories
 
   def _unflatten_inputs(self, inputs):
     return jnp.reshape(
@@ -130,13 +130,18 @@ class Gaussian(Distribution):
 
   @property
   def n_inputs(self):
-    return jnp.prod(self._shape, dtype=jnp.int32)
+    return np.prod(self._shape, dtype=jnp.int32)
 
   def sample(self, inputs, temperature=1.0):
-    return np.random.normal(
-        loc=jnp.reshape(inputs, inputs.shape[:-1] + self._shape),
-        scale=self._std * temperature,
-    )
+    if temperature == 0:
+      # this seemingly strange if solves the problem
+      # of calling np/jnp.random in the metric PreferredMove
+      return inputs
+    else:
+      return np.random.normal(
+          loc=jnp.reshape(inputs, inputs.shape[:-1] + self._shape),
+          scale=self._std * temperature,
+      )
 
   def log_prob(self, inputs, point):
     point = point.reshape(inputs.shape[:-1] + (-1,))
@@ -145,12 +150,13 @@ class Gaussian(Distribution):
         -jnp.sum((point - inputs) ** 2, axis=-1) / (2 * self._std ** 2) -
         # Normalizing constant.
         ((jnp.log(self._std) + jnp.log(jnp.sqrt(2 * jnp.pi)))
-         * jnp.prod(self._shape))
+         * np.prod(self._shape))
     )
 
   # At that point self._std is not learnable, hence
-  # we return a constaent
-  def entropy(self):
+  # we return a constant
+  def entropy(self, log_probs):
+    del log_probs  # would be helpful if self._std was learnable
     return jnp.exp(self._std) + .5 * jnp.log(2.0 * jnp.pi * jnp.e)
 
 

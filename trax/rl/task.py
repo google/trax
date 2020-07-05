@@ -23,6 +23,7 @@ import gin
 import gym
 import numpy as np
 
+from trax import fastmath
 from trax.supervised import trainer_lib
 
 
@@ -37,21 +38,43 @@ class _TimeStep(object):
   * discounted return from that state (includes the reward from this step)
   """
 
-  def __init__(self, observation, action=None, reward=None, log_prob=None):
+  def __init__(
+      self, observation, action=None, reward=None, dist_inputs=None, done=None,
+      mask=None
+  ):
     self.observation = observation
     self.action = action
     self.reward = reward
-    self.log_prob = log_prob
-    self.discounted_return = None
+    self.dist_inputs = dist_inputs
+    self.done = done
+    self.mask = mask
+    self.discounted_return = 0.0
 
 
 # Tuple for representing trajectories and batches of them in numpy; immutable.
 TrajectoryNp = collections.namedtuple('TrajectoryNp', [
     'observations',
     'actions',
-    'log_probs',
+    'dist_inputs',
     'rewards',
     'returns',
+    'dones',
+    'mask',
+])
+
+
+# Same as TrajectoryNp, for timesteps. This is separate for documentation
+# purposes, but it's functionally redundant.
+# TODO(pkozakowski): Consider merging with TrajectoryNp and finding a common
+# name. At the very least it should be merged with _TimeStep - I'm not doing it
+# for now to keep backward compatibility with batch RL experiments.
+TimeStepNp = collections.namedtuple('TimeStepNp', [
+    'observation',
+    'action',
+    'dist_inputs',
+    'reward',
+    'return_',
+    'done',
     'mask',
 ])
 
@@ -100,12 +123,14 @@ class Trajectory(object):
     last_timestep = self._timesteps[-1]
     return last_timestep.observation
 
-  def extend(self, action, log_prob, reward, new_observation):
+  def extend(self, action, dist_inputs, reward, done, new_observation, mask=1):
     """Take action in the last state, getting reward and going to new state."""
     last_timestep = self._timesteps[-1]
     last_timestep.action = action
-    last_timestep.log_prob = log_prob
+    last_timestep.dist_inputs = dist_inputs
     last_timestep.reward = reward
+    last_timestep.done = done
+    last_timestep.mask = mask
     new_timestep = _TimeStep(new_observation)
     self._timesteps.append(new_timestep)
 
@@ -119,40 +144,52 @@ class Trajectory(object):
 
   def _default_timestep_to_np(self, ts):
     """Default way to convert timestep to numpy."""
-    if ts.action is None:
-      return (np.array(ts.observation),
-              None, None, None, None)
-    return (np.array(ts.observation),
-            np.array(ts.action),
-            np.array(ts.log_prob, dtype=np.float32),
-            np.array(ts.reward, dtype=np.float32),
-            np.array(ts.discounted_return, dtype=np.float32))
+    return fastmath.nested_map(np.array, TimeStepNp(
+        observation=ts.observation,
+        action=ts.action,
+        dist_inputs=ts.dist_inputs,
+        reward=ts.reward,
+        done=ts.done,
+        return_=ts.discounted_return,
+        mask=ts.mask,
+    ))
 
   def to_np(self, timestep_to_np=None):
     """Create a tuple of numpy arrays from a given trajectory."""
-    observations, actions, logps, rewards, returns = [], [], [], [], []
+    observations, actions, dist_inputs, rewards, returns, dones, masks = (
+        [], [], [], [], [], [], []
+    )
     timestep_to_np = timestep_to_np or self._default_timestep_to_np
     for timestep in self._timesteps:
       if timestep.action is None:
-        obs = timestep_to_np(timestep)[0]
+        obs = timestep_to_np(timestep).observation
         observations.append(obs)
       else:
-        (obs, act, logp, rew, ret) = timestep_to_np(timestep)
-        observations.append(obs)
-        actions.append(act)
-        logps.append(logp)
-        rewards.append(rew)
-        returns.append(ret)
+        timestep_np = timestep_to_np(timestep)
+        observations.append(timestep_np.observation)
+        actions.append(timestep_np.action)
+        dist_inputs.append(timestep_np.dist_inputs)
+        rewards.append(timestep_np.reward)
+        dones.append(timestep_np.done)
+        returns.append(timestep_np.return_)
+        masks.append(timestep_np.mask)
+
     def stack(x):
       if not x:
         return None
-      return np.stack(x, axis=0)
-    return TrajectoryNp(stack(observations),
-                        stack(actions),
-                        stack(logps),
-                        stack(rewards),
-                        stack(returns),
-                        None)
+      return fastmath.nested_stack(x)
+
+    return TrajectoryNp(**{  # pylint: disable=g-complex-comprehension
+        key: stack(value) for (key, value) in [
+            ('observations', observations),
+            ('actions', actions),
+            ('dist_inputs', dist_inputs),
+            ('rewards', rewards),
+            ('dones', dones),
+            ('returns', returns),
+            ('mask', masks),
+        ]
+    })
 
 
 def play(env, policy, dm_suite=False, max_steps=None):
@@ -180,19 +217,20 @@ def play(env, policy, dm_suite=False, max_steps=None):
   if dm_suite:
     cur_trajectory = Trajectory(env.reset().observation)
     while not terminal and (max_steps is None or cur_step < max_steps):
-      action, log_prob = policy(cur_trajectory)
+      action, dist_inputs = policy(cur_trajectory)
       observation = env.step(action)
-      cur_trajectory.extend(action, log_prob,
+      cur_trajectory.extend(action, dist_inputs,
                             observation.reward,
+                            observation.step_type.last(),
                             observation.observation)
       cur_step += 1
       terminal = observation.step_type.last()
   else:
     cur_trajectory = Trajectory(env.reset())
     while not terminal and (max_steps is None or cur_step < max_steps):
-      action, log_prob = policy(cur_trajectory)
+      action, dist_inputs = policy(cur_trajectory)
       observation, reward, terminal, _ = env.step(action)
-      cur_trajectory.extend(action, log_prob, reward, observation)
+      cur_trajectory.extend(action, dist_inputs, reward, terminal, observation)
       cur_step += 1
   return cur_trajectory
 
@@ -206,9 +244,7 @@ def _zero_pad(x, pad, axis):
 
 
 def _random_policy(action_space):
-  # TODO(pkozakowski): Make returning the log probabilities optional.
-  # Returning 1 as a log probability is a temporary hack.
-  return lambda _: (action_space.sample(), 1.0)
+  return lambda _: (action_space.sample(), None)
 
 
 def _sample_proportionally(inputs, weights):
@@ -236,9 +272,14 @@ def _sample_proportionally(inputs, weights):
 class RLTask:
   """A RL task: environment and a collection of trajectories."""
 
-  def __init__(self, env=gin.REQUIRED, initial_trajectories=1, gamma=0.99,
-               dm_suite=False, max_steps=None,
-               timestep_to_np=None, num_stacked_frames=1):
+  def __init__(self, env=gin.REQUIRED,
+               initial_trajectories=1,
+               gamma=0.99,
+               dm_suite=False,
+               max_steps=None,
+               timestep_to_np=None,
+               num_stacked_frames=1,
+               n_replay_epochs=1):
     r"""Configures a RL task.
 
     Args:
@@ -246,7 +287,9 @@ class RLTask:
         in which case `gym.make` will be called on this string to create an env.
       initial_trajectories: either a dict or list of Trajectories to use
         at start or an int, in which case that many trajectories are
-        collected using a random policy to play in env.
+        collected using a random policy to play in env. It can be also a string
+        and then it should direct to the location where previously recorded
+        trajectories are stored.
       gamma: float: discount factor for calculating returns.
       dm_suite: whether we are using the DeepMind suite or the gym interface
       max_steps: Optional int: stop all trajectories at that many steps.
@@ -255,6 +298,7 @@ class RLTask:
         represent it, but other representations (such as embeddings that include
         actions or serialized representations) can be passed here.
       num_stacked_frames: the number of stacked frames for Atari.
+      n_replay_epochs: the size of the replay buffer expressed in epochs.
     """
     if isinstance(env, str):
       self._env_name = env
@@ -291,7 +335,9 @@ class RLTask:
             # in PolicyTrainer. Here we just gather some example inputs.
             self.play(_random_policy(self.action_space))
         ]
-
+    if isinstance(initial_trajectories, str):
+      initial_trajectories = self.load_initial_trajectories_from_path(
+          initial_trajectories_path=initial_trajectories)
     if isinstance(initial_trajectories, list):
       initial_trajectories = {0: initial_trajectories}
     self._timestep_to_np = timestep_to_np
@@ -304,6 +350,9 @@ class RLTask:
     # When we repeatedly save, trajectories for many epochs do not change, so
     # we don't need to save them again. This keeps track which are unchanged.
     self._saved_epochs_unchanged = []
+    self._n_replay_epochs = n_replay_epochs
+    self._n_trajectories = 0
+    self._n_interactions = 0
 
   @property
   def env(self):
@@ -359,12 +408,37 @@ class RLTask:
     filename, ext = os.path.splitext(base_filename)
     return filename + '_epoch' + str(epoch) + ext
 
+  def set_n_replay_epochs(self, n_replay_epochs):
+    self._n_replay_epochs = n_replay_epochs
+
+  def load_initial_trajectories_from_path(self,
+                                          initial_trajectories_path,
+                                          dictionary_file='trajectories.pkl',
+                                          start_epoch_to_load=0):
+    """Initialize trajectories task from file."""
+    # We assume that this is a dump generated by Trax
+    dictionary_file = os.path.join(initial_trajectories_path, dictionary_file)
+    dictionary = trainer_lib.unpickle_from_file(dictionary_file, gzip=False)
+    # TODO(henrykm): as currently implemented this accesses only
+    # at most the last n_replay_epochs - this should be more flexible
+    epochs_to_load = dictionary['all_epochs'][start_epoch_to_load:]
+
+    all_trajectories = []
+    for epoch in epochs_to_load:
+      trajectories = trainer_lib.unpickle_from_file(
+          self._epoch_filename(dictionary_file, epoch), gzip=True)
+      all_trajectories += trajectories
+    return all_trajectories
+
   def init_from_file(self, file_name):
     """Initialize this task from file."""
     dictionary = trainer_lib.unpickle_from_file(file_name, gzip=False)
+    self._n_trajectories = dictionary['n_trajectories']
+    self._n_interactions = dictionary['n_interactions']
     self._max_steps = dictionary['max_steps']
     self._gamma = dictionary['gamma']
-    epochs_to_load = dictionary['all_epochs']
+    epochs_to_load = dictionary['all_epochs'][-self._n_replay_epochs:]
+
     for epoch in epochs_to_load:
       trajectories = trainer_lib.unpickle_from_file(
           self._epoch_filename(file_name, epoch), gzip=True)
@@ -382,7 +456,9 @@ class RLTask:
                                  gzip=True)
     # Now save the list of epochs (so the trajectories are already there,
     # even in case of preemption).
-    dictionary = {'max_steps': self._max_steps,
+    dictionary = {'n_interactions': self._n_interactions,
+                  'n_trajectories': self._n_trajectories,
+                  'max_steps': self._max_steps,
                   'gamma': self._gamma,
                   'all_epochs': list(self._trajectories.keys())}
     trainer_lib.pickle_to_file(dictionary, file_name, gzip=False)
@@ -395,28 +471,70 @@ class RLTask:
     cur_trajectory.calculate_returns(self._gamma)
     return cur_trajectory
 
-  def collect_trajectories(self, policy, n, epoch_id=1):
-    """Collect n trajectories in env playing the given policy."""
-    new_trajectories = [self.play(policy) for _ in range(n)]
+  def collect_trajectories(
+      self, policy,
+      n_trajectories=None,
+      n_interactions=None,
+      only_eval=False,
+      max_steps=None,
+      epoch_id=1,
+  ):
+    """Collect experience in env playing the given policy."""
+    max_steps = max_steps or self.max_steps
+    if n_trajectories:
+      new_trajectories = [self.play(policy, max_steps=max_steps)
+                          for _ in range(n_trajectories)]
+    elif n_interactions:
+      # TODO(pkozakowski): Test this mode of experience collection.
+      new_trajectories = []
+      while n_interactions > 0:
+        traj = self.play(policy, max_steps=max_steps)
+        new_trajectories.append(traj)
+        n_interactions -= len(traj)
+    else:
+      raise ValueError(
+          'Either n_trajectories or n_interactions must be defined.'
+      )
+
+    # Calculate returns.
+    returns = [t.total_return for t in new_trajectories]
+
+    # If we're only evaluating, we're done, return the average.
+    if only_eval:
+      return sum(returns) / float(len(returns))
+
+    # Store new trajectories.
     self._trajectories[epoch_id].extend(new_trajectories)
+
     # Mark that epoch epoch_id has changed.
     if epoch_id in self._saved_epochs_unchanged:
       self._saved_epochs_unchanged = [e for e in self._saved_epochs_unchanged
                                       if e != epoch_id]
-    # Calculate returns.
-    returns = [t.total_return for t in new_trajectories]
+
+    # Remove epochs not intended to be in the buffer
+    current_trajectories = {
+        key: value for key, value in self._trajectories.items()
+        if key >= epoch_id - self._n_replay_epochs}
+    self._trajectories = collections.defaultdict(list)
+    self._trajectories.update(current_trajectories)
+
+    # Update statistics.
+    self._n_trajectories += len(new_trajectories)
+    self._n_interactions += sum([len(traj) for traj in new_trajectories])
+
     return sum(returns) / float(len(returns))
 
   def n_trajectories(self, epochs=None):
-    all_epochs = list(self._trajectories.keys())
-    epoch_indices = epochs or all_epochs
-    return sum([len(self._trajectories[ep]) for ep in epoch_indices])
+    # TODO(henrykm) support selection of epochs if really necessary (will
+    # require a dump of a list of lengths in save_to_file
+    del epochs
+    return self._n_trajectories
 
   def n_interactions(self, epochs=None):
-    all_epochs = list(self._trajectories.keys())
-    epoch_indices = epochs or all_epochs
-    return sum([sum([len(traj) for traj in self._trajectories[ep]])
-                for ep in epoch_indices])
+    # TODO(henrykm) support selection of epochs if really necessary (will
+    # require a dump of a list of lengths in save_to_file
+    del epochs
+    return self._n_interactions
 
   def remove_epoch(self, epoch):
     """Useful when we need to remove an unwanted trajectory."""
@@ -425,7 +543,7 @@ class RLTask:
 
   def trajectory_stream(self, epochs=None, max_slice_length=None,
                         include_final_state=False,
-                        sample_trajectories_uniformly=False):
+                        sample_trajectories_uniformly=False, margin=0):
     """Return a stream of random trajectory slices from the specified epochs.
 
     Args:
@@ -434,11 +552,13 @@ class RLTask:
       include_final_state: whether to include slices with the final state of
         the trajectory which may have no action and reward
       sample_trajectories_uniformly: whether to sample trajectories uniformly,
-       or proportionally to the number of slices in each trajectory (default)
+        or proportionally to the number of slices in each trajectory (default)
+      margin: number of extra steps after "done" that should be included in
+        slices, so that networks see the terminal states in the training data
 
     Yields:
       random trajectory slices sampled uniformly from all slices of length
-      upto max_slice_length in all specified epochs
+      up to max_slice_length in all specified epochs
     """
     # TODO(lukaszkaiser): add option to sample from n last trajectories.
     end_offset = 0 if include_final_state else 1
@@ -448,7 +568,29 @@ class RLTask:
         return 1
       # A trajectory [a, b, c, end_state] will have 2 slices of length 2:
       # the slice [a, b] and the one [b, c], with end_offset; 3 without.
-      return max(1, len(t) - max_slice_length + 1 - end_offset)
+      return max(1, len(t) + margin - max_slice_length + 1 - end_offset)
+
+    def extend_trajectory(t):
+      # TODO(pkozakowski) Refactor.
+      if len(t) == 1:
+        return t
+      else:
+        ts = t.timesteps[0]
+        extend_kwargs = {
+            'action': np.zeros_like(ts.action),
+            'dist_inputs': (
+                np.zeros_like(ts.dist_inputs)
+                if ts.dist_inputs is not None else None
+            ),
+            'reward': 0.0,
+            'done': True,
+            'mask': 0,
+            'new_observation': np.zeros_like(ts.observation),
+        }
+        t = t[:]  # Make a shallow copy of the timestep list.
+        for _ in range(margin):
+          t.extend(**extend_kwargs)
+        return t
 
     while True:
       all_epochs = list(self._trajectories.keys())
@@ -460,8 +602,10 @@ class RLTask:
           # So -1 means "last".
           ep % max_epoch for ep in epoch_indices
       ]
-      # Remove duplicates.
-      epoch_indices = list(set(epoch_indices))
+      # Remove duplicates and consider only epochs where some trajectories
+      # were recorded.
+      epoch_indices = [epoch_id for epoch_id in list(set(epoch_indices))
+                       if self._trajectories[epoch_id]]
 
       # Sample an epoch proportionally to number of slices in each epoch.
       if len(epoch_indices) == 1:  # Skip this step if there's just 1 epoch.
@@ -481,13 +625,19 @@ class RLTask:
 
       # Sample a slice from the trajectory.
       slice_start = np.random.randint(n_slices(trajectory))
-      slice_end = slice_start + (max_slice_length or len(trajectory))
-      slice_end = min(slice_end, len(trajectory) - end_offset)
-      yield trajectory[slice_start:slice_end]
+      # Extend the trajectory with a given margin - this is to make sure that
+      # the networks always "see" the "done" states in the training data, even
+      # when a suffix is added to the trajectory slice for better estimation of
+      # returns.
+      extended_trajectory = extend_trajectory(trajectory)
+      slice_end = slice_start + (max_slice_length or len(extended_trajectory))
+      slice_end = min(slice_end, len(extended_trajectory) - end_offset)
+      yield extended_trajectory[slice_start:slice_end]
 
   def trajectory_batch_stream(self, batch_size, epochs=None,
                               max_slice_length=None,
                               min_slice_length=None,
+                              margin=0,
                               include_final_state=False,
                               sample_trajectories_uniformly=False):
     """Return a stream of trajectory batches from the specified epochs.
@@ -500,6 +650,8 @@ class RLTask:
       epochs: a list of epochs to use; we use all epochs if None
       max_slice_length: maximum length of the slices of trajectories to return
       min_slice_length: minimum length of the slices of trajectories to return
+      margin: number of extra steps after "done" that should be included in
+        slices, so that networks see the terminal states in the training data
       include_final_state: whether to include slices with the final state of
         the trajectory which may have no action and reward
       sample_trajectories_uniformly: whether to sample trajectories uniformly,
@@ -511,6 +663,12 @@ class RLTask:
       epochs
     """
     def pad(tensor_list):
+      # Replace Nones with valid tensors.
+      not_none_tensors = [t for t in tensor_list if t is not None]
+      assert not_none_tensors, 'All tensors to pad are None.'
+      prototype = np.zeros_like(not_none_tensors[0])
+      tensor_list = [t if t is not None else prototype for t in tensor_list]
+
       max_len = max([t.shape[0] for t in tensor_list])
       min_len = min([t.shape[0] for t in tensor_list])
       if max_len == min_len:  # No padding needed.
@@ -522,7 +680,9 @@ class RLTask:
     cur_batch = []
     for t in self.trajectory_stream(
         epochs, max_slice_length,
-        include_final_state, sample_trajectories_uniformly):
+        include_final_state, sample_trajectories_uniformly,
+        margin=margin
+    ):
       # TODO(pkozakowski): Instead sample the trajectories out of those with
       # the minimum length.
       if min_slice_length is not None and len(t) < min_slice_length:
@@ -530,13 +690,24 @@ class RLTask:
 
       cur_batch.append(t)
       if len(cur_batch) == batch_size:
-        obs, act, logp, rew, ret, _ = zip(*[t.to_np(self._timestep_to_np)
-                                            for t in cur_batch])
-        # Where act, logp, rew and ret will usually have the following shape:
+        # TODO(pkozakowski): Unpack based on name instead of position in the
+        # tuple (how?).
+        obs, act, dinp, rew, ret, done, mask = zip(*[
+            t.to_np(self._timestep_to_np) for t in cur_batch
+        ])
+        # Where act, rew and ret will usually have the following shape:
         # [batch_size, trajectory_length-1], which we call [B, L-1].
         # Observations are more complex and will usuall be [B, L] + S where S
         # is the shape of the observation space (self.observation_space.shape).
-        yield TrajectoryNp(
-            pad(obs), pad(act), pad(logp), pad(rew), pad(ret),
-            pad([np.ones(a.shape[:1]) for a in act]))
+        # We stop the recursion at level 1, so we pass lists of arrays into
+        # pad().
+        yield fastmath.nested_map(pad, TrajectoryNp(
+            observations=obs,
+            actions=act,
+            dist_inputs=dinp,
+            rewards=rew,
+            dones=done,
+            returns=ret,
+            mask=mask,
+        ), level=1)
         cur_batch = []

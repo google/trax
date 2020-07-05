@@ -19,26 +19,33 @@
 import functools
 
 from trax import layers as tl
-from trax import lr_schedules as lr
 from trax import supervised
-from trax.math import numpy as jnp
-from trax.math import stop_gradient
+from trax.fastmath import numpy as jnp
+from trax.fastmath import stop_gradient
 from trax.rl import actor_critic
 from trax.rl import distributions
 from trax.rl import rl_layers
 from trax.rl import training as rl_training
+from trax.supervised import lr_schedules as lr
 
 
 # pylint: disable=g-long-lambda
 class ActorCriticJointTrainer(rl_training.RLTrainer):
   """Trains a joint policy-and-value model using actor-critic methods."""
 
-  def __init__(self, task, joint_model=None,
-               optimizer=None, lr_schedule=lr.MultifactorSchedule,
-               batch_size=64, train_steps_per_epoch=500,
-               supervised_evals_per_epoch=1, supervised_eval_steps=1,
-               collect_per_epoch=50, max_slice_length=1,
-               normalize_advantages=True, output_dir=None):
+  def __init__(self, task,
+               joint_model=None,
+               optimizer=None,
+               lr_schedule=lr.multifactor,
+               batch_size=64,
+               train_steps_per_epoch=500,
+               supervised_evals_per_epoch=1,
+               supervised_eval_steps=1,
+               n_trajectories_per_epoch=50,
+               max_slice_length=1,
+               normalize_advantages=True,
+               output_dir=None,
+               n_replay_epochs=1):
     """Configures the joint trainer.
 
     Args:
@@ -52,24 +59,31 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
           epoch - only affects metric reporting.
       supervised_eval_steps: number of value trainer steps per evaluation -
           only affects metric reporting.
-      collect_per_epoch: how many trajectories to collect per epoch.
+      n_trajectories_per_epoch: how many trajectories to collect per epoch.
       max_slice_length: the maximum length of trajectory slices to use.
       normalize_advantages: if True, then normalize advantages - currently
           implemented only in PPO.
       output_dir: Path telling where to save outputs (evals and checkpoints).
+      n_replay_epochs: how many last epochs to take into the replay buffer;
+           > 1 only makes sense for off-policy algorithms.
     """
     super(ActorCriticJointTrainer, self).__init__(
-        task, collect_per_epoch=collect_per_epoch, output_dir=output_dir)
+        task,
+        n_trajectories_per_epoch=n_trajectories_per_epoch,
+        output_dir=output_dir,
+    )
     self._batch_size = batch_size
     self._train_steps_per_epoch = train_steps_per_epoch
     self._supervised_evals_per_epoch = supervised_evals_per_epoch
     self._supervised_eval_steps = supervised_eval_steps
-    self._collect_per_epoch = collect_per_epoch
+    self._n_trajectories_per_epoch = n_trajectories_per_epoch
     self._max_slice_length = max_slice_length
     self._policy_dist = distributions.create_distribution(task.action_space)
-    self._lr_schedule = lr_schedule
+    self._lr_schedule = lr_schedule()
     self._optimizer = optimizer
     self._normalize_advantages = normalize_advantages
+    self._n_replay_epochs = n_replay_epochs
+    self._task.set_n_replay_epochs(n_replay_epochs)
 
     # Inputs to the joint model are produced by self.batches_stream.
     self._inputs = supervised.Inputs(
@@ -97,9 +111,14 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
                  'explained_variance': self.explained_variance,
                  'log_probs_mean': self.log_probs_mean,
                  'preferred_move': self.preferred_move})
-    self._eval_model = self._joint_model(mode='eval')
+    self._eval_model = tl.Accelerate(
+        self._joint_model(mode='eval'), n_devices=1)
     example_batch = next(self.batches_stream())
     self._eval_model.init(example_batch)
+
+  def close(self):
+    self._trainer.close()
+    super().close()
 
   def batches_stream(self):
     """Use self.task to create inputs to the policy model."""
@@ -158,21 +177,20 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
       return rl_layers.PreferredMove(dist_inputs, self._policy_dist.sample)
     return tl.Fn('PreferredMove', f)
 
-  def policy(self, trajectory):
+  def policy(self, trajectory, temperature=1.0):
     """Chooses an action to play after a trajectory."""
     model = self._eval_model
-    model.weights = self._trainer.model_weights
+    model.replicate_weights(self._trainer.model_weights)
     # The two lines below along with the copying
     # before return make the TPU happy
     tr_slice = trajectory[-self._max_slice_length:]
     trajectory_np = tr_slice.to_np(timestep_to_np=self.task.timestep_to_np)
     # Add batch dimension to trajectory_np and run the model.
-    pred = model(trajectory_np.observations[None, ...], n_accelerators=1)[0]
+    pred = model(trajectory_np.observations[None, ...])[0]
     # Pick element 0 from the batch (the only one), last (current) timestep.
     pred = pred[0, -1, :]
-    sample = self._policy_dist.sample(pred)
-    log_prob = self._policy_dist.log_prob(pred, sample)
-    return (sample.copy(), log_prob.copy())
+    sample = self._policy_dist.sample(pred, temperature=temperature)
+    return (sample.copy(), pred.copy())
 
   def train_epoch(self):
     """Trains RL for one epoch."""
@@ -223,33 +241,84 @@ class PPOJointTrainer(ActorCriticJointTrainer):
                  'clipped_objective_mean': self.clipped_objective_mean,
                  'ppo_objective_mean': self.ppo_objective_mean,
                  'clip_fraction': self.clip_fraction,
-                 'approximate_kl_divergence': self.approximate_kl_divergence,
-                 'preferred_move': self.preferred_move})
+                 'preferred_move': self.preferred_move,
+                 'approximate_kl_divergence': self.approximate_kl_divergence})
 
   def batches_stream(self):
     """Use the RLTask self._task to create inputs to the value model."""
     for np_trajectory in self._task.trajectory_batch_stream(
         self._batch_size, max_slice_length=self._max_slice_length, epochs=[-1]):
+      if np_trajectory.dist_inputs is not None:
+        old_dist_inputs = np_trajectory.dist_inputs
+      else:
+        old_dist_inputs = jnp.zeros(
+            np_trajectory.rewards.shape + (self._policy_dist.n_inputs,)
+        )
+      old_log_probs = self._policy_dist.log_prob(
+          old_dist_inputs, np_trajectory.actions
+      )
       # Insert an extra depth dimension, so the target shape is consistent with
       # the network output shape.
       yield (np_trajectory.observations,         # Inputs to the value model.
              np_trajectory.returns[:, :, None],
+             np_trajectory.dones[:, :, None],
+             np_trajectory.rewards[:, :, None],
              np_trajectory.actions,
-             np_trajectory.log_probs,
+             old_log_probs,
              np_trajectory.mask)
 
   @property
   def joint_loss(self):
     """Joint policy and value loss."""
-    def f(dist_inputs, values, returns, actions, old_log_probs, mask):
+    def f(dist_inputs, values, returns, dones, rewards,
+          actions, old_log_probs, mask):
       """Definition of the Proximal Policy Optimization loss."""
       del mask  # TODO(lukaszkaiser): make PPO work with Transformer
+      # We have dist_inputs of the shape float32[128,1,18]
+      assert len(dist_inputs.shape) == 3, (
+          f'dist_inputs.shape was {dist_inputs.shape}'
+          f'but expected length of the tensor shape is 3')
+      # values of the shape float32[128,1,1]
+      # returns of the shape float32[128,1,1]
+      # dones of the shape int32[128,1,1]
+      # rewards of the shape float32[128,1,1]
+      # and old_log_probs of the shape float32[128,1]
+      assert values.shape == returns.shape, (
+          f'values.shape was {values.shape}'
+          f'returns.shape was {returns.shape}')
+      assert values.shape == dones.shape, (
+          f'values.shape was {values.shape}'
+          f'returns.shape was {dones.shape}')
+      assert rewards.shape == dones.shape, (
+          f'values.shape was {values.shape}'
+          f'returns.shape was {dones.shape}')
+      assert returns.shape[0:2] == old_log_probs.shape, (
+          f'returns.shape was {returns.shape}'
+          f'old_log_probs.shape was {old_log_probs.shape}')
+
+      # actions is a tensor of the shape int32[128,1] in the case
+      # of discrete actions and float32[128,1,6] in the case of
+      # half-cheetah and other continuous actions
+      # actions agree with returns/values on the first two coordinates
+      # meaning batch and time
+      assert actions.shape[0:2] == returns.shape[0:2], (
+          f'actions.shape was {actions.shape} and '
+          f'returns.shape was {returns.shape}')
 
       ppo_objective = rl_layers.PPOObjective(
-          dist_inputs, stop_gradient(values), returns, actions, old_log_probs,
+          dist_inputs, stop_gradient(values), returns, dones, rewards,
+          actions, old_log_probs,
           log_prob_fun=self._policy_dist.log_prob,
           epsilon=self._epsilon,
           normalize_advantages=self._normalize_advantages)
+
+      # we insist that ppo_objective is a vector of shape [128,1]
+      assert len(ppo_objective.shape) == 2, (
+          f'ppo_objective was {ppo_objective}')
+      # which agrees with returns/values/actions on the first two coordinates
+      assert ppo_objective.shape[0:2] == values.shape[0:2], (
+          f'ppo_objective.shape was {ppo_objective.shape} and '
+          f'values.shape was {values.shape}')
 
       entropy_loss = rl_layers.EntropyLoss(
           dist_inputs, actions,
@@ -257,8 +326,12 @@ class PPOJointTrainer(ActorCriticJointTrainer):
           entropy_coeff=self._entropy_coeff,
           entropy_fun=self._policy_dist.entropy)
 
+      assert jnp.ndim(entropy_loss) == 0, f'entropy_loss was {entropy_loss}'
+
       l2_value_loss = rl_layers.ValueLoss(
           values, returns, value_loss_coeff=self._value_loss_coeff)
+
+      assert jnp.ndim(l2_value_loss) == 0, f'l2_value_loss was {l2_value_loss}'
 
       return -ppo_objective.mean() + l2_value_loss - entropy_loss
 
@@ -275,8 +348,8 @@ class PPOJointTrainer(ActorCriticJointTrainer):
           log_prob_fun=self._policy_dist.log_prob)
       return jnp.mean(probs_ratio)
 
-    def f(dist_inputs, values, returns, actions, old_log_probs):
-      del values, returns
+    def f(dist_inputs, values, returns, dones, rewards, actions, old_log_probs):
+      del values, returns, dones, rewards
       return ProbsRatioMean(dist_inputs, actions, old_log_probs)
     return tl.Fn('ProbsRatioMean', f)
 
@@ -290,8 +363,8 @@ class PPOJointTrainer(ActorCriticJointTrainer):
           log_prob_fun=self._policy_dist.log_prob)
       return jnp.mean(jnp.abs(probs_ratio - 1) > self._epsilon)
 
-    def f(dist_inputs, values, returns, actions, old_log_probs):
-      del values, returns
+    def f(dist_inputs, values, returns, dones, rewards, actions, old_log_probs):
+      del values, returns, dones, rewards
       return ClipFraction(dist_inputs, actions, old_log_probs)
     return tl.Fn('ClipFraction', f)
   # pylint: enable=invalid-name
@@ -299,8 +372,8 @@ class PPOJointTrainer(ActorCriticJointTrainer):
   @property
   def entropy_loss(self):
     """Entropy layer."""
-    def f(dist_inputs, values, returns, actions):
-      del values, returns
+    def f(dist_inputs, values, returns, dones, rewards, actions):
+      del values, returns, dones, rewards
       return rl_layers.EntropyLoss(
           dist_inputs, actions, log_prob_fun=self._policy_dist.log_prob,
           entropy_coeff=self._entropy_coeff,
@@ -310,8 +383,9 @@ class PPOJointTrainer(ActorCriticJointTrainer):
   @property
   def approximate_kl_divergence(self):
     """Approximate KL divergence."""
-    def f(dist_inputs, values, returns, actions, old_log_probs):
-      del values, returns
+    def f(dist_inputs, values, returns, dones, rewards,
+          actions, old_log_probs):
+      del values, returns, dones, rewards
       return rl_layers.ApproximateKLDivergence(
           dist_inputs,
           actions,
@@ -321,12 +395,16 @@ class PPOJointTrainer(ActorCriticJointTrainer):
 
   @property
   def unclipped_objective_mean(self):
-    def f(dist_inputs, values, returns, actions, old_log_probs):
+    def f(dist_inputs, values, returns, dones, rewards, actions, old_log_probs):
       """Unclipped objective Mean from the PPO algorithm."""
+      del dones, rewards
       advantages = returns - values
       probs_ratio = rl_layers.ProbsRatio(
           dist_inputs, actions, old_log_probs,
           log_prob_fun=self._policy_dist.log_prob)
+      # advantages are of the shape [128,1,1]
+      # and probs_ratio are of the shape [128,1]
+      advantages = advantages.squeeze(axis=2)
       unclipped_objective = rl_layers.UnclippedObjective(
           probs_ratio, advantages)
       return jnp.mean(unclipped_objective)
@@ -335,12 +413,16 @@ class PPOJointTrainer(ActorCriticJointTrainer):
 
   @property
   def clipped_objective_mean(self):
-    def f(dist_inputs, values, returns, actions, old_log_probs):
+    def f(dist_inputs, values, returns, dones, rewards, actions, old_log_probs):
       """Clipped objective from the PPO algorithm."""
+      del dones, rewards
       advantages = returns - values
       probs_ratio = rl_layers.ProbsRatio(
           dist_inputs, actions, old_log_probs,
           log_prob_fun=self._policy_dist.log_prob)
+      # advantages are of the shape [128,1,1]
+      # and probs_ratio are of the shape [128,1]
+      advantages = advantages.squeeze(axis=2)
       clipped_objective = rl_layers.ClippedObjective(
           probs_ratio, advantages, epsilon=self._epsilon)
       return jnp.mean(clipped_objective)
@@ -350,9 +432,9 @@ class PPOJointTrainer(ActorCriticJointTrainer):
   @property
   def ppo_objective(self):
     """PPO objective with local parameters."""
-    def f(dist_inputs, values, returns, actions, old_log_probs):
+    def f(dist_inputs, values, returns, dones, rewards, actions, old_log_probs):
       return rl_layers.PPOObjective(
-          dist_inputs, values, returns, actions, old_log_probs,
+          dist_inputs, values, returns, dones, rewards, actions, old_log_probs,
           log_prob_fun=self._policy_dist.log_prob,
           epsilon=self._epsilon,
           normalize_advantages=self._normalize_advantages)
@@ -361,10 +443,10 @@ class PPOJointTrainer(ActorCriticJointTrainer):
   @property
   def ppo_objective_mean(self):
     """PPO objective mean."""
-    def f(dist_inputs, values, returns, actions, old_log_probs):
+    def f(dist_inputs, values, returns, dones, rewards, actions, old_log_probs):
       """Clipped objective from the PPO algorithm."""
       ppo_objective = rl_layers.PPOObjective(
-          dist_inputs, values, returns, actions, old_log_probs,
+          dist_inputs, values, returns, dones, rewards, actions, old_log_probs,
           log_prob_fun=self._policy_dist.log_prob,
           epsilon=self._epsilon,
           normalize_advantages=self._normalize_advantages)
@@ -412,23 +494,51 @@ class A2CJointTrainer(ActorCriticJointTrainer):
       # the network output shape.
       yield (np_trajectory.observations,         # Inputs to the value model.
              np_trajectory.returns[:, :, None],
+             np_trajectory.dones[:, :, None],
+             np_trajectory.rewards[:, :, None],
              np_trajectory.actions,
-             np_trajectory.log_probs,
+             jnp.zeros_like(np_trajectory.mask),
              np_trajectory.mask)
 
   @property
   def joint_loss(self):
     """Joint policy and value loss."""
-    def f(dist_inputs, values, returns, actions, old_log_probs, mask):
+    def f(dist_inputs, values, returns, dones, rewards,
+          actions, old_log_probs, mask):
       """Definition of the A2C loss."""
       del old_log_probs
+
+      # Typically we have dist_inputs of the shape float32[128,1,18]
+      assert len(dist_inputs.shape) == 3, (
+          f'dist_inputs.shape was {dist_inputs.shape} '
+          f'but expected length of the tensor shape is 3')
+      # values of the shape float32[128,1,1]
+      # returns of the shape float32[128,1,1]
+      assert values.shape == returns.shape, (
+          f'values.shape was {values.shape}'
+          f'returns.shape was (returns.shape)')
+      # actions of the shape int32[128,1] in the case of discrete actions
+      # and float32[128,1,6] in the case of of half-cheetah
+      # actions agree with returns/values on the first two coordinates
+      assert actions.shape[0:2] == returns.shape[0:2], (
+          f'actions.shape was {actions.shape}'
+          f'returns.shape was (returns.shape)')
+      # and mask of the shape float32[128,1]
+      assert len(mask.shape) == 2, f'mask.shape was {mask.shape}'
+      # which agrees with returns/values/actions on the first two coordinates
+      assert mask.shape[0:2] == returns.shape[0:2], (
+          f'mask.shape was {mask.shape}'
+          f'returns.shape was (returns.shape)')
 
       a2c_objective = rl_layers.A2CObjective(
           dist_inputs,
           stop_gradient(values),
-          returns, actions, mask,
+          returns, dones, rewards, actions, mask,
           log_prob_fun=self._policy_dist.log_prob,
           normalize_advantages=self._normalize_advantages)
+
+      # we insist that a2c_objective is a scalar
+      assert jnp.ndim(a2c_objective) == 0, f'a2c_objective was {a2c_objective}'
 
       entropy_loss = rl_layers.EntropyLoss(
           dist_inputs, actions,
@@ -436,19 +546,24 @@ class A2CJointTrainer(ActorCriticJointTrainer):
           entropy_coeff=self._entropy_coeff,
           entropy_fun=self._policy_dist.entropy)
 
-      l2_value_loss = rl_layers.ValueLoss(
-          values, returns,
-          value_loss_coeff=self._value_loss_coeff)
+      assert jnp.ndim(entropy_loss) == 0, f'entropy_loss was {entropy_loss}'
 
-      return a2c_objective.mean() + l2_value_loss - entropy_loss
+      l2_value_loss = rl_layers.ValueLoss(
+          values, returns, value_loss_coeff=self._value_loss_coeff)
+
+      assert jnp.ndim(l2_value_loss) == 0, f'l2_value_loss was {l2_value_loss}'
+
+      combined_loss = a2c_objective + l2_value_loss - entropy_loss
+
+      return combined_loss
 
     return tl.Fn('A2CJointLoss', f, n_out=1)
 
   @property
   def entropy_loss(self):
     """Entropy layer."""
-    def f(dist_inputs, values, returns, actions):
-      del values, returns
+    def f(dist_inputs, values, returns, dones, rewards, actions):
+      del values, returns, dones, rewards
       return rl_layers.EntropyLoss(
           dist_inputs, actions, log_prob_fun=self._policy_dist.log_prob,
           entropy_coeff=self._entropy_coeff,
@@ -458,8 +573,9 @@ class A2CJointTrainer(ActorCriticJointTrainer):
   @property
   def approximate_kl_divergence(self):
     """Approximate KL divergence."""
-    def f(dist_inputs, values, returns, actions, old_log_probs):
-      del values, returns
+    def f(dist_inputs, values, returns, dones, rewards,
+          actions, old_log_probs):
+      del values, returns, dones, rewards
       return rl_layers.ApproximateKLDivergence(
           dist_inputs,
           actions,
@@ -471,21 +587,30 @@ class A2CJointTrainer(ActorCriticJointTrainer):
   def a2c_objective(self):
     """A2C objective with local parameters."""
     return tl.Fn(
-        lambda dist_inputs, values, returns, actions, old_log_probs, mask:
-        rl_layers.A2CObjective(
-            dist_inputs, values, returns, actions, mask,
+        'A2CObjective',
+        lambda dist_inputs, values, returns, dones, rewards, actions, \
+        old_log_probs, mask: rl_layers.A2CObjective(
+            dist_inputs,
+            values,
+            returns,
+            dones,
+            rewards,
+            actions,
+            mask,
             log_prob_fun=self._policy_dist.log_prob,
             normalize_advantages=self._normalize_advantages),
         n_out=1)
 
   @property
   def a2c_objective_mean(self):
-    """PPO objective mean."""
-    def f(dist_inputs, values, returns, actions, old_log_probs, mask):
+    """A2C objective mean."""
+    def f(dist_inputs, values, returns, dones, rewards,
+          actions, old_log_probs, mask):
       """A2C objective mean."""
+      # TODO(henrykm): include dones, rewards
       del old_log_probs
       a2c_objective = rl_layers.A2CObjective(
-          dist_inputs, values, returns, actions, mask,
+          dist_inputs, values, returns, dones, rewards, actions, mask,
           log_prob_fun=self._policy_dist.log_prob,
           normalize_advantages=self._normalize_advantages)
       return jnp.mean(a2c_objective)
@@ -527,4 +652,3 @@ class AWRJointTrainer(ActorCriticJointTrainer):
       l2_value_loss = jnp.mean((returns - values)**2) * self._value_loss_coeff
       return awr_loss + l2_value_loss
     return tl.Fn('AWRJointLoss', f)
-

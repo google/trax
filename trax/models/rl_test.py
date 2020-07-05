@@ -17,10 +17,9 @@
 """Tests for RL."""
 
 from unittest import mock
-
 from absl.testing import absltest
+import numpy as np
 
-from trax import layers as tl
 from trax import shapes
 from trax.models import rl
 
@@ -31,23 +30,26 @@ class RLTest(absltest.TestCase):
     mock_dist = mock.MagicMock()
     mock_dist.n_inputs = 4
     model = rl.Policy(policy_distribution=mock_dist)
-    input_signature = shapes.ShapeDtype((2, 3))
-    final_shape = tl.check_shape_agreement(model, input_signature)
-    self.assertEqual(final_shape, (2, 4))
+    x = np.ones((2, 3))
+    _, _ = model.init(shapes.signature(x))
+    y = model(x)
+    self.assertEqual(y.shape, (2, 4))
 
   def test_value_forward_shape(self):
     model = rl.Value()
-    input_signature = shapes.ShapeDtype((2, 3))
-    final_shape = tl.check_shape_agreement(model, input_signature)
-    self.assertEqual(final_shape, (2, 1))
+    x = np.ones((2, 3))
+    _, _ = model.init(shapes.signature(x))
+    y = model(x)
+    self.assertEqual(y.shape, (2, 1))
 
   def test_policy_and_value_forward_shape(self):
     mock_dist = mock.MagicMock()
     mock_dist.n_inputs = 4
     model = rl.PolicyAndValue(policy_distribution=mock_dist)
-    input_signature = shapes.ShapeDtype((2, 3))
-    final_shape = tl.check_shape_agreement(model, input_signature)
-    self.assertEqual(final_shape, ((2, 4), (2, 1)))
+    x = np.ones((2, 3))
+    _, _ = model.init(shapes.signature(x))
+    ys = model(x)
+    self.assertEqual([y.shape for y in ys], [(2, 4), (2, 1)])
 
 
 if __name__ == '__main__':

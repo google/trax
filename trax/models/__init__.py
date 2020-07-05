@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import gin
-import six
 
 from trax.models import atari_cnn
 from trax.models import mlp
@@ -52,6 +51,7 @@ NeuralGPU = model_configure(neural_gpu.NeuralGPU)
 Reformer = model_configure(reformer.Reformer)
 ReformerLM = model_configure(reformer.ReformerLM)
 ReformerShortenLM = model_configure(reformer.ReformerShortenLM)
+ReformerNoEncDecAttention = model_configure(reformer.ReformerNoEncDecAttention)
 Resnet50 = model_configure(resnet.Resnet50)
 SkippingTransformerLM = model_configure(
     skipping_transformer.SkippingTransformerLM)
@@ -59,6 +59,8 @@ Transformer = model_configure(transformer.Transformer)
 TransformerDecoder = model_configure(transformer.TransformerDecoder)
 TransformerEncoder = model_configure(transformer.TransformerEncoder)
 TransformerLM = model_configure(transformer.TransformerLM)
+TransformerNoEncDecAttention = model_configure(
+    transformer.TransformerNoEncDecAttention)
 WideResnet = model_configure(resnet.WideResnet)
 Policy = model_configure(rl.Policy)
 PolicyAndValue = model_configure(rl.PolicyAndValue)

@@ -19,21 +19,21 @@
 import jax
 import tensorflow as tf
 
+from trax import fastmath
 from trax import layers as tl
-from trax.math import numpy as np
+from trax.fastmath import numpy as np
 
 # pylint: disable=invalid-name
 
 
 class AddBias(tl.Layer):
 
-  def forward(self, inputs, weights):
+  def forward(self, inputs):
     x = inputs
-    return x + weights
+    return x + self.weights
 
-  def new_weights(self, input_signature, rng):
-    del rng
-    return np.zeros(input_signature.shape[-1])
+  def init_weights_and_state(self, input_signature):
+    self.weights = np.zeros(input_signature.shape[-1])
 
 
 def BERTClassifierHead(n_classes):
@@ -75,8 +75,8 @@ def BERT(d_model=768,
   layer_norm_eps = 1e-12
   d_head = d_model // n_heads
 
-  word_embeddings = tl.Embedding(d_model, vocab_size)
-  type_embeddings = tl.Embedding(d_model, type_vocab_size)
+  word_embeddings = tl.Embedding(vocab_size, d_model)
+  type_embeddings = tl.Embedding(type_vocab_size, d_model)
   position_embeddings = tl.PositionalEncoding(max_len, mode=mode)
   embeddings = [
       tl.Select([0, 1, 0], n_in=3),  # Drops 'idx' input.
@@ -138,10 +138,10 @@ class PretrainedBERT(tl.Serial):
           'Please manually specify the path to bert_model.ckpt')
     self.init_checkpoint = init_checkpoint
 
-  def new_weights_and_state(self, input_signature):
-    weights, state = super().new_weights_and_state(input_signature)
+  def new_weights(self, input_signature):
+    weights = super().new_weights(input_signature)
     if self.init_checkpoint is None:
-      return weights, state
+      return weights
 
     print('Loading pre-trained weights from', self.init_checkpoint)
     ckpt = tf.train.load_checkpoint(self.init_checkpoint)
@@ -192,10 +192,10 @@ class PretrainedBERT(tl.Serial):
         ckpt.get_tensor('bert/pooler/dense/bias'),
     ]
 
-    for a, b in zip(jax.tree_leaves(weights), new_w):
+    for a, b in zip(fastmath.tree_leaves(weights), new_w):
       assert a.shape == b.shape, (
           f'Expected shape {a.shape}, got shape {b.shape}')
     weights = jax.tree_unflatten(jax.tree_structure(weights), new_w)
     move_to_device = jax.jit(lambda x: x)
     weights = jax.tree_map(move_to_device, weights)
-    return weights, state
+    return weights

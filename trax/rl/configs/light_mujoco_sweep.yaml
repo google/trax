@@ -17,8 +17,5 @@ RLTask.env: [
     "DM-HalfCheetah-v2",
     "DM-Hopper-v2",
     "DM-Humanoid-v2",
-    "DM-HumanoidStandup-v2",
-    "DM-Reacher-v2",
-    "DM-Swimmer-v2",
     "DM-Walker2d-v2",
 ]

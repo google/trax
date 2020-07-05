@@ -16,7 +16,7 @@
 # Lint as: python3
 """Nesterov momentum optimizer (also known as Nesterov Accelerated Gradient)."""
 
-from trax.math import numpy as np
+from trax.fastmath import numpy as jnp
 from trax.optimizers import base
 
 
@@ -31,15 +31,15 @@ class Momentum(base.Optimizer):
   Bengio et al. (2012) [https://arxiv.org/abs/1212.0901], to work well with
   backpropagation (equations 6 and 7):
 
-  $$v_t = \mu_{t-1}v_{t-1} - \epsilon_{t-1}\nabla f(\Theta_{t-1})$$
+  .. math::
+      v_t      &= \mu_{t-1}v_{t-1} - \epsilon_{t-1}\nabla f(\Theta_{t-1}) \\
+      \Theta_t &= \Theta_{t-1} - \mu_{t-1} v_{t-1} + \mu_t v_t + v_t
 
-  $$\Theta_t = \Theta_{t-1} - \mu_{t-1} v_{t-1} + \mu_t v_t + v_t$$
-
-  where $$\mu_{t-1}$$ is the momentum (decay) coefficient at time step $$t-1$$
-  and $$\epsilon_{t-1}$$ is the learning rate at time step $$t-1$$.
+  where :math:`\mu_{t-1}` is the momentum (decay) coefficient at time step
+  :math:`t-1` and :math:`\epsilon_{t-1}` is the learning rate at :math:`t-1`.
 
   Note that the implementation below also includes a weight decay rate
-  ($$\alpha$$) on the parameters, independent of the Nesterov momentum.
+  (:math:`\alpha`) on the parameters, independent of the Nesterov momentum.
   """
 
   def __init__(
@@ -53,7 +53,7 @@ class Momentum(base.Optimizer):
     self._nesterov = nesterov
 
   def init(self, weights):
-    return np.zeros_like(weights)
+    return jnp.zeros_like(weights)
 
   def update(self, step, grads, weights, velocity, opt_params):
     del step

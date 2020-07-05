@@ -17,26 +17,29 @@
 """Base layer class."""
 
 import copy
+import gzip
 import inspect
 import pickle
+import random
 import traceback
 
-import jax
 import numpy as np
 import tensorflow as tf
 
-from trax import math
-from trax.math import nested_map
-from trax.math import numpy as jnp
+from trax import fastmath
+from trax.fastmath import nested_map
 from trax.shapes import ShapeDtype
 from trax.shapes import signature
 
 
-EMPTY_WEIGHTS = ()
-EMPTY_STATE = ()
+# TODO(lukaszkaiser): should we use special objects for these for clarity?
+EMPTY_WEIGHTS = ()    # Used for layers that have no trainable weights.
+EMPTY_STATE = ()      # Used for layers that have no non-trainable state.
+GET_WEIGHTS_FROM_CACHE = {'__marker_for_cached_weights_': ()}
+GET_STATE_FROM_CACHE = {'__marker_for_cached_state_': ()}
 
 
-class Layer(object):
+class Layer:
   """Base class for composable layers in a deep learning network.
 
   Layers are the basic building blocks for deep learning models. A Trax layer
@@ -45,11 +48,11 @@ class Layer(object):
   common). Authors of new layer subclasses typically override at most two
   methods of the base `Layer` class:
 
-    forward(inputs, weights):
+    `forward(inputs)`:
       Computes this layer's output as part of a forward pass through the model.
 
-    new_weights(self, input_signature):
-      Returns new weights suitable for inputs with the given signature.
+    `init_weights_and_state(self, input_signature)`:
+      Initializes weights and state for inputs with the given signature.
 
   A small subset of layer types are combinators -- they organize the computation
   of their sublayers, e.g., applying their sublayers in series or in parallel.
@@ -57,26 +60,26 @@ class Layer(object):
   All layers have the following properties, with default values implemented
   in the base `Layer` class:
 
-    - n_in: int (default 1)
-    - n_out: int (default 1)
-    - weights: tuple (default empty -- the layer has no weights)
-    - state: tuple (default empty -- the layer has no non-parameter state)
-    - sublayers: tuple (default empty -- the layer has no sublayers)
+    - `n_in`: int (default 1)
+    - `n_out`: int (default 1)
+    - `weights`: tuple (default empty -- the layer has no weights)
+    - `state`: tuple (default empty -- the layer has no non-parameter state)
+    - `sublayers`: tuple (default empty -- the layer has no sublayers)
 
   The inputs to a layer are tensors, packaged according to how many there are:
 
-    - n_in = 0: an empty tuple ()
-    - n_in = 1: one tensor (NOT wrapped in a tuple)
-    - n_in > 1: a tuple of tensors
+    - `n_in = 0`: an empty tuple
+    - `n_in = 1`: one tensor (NOT wrapped in a tuple)
+    - `n_in > 1`: a tuple of tensors
 
   (The special treatment of the single-input case is meant to simplify the
   work of layer writers; this design choice may be revisited in the future.)
 
   The outputs from a layer are also tensors, packaged the same as layer inputs:
 
-    - n_out = 0: an empty tuple ()
-    - n_out = 1: the tensor (NOT wrapped in a tuple)
-    - n_out > 1: a tuple of tensors
+    - `n_out = 0`: an empty tuple
+    - `n_out = 1`: the tensor (NOT wrapped in a tuple)
+    - `n_out > 1`: a tuple of tensors
 
   The Trax runtime maintains a data stack with which layer calls are composed.
   For more complex data network architectures, possibly involving multiple data
@@ -85,45 +88,55 @@ class Layer(object):
   outputs are spliced back into the stack.
   """
 
-  def __init__(self, n_in=1, n_out=1, name=None):
+  def __init__(self, n_in=1, n_out=1, name=None, sublayers_to_print=None):
     """Creates a partially initialized, unconnected layer instance.
 
     Args:
       n_in: Number of inputs expected by this layer.
       n_out: Number of outputs promised by this layer.
-      name: Class-like name for this layer; for use in debugging.
+      name: Class-like name for this layer; for use when printing this layer.
+      sublayers_to_print: Sublayers to display when printing out this layer;
+        By default (when None) we display all sublayers.
     """
     self._n_in = n_in
     self._n_out = n_out
     self._name = name or self.__class__.__name__
+    self._sublayers_to_print = sublayers_to_print
     self._sublayers = ()  # Default is no sublayers.
-    self._input_signature = None
-    self._rng = None
-    self._weights = EMPTY_WEIGHTS  # cached weights
-    self._state = EMPTY_STATE
+    # This may run before some backends (e.g. JAX) are initialized, so we use
+    # Python `int` here instead of `fastmath.random.get_prng` (also note that
+    # different backends' `get_prng` may return different shapes so they can't
+    # be used interchangeably).
+    self._rng = random.randint(0, 2**31 - 1)
+    self._weights = EMPTY_WEIGHTS  # By default no trainable weights.
+    self._state = EMPTY_STATE  # By default no non-trainable state.
     # record root call site for custom error messages:
     frame = _find_frame(inspect.currentframe())
     # Turns out that frame can mutate in time, so we just copy what we need.
     self._caller = {'filename': copy.copy(frame.f_code.co_filename),
                     'lineno': int(frame.f_lineno)}
     del frame  # Just in case.
-    self._init_finished = False
+    self._init_cached = False
     self._jit_cache = {}
 
   def __repr__(self):
+    def indent_string(x):
+      return '  ' + x.replace('\n', '\n  ')
     name_str = self._name
     n_in, n_out = self.n_in, self.n_out
     if n_in != 1: name_str += f'_in{n_in}'
     if n_out != 1: name_str += f'_out{n_out}'
     objs = self.sublayers
+    if self._sublayers_to_print is not None:
+      objs = self._sublayers_to_print
     if objs:
-      objs_str = ' '.join(str(x) for x in objs)
-      return f'{name_str}[ {objs_str} ]'
+      objs_str = '\n'.join(indent_string(str(x)) for x in objs)
+      return f'{name_str}[\n{objs_str}\n]'
     else:
       return name_str
 
-  def __call__(self, x, weights=None, state=None, rng=None, n_accelerators=0):
-    """Makes Layer instances callable; for use in tests or interactive settings.
+  def __call__(self, x, weights=None, state=None, rng=None):
+    """Makes layers callable; for use in tests or interactive settings.
 
     This convenience method helps library users play with, test, or otherwise
     probe the behavior of layers outside of a full training environment. It
@@ -135,129 +148,66 @@ class Layer(object):
     explicitly provided via the weights and state keyword arguments.
 
     Args:
-      x: 0 or more input tensors, formatted the same as the inputs to
-          Layer.forward.
-      weights: Weights or None; if None, use self's cached weights value.
-      state: State or None; if None, use self's cached state value.
-      rng: rng object or None; if None, use a default computed from an
-          integer 0 seed.
-      n_accelerators: Number of accelerators to target.
+      x: Zero or more input tensors, packaged as described in the `Layer` class
+          docstring.
+      weights: Weights or `None`; if `None`, use self's cached weights value.
+      state: State or `None`; if `None`, use self's cached state value.
+      rng: Single-use random number generator (JAX PRNG key), or `None`;
+          if `None`, use a default computed from an integer 0 seed.
 
     Returns:
-      0 or more output tensors, formatted the same as the outputs from
-          Layer.forward.
+      Zero or more output tensors, packaged as described in the `Layer` class
+      docstring.
     """
     weights = self.weights if weights is None else weights
-    state = self.state if state is None else state
-    rng = self._rng if rng is None else rng
-    rng = math.random.get_prng(0) if rng is None else rng
-
-    forward_w_s_r = self.pure_fn
-    # TODO(lukaszkaiser): n_accelerators is experimental, to decide on API
-    if n_accelerators:
-      if n_accelerators not in self._jit_cache:
-        self._jit_cache[n_accelerators] = (
-            jit_forward(forward_w_s_r, n_accelerators))
-      forward_w_s_r = self._jit_cache[n_accelerators]
-    outputs, new_state = forward_w_s_r(x, weights, state, rng)
+    rng = self.rng if rng is None else rng
+    if state is not None:
+      self.state = state  # Needed if the model wasn't fully initialized.
+    state = self.state
+    outputs, new_state = self.pure_fn(x, weights, state, rng)
     self.state = new_state
     self.weights = weights
     return outputs
 
-  def forward(self, inputs, weights):
+  def forward(self, inputs):
     """Computes this layer's output as part of a forward pass through the model.
 
-    Authors of new Layer subclasses should override this method to define the
-    forward computation that their layer performs, unless they need to use
-    local non-trainable state or randomness, in which case they should
-    override `forward_with_state` instead.
+    Authors of new layer subclasses should override this method to define the
+    forward computation that their layer performs. Use `self.weights` to access
+    trainable weights of this layer. If you need to use local non-trainable
+    state or randomness, use `self.rng` for the random seed (no need to set it)
+    and use `self.state` for non-trainable state (and set it to the new value).
 
     Args:
-      inputs: Input tensors, matching the number (n_in) expected by this
-          layer, packaged as single positional arg. Specifically:
-            - n_in = 0: an empty tuple or empty list
-            - n_in = 1: a tensor (NOT wrapped in a tuple)
-            - n_in > 1: a tuple or list of tensors, with n_in items
-      weights: A tuple or list of trainable weights, with one element for this
-          layer if this layer has no sublayers, or one for each sublayer if
-          this layer has sublayers. If a layer (or sublayer) has no trainable
-          weights, the corresponding weights element is an empty tuple.
+      inputs: Zero or more input tensors, packaged as described in the `Layer`
+          class docstring.
 
     Returns:
-      Tensors, matching the number (n_out) promised by this layer.
-      Specifically:
-        - n_out = 0: an empty tuple
-        - n_out = 1: one tensor (NOT wrapped in a tuple)
-        - n_out > 1: a tuple of tensors, with n_out items
+      Zero or more output tensors, packaged as described in the `Layer` class
+      docstring.
     """
     raise NotImplementedError
 
-  def forward_with_state(self, inputs, weights=EMPTY_WEIGHTS, state=EMPTY_STATE,
-                         rng=None):
-    """Computes this layer's output as part of a forward pass through the model.
+  def init_weights_and_state(self, input_signature):
+    """Initializes weights and state for inputs with the given signature.
 
-    Authors of new Layer subclasses should override this method to define the
-    forward computation that their layer performs only if their layer uses
-    local state or randomness. Otherwise override `forward` instead.
-
-    Args:
-      inputs: Input tensors, matching the number (n_in) expected by this
-          layer. Specifically:
-            - n_in = 0: an empty tuple or empty list
-            - n_in = 1: a tensor (NOT wrapped in a tuple)
-            - n_in > 1: a tuple or list of tensors, with n_in items
-      weights: A tuple or list of trainable weights, with one element for this
-          layer if this layer has no sublayers, or one for each sublayer if
-          this layer has sublayers. If a layer (or sublayer) has no trainable
-          weights, the corresponding weights element is an empty tuple.
-      state: Layer-specific non-parameter state that can update between batches.
-      rng: Single-use random number generator (JAX PRNG key).
-
-    Returns:
-      A tuple of (tensors, state). The tensors match the number (n_out) promised
-      by this layer, and are formatted according to that number, specifically:
-        - n_out = 0: an empty tuple
-        - n_out = 1: one tensor (NOT wrapped in a tuple)
-        - n_out > 1: a tuple of tensors, with n_out items
-    """
-    del rng
-    return self.forward(inputs, weights), state
-
-  def new_weights(self, input_signature):
-    """Returns new weights suitable for inputs with the given signature.
-
-    Authors of new Layer subclasses should override this method if their layer
-    uses trainable weights. The default implementation works for layers that
-    have no weights. Layers that have trainable state should override the
-    `new_weights_and_state` method instead.
+    Authors of new layer subclasses should override this method if their layer
+    uses trainable weights or non-trainable state. To initialize trainable
+    weights, set `self.weights` and to initialize non-trainable state,
+    set `self.state` to the intended value.
 
     Args:
-      input_signature: A ShapeDtype instance (if this layer takes one input)
-          or a list/tuple of ShapeDtype instances; signatures of inputs.
+      input_signature: A `ShapeDtype` instance (if this layer takes one input)
+          or a list/tuple of `ShapeDtype` instances; signatures of inputs.
     """
     del input_signature
-    return EMPTY_WEIGHTS
-
-  def new_weights_and_state(self, input_signature):
-    """Returns a (weights, state) pair suitable for initializing this layer.
-
-    Authors of new Layer subclasses should override this method if their layer
-    uses trainable weights or has non-parameter state that gets updated
-    between batches. The default implementation works for layers that have
-    no weights or state.
-
-    Args:
-      input_signature: A ShapeDtype instance (if this layer takes one input)
-          or a list/tuple of ShapeDtype instances.
-    """
-    return self.new_weights(input_signature), EMPTY_STATE
 
   @property
   def has_backward(self):
-    """Returns True if this layer provides its own (custom) backward pass code.
+    """Returns `True` if this layer provides its own custom backward pass code.
 
     A layer subclass that provides custom backward pass code (for custom
-    gradients) must override this method to return True.
+    gradients) must override this method to return `True`.
     """
     return False
 
@@ -267,11 +217,11 @@ class Layer(object):
     Args:
       inputs: Input tensors; can be a (possibly nested) tuple.
       output: The result of running this layer on inputs.
-      grad: gradient signal (called cotangent in jax) computed based on
-        subsequent layers. The structure and shape must match output.
-      weights: layer weights
-      state: start state.
-      new_state: end state computed by running the layer
+      grad: Gradient signal computed based on subsequent layers; its structure
+          and shape must match output.
+      weights: This layer's weights.
+      state: This layer's state prior to the current forward pass.
+      new_state: This layer's state after the current forward pass.
       rng: Single-use random number generator (JAX PRNG key).
 
     Returns:
@@ -284,86 +234,91 @@ class Layer(object):
   # End of public subclassing interface.
   # Begin public callable interface.
 
-  def init(self, input_signature, rng=None):
-    """Initializes this layer and its sublayers recursively.
+  def init(self, input_signature, rng=None, use_cache=False):
+    """Initializes weights/state of this layer and its sublayers recursively.
 
-    This method is designed to initialize each layer instance once, even if the
-    same layer instance occurs in multiple places in the network. This enables
-    weight sharing to be implemented as layer sharing.
+    Initialization creates layer weights and state, for layers that use them.
+    It derives the necessary array shapes and data types from the layer's input
+    signature, which is itself just shape and data type information.
+
+    For layers without weights or state, this method safely does nothing.
+
+    This method is designed to create weights/state only once for each layer
+    instance, even if the same layer instance occurs in multiple places in the
+    network. This enables weight sharing to be implemented as layer sharing.
 
     Args:
       input_signature: `ShapeDtype` instance (if this layer takes one input)
           or list/tuple of `ShapeDtype` instances.
-      rng: Single-use random number generator (JAX PRNG key). If none is
-          provided, a default rng based on the integer seed 0 will be used.
+      rng: Single-use random number generator (JAX PRNG key), or `None`;
+          if `None`, use a default computed from an integer 0 seed.
+      use_cache: If `True`, and if this layer instance has already been
+          initialized elsewhere in the network, then return special marker
+          values -- tuple `(GET_WEIGHTS_FROM_CACHE, GET_STATE_FROM_CACHE)`.
+          Else return this layer's newly initialized weights and state.
 
     Returns:
-      A (weights, state) tuple, in which weights contains newly created weights
-          on the first call and `EMPTY_WEIGHTS` on all subsequent calls.
+      A `(weights, state)` tuple.
     """
     try:
-      if self._rng is None:
-        rng = math.random.get_prng(0) if rng is None else rng
-        self._set_rng_recursive(rng)
-      # Initialize weights once; store them for use when this layer is called.
-      # Needs to call new_weights_and_state regardless of _init_finished because
-      # state also needs to be initialized. After jitting, graph pruning should
-      # be able to remove unnecessary computation.
-      # TODO(lukaszkaiser): Revisit this decision and see whether layers sharing
-      #   weights should also share states.
-      weights, state = self.new_weights_and_state(input_signature)
-      if not self._init_finished:
-        self._init_finished = True
-        self._weights = weights
-        self._state = state
-        return (weights, state)
+      if self._init_cached and use_cache:
+        return (GET_WEIGHTS_FROM_CACHE, GET_STATE_FROM_CACHE)
+
+      if rng is not None:
+        self.rng = rng
+      self.init_weights_and_state(input_signature)
+
+      if use_cache:
+        self._init_cached = True
       else:
-        return (EMPTY_WEIGHTS, state)
-    except Exception as e:
+        self._clear_init_cache()
+
+      return (self.weights, self.state)
+
+    except Exception:
+      # Skipping 3 lines as it's always the uninteresting internal call.
       name, trace = self._name, _short_traceback(skip=3)
       raise LayerError(name, 'init', self._caller,
-                       input_signature, trace) from e
+                       input_signature, trace) from None
 
-  def init_from_file(self, file_name, weights_only=False):
-    """Initializes this layer and its sublayers from a file.
+  def init_from_file(self, file_name, weights_only=False, input_signature=None):
+    """Initializes this layer and its sublayers from a pickled checkpoint.
 
-    We assume that the file is a pickled dictionary that contains the fields
-    'weights' and 'state' with structures corresponding to this layers weights
-    and state. Note that the pickled dictionary is allowed to contain other
-    fields too, but these two are required to init.
+    In the common case (`weights_only=False`), the file must be a gziped pickled
+    dictionary containing items with keys `'flat_weights', `'flat_state'` and
+    `'input_signature'`, which are used to initialize this layer.
+    If `input_signature` is specified, it's used instead of the one in the file.
+    If `weights_only` is `True`, the dictionary does not need to have the
+    `'flat_state'` item and the state it not restored either.
 
     Args:
-      file_name: the name of the file to initialize from.
-      weights_only: if True, initialize only the weights, not state.
+      file_name: Name/path of the pickeled weights/state file.
+      weights_only: If `True`, initialize only the layer's weights. Else
+          initialize both weights and state.
+      input_signature: Input signature to be used instead of the one from file.
     """
     with tf.io.gfile.GFile(file_name, 'rb') as f:
-      dictionary = pickle.load(f)
-    self.weights = dictionary['weights']
+      with gzip.GzipFile(fileobj=f, compresslevel=2) as gzipf:
+        dictionary = pickle.load(gzipf)
+    if input_signature is None:
+      input_signature = dictionary['input_signature']
+    weights_and_state_sig = self.weights_and_state_signature(input_signature)
+    weights, state = unflatten_weights_and_state(
+        dictionary['flat_weights'], dictionary['flat_state'],
+        weights_and_state_sig, weights_only=weights_only)
     if not weights_only:
-      self.state = dictionary['state']
-
-  def new_rng(self):
-    """Returns a new single-use random number generator (JAX PRNG key)."""
-    self._rng, rng = math.random.split(self._rng)
-    return rng
-
-  def new_rngs(self, n):
-    """Returns `n` single-use random number generators (JAX PRNG keys).
-
-    Args:
-      n: The number of rngs to return; must be an integer > 0.
-
-    Returns:
-      A tuple of `n` rngs. Successive calls will yield continually new values.
-    """
-    if n < 1:
-      raise ValueError(f"Requested number of new rng's ({n}) less than 1.")
-    rngs = math.random.split(self._rng, n + 1)
-    self._rng = rngs[0]
-    return tuple(rngs[1:])
+      self.state = state
+    elif input_signature is not None:
+      self.init(input_signature)
+    self.weights = weights
 
   # End of public callable methods.
   # Methods and properties below are reserved for internal use.
+
+  @property
+  def name(self):
+    """Returns the name of this layer."""
+    return self._name
 
   @property
   def n_in(self):
@@ -381,28 +336,21 @@ class Layer(object):
     return self._sublayers
 
   @property
-  def input_signature(self):
-    """Returns this layer's input signature.
-
-    An input signature is a ShapeDtype instance (if the layer takes one input)
-    or a tuple of ShapeDtype instances.
-    """
-    return self._input_signature
-
-  @property
   def weights(self):
     """Returns this layer's weights.
 
     Depending on the layer, the weights can be in the form of:
+
       - an empty tuple
       - a tensor (ndarray)
       - a nested structure of tuples and tensors
-    TODO(jonni): Simplify this picture (and underlying implementation).
     """
     return self._weights
 
   @weights.setter
   def weights(self, weights):
+    if isinstance(weights, dict) and weights == GET_WEIGHTS_FROM_CACHE:
+      return
     self._weights = weights
 
   @property
@@ -412,47 +360,94 @@ class Layer(object):
 
   @state.setter
   def state(self, state):
+    if isinstance(state, dict) and state != GET_STATE_FROM_CACHE:
+      return
     self._state = state
 
-  def pure_fn(self, x, weights, state, rng):
+  def weights_and_state_signature(self, input_signature):
+    """Return a pair containing the signatures of weights and state."""
+    abstract_init = fastmath.abstract_eval(self.init)
+    return abstract_init(input_signature)
+
+  @property
+  def rng(self):
+    """Returns a single-use random number generator without advancing it."""
+    # TODO(lukaszkaiser, jonni): be even more explicit that we're not advancing.
+    if isinstance(self._rng, int):
+      self._rng = fastmath.random.get_prng(self._rng)
+    return self._rng
+
+  @rng.setter
+  def rng(self, rng):
+    """Sets the rng (JAX PRNG key) for this layer and sublayers, recursively."""
+    self._rng = rng
+    sublayers = self.sublayers
+    if sublayers:
+      rngs = fastmath.random.split(rng, len(sublayers))
+      for sublayer, rng in zip(sublayers, rngs):
+        sublayer.rng = rng
+
+  def _clear_init_cache(self):
+    self._init_cached = False
+    for sublayer in self.sublayers:
+      sublayer._clear_init_cache()  # pylint: disable=protected-access
+
+  def pure_fn(self, x, weights, state, rng, use_cache=False):
     """Applies this layer as a pure function with no optional args.
 
     This method exposes the layer's computation as a pure function. This is
-    esp. useful for JIT compilation. Do not override, use `forward` instead.
+    especially useful for JIT compilation. Do not override, use `forward`
+    instead.
 
     Args:
-      x: See Layer.forward_with_state inputs.
-      weights: See Layer.forward_with_state.
-      state: See Layer.forward_with_state.
-      rng: See Layer.forward_with_state.
+      x: Zero or more input tensors, packaged as described in the `Layer` class
+          docstring.
+      weights: A tuple or list of trainable weights, with one element for this
+          layer if this layer has no sublayers, or one for each sublayer if
+          this layer has sublayers. If a layer (or sublayer) has no trainable
+          weights, the corresponding weights element is an empty tuple.
+      state: Layer-specific non-parameter state that can update between batches.
+      rng: Single-use random number generator (JAX PRNG key).
+      use_cache: if `True`, cache weights and state in the layer object; used
+        to implement layer sharing in combinators.
 
     Returns:
-      See Layer.forward_with_state.
+      A tuple of `(tensors, state)`. The tensors match the number (`n_out`)
+      promised by this layer, and are packaged as described in the `Layer`
+      class docstring.
     """
     try:
-      # If weights are nothing, we may be reusing this layer.
-      # Use the cached weights to calculate the value.
-      # Note: to make sure jit tracers can decide this branch in python we use
-      # `weights is EMPTY_WEIGHTS` instead of, e.g., `not weights` or
-      # `weights == EMPTY_WEIGHTS`.
-      if weights is EMPTY_WEIGHTS:  # pylint: disable=literal-comparison
+      old_weights, old_state, old_rng = self.weights, self.state, self.rng
+      self._rng = rng
+      # The isinstance check is only needed when == is overloaded, as in TF.
+      if (isinstance(weights, dict) and isinstance(state, dict) and
+          weights == GET_WEIGHTS_FROM_CACHE and state == GET_STATE_FROM_CACHE):
+        was_cached = True
         weights = self._weights
+        state = self._state
       else:
         # In this case, we're called for the first time: cache weights.
-        self._weights = weights
+        was_cached = False
+        self._weights, self._state = weights, state
 
       if not self.has_backward:
-        outputs, s = (
-            self.forward_with_state(x, weights=weights, state=state, rng=rng))
+        outputs = self.forward(x)
+        s = self.state
       else:
         outputs, s = self._do_custom_gradients(x, weights, state, rng=rng)
-      self._state = s
+        self._state = s
+      self._rng = old_rng
+      if not use_cache:
+        self.weights, self.state = old_weights, old_state
+      if was_cached:  # If the layer was shared, return a state marking this.
+        s = GET_STATE_FROM_CACHE
       return outputs, s
 
-    except Exception as e:
-      name, trace = self._name, _short_traceback()
+    except Exception:
+      # Skipping 3 lines as it's always the uninteresting internal call.
+      name, trace = self._name, _short_traceback(skip=3)
       raise LayerError(name, 'pure_fn',
-                       self._caller, signature(x), trace) from e
+                       self._caller, signature(x), trace) from None
 
   def output_signature(self, input_signature):
     """Returns output signature this layer would give for `input_signature`."""
@@ -462,109 +457,63 @@ class Layer(object):
     """Computes shapes and dtypes this layer would produce in a forward pass.
 
     Args:
-      input_signature: ShapeDtype instance (if this layer takes one input)
-          or list/tuple of ShapeDtype instances.
+      input_signature: `ShapeDtype` instance (if this layer takes one input)
+          or list/tuple of `ShapeDtype` instances.
 
     Returns:
       Tuple of (output, state).
 
-      The output part of the tuple is a ShapeDtype instance representing the
+      The output part of the tuple is a `ShapeDtype` instance representing the
       shape and type of the output (if this layer has one output) or a tuple
-      of ShapeDtype instances (if this layer has more than one output).
+      of `ShapeDtype` instances (if this layer has more than one output).
     """
     try:
       # Note: By using rng_signature in place of an rng, we avoid computing and
       # permanently storing in global memory a large number of dropout masks.
       # TODO(jonni): Check if using an rng still carries this cost.
-      rng_signature = ShapeDtype((2,), np.uint32)
-      weight_signature = nested_map(signature, self.weights)
-
-      # Wrap forward_with_state so as to use only positional args.
-      def _forward_with_state(x, weights, state, rng):
-        return self.forward_with_state(x, weights=weights, state=state, rng=rng)
-
-      forward_infer_shapes = math.abstract_eval(_forward_with_state)
+      dummy_rng = fastmath.random.get_prng(0)
+      rng_signature = ShapeDtype(dummy_rng.shape, dummy_rng.dtype)
+      weights_signature = nested_map(signature, self.weights)
+      state_signature = nested_map(signature, self.state)
+      forward_infer_shapes = fastmath.abstract_eval(self.pure_fn)
       return forward_infer_shapes(
-          input_signature, weight_signature, self.state, rng_signature)
-    except Exception as e:
-      name, trace = self._name, _short_traceback(skip=3)
+          input_signature, weights_signature, state_signature, rng_signature)
+    except Exception:
+      # Skipping 13 lines which are all JAX abstract'ifying wrappers.
+      name, trace = self._name, _short_traceback(skip=13)
       raise LayerError(name, '_forward_abstract', self._caller, input_signature,
-                       trace) from e
+                       trace) from None
 
   # pylint: disable=protected-access
-  def _set_rng_recursive(self, rng):
-    """Sets the rng (JAX PRNG key) for this layer and sublayers, recursively."""
-    self._rng = rng
-    sublayers = self.sublayers
-    if sublayers:
-      rngs = math.random.split(rng, len(sublayers))
-      for sublayer, rng in zip(sublayers, rngs):
-        sublayer._set_rng_recursive(rng)
-
-  def _set_input_signature_recursive(self, input_signature):
-    """Sets input_signatures for this layer and sublayers, recursively.
-
-    General combinators (those that can take multiple sublayers) must override
-    this method to calculate and set input signatures for the sublayers. (See
-    the `Serial` class in combinators.py for an example.)
-
-    Args:
-      input_signature: A `ShapeDtype` instance (if this layer takes one input)
-          or a list/tuple of `ShapeDtype` instances
-    """
-    self._input_signature = input_signature
-
-    # Handle the special case of a single immediate sublayer (which may in turn
-    # have its own sublayers).
-    sublayers = self.sublayers
-    if sublayers and len(sublayers) == 1:
-      sublayers[0]._set_input_signature_recursive(input_signature)
-    if sublayers and len(sublayers) > 1:
-      raise ValueError('A layer class whose instances can have more than one '
-                       'sublayer must override the input_signature property '
-                       'setter.')
-  # pylint: enable=protected-access
-
-  def replicate(self, n_accelerators):
-    """Replicate weights and state for use on n accelerators. Experimental."""
-    if n_accelerators > 1:
-      self.weights = for_n_devices(self.weights, n_accelerators)
-      self.state = for_n_devices(self.state, n_accelerators)
-
-  def unreplicate(self, unreplicate_state=False):
-    """Unreplicate weights and optionally state. Experimental."""
-    self.weights = math.nested_map(self.weights, lambda x: x[0])
-    if unreplicate_state:
-      self.state = math.nested_map(self.state, lambda x: x[0])
-
   def _do_custom_gradients(self, x, weights, state, rng):
     """Calls this layer for a forward pass, but with custom gradients."""
-    assert math.backend_name() == 'jax', (
-        'Custom gradients are only supported in JAX for now.')
 
-    # See this link for how custom transformations are defined in JAX:
-    # https://jax.readthedocs.io/en/latest/jax.html#jax.custom_transforms
-    @jax.custom_transforms
     def _do_forward(y, weights):
-      res = self.forward_with_state(y, weights=weights, state=state, rng=rng)
-      return res
+      old_weights, old_state, old_rng = self._weights, self._state, self._rng
+      self._weights = weights
+      res = self.forward(y)
+      s = self._state
+      self._weights, self._state, self._rng = old_weights, old_state, old_rng
+      return res, s
 
-    # This is the custom gradient (vector-jacobian product in JAX) function.
-    # For the exact specification of this custom transformation see this link:
-    # https://jax.readthedocs.io/en/latest/jax.html#jax.defjvp_all
     def do_forward_vjp(y, weights):
       """Custom gradient (vjp) function."""
-      output, new_state = (
-          self.forward_with_state(y, weights=weights, state=state, rng=rng))
+      old_weights, old_state, old_rng = self._weights, self._state, self._rng
+      self._weights = weights
+      output = self.forward(y)
+      new_state = self._state
+      self._weights, self._state, self._rng = old_weights, old_state, old_rng
       def vjpfun(grad):
         grad = grad[0]  # Ignore dummy gradient wrt state.
         res = self.backward(y, output, grad, weights, state, new_state, rng)
         return res
       return (output, new_state), vjpfun
 
-    jax.defvjp_all(_do_forward, do_forward_vjp)
-    output, state = _do_forward(x, weights)
-    state = jax.lax.stop_gradient(state)
+    do_forward = fastmath.custom_grad(do_forward_vjp, _do_forward)
+
+    output, state = do_forward(x, weights)
+    # TODO(lukaszkaiser): Investigate why we need this stop_gradient
+    state = fastmath.stop_gradient(state)
     return output, state
 
 
@@ -572,15 +521,14 @@ def layer(n_in=1, n_out=1, name=None):
   """Decorator for creating simple layers.  DEPRECATED; use base.Fn instead."""
 
   def _build_layer_class(raw_fn):
-    """Returns a Layer class whose callable instances execute the function."""
+    """Returns a layer class whose callable instances execute the function."""
 
     def _init(self, **kwargs):
       self._kwargs = kwargs  # pylint: disable=protected-access
       Layer.__init__(self, n_in=n_in, n_out=n_out, name=name)
 
-    def _forward(self, inputs, weights):
+    def _forward(self, inputs):
       """Uses this layer as part of a forward pass through the model."""
-      del weights
       _validate_forward_input(inputs, n_in)
       raw_output = raw_fn(inputs, **self._kwargs)  # pylint: disable=protected-access
       output = () if _is_empty(raw_output) else raw_output
@@ -606,7 +554,7 @@ class PureLayer(Layer):
   """
 
   def __init__(self, forward_fn, n_in=1, n_out=1, name='PureLayer'):
-    """Creates an unconnected PureLayer instance.
+    """Creates an unconnected `PureLayer` instance.
 
     Args:
       forward_fn: Pure function from input tensors to output tensors, where
@@ -618,16 +566,16 @@ class PureLayer(Layer):
     super().__init__(n_in, n_out, name)
     self._forward_fn = forward_fn
 
-  def forward(self, inputs, weights):
+  def forward(self, inputs):
     """Overrides `Layer.forward`.
 
     Args:
-      inputs: Input tensors, matching the number (n_in) expected by this layer.
-      weights: Trainable weights in general, but this subclass doesn't use
-          weights, so the only acceptable value is an empty tuple/list.
+      inputs: Zero or more input tensors, packaged as described in the `Layer`
+          class docstring.
 
     Returns:
-      Tensors, matching the number (n_out) promised by this layer.
+      Zero or more output tensors, packaged as described in the `Layer` class
+      docstring.
 
     Raises:
       ValueError: If weights is other than an empty tuple/list.
@@ -639,14 +587,14 @@ class PureLayer(Layer):
 
 
 def Fn(name, f, n_out=1):  # pylint: disable=invalid-name
-  """Returns a layer with no weights that applies the function f.
+  """Returns a layer with no weights that applies the function `f`.
 
   `f` can take and return any number of arguments, and takes only positional
-  arguments -- no default or keyword arguments. It often uses JAX-numpy (jnp).
+  arguments -- no default or keyword arguments. It often uses JAX-numpy (`jnp`).
   The following, for example, would create a layer that takes two inputs and
   returns two outputs -- element-wise sums and maxima:
 
-      Fn('SumAndMax', lambda x0, x1: (x0 + x1, jnp.maximum(x0, x1)), n_out=2)
+      `Fn('SumAndMax', lambda x0, x1: (x0 + x1, jnp.maximum(x0, x1)), n_out=2)`
 
   The layer's number of inputs (`n_in`) is automatically set to number of
   positional arguments in `f`, but you must explicitly set the number of
@@ -655,13 +603,13 @@ def Fn(name, f, n_out=1):  # pylint: disable=invalid-name
   Args:
     name: Class-like name for the resulting layer; for use in debugging.
     f: Pure function from input tensors to output tensors, where each input
-        tensor is a separate positional arg, e.g.:
-            f(x0, x1) --> x0 + x1
-        Output tensors must be packaged as specified for `Layer.forward`.
+        tensor is a separate positional arg, e.g., `f(x0, x1) --> x0 + x1`.
+        Output tensors must be packaged as specified in the `Layer` class
+        docstring.
     n_out: Number of outputs promised by the layer; default value 1.
 
   Returns:
-    Layer executing the function f.
+    Layer executing the function `f`.
   """
   # Inspect the function f to restrict to no-defaults and no-kwargs functions.
   argspec = inspect.getfullargspec(f)
@@ -683,11 +631,7 @@ def Fn(name, f, n_out=1):  # pylint: disable=invalid-name
 
 
 class LayerError(Exception):
-  """Exception raised in the layer stack.
-
-  Attributes:
-    message: the message corresponding to this exception.
-  """
+  """Exception raised in the layer stack."""
 
   def __init__(self, layer_name, function_name, caller,
                input_signature, traceback_string):
@@ -700,7 +644,7 @@ class LayerError(Exception):
 
   @property
   def message(self):
-    """Create error message."""
+    """Assembles current layer context into an error message."""
     prefix = 'Exception passing through layer '
     prefix += '%s (in %s):\n' % (self._layer_name, self._function_name)
     short_path = '[...]/' + '/'.join(
@@ -711,38 +655,55 @@ class LayerError(Exception):
     return prefix + caller + shapes_str + self._traceback
 
 
-def check_shape_agreement(layer_obj, input_signature):
-  """Compares the layer's __call__ output to its _foward_abstract shape output.
+def flatten_weights_and_state(weights, state):
+  """Flatten weights and state into lists, excluding empty and cached ones."""
+  def _is_empty_weight(x):
+    return (x is EMPTY_WEIGHTS or
+            (isinstance(x, dict) and x == GET_WEIGHTS_FROM_CACHE))
+  flat_weights = [w for w in fastmath.tree_flatten(weights)
+                  if not _is_empty_weight(w)]
+  def _is_empty_state(x):
+    return (x is EMPTY_STATE or
+            (isinstance(x, dict) and x == GET_STATE_FROM_CACHE))
+  flat_state = [s for s in fastmath.tree_flatten(state)
+                if not _is_empty_state(s)]
+  return flat_weights, flat_state
 
-  This function helps test layer mechanics and inter-layer connections that
-  aren't dependent on specific data values.
+
+def unflatten_weights_and_state(
+    flat_weights, flat_state, weights_and_state_signature, weights_only=False):
+  """Un-flatten weights and state given their signatures."""
+  weights_tree, state_tree = weights_and_state_signature
+  weights_to_copy = [EMPTY_WEIGHTS, GET_WEIGHTS_FROM_CACHE]
+  weights, _ = fastmath.tree_unflatten(flat_weights, weights_tree,
+                                       copy_from_tree=weights_to_copy)
+  state = None
+  if not weights_only:
+    states_to_copy = [EMPTY_STATE, GET_STATE_FROM_CACHE]
+    state, _ = fastmath.tree_unflatten(flat_state, state_tree,
+                                       copy_from_tree=states_to_copy)
+  return weights, state
+
+
+def to_list(outputs):
+  """Converts layer outputs to a nested list, for easier equality testing.
 
   Args:
-    layer_obj: A layer object.
-    input_signature: A `ShapeDtype` instance (if `layer_obj` takes one input)
-        or a list/tuple of ShapeDtype instances.
+    outputs: A tensor or tuple/list of tensors coming from the forward
+        application of a layer. Each tensor is NumPy ndarray-like, which
+        complicates simple equality testing (e.g., via `assertEquals`):
+        such tensors require equality testing to use either `all` (all
+        elements match) or `any` (at least one element matches), which is not
+        directly supported in `absltest`.
 
   Returns:
-    A tuple representing either a single shape (if the layer has one output) or
-    a tuple of shape tuples (if the layer has more than one output).
+    A nested list structure containing all the output values, but now directly
+    testable using `assertEquals`.
   """
-  weights, state = layer_obj.init(input_signature)
-  output_signature, _ = layer_obj._forward_abstract(input_signature)  # pylint: disable=protected-access
-  if isinstance(output_signature, tuple):
-    shape_output = tuple(x.shape for x in output_signature)
+  if isinstance(outputs, (list, tuple)):
+    return [y.tolist() for y in outputs]
   else:
-    shape_output = output_signature.shape
-
-  rng1, rng2 = layer_obj.new_rngs(2)
-  random_input = _random_values(input_signature, rng1)
-  call_output = layer_obj(random_input, weights=weights, state=state, rng=rng2)
-  call_output_shape = _shapes(call_output)
-
-  msg = '_foward_abstract shape output %s != __call__ output shape %s' % (
-      shape_output, call_output_shape)
-  assert shape_output == call_output_shape, msg
-  # TODO(jonni): Remove this assert? It makes test logs harder to read.
-  return shape_output
+    return outputs.tolist()
 
 
 def _validate_forward_input(x, n_in):
@@ -834,9 +795,9 @@ def _random_values(input_signature, rng):
   if isinstance(input_signature, ShapeDtype):
     shape, dtype = input_signature.shape, input_signature.dtype
     if np.issubdtype(dtype, np.integer):
-      return math.random.bernoulli(rng, 0.5, shape).astype(np.int32)
+      return fastmath.random.bernoulli(rng, 0.5, shape).astype(np.int32)
     else:
-      return math.random.uniform(rng, shape, minval=-1.0, maxval=1.0)
+      return fastmath.random.uniform(rng, shape, minval=-1.0, maxval=1.0)
   elif isinstance(input_signature, (list, tuple)):
     return tuple(_random_values(x, rng) for x in input_signature)
   else:
@@ -844,112 +805,10 @@ def _random_values(input_signature, rng):
 
 
 def _shapes(x):
-  """Get a structure of shapes for a structure of nested arrays."""
+  """Gets a structure of shapes for a structure of nested arrays."""
   def shape(x):
     try:
       return tuple([int(i) for i in x.shape])
     except Exception:  # pylint: disable=broad-except
       return ()
   return tuple(nested_map(shape, x))
-
-
-def jit_forward(forward, n_devices):
-  """Returns a JIT-compiled forward function running on n_devices."""
-  model_predict = _accelerate(forward, n_devices)
-  if n_devices == 1:
-    return model_predict
-
-  def predict(x, weights, state, rng):
-    """Predict function jited and parallelized as requested."""
-    res, state = _combine_devices(model_predict(
-        reshape_by_device(x, n_devices),
-        weights,
-        state,
-        jnp.stack(math.random.split(rng, n_devices))))
-    return math.nested_map(lambda y: jnp.mean(y, axis=0), res), state
-
-  return predict
-
-
-def _combine_devices(x_tuple):
-  """Combine multi-device tensors into a single batch."""
-  def f(x):
-    if len(x.shape) < 2:
-      return x  # No extra batch dimension: use devices as batch, so return.
-    batch_size = x.shape[0] * x.shape[1]
-    return math.numpy.reshape(x, [batch_size] + list(x.shape[2:]))
-  return math.nested_map(f, x_tuple)
-
-
-def _accelerate(f, n_devices):
-  """JITed version of f running on n_devices."""
-  if n_devices == 1:
-    return math.jit(f)
-
-  return math.pmap(f, axis_name='batch')
-
-
-def reshape_by_device(x, n_devices):
-  """Reshapes possibly nested x into a shape (n_devices, ...)."""
-  def f(x):
-    x_shape = list(x.shape)
-    batch_size = x_shape[0]
-    batch_size_per_device = batch_size // n_devices
-    if batch_size_per_device * n_devices != batch_size:
-      raise ValueError(f'Number of devices ({n_devices}) does not evenly '
-                       f'divide batch size ({batch_size}).')
-    new_shape_prefix = [n_devices, batch_size_per_device]
-    return math.numpy.reshape(x, new_shape_prefix + x_shape[1:])
-  return math.nested_map(f, x)
-
-
-def for_n_devices(x, n_devices):
-  """Replicates/broadcasts `x` for n_devices."""
-  def f(x):
-    if n_devices > 1 and math.backend_name() == 'jax':
-      return _multi_device_put(x)
-    elif n_devices > 1:
-      return jnp.broadcast_to(x, (n_devices,) + x.shape)
-    else:
-      return x
-  return math.nested_map(f, x)
-
-
-def _multi_device_put(x, devices=None):
-  """Memory efficient multi-device replication / broadcast in JAX.
-
-  JAX uses a ShardedDeviceArray class that holds a list of device buffers
-  on separate devices for use with pmap'd computations.  Sharded arrays
-  are explicitly used to eliminate unnecessary inter-device transfer of
-  memory buffers between use in pmap'd computations.  The JAX API currently
-  does not have a multi-device 'put' function that copies a buffer onto
-  N devices in a memory-efficient fashion, so we implement our own here.
-
-  Args:
-    x: jax DeviceArray or numpy ndarray to be replicated.
-    devices: a jax.devices() list or subset thereof of devices to
-      replicate onto.  Should match the list passed to any pmaps
-      ingesting the replicated array.
-
-  Returns:
-    A ShardedDeviceArray with
-    dtype = x.dtype and shape = (n_devices,) + x.shape
-    that's backed by replicated device_buffers on each local device.
-  """
-  # Convert _FilledConstants that don't have device_buffer, etc.
-  if type(x) != jax.xla.DeviceArray:  # pylint: disable=unidiomatic-typecheck
-    x = jnp.array(x)
-  # Calculate the abstract shape of the replicated array.
-  if not devices:
-    devices = jax.local_devices()
-  n_devices = len(devices)
-  x_aval = jax.xla.abstractify(x)
-  broadcast_x_aval = jax.abstract_arrays.ShapedArray(
-      (n_devices,) + x_aval.shape,
-      x_aval.dtype)
-  # Create copies of the underlying device buffer for each local device.
-  broadcast_buffers = [
-      jax.interpreters.xla.device_put(x, dv)
-      for dv in devices
-  ]
-  return jax.pxla.ShardedDeviceArray(broadcast_x_aval, broadcast_buffers)

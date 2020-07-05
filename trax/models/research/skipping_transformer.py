@@ -16,13 +16,13 @@
 # Lint as: python3
 """Layer-Skipping Transformer Models."""
 
+from trax import fastmath
 from trax import layers as tl
-from trax import math
+from trax.fastmath import numpy as jnp
+from trax.fastmath import random
 from trax.layers.combinators import _inputs_from_stack
 from trax.layers.combinators import _outputs_onto_stack
 from trax.layers.combinators import _split_rngs
-from trax.math import numpy as np
-from trax.math import random
 from trax.models import transformer
 
 
@@ -42,11 +42,10 @@ class SkippingSerial(tl.Serial):
         assert layer.n_in == n_in_out
         assert layer.n_out == n_in_out
 
-  def new_weights_and_state(self, input_signature):
+  def init_weights_and_state(self, input_signature):
     """Add a step-counter to the state. Initialize with 0."""
-    weights, state = super(SkippingSerial, self).new_weights_and_state(
-        input_signature)
-    return weights, (0, state)
+    super(SkippingSerial, self).init_weights_and_state(input_signature)
+    self._state = (0, self._state)
 
   @tl.Layer.state.setter
   def state(self, state):
@@ -58,22 +57,24 @@ class SkippingSerial(tl.Serial):
           f'Number of state elements ({len(state[1])}) does not equal '
           f'number of sublayers ({n_layers}).')
     for layer, sublayer_state in zip(self.sublayers, state[1]):
-      layer.state = sublayer_state
+      if sublayer_state is not tl.GET_STATE_FROM_CACHE:
+        layer.state = sublayer_state
 
-  def forward_with_state(self, xs, weights=tl.EMPTY_WEIGHTS,
-                         state=tl.EMPTY_STATE, rng=None):
+  def forward(self, xs):
     self._validate_forward_inputs(xs)
-    (step, layers_state) = state
+    (step, layers_state) = self.state
     # Get N+1 rngs, N for running layers and one extra.
-    rngs = _split_rngs(rng, self._n_layers + 1)
+    rngs = _split_rngs(self.rng, self._n_layers + 1)
     rng0, rngs = rngs[0], rngs[1:]
     if not self.sublayers:  # No-op: leave args unchanged.
-      return (xs, (step + 1, layers_state))
+      self.state = (step + 1, layers_state)
+      return xs
 
     # Prepare the stack and do some safety checks as in the parent class.
     stack = xs
     new_state = []
     n_layers = self._n_layers
+    weights = self.weights
     if n_layers != 1 and len(weights) != n_layers:
       raise ValueError('number of weights ({}) not equal to number of layers '
                        '({})'.format(len(weights), n_layers))
@@ -82,13 +83,14 @@ class SkippingSerial(tl.Serial):
                        '({})'.format(len(layers_state), n_layers))
 
     # TODO(chowdhery): try different strategies, also try running not all
-    # layers backwards by using math.stop_gradient where needed.
+    # layers backwards by using fastmath.stop_gradient where needed.
 
     # Calculate how many layers to run forward.
     if self._mode == 'train':
       # warmup goes from 1.0 at start to 0.0 at skipping_warmup_steps and after
       w_steps = float(self._skipping_warmup_steps)
-      warmup = np.maximum(0.0, (w_steps - step.astype(np.float32)) / w_steps)
+      f_step = jnp.array(step, dtype=jnp.float32)
+      warmup = jnp.maximum(0.0, (w_steps - f_step) / w_steps)
       # low is the minimum number of layers to *not* skip, from n_layers to 0
       low = warmup * float(n_layers)
       # high should be so that (high - n_layers) / high = 1.0 - skip_fraction
@@ -96,26 +98,29 @@ class SkippingSerial(tl.Serial):
       # (after warmup); so high - n_layers = high - high * skip_fraction
       high = float(n_layers) / self._skip_fraction
       # We want the same rng0 on all cores.
-      if math.device_count() > 1:
-        rng0 = math.psum(rng0, 'batch')
-      n_forward_layers = random.uniform(rng0, (), np.float32, low, high)
+      if fastmath.device_count() > 1:
+        rng0 = fastmath.psum(rng0, 'batch')
+      n_forward_layers = random.uniform(rng0, (), jnp.float32, low, high)
     else:
       n_forward_layers = float(n_layers)
     # Run layers skipping after a certain number.
     cur_layer_idx = 0.0
     for layer, p, s, rng in zip(self.sublayers, weights, layers_state, rngs):
       inputs = _inputs_from_stack(layer, stack)
-      outputs, s = math.cond(  # Skip (do identity) if > n_forward_layers.
-          pred=(math.lt(cur_layer_idx, n_forward_layers)),
-          true_operand=(inputs, p, s, rng),  # This tuple is t below.
-          true_fun=(lambda t: layer.pure_fn(t[0], t[1], t[2], t[3])),  # pylint: disable=cell-var-from-loop
-          false_operand=(inputs, p, s, rng),
-          false_fun=(lambda t: (t[0], t[2])),  # return (inputs, state)
+      def CondF(t):
+        o, s = layer.pure_fn(t[0], t[1], t[2], t[3])  # pylint: disable=cell-var-from-loop
+        return o, t[1], s, t[3]
+      outputs, _, s, _ = fastmath.cond(
+          fastmath.lt(cur_layer_idx, n_forward_layers),
+          CondF,
+          lambda x: x,
+          (inputs, p, s, rng)
       )
       stack = _outputs_onto_stack(layer, outputs, stack)
       new_state.append(s)
       cur_layer_idx += 1.0
-    return stack, (step + 1, new_state)
+    self.state = (step + 1, new_state)
+    return stack
 
 
 def SkippingTransformerLM(vocab_size,
@@ -148,8 +153,8 @@ def SkippingTransformerLM(vocab_size,
     to activations over a vocab set.
   """
   embedder = [
-      tl.Embedding(d_model, vocab_size),
-      tl.Dropout(rate=dropout, name='embedding', mode=mode),
+      tl.Embedding(vocab_size, d_model),
+      tl.Dropout(rate=dropout, mode=mode),
       tl.PositionalEncoding(max_len=max_len, mode=mode),
   ]
 
@@ -158,7 +163,7 @@ def SkippingTransformerLM(vocab_size,
       embedder,
       SkippingSerial([
           transformer._DecoderBlock(  # pylint: disable=g-complex-comprehension,protected-access
-              d_model, d_ff, n_heads, dropout, i, mode, ff_activation)
+              d_model, d_ff, n_heads, dropout, [], mode, ff_activation)
           for i in range(n_layers)], mode=mode),
       tl.LayerNorm(),
       tl.Dense(vocab_size),

@@ -50,6 +50,11 @@ alias pytest='coverage run -m pytest'
 
 # Check tests, separate out directories for easy triage.
 
+## Core Trax and Supervised Learning
+
+pytest --disable-warnings trax/supervised
+set_status
+
 # Disabled test fails with "disable-warnings", tested separately.
 pytest --disable-warnings \
   --ignore=trax/layers/initializers_test.py \
@@ -59,14 +64,21 @@ set_status
 pytest trax/layers/initializers_test.py
 set_status
 
-pytest --disable-warnings trax/math
+pytest --disable-warnings trax/fastmath
 set_status
 
-pytest --disable-warnings trax/models
+# Disabled tests are quasi integration tests.
+pytest --disable-warnings \
+  --ignore=trax/models/reformer/reformer_e2e_test.py \
+  --ignore=trax/models/reformer/reformer_memory_test.py \
+  --ignore=trax/models/reformer/reformer_oom_test.py \
+  trax/models
 set_status
 
 pytest --disable-warnings trax/optimizers
 set_status
+
+## RL Trax
 
 # Disabled tests fail with "disable-warnings", tested separately.
 pytest --disable-warnings \
@@ -84,12 +96,11 @@ pytest \
   trax/rl/training_test.py
 set_status
 
-pytest --disable-warnings trax/supervised
-set_status
+# Catch-all for futureproofing.
 
 pytest --disable-warnings \
+  --ignore=trax/fastmath \
   --ignore=trax/layers \
-  --ignore=trax/math \
   --ignore=trax/models \
   --ignore=trax/optimizers \
   --ignore=trax/rl \

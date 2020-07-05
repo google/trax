@@ -10,9 +10,9 @@ python:
   - "3.6"
 env:
   global:
-    - TF_LATEST="2.1.*"
+    - TF_LATEST="2.2.*"
   matrix:
-    - TF_VERSION="2.1.*"
+    - TF_VERSION="2.2.*"
 install:
   - ./oss_scripts/oss_pip_install.sh
 script:

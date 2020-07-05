@@ -15,10 +15,6 @@
 
 """Tests for trax.supervised.trainer_lib."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 import functools
 import os
@@ -33,13 +29,14 @@ import tensorflow.compat.v2 as tf
 from tensorflow.compat.v2 import test
 from tensorflow.compat.v2.io import gfile
 
+from trax import fastmath
 from trax import layers
-from trax import lr_schedules as lr
-from trax import math
 from trax import models
 from trax import optimizers as trax_opt
-from trax.math import numpy as np
+from trax import shapes
+from trax.fastmath import numpy as jnp
 from trax.supervised import inputs as inputs_lib
+from trax.supervised import lr_schedules as lr
 from trax.supervised import trainer_lib
 from trax.tf_numpy import numpy as tf_np
 
@@ -51,20 +48,24 @@ def _test_inputs(n_classes, with_weights=False, input_shape=(6, 6, 3)):
 
   def input_stream(n_devices):
     del n_devices
-    key = math.random.get_prng(0)
+    key = fastmath.random.get_prng(0)
     while True:
-      keys = math.random.split(key, 4)
+      keys = fastmath.random.split(key, 4)
       key = keys[0]
-      inputs = math.random.uniform(keys[1], [batch_size] + list(input_shape))
-      targets = math.random.randint(
-          keys[2], [batch_size], dtype=np.int32, minval=0, maxval=n_classes)
-      weights = math.random.uniform(keys[3], [batch_size])
+      inputs = fastmath.random.uniform(
+          keys[1], [batch_size] + list(input_shape))
+      targets = fastmath.random.randint(
+          keys[2], [batch_size], dtype=jnp.int32, minval=0, maxval=n_classes)
+      weights = fastmath.random.uniform(keys[3], [batch_size])
       if with_weights:
         yield inputs, targets, weights
       else:
         yield inputs, targets
 
-  return inputs_lib.Inputs(input_stream)
+  def input_stream_masked(n_devices):
+    return inputs_lib.add_loss_weights(input_stream(n_devices))
+
+  return inputs_lib.Inputs(input_stream_masked)
 
 
 
@@ -84,7 +85,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
   def _test_train_eval_predict(self, backend_name):
     if xla_bridge.device_count() > 1 and backend_name == 'tf':
       self.skipTest("tf-numpy backend does't support multi-devices yet.")
-    with math.use_backend(backend_name), self.tmp_dir() as output_dir:
+    with fastmath.use_backend(backend_name), self.tmp_dir() as output_dir:
       # Prepare model and inputs
       n_classes = 4
       steps = 2
@@ -122,19 +123,53 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       state = state.model_state[0]
       if xla_bridge.device_count() > 1:
         unreplicate = lambda x: x[0]
-        weights = math.nested_map(unreplicate, weights)
-        state = math.nested_map(unreplicate, state)
+        weights = fastmath.nested_map(unreplicate, weights)
+        state = fastmath.nested_map(unreplicate, state)
       model(next(inputs)[0], weights=weights, state=state)
 
   @parameterized.parameters(BACKENDS)
   def test_train_eval_predict(self, backend_name):
     self._test_train_eval_predict(backend_name)
 
+  def test_autoregressive_sample_transformerlm(self):
+    model = models.TransformerLM(10, d_model=32, d_ff=64, n_layers=1,
+                                 n_heads=2, mode='predict')
+    model.init(shapes.ShapeDtype((1, 1), dtype=jnp.int32))
+    s1 = trainer_lib.autoregressive_sample(
+        model, batch_size=1, eos_id=-1, max_length=10)
+    self.assertEqual(s1.shape[0], 1)
+    self.assertEqual(s1.shape[1], 10)
+    batch_per_device = 2 // fastmath.device_count()
+    model.init(shapes.ShapeDtype((batch_per_device, 1), dtype=jnp.int32))
+    s2 = trainer_lib.autoregressive_sample(
+        model, batch_size=2, max_length=10)
+    self.assertEqual(s2.shape[0], 2)
+    self.assertLess(s2.shape[1], 11)
+    model.init(shapes.ShapeDtype((1, 1), dtype=jnp.int32))
+    prefix = jnp.array([[1, 2, 3]])
+    s3 = trainer_lib.autoregressive_sample(model, eos_id=-1, max_length=10,
+                                           batch_size=1, prefix=prefix)
+    self.assertEqual(s3.shape[0], 1)
+    self.assertEqual(int(s3[0][0]), 1)
+    self.assertEqual(int(s3[0][1]), 2)
+    self.assertEqual(int(s3[0][2]), 3)
+
+  def test_autoregressive_sample_transformer(self):
+    model = models.Transformer(10, d_model=32, d_ff=64, n_encoder_layers=1,
+                               n_decoder_layers=1, n_heads=2, mode='predict')
+    inputs = jnp.ones((1, 3), dtype=jnp.int32)
+    model.init((shapes.signature(inputs),
+                shapes.ShapeDtype((1, 1), dtype=jnp.int32)))
+    s = trainer_lib.autoregressive_sample(model, inputs=inputs,
+                                          eos_id=-1, max_length=10)
+    self.assertEqual(s.shape[0], 1)
+    self.assertEqual(s.shape[1], 10)
+
   @parameterized.parameters(BACKENDS)
   def test_train_eval_predict_sm3(self, backend_name):
     if xla_bridge.device_count() > 1 and backend_name == 'tf':
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with math.use_backend(backend_name), self.tmp_dir() as output_dir:
+    with fastmath.use_backend(backend_name), self.tmp_dir() as output_dir:
       # Prepare model and inputs
       n_classes = 4
       steps = 2
@@ -164,14 +199,14 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       # Predict with weights loaded from file.
       inputs = inputs.train_stream(1)
       model = model_fn()
-      model.init_from_file(os.path.join(output_dir, 'model.pkl'))
+      model.init_from_file(os.path.join(output_dir, 'model.pkl.gz'))
       model(next(inputs)[0])
 
   @parameterized.parameters(BACKENDS)
   def test_train_restart(self, backend_name):
     if xla_bridge.device_count() > 1 and backend_name == 'tf':
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with math.use_backend(backend_name), self.tmp_dir() as output_dir:
+    with fastmath.use_backend(backend_name), self.tmp_dir() as output_dir:
       # Prepare model and inputs
       n_classes = 4
       steps = 2
@@ -203,7 +238,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
   def test_train_with_weights(self, backend_name):
     if xla_bridge.device_count() > 1 and backend_name == 'tf':
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with math.use_backend(backend_name), self.tmp_dir() as output_dir:
+    with fastmath.use_backend(backend_name), self.tmp_dir() as output_dir:
       # Prepare model and inputs
       n_classes = 4
       steps = 2
@@ -227,7 +262,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
   def test_reset_twice(self, backend_name):
     if xla_bridge.device_count() > 1 and backend_name == 'tf':
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with math.use_backend(backend_name), self.tmp_dir() as output_dir1, \
+    with fastmath.use_backend(backend_name), self.tmp_dir() as output_dir1, \
           self.tmp_dir() as output_dir2:
       n_classes = 4
       model_fn = functools.partial(
@@ -238,7 +273,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
           model=model_fn,
           loss_fn=layers.CrossEntropyLoss(),
           optimizer=trax_opt.SM3,
-          lr_schedule=lr.MultifactorSchedule,
+          lr_schedule=lr.multifactor(),
           inputs=inputs,
       )
 
@@ -250,10 +285,10 @@ class TraxTest(test.TestCase, parameterized.TestCase):
   def test_tf_xla_forced_compile(self):
     # TODO(wangpeng): re-enable this test
     self.skipTest('Needs --config=cuda to pass this test')
-    old_flag = math.tf_math.tf_xla_forced_compile_enabled()
-    math.tf_math.set_tf_xla_forced_compile(True)
+    old_flag = fastmath.tf_math.tf_xla_forced_compile_enabled()
+    fastmath.tf_math.set_tf_xla_forced_compile(True)
     self._test_train_eval_predict('tf')
-    math.tf_math.set_tf_xla_forced_compile(old_flag)
+    fastmath.tf_math.set_tf_xla_forced_compile(old_flag)
 
   def test_no_int32_or_uint32_returned(self):
     """Tests that Trainer._jit_update_fn doesn't return int32 or uint32.
@@ -264,7 +299,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
     """
     if xla_bridge.device_count() > 1:
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with math.use_backend('tf'), self.tmp_dir() as output_dir:
+    with fastmath.use_backend('tf'), self.tmp_dir() as output_dir:
       n_classes = 1001
       model_fn = functools.partial(models.Resnet50,
                                    n_output_classes=n_classes)
@@ -273,7 +308,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
           model=model_fn,
           loss_fn=layers.CrossEntropyLoss(),
           optimizer=trax_opt.SM3,
-          lr_schedule=lr.MultifactorSchedule,
+          lr_schedule=lr.multifactor(),
           inputs=inputs,
       )
       trainer.reset(output_dir)
@@ -283,8 +318,8 @@ class TraxTest(test.TestCase, parameterized.TestCase):
                 trainer._model_state, trainer._rngs)
       arrays = tf.nest.flatten(arrays)
       for x in arrays:
-        if isinstance(x, np.ndarray) and (x.dtype == np.int32 or
-                                          x.dtype == np.uint32):
+        if isinstance(x, jnp.ndarray) and (x.dtype == jnp.int32 or
+                                           x.dtype == jnp.uint32):
           raise ValueError('Found an array of int32 or uint32: %s' % x)
 
 

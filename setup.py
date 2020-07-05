@@ -21,7 +21,7 @@ from setuptools import setup
 
 setup(
     name='trax',
-    version='1.2.4',
+    version='1.3.1',
     description='Trax',
     long_description=(
         'Trax helps you understand deep learning. We start with basic maths and'
@@ -38,12 +38,13 @@ setup(
         'absl-py',
         'funcsigs',
         'gin-config',
-        'gym==0.14.0',
+        'gym',
         'jax',
         'jaxlib',
         'numpy',
         'scipy',
         'six',
+        't5',
         'tensor2tensor',
         'tensorflow-datasets',
         'tensorflow-text',

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import trax.lr_schedules
+import trax.supervised.lr_schedules
 import trax.models
 import trax.optimizers
 import trax.rl
@@ -27,10 +27,10 @@ PureMLP.flatten = False
 PureMLP.layer_widths = (128,)
 PureMLP.out_activation = True
 
-# Parameters for MultifactorSchedule:
+# Parameters for multifactor:
 # ==============================================================================
-MultifactorSchedule.constant = 0.01
-MultifactorSchedule.factors = 'constant'
+multifactor.constant = 0.01
+multifactor.factors = 'constant'
 
 # Parameters for RLTask:
 # ==============================================================================
@@ -45,8 +45,8 @@ AWRJointTrainer.joint_model = @trax.models.PolicyAndValue
 AWRJointTrainer.optimizer = @trax.optimizers.Adam
 AWRJointTrainer.batch_size = 32
 AWRJointTrainer.train_steps_per_epoch = 1000
-AWRJointTrainer.lr_schedule = @MultifactorSchedule
-AWRJointTrainer.collect_per_epoch = 10
+AWRJointTrainer.lr_schedule = @multifactor
+AWRJointTrainer.n_trajectories_per_epoch = 10
 AWRJointTrainer.beta = 1.0
 AWRJointTrainer.w_max = 20
 AWRJointTrainer.max_slice_length = 1

@@ -16,7 +16,7 @@
 # Lint as: python3
 """SM3 optimizer class."""
 
-from trax.math import numpy as np
+from trax.fastmath import numpy as jnp
 from trax.optimizers import base as opt_base
 
 
@@ -39,15 +39,15 @@ class SM3(opt_base.Optimizer):
     )
 
   def init(self, weights):
-    vs = [np.zeros(sz, dtype=weights.dtype) for sz in weights.shape]
-    return (np.zeros_like(weights), vs)
+    vs = [jnp.zeros(sz, dtype=weights.dtype) for sz in weights.shape]
+    return (jnp.zeros_like(weights), vs)
 
   def _update_diagonal(self, grads, weights, m, v, opt_params):
     learning_rate = opt_params['learning_rate']
     momentum = opt_params['momentum']
     v[0] += grads * grads
-    preconditioner = np.where(v[0] > 0, 1.0 / np.sqrt(v[0]),
-                              np.zeros_like(v[0]))
+    preconditioner = jnp.where(v[0] > 0, 1.0 / jnp.sqrt(v[0]),
+                               jnp.zeros_like(v[0]))
     preconditioned_grads = preconditioner * grads
     m = (1 - momentum) * preconditioned_grads + momentum * m
     weights = weights - (learning_rate * m).astype(weights.dtype)
@@ -62,7 +62,7 @@ class SM3(opt_base.Optimizer):
   def _minimum(self, tensor_list):
     minimum = tensor_list[0]
     for i in range(1, len(tensor_list)):
-      minimum = np.minimum(minimum, tensor_list[i])
+      minimum = jnp.minimum(minimum, tensor_list[i])
     return minimum
 
   def _update_sketched(self, grads, weights, m, v, opt_params):
@@ -71,19 +71,19 @@ class SM3(opt_base.Optimizer):
     momentum = opt_params['momentum']
     shape = weights.shape
     rank = len(shape)
-    reshaped_accumulators = [np.reshape(v[i], self._expanded_shape(shape, i))
+    reshaped_accumulators = [jnp.reshape(v[i], self._expanded_shape(shape, i))
                              for i in range(rank)]
     current_accumulator = self._minimum(reshaped_accumulators)
     current_accumulator += grads * grads
-    accumulator_inv_sqrt = np.where(current_accumulator > 0.0,
-                                    1.0 / np.sqrt(current_accumulator),
-                                    np.zeros_like(current_accumulator))
+    accumulator_inv_sqrt = jnp.where(current_accumulator > 0.0,
+                                     1.0 / jnp.sqrt(current_accumulator),
+                                     jnp.zeros_like(current_accumulator))
     preconditioned_gradient = grads * accumulator_inv_sqrt
     m = (1.0 - momentum) * preconditioned_gradient + momentum * m
     weights = weights - (learning_rate * m).astype(weights.dtype)
     for i in range(len(v)):
       axes = list(range(int(i))) + list(range(int(i) + 1, rank))
-      dim_accumulator = np.amax(current_accumulator, axis=axes)
+      dim_accumulator = jnp.amax(current_accumulator, axis=axes)
       v[i] = dim_accumulator
     return weights, (m, v)
 

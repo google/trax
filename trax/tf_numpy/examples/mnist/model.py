@@ -111,6 +111,7 @@ class Model(object):
       g.watch(wb_tensors)
       loss = mean_squared_error(self.forward(x), y)
     gradients = g.gradient(loss.data, wb_tensors)
+    gradients = [np.asarray(grad) for grad in gradients]
 
     new_weights_and_biases = []
     for v, dv in zip(self.weights + self.biases, gradients):

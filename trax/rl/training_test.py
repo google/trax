@@ -24,12 +24,12 @@ from absl.testing import absltest
 import tensorflow as tf
 
 from trax import layers as tl
-from trax import lr_schedules
 from trax import models
 from trax import optimizers as opt
 from trax import test_utils
 from trax.rl import task as rl_task
 from trax.rl import training
+from trax.supervised import lr_schedules
 
 
 class TrainingTest(absltest.TestCase):
@@ -55,7 +55,8 @@ class TrainingTest(absltest.TestCase):
         policy_optimizer=opt.Adam,
         policy_batch_size=128,
         policy_train_steps_per_epoch=1,
-        collect_per_epoch=2,
+        n_trajectories_per_epoch=2,
+        n_eval_episodes=1,
         output_dir=tmp_dir)
     trainer1.run(1)
     trainer1.run(1)
@@ -68,7 +69,8 @@ class TrainingTest(absltest.TestCase):
         policy_optimizer=opt.Adam,
         policy_batch_size=128,
         policy_train_steps_per_epoch=1,
-        collect_per_epoch=2,
+        n_trajectories_per_epoch=2,
+        n_eval_episodes=1,
         output_dir=tmp_dir)
     trainer2.run(1)
     self.assertEqual(trainer2.current_epoch, 3)
@@ -80,11 +82,13 @@ class TrainingTest(absltest.TestCase):
         policy_optimizer=opt.Adam,
         policy_batch_size=128,
         policy_train_steps_per_epoch=2,
-        collect_per_epoch=2,
+        n_trajectories_per_epoch=2,
+        n_eval_episodes=1,
         output_dir=tmp_dir)
     self.assertRaises(ValueError, trainer3.run)
     # Manually set saved epoch to 1.
-    dictionary = {'epoch': 1, 'avg_returns': [0.0]}
+    dictionary = {'epoch': 1, 'avg_returns': [0.0],
+                  'avg_returns_temperature0': {200: [0.0]}}
     with tf.io.gfile.GFile(os.path.join(tmp_dir, 'rl.pkl'), 'wb') as f:
       pickle.dump(dictionary, f)
     # Trainer 3 still should fail as steps between evals are 2, cannot do 1.
@@ -97,7 +101,8 @@ class TrainingTest(absltest.TestCase):
         policy_batch_size=128,
         policy_train_steps_per_epoch=2,
         policy_evals_per_epoch=2,
-        collect_per_epoch=2,
+        n_trajectories_per_epoch=2,
+        n_eval_episodes=1,
         output_dir=tmp_dir)
     trainer4.run(1)
     self.assertEqual(trainer4.current_epoch, 2)
@@ -117,8 +122,8 @@ class TrainingTest(absltest.TestCase):
             tl.Dense(64), tl.Relu(), tl.Dense(64), tl.Relu()
         ),
     )
-    lr = lambda h: lr_schedules.MultifactorSchedule(  # pylint: disable=g-long-lambda
-        h, constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
+    lr = lambda: lr_schedules.multifactor(  # pylint: disable=g-long-lambda
+        constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
     trainer = training.PolicyGradientTrainer(
         task,
         policy_model=model,
@@ -126,7 +131,7 @@ class TrainingTest(absltest.TestCase):
         policy_lr_schedule=lr,
         policy_batch_size=128,
         policy_train_steps_per_epoch=1,
-        collect_per_epoch=2)
+        n_trajectories_per_epoch=2)
     # Assert that we get to 200 at some point and then exit so the test is as
     # fast as possible.
     for ep in range(200):

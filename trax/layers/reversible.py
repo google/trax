@@ -16,8 +16,7 @@
 # Lint as: python3
 """Implementations of reversible layers."""
 
-import jax
-from trax import math
+from trax import fastmath
 from trax.layers import base
 from trax.layers import combinators as cb
 
@@ -57,11 +56,15 @@ class ReversibleLayer(base.Layer):
       gradient signal for the weights.
     """
     def _do_forward(x, weights):
-      return super(ReversibleLayer, self).forward_with_state(
-          x, weights=weights, state=state, rng=rng)[0]
+      old_weights, old_state, old_rng = self._weights, self._state, self._rng
+      self._state, self._rng = state, rng
+      self._weights = weights
+      res = self.forward(x)
+      self._weights, self._state, self._rng = old_weights, old_state, old_rng
+      return res
 
     reconstructed_x = self.reverse(output, weights, state, new_state, rng)
-    _, vjpfun = jax.vjp(_do_forward, reconstructed_x, weights)
+    _, vjpfun = fastmath.vjp(_do_forward, reconstructed_x, weights)
     x_weights_grad = vjpfun(grad)
     return reconstructed_x, x_weights_grad
 
@@ -82,15 +85,14 @@ class ReversibleSwap(ReversibleLayer):
   def __init__(self):
     super().__init__(n_in=2, n_out=2)
 
-  def forward(self, inputs, weights):
-    del weights
+  def forward(self, inputs):
     x0, x1 = inputs
     return x1, x0
 
   def reverse(self, output, weights=(), state=(), new_state=(), rng=None):
+    del state, new_state, rng, weights
     # Swap is its own inverse, except that reverse doesn't return the state.
-    return self.forward_with_state(output, weights=weights, state=state,
-                                   rng=rng)[0]
+    return self.forward(output)
 
 
 class ReversibleSerial(ReversibleLayer, cb.Serial):
@@ -111,7 +113,7 @@ class ReversibleSerial(ReversibleLayer, cb.Serial):
   def reverse(self, output, weights=(), state=(), new_state=(), rng=None):
     rngs = (None,) * self._n_layers
     if rng is not None:
-      rngs = math.random.split(rng, self._n_layers)
+      rngs = fastmath.random.split(rng, self._n_layers)
 
     stack = output
     for layer, p, s, ns, rng in reversed(list(zip(
@@ -127,7 +129,7 @@ class ReversibleSerial(ReversibleLayer, cb.Serial):
                        rng=None):
     rngs = (None,) * self._n_layers
     if rng is not None:
-      rngs = math.random.split(rng, self._n_layers)
+      rngs = fastmath.random.split(rng, self._n_layers)
 
     stack = output
     stack_grad = grad

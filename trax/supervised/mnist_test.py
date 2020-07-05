@@ -20,12 +20,10 @@ import itertools
 
 from absl.testing import absltest
 
-import gin
-import numpy as np
-
 from trax import layers as tl
 from trax.optimizers import adafactor
 from trax.supervised import inputs
+from trax.supervised import tf_inputs
 from trax.supervised import training
 
 
@@ -37,11 +35,6 @@ class MnistTest(absltest.TestCase):
     Evals for cross-entropy loss and accuracy are run every 50 steps;
     their values are visible in the test log.
     """
-    gin.parse_config([
-        'batch_fn.batch_size_per_device = 256',
-        'batch_fn.eval_batch_size = 256',
-    ])
-
     mnist_model = tl.Serial(
         tl.Flatten(),
         tl.Dense(512),
@@ -57,34 +50,22 @@ class MnistTest(absltest.TestCase):
         adafactor.Adafactor(.02))
     eval_task = training.EvalTask(
         itertools.cycle(_mnist_dataset().eval_stream(1)),
-        [tl.CrossEntropyLoss(), tl.AccuracyScalar()],
-        names=['CrossEntropyLoss', 'AccuracyScalar'],
-        eval_at=lambda step_n: step_n % 50 == 0,
-        eval_N=10)
+        [tl.CrossEntropyLoss(), tl.Accuracy()],
+        n_eval_batches=10)
 
-    training_session = training.Loop(mnist_model, task, eval_task=eval_task)
+    training_session = training.Loop(mnist_model, task, eval_task=eval_task,
+                                     eval_at=lambda step_n: step_n % 50 == 0)
+
     training_session.run(n_steps=1000)
-    self.assertEqual(training_session.current_step(), 1000)
+    self.assertEqual(training_session.current_step, 1000)
 
 
 def _mnist_dataset():
   """Loads (and caches) the standard MNIST data set."""
-  return _add_weights(inputs.inputs('mnist'))
-
-
-def _add_weights(trax_inputs):
-  """Add weights to inputs."""
-  def _weight_stream(input_stream):
-    """Add weights to the given stream."""
-    for example in input_stream:
-      inp, targets = example
-      weights = np.ones_like(targets).astype(np.float32)
-      yield (inp, targets, weights)
-  return inputs.Inputs(
-      train_stream=lambda n: _weight_stream(trax_inputs.train_stream(n)),
-      eval_stream=lambda n: _weight_stream(trax_inputs.eval_stream(n)),
-      train_eval_stream=lambda n: _weight_stream(  # pylint: disable=g-long-lambda
-          trax_inputs.train_eval_stream(n)))
+  streams = tf_inputs.data_streams('mnist')
+  return inputs.batcher(streams, variable_shapes=False,
+                        batch_size_per_device=256,
+                        eval_batch_size=256)
 
 
 if __name__ == '__main__':

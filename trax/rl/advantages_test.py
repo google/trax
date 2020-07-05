@@ -55,6 +55,7 @@ def estimate_advantage_bias_and_variance(
   )
   returns = calc_returns(rewards, gamma=gamma)
   values = np.zeros_like(returns)
+  dones = np.zeros_like(returns, dtype=np.bool)
   if gae:
     adv = advantage_fn(
         rewards, values, gamma=gamma, n_extra_steps=n_extra_steps,
@@ -62,7 +63,12 @@ def estimate_advantage_bias_and_variance(
     )
   else:
     adv = advantage_fn(
-        rewards, returns, values, gamma=gamma, n_extra_steps=n_extra_steps,
+        rewards=rewards,
+        returns=returns,
+        values=values,
+        dones=dones,
+        gamma=gamma,
+        n_extra_steps=n_extra_steps,
         **advantage_kwargs
     )
   mean_return = calc_returns(
@@ -82,9 +88,14 @@ class AdvantagesTest(parameterized.TestCase):
     rewards = np.array([[1, 1, 1]], dtype=np.float32)
     returns = np.array([[3, 2, 1]], dtype=np.float32)
     values = np.array([[2, 2, 2]], dtype=np.float32)
-    adv1 = advantage_fn(rewards, returns, values, gamma=1, n_extra_steps=1)
+    dones = np.array([[False, False, True]])
+    adv1 = advantage_fn(
+        rewards, returns, values, dones, gamma=1, n_extra_steps=1
+    )
     self.assertEqual(adv1.shape, (1, 2))
-    adv2 = advantage_fn(rewards, returns, values, gamma=1, n_extra_steps=2)
+    adv2 = advantage_fn(
+        rewards, returns, values, dones, gamma=1, n_extra_steps=2
+    )
     self.assertEqual(adv2.shape, (1, 1))
 
   def test_shapes_gae(self):
@@ -175,6 +186,25 @@ class AdvantagesTest(parameterized.TestCase):
         advantages.discount_gae, gae_lambda=gae_lambda2, gae=True,
     )
     self.assertLess(var1, var2)
+
+  @parameterized.named_parameters(
+      ('monte_carlo', advantages.monte_carlo),
+      ('td_k', advantages.td_k),
+      ('td_lambda', advantages.td_lambda),
+  )
+  def test_advantage_future_return_is_zero_at_done(self, advantage_fn):
+    rewards = np.array([[1, 1, 1]], dtype=np.float32)
+    returns = np.array([[3, 2, 1]], dtype=np.float32)
+    values = np.array([[2, 2, 2]], dtype=np.float32)
+    dones = np.array([[False, True, False]])
+    adv = advantage_fn(
+        rewards, returns, values, dones, gamma=0.9, n_extra_steps=1
+    )
+    target_returns = values[:, :-1] + adv
+    # Assert that in the "done" state the future return in the advantage is
+    # zero, i.e. the advantage is equal to the reward.
+    np.testing.assert_almost_equal(target_returns[0, 1], rewards[0, 1])
+
 
 if __name__ == '__main__':
   absltest.main()
