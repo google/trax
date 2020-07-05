@@ -632,7 +632,18 @@ def Reformer(input_vocab_size,
   if fastmath.backend_name() == 'jax':
     jax.api._check_inexact_input_vjp = lambda x: None  # pylint: disable=protected-access
 
-  def PositionalEncoder(vocab_size, mode):  # tokens --> vectors
+  def PositionalEncode_Encoder(vocab_size, mode):  # tokens --> vectors
+    # TODO(kitaev): axial positional encoding is better for very long sequences.
+    positional_encoding = tl.PositionalEncoding(
+        max_len=max_len, dropout=dropout, mode=mode)
+    return [
+        tl.Dense( d_model),
+        tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),
+        positional_encoding,
+    ]
+
+
+def PositionalEncoder(vocab_size, mode):  # tokens --> vectors
     # TODO(kitaev): axial positional encoding is better for very long sequences.
     positional_encoding = tl.PositionalEncoding(
         max_len=max_len, dropout=dropout, mode=mode)
@@ -641,6 +652,9 @@ def Reformer(input_vocab_size,
         tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),
         positional_encoding,
     ]
+
+
+
 
   # TODO(kitaev): The regular trax Transformer shares vocab embeddings and
   # position embeddings between the encoder and decoder if output_vocab_size is
@@ -652,7 +666,7 @@ def Reformer(input_vocab_size,
   # Mode 'predict' means that the decoder should be run one token at a time.
   # The encoder only ever runs over full sequences, which is why it's switched
   # to 'eval' mode instead.
-  in_encoder = PositionalEncoder(
+  in_encoder = PositionalEncode_Encoder(
       input_vocab_size, mode='eval' if mode == 'predict' else mode)
   if output_vocab_size is None:
     output_vocab_size = input_vocab_size
