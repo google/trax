@@ -1,0 +1,62 @@
+# Copyright 2020 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.models
+import trax.optimizers
+import trax.supervised.tf_inputs
+import trax.supervised.trainer_lib
+
+# Parameters for batcher:
+# ==============================================================================
+batcher.data_streams = @tf_inputs.data_streams
+batcher.batch_size_per_device = 128
+batcher.eval_batch_size = 128
+batcher.max_eval_length = 2048
+
+# Parameters for data_streams:
+# ==============================================================================
+data_streams.data_dir = None
+data_streams.dataset_name = 't2t_sentiment_imdb'
+data_streams.input_name = 'targets'
+data_streams.preprocess_fn = @trax.supervised.tf_inputs.lm1b_preprocess
+
+# Parameters for multifactor:
+# ==============================================================================
+multifactor.constant = 0.1
+multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
+multifactor.warmup_steps = 8000
+
+# Parameters for lm1b_preprocess:
+# ==============================================================================
+lm1b_preprocess.max_target_length = 512
+lm1b_preprocess.max_eval_target_length = 2048
+
+# Parameters for train:
+# ==============================================================================
+train.eval_frequency = 100
+train.eval_steps = 10
+train.model = @trax.models.TransformerEncoder
+train.steps = 1000
+
+# Parameters for TransformerLM:
+# ==============================================================================
+TransformerEncoder.d_model = 512
+TransformerEncoder.d_ff = 2048
+TransformerEncoder.dropout = 0.1
+TransformerEncoder.max_len = 2048
+TransformerEncoder.mode = 'train'
+TransformerEncoder.n_classes = 10
+TransformerEncoder.n_heads = 8
+TransformerEncoder.n_layers = 6
+TransformerEncoder.vocab_size = 32000

@@ -1,0 +1,21 @@
+sudo: required
+language: python
+cache: pip
+git:
+  depth: 3
+  quiet: true
+services:
+  - docker
+python:
+  - "3.6"
+env:
+  global:
+    - TF_LATEST="2.2.*"
+  matrix:
+    - TF_VERSION="2.2.*"
+install:
+  - ./oss_scripts/oss_pip_install.sh
+script:
+  - ./oss_scripts/oss_tests.sh
+after_success:
+  - coveralls

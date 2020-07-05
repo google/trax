@@ -1,0 +1,59 @@
+# Copyright 2020 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.supervised.lr_schedules
+import trax.models
+import trax.optimizers
+import trax.supervised.tf_inputs
+import trax.supervised.trainer_lib
+
+# Parameters for batcher:
+# ==============================================================================
+batcher.data_streams = @tf_inputs.data_streams
+batcher.batch_size_per_device = 256
+batcher.bucket_length = 32
+batcher.buckets = None
+batcher.eval_batch_size = 512
+batcher.variable_shapes = False
+
+# Parameters for data_streams:
+# ==============================================================================
+data_streams.data_dir = None
+data_streams.dataset_name = 'cifar10'
+data_streams.preprocess_fn = @trax.supervised.tf_inputs.cifar10_augmentation_preprocess
+
+# Parameters for multifactor:
+# ==============================================================================
+multifactor.factors = 'constant * linear_warmup'
+multifactor.constant = 0.5
+multifactor.warmup_steps = 400
+
+# Parameters for Momentum:
+# ==============================================================================
+Momentum.mass = 0.9
+Momentum.weight_decay_rate = 5e-4
+
+# Parameters for WideResnet:
+# ==============================================================================
+WideResnet.widen_factor = 10
+WideResnet.n_blocks = 4
+WideResnet.n_output_classes = 10
+
+# Parameters for train:
+# ==============================================================================
+train.eval_frequency = 100
+train.eval_steps = 10
+train.model = @trax.models.WideResnet
+train.optimizer = @trax.optimizers.Momentum
+train.steps = 10000

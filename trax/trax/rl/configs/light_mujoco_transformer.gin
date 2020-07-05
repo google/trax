@@ -1,0 +1,144 @@
+# Copyright 2020 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.supervised.lr_schedules
+import trax.models
+import trax.optimizers
+import trax.rl
+import trax.rl.distributions
+import trax.rl.normalization
+
+# Parameters for Gaussian:
+# ==============================================================================
+Gaussian.std = 0.4
+
+# Parameters for Policy:
+# ==============================================================================
+Policy.body = @trax.models.TransformerDecoder
+Policy.batch_axes = 2
+Policy.head_init_range = 0.01
+Policy.normalizer = @trax.rl.normalization.Normalize
+
+# Parameters for Value:
+# ==============================================================================
+Value.body = @trax.models.TransformerDecoder
+Value.batch_axes = 2
+Value.normalizer = @trax.rl.normalization.Normalize
+
+# Parameters for Normalize:
+# ==============================================================================
+Normalize.sample_limit = 30000
+Normalize.epsilon = 1e-5
+
+# Parameters for TransformerDecoder:
+# ==============================================================================
+TransformerDecoder.d_model = 256
+TransformerDecoder.d_ff = 1024
+TransformerDecoder.dropout = 0.0
+TransformerDecoder.n_heads = 4
+TransformerDecoder.n_layers = 3
+
+# Parameters for multifactor:
+# ==============================================================================
+policy/multifactor.constant = 5e-5
+policy/multifactor.factors = 'constant'
+value/multifactor.constant = 0.01
+value/multifactor.factors = 'constant'
+
+# Parameters for Adam:
+# ==============================================================================
+Adam.weight_decay_rate = 0.0
+
+# Parameters for RLTask:
+# ==============================================================================
+RLTask.env = "DM-HalfCheetah-v2"
+RLTask.initial_trajectories = 0
+RLTask.gamma = 0.99
+RLTask.max_steps = 1000
+
+# Parameters for td_lambda:
+# ==============================================================================
+td_lambda.lambda_ = 0.95
+
+# Parameters for AWRTrainer:
+# ==============================================================================
+AWRTrainer.value_model = @trax.models.Value
+AWRTrainer.value_optimizer = @trax.optimizers.Adam
+AWRTrainer.value_batch_size = 256
+AWRTrainer.value_train_steps_per_epoch = 200
+AWRTrainer.value_lr_schedule = @value/multifactor
+AWRTrainer.value_evals_per_epoch = 10
+AWRTrainer.value_eval_steps = 10
+AWRTrainer.policy_model = @trax.models.Policy
+AWRTrainer.policy_optimizer = @trax.optimizers.Adam
+AWRTrainer.policy_batch_size = 256
+AWRTrainer.policy_train_steps_per_epoch = 1000
+AWRTrainer.policy_lr_schedule = @policy/multifactor
+AWRTrainer.policy_evals_per_epoch = 10
+AWRTrainer.policy_eval_steps = 10
+AWRTrainer.n_trajectories_per_epoch = None
+AWRTrainer.n_interactions_per_epoch = 2048
+AWRTrainer.n_eval_episodes = 1
+AWRTrainer.eval_steps = [200, 1000]
+AWRTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
+AWRTrainer.beta = 1.0
+AWRTrainer.w_max = 20
+AWRTrainer.max_slice_length = 8
+AWRTrainer.added_policy_slice_length = 8
+AWRTrainer.n_replay_epochs = 25
+AWRTrainer.scale_value_targets = True
+AWRTrainer.n_shared_layers = 1
+AWRTrainer.q_value = False
+AWRTrainer.q_value_n_samples = 128
+AWRTrainer.q_value_aggregate_max = True
+
+# Parameters for SamplingAWRTrainer:
+# ==============================================================================
+SamplingAWRTrainer.value_model = @trax.models.Value
+SamplingAWRTrainer.value_optimizer = @trax.optimizers.Adam
+SamplingAWRTrainer.value_batch_size = 256
+SamplingAWRTrainer.value_train_steps_per_epoch = 2000
+SamplingAWRTrainer.value_lr_schedule = @value/multifactor
+SamplingAWRTrainer.value_evals_per_epoch = 10
+SamplingAWRTrainer.value_eval_steps = 10
+SamplingAWRTrainer.policy_model = @trax.models.Policy
+SamplingAWRTrainer.policy_optimizer = @trax.optimizers.Adam
+SamplingAWRTrainer.policy_batch_size = 256
+SamplingAWRTrainer.policy_train_steps_per_epoch = 4000
+SamplingAWRTrainer.policy_lr_schedule = @policy/multifactor
+SamplingAWRTrainer.policy_evals_per_epoch = 10
+SamplingAWRTrainer.policy_eval_steps = 10
+SamplingAWRTrainer.n_trajectories_per_epoch = None
+SamplingAWRTrainer.n_interactions_per_epoch = 2048
+SamplingAWRTrainer.n_eval_episodes = 1
+SamplingAWRTrainer.eval_steps = [200, 1000]
+SamplingAWRTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
+SamplingAWRTrainer.beta = 1.0
+SamplingAWRTrainer.w_max = 20
+SamplingAWRTrainer.max_slice_length = 8
+SamplingAWRTrainer.added_policy_slice_length = 8
+SamplingAWRTrainer.n_replay_epochs = 25
+SamplingAWRTrainer.scale_value_targets = True
+SamplingAWRTrainer.n_shared_layers = 1
+SamplingAWRTrainer.q_value_n_samples = 128
+SamplingAWRTrainer.q_value_aggregate_max = True
+SamplingAWRTrainer.reweight = False
+
+# Parameters for train_rl:
+# ==============================================================================
+train_rl.light_rl = True
+train_rl.light_rl_trainer = @trax.rl.AWRTrainer
+train_rl.n_epochs = 1000
+
+# TODO(pkozakowski): Add PPO config here once we get it to work on MuJoCo.

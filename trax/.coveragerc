@@ -1,0 +1,16 @@
+[run]
+source =
+    trax/
+omit =
+    *_test.py
+    */site-packages/*
+
+[report]
+omit =
+    */site-packages/*
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise NotImplementedError
+    if __name__ == .__main__.:
+
