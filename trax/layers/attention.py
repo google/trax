@@ -308,7 +308,12 @@ def ShiftRight(n_shifts=1, mode='train'):
 def PaddingMask(pad=0):
   """Layer to distinguish positions with real content/tokens vs. padding."""
   def f(x):
+
+    if len(x.shape)>2:
+	x = jnp.sum(x, axis=1)
     # TODO(jonni): Check/require that len(x.shape) == 2?
+
+	
     batch_size = x.shape[0]
     d_feature = x.shape[-1]
     content_positions = (x != pad)
