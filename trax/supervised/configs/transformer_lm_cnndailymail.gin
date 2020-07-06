@@ -19,12 +19,12 @@ import trax.supervised.trainer_lib
 
 # Parameters for batcher:
 # ==============================================================================
-batcher.data_streams = @tf_data_streams.data_streams
+batcher.data_streams = @tf_inputs.data_streams
 batcher.batch_size_per_device = 2
 batcher.eval_batch_size = 8
 batcher.bucket_length=512
 batcher.max_eval_length = 4096
-batcher.buckets_include_data_streams.in_length=True
+batcher.buckets_include_inputs_in_length = True
 batcher.id_to_mask = 0
 
 # Parameters for data_streams.

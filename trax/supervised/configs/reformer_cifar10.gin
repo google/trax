@@ -34,7 +34,7 @@ batcher.max_eval_length = 12288  # 64 * 64 * 3
 # ==============================================================================
 data_streams.data_dir = None
 data_streams.dataset_name = 'cifar10'
-data_streans.preprocess_fn = @trax.supervised.tf_inputs.cifar10_augmentation_flatten_preprocess
+data_streams.preprocess_fn = @trax.supervised.tf_inputs.cifar10_augmentation_flatten_preprocess
 
 # Parameters for multifactor:
 # ==============================================================================
@@ -46,7 +46,6 @@ multifactor.warmup_steps = 8000
 # ==============================================================================
 train.eval_frequency = 500
 train.eval_steps = 64
-train.inputs = @trax.supervised.tf_inputs.inputs
 # train.model: see top
 train.optimizer = @trax.optimizers.Adafactor
 train.steps = 500000
