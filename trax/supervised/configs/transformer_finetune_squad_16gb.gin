@@ -32,10 +32,10 @@ batcher.strict_pad_on_len = True
 batcher.buckets_include_inputs_in_length = True
 
 
-# Parameters for MultifactorSchedule:
+# Parameters for multifactor:
 # ==============================================================================
-MultifactorSchedule.factors = 'constant'
-MultifactorSchedule.constant = 0.001
+multifactor.factors = 'constant'
+multifactor.constant = 0.001
 
 
 # Parameters for data_streams:
