@@ -1,0 +1,60 @@
+# Copyright 2020 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# -*-Python-*-
+
+import trax.supervised.tf_inputs
+include 'transformer_c4_pretrain_16gb_adafactor.gin'
+
+
+# Parameters for train:
+# ==============================================================================
+# This should always be overriden since this is relative to the pre-trained
+# checkpoint.
+train.steps = 262144
+
+
+# Parameters for batcher:
+# ==============================================================================
+batcher.buckets = ([513,], [8, 8])
+batcher.strict_pad_on_len = True
+batcher.buckets_include_inputs_in_length = True
+
+
+# Parameters for MultifactorSchedule:
+# ==============================================================================
+MultifactorSchedule.factors = 'constant'
+MultifactorSchedule.constant = 0.001
+
+
+# Parameters for data_streams:
+# ==============================================================================
+data_streams.dataset_name = 'squad/plain_text:1.0.0'
+data_streams.bare_preprocess_fn = @trax.supervised.tf_inputs.generic_text_dataset_preprocess_fn
+
+
+# Parameters for get_t5_preprocessor_by_name:
+# ==============================================================================
+squad/get_t5_preprocessor_by_name.name = 'squad'
+squad/get_t5_preprocessor_by_name.fn_kwargs = {'include_context': True}
+
+
+# Parameters for generic_text_dataset_preprocess_fn:
+# ==============================================================================
+generic_text_dataset_preprocess_fn.text_preprocess_fns = [
+    @squad/get_t5_preprocessor_by_name()
+]
+generic_text_dataset_preprocess_fn.token_preprocess_fns = [
+    @trax.supervised.tf_inputs.add_eos_to_output_features
+]
