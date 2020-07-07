@@ -37,6 +37,10 @@ from trax.trax2keras import to_tensors
 tf.enable_v2_behavior()
 
 
+def has_gpu():
+  return bool(tf.config.list_physical_devices("GPU"))
+
+
 def dummy_inputs(rng, input_sig):
   def f(sig):
     shape = sig.shape
@@ -171,7 +175,7 @@ class Trax2KerasTest(tf.test.TestCase, parameterized.TestCase):
             keras_layer.trainable_variables, keras_grads)
         self.assertAllClose(
             to_tensors(weights), read_values(keras_layer._weights),
-            rtol=2e-6, atol=5e-5)
+            rtol=2e-6, atol=2e-4 if has_gpu() else 1e-6)
         self.assertAllClose(to_tensors(state), read_values(keras_layer._state))
         self.assertAllClose(to_tensors(rng), read_values(keras_layer._rng))
       if use_model:
