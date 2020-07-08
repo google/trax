@@ -705,6 +705,9 @@ def Reformer(input_vocab_size,
       #                                     # tok_e mask  tok_d .....
 
       # Encode.
+
+      tl.Select([3, 1, 2]),                 # vec_e  mask tok_d
+
       encoder,                              # vec_e  mask tok_d .....
 
       # Decode.

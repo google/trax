@@ -309,8 +309,6 @@ def PaddingMask(pad=0):
   """Layer to distinguish positions with real content/tokens vs. padding."""
   def f(x):
 
-    if len(x.shape)>2:
-	x = jnp.sum(x, axis=1)
     # TODO(jonni): Check/require that len(x.shape) == 2?
 
 	
