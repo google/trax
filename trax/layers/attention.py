@@ -137,13 +137,16 @@ class PureAttention(base.Layer):
       x = x.reshape((batch_size, -1, n_heads * d_head))
       return x
 
-    per_head_results = DotProductAttention(_split_into_heads(q),
-                                           _split_into_heads(k),
-                                           _split_into_heads(v),
-                                           mask,
-                                           dropout=self._dropout,
-                                           mode=self._mode,
-                                           rng=self.rng)
+    per_head_results, dots = DotProductAttention(
+        _split_into_heads(q),
+        _split_into_heads(k),
+        _split_into_heads(v),
+        mask,
+        dropout=self._dropout,
+        mode=self._mode,
+        rng=self.rng)
+    if self._mode == 'viz':
+      self.state = dots
     merged_results = _merge_heads(per_head_results)
     return (merged_results, mask)
 
@@ -190,7 +193,7 @@ def DotProductAttention(queries, keys, values, mask, dropout, mode, rng):
     keep = fastmath.random.bernoulli(rng, 1.0 - dropout, dots.shape)
     dots = jnp.where(keep, dots / (1.0 - dropout), jnp.zeros_like(dots))
   out = jnp.matmul(dots, values)
-  return out
+  return out, dots
 
 
 def CausalAttention(d_feature, n_heads=1, dropout=0.0, mode='train'):
@@ -276,8 +279,10 @@ class DotProductCausalAttention(base.Layer):
         mask = np.tril(
             np.ones((1, mask_size, mask_size), dtype=np.bool_), k=0)
 
-    res = DotProductAttention(
+    res, dots = DotProductAttention(
         q, k, v, mask, dropout=self._dropout, mode=self._mode, rng=self.rng)
+    if self._mode == 'viz':
+      self.state = dots
     return res
 
   def init_weights_and_state(self, input_signature):
