@@ -642,7 +642,7 @@ def Reformer(input_vocab_size,
         positional_encoding,
     ]
 
-  def PositionalEncode_Encoder(vocab_size, mode):  # tokens --> vectors
+  def PositionalEncode_Encoder(max_len, mode):  # tokens --> vectors
     # TODO(kitaev): axial positional encoding is better for very long sequences.
     positional_encoding = tl.PositionalEncoding(
         max_len=max_len, dropout=dropout, mode=mode)
@@ -666,7 +666,7 @@ def Reformer(input_vocab_size,
   # The encoder only ever runs over full sequences, which is why it's switched
   # to 'eval' mode instead.
   in_encoder = PositionalEncode_Encoder(
-      input_vocab_size, mode='eval' if mode == 'predict' else mode)
+      max_len, mode='eval' if mode == 'predict' else mode)
   if output_vocab_size is None:
     output_vocab_size = input_vocab_size
   out_encoder = PositionalEncoder(output_vocab_size, mode)
@@ -680,6 +680,7 @@ def Reformer(input_vocab_size,
   # pylint: enable=g-complex-comprehension
 
   encoder = tl.Serial([
+      tl.Select([3]),
       in_encoder,
       tl.Dup(),
       tl.ReversibleSerial(encoder_blocks),
