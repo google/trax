@@ -154,6 +154,57 @@ class TraxTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(int(s3[0][1]), 2)
     self.assertEqual(int(s3[0][2]), 3)
 
+  def _lsh_self_attention_fn(self):
+    return functools.partial(
+        layers.LSHSelfAttention,
+        attention_dropout=0.0,
+        chunk_len=64,
+        n_buckets=[32, 32],
+        n_chunks_after=0,
+        n_chunks_before=1,
+        n_hashes=1,
+        n_parallel_heads=1,
+        predict_drop_len=128,
+        predict_mem_len=1024,
+    )
+
+  def _timebin_self_attention_fn(self, use_reference_code=False):
+    return functools.partial(
+        layers.SelfAttention,
+        attention_dropout=0.05,
+        chunk_len=64,
+        n_chunks_before=1,
+        n_parallel_heads=1,
+        use_reference_code=use_reference_code
+    )
+
+  def test_autoregressive_sample_reformerlm(self):
+    lsh_self_attention = self._lsh_self_attention_fn()
+    timebin_self_attention = self._timebin_self_attention_fn()
+
+    model = models.ReformerLM(vocab_size=256,
+                              d_model=256,
+                              d_ff=512,
+                              d_attention_key=128,
+                              d_attention_value=128,
+                              n_layers=2,
+                              n_heads=2,
+                              dropout=0.05,
+                              max_len=65536,
+                              attention_type=[timebin_self_attention,
+                                              lsh_self_attention],
+                              axial_pos_shape=(256, 256),
+                              d_axial_pos_embs=(128, 128),
+                              ff_activation=layers.Relu,
+                              ff_use_sru=0,
+                              mode='predict',
+                              )
+    model.init(shapes.ShapeDtype((1, 1), dtype=jnp.int32))
+    s1 = trainer_lib.autoregressive_sample(
+        model, batch_size=1, eos_id=-1, max_length=10)
+    self.assertEqual(s1.shape[0], 1)
+    self.assertEqual(s1.shape[1], 10)
+
   def test_autoregressive_sample_transformer(self):
     model = models.Transformer(10, d_model=32, d_ff=64, n_encoder_layers=1,
                                n_decoder_layers=1, n_heads=2, mode='predict')

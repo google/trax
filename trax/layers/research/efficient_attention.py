@@ -129,10 +129,10 @@ def attend(
   share_qk = (k is None)
 
   if q_info is None:
-    q_info = np.arange(q.shape[-2])
+    q_info = np.arange(q.shape[-2], dtype=np.int32)
 
   if kv_info is None and not share_qk:
-    kv_info = np.arange(v.shape[-2])
+    kv_info = np.arange(v.shape[-2], dtype=np.int32)
 
   # Split q/k/v into chunks along the time axis, if desired.
   if q_chunk_len is not None:
@@ -733,10 +733,8 @@ class EfficientAttentionBase(base.Layer):
         idx = idx * self.n_parallel_heads
         example_idx = idx // self.n_heads
         head_idx_lo = idx % self.n_heads
-        # Use iota here instead of np.arange, because np.arange will fail to
-        # infer that the slice size is a compile-time constant.
-        head_range = head_idx_lo + jax.lax.iota(np.int32, n_parallel_heads)
-        state_range = idx + jax.lax.iota(np.int32, n_parallel_heads)
+        head_range = head_idx_lo + np.arange(n_parallel_heads, dtype=np.int32)
+        state_range = idx + np.arange(n_parallel_heads, dtype=np.int32)
 
         i_mh = fastmath.nested_map(lambda x: x[example_idx], inputs)
         w_mh = fastmath.nested_map(lambda w: w[head_range], weights)
@@ -1005,7 +1003,7 @@ class SelfAttention(EfficientAttentionBase):
     mask_fn = functools.partial(
         mask_self_attention,
         causal=self.causal, exclude_self=self.share_qk, masked=self.masked)
-    q_info = kv_info = tie_in(x, np.arange(q.shape[-2]))
+    q_info = kv_info = tie_in(x, np.arange(q.shape[-2], dtype=np.int32))
 
     assert (mask is not None) == self.masked
     if self.masked:
@@ -1037,7 +1035,7 @@ class SelfAttention(EfficientAttentionBase):
     else:
       w_q, w_k, w_v, w_o = weights
 
-    q_range = q_start + tie_in(x, jax.lax.iota(np.int32, q_len))
+    q_range = q_start + tie_in(x, np.arange(q_len, dtype=np.int32))
     if q_len == 1:
       # On TPU, np.matmul(a[:1], b) and np.matmul(a, b)[:1] are not
       # floating-point equivalent, at least in non-jitted code. We correct the
@@ -1057,7 +1055,7 @@ class SelfAttention(EfficientAttentionBase):
         mask_self_attention,
         causal=self.causal, exclude_self=self.share_qk, masked=self.masked)
     q_info = q_range
-    kv_info = tie_in(x, np.arange(k.shape[-2]))
+    kv_info = tie_in(x, np.arange(k.shape[-2], dtype=np.int32))
 
     if self.chunk_len is not None and q_len > self.chunk_len:
       assert q_start == 0
@@ -1173,7 +1171,7 @@ class LSHSelfAttention(SelfAttention):
 
     if isinstance(self.n_buckets, int) or len(self.n_buckets) == 1:
       rotated_vecs = np.concatenate([rotated_vecs, -rotated_vecs], axis=-1)
-      buckets = np.argmax(rotated_vecs, axis=-1)
+      buckets = np.argmax(rotated_vecs, axis=-1).astype(np.int32)
     else:
       # Get the buckets for them and combine.
       buckets, cur_sum, cur_product = None, 0, 1
@@ -1182,9 +1180,9 @@ class LSHSelfAttention(SelfAttention):
         cur_sum += factor // 2
         rv = np.concatenate([rv, -rv], axis=-1)
         if buckets is None:
-          buckets = np.argmax(rv, axis=-1)
+          buckets = np.argmax(rv, axis=-1).astype(np.int32)
         else:
-          buckets += cur_product * np.argmax(rv, axis=-1)
+          buckets += cur_product * np.argmax(rv, axis=-1).astype(np.int32)
         cur_product *= factor
 
     if mask is not None:
@@ -1193,7 +1191,7 @@ class LSHSelfAttention(SelfAttention):
 
     # buckets is now (self.n_hashes, seqlen). Next we add offsets so that
     # bucket numbers from different hashing rounds don't overlap.
-    offsets = tie_in(buckets, np.arange(self.n_hashes))
+    offsets = tie_in(buckets, np.arange(self.n_hashes, dtype=np.int32))
     offsets = np.reshape(offsets * n_buckets, (-1, 1))
     buckets = np.reshape(buckets + offsets, (-1,))
 
@@ -1227,7 +1225,7 @@ class LSHSelfAttention(SelfAttention):
     seqlen = x.shape[0]
     assert int(buckets.shape[0]) == self.n_hashes * seqlen
 
-    ticker = tie_in(x, np.arange(self.n_hashes * seqlen))
+    ticker = tie_in(x, np.arange(self.n_hashes * seqlen, dtype=np.int32))
     buckets_and_t = seqlen * buckets + (ticker % seqlen)
     buckets_and_t = fastmath.stop_gradient(buckets_and_t)
 
@@ -1337,7 +1335,7 @@ class LSHSelfAttention(SelfAttention):
     attend_rng, output_rng = fastmath.random.split(rng)
     w_q, w_v, w_o = weights
 
-    q_range = q_start + tie_in(x, jax.lax.iota(np.int32, q_len))
+    q_range = q_start + tie_in(x, np.arange(q_len, dtype=np.int32))
     # On TPU, np.matmul(a[:1], b) and np.matmul(a, b)[:1] are not
     # floating-point equivalent, at least in non-jitted code. We correct the
     # discrepancy by duplicating the slice. Floating-point noise may not be
@@ -1356,7 +1354,7 @@ class LSHSelfAttention(SelfAttention):
 
     assert q_buckets.shape[-1] == 1  # Is true when q_len == 1
     seqlen = x.shape[0]
-    arange_seqlen = np.arange(seqlen)
+    arange_seqlen = np.arange(seqlen, dtype=np.int32)
     kv_priorities = np.where(
         arange_seqlen > (q_start + q_len),
         -(seqlen + arange_seqlen), arange_seqlen)
@@ -1372,7 +1370,7 @@ class LSHSelfAttention(SelfAttention):
 
     mask_fn = functools.partial(
         mask_self_attention, causal=True, masked=True, exclude_self=True)
-    q_info = q_start + np.arange(q_len)
+    q_info = q_start + np.arange(q_len, dtype=np.int32)
     kv_info = kv_indices
     # TODO(kitaev): is it better to mask out attention across buckets?
     # kv_info = np.where(is_valid_target[kv_indices], kv_indices, -kv_indices)

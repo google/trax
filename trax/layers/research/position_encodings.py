@@ -101,7 +101,9 @@ class AxialPositionalEncoding(layer_base.Layer):
       ax_emb = self._kernel_initializer(ax_shape, ax_rng)
       weights.append(ax_emb)
 
-    self.state = 0 if self._mode == 'predict' else layer_base.EMPTY_STATE
+    # State is EMPTY_STATE by default, stays so except for predict mode.
+    if self._mode == 'predict':
+      self.state = np.array(0, dtype=np.int32)
     self.weights = tuple(weights)
 
 
