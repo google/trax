@@ -16,6 +16,12 @@
 # Lint as: python3
 """Tests for supervised training: core classes and flows."""
 
+import os
+import sys
+import time
+
+from absl import flags
+
 from jax import test_util  # pylint: disable=unused-import
 from jax.config import config
 
@@ -29,6 +35,17 @@ from trax.supervised import training
 
 
 class TrainingTest(test.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    # ensure that test_tmpdir flag is availbale
+    try:
+      getattr(flags.FLAGS, 'test_tmpdir')
+    except flags.UnparsedFlagAccessError:
+      # Manually parse flags.
+      flags.FLAGS(sys.argv)
+    finally:
+      assert getattr(flags.FLAGS, 'test_tmpdir')
 
   def test_train_dense_layer(self):
     """Trains a very simple network on a very simple task."""
@@ -78,6 +95,29 @@ class TrainingTest(test.TestCase):
     training_session.run_evals()
     self.assertEqual(10, training_session.current_step)  # Unchanged
 
+  def test_summaries_are_written(self):
+    """Training writes down metrics when writting is turned on."""
+    model = tl.Serial(tl.Dense(1))
+    task = training.TrainTask(
+        _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01))
+    eval_task = training.EvalTask(
+        _very_simple_data(),  # deliberately re-using training data
+        [tl.L2Loss()],
+        metric_names=['SGD.L2Loss'])
+    tmp_dir = self.create_tempdir().full_path
+    training_session = training.Loop(model, task, eval_task=eval_task,
+                                     eval_at=lambda step_n: step_n % 2 == 0,
+                                     output_dir=tmp_dir)
+    expected_metric_dir = os.path.join(tmp_dir, 'eval')
+    self.assertFalse(os.path.isdir(expected_metric_dir))
+    training_session.run(n_steps=15)
+    time.sleep(1)  # wait for the files to be closed
+    self.assertTrue(os.path.isdir(expected_metric_dir))
+    self.assertEqual(1, _count_files(expected_metric_dir))
+    training_session.run(n_steps=5)
+    time.sleep(1)  # wait for the files to be closed
+    self.assertEqual(2, _count_files(expected_metric_dir))
+
 
 def _very_simple_data():
   """"Returns stream of labeled data that maps small integers to constant pi."""
@@ -86,6 +126,12 @@ def _very_simple_data():
   labeled_batch = (inputs_batch, targets_batch, np.ones_like(targets_batch))
   while True:
     yield labeled_batch
+
+
+def _count_files(path):
+  """Returns number of files in a given directory."""
+  return len([filename for filename in os.listdir(path)
+              if os.path.isfile(os.path.join(path, filename))])
 
 
 if __name__ == '__main__':

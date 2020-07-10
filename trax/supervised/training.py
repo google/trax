@@ -43,6 +43,7 @@ import numpy as np
 import tensorflow as tf
 
 from trax import fastmath
+from trax import jaxboard
 from trax import layers as tl
 from trax import shapes
 
@@ -113,6 +114,11 @@ class Loop:
     self._eval_at = eval_at or default_fn
     if eval_task is None:
       self._eval_at = _never
+    self._should_write_summaries = True
+    if not output_dir:
+      _log('Will not write evaluation metrics as output_dir is None')
+      self._should_write_summaries = False
+    self._eval_sw = None
     self._step = 0
 
     batch_signature = shapes.signature(task.sample_batch)
@@ -147,6 +153,7 @@ class Loop:
     weights = self._model_in_training.weights
     state = self._model_in_training.state
     slots = self._task.optimizer.slots
+    self._open_summary_writers()
     loss_acc, step_acc = 0.0, 0
     for _ in range(n_steps):
       self._step += 1
@@ -174,6 +181,7 @@ class Loop:
     self._model_in_training.state = state
     self._task.optimizer.slots = slots
     self._eval_model.weights = self._model.weights
+    self._close_summary_writers()
 
   @property
   def current_step(self):
@@ -248,6 +256,11 @@ class Loop:
     for name, average_value in zip(eval_task.metric_names, averages):
       self._log_step('%s %s | % .8f' % (
           'eval'.ljust(5), name.rjust(self._rjust_len), average_value))
+      if self._eval_sw is not None:
+        full_name = 'metrics/' + name
+        self._eval_sw.scalar(full_name, average_value, self.current_step)
+    if self._eval_sw is not None:
+      self._eval_sw.flush()
 
   def _log_step(self, msg):
     """Logs message, labeled with the current training step number."""
@@ -262,7 +275,7 @@ class Loop:
       slots: Updatable weights for the optimizer in this training loop.
     """
     if self._output_dir is None:
-      logging.info('Did not save checkpoint as output_dir is None')
+      _log('Did not save checkpoint as output_dir is None', stdout=False)
       return
     weights = self._model_in_training.weights if weights is None else weights
     state = self._model_in_training.state if state is None else state
@@ -278,6 +291,20 @@ class Loop:
     }
     ckpt_file = os.path.join(self._output_dir, 'model.pkl.gz')
     _pickle_to_file(d, ckpt_file, gzip=True)
+
+  def _open_summary_writers(self):
+    if self._should_write_summaries:
+      _log('Evaluation metrics will be written in %s' % self._output_dir,
+           stdout=False)
+      self._eval_sw = jaxboard.SummaryWriter(
+          os.path.join(self._output_dir, 'eval'))
+
+  def _close_summary_writers(self):
+    if self._eval_sw is not None:
+      self._eval_sw.close()
+      self._eval_sw = None
+      _log('Evaluation metrics were written in %s' % self._output_dir,
+           stdout=False)
 
 
 def _model_with_metrics(model, eval_task):
