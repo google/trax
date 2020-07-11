@@ -205,8 +205,8 @@ def _train_and_eval_dataset(dataset_name, data_dir, eval_holdout_size,
   if eval_holdout_size > 0:
     holdout_percentage = int(eval_holdout_size * 100.0)
     train_percentage = 100 - holdout_percentage
-    train_split = tfds.Split.TRAIN.subsplit(tfds.percent[:train_percentage])
-    eval_split = tfds.Split.TRAIN.subsplit(tfds.percent[train_percentage:])
+    train_split = f'train[:{train_percentage}%]'
+    eval_split = f'train[{train_percentage}%:]'
   else:
     if tfds.Split.VALIDATION not in splits and 'test' not in splits:
       raise ValueError('We require a validation or test split in the dataset.')
