@@ -479,8 +479,9 @@ class Layer:
       return forward_infer_shapes(
           input_signature, weights_signature, state_signature, rng_signature)
     except Exception:
-      # Skipping 13 lines which are all JAX abstract'ifying wrappers.
-      name, trace = self._name, _short_traceback(skip=13)
+      # TODO(lukaszkaiser): the choice of 7 is a heuristic, can we automate it?
+      # Skipping 7 lines which are all JAX abstract'ifying wrappers.
+      name, trace = self._name, _short_traceback(skip=7)
       raise LayerError(name, '_forward_abstract', self._caller, input_signature,
                        trace) from None
 

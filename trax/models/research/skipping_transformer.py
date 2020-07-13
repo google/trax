@@ -45,7 +45,7 @@ class SkippingSerial(tl.Serial):
   def init_weights_and_state(self, input_signature):
     """Add a step-counter to the state. Initialize with 0."""
     super(SkippingSerial, self).init_weights_and_state(input_signature)
-    self._state = (0, self._state)
+    self._state = (jnp.array(0, dtype=jnp.int32), self._state)
 
   @tl.Layer.state.setter
   def state(self, state):
@@ -89,7 +89,7 @@ class SkippingSerial(tl.Serial):
     if self._mode == 'train':
       # warmup goes from 1.0 at start to 0.0 at skipping_warmup_steps and after
       w_steps = float(self._skipping_warmup_steps)
-      f_step = jnp.array(step, dtype=jnp.float32)
+      f_step = step.astype(jnp.float32)
       warmup = jnp.maximum(0.0, (w_steps - f_step) / w_steps)
       # low is the minimum number of layers to *not* skip, from n_layers to 0
       low = warmup * float(n_layers)
@@ -108,12 +108,13 @@ class SkippingSerial(tl.Serial):
     for layer, p, s, rng in zip(self.sublayers, weights, layers_state, rngs):
       inputs = _inputs_from_stack(layer, stack)
       def CondF(t):
-        o, s = layer.pure_fn(t[0], t[1], t[2], t[3])  # pylint: disable=cell-var-from-loop
-        return o, t[1], s, t[3]
-      outputs, _, s, _ = fastmath.cond(
+        return layer.pure_fn(t[0], t[1], t[2], t[3])  # pylint: disable=cell-var-from-loop
+      def PassF(t):
+        return t[0], t[2]
+      outputs, s = fastmath.cond(
           fastmath.lt(cur_layer_idx, n_forward_layers),
           CondF,
-          lambda x: x,
+          PassF,
           (inputs, p, s, rng)
       )
       stack = _outputs_onto_stack(layer, outputs, stack)
