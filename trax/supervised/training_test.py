@@ -47,6 +47,15 @@ class TrainingTest(test.TestCase):
     finally:
       assert getattr(flags.FLAGS, 'test_tmpdir')
 
+  def test_loop_no_eval_task(self):
+    """Runs a training loop with no eval task(s)."""
+    model = tl.Serial(tl.Dense(1))
+    task = training.TrainTask(
+        _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01))
+    training_session = training.Loop(model, task)
+    # Loop should initialize and run successfully, even with no eval task.
+    training_session.run(n_steps=5)
+
   def test_train_dense_layer(self):
     """Trains a very simple network on a very simple task."""
     model = tl.Serial(tl.Dense(1))

@@ -101,45 +101,44 @@ class Loop:
     """
     self._task = task
     self._model = model
-    self._model_in_training = tl.Serial(model, task.loss_layer)
-    self._eval_model = model if eval_model is None else eval_model
-    self._eval_task = eval_task
-    self._rjust_len = max([0] + [len(name) for name in eval_task.metric_names])
-
-    self._output_dir = os.path.expanduser(output_dir) if output_dir else None
+    self._eval_model = eval_model or model
+    self._summary_writer = None
+    default_at = (
+        _at_step_1_and_every_nth_step(self._task.n_steps_per_checkpoint))
     if output_dir is not None:
-      tf.io.gfile.makedirs(output_dir)
-    default_fn = _at_step_1_and_periodically_at(task.n_steps_per_checkpoint)
-    self._checkpoint_at = checkpoint_at or default_fn
-    self._eval_at = eval_at or default_fn
-    if eval_task is None:
-      self._eval_at = _never
-    self._should_write_summaries = True
-    if not output_dir:
-      _log('Will not write evaluation metrics as output_dir is None')
-      self._should_write_summaries = False
-    self._eval_sw = None
+      self._output_dir = os.path.expanduser(output_dir)
+      tf.io.gfile.makedirs(self._output_dir)
+    else:
+      self._output_dir = None
+
+    # Prepare training components.
     self._step = 0
-
-    batch_signature = shapes.signature(task.sample_batch)
-    self._batch_signature = batch_signature
-    # Initialize the model and the optimizer; discard the return values
-    # (model weights/state, optimizer slots/params), since they're available
-    # from the model and optimizer objects.
-    _, _ = self._model_in_training.init(batch_signature)
-    _, _ = task.optimizer.tree_init(self._model_in_training.weights)
-
-    self._gradients_and_state_fn = (
+    self._checkpoint_at = checkpoint_at or default_at
+    self._model_in_training = tl.Serial(self._model, self._task.loss_layer)
+    self._batch_signature = shapes.signature(self._task.sample_batch)
+    _, _ = self._model_in_training.init(self._batch_signature)
+    _, _ = self._task.optimizer.tree_init(self._model_in_training.weights)
+    self._forward_and_backward_fn = (
         fastmath.jit(fastmath.value_and_grad(
             self._model_in_training.pure_fn,
             argnums=1,  # arg1 of pure_fn: weights
             has_aux=True)))  # return (loss, state), gradients
 
-    if eval_task is not None:
-      model_with_metrics = _model_with_metrics(self._eval_model, eval_task)
+    # Prepare eval components.
+    if eval_task is None:
+      self._eval_at = _never
+    else:
+      self._eval_task = eval_task
+      self._eval_at = eval_at or default_at
+      self._rjust_len = (
+          max([0] + [len(name) for name in self._eval_task.metric_names]))
+      model_with_metrics = (
+          _model_with_metrics(self._eval_model, self._eval_task))
       self._eval_weights = model_with_metrics.weights[1]  # just the eval part
       self._eval_state = model_with_metrics.state[1]  # just the eval part
       self._metrics_fn = fastmath.jit(model_with_metrics.pure_fn)
+      if self._output_dir is None:
+        _log('Will not write evaluation metrics, because output_dir is None.')
 
   def run(self, n_steps=1):
     """Runs this training loop for n steps.
@@ -153,7 +152,7 @@ class Loop:
     weights = self._model_in_training.weights
     state = self._model_in_training.state
     slots = self._task.optimizer.slots
-    self._open_summary_writers()
+    self._open_summary_writer()
     loss_acc, step_acc = 0.0, 0
     for _ in range(n_steps):
       self._step += 1
@@ -181,7 +180,7 @@ class Loop:
     self._model_in_training.state = state
     self._task.optimizer.slots = slots
     self._eval_model.weights = self._model.weights
-    self._close_summary_writers()
+    self._close_summary_writer()
 
   @property
   def current_step(self):
@@ -223,7 +222,7 @@ class Loop:
     opt_params.update({'learning_rate': self._task.learning_rate(step)})
 
     (loss, updated_state), gradients = (
-        self._gradients_and_state_fn(batch, weights, state, self.new_rng()))
+        self._forward_and_backward_fn(batch, weights, state, self.new_rng()))
     updated_weights, updated_slots, _ = (
         optimizer.tree_update(step, gradients, weights, slots, opt_params))
     return loss, updated_weights, updated_state, updated_slots
@@ -256,11 +255,11 @@ class Loop:
     for name, average_value in zip(eval_task.metric_names, averages):
       self._log_step('%s %s | % .8f' % (
           'eval'.ljust(5), name.rjust(self._rjust_len), average_value))
-      if self._eval_sw is not None:
+      if self._summary_writer is not None:
         full_name = 'metrics/' + name
-        self._eval_sw.scalar(full_name, average_value, self.current_step)
-    if self._eval_sw is not None:
-      self._eval_sw.flush()
+        self._summary_writer.scalar(full_name, average_value, self.current_step)
+    if self._summary_writer is not None:
+      self._summary_writer.flush()
 
   def _log_step(self, msg):
     """Logs message, labeled with the current training step number."""
@@ -292,18 +291,18 @@ class Loop:
     ckpt_file = os.path.join(self._output_dir, 'model.pkl.gz')
     _pickle_to_file(d, ckpt_file, gzip=True)
 
-  def _open_summary_writers(self):
-    if self._should_write_summaries:
-      _log('Evaluation metrics will be written in %s' % self._output_dir,
+  def _open_summary_writer(self):
+    if self._output_dir is not None:
+      _log('Evaluation metrics will be written in %s.' % self._output_dir,
            stdout=False)
-      self._eval_sw = jaxboard.SummaryWriter(
+      self._summary_writer = jaxboard.SummaryWriter(
           os.path.join(self._output_dir, 'eval'))
 
-  def _close_summary_writers(self):
-    if self._eval_sw is not None:
-      self._eval_sw.close()
-      self._eval_sw = None
-      _log('Evaluation metrics were written in %s' % self._output_dir,
+  def _close_summary_writer(self):
+    if self._summary_writer is not None:
+      self._summary_writer.close()
+      self._summary_writer = None
+      _log('Evaluation metrics were written in %s.' % self._output_dir,
            stdout=False)
 
 
@@ -459,7 +458,7 @@ def _never(*args):
   return False
 
 
-def _at_step_1_and_periodically_at(period):
+def _at_step_1_and_every_nth_step(period):
   """A function that's true at 1 and n when n % period == 0."""
   def _at_1_and_periodically(step_n):
     return (step_n == 1) or (step_n > 0 and (step_n % period == 0))
