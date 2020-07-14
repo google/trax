@@ -57,8 +57,7 @@ class SkippingSerial(tl.Serial):
           f'Number of state elements ({len(state[1])}) does not equal '
           f'number of sublayers ({n_layers}).')
     for layer, sublayer_state in zip(self.sublayers, state[1]):
-      if sublayer_state is not tl.GET_STATE_FROM_CACHE:
-        layer.state = sublayer_state
+      layer.state = sublayer_state
 
   def forward(self, xs):
     self._validate_forward_inputs(xs)

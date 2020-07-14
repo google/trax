@@ -66,7 +66,10 @@ class LSTMCell(base.Layer):
 
   def init_weights_and_state(self, input_signature):
     # LSTM state last dimension must be twice n_units.
-    assert input_signature[1].shape[-1] == 2 * self._n_units
+    if input_signature[1].shape[-1] != 2 * self._n_units:
+      raise ValueError(
+          f'Last dimension of state (shape: {str(input_signature[1].shape)}) '
+          f'must be equal to 2*n_units ({2 * self._n_units})')
     # The dense layer input is the input and half of the lstm state.
     input_shape = input_signature[0].shape[-1] + self._n_units
     rng1, rng2 = fastmath.random.split(self.rng, 2)

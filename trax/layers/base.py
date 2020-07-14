@@ -344,25 +344,52 @@ class Layer:
       - an empty tuple
       - a tensor (ndarray)
       - a nested structure of tuples and tensors
+
+    If the layer has sublayers, the weights by convention will usually be
+    a tuple of length `len(sublayers)` containing the weights of sublayers.
     """
     return self._weights
 
   @weights.setter
   def weights(self, weights):
+    """Sets the weights of this layer and its sublayers."""
     if isinstance(weights, dict) and weights == GET_WEIGHTS_FROM_CACHE:
       return
     self._weights = weights
+    # Set sublayer weights.
+    if self.sublayers:
+      n_layers = len(self.sublayers)
+      if len(weights) != n_layers:
+        raise ValueError(
+            f'Number of weight elements ({len(weights)}) does not equal the '
+            f'number of sublayers ({n_layers}) in: {str(self)}.')
+      for sublayer, sublayer_weights in zip(self.sublayers, weights):
+        sublayer.weights = sublayer_weights
 
   @property
   def state(self):
-    """Returns a tuple containing this layer's state; may be empty."""
+    """Returns a tuple containing this layer's state; may be empty.
+
+    If the layer has sublayers, the state by convention will usually be
+    a tuple of length `len(sublayers)` containing sublayer states.
+    """
     return self._state
 
   @state.setter
   def state(self, state):
-    if isinstance(state, dict) and state != GET_STATE_FROM_CACHE:
+    """Sets the state of this layer and its sublayers."""
+    if isinstance(state, dict) and state == GET_STATE_FROM_CACHE:
       return
     self._state = state
+    # Set sublayer states.
+    if self.sublayers:
+      n_layers = len(self.sublayers)
+      if len(state) != n_layers:
+        raise ValueError(
+            f'Number of state elements ({len(state)}) does not equal the '
+            f'number of sublayers ({n_layers}) in: {str(self)}.')
+      for sublayer, sublayer_state in zip(self.sublayers, state):
+        sublayer.state = sublayer_state
 
   def weights_and_state_signature(self, input_signature):
     """Return a pair containing the signatures of weights and state."""
