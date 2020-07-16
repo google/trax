@@ -779,11 +779,9 @@ class EfficientAttentionBase(base.Layer):
         o_all, s_all, i_ct_all, w_ct_all = loop_val
         idx = idx * n_parallel_heads
         example_idx_lo = idx // self.n_heads
-        # Use iota here instead of np.arange, because np.arange will fail to
-        # infer that the slice size is a compile-time constant.
-        example_range = example_idx_lo + jax.lax.iota(
-            np.int32, n_parallel_heads // self.n_heads)
-        state_range = idx + jax.lax.iota(np.int32, n_parallel_heads)
+        example_range = example_idx_lo + np.arange(
+            n_parallel_heads // self.n_heads, dtype=np.int32)
+        state_range = idx + np.arange(n_parallel_heads, dtype=np.int32)
 
         i_mex = fastmath.nested_map(lambda x: x[example_range], inputs)
         s_mex = fastmath.nested_map(

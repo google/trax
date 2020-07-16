@@ -347,7 +347,12 @@ def pad_to_max_dims(tensors, boundary=None, strict_pad_on_len=False):
 
 def _buckets_for_length(bucket_length, batch_size, max_eval_length, n_devices,
                         training):
-  """Create heuristically a set of bucket boundaries and sizes.
+  """Creates heuristically a set of bucket boundaries and sizes.
+
+  The middle boundary is set to `bucket_length` and the corresponding batch
+  size is set to `batch_size`. We also create buckets of 1/2 and 1/4 length
+  with 2x and 4x batch size, and buckets of 2x and 4x and larger length with
+  1/2 and 1/4 batch size respectively, and batch size 1 for the final one.
 
   Args:
     bucket_length: the length of the middle bucket.
