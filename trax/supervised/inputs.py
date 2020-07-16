@@ -180,38 +180,8 @@ def batch_fn(dataset, training, n_devices, variable_shapes,
     logging.info('Heuristically setting bucketing to %s based on shapes '
                  'of target tensors.', variable_shapes)
     if variable_shapes:
-      bucket_boundaries = [bucket_length // 4, bucket_length // 2,
-                           bucket_length, bucket_length * 2,
-                           bucket_length * 4, bucket_length * 8,
-                           bucket_length * 16]
-      if not training:
-        max_eval_length = max_eval_length or bucket_length * 32
-        # Set last bucket boundary to be max_eval_length, cut off boundaries
-        # that are larger than this.
-        bucket_boundaries = (
-            [b for b in bucket_boundaries if b < max_eval_length] +
-            [max_eval_length]
-        )
-        bucket_boundaries.append(max_eval_length)
-      # We will pad to boundaries which pads to bucket_boundary - 1: add 1 here.
-      bucket_boundaries = [b + 1 for b in bucket_boundaries]
-      bucket_batch_sizes = [cur_batch_size * 4, cur_batch_size * 2,
-                            cur_batch_size, cur_batch_size // 2,
-                            cur_batch_size // 4, cur_batch_size // 8,
-                            cur_batch_size // 16, 1]
-      if not training:
-        # The last bucket batch size is always 1, but the one-but-last is
-        # sized to accomodate the final length = bucket_boundaries[-1], which
-        # we changed for eval above -- so adjusting here too.
-
-        # Resize if needed, since bucket_batch_sizes may not be the same size
-        # anymore.
-        bucket_batch_sizes = bucket_batch_sizes[:len(bucket_boundaries)] + [1]
-        bucket_batch_sizes[-2] = cur_batch_size // max_eval_length
-      # Make batch sizes divisible by n_devices.
-      bucket_batch_sizes = [max(b // n_devices, 1) * n_devices
-                            for b in bucket_batch_sizes]
-      buckets = (bucket_boundaries, bucket_batch_sizes)
+      buckets = _buckets_for_length(
+          bucket_length, cur_batch_size, max_eval_length, n_devices, training)
 
   if buckets:
     logging.info('Bucketing with buckets %s.', str(buckets))
@@ -375,9 +345,63 @@ def pad_to_max_dims(tensors, boundary=None, strict_pad_on_len=False):
   return np.stack(padded_tensors)
 
 
+def _buckets_for_length(bucket_length, batch_size, max_eval_length, n_devices,
+                        training):
+  """Create heuristically a set of bucket boundaries and sizes.
+
+  Args:
+    bucket_length: the length of the middle bucket.
+    batch_size: the batch size for the middle bucket.
+    max_eval_length: the longest bucket length if training=False.
+    n_devices: number of devices, batch sizes are divisible by that.
+    training: bool, whether we are training or evaluating.
+
+  Returns:
+    a pair of lists of integers, (bucket_boundaries, bucket_batch_sizes).
+  """
+  bucket_boundaries = [bucket_length // 4, bucket_length // 2,
+                       bucket_length, bucket_length * 2,
+                       bucket_length * 4, bucket_length * 8,
+                       bucket_length * 16]
+  if not training:
+    max_eval_length = max_eval_length or bucket_length * 32
+    # Set last bucket boundary to be max_eval_length, cut off boundaries
+    # that are larger than this.
+    bucket_boundaries = (
+        [b for b in bucket_boundaries if b < max_eval_length] +
+        [max_eval_length]
+    )
+    bucket_boundaries.append(max_eval_length)
+  # We will pad to boundaries which pads to bucket_boundary - 1: add 1 here.
+  bucket_boundaries = [b + 1 for b in bucket_boundaries]
+  bucket_batch_sizes = [batch_size * 4, batch_size * 2,
+                        batch_size, batch_size // 2,
+                        batch_size // 4, batch_size // 8,
+                        batch_size // 16, 1]
+  if not training:
+    # The last bucket batch size is always 1, but the one-but-last is
+    # sized to accomodate the final length = bucket_boundaries[-1], which
+    # we changed for eval above -- so adjusting here too.
+
+    # Resize if needed, since bucket_batch_sizes may not be the same size
+    # anymore.
+    bucket_batch_sizes = bucket_batch_sizes[:len(bucket_boundaries)] + [1]
+    bucket_batch_sizes[-2] = batch_size // max_eval_length
+  # Make batch sizes divisible by n_devices.
+  bucket_batch_sizes = [max(b // n_devices, 1) * n_devices
+                        for b in bucket_batch_sizes]
+  return (bucket_boundaries, bucket_batch_sizes)
+
+
 def bucket_by_length(generator, length_fn, boundaries, batch_sizes,
                      strict_pad_on_len=False):
   """Bucket by length, like tf.data.experimental.bucket_by_sequence_length.
+
+  This function draws examples from the provided `generator` and puts an
+  example into a bucket depending on `l = length_fn(example)`. Which bucket
+  is used depends on between which `boundaries` is l. When a bucket reaches
+  its batch size, as specified by `batch_sizes`, generates a batch of
+  padded examples from this bucket.
 
   Args:
     generator: python generator to draw data from.
