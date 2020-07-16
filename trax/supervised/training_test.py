@@ -117,15 +117,23 @@ class TrainingTest(test.TestCase):
     training_session = training.Loop(model, task, eval_task=eval_task,
                                      eval_at=lambda step_n: step_n % 2 == 0,
                                      output_dir=tmp_dir)
-    expected_metric_dir = os.path.join(tmp_dir, 'eval')
-    self.assertFalse(os.path.isdir(expected_metric_dir))
+    expected_train_metric_dir = os.path.join(tmp_dir, 'train')
+    expected_eval_metric_dir = os.path.join(tmp_dir, 'eval')
+    for directory in [expected_train_metric_dir, expected_eval_metric_dir]:
+      self.assertFalse(
+          os.path.isdir(directory), 'Failed for directory %s.' % directory)
     training_session.run(n_steps=15)
     time.sleep(1)  # wait for the files to be closed
-    self.assertTrue(os.path.isdir(expected_metric_dir))
-    self.assertEqual(1, _count_files(expected_metric_dir))
+    for directory in [expected_train_metric_dir, expected_eval_metric_dir]:
+      self.assertTrue(
+          os.path.isdir(directory), 'Failed for directory %s.' % directory)
+      self.assertEqual(
+          1, _count_files(directory), 'Failed for directory %s.' % directory)
     training_session.run(n_steps=5)
     time.sleep(1)  # wait for the files to be closed
-    self.assertEqual(2, _count_files(expected_metric_dir))
+    for directory in [expected_train_metric_dir, expected_eval_metric_dir]:
+      self.assertEqual(
+          2, _count_files(directory), 'Failed for directory %s.' % directory)
 
 
 def _very_simple_data():

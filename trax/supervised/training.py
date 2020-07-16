@@ -33,11 +33,13 @@ Key classes:
   - EvalTask: How and when to measure model performance as a function of
     training step number.
 """
+import collections
 import contextlib
 import gzip as gzip_lib
 import os
 import pickle
 import sys
+import time
 
 from absl import logging
 import numpy as np
@@ -154,26 +156,32 @@ class Loop:
     weights = self._model_in_training.weights
     state = self._model_in_training.state
     slots = self._task.optimizer.slots
-    with self._open_summary_writer() as summary_writer:
+    with self._open_summary_writers() as (train_summary_writer,
+                                          eval_summary_writer):
       loss_acc, step_acc = 0.0, 0
+      start_time = time.time()
+      optimizer_metrics_acc = collections.defaultdict(float)
       for _ in range(n_steps):
         self._step += 1
-        loss, weights, state, slots = self._run_one_step(weights, state, slots)
+        loss, weights, state, slots, optimizer_metrics = self._run_one_step(
+            weights, state, slots)
         loss_acc += loss
         step_acc += 1
+        for metric_name, value in optimizer_metrics.items():
+          optimizer_metrics_acc[metric_name] += value
         if self._eval_at(self._step):
+          elapsed_time = time.time() - start_time
           self._model_in_training.weights = weights
           self._model_in_training.state = state
           self._eval_model.weights = self._model.weights
-          # TODO(lukaszkaiser): move this to a better place with other reporting
-          loss_name = self._task.loss_layer.name
-          # only here do avoid potential divide-by-0
-          step_acc = max(1, step_acc)
-          self._log_step('%s %s | % .8f' % (
-              'train'.ljust(5), loss_name.rjust(self._rjust_len),
-              loss_acc / float(step_acc)))
+          self._log_training_progress(
+              total_loss=loss_acc, n_steps=step_acc, elapsed_time=elapsed_time,
+              optimizer_metrics=optimizer_metrics_acc,
+              summary_writer=train_summary_writer)
+          self.run_evals(weights, state, eval_summary_writer)
           loss_acc, step_acc = 0.0, 0
-          self.run_evals(weights, state, summary_writer)
+          start_time = time.time()
+          optimizer_metrics_acc = collections.defaultdict(float)
         if self._checkpoint_at(self._step):
           self.save_checkpoint(weights, state, slots)
 
@@ -215,7 +223,8 @@ class Loop:
       slots: Updatable weights for the optimizer in this training loop.
 
     Returns:
-      Tuple (weights, state, slots) with new values from one step of training.
+      Tuple (weights, state, slots, metrics) with new values from one step of
+      training, where metrics are current optimizer metrics.
     """
     step = self.current_step
     batch = self._task.next_batch()
@@ -225,9 +234,44 @@ class Loop:
 
     (loss, updated_state), gradients = (
         self._forward_and_backward_fn(batch, weights, state, self.new_rng()))
-    updated_weights, updated_slots, _ = (
+    updated_weights, updated_slots, training_metrics = (
         optimizer.tree_update(step, gradients, weights, slots, opt_params))
-    return loss, updated_weights, updated_state, updated_slots
+    return loss, updated_weights, updated_state, updated_slots, training_metrics
+
+  def _log_training_progress(self, total_loss, n_steps, elapsed_time,
+                             optimizer_metrics, summary_writer):
+    """Logs training related metrics.
+
+    Logs:
+     * current learning rate,
+     * steps per second,
+     * average training loss,
+     * average metrics returned from the optimizer
+    to the provided summary writer. Training loss is also logged to stdout.
+
+    Args:
+      total_loss: Total training loss accumulated over n_steps training steps.
+      n_steps: Number of steps over which the metrics were accumulated.
+      elapsed_time: Time of execusion of n_steps training steps.
+      optimizer_metrics: Dict from optimizer metric name to metric values.
+      summary_writer: Jaxboard summary writer for saving provided metrics.
+    """
+    loss_name = self._task.loss_layer.name
+    # only here do avoid potential divide-by-0
+    n_steps = max(1, n_steps)
+    self._log_scalars(
+        {loss_name: total_loss / float(n_steps)},
+        summary_writer, 'metrics/', 'train')
+    train_parameters = {}
+    train_parameters['learning_rate'] = self._task.learning_rate(
+        self.current_step)
+    train_parameters['steps per second'] = n_steps / elapsed_time
+    for metric_name in optimizer_metrics.keys():
+      # compute the average
+      optimizer_metrics[metric_name] /= n_steps
+    train_parameters.update(optimizer_metrics)
+    self._log_scalars(
+        train_parameters, summary_writer, 'training/', 'train', stdout=False)
 
   def run_evals(self, weights=None, state=None, summary_writer=None):
     """Runs and records evals for this training session.
@@ -255,18 +299,34 @@ class Loop:
           self._metrics_fn(batch, metrics_weights, metrics_state, rng))
       sums += metric_values
     averages = sums / n_batches
-    for name, average_value in zip(eval_task.metric_names, averages):
-      self._log_step('%s %s | % .8f' % (
-          'eval'.ljust(5), name.rjust(self._rjust_len), average_value))
+    all_metrics = dict(zip(eval_task.metric_names, averages))
+    self._log_scalars(all_metrics, summary_writer, 'metrics/', 'eval')
+
+  def _log_scalars(self, scalars, summary_writer, scalar_prefix, log_prefix,
+                   stdout=True):
+    """Logs and saves provided metrics.
+
+    Args:
+      scalars: Dict from metric name to metric value.
+      summary_writer: Jaxboard summary writer.
+      scalar_prefix: String appended in front of summary_writer entries.
+      log_prefix: String appended in front of logs.
+      stdout: Boolean saying if logs should be logged to stdout as well.
+    """
+    for name, value in scalars.items():
+      self._log_step(
+          '%s %s | % .8f' %
+          (log_prefix.ljust(5), name.rjust(self._rjust_len), value),
+          stdout=stdout)
       if summary_writer is not None:
-        full_name = 'metrics/' + name
-        summary_writer.scalar(full_name, average_value, self.current_step)
+        full_name = scalar_prefix + name
+        summary_writer.scalar(full_name, value, self.current_step)
     if summary_writer is not None:
       summary_writer.flush()
 
-  def _log_step(self, msg):
+  def _log_step(self, msg, stdout=True):
     """Logs message, labeled with the current training step number."""
-    _log('Step % 6d: %s' % (self.current_step, msg))
+    _log('Step % 6d: %s' % (self.current_step, msg), stdout=stdout)
 
   def save_checkpoint(self, weights=None, state=None, slots=None):
     """Saves checkpoint to disk for the current training step.
@@ -295,26 +355,30 @@ class Loop:
     pickle_to_file(d, ckpt_file, gzip=True)
 
   @contextlib.contextmanager
-  def _open_summary_writer(self):
-    """Opens the Jaxboard summary writer wrapped by context manager.
+  def _open_summary_writers(self):
+    """Opens the Jaxboard summary writers wrapped by context manager.
 
     Yields:
-      Jaxboard summary writer wrapped by the GeneratorContextManager object.
-      If there was no output_dir provided, yields None.
+      Tuple (train_summary_writer, eval_summary_writer) of Jaxboard summary
+      writers wrapped by the GeneratorContextManager object.
+      If there was no output_dir provided, yields (None, None).
     """
     if self._output_dir is not None:
-      _log('Evaluation metrics will be written in %s.' % self._output_dir,
-           stdout=False)
-      summary_writer = jaxboard.SummaryWriter(
+      _log('Training and evaluation metrics will be written in %s.' %
+           self._output_dir, stdout=False)
+      train_summary_writer = jaxboard.SummaryWriter(
+          os.path.join(self._output_dir, 'train'))
+      eval_summary_writer = jaxboard.SummaryWriter(
           os.path.join(self._output_dir, 'eval'))
       try:
-        yield summary_writer
+        yield train_summary_writer, eval_summary_writer
       finally:
-        summary_writer.close()
-        _log('Evaluation metrics were written in %s.' % self._output_dir,
-             stdout=False)
+        train_summary_writer.close()
+        eval_summary_writer.close()
+        _log('Training and evaluation metrics were written in %s.' %
+             self._output_dir, stdout=False)
     else:
-      yield None
+      yield None, None
 
 
 def _model_with_metrics(model, eval_task):
