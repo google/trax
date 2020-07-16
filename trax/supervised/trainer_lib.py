@@ -21,10 +21,8 @@ will replace `trainer_lib`.
 
 import collections
 import functools
-import gzip as gzip_lib
 import itertools
 import os
-import pickle
 import random
 import sys
 import time
@@ -46,6 +44,7 @@ from trax.shapes import ShapeDtype
 from trax.supervised import history as trax_history
 from trax.supervised import inputs as trax_inputs
 from trax.supervised import lr_schedules as lr
+from trax.supervised import training
 
 
 # TODO(afrozm): Maybe flatten everything from OptState into TrainerState.
@@ -396,7 +395,7 @@ class Trainer(object):
               jaxboard.markdownify_operative_config_str(config_str))
 
   def _save_state_dict(self, trainer_state_dict, weights_file):
-    pickle_to_file(trainer_state_dict, weights_file, gzip=True)
+    training.pickle_to_file(trainer_state_dict, weights_file, gzip=True)
     log('Model saved to %s' % weights_file, stdout=False)
 
   def save_state(self, keep, prefix='model'):
@@ -554,7 +553,7 @@ def train(output_dir,
           metrics=None,
           checkpoint_highest=None,
           checkpoint_lowest=None,
-          custom_train_fn=None):
+          use_loop=False):
   """Train the model on the inputs.
 
   Args:
@@ -579,13 +578,47 @@ def train(output_dir,
     metrics: optionally override the default metrics dictionary.
     checkpoint_highest: save the checkpoint highest at this metric.
     checkpoint_lowest: save the checkpoint lowest at this metric.
-    custom_train_fn: custom train function to call, entirely bypassing this one
+    use_loop: whether to use training.Loop instead of Trainer.
 
   Returns:
-    trax.TrainerState
+    trax.TrainerState or training.Loop if use_loop is True
   """
-  if custom_train_fn is not None:
-    return custom_train_fn(output_dir, model=model)
+  if use_loop:
+    init_random_number_generators(random_seed)
+    n_devices = num_devices() or fastmath.device_count()
+
+    # Prepare the training task.
+    # Inputs is either an Inputs instance or a function that returns it.
+    if callable(inputs):  # If we pass a function, e.g., through gin, call it.
+      inputs = inputs()
+    train_task = training.TrainTask(inputs.train_stream(n_devices),
+                                    loss_layer=loss_fn,
+                                    optimizer=optimizer(),
+                                    lr_schedule=lr_schedule_fn(),
+                                    n_steps_per_checkpoint=eval_frequency)
+
+    # Prepare the evaluation.
+    metrics_dict = metrics if metrics is not None else _DEFAULT_METRICS
+    names, metrics = zip(*metrics_dict.items())
+    eval_task = training.EvalTask(inputs.eval_stream(n_devices),
+                                  metrics,
+                                  metric_names=names,
+                                  n_eval_batches=eval_steps)
+
+    # Prepare the training loop.
+    checkpoint_at = None
+    if checkpoints_at is not None:
+      checkpoint_at = lambda step: step in checkpoints_at
+    loop = training.Loop(model(mode='train'),
+                         train_task,
+                         eval_model=model(mode='eval'),
+                         eval_task=eval_task,
+                         output_dir=output_dir,
+                         checkpoint_at=checkpoint_at)
+
+    # Train and return the loop.
+    loop.run(steps)
+    return loop
 
   n_devices = num_devices()
   trainer = trainer_class(model, loss_fn, optimizer, lr_schedule_fn(), inputs,
@@ -819,7 +852,7 @@ def load_trainer_state(output_dir, model, weights_file=None):
   elif not tf.io.gfile.exists(weights_file):
     raise ValueError('File not found: %s' % weights_file)
 
-  trainer_state_dict = unpickle_from_file(weights_file, gzip=True)
+  trainer_state_dict = training.unpickle_from_file(weights_file, gzip=True)
   trainer_state = trainer_state_from_dict(trainer_state_dict, model)
   log('Model loaded from %s at step %d' % (weights_file, trainer_state.step))
   logging.debug('From loaded model : history = %s', trainer_state.history)
@@ -868,28 +901,3 @@ def _repeat_stream(stream, n_devices):
   while True:
     for example in stream(n_devices):
       yield example
-
-
-def pickle_to_file(obj, file_path, gzip=False):
-  """Pickle obj to file_path with gzipping and failure protection."""
-  # Pickle to tmp file and overwrite to prevent writing partial files.
-  tmp_file_path = file_path + '._tmp_'
-  with tf.io.gfile.GFile(tmp_file_path, 'wb') as f:
-    if not gzip:
-      pickle.dump(obj, f)
-    else:
-      with gzip_lib.GzipFile(fileobj=f, compresslevel=2) as gzipf:
-        pickle.dump(obj, gzipf)
-  # Moving a file is much less error-prone than pickling large files.
-  tf.io.gfile.rename(tmp_file_path, file_path, overwrite=True)
-
-
-def unpickle_from_file(file_path, gzip=False):
-  """Unpickle obj from file_path with gzipping."""
-  with tf.io.gfile.GFile(file_path, 'rb') as f:
-    if not gzip:
-      obj = pickle.load(f)
-    else:
-      with gzip_lib.GzipFile(fileobj=f, compresslevel=2) as gzipf:
-        obj = pickle.load(gzipf)
-  return obj

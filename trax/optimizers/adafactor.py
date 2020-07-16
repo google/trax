@@ -24,7 +24,7 @@ class Adafactor(opt_base.Optimizer):
   """Adafactor optimizer."""
 
   def __init__(self,
-               learning_rate,
+               learning_rate=0.05,
                factored=True,
                multiply_by_parameter_scale=True,
                do_clipping=True,

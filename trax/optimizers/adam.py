@@ -35,7 +35,7 @@ class Adam(opt_base.Optimizer):
   """
   # pylint: enable=line-too-long
 
-  def __init__(self, learning_rate, weight_decay_rate=1e-5,  # pylint: disable=useless-super-delegation
+  def __init__(self, learning_rate=0.0001, weight_decay_rate=1e-5,  # pylint: disable=useless-super-delegation
                b1=0.9, b2=0.999, eps=1e-5, clip_grad_norm=None):
     r"""Creates an Adam optimizer.
 

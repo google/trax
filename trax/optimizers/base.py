@@ -36,7 +36,8 @@ class Optimizer(object):
   and slot updates for the whole tree of layers in the model.
   """
 
-  def __init__(self, learning_rate, clip_grad_norm=None, **init_opt_params):
+  def __init__(self, learning_rate=0.01, clip_grad_norm=None,
+               **init_opt_params):
     """Sets initial hyperparameter values for this optimizer.
 
     Takes initial optimizer parameters as keyword arguments. These values can

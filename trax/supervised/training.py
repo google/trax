@@ -116,8 +116,9 @@ class Loop:
     self._checkpoint_at = checkpoint_at or default_at
     self._model_in_training = tl.Serial(self._model, self._task.loss_layer)
     self._batch_signature = shapes.signature(self._task.sample_batch)
-    _, _ = self._model_in_training.init(self._batch_signature)
-    _, _ = self._task.optimizer.tree_init(self._model_in_training.weights)
+    self._eval_model.init(self._batch_signature)
+    self._model_in_training.init(self._batch_signature)
+    self._task.optimizer.tree_init(self._model_in_training.weights)
     self._forward_and_backward_fn = (
         fastmath.jit(fastmath.value_and_grad(
             self._model_in_training.pure_fn,
@@ -130,8 +131,9 @@ class Loop:
     else:
       self._eval_task = eval_task
       self._eval_at = eval_at or default_at
-      self._rjust_len = (
-          max([0] + [len(name) for name in self._eval_task.metric_names]))
+      metric_name_lengths = [len(name) for name in self._eval_task.metric_names]
+      self._rjust_len = max(
+          [len(self._task.loss_layer.name)] + metric_name_lengths)
       model_with_metrics = (
           _model_with_metrics(self._eval_model, self._eval_task))
       self._eval_weights = model_with_metrics.weights[1]  # just the eval part
@@ -290,7 +292,7 @@ class Loop:
         'version_timestamp': 'Jun-29-2020'  # To update in the future if needed.
     }
     ckpt_file = os.path.join(self._output_dir, 'model.pkl.gz')
-    _pickle_to_file(d, ckpt_file, gzip=True)
+    pickle_to_file(d, ckpt_file, gzip=True)
 
   @contextlib.contextmanager
   def _open_summary_writer(self):
@@ -481,7 +483,7 @@ def _log(s, stdout=True):
     sys.stdout.flush()
 
 
-def _pickle_to_file(obj, file_path, gzip=False):
+def pickle_to_file(obj, file_path, gzip=False):
   """Pickle obj to file_path with gzipping and failure protection."""
   # Pickle to tmp file and overwrite to prevent writing partial files.
   tmp_file_path = file_path + '._tmp_'
@@ -495,7 +497,7 @@ def _pickle_to_file(obj, file_path, gzip=False):
   tf.io.gfile.rename(tmp_file_path, file_path, overwrite=True)
 
 
-def _unpickle_from_file(file_path, gzip=False):
+def unpickle_from_file(file_path, gzip=False):
   """Unpickle obj from file_path with gzipping."""
   with tf.io.gfile.GFile(file_path, 'rb') as f:
     if not gzip:
