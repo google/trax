@@ -685,8 +685,8 @@ def stateless_split(seed, num=2):
   0.9002807 ], dtype=float32)>
 
   Args:
-    seed: an RNG seed (a tensor with shape [2] and dtype `int32` or
-      `int64`). (When using XLA, only `int32` is allowed.)
+    seed: an RNG seed (a tensor with shape [2] and dtype `int32` or `int64`).
+      (When using XLA, only `int32` is allowed.)
     num: optional, a positive integer or scalar tensor indicating the number of
       seeds to produce (default 2).
 
@@ -1191,3 +1191,19 @@ def gpu_devices(devices=None):
 
 def accelerators(devices=None):
   return tpu_devices(devices) or gpu_devices(devices)
+
+
+# TODO(agarwal): support axes arguments.
+def vmap(f):
+  """Returns a function that maps `f` over first dimension of inputs."""
+
+  def _f(*args):
+    tf_args = tf.nest.map_structure(lambda x: tf_np.asarray(x).data, args)
+
+    def tf_f(x):
+      return f(*x)
+
+    outputs = tf.vectorized_map(tf_f, tf_args)
+    return tf.nest.map_structure(tf_np.asarray, outputs)
+
+  return _f

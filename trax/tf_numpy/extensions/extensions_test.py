@@ -35,11 +35,9 @@ flags.DEFINE_bool("requires_tpu", False, "Requires TPU.")
 
 
 def generate_params_inputs_targets(num_examples=1000):
-  params = (tf_np.asarray(tf.constant(5.)),
-            tf_np.asarray(tf.constant(0.)))
+  params = (tf_np.asarray(tf.constant(5.)), tf_np.asarray(tf.constant(0.)))
 
-  params_true = (tf_np.asarray(tf.constant(3.)),
-                 tf_np.asarray(tf.constant(2.)))
+  params_true = (tf_np.asarray(tf.constant(3.)), tf_np.asarray(tf.constant(2.)))
 
   inputs = tf_np.asarray(tf.random.normal(shape=[num_examples]))
   noise = tf_np.asarray(tf.random.normal(shape=[num_examples]))
@@ -125,14 +123,8 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters([
       (  # pylint: disable=g-complex-comprehension
-          (
-              "_%s_%s_%s" % (
-                  decorator_id,
-                  x_struct,
-                  y_struct)).replace(" ", "").replace("None", ""),
-          decorator,
-          x_struct,
-          y_struct)
+          ("_%s_%s_%s" % (decorator_id, x_struct, y_struct)).replace(
+              " ", "").replace("None", ""), decorator, x_struct, y_struct)
       for y_struct in [[None, ()], (None, (), [], (None, ((), None)))]
       for x_struct in [(None, ()), (((), ()), [None, None], [], (None, ()))]
       for decorator_id, decorator in enumerate([lambda f: f, extensions.jit])
@@ -618,6 +610,23 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
       f = extensions.pmap(f, devices=devices)
       f = extensions.pmap(f, devices=devices)
       f(data)
+
+  def testVmap(self):
+    fn1 = extensions.vmap(lambda z: z * z)
+
+    x = tf_np.arange(10)
+    self.assertAllClose(x * x, fn1(x))
+
+    y = tf.range(10)
+    np_y = tf_np.asarray(y)
+    output = fn1(y)
+    self.assertIsInstance(output, tf_np.ndarray)
+    self.assertAllClose(np_y * np_y, output)
+
+    fn2 = extensions.vmap(lambda x, y: x + y)
+    x = tf_np.random.randn(10, 3)
+    y = tf_np.random.randn(10, 2, 3)
+    self.assertAllClose(tf_np.expand_dims(x, 1) + y, fn2(x, y))
 
 
 if __name__ == "__main__":
