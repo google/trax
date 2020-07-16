@@ -33,6 +33,7 @@ Key classes:
   - EvalTask: How and when to measure model performance as a function of
     training step number.
 """
+import contextlib
 import gzip as gzip_lib
 import os
 import pickle
@@ -102,7 +103,6 @@ class Loop:
     self._task = task
     self._model = model
     self._eval_model = eval_model or model
-    self._summary_writer = None
     default_at = (
         _at_step_1_and_every_nth_step(self._task.n_steps_per_checkpoint))
     if output_dir is not None:
@@ -152,27 +152,28 @@ class Loop:
     weights = self._model_in_training.weights
     state = self._model_in_training.state
     slots = self._task.optimizer.slots
-    self._open_summary_writer()
-    loss_acc, step_acc = 0.0, 0
-    for _ in range(n_steps):
-      self._step += 1
-      loss, weights, state, slots = self._run_one_step(weights, state, slots)
-      loss_acc += loss
-      step_acc += 1
-      if self._eval_at(self._step):
-        self._model_in_training.weights = weights
-        self._model_in_training.state = state
-        self._eval_model.weights = self._model.weights
-        # TODO(lukaszkaiser): move this to a better place with other reporting
-        loss_name = self._task.loss_layer.name
-        step_acc = max(1, step_acc)  # only here do avoid potential divide-by-0
-        self._log_step('%s %s | % .8f' % (
-            'train'.ljust(5), loss_name.rjust(self._rjust_len),
-            loss_acc / float(step_acc)))
-        loss_acc, step_acc = 0.0, 0
-        self.run_evals(weights, state)
-      if self._checkpoint_at(self._step):
-        self.save_checkpoint(weights, state, slots)
+    with self._open_summary_writer() as summary_writer:
+      loss_acc, step_acc = 0.0, 0
+      for _ in range(n_steps):
+        self._step += 1
+        loss, weights, state, slots = self._run_one_step(weights, state, slots)
+        loss_acc += loss
+        step_acc += 1
+        if self._eval_at(self._step):
+          self._model_in_training.weights = weights
+          self._model_in_training.state = state
+          self._eval_model.weights = self._model.weights
+          # TODO(lukaszkaiser): move this to a better place with other reporting
+          loss_name = self._task.loss_layer.name
+          # only here do avoid potential divide-by-0
+          step_acc = max(1, step_acc)
+          self._log_step('%s %s | % .8f' % (
+              'train'.ljust(5), loss_name.rjust(self._rjust_len),
+              loss_acc / float(step_acc)))
+          loss_acc, step_acc = 0.0, 0
+          self.run_evals(weights, state, summary_writer)
+        if self._checkpoint_at(self._step):
+          self.save_checkpoint(weights, state, slots)
 
     # Store the final values back into their respective objects, for testing
     # or other inspection/use.
@@ -180,7 +181,6 @@ class Loop:
     self._model_in_training.state = state
     self._task.optimizer.slots = slots
     self._eval_model.weights = self._model.weights
-    self._close_summary_writer()
 
   @property
   def current_step(self):
@@ -227,12 +227,13 @@ class Loop:
         optimizer.tree_update(step, gradients, weights, slots, opt_params))
     return loss, updated_weights, updated_state, updated_slots
 
-  def run_evals(self, weights=None, state=None):
+  def run_evals(self, weights=None, state=None, summary_writer=None):
     """Runs and records evals for this training session.
 
     Args:
       weights: Current weights from model in training.
       state: Current state from model in training.
+      summary_writer: Jaxboard summary writer to log metrics.
     """
     weights = self._model_in_training.weights if weights is None else weights
     state = self._model_in_training.state if state is None else state
@@ -255,11 +256,11 @@ class Loop:
     for name, average_value in zip(eval_task.metric_names, averages):
       self._log_step('%s %s | % .8f' % (
           'eval'.ljust(5), name.rjust(self._rjust_len), average_value))
-      if self._summary_writer is not None:
+      if summary_writer is not None:
         full_name = 'metrics/' + name
-        self._summary_writer.scalar(full_name, average_value, self.current_step)
-    if self._summary_writer is not None:
-      self._summary_writer.flush()
+        summary_writer.scalar(full_name, average_value, self.current_step)
+    if summary_writer is not None:
+      summary_writer.flush()
 
   def _log_step(self, msg):
     """Logs message, labeled with the current training step number."""
@@ -291,19 +292,27 @@ class Loop:
     ckpt_file = os.path.join(self._output_dir, 'model.pkl.gz')
     _pickle_to_file(d, ckpt_file, gzip=True)
 
+  @contextlib.contextmanager
   def _open_summary_writer(self):
+    """Opens the Jaxboard summary writer wrapped by context manager.
+
+    Yields:
+      Jaxboard summary writer wrapped by the GeneratorContextManager object.
+      If there was no output_dir provided, yields None.
+    """
     if self._output_dir is not None:
       _log('Evaluation metrics will be written in %s.' % self._output_dir,
            stdout=False)
-      self._summary_writer = jaxboard.SummaryWriter(
+      summary_writer = jaxboard.SummaryWriter(
           os.path.join(self._output_dir, 'eval'))
-
-  def _close_summary_writer(self):
-    if self._summary_writer is not None:
-      self._summary_writer.close()
-      self._summary_writer = None
-      _log('Evaluation metrics were written in %s.' % self._output_dir,
-           stdout=False)
+      try:
+        yield summary_writer
+      finally:
+        summary_writer.close()
+        _log('Evaluation metrics were written in %s.' % self._output_dir,
+             stdout=False)
+    else:
+      yield None
 
 
 def _model_with_metrics(model, eval_task):
