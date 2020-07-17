@@ -410,11 +410,11 @@ def Branch(*layers, name='Branch'):
   one argument, which it leaves unchanged. (It acts as a one-arg no-op.)
 
   Args:
-    *layers: list of layers
+    *layers: List of layers.
     name: Descriptive name for this layer.
 
   Returns:
-    the branch layer
+    A branch layer built from the given sublayers.
   """
   if len(layers) == 1:
     return layers[0]

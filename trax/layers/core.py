@@ -226,8 +226,8 @@ def Flatten(n_axes_to_keep=1):
 
   Flattening keeps all the values of the input tensor, but reshapes it by
   collapsing one or more trailing axes into a single axis. For example, a
-  `Flatten(n_axes_to_keep=2)` layer would map a tensor with shape `(2, 3, 5, 7,
-  11)` to the same values with shape `(2, 3, 385)`.
+  `Flatten(n_axes_to_keep=2)` layer would map a tensor with shape
+  `(2, 3, 5, 7, 11)` to the same values with shape `(2, 3, 385)`.
 
   Args:
     n_axes_to_keep: Number of leading axes to leave unchanged when reshaping;
