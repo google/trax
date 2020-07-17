@@ -52,10 +52,18 @@ alias pytest='coverage run -m pytest'
 
 ## Core Trax and Supervised Learning
 
-pytest --disable-warnings trax/supervised
+# Disabled test fails with "disable-warnings", tested separately. These tests
+# parse flags, so it is important that no other flags be given to pytest for
+# these.
+
+pytest --disable-warnings \
+  --ignore=trax/supervised/training_test.py \
+  trax/supervised
 set_status
 
-# Disabled test fails with "disable-warnings", tested separately.
+pytest trax/supervised/training_test.py
+set_status
+
 pytest --disable-warnings \
   --ignore=trax/layers/initializers_test.py \
   trax/layers
