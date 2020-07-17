@@ -319,13 +319,11 @@ def ReformerLM(vocab_size,
   Returns:
     the layer.
   """
-  d_emb = d_model
   if not axial_pos_shape:
     positional_encoding = tl.PositionalEncoding(
         max_len=max_len, dropout=dropout, mode=mode)
   elif axial_pos_shape == 'fixed-base':  # TODO(lukaszkaiser): remove this HACK
     positional_encoding = tl.FixedBasePositionalEncoding(mode=mode)
-    d_emb //= 2
   elif axial_pos_shape == 'infinite':  # TODO(lukaszkaiser): remove this HACK
     positional_encoding = tl.InfinitePositionalEncoding(affine=False)
   elif axial_pos_shape == 'infinite-affine':
@@ -341,7 +339,7 @@ def ReformerLM(vocab_size,
         dropout=dropout, mode=mode)
 
   positional_embedder = [
-      tl.Embedding(vocab_size, d_emb),
+      tl.Embedding(vocab_size, d_model),
       tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),  # pylint: disable=no-value-for-parameter
       positional_encoding,
   ]

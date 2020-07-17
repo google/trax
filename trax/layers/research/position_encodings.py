@@ -153,7 +153,7 @@ class FixedBasePositionalEncoding(layer_base.Layer):
         embeddings *= base_dropout[:, None, None]
       res.append(embeddings)
     res = sum(res) + jnp.zeros_like(x)
-    return jnp.concatenate([x, res], axis=-1)
+    return x + res
 
   def init_weights_and_state(self, input_signature):
     d_feature = input_signature.shape[-1]
