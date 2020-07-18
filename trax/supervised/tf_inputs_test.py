@@ -52,7 +52,7 @@ def _load_dataset(name, split='train'):
 
 
 def _c4_dataset(split='train'):
-  return _load_dataset('c4', split=split)
+  return _load_dataset('c4:2.3.0', split=split)
 
 
 def _spm_path():
