@@ -135,6 +135,19 @@ class TrainingTest(test.TestCase):
       self.assertEqual(
           2, _count_files(directory), 'Failed for directory %s.' % directory)
 
+  def test_restores_step(self):
+    """Training restores step from directory where it saved it."""
+    model = tl.Serial(tl.Dense(1))
+    task = training.TrainTask(
+        _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01))
+    tmp_dir = self.create_tempdir().full_path
+    loop = training.Loop(model, task,
+                         checkpoint_at=lambda step_n: step_n % 2 == 0,
+                         output_dir=tmp_dir)
+    loop.run(4)
+    loop2 = training.Loop(model, task, output_dir=tmp_dir)
+    self.assertEqual(4, loop2.current_step)
+
 
 def _very_simple_data():
   """"Returns stream of labeled data that maps small integers to constant pi."""

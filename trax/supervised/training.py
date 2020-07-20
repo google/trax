@@ -42,6 +42,7 @@ import sys
 import time
 
 from absl import logging
+import gin
 import numpy as np
 import tensorflow as tf
 
@@ -127,6 +128,9 @@ class Loop:
             argnums=1,  # arg1 of pure_fn: weights
             has_aux=True)))  # return (loss, state), gradients
 
+    # Restore from checkpoint if there is one.
+    self.load_checkpoint()
+
     # Prepare eval components.
     if eval_task is None:
       self._eval_at = _never
@@ -169,6 +173,8 @@ class Loop:
         step_acc += 1
         for metric_name, value in optimizer_metrics.items():
           optimizer_metrics_acc[metric_name] += value
+        if self._checkpoint_at(self._step):
+          self.save_checkpoint(weights, state, slots)
         if self._eval_at(self._step):
           elapsed_time = time.time() - start_time
           self._model_in_training.weights = weights
@@ -182,8 +188,6 @@ class Loop:
           loss_acc, step_acc = 0.0, 0
           start_time = time.time()
           optimizer_metrics_acc = collections.defaultdict(float)
-        if self._checkpoint_at(self._step):
-          self.save_checkpoint(weights, state, slots)
 
     # Store the final values back into their respective objects, for testing
     # or other inspection/use.
@@ -262,6 +266,8 @@ class Loop:
     self._log_scalars(
         {loss_name: total_loss / float(n_steps)},
         summary_writer, 'metrics/', 'train')
+    if self.current_step == 1:
+      self._save_gin(summary_writer)
     train_parameters = {}
     train_parameters['learning_rate'] = self._task.learning_rate(
         self.current_step)
@@ -272,6 +278,17 @@ class Loop:
     train_parameters.update(optimizer_metrics)
     self._log_scalars(
         train_parameters, summary_writer, 'training/', 'train', stdout=False)
+
+  def save_gin(self, summary_writer=None):
+    """"Saves the operative gin config."""
+    assert self._output_dir is not None
+    config_path = os.path.join(self._output_dir, 'config.gin')
+    config_str = gin.operative_config_str()
+    with tf.io.gfile.GFile(config_path, 'w') as f:
+      f.write(config_str)
+    if summary_writer is not None:
+      summary_writer.text('gin_config',
+                          jaxboard.markdownify_operative_config_str(config_str))
 
   def run_evals(self, weights=None, state=None, summary_writer=None):
     """Runs and records evals for this training session.
@@ -353,6 +370,29 @@ class Loop:
     }
     ckpt_file = os.path.join(self._output_dir, 'model.pkl.gz')
     pickle_to_file(d, ckpt_file, gzip=True)
+
+  def load_checkpoint(self, directory=None, filename=None):
+    """Loads model weights and step from a checkpoint on disk.
+
+    Args:
+      directory: Directory with the checkpoint (self._output_dir by default).
+      filename: Checkpoint file name (model.pkl.gz by default).
+    """
+    directory = directory or self._output_dir
+    if directory is None:
+      _log('Not loading as both directory and output_dir are None.')
+      return
+    filename = filename or 'model.pkl.gz'
+    path = os.path.join(directory, filename)
+    if not tf.io.gfile.exists(path):
+      _log(f'Not loading as checkpoint file does not exist: {path}.')
+      return
+    d = unpickle_from_file(path, gzip=True)
+    self._step = d['step']
+    self._task.optimizer.slots = d['slots']
+    # TODO(lukaszkaiser): this call will read the file again, optimize it.
+    self._model_in_training.init_from_file(path)
+    self._eval_model.weights = self._model.weights
 
   @contextlib.contextmanager
   def _open_summary_writers(self):
