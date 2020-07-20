@@ -13,77 +13,68 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Load pickled MNIST data."""
+""" Load MNIST Data Iterator."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gzip
-import os
-import pickle
-import random
-import urllib
-import numpy as np
+import tensorflow_datasets as tfds
+from tensorflow.python.ops import numpy_ops as np
 
 
-def load():
-  """Loads the dataset.
+class MNIST():
 
-  Looks for the dataset at /tmp/mnist.pkl.gz and downloads it if it is not there
-  already.
+    def __init__(self, batch_size):
 
-  Note: The training data is shuffled.
+        """Initializes the MNIST dataset """
+        self.batch_size = batch_size
 
-  Returns:
-    ((train_x, train_y), (valid_x, valid_y), (test_x, test_y)).
-    Shapes:
-      train_x: num_training_examples x image_size
-      train_y: num_training_examples x num_classes
-      valid_x: num_validation_examples x image_size
-      valid_y: num_validation_examples x num_classes
-      test_x: num_test_examples x image_size
-      test_y: num_test_examples x num_classes
-  """
-  filepath = _maybe_download()
-  with gzip.open(os.path.join(filepath), 'rb') as f:
-    training_data, validation_data, test_data = pickle.load(f)
-  training_data = (training_data[0], [to_one_hot(x) for x in training_data[1]])
-  validation_data = (validation_data[0],
-                     [to_one_hot(x) for x in validation_data[1]])
-  test_data = (test_data[0], [to_one_hot(x) for x in test_data[1]])
-
-  def shuffle(data):
-    zipped = zip(*data)
-    random.shuffle(zipped)
-    return zip(*zipped)
-
-  return (shuffle(training_data), validation_data, test_data)
+        print('Loading data')
+        mnist_train = tfds.load('mnist', split='train', shuffle_files=True, batch_size=-1)
+        mnist_test = tfds.load('mnist', split='test', shuffle_files=True, batch_size=-1)
 
 
-def to_one_hot(label, num_classes=10):
-  vec = np.zeros(num_classes, dtype=np.float32)
-  vec[label] = 1.
-  return vec
+        self.mnist_train_images, self.mnist_train_labels = mnist_train['image'], mnist_train['label']
+
+        self.mnist_test_images, self.mnist_test_labels = mnist_test['image'], mnist_test['label']
+
+        print('Loaded dataset with {} training and {} test examples.'.format(
+                self.mnist_train_images.shape[0], self.mnist_test_images.shape[0]))
+
+        assert(self.mnist_train_images.shape[0] == self.mnist_train_labels.shape[0])
+        assert(self.mnist_test_images.shape[0] == self.mnist_test_labels.shape[0])
+        assert(self.mnist_train_images.shape[0] % batch_size == 0)
+        assert(self.mnist_test_images.shape[0] % batch_size == 0)
 
 
-def _maybe_download():
-  """Downloads the MNIST dataset if it is not there already."""
-  data_url = 'http://www.iro.umontreal.ca/~lisa/deep/data/mnist/mnist.pkl.gz'
-  filename = data_url.split('/')[-1]
-  filepath = os.path.join(_get_data_dir(), filename)
-  if not os.path.exists(filepath):
+    def iterator(self, split, infinite=True):
+        """Build the iterator for inputs."""
+        if split=='train':
+            mnist_images, mnist_labels = self.mnist_train_images, self.mnist_train_labels
+        elif split=='test':
+            mnist_images, mnist_labels = self.mnist_test_labels, self.mnist_test_labels
 
-    def _progress(count, block_size, total_size):
-      print('\r>> Downloading %s %.1f%%' %
-            (filename, float(count * block_size) / float(total_size) * 100.0))
+        index = 0
+        size = mnist_images.shape[0]
+        while True:
+            if index + self.batch_size > size:
+                if infinite:
+                    index = 0
+                else:
+                    return
 
-    filepath, _ = urllib.urlretrieve(data_url, filepath, _progress)
-    statinfo = os.stat(filepath)
-    print('Successfully downloaded %s %d bytes.' % (filename, statinfo.st_size))
-  else:
-    print('Data already present on disk.')
-  return filepath
+            yield mnist_images[index:index + self.batch_size], mnist_labels[index:index + self.batch_size]
+            index += self.batch_size
 
 
-def _get_data_dir():
-  return '/tmp'
+    def shuffle(self, data):
+        zipped = zip(*data)
+        random.shuffle(zipped)
+        return zip(*zipped)
+
+
+    def to_one_hot(self, label, num_classes=10):
+        vec = np.zeros(num_classes, dtype=np.float32)
+        vec[label] = 1.
+        return vec
