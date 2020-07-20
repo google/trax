@@ -366,6 +366,21 @@ class Layer:
       for sublayer, sublayer_weights in zip(self.sublayers, weights):
         sublayer.weights = sublayer_weights
 
+  def set_weights_by_index(self, index, weights):
+    """Sets the weights of a sublayer given weights and index, e.g. (2,0,2)."""
+    if index:
+      layers_list = []
+      for i in range(len(self.sublayers)):
+        if i == index[0]:
+          layers_list.append(
+              self.sublayers[i].set_weights_by_index(index[1:], weights))
+        else:
+          layers_list.append(self.sublayers[i].weights)
+        self._weights = tuple(layers_list)
+    else:
+      self._weights = weights
+    return self._weights
+
   @property
   def state(self):
     """Returns a tuple containing this layer's state; may be empty.
