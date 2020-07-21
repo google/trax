@@ -61,8 +61,8 @@ class Serial(base.Layer):
 
     if sublayers:
       self._n_in, self._n_out = self._n_inputs_n_outputs(sublayers)
-      self._weights = tuple(l.weights for l in sublayers)
-      self._state = tuple(l.state for l in sublayers)
+      self._weights = tuple(None for l in sublayers)
+      self._state = tuple(None for l in sublayers)
 
   def forward(self, xs):
     self._validate_forward_inputs(xs)
@@ -88,7 +88,7 @@ class Serial(base.Layer):
       outputs, s = layer.pure_fn(inputs, w, s, rng, use_cache=True)
       stack = _outputs_onto_stack(layer, outputs, stack)
       new_state.append(s)
-    self._state = new_state
+    self.state = new_state
     return stack
 
   # pylint: disable=protected-access
@@ -107,8 +107,8 @@ class Serial(base.Layer):
 
       weights.append(weights_or_cache_marker)
       states.append(state_or_cache_marker)
-    self._state = states
-    self._weights = weights
+    self.state = states
+    self.weights = weights
   # pylint: enable=protected-access
 
   def _n_inputs_n_outputs(self, layers):
@@ -178,8 +178,8 @@ class Parallel(base.Layer):
     self._sublayers = sublayers
     self._n_in = sum(l.n_in for l in sublayers)
     self._n_out = sum(l.n_out for l in sublayers)
-    self._weights = tuple(l.weights for l in sublayers)
-    self._state = tuple(l.state for l in sublayers)
+    self._weights = tuple(None for l in sublayers)
+    self._state = tuple(None for l in sublayers)
 
   def forward(self, inputs):
     n_layers, layers = self._n_layers, self.sublayers
@@ -213,7 +213,7 @@ class Parallel(base.Layer):
         outputs.extend(sub_outputs)
       new_state.append(sub_state)
     output = outputs[0] if self.n_out == 1 else tuple(outputs)
-    self._state = tuple(new_state)
+    self.state = tuple(new_state)
     return output
 
   def init_weights_and_state(self, input_signature):
@@ -223,8 +223,8 @@ class Parallel(base.Layer):
              in zip(self.sublayers, sublayer_signatures)]
     if inits:
       weights, state = tuple(zip(*inits))
-      self._state = state
-      self._weights = weights
+      self.state = state
+      self.weights = weights
 
   def _validate(self, layers):
     if not layers or len(layers) < 2:
@@ -373,8 +373,8 @@ class Scan(base.Layer):
     self._n_carry = n_carry
     self._axis = axis
     self._remat = remat
-    self._weights = (base.EMPTY_WEIGHTS,)
-    self._state = (base.EMPTY_STATE,)
+    self._weights = (None,)
+    self._state = (None,)
 
   @property
   def sublayer(self):
@@ -418,8 +418,8 @@ class Scan(base.Layer):
         layer_sig = ShapeDtype(_shape_without_axis(input_signature, self._axis),
                                input_signature.dtype)
       weights, state = self.sublayer.init(layer_sig)
-      self._state = (state,)
-      self._weights = (weights,)
+      self.state = (state,)
+      self.weights = (weights,)
     else:
       xs = input_signature[:-n_carry]
       init = input_signature[-n_carry:]
@@ -427,8 +427,8 @@ class Scan(base.Layer):
                    for x in xs]
       layer_signature = tuple(xs_slices + list(init))
       weights, state = self.sublayer.init(layer_signature, use_cache=True)
-      self._state = (state,)
-      self._weights = (weights,)
+      self.state = (state,)
+      self.weights = (weights,)
 
 
 # pylint: disable=invalid-name
@@ -647,7 +647,12 @@ class Cache(base.Layer):
     """Returns the unique sublayer managed by this layer."""
     return self._sublayers[0]
 
-  @base.Layer.state.setter
+  @property
+  def state(self):
+    """Returns a tuple containing this layer's state; may be empty."""
+    return self._state
+
+  @state.setter
   def state(self, state):
     """Recursively sets state on this layer and all sublayers."""
     if isinstance(state, dict) and state == base.GET_STATE_FROM_CACHE:
@@ -687,8 +692,8 @@ class BatchLeadingAxes(base.Layer):
     super(BatchLeadingAxes, self).__init__(n_in=layer.n_in, n_out=layer.n_out)
     self._sublayers = [layer]
     self._n_last_axes_to_keep = n_last_axes_to_keep
-    self._weights = (base.EMPTY_WEIGHTS,)
-    self._state = (base.EMPTY_STATE,)
+    self._weights = (None,)
+    self._state = (None,)
 
   @property
   def sublayer(self):
@@ -707,7 +712,7 @@ class BatchLeadingAxes(base.Layer):
   def init_weights_and_state(self, input_signature):
     weights, layer_state = self.sublayer.init(input_signature, use_cache=True)
     self.state = (layer_state,)
-    self._weights = (weights,)
+    self.weights = (weights,)
 
 
 # All module-private helper functions are below.

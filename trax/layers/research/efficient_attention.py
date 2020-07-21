@@ -357,8 +357,8 @@ class EfficientAttentionBase(base.Layer):
       mem_end = np.zeros((), dtype=np.int32)
       state = (mem_end, mem, state)
 
-    self.state = state
-    self.weights = weights
+    self.state = tuple(state)
+    self.weights = tuple(weights)
 
   def create_weights_unbatched(self, input_signature, rng):
     raise NotImplementedError(
@@ -466,7 +466,7 @@ class EfficientAttentionBase(base.Layer):
       new_state = state
     if self.incremental:
       new_state = (new_mem_end, new_mem, new_state)
-    self.state = new_state
+    self.state = tuple(new_state)
     return output
 
   def use_predict_mem(self, inputs, state):

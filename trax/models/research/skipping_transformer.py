@@ -42,12 +42,32 @@ class SkippingSerial(tl.Serial):
         assert layer.n_in == n_in_out
         assert layer.n_out == n_in_out
 
+  # pylint: disable=protected-access
   def init_weights_and_state(self, input_signature):
-    """Add a step-counter to the state. Initialize with 0."""
-    super(SkippingSerial, self).init_weights_and_state(input_signature)
-    self._state = (jnp.array(0, dtype=jnp.int32), self._state)
+    weights = []
+    states = []
+    # In the code below, stack, inputs, and outputs are abstract (shapes and
+    # dtypes), but weights and states are non-abstract actual values.
+    stack = input_signature
+    for sublayer in self.sublayers:
+      inputs = _inputs_from_stack(sublayer, stack)
+      weights_or_cache_marker, state_or_cache_marker = (
+          sublayer.init(inputs, use_cache=True))
+      outputs, _ = sublayer._forward_abstract(inputs)
+      stack = _outputs_onto_stack(sublayer, outputs, stack)
 
-  @tl.Layer.state.setter
+      weights.append(weights_or_cache_marker)
+      states.append(state_or_cache_marker)
+    self.state = (jnp.array(0, dtype=jnp.int32), states)
+    self.weights = weights
+  # pylint: enable=protected-access
+
+  @property
+  def state(self):
+    """Returns a tuple containing this layer's state; may be empty."""
+    return self._state
+
+  @state.setter
   def state(self, state):
     """Recursively sets non-param state on this layer and all sublayers."""
     self._state = state

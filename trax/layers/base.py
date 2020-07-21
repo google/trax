@@ -108,9 +108,15 @@ class Layer:
     # different backends' `get_prng` may return different shapes so they can't
     # be used interchangeably).
     self._rng = random.randint(0, 2**31 - 1)
+    # The private fields _weights and _state store the private part of
+    # layer weights and state. When a layer has no sublayers, these are
+    # the same as layer.weights and layer.state. For layers with sublayers
+    # (ie., combinators), these just mark which weights are cached -- see
+    # the getter and setter for weights and state for details.
+    # There is no need to use these fields in most user-implemented classes.
     self._weights = EMPTY_WEIGHTS  # By default no trainable weights.
     self._state = EMPTY_STATE  # By default no non-trainable state.
-    # record root call site for custom error messages:
+    # Record root call site for custom error messages.
     frame = _find_frame(inspect.currentframe())
     # Turns out that frame can mutate in time, so we just copy what we need.
     self._caller = {'filename': copy.copy(frame.f_code.co_filename),
@@ -345,19 +351,39 @@ class Layer:
       - a tensor (ndarray)
       - a nested structure of tuples and tensors
 
-    If the layer has sublayers, the weights by convention will usually be
+    If the layer has sublayers, the weights by convention will be
     a tuple of length `len(sublayers)` containing the weights of sublayers.
+    Note that in this case self._weights only marks which ones are shared.
     """
-    return self._weights
+    if not self.sublayers:
+      return self._weights
+    else:
+      return tuple(layer.weights if w is None else w
+                   for (layer, w) in zip(self.sublayers, self._weights))
 
   @weights.setter
   def weights(self, weights):
-    """Sets the weights of this layer and its sublayers."""
+    """Sets the weights of this layer and its sublayers.
+
+    Args:
+      weights: the weights to set; if layer has sublayers, weights should be
+        either a list or a tuple of the same length as `len(self.sublayers)`
+        and it will be used to set the weights of all sublayers.
+    """
     if isinstance(weights, dict) and weights == GET_WEIGHTS_FROM_CACHE:
       return
-    self._weights = weights
-    # Set sublayer weights.
-    if self.sublayers:
+    if not self.sublayers:
+      self._weights = weights
+    else:
+      # When having sublayers, self._weights just marks which are cached,
+      # the actual weights are stored by sublayers.
+      self._weights = []
+      for w in weights:
+        if isinstance(w, dict) and w == GET_WEIGHTS_FROM_CACHE:
+          self._weights.append(w)
+        else:
+          self._weights.append(None)
+      # Set sublayer weights.
       n_layers = len(self.sublayers)
       if len(weights) != n_layers:
         raise ValueError(
@@ -370,19 +396,39 @@ class Layer:
   def state(self):
     """Returns a tuple containing this layer's state; may be empty.
 
-    If the layer has sublayers, the state by convention will usually be
+    If the layer has sublayers, the state by convention will be
     a tuple of length `len(sublayers)` containing sublayer states.
+    Note that in this case self._state only marks which ones are shared.
     """
-    return self._state
+    if not self.sublayers:
+      return self._state
+    else:
+      return tuple(layer.state if s is None else s
+                   for (layer, s) in zip(self.sublayers, self._state))
 
   @state.setter
   def state(self, state):
-    """Sets the state of this layer and its sublayers."""
+    """Sets the state of this layer and its sublayers.
+
+    Args:
+      state: the state to set; if layer has sublayers, state should be
+        either a list or a tuple of the same length as `len(self.sublayers)`
+        and it will be used to set the state of all sublayers.
+    """
     if isinstance(state, dict) and state == GET_STATE_FROM_CACHE:
       return
-    self._state = state
-    # Set sublayer states.
-    if self.sublayers:
+    if not self._sublayers:
+      self._state = state
+    else:
+      # When having sublayers, self._state just marks which are cached,
+      # the actual weights are stored by sublayers.
+      self._state = []
+      for s in state:
+        if isinstance(s, dict) and s == GET_STATE_FROM_CACHE:
+          self._state.append(s)
+        else:
+          self._state.append(None)
+      # Set sublayer states.
       n_layers = len(self.sublayers)
       if len(state) != n_layers:
         raise ValueError(
@@ -450,19 +496,19 @@ class Layer:
       if (isinstance(weights, dict) and isinstance(state, dict) and
           weights == GET_WEIGHTS_FROM_CACHE and state == GET_STATE_FROM_CACHE):
         was_cached = True
-        weights = self._weights
-        state = self._state
+        weights = self.weights
+        state = self.state
       else:
         # In this case, we're called for the first time: cache weights.
         was_cached = False
-        self._weights, self._state = weights, state
+        self.weights, self.state = weights, state
 
       if not self.has_backward:
         outputs = self.forward(x)
         s = self.state
       else:
         outputs, s = self._do_custom_gradients(x, weights, state, rng=rng)
-        self._state = s
+        self.state = s
       self._rng = old_rng
       if not use_cache:
         self.weights, self.state = old_weights, old_state
@@ -517,20 +563,20 @@ class Layer:
     """Calls this layer for a forward pass, but with custom gradients."""
 
     def _do_forward(y, weights):
-      old_weights, old_state, old_rng = self._weights, self._state, self._rng
-      self._weights = weights
+      old_weights, old_state, old_rng = self.weights, self.state, self._rng
+      self.weights = weights
       res = self.forward(y)
-      s = self._state
-      self._weights, self._state, self._rng = old_weights, old_state, old_rng
+      s = self.state
+      self.weights, self.state, self._rng = old_weights, old_state, old_rng
       return res, s
 
     def do_forward_vjp(y, weights):
       """Custom gradient (vjp) function."""
-      old_weights, old_state, old_rng = self._weights, self._state, self._rng
-      self._weights = weights
+      old_weights, old_state, old_rng = self.weights, self.state, self._rng
+      self.weights = weights
       output = self.forward(y)
-      new_state = self._state
-      self._weights, self._state, self._rng = old_weights, old_state, old_rng
+      new_state = self.state
+      self.weights, self.state, self._rng = old_weights, old_state, old_rng
       def vjpfun(grad):
         grad = grad[0]  # Ignore dummy gradient wrt state.
         res = self.backward(y, output, grad, weights, state, new_state, rng)

@@ -145,6 +145,15 @@ class SerialTest(absltest.TestCase):
     self.assertEqual(model.weights[0], model2.weights[0])
     self.assertEqual(model.weights[1], model2.weights[2])
 
+  def test_assign_sublayer_weights(self):
+    layer = tl.Dense(5, use_bias=False)
+    model = tl.Serial(tl.Serial(layer, tl.Dense(6)), tl.Dense(7))
+    sample_input = np.array([1, 2, 3, 4, 5])
+    weights, _ = model.init(shapes.signature(sample_input))
+    new_layer_weights = np.random.uniform(weights[0][0].shape)
+    layer.weights = new_layer_weights
+    self.assertIs(model.weights[0][0], new_layer_weights)
+
   def test_shared_weights(self):
     layer = tl.Dense(5)
     model = tl.Serial(layer, layer)

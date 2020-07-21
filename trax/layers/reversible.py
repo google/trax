@@ -56,11 +56,11 @@ class ReversibleLayer(base.Layer):
       gradient signal for the weights.
     """
     def _do_forward(x, weights):
-      old_weights, old_state, old_rng = self._weights, self._state, self._rng
-      self._state, self._rng = state, rng
-      self._weights = weights
+      old_weights, old_state, old_rng = self.weights, self.state, self._rng
+      self.state, self._rng = state, rng
+      self.weights = weights
       res = self.forward(x)
-      self._weights, self._state, self._rng = old_weights, old_state, old_rng
+      self.weights, self.state, self._rng = old_weights, old_state, old_rng
       return res
 
     reconstructed_x = self.reverse(output, weights, state, new_state, rng)
@@ -147,4 +147,4 @@ class ReversibleSerial(ReversibleLayer, cb.Serial):
       stack_grad = _outputs_onto_stack(
           layer, layer_ct, stack_grad, layer.n_out, layer.n_in)
 
-    return stack, (stack_grad, weights_grad)
+    return stack, (stack_grad, tuple(weights_grad))

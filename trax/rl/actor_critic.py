@@ -377,13 +377,13 @@ def _copy_model_weights_and_state(  # pylint: disable=invalid-name
 ):
   """Copy model weights[start:end] from from_trainer to to_trainer."""
   from_weights = from_trainer.model_weights
-  to_weights = to_trainer.model_weights
+  to_weights = list(to_trainer.model_weights)
   shared_weights = from_weights[start:end]
   to_weights[start:end] = shared_weights
   to_trainer.model_weights = to_weights
 
   from_state = from_trainer.model_state
-  to_state = to_trainer.model_state
+  to_state = list(to_trainer.model_state)
   shared_state = from_state[start:end]
   to_state[start:end] = shared_state
   to_trainer.model_state = to_state

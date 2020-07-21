@@ -106,22 +106,6 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
       running_total -= layer.n_out
     self._n_in = self._n_out = running_max + 1
 
-  # TODO(lukaszkaiser): these setters should not be needed, why do they
-  # cause the e2e test to fail? Investigate and remove these setters.
-  @tl.Layer.weights.setter
-  def weights(self, weights):
-    """Sets the weights of this layer and its sublayers."""
-    if isinstance(weights, dict) and weights == tl.GET_WEIGHTS_FROM_CACHE:
-      return
-    self._weights = weights
-
-  @tl.Layer.state.setter
-  def state(self, state):
-    """Sets the state of this layer and its sublayers."""
-    if isinstance(state, dict) and state == tl.GET_STATE_FROM_CACHE:
-      return
-    self._state = state
-
   def forward(self, xs):
     rngs = _split_rngs(self.rng, len(self.sublayers))
     accumulator, *context = xs
