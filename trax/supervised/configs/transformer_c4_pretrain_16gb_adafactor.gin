@@ -41,7 +41,7 @@ batcher.id_to_mask = 0
 # Parameters for data_streams:
 # ==============================================================================
 data_streams.data_dir = None
-data_streams.dataset_name = 'c4'
+data_streams.dataset_name = 'c4/en:2.3.0'
 data_streams.input_name = 'inputs'
 data_streams.target_name = 'targets'
 data_streams.bare_preprocess_fn=@trax.supervised.tf_inputs.c4_bare_preprocess_fn
