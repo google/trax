@@ -130,6 +130,9 @@ TF_BACKEND = {
     'random_bernoulli': tf_np_extensions.bernoulli,
     'random_get_prng': tf_np_extensions.prng,
     'random_split': tf_np_extensions.split,
+    # TODO(wangpeng): See whether and how to support `remat`
+    'remat': lambda f: f,
+    'scan': tf_np_extensions.scan,
     'dataset_as_numpy': tf_np_extensions.dataset_as_numpy,
     'device_count': lambda: max(len(tf_np_extensions.accelerators()), 1),
     'pmap': _tf_pmap,

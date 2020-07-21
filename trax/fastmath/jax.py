@@ -89,49 +89,6 @@ def jax_avg_pool(x, pool_size, strides, padding):
                           pool_size, strides=strides, padding=padding)
 
 
-def _jax_scan(f, xs, init_value, axis=0, remat=False):
-  """Scans the f over the given axis of xs.
-
-  In pseudo-python, the scan function would look as follows:
-
-  def scan(f, xs, init_value, axis):
-    xs  = [xs[..., i, ...] for i in range(xs.shape[axis])]
-    cur_value = init_value
-    ys = []
-    for x in xs:
-      y, cur_value = f(x, cur_value)
-      ys.append(y)
-    return np.stack(ys, axis), cur_value
-
-  Args:
-    f: function (x, carry) -> (y, new_carry)
-    xs: tensor, x will be xs slices on axis
-    init_value: tensor, initial value of the carry-over
-    axis: int, the axis on which to slice xs
-    remat: whether to re-materialize f
-
-  Returns:
-    A pair (ys, last_value) as described above.
-  """
-  def swapaxes(x):
-    transposed_axes = list(range(len(x.shape)))
-    transposed_axes[axis] = 0
-    transposed_axes[0] = axis
-    return jnp.transpose(x, axes=transposed_axes)
-  if axis != 0:
-    xs = nested_map(swapaxes, xs)
-  def transposed_f(c, x):
-    y, d = f(x, c)
-    return d, y
-  if remat:
-    last_value, ys = lax.scan(jax.remat(transposed_f), init_value, xs)
-  else:
-    last_value, ys = lax.scan(transposed_f, init_value, xs)
-  if axis != 0:
-    ys = nested_map(swapaxes, ys)
-  return ys, last_value
-
-
 def _is_namedtuple_instance(x):
   """Checks if `x` is an instance of a `namedtuple` type."""
   if not isinstance(x, tuple):
@@ -431,7 +388,8 @@ JAX_BACKEND = {
     'random_randint': jax_randint,
     'random_split': jax_random.split,
     'random_uniform': jax_random.uniform,
-    'scan': _jax_scan,
+    'remat': jax.remat,
+    'scan': lax.scan,
     'sort_key_val': jax.lax.sort_key_val,
     'stop_gradient': lax.stop_gradient,
     'sum_pool': jax_sum_pool,

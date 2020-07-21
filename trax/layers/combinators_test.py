@@ -17,9 +17,11 @@
 """Tests for combinator layers."""
 
 from absl.testing import absltest
+from absl.testing import parameterized
 
 import numpy as np
 
+from trax import fastmath
 from trax import shapes
 import trax.layers as tl
 
@@ -458,7 +460,8 @@ class SerialWithSideOutputsTest(absltest.TestCase):
     self.assertEqual(output_shapes, [(3,), (5,), (2,)])
 
 
-class ScanTest(absltest.TestCase):
+@parameterized.named_parameters(('_' + b, b) for b in ('jax', 'tf'))
+class ScanTest(parameterized.TestCase):
 
   def _AddWithCarry(self):  # pylint: disable=invalid-name
     del self
@@ -467,79 +470,83 @@ class ScanTest(absltest.TestCase):
       return res, res  # output and carry are the same
     return tl.Fn('AddWithCarry', f, n_out=2)
 
-  def test_default_axis(self):
-    layer = tl.Scan(self._AddWithCarry())
-    xs = [
-        np.array([[0, 1, 2, 3],
-                  [0, 10, 20, 30],
-                  [0, 100, 200, 300]]),
-        np.array([9000, 8000, 7000, 6000])
-    ]
-    ys = layer(xs)
-    self.assertEqual(as_list(ys),
-                     [[[9000, 8001, 7002, 6003],
-                       [9000, 8011, 7022, 6033],
-                       [9000, 8111, 7222, 6333]
-                      ],
-                      [9000, 8111, 7222, 6333]
-                     ])
+  def test_default_axis(self, backend_name):
+    with fastmath.use_backend(backend_name):
+      layer = tl.Scan(self._AddWithCarry())
+      xs = [
+          np.array([[0, 1, 2, 3],
+                    [0, 10, 20, 30],
+                    [0, 100, 200, 300]]),
+          np.array([9000, 8000, 7000, 6000])
+      ]
+      ys = layer(xs)
+      self.assertEqual(as_list(ys),
+                       [[[9000, 8001, 7002, 6003],
+                         [9000, 8011, 7022, 6033],
+                         [9000, 8111, 7222, 6333]
+                        ],
+                        [9000, 8111, 7222, 6333]
+                       ])
 
-  def test_axis_1(self):
-    layer = tl.Scan(self._AddWithCarry(), axis=1)
-    xs = [
-        np.array([[0, 1, 2, 3],
-                  [0, 10, 20, 30],
-                  [0, 100, 200, 300]]),
-        np.array([9000,
-                  8000,
-                  7000])
-    ]
-    ys = layer(xs)
-    self.assertEqual(as_list(ys),
-                     [[[9000, 9001, 9003, 9006],
-                       [8000, 8010, 8030, 8060],
-                       [7000, 7100, 7300, 7600]
-                      ],
-                      [9006,
-                       8060,
-                       7600]
-                     ])
+  def test_axis_1(self, backend_name):
+    with fastmath.use_backend(backend_name):
+      layer = tl.Scan(self._AddWithCarry(), axis=1)
+      xs = [
+          np.array([[0, 1, 2, 3],
+                    [0, 10, 20, 30],
+                    [0, 100, 200, 300]]),
+          np.array([9000,
+                    8000,
+                    7000])
+      ]
+      ys = layer(xs)
+      self.assertEqual(as_list(ys),
+                       [[[9000, 9001, 9003, 9006],
+                         [8000, 8010, 8030, 8060],
+                         [7000, 7100, 7300, 7600]
+                        ],
+                        [9006,
+                         8060,
+                         7600]
+                       ])
 
-  def test_multi_input(self):
+  def test_multi_input(self, backend_name):
     def _MultiInputFn():  # pylint: disable=invalid-name
       def f(a, b, carry):
         return a + b, b, carry + 1
       return tl.Fn('MultiInputFn', f, n_out=2)
 
-    layer = tl.Scan(_MultiInputFn(), axis=1)
-    xs = [
-        np.array([[0, 1, 2],
-                  [0, 10, 20]]),
-        np.array([[4, 5, 6],
-                  [40, 50, 60]]),
-        np.array([9000,
-                  8000])
-    ]
-    ys = layer(xs)
-    self.assertEqual(as_list(ys),
-                     [[[4, 6, 8],
-                       [40, 60, 80]],
-                      [[4, 5, 6],
-                       [40, 50, 60]],
-                      [9003,
-                       8003]
-                     ])
+    with fastmath.use_backend(backend_name):
+      layer = tl.Scan(_MultiInputFn(), axis=1)
+      xs = [
+          np.array([[0, 1, 2],
+                    [0, 10, 20]]),
+          np.array([[4, 5, 6],
+                    [40, 50, 60]]),
+          np.array([9000,
+                    8000])
+      ]
+      ys = layer(xs)
+      self.assertEqual(as_list(ys),
+                       [[[4, 6, 8],
+                         [40, 60, 80]],
+                        [[4, 5, 6],
+                         [40, 50, 60]],
+                        [9003,
+                         8003]
+                       ])
 
-  def test_no_carry(self):
+  def test_no_carry(self, backend_name):
     def _AddOne():  # pylint: disable=invalid-name
       return tl.Fn('AddOne', lambda x: x + 1)
 
-    layer = tl.Scan(_AddOne(), n_carry=0)
-    x = np.array([[1, 3, 7],
-                  [10, 30, 70]])
-    y = layer(x)
-    self.assertEqual(as_list(y), [[2, 4, 8],
-                                  [11, 31, 71]])
+    with fastmath.use_backend(backend_name):
+      layer = tl.Scan(_AddOne(), n_carry=0)
+      x = np.array([[1, 3, 7],
+                    [10, 30, 70]])
+      y = layer(x)
+      self.assertEqual(as_list(y), [[2, 4, 8],
+                                    [11, 31, 71]])
 
 
 class BatchLeadingAxesTest(absltest.TestCase):

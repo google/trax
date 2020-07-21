@@ -127,6 +127,11 @@ def scan(*args, **kwargs):
   return backend()['scan'](*args, **kwargs)
 
 
+def remat(*args, **kwargs):
+  """Recompute everything in the backward pass to same memory."""
+  return backend()['remat'](*args, **kwargs)
+
+
 def cond(*args, **kwargs):
   """Conditional computation to run on accelerators."""
   return backend()['cond'](*args, **kwargs)

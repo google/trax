@@ -294,6 +294,48 @@ class Split(base.Layer):
     return tuple(jnp.split(inputs, self._n_items, self._axis))
 
 
+def _scan(f, xs, init_value, axis=0, remat=False):
+  """Scans the f over the given axis of xs.
+
+  In pseudo-python, the scan function would look as follows:
+
+  def scan(f, xs, init_value, axis):
+    xs  = [xs[..., i, ...] for i in range(xs.shape[axis])]
+    cur_value = init_value
+    ys = []
+    for x in xs:
+      y, cur_value = f(x, cur_value)
+      ys.append(y)
+    return np.stack(ys, axis), cur_value
+
+  Args:
+    f: function (x, carry) -> (y, new_carry)
+    xs: tensor, x will be xs slices on axis
+    init_value: tensor, initial value of the carry-over
+    axis: int, the axis on which to slice xs
+    remat: whether to re-materialize f
+
+  Returns:
+    A pair (ys, last_value) as described above.
+  """
+  def swapaxes(x):
+    transposed_axes = list(range(len(x.shape)))
+    transposed_axes[axis] = 0
+    transposed_axes[0] = axis
+    return jnp.transpose(x, axes=transposed_axes)
+  if axis != 0:
+    xs = fastmath.nested_map(swapaxes, xs)
+  def transposed_f(c, x):
+    y, d = f(x, c)
+    return d, y
+  if remat:
+    transposed_f = fastmath.remat(transposed_f)
+  last_value, ys = fastmath.scan(transposed_f, init_value, xs)
+  if axis != 0:
+    ys = fastmath.nested_map(swapaxes, ys)
+  return ys, last_value
+
+
 class Scan(base.Layer):
   """Applies a layer progressively/cumulatively to an axis-derived sequence.
 
@@ -359,8 +401,8 @@ class Scan(base.Layer):
       init = (inputs[-n_carry:], self.state[0])
     else:
       xs, init = inputs, ([], self.state[0])
-    ys, (carry, new_state) = fastmath.scan(scannable_fn, xs, init,
-                                           axis=self._axis, remat=self._remat)
+    ys, (carry, new_state) = _scan(scannable_fn, xs, init,
+                                   axis=self._axis, remat=self._remat)
     res = ys + carry if n_carry > 0 else ys
     self.state = (new_state,)
     return res  # Put outputs and carry back on stack.
@@ -389,6 +431,7 @@ class Scan(base.Layer):
       self._weights = (weights,)
 
 
+# pylint: disable=invalid-name
 def Branch(*layers, name='Branch'):
   """Combinator that applies a list of layers in parallel to copies of inputs.
 
