@@ -1,16 +1,27 @@
 .. Trax documentation master file.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+   Should contain at minimum the root `toctree` directive.
 
-Trax packages/modules
-=====================
+Trax Tutorials
+==============
 
 .. toctree::
+   :caption: Introductory Notebooks
+   :maxdepth: 1
 
-   trax
+   notebooks/layers_intro
 
 
-Indices and tables
+Trax API
+========
+
+.. toctree::
+   :caption: Packages/modules
+   :maxdepth: 2
+
+   trax.* <trax>
+
+
+Indices and Tables
 ==================
 
 * :ref:`genindex`
