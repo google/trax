@@ -326,7 +326,10 @@ class Trainer(object):
     self._opt_state = opt_state._replace(weights=weights, slots=slots)
     if self._should_log_now():
       for name, value in stat.items():
-        scalar_value = np.mean(value)  # On  multiple devices, take the mean.
+        # TODO(afrozm): value is a scalar, but sometimes JAX is crashing here
+        # with a device put array error complaning that it should be an array.
+        # On  multiple devices, take the mean.
+        scalar_value = np.mean(np.array(value))
         self._train_sw.scalar('training/' + name, scalar_value, step=self._step)
     self._step += 1
 
