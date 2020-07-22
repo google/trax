@@ -80,7 +80,7 @@ class Loop:
       repeatable generation of pseudo-random numbers
   """
 
-  def __init__(self, model, task, eval_model=None, eval_task=None,
+  def __init__(self, model, tasks, eval_model=None, eval_tasks=None,
                output_dir=None, checkpoint_at=None, eval_at=None):
     """Configures a training `Loop`, including a random initialization.
 
@@ -89,12 +89,14 @@ class Loop:
           functions and eval functions (a.k.a. metrics) are considered to be
           outside the core model, taking core model output and data labels as
           their two inputs.
-      task: TrainTask instance, which defines the training data, loss function,
-          and optimizer to be used in this training loop.
+      tasks: List of TrainTask instances, which define the training data, loss
+          function, and optimizer to be used in respective tasks in this
+          training loop.
       eval_model: Optional Trax layer, representing model used for evaluation,
         e.g., with dropout turned off. If None, the training model (model)
         will be used.
-      eval_task: EvalTask instance or None. If None, don't do any evals.
+      eval_tasks: List of EvalTask instances or None. If None, don't do any
+        evals.
       output_dir: Path telling where to save outputs (evals and checkpoints).
           Can be None if both `eval_task` and `checkpoint_at` are None.
       checkpoint_at: Function (integer --> boolean) telling, for step n, whether
@@ -103,6 +105,14 @@ class Loop:
       eval_at: Function (integer --> boolean) that says, for training step n,
           whether that step should run evals. If None, run when checkpointing.
     """
+    assert len(tasks) == 1, 'Multitask training not supported yet.'
+    task = tasks[0]
+    if eval_tasks is None:
+      eval_task = None
+    else:
+      assert len(eval_tasks) == 1, 'Multitask training not supported yet.'
+      eval_task = eval_tasks[0]
+
     self._task = task
     self._model = model
     self._eval_model = eval_model or model

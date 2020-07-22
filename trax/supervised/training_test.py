@@ -52,7 +52,7 @@ class TrainingTest(test.TestCase):
     model = tl.Serial(tl.Dense(1))
     task = training.TrainTask(
         _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01))
-    training_session = training.Loop(model, task)
+    training_session = training.Loop(model, [task])
     # Loop should initialize and run successfully, even with no eval task.
     training_session.run(n_steps=5)
 
@@ -65,7 +65,7 @@ class TrainingTest(test.TestCase):
         _very_simple_data(),  # deliberately re-using training data
         [tl.L2Loss()],
         metric_names=['SGD.L2Loss'])
-    training_session = training.Loop(model, task, eval_task=eval_task,
+    training_session = training.Loop(model, [task], eval_tasks=[eval_task],
                                      eval_at=lambda step_n: step_n % 2 == 0)
     self.assertEqual(0, training_session.current_step)
     training_session.run(n_steps=15)
@@ -82,7 +82,7 @@ class TrainingTest(test.TestCase):
         _very_simple_data(),  # deliberately re-using training data
         [tl.L2Loss()],
         metric_names=['Momentum.L2Loss'])
-    training_session = training.Loop(model, task, eval_task=eval_task,
+    training_session = training.Loop(model, [task], eval_tasks=[eval_task],
                                      eval_at=lambda step_n: step_n % 2 == 0)
     self.assertEqual(0, training_session.current_step)
     training_session.run(n_steps=20)
@@ -96,7 +96,7 @@ class TrainingTest(test.TestCase):
     eval_task = training.EvalTask(
         _very_simple_data(),  # deliberately re-using training data
         [tl.L2Loss()])
-    training_session = training.Loop(model, task, eval_task=eval_task,
+    training_session = training.Loop(model, [task], eval_tasks=[eval_task],
                                      eval_at=lambda step_n: False)
     self.assertEqual(0, training_session.current_step)
     training_session.run(n_steps=10)
@@ -114,7 +114,7 @@ class TrainingTest(test.TestCase):
         [tl.L2Loss()],
         metric_names=['SGD.L2Loss'])
     tmp_dir = self.create_tempdir().full_path
-    training_session = training.Loop(model, task, eval_task=eval_task,
+    training_session = training.Loop(model, [task], eval_tasks=[eval_task],
                                      eval_at=lambda step_n: step_n % 2 == 0,
                                      output_dir=tmp_dir)
     expected_train_metric_dir = os.path.join(tmp_dir, 'train')
@@ -141,11 +141,11 @@ class TrainingTest(test.TestCase):
     task = training.TrainTask(
         _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01))
     tmp_dir = self.create_tempdir().full_path
-    loop = training.Loop(model, task,
+    loop = training.Loop(model, [task],
                          checkpoint_at=lambda step_n: step_n % 2 == 0,
                          output_dir=tmp_dir)
     loop.run(4)
-    loop2 = training.Loop(model, task, output_dir=tmp_dir)
+    loop2 = training.Loop(model, [task], output_dir=tmp_dir)
     self.assertEqual(4, loop2.current_step)
 
 

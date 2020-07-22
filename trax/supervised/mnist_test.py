@@ -53,7 +53,8 @@ class MnistTest(absltest.TestCase):
         [tl.CrossEntropyLoss(), tl.Accuracy()],
         n_eval_batches=10)
 
-    training_session = training.Loop(mnist_model, task, eval_task=eval_task,
+    training_session = training.Loop(mnist_model, [task],
+                                     eval_tasks=[eval_task],
                                      eval_at=lambda step_n: step_n % 50 == 0)
 
     training_session.run(n_steps=1000)
