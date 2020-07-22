@@ -52,18 +52,17 @@ def autoregressive_sample(model, prefix=None, inputs=None,
     raise ValueError(f'Inputs batch size {inputs.shape[0]} != {batch_size}.')
   fast_model = tl.Accelerate(model) if accelerate else model
   cur_symbol = np.full((batch_size, 1), start_id, dtype=np.int32)
+  if prefix is not None:
+    cur_symbol = np.concatenate([cur_symbol, prefix], axis=1)
   result = []
   eos_seen = []
-  for i in range(max_length):
+  for _ in range(max_length):
     model_input = cur_symbol if inputs is None else (inputs, cur_symbol)
     logits = fast_model(model_input)
     if inputs is not None:
       logits = logits[0]  # Pick first element from model output (a pair here)
-    if prefix is not None and i < prefix.shape[1]:  # Read from prefix.
-      cur_prefix_symbol = prefix[:, i]
-      sample = cur_prefix_symbol[:, None]
-    else:
-      sample = tl.gumbel_sample(logits, temperature=temperature)
+    sample = tl.gumbel_sample(logits[:, -1, :], temperature=temperature)
+    sample = sample[:, None]
     result.append(sample)
     # Note: we're using 'predict' mode autoregressive models here, so history
     # is caches in the model state and we are only feeding one symbol next.

@@ -263,6 +263,8 @@ class Loop:
     loss_name = self._task.loss_layer.name
     # only here do avoid potential divide-by-0
     n_steps = max(1, n_steps)
+    _log('')  # Separator for visibility on terminals.
+    self._log_step('Ran %d train steps in %0.2f secs' % (n_steps, elapsed_time))
     self._log_scalars(
         {loss_name: total_loss / float(n_steps)},
         summary_writer, 'metrics/', 'train')
@@ -279,7 +281,7 @@ class Loop:
     self._log_scalars(
         train_parameters, summary_writer, 'training/', 'train', stdout=False)
 
-  def save_gin(self, summary_writer=None):
+  def _save_gin(self, summary_writer=None):
     """"Saves the operative gin config."""
     assert self._output_dir is not None
     config_path = os.path.join(self._output_dir, 'config.gin')
@@ -380,12 +382,14 @@ class Loop:
     """
     directory = directory or self._output_dir
     if directory is None:
-      _log('Not loading as both directory and output_dir are None.')
+      _log('Not loading as both directory and output_dir are None.',
+           stdout=False)
       return
     filename = filename or 'model.pkl.gz'
     path = os.path.join(directory, filename)
     if not tf.io.gfile.exists(path):
-      _log(f'Not loading as checkpoint file does not exist: {path}.')
+      _log(f'Not loading as checkpoint file does not exist: {path}.',
+           stdout=False)
       return
     d = unpickle_from_file(path, gzip=True)
     self._step = d['step']

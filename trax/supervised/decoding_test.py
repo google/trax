@@ -56,9 +56,7 @@ class DecodingTest(test.TestCase):
     s3 = decoding.autoregressive_sample(model, eos_id=-1, max_length=10,
                                         batch_size=1, prefix=prefix)
     self.assertEqual(s3.shape[0], 1)
-    self.assertEqual(int(s3[0][0]), 1)
-    self.assertEqual(int(s3[0][1]), 2)
-    self.assertEqual(int(s3[0][2]), 3)
+    self.assertEqual(s3.shape[1], 10)
 
   def _lsh_self_attention_fn(self):
     return functools.partial(
@@ -81,7 +79,9 @@ class DecodingTest(test.TestCase):
         chunk_len=64,
         n_chunks_before=1,
         n_parallel_heads=1,
-        use_reference_code=use_reference_code
+        use_reference_code=use_reference_code,
+        predict_drop_len=128,
+        predict_mem_len=1024,
     )
 
   def test_autoregressive_sample_reformerlm(self):
@@ -121,6 +121,34 @@ class DecodingTest(test.TestCase):
                                        eos_id=-1, max_length=10)
     self.assertEqual(s.shape[0], 1)
     self.assertEqual(s.shape[1], 10)
+
+  def test_autoregressive_sample_transformerlm_quality(self):
+    pred_model = models.TransformerLM(
+        d_model=64, d_ff=128, dropout=0.05, max_len=256, n_heads=2,
+        n_layers=2, vocab_size=13, mode='predict')
+    shape11 = shapes.ShapeDtype((1, 1), dtype=np.int32)
+    model_path = os.path.join(_TESTDATA, 'transformerlm_copy.pkl.gz')
+    pred_model.init_from_file(model_path, weights_only=True,
+                              input_signature=(shape11, shape11))
+    inputs = np.array([[0, 3, 7, 5, 3, 2, 4, 0]], dtype=np.int32)
+    s = decoding.autoregressive_sample(pred_model, prefix=inputs,
+                                       max_length=6, temperature=0.0)
+    self.assertEqual(str(s[0]), '[3 7 5 3 2 4]')
+
+  def test_autoregressive_sample_reformerlm_quality(self):
+    timebin_self_attention = self._timebin_self_attention_fn()
+    pred_model = models.ReformerLM(
+        d_model=64, d_ff=128, dropout=0.05, max_len=256, n_heads=2,
+        attention_type=timebin_self_attention,
+        n_layers=2, vocab_size=13, mode='predict')
+    shape11 = shapes.ShapeDtype((1, 1), dtype=np.int32)
+    model_path = os.path.join(_TESTDATA, 'reformerlm_copy.pkl.gz')
+    pred_model.init_from_file(model_path, weights_only=True,
+                              input_signature=(shape11, shape11))
+    inputs = np.array([[0, 3, 7, 5, 3, 2, 4, 0]], dtype=np.int32)
+    s = decoding.autoregressive_sample(pred_model, prefix=inputs,
+                                       max_length=6, temperature=0.0)
+    self.assertEqual(str(s[0]), '[3 7 5 3 2 4]')
 
   def test_autoregressive_sample_transformer_quality(self):
     pred_model = models.Transformer(
