@@ -21,27 +21,44 @@ from __future__ import print_function
 
 # pylint: disable=wildcard-import
 # pylint: disable=g-import-not-at-top
+# pylint: disable=g-direct-tensorflow-import
 
 try:
-  # pylint: disable=g-direct-tensorflow-import
-  from tensorflow.python.ops.numpy_ops import *
+  # Note that this import will work in tf-nightly and TF versions 2.4 and
+  # higher.
+  from tensorflow.experimental.numpy import *
+  # TODO(agarwal): get rid of following imports.
+  from tensorflow.experimental.numpy import random
   from tensorflow import bfloat16
+  import numpy as onp
+  from tensorflow.python.ops.numpy_ops.np_dtypes import canonicalize_dtype
+  from tensorflow.python.ops.numpy_ops.np_dtypes import default_float_type
+  from tensorflow.python.ops.numpy_ops.np_dtypes import is_allow_float64
+  from tensorflow.python.ops.numpy_ops.np_dtypes import set_allow_float64
 
+  random.DEFAULT_RANDN_DTYPE = onp.float32
 except ImportError:
-  from tensorflow import newaxis
+  try:
+    # Note that this import will work in TF 2.3 and higher.
+    from tensorflow.python.ops.numpy_ops import *
+    from tensorflow import bfloat16
 
-  from trax.tf_numpy.numpy_impl import random
+  except ImportError:
+    # Note that this fallback will be needed for TF 2.2.
+    from tensorflow import newaxis
 
-  # pylint: disable=wildcard-import
-  from trax.tf_numpy.numpy_impl.array_ops import *
-  from trax.tf_numpy.numpy_impl.arrays import *
-  from trax.tf_numpy.numpy_impl.dtypes import *
-  from trax.tf_numpy.numpy_impl.math_ops import *
-  from trax.tf_numpy.numpy_impl.utils import finfo
-  from trax.tf_numpy.numpy_impl.utils import promote_types
-  from trax.tf_numpy.numpy_impl.utils import result_type
-  # pylint: enable=wildcard-import
+    from trax.tf_numpy.numpy_impl import random
 
-  max = amax  # pylint: disable=redefined-builtin,undefined-variable
-  min = amin  # pylint: disable=redefined-builtin,undefined-variable
-  round = around  # pylint: disable=redefined-builtin,undefined-variable
+    # pylint: disable=wildcard-import
+    from trax.tf_numpy.numpy_impl.array_ops import *
+    from trax.tf_numpy.numpy_impl.arrays import *
+    from trax.tf_numpy.numpy_impl.dtypes import *
+    from trax.tf_numpy.numpy_impl.math_ops import *
+    from trax.tf_numpy.numpy_impl.utils import finfo
+    from trax.tf_numpy.numpy_impl.utils import promote_types
+    from trax.tf_numpy.numpy_impl.utils import result_type
+    # pylint: enable=wildcard-import
+
+    max = amax  # pylint: disable=redefined-builtin,undefined-variable
+    min = amin  # pylint: disable=redefined-builtin,undefined-variable
+    round = around  # pylint: disable=redefined-builtin,undefined-variable
