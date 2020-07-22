@@ -20,6 +20,7 @@ will replace `trainer_lib`.
 """
 
 import collections
+import contextlib
 import functools
 import itertools
 import os
@@ -155,8 +156,6 @@ class Trainer(object):
 
     # Those fields will be set in reset().
     self._output_dir = None
-    self._train_sw = None
-    self._eval_sw = None
     self._history = None
     self._opt_state = None
     self._step = None
@@ -217,6 +216,31 @@ class Trainer(object):
     with fastmath.use_backend('numpy'):
       return self._lr_schedule(self._step)
 
+  def _open_summary_writer(self, sw_name='train'):
+    if ((not self._should_write_summaries) or
+        (self._output_dir is None) or
+        (not self._is_chief)):
+      return None
+    return jaxboard.SummaryWriter(os.path.join(self._output_dir, sw_name))
+
+  @contextlib.contextmanager
+  def train_sw(self):
+    train_sw = self._open_summary_writer(sw_name='train')
+    try:
+      yield train_sw
+    finally:
+      if train_sw:
+        train_sw.close()
+
+  @contextlib.contextmanager
+  def eval_sw(self):
+    eval_sw = self._open_summary_writer(sw_name='eval')
+    try:
+      yield eval_sw
+    finally:
+      if eval_sw:
+        eval_sw.close()
+
   def reset(self, output_dir, init_checkpoint=None):
     """Reset the model parameters.
 
@@ -231,18 +255,11 @@ class Trainer(object):
     """
     self.close()
     self._output_dir = output_dir
-    if output_dir is not None:
-      tf.io.gfile.makedirs(output_dir)
+    if self._output_dir is not None:
+      tf.io.gfile.makedirs(self._output_dir)
     else:
       assert not self._should_save_checkpoints
       assert not self._should_write_summaries
-
-    # Create summary writers and history.
-    if self._should_write_summaries:
-      self._train_sw = jaxboard.SummaryWriter(os.path.join(output_dir, 'train'),
-                                              enable=self._is_chief)
-      self._eval_sw = jaxboard.SummaryWriter(os.path.join(output_dir, 'eval'),
-                                             enable=self._is_chief)
 
     # Reset the train and eval streams.
     self._train_stream = _repeat_stream(self._inputs.train_stream,
@@ -255,8 +272,8 @@ class Trainer(object):
         self._inputs.train_eval_stream, self._n_devices)
 
     # Restore the training state.
-    if output_dir is not None:
-      state = load_trainer_state(output_dir, self._model_with_loss,
+    if self._output_dir is not None:
+      state = load_trainer_state(self._output_dir, self._model_with_loss,
                                  init_checkpoint)
     else:
       state = TrainerState(step=None, opt_state=None,
@@ -281,36 +298,38 @@ class Trainer(object):
     # epoch (training for as many steps as needed for a full pass through the
     # training data).
     print()  # Add visual separator in logs for start of training epoch.
-    start_time = time.time()
 
-    for _ in range(n_steps):
-      batch = next(self._train_stream)
-      if self.n_devices > 1:  # TODO(lukaszkaiser): use everywhere if possible.
-        batch = _reshape_by_device(batch, self.n_devices)
-      self.train_step(batch)
-      if self._should_save_now():
-        self.save_state(keep=True)
-      if self._should_log_now():
-        self._train_sw.scalar('training/learning_rate', self.learning_rate)
+    with self.train_sw() as train_sw, self.eval_sw() as eval_sw:
+      start_time = time.time()
 
-    # At end of n_steps, do bookkeeping, run evals, and save state.
-    elapsed_time = time.time() - start_time
-    self.log_step('Ran %d train steps in %0.2f secs' % (n_steps, elapsed_time))
-    if self._train_sw and n_steps > 1:
-      self._train_sw.scalar('training/steps per second',
-                            n_steps / elapsed_time, step=self._step)
-      self._train_sw.flush()
-    self.evaluate(n_eval_steps)
-    if self._eval_sw:
-      self._eval_sw.flush()
-    if self._should_save_checkpoints:
-      self.save_state(keep=False)
-    if self._should_save_checkpoints and self._current_step_is_best(high=True):
-      self.save_state(keep=False, prefix='highest_' + self._checkpoint_highest)
-    if self._should_save_checkpoints and self._current_step_is_best(high=False):
-      self.save_state(keep=False, prefix='lowest_' + self._checkpoint_lowest)
+      for _ in range(n_steps):
+        batch = next(self._train_stream)
+        if self.n_devices > 1:  # TODO(lukaszkaiser): try to use everywhere
+          batch = _reshape_by_device(batch, self.n_devices)
+        self.train_step(batch, train_sw)
+        if self._should_save_now():
+          self.save_state(keep=True)
+        if self._should_log_now() and train_sw:
+          train_sw.scalar('training/learning_rate', self.learning_rate)
 
-  def train_step(self, batch):
+      # At end of n_steps, do bookkeeping, run evals, and save state.
+      elapsed_time = time.time() - start_time
+      self.log_step(
+          'Ran %d train steps in %0.2f secs' % (n_steps, elapsed_time))
+      if train_sw and n_steps > 1:
+        train_sw.scalar('training/steps per second',
+                        n_steps / elapsed_time, step=self._step)
+      self.evaluate(n_eval_steps, train_sw, eval_sw)
+      if self._should_save_checkpoints:
+        self.save_state(keep=False)
+        if self._current_step_is_best(high=True):
+          self.save_state(
+              keep=False, prefix='highest_' + self._checkpoint_highest)
+        if self._current_step_is_best(high=False):
+          self.save_state(
+              keep=False, prefix='lowest_' + self._checkpoint_lowest)
+
+  def train_step(self, batch, train_sw=None):
     """Run one training step and update self._opt_state."""
     # Calculate the current optimizer parameters.
     opt_param_updates = self._for_n_devices(
@@ -324,16 +343,14 @@ class Trainer(object):
         (weights, slots), self._step, opt_params, batch,
         self._model_state, self._rngs)
     self._opt_state = opt_state._replace(weights=weights, slots=slots)
-    if self._should_log_now():
+    if self._should_log_now() and train_sw:
       for name, value in stat.items():
-        # TODO(afrozm): value is a scalar, but sometimes JAX is crashing here
-        # with a device put array error complaning that it should be an array.
         # On  multiple devices, take the mean.
         scalar_value = np.mean(np.array(value))
-        self._train_sw.scalar('training/' + name, scalar_value, step=self._step)
+        train_sw.scalar('training/' + name, scalar_value, step=self._step)
     self._step += 1
 
-  def evaluate(self, n_eval_steps):
+  def evaluate(self, n_eval_steps, train_sw=None, eval_sw=None):
     """Evaluate the model and log metrics."""
     _, rng = jax_random.split(self._rngs[0])
     # TODO(lukaszkaiser): both model state and parameters by default include
@@ -345,10 +362,10 @@ class Trainer(object):
     train_eval_slice = itertools.islice(self._train_eval_stream, n_eval_steps)
     train_metrics, _ = self.evaluation_round(train_eval_slice, weights, state,
                                              rng)
-    self.log_metrics(train_metrics, self._train_sw, 'train')
+    self.log_metrics(train_metrics, train_sw, 'train')
     eval_slice = itertools.islice(self._eval_stream, n_eval_steps)
     eval_metrics, _ = self.evaluation_round(eval_slice, weights, state, rng)
-    self.log_metrics(eval_metrics, self._eval_sw, 'eval')
+    self.log_metrics(eval_metrics, eval_sw, 'eval')
     self.log_step('Finished evaluation')
 
     # Save the learning rate in history.
@@ -392,10 +409,10 @@ class Trainer(object):
     config_str = gin.operative_config_str()
     with tf.io.gfile.GFile(config_path, 'w') as f:
       f.write(config_str)
-    sw = self._train_sw
-    if sw:
-      sw.text('gin_config',
-              jaxboard.markdownify_operative_config_str(config_str))
+    with self.train_sw() as sw:
+      if sw:
+        sw.text('gin_config',
+                jaxboard.markdownify_operative_config_str(config_str))
 
   def _save_state_dict(self, trainer_state_dict, weights_file):
     training.pickle_to_file(trainer_state_dict, weights_file, gzip=True)
@@ -523,20 +540,15 @@ class Trainer(object):
     return cur_step and last_is_best
 
   def _should_log_now(self):
-    return (self._train_sw is not None
-            and (self._step == 1 or self._step % 10 == 0))
+    return self._step == 1 or self._step % 10 == 0
 
   def _for_n_devices(self, x):
     """Replicates/broadcasts `x` for n devices if `self.n_devicess > 1`."""
     return tl.for_n_devices(x, self.n_devices)  # pylint: disable=protected-access
 
   def close(self):
-    if self._train_sw is not None:
-      self._train_sw.close()
-      self._train_sw = None
-    if self._eval_sw is not None:
-      self._eval_sw.close()
-      self._eval_sw = None
+    logging.info('Delete this method and its caller.')
+    pass
 
 
 @gin.configurable(blacklist=['output_dir'])
