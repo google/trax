@@ -110,6 +110,79 @@ class TFInputsTest(tf.test.TestCase):
     super().setUp()
     gin.clear_config()
 
+  def test_tokenize_detokenize(self):
+    def dataset():
+      yield 'I have a cat.'
+
+    # Character-level.
+    tok_char = list(tf_inputs.tokenize(dataset(), vocab_type='char'))
+    self.assertAllEqual(tok_char[0],
+                        np.array([ord(c) for c in 'I have a cat.']))
+    detok = tf_inputs.detokenize(tok_char[0], vocab_type='char')
+    self.assertEqual(detok, 'I have a cat.')
+
+    # Sentencepiece.
+    tok_spc = list(tf_inputs.tokenize(
+        dataset(), vocab_type='sentencepiece',
+        vocab_dir=_TESTDATA, vocab_file='sentencepiece.model'))
+    self.assertAllEqual(tok_spc[0], np.array([27, 43, 3, 9, 1712, 5]))
+    detok = tf_inputs.detokenize(
+        list(tok_spc[0]), vocab_type='sentencepiece',
+        vocab_dir=_TESTDATA, vocab_file='sentencepiece.model')
+    self.assertEqual(detok, 'I have a cat.')
+
+    # Subword.
+    tok_sbw = list(tf_inputs.tokenize(
+        dataset(), vocab_type='subword',
+        vocab_dir=_TESTDATA, vocab_file='en_8k.subword'))
+    self.assertAllEqual(tok_sbw[0], np.array([139, 96, 12, 2217, 2, 21]))
+    detok = tf_inputs.detokenize(
+        tok_sbw[0], vocab_type='subword',
+        vocab_dir=_TESTDATA, vocab_file='en_8k.subword')
+    self.assertEqual(detok, 'I have a cat.')
+
+  def test_tokenize_indices_reservedids(self):
+    def dataset():
+      yield ('Cat.', 'Dog.')
+
+    tok_char1 = list(tf_inputs.tokenize(
+        dataset(), vocab_type='char', n_reserved_ids=5))
+    self.assertAllEqual(tok_char1[0][0], np.array([ord(c) + 5 for c in 'Cat.']))
+    self.assertAllEqual(tok_char1[0][1], np.array([ord(c) + 5 for c in 'Dog.']))
+
+    tok_char2 = list(tf_inputs.tokenize(
+        dataset(), indices=[0], vocab_type='char', n_reserved_ids=2))
+    self.assertAllEqual(tok_char2[0][0], np.array([ord(c) + 2 for c in 'Cat.']))
+    self.assertEqual(tok_char2[0][1], 'Dog.')
+
+  def test_tokenize_dict(self):
+    def dataset():
+      yield {'a': 'Cat.', 'b': 'Dog.'}
+
+    tok_char1 = list(tf_inputs.tokenize(dataset(), vocab_type='char'))
+    self.assertAllEqual(tok_char1[0]['a'], np.array([ord(c) for c in 'Cat.']))
+    self.assertAllEqual(tok_char1[0]['b'], np.array([ord(c) for c in 'Dog.']))
+
+    tok_char2 = list(tf_inputs.tokenize(dataset(), indices=['a'],
+                                        vocab_type='char'))
+    self.assertAllEqual(tok_char2[0]['a'], np.array([ord(c) for c in 'Cat.']))
+    self.assertEqual(tok_char2[0]['b'], 'Dog.')
+
+  def test_vocab_size(self):
+    # Character-level.
+    char_size = tf_inputs.vocab_size(vocab_type='char', n_reserved_ids=11)
+    self.assertEqual(char_size, 256 + 11)
+    # Sentencepiece.
+    spc_size = tf_inputs.vocab_size(
+        vocab_type='sentencepiece',
+        vocab_dir=_TESTDATA, vocab_file='sentencepiece.model')
+    self.assertEqual(spc_size, 32000)
+    # Subword.
+    sbw_size = tf_inputs.vocab_size(
+        vocab_type='subword',
+        vocab_dir=_TESTDATA, vocab_file='en_8k.subword')
+    self.assertEqual(sbw_size, 8183)
+
   def test_c4_bare_preprocess_fn(self):
     dataset = _c4_dataset()
 
@@ -275,7 +348,6 @@ class TFInputsTest(tf.test.TestCase):
 
   # TODO(afrozm): Why does this test take so much time?
   def test_inputs_using_generic_text_dataset_preprocess_fn(self):
-
     gin.bind_parameter(
         'generic_text_dataset_preprocess_fn.spm_path', _spm_path())
     gin.bind_parameter(

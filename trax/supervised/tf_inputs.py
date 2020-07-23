@@ -28,6 +28,7 @@ import numpy as np
 from t5.data import preprocessors as t5_processors
 from t5.data import sentencepiece_vocabulary as t5_spc_vocab
 from t5.data import utils as t5_utils
+from tensor2tensor.data_generators import text_encoder as t2t_text_encoder
 import tensorflow as tf   # pylint: disable=g-explicit-tensorflow-version-import
 import tensorflow_datasets as tfds
 import tensorflow_text as tf_text
@@ -262,6 +263,123 @@ def _train_and_eval_dataset_v1(problem_name, data_dir,
   input_key = 'inputs' if 'inputs' in examples[0] else 'targets'
   supervised_keys = ([input_key], ['targets'])
   return train_dataset, eval_dataset, supervised_keys
+
+
+# Tokenization.
+def tokenize(stream, indices=None, vocab_type='subword',
+             vocab_file=None, vocab_dir=None, n_reserved_ids=0):
+  """Tokenize examples from the stream.
+
+  This function assumes that `stream` generates either strings or tuples/dicts
+  containing strings at some `indices`. This function maps these strings to
+  numpy arrays of integers -- the tokenized version of each string.
+
+  Args:
+    stream: A python generator yielding strings, tuples or dicts.
+    indices: which indices of the tuple/dict to tokenize (by default: all)
+    vocab_type: Type of vocabulary, one of: 'subword', 'sentencepiece', 'char'.
+    vocab_file: Name of the vocabulary file.
+    vocab_dir: Directory which contains the vocabulary file.
+    n_reserved_ids: An int, offset added so 0, ..., n_reserved_ids-1 are unused;
+      This is common for example when reserving the 0 for padding and 1 for EOS,
+      but it's only needed if these symbols are not already included (and thus
+      reserved) in the vocab_file.
+
+  Yields:
+    Examples from stream with strings at `indices` replaced by np.arrays of
+    integers -- the tokenized version of these strings.
+  """
+  vocab = _get_vocab(vocab_type, vocab_file, vocab_dir)
+  for example in stream:
+    if isinstance(example, (list, tuple)):
+      new_example = []
+      for i, x in enumerate(example):
+        if indices is None or i in indices:
+          new_example.append(np.array(vocab.encode(x)) + n_reserved_ids)
+        else:
+          new_example.append(x)
+      yield tuple(new_example)
+    elif isinstance(example, dict):
+      new_example = {}
+      for k in example.keys():
+        if indices is None or k in indices:
+          new_example[k] = np.array(vocab.encode(example[k])) + n_reserved_ids
+        else:
+          new_example[k] = example[k]
+      yield new_example
+    else:
+      yield np.array(vocab.encode(example)) + n_reserved_ids
+
+
+def detokenize(x, vocab_type='subword', vocab_file=None, vocab_dir=None,
+               n_reserved_ids=0):
+  """Maps integer arrays to text; the opposite of `tokenize`.
+
+  In many cases (all char- and subword-type vocabularies and most sentencepiece
+  ones) the tokenization is invertible, so detokenize(tokenize(x)) = x. In some
+  more rare cases this can remove some spacing, but it is still often useful
+  to run detokenize to get a readable version for a tokenized string.
+
+  Args:
+    x: a list or numpy array of integers.
+    vocab_type: Type of vocabulary, one of: 'subword', 'sentencepiece', 'char'.
+    vocab_file: Name of the vocabulary file.
+    vocab_dir: Directory which contains the vocabulary file.
+    n_reserved_ids: An int, offset added so 0, ..., n_reserved_ids-1 are unused;
+      This is common for example when reserving the 0 for padding and 1 for EOS,
+      but it's only needed if these symbols are not already included (and thus
+      reserved) in the vocab_file.
+
+  Returns:
+    A string corresponding to the de-tokenized version of x.
+  """
+  vocab = _get_vocab(vocab_type, vocab_file, vocab_dir)
+  x_unreserved = np.array(x) - n_reserved_ids
+  return str(vocab.decode(x_unreserved.tolist()))
+
+
+def vocab_size(vocab_type='subword', vocab_file=None, vocab_dir=None,
+               n_reserved_ids=0):
+  """Returns the size of the vocabulary (number of symbols used).
+
+  This function can be used to set the size of the final layers of a model that
+  needs to predict symbols from a given vocabulary. More precisely, if this
+  function returns N then the last layer size should be set to at least N (it
+  can be more). Note that this function does take reserved ids into account.
+
+  Args:
+    vocab_type: Type of vocabulary, one of: 'subword', 'sentencepiece', 'char'.
+    vocab_file: Name of the vocabulary file.
+    vocab_dir: Directory which contains the vocabulary file.
+    n_reserved_ids: An int, offset added so 0, ..., n_reserved_ids-1 are unused.
+
+  Returns:
+    An integer, the number of symbols used (including reserved ids).
+  """
+  vocab = _get_vocab(vocab_type, vocab_file, vocab_dir)
+  return vocab.vocab_size + n_reserved_ids
+
+
+def _get_vocab(vocab_type='subword', vocab_file=None, vocab_dir=None):
+  """Gets the vocabulary object for tokenization; see tokenize for details."""
+  if vocab_type not in ['char', 'subword', 'sentencepiece']:
+    raise ValueError('vocab_type must be "subword", "char", or "sentencepiece" '
+                     f'but got {vocab_type}')
+
+  if vocab_type == 'char':
+    # Note that we set num_reserved_ids=0 below. We could instead pass
+    # the value n_reserved_ids from tokenize here -- ByteTextEncoder does
+    # exactly the same thing as tokenize above, ie., adds num_reserved_ids.
+    return t2t_text_encoder.ByteTextEncoder(num_reserved_ids=0)
+
+  vocab_dir = vocab_dir or 'gs://trax-ml/vocabs/'
+  path = os.path.join(vocab_dir, vocab_file)
+
+  if vocab_type == 'subword':
+    return t2t_text_encoder.SubwordTextEncoder(path)
+
+  assert vocab_type == 'sentencepiece'
+  return t5_spc_vocab.SentencePieceVocabulary(sentencepiece_model_file=path)
 
 
 # Makes the function accessible in gin configs, even with all args blacklisted.
