@@ -14,8 +14,8 @@
 
 import trax.models
 import trax.optimizers
-import trax.supervised.inputs
-import trax.supervised.tf_inputs
+import trax.data.inputs
+import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
 # Macros:
@@ -65,7 +65,7 @@ batcher.id_to_mask = 0
 # ==============================================================================
 data_streams.data_dir = None
 data_streams.dataset_name = 'scientific_papers/arxiv:1.1.1'
-data_streams.bare_preprocess_fn = @trax.supervised.tf_inputs.generic_text_dataset_preprocess_fn
+data_streams.bare_preprocess_fn = @trax.data.tf_inputs.generic_text_dataset_preprocess_fn
 data_streams.input_name = 'inputs'
 data_streams.target_name = 'targets'
 
@@ -88,8 +88,8 @@ generic_text_dataset_preprocess_fn.text_preprocess_fns = [
     @rekey/get_t5_preprocessor_by_name()
 ]
 generic_text_dataset_preprocess_fn.token_preprocess_fns = [
-    @trax.supervised.tf_inputs.truncate_dataset_on_len,
-    @trax.supervised.tf_inputs.filter_dataset_on_len,
+    @trax.data.tf_inputs.truncate_dataset_on_len,
+    @trax.data.tf_inputs.filter_dataset_on_len,
 ]
 
 

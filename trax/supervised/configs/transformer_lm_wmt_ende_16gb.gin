@@ -14,7 +14,7 @@
 
 import trax.models
 import trax.optimizers
-import trax.supervised.tf_inputs
+import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
 # Parameters for batcher:
@@ -31,7 +31,7 @@ batcher.id_to_mask = 0
 # ==============================================================================
 data_streams.data_dir = None
 data_streams.dataset_name = 't2t_translate_ende_wmt32k'
-data_stream.preprocess_fn = @trax.supervised.tf_inputs.wmt_concat_preprocess
+data_stream.preprocess_fn = @trax.data.tf_inputs.wmt_concat_preprocess
 
 # Parameters for multifactor:
 # ==============================================================================

@@ -23,6 +23,7 @@ import gym
 import numpy as np
 import tensorflow as tf
 
+from trax import data
 from trax import fastmath
 from trax import layers as tl
 from trax import shapes
@@ -146,7 +147,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
       # If needed, create value_output_dir and missing parent directories.
       if not tf.io.gfile.isdir(value_output_dir):
         tf.io.gfile.makedirs(value_output_dir)
-    self._value_inputs = supervised.Inputs(
+    self._value_inputs = data.inputs.Inputs(
         train_stream=lambda _: self.value_batches_stream())
     self._value_trainer = supervised.Trainer(
         model=value_model,

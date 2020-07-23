@@ -15,7 +15,7 @@
 import trax.layers
 import trax.models
 import trax.optimizers
-import trax.supervised.tf_inputs
+import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
 # Parameters that will vary between experiments:

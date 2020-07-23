@@ -13,12 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Supervised learning imports in Trax."""
+"""Data imports in Trax."""
 
-from trax.supervised import lr_schedules
-from trax.supervised import trainer_lib
-from trax.supervised import training
-from trax.supervised.trainer_lib import train
-from trax.supervised.trainer_lib import Trainer
-from trax.supervised.training import EvalTask
-from trax.supervised.training import TrainTask
+from trax.data import inputs
+from trax.data import tf_inputs

@@ -14,7 +14,7 @@
 
 import trax.models
 import trax.optimizers
-import trax.supervised.tf_inputs
+import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
 # Parameters for batcher:
@@ -30,7 +30,7 @@ batcher.id_to_mask = 0
 data_streams.data_dir = None
 data_streams.dataset_name = 't2t_languagemodel_lm1b32k'
 data_streams.input_name = 'targets'
-data_streams.preprocess_fn = @trax.supervised.tf_inputs.lm1b_preprocess
+data_streams.preprocess_fn = @trax.data.tf_inputs.lm1b_preprocess
 
 # Parameters for multifactor:
 # ==============================================================================

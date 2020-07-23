@@ -38,11 +38,11 @@ from trax import fastmath
 from trax import jaxboard
 from trax import layers as tl
 from trax import optimizers as trax_opt
+from trax.data import inputs as trax_inputs
 from trax.fastmath import numpy as np
 from trax.fastmath import random as jax_random
 from trax.shapes import ShapeDtype
 from trax.supervised import history as trax_history
-from trax.supervised import inputs as trax_inputs
 from trax.supervised import lr_schedules as lr
 from trax.supervised import training
 

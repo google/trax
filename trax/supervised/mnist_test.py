@@ -21,9 +21,9 @@ import itertools
 from absl.testing import absltest
 
 from trax import layers as tl
+from trax.data import inputs
+from trax.data import tf_inputs
 from trax.optimizers import adafactor
-from trax.supervised import inputs
-from trax.supervised import tf_inputs
 from trax.supervised import training
 
 

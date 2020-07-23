@@ -14,8 +14,8 @@
 
 import trax.models
 import trax.optimizers
-import trax.supervised.inputs
-import trax.supervised.tf_inputs
+import trax.data.inputs
+import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
 vocab_size = 13  #  For addition, base = vocab_size - 3.
@@ -76,8 +76,8 @@ ReformerLM.vocab_size = %vocab_size
 
 # Parameters for train:
 # ==============================================================================
-# train.inputs = @trax.supervised.tf_inputs.sequence_copy_inputs
-train.inputs = @trax.supervised.inputs.addition_inputs
+# train.inputs = @trax.data.inputs.sequence_copy_inputs
+train.inputs = @trax.data.inputs.addition_inputs
 train.eval_frequency = 1000
 train.eval_steps = 10
 train.optimizer = @trax.optimizers.Adam

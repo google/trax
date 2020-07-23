@@ -25,6 +25,7 @@ import gin
 import numpy as np
 import tensorflow as tf
 
+from trax import data
 from trax import fastmath
 from trax import jaxboard
 from trax import layers as tl
@@ -292,7 +293,7 @@ class PolicyTrainer(RLTrainer):
     self._policy_dist = distributions.create_distribution(task.action_space)
 
     # Inputs to the policy model are produced by self._policy_batches_stream.
-    self._policy_inputs = supervised.Inputs(
+    self._policy_inputs = data.inputs.Inputs(
         train_stream=lambda _: self.policy_batches_stream())
 
     policy_model = functools.partial(

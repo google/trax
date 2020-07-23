@@ -14,59 +14,82 @@
 
 import trax.models
 import trax.optimizers
-import trax.supervised.inputs
+import trax.data.inputs
+import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
-n_symbols = 128
-length = 4096
-batch = 16
+vocab_size = 13  #  For addition, base = vocab_size - 3.
 
-# Parameters for multifactor:
+# Parameters for data_streams:
 # ==============================================================================
-multifactor.constant = 1.0
-multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
-multifactor.warmup_steps = 8000
+data_streams.data_dir = None
+data_streams.dataset_name = 'addition'
 
 # Parameters for sequence_copy_inputs:
 # ==============================================================================
-sequence_copy_inputs.vocab_size = %n_symbols
-sequence_copy_inputs.batch_size = %batch
-sequence_copy_inputs.train_length = %length
-sequence_copy_inputs.eval_min_length = %length
-sequence_copy_inputs.eval_max_length = %length
+sequence_copy_inputs.vocab_size = %vocab_size
+sequence_copy_inputs.batch_size = 128
+sequence_copy_inputs.train_length = 64
+sequence_copy_inputs.eval_min_length = 32
+sequence_copy_inputs.eval_max_length = 64
 sequence_copy_inputs.reverse = False
+sequence_copy_inputs.pad_to_multiple = 32
 
-# Parameters for train:
+# Parameters for addition_inputs:
 # ==============================================================================
-train.eval_frequency = 500
-train.eval_steps = 64
-train.inputs = @trax.supervised.inputs.sequence_copy_inputs
-train.model = @trax.models.ReformerLM
-train.optimizer = @trax.optimizers.Adafactor
-train.steps = 50000
+addition_inputs.vocab_size = %vocab_size
+addition_inputs.batch_size = 128
+addition_inputs.train_length = 64
+addition_inputs.eval_min_length = 32
+addition_inputs.eval_max_length = 64
+addition_inputs.pad_to_multiple = 32
+
+# Parameters for multifactor:
+# ==============================================================================
+multifactor.constant = 0.05
+multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
+multifactor.warmup_steps = 4000
 
 # Parameters for LSHSelfAttention:
 # ==============================================================================
-LSHSelfAttention.attention_dropout = 0.1
-LSHSelfAttention.chunk_len = 128
-LSHSelfAttention.n_buckets = 192
+LSHSelfAttention.attention_dropout = 0.0
+LSHSelfAttention.chunk_len = 16
 LSHSelfAttention.n_chunks_after = 0
 LSHSelfAttention.n_chunks_before = 1
 LSHSelfAttention.n_hashes = 2
 LSHSelfAttention.n_parallel_heads = 1
-LSHSelfAttention.predict_drop_len = 256
-LSHSelfAttention.predict_mem_len = 12288
+LSHSelfAttention.max_length_for_buckets = 1024
 
 # Parameters for ReformerLM:
 # ==============================================================================
-# ReformerLM.attention_type = @trax.layers.LSHSelfAttention
-ReformerLM.d_attention_key = 64
-ReformerLM.d_attention_value = 64
 ReformerLM.d_model = 256
-ReformerLM.d_ff = 256
-ReformerLM.dropout = 0.0
-ReformerLM.max_len = %length
-ReformerLM.mode = 'train'
+ReformerLM.d_ff = 512
+ReformerLM.dropout = 0.05
+ReformerLM.max_len = 256
 ReformerLM.n_heads = 4
-ReformerLM.n_layers = 1
-ReformerLM.vocab_size = %n_symbols
+ReformerLM.n_layers = 3
+ReformerLM.ff_use_sru = 1
+ReformerLM.axial_pos_shape = 'fixed-base'
+ReformerLM.attention_type = @LSHSelfAttention
+ReformerLM.vocab_size = %vocab_size
+
+# Parameters for TransformerLM:
+# ==============================================================================
+TransformerLM.d_model = 256
+TransformerLM.d_ff = 512
+TransformerLM.dropout = 0.05
+TransformerLM.max_len = 256
+TransformerLM.n_heads = 4
+TransformerLM.n_layers = 3
+TransformerLM.vocab_size = %vocab_size
+
+# Parameters for train:
+# ==============================================================================
+train.inputs = @trax.data.inputs.sequence_copy_inputs
+# train.inputs = @trax.data.inputs.addition_inputs
+train.eval_frequency = 100
+train.eval_steps = 10
+train.optimizer = @trax.optimizers.Adam
+train.steps = 30000
+# train.model = @trax.models.TransformerLM
+train.model = @trax.models.ReformerLM

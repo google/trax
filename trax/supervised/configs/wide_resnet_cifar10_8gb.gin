@@ -15,7 +15,7 @@
 import trax.supervised.lr_schedules
 import trax.models
 import trax.optimizers
-import trax.supervised.tf_inputs
+import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
 # Parameters for batcher:
@@ -31,7 +31,7 @@ batcher.variable_shapes = False
 # ==============================================================================
 data_streams.data_dir = None
 data_streams.dataset_name = 'cifar10'
-data_streams.preprocess_fn = @trax.supervised.tf_inputs.cifar10_augmentation_preprocess
+data_streams.preprocess_fn = @trax.data.tf_inputs.cifar10_augmentation_preprocess
 
 # Parameters for multifactor:
 # ==============================================================================

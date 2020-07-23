@@ -14,7 +14,7 @@
 
 import trax.models
 import trax.optimizers
-import trax.supervised.tf_inputs
+import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
 MAX_EVAL_LENGTH = 512 # Get back to 65536
@@ -35,7 +35,7 @@ batcher.id_to_mask = 0
 # ==============================================================================
 data_streams.data_dir = None
 data_streams.dataset_name = 't2t_translate_ende_wmt32k'
-data_streams.preprocess_fn = @trax.supervised.tf_inputs.wmt_preprocess
+data_streams.preprocess_fn = @trax.data.tf_inputs.wmt_preprocess
 
 # Parameters for multifactor:
 # ==============================================================================

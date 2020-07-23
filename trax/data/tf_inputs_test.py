@@ -25,8 +25,8 @@ from t5.data import preprocessors as t5_processors
 from t5.data import test_utils as t5_test_utils
 import tensorflow as tf
 import tensorflow_datasets as tfds
-from trax.supervised import inputs  # pylint: disable=unused-import
-from trax.supervised import tf_inputs
+from trax.data import inputs  # pylint: disable=unused-import
+from trax.data import tf_inputs
 
 
 pkg_dir, _ = os.path.split(__file__)

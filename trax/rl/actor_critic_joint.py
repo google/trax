@@ -18,6 +18,7 @@
 
 import functools
 
+from trax import data
 from trax import layers as tl
 from trax import supervised
 from trax.fastmath import numpy as jnp
@@ -86,7 +87,7 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
     self._task.set_n_replay_epochs(n_replay_epochs)
 
     # Inputs to the joint model are produced by self.batches_stream.
-    self._inputs = supervised.Inputs(
+    self._inputs = data.inputs.Inputs(
         train_stream=lambda _: self.batches_stream())
 
     self._joint_model = functools.partial(

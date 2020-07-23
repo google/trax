@@ -14,7 +14,7 @@
 
 import trax.models
 import trax.optimizers
-import trax.supervised.tf_inputs
+import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
 n_symbols = 32
@@ -30,8 +30,9 @@ data_streams.dataset_name = 'gru_copy'
 # ==============================================================================
 sequence_copy_inputs.vocab_size = %n_symbols
 sequence_copy_inputs.batch_size = %batch
-sequence_copy_inputs.train_lengths = [%length]
-sequence_copy_inputs.eval_lengths = [%length]
+sequence_copy_inputs.train_length = %length
+sequence_copy_inputs.eval_min_length = 2
+sequence_copy_inputs.eval_max_length = %length
 sequence_copy_inputs.reverse = False
 
 # Parameters for multifactor:
@@ -44,7 +45,7 @@ multifactor.warmup_steps = 8000
 # ==============================================================================
 train.eval_frequency = 1000
 train.eval_steps = 10
-train.inputs = @trax.supervised.inputs.sequence_copy_inputs
+train.inputs = @trax.data.inputs.sequence_copy_inputs
 train.model = @trax.models.RNNLM
 train.optimizer = @trax.optimizers.Adam
 train.steps = 500000

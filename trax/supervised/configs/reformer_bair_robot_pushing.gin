@@ -15,7 +15,7 @@
 import trax.layers
 import trax.models
 import trax.optimizers
-import trax.supervised.tf_inputs
+import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
 # Parameters that will vary between experiments:
@@ -61,7 +61,7 @@ Adam.eps = 1e-9
 # ==============================================================================
 train.eval_frequency = 20
 train.eval_steps = 1
-train.inputs = @trax.supervised.tf_inputs.inputs
+train.inputs = @trax.data.tf_inputs.inputs
 # train.model: see top
 train.optimizer = @trax.optimizers.Adam
 train.steps = 100000

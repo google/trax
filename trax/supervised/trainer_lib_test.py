@@ -33,8 +33,8 @@ from trax import fastmath
 from trax import layers
 from trax import models
 from trax import optimizers as trax_opt
+from trax.data import inputs as inputs_lib
 from trax.fastmath import numpy as jnp
-from trax.supervised import inputs as inputs_lib
 from trax.supervised import lr_schedules as lr
 from trax.supervised import trainer_lib
 from trax.tf_numpy import numpy as tf_np

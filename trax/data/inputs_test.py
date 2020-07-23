@@ -19,7 +19,7 @@
 from absl.testing import absltest
 from absl.testing import parameterized
 import numpy as np
-from trax.supervised import inputs
+from trax.data import inputs
 
 
 class InputsTest(parameterized.TestCase):
