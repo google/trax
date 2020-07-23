@@ -704,10 +704,13 @@ def _jit_update_fn(predict_fn, loss_fn, optimizer, n_devices, jit=True):
     # the number of devices on this host machine, however psum goes over all
     # devices of all hosts (ex: a TPU pod) and we need to be averaging over all
     # of them.
-    grads = jax.tree_util.tree_map(
-        lambda g: (  # pylint: disable=g-long-lambda
-            fastmath.psum(g, 'batch') / fastmath.psum(np.array(1.0), 'batch')),
-        grads)
+    #
+    # Collect all gradients.
+    grads = fastmath.psum(grads, 'batch')
+    n_devices_total = fastmath.psum(np.array(1.0), 'batch')
+    # Average across hosts.
+    grads = jax.tree_util.tree_map(lambda g: g / n_devices_total, grads)
+
     new_weights, new_slots, stats = optimizer.tree_update(
         i, grads, weights, slots, opt_params)
     return (new_weights, new_slots), stats, state, subrng
