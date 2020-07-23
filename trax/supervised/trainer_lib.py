@@ -613,9 +613,9 @@ def train(output_dir,
     if checkpoints_at is not None:
       checkpoint_at = lambda step: step in checkpoints_at
     loop = training.Loop(model(mode='train'),
-                         train_task,
+                         [train_task],
                          eval_model=model(mode='eval'),
-                         eval_task=eval_task,
+                         eval_tasks=[eval_task],
                          output_dir=output_dir,
                          checkpoint_at=checkpoint_at)
 
