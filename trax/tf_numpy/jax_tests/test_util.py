@@ -794,7 +794,7 @@ class TestCase(parameterized.TestCase):
                               msg="Found\n{}\nExpecting\n{}".format(what, expected))
 
   def _CheckAgainstNumpy(self, numpy_reference_op, lax_op, args_maker,
-                         check_dtypes=False, tol=None):
+                         check_dtypes=True, tol=None):
     args = args_maker()
     lax_ans = lax_op(*args)
     numpy_ans = numpy_reference_op(*args)
@@ -805,7 +805,7 @@ class TestCase(parameterized.TestCase):
   def _CompileAndCheck(self,
                        fun,
                        args_maker,
-                       check_dtypes,
+                       check_dtypes=True,
                        rtol=None,
                        atol=None,
                        check_eval_on_shapes=True,
