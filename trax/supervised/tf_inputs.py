@@ -560,6 +560,10 @@ def c4_bare_preprocess_fn(dataset,
   # Add EOS.
   dataset = add_eos_to_output_features(dataset, training)
 
+  # Truncate and then pad the examples -- all examples have the same shape.
+  dataset = truncate_dataset_on_len(dataset, training, sequence_length, True)
+  dataset = pad_dataset_to_length(dataset, training, sequence_length)
+
   return dataset
 
 
@@ -632,6 +636,8 @@ def truncate_dataset_on_len(dataset, training, len_map=None,
 def pad_dataset_to_length(dataset, training, len_map=None):
   """Pad features less than specified length to specified length."""
   del training
+  if len_map is None:
+    return dataset
   def pad_to_len(x):
     for key, max_len in len_map.items():
       x_shape = tf.shape(x[key])
