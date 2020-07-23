@@ -1,0 +1,99 @@
+# Copyright 2020 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.models
+import trax.optimizers
+import trax.data.tf_inputs
+import trax.supervised.trainer_lib
+
+import t5.data.preprocessors
+import t5.data.sentencepiece_vocabulary
+
+max_length = 512
+sequence_length = {'inputs': 512, 'targets': 512}
+mean_noise_span_length = 3.0
+noise_density = 0.15
+
+# Parameters for batcher:
+# ==============================================================================
+batcher.data_streams = @tf_inputs.data_streams
+batcher.batch_size_per_device = 16
+batcher.eval_batch_size = 16
+batcher.max_eval_length = 512
+batcher.bucket_length = 32
+batcher.buckets_include_inputs_in_length=True
+batcher.variable_shapes = False
+
+# Parameters for data_streams:
+# ==============================================================================
+data_streams.data_dir = None
+data_streams.dataset_name = 'imdb_reviews'
+data_streams.bare_preprocess_fn = @trax.data.tf_inputs.generic_text_dataset_preprocess_fn
+data_streams.input_name = 'inputs'
+data_streams.target_name = 'targets'
+
+# Parameters for filter_dataset_on_len:
+# ==============================================================================
+filter_dataset_on_len.len_map = {'inputs': (1, 512) }
+filter_dataset_on_len.filter_on_eval = True
+
+# Parameters for truncate_dataset_on_len:
+# ==============================================================================
+truncate_dataset_on_len.len_map = {'inputs': 512 }
+truncate_dataset_on_len.truncate_on_eval = True
+
+# Parameters for pad_dataset_to_length:
+# ==============================================================================
+pad_dataset_to_length.len_map = {'inputs': 512 }
+
+# Parameters for generic_text_dataset_preprocess_fn:
+# ==============================================================================
+generic_text_dataset_preprocess_fn.text_preprocess_fns = [
+    @rekey/get_t5_preprocessor_by_name()
+]
+generic_text_dataset_preprocess_fn.token_preprocess_fns = [
+    @trax.data.tf_inputs.truncate_dataset_on_len,
+    @trax.data.tf_inputs.filter_dataset_on_len,
+    @trax.data.tf_inputs.pad_dataset_to_length
+]
+
+# Parameters for get_t5_preprocessor_by_name:
+# ==============================================================================
+rekey/get_t5_preprocessor_by_name.name = 'rekey'
+rekey/get_t5_preprocessor_by_name.fn_kwargs = {'key_map': {'inputs': 'text', 'targets': 'label'}}
+
+# Parameters for multifactor:
+# ==============================================================================
+multifactor.constant = 0.1
+multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
+multifactor.warmup_steps = 8000
+
+# Parameters for train:
+# ==============================================================================
+train.eval_frequency = 100
+train.eval_steps = 10
+train.model = @trax.models.TransformerEncoder
+train.steps = 10000
+
+# Parameters for TransformerLM:
+# ==============================================================================
+TransformerEncoder.d_model = 512
+TransformerEncoder.d_ff = 2048
+TransformerEncoder.dropout = 0.1
+TransformerEncoder.max_len = 512
+TransformerEncoder.mode = 'train'
+TransformerEncoder.n_classes = 2
+TransformerEncoder.n_heads = 8
+TransformerEncoder.n_layers = 6
+TransformerEncoder.vocab_size = 32000
