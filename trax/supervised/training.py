@@ -35,14 +35,17 @@ Key classes:
 """
 import collections
 import contextlib
+import functools
 import gzip as gzip_lib
 import os
 import pickle
+import random
 import sys
 import time
 
 from absl import logging
 import gin
+import jax
 import numpy as np
 import tensorflow as tf
 
@@ -50,6 +53,8 @@ from trax import fastmath
 from trax import jaxboard
 from trax import layers as tl
 from trax import shapes
+from trax.fastmath import numpy as jnp
+from trax.fastmath import random as jax_random
 
 
 class Loop:
@@ -81,7 +86,8 @@ class Loop:
   """
 
   def __init__(self, model, tasks, eval_model=None, eval_tasks=None,
-               output_dir=None, checkpoint_at=None, eval_at=None):
+               output_dir=None, checkpoint_at=None, eval_at=None,
+               n_devices=None, random_seed=None):
     """Configures a training `Loop`, including a random initialization.
 
     Args:
@@ -104,10 +110,16 @@ class Loop:
           periodic checkpointing at `task.n_steps_per_checkpoint`.
       eval_at: Function (integer --> boolean) that says, for training step n,
           whether that step should run evals. If None, run when checkpointing.
+      n_devices: integer or None, the number of devices for this computation.
+      random_seed: the random seed to use; time/os dependent if None (default).
     """
+    self._is_chief, self._n_hosts, self._n_devices, self._rng = (
+        init_host_and_devices(n_devices, random_seed))
+
     # Handle single task case without lists too.
     if not isinstance(tasks, (list, tuple)):
       tasks = [tasks]
+
     assert len(tasks) == 1, 'Multitask training not supported yet.'
     task = tasks[0]
     if eval_tasks is None:
@@ -130,16 +142,75 @@ class Loop:
     # Prepare training components.
     self._step = 0
     self._checkpoint_at = checkpoint_at or default_at
-    self._model_in_training = tl.Serial(self._model, self._task.loss_layer)
     self._batch_signature = shapes.signature(self._task.sample_batch)
-    self._eval_model.init(self._batch_signature)
+    self._model_in_training = tl.Serial(self._model, self._task.loss_layer)
+
+    # Initialize using the given random seed.
+    # NOTE: If `random_seed` is `None` then `self._rng` will be different on
+    # different hosts, leading to different weights on the different hosts.
+    self._model_in_training.rng = self.new_rng()
     self._model_in_training.init(self._batch_signature)
+    self._eval_model.rng = self.new_rng()
+    self._eval_model.init(self._batch_signature)
+
+    # To handle the above case (i.e. random_seed = None), we psum the weights
+    # and state and average them.
+    # NOTE: This adds time (how much?) so we prefer not to do it if it is
+    # unnecessary, i.e. random_seed was set.
+    if random_seed is None and self._n_hosts > 1:
+      logging.info('Syncing weights/state across %d hosts.', self._n_hosts)
+
+      if logging.vlog_is_on(1):
+        logging.info(
+            'Input training weights shape: %s',
+            fastmath.nested_map(lambda x: x.shape,
+                                self._model_in_training.weights))
+        logging.info('Input training weights: %s',
+                     self._model_in_training.weights)
+        logging.info('Input training state: %s', self._model_in_training.state)
+        logging.info('Input eval weights: %s', self._eval_model.weights)
+        logging.info('Input eval state: %s', self._eval_model.state)
+
+      (self._model_in_training.weights, self._model_in_training.state,
+       self._eval_model.weights, self._eval_model.state) = self._unreplicate(
+           _make_weights_and_state_same_across_hosts(
+               self._for_n_devices(
+                   (self._model_in_training.weights,
+                    self._model_in_training.state, self._eval_model.weights,
+                    self._eval_model.state))))
+
+      if logging.vlog_is_on(1):
+        logging.info(
+            'Output training weights shape: %s',
+            fastmath.nested_map(lambda x: x.shape,
+                                self._model_in_training.weights))
+        logging.info('Output training weights: %s',
+                     self._model_in_training.weights)
+        logging.info('Output training state: %s', self._model_in_training.state)
+        logging.info('Output eval weights: %s', self._eval_model.weights)
+        logging.info('Output eval state: %s', self._eval_model.state)
+
     self._task.optimizer.tree_init(self._model_in_training.weights)
+
+    # Signature:
+    # (batch, weights, state, rng) -> ((loss, state), gradients)
     self._forward_and_backward_fn = (
-        fastmath.jit(fastmath.value_and_grad(
+        fastmath.value_and_grad(
             self._model_in_training.pure_fn,
             argnums=1,  # arg1 of pure_fn: weights
-            has_aux=True)))  # return (loss, state), gradients
+            has_aux=True))  # return (loss, state), gradients
+
+    # Signature:
+    # (weights, slots), step, opt_params, batch, state, rng ->
+    # (weights, slots), state, stats
+    self._accelerated_update_fn = (
+        _accelerate_update_fn(
+            self._forward_and_backward_fn,
+            self._task.optimizer,
+            n_devices=self.n_devices,
+            accelerate=True,
+        )
+    )
 
     # Restore from checkpoint if there is one.
     self.load_checkpoint()
@@ -155,9 +226,13 @@ class Loop:
           [len(self._task.loss_layer.name)] + metric_name_lengths)
       model_with_metrics = (
           _model_with_metrics(self._eval_model, self._eval_task))
-      self._eval_weights = model_with_metrics.weights[1]  # just the eval part
-      self._eval_state = model_with_metrics.state[1]  # just the eval part
-      self._metrics_fn = fastmath.jit(model_with_metrics.pure_fn)
+      # Keep self._eval_{weights/state} replicated.
+      self._eval_weights = self._for_n_devices(
+          model_with_metrics.weights[1])  # just the eval part
+      self._eval_state = self._for_n_devices(
+          model_with_metrics.state[1])  # just the eval part
+      self._metrics_fn = _accelerate_model_with_metrics(
+          model_with_metrics, self.n_devices)
       if self._output_dir is None:
         _log('Will not write evaluation metrics, because output_dir is None.')
 
@@ -173,6 +248,12 @@ class Loop:
     weights = self._model_in_training.weights
     state = self._model_in_training.state
     slots = self._task.optimizer.slots
+    opt_params = self._task.optimizer.opt_params
+
+    # weights, state, slots need to be replicated if needed.
+    weights, state, slots, opt_params = self._for_n_devices(
+        (weights, state, slots, opt_params))
+
     with self._open_summary_writers() as (train_summary_writer,
                                           eval_summary_writer):
       loss_acc, step_acc = 0.0, 0
@@ -181,14 +262,27 @@ class Loop:
       for _ in range(n_steps):
         self._step += 1
         loss, weights, state, slots, optimizer_metrics = self._run_one_step(
-            weights, state, slots)
+            weights, state, slots, opt_params)
+
+        # optimizer_metrics and loss are replicated on self.n_devices, a few
+        # metrics are replicated (ex: gradients_l2, weights_l2) - i.e. they are
+        # the same across devices, whereas some (ex: loss) aren't because they
+        # are different on different devices (due to different data).
+        # Taking the average does the correct thing in both the cases.
+        #
+        # NOTE: Only the weights and gradients are synced across the hosts. This
+        # implies the loss here is averaged from this hosts' devices and not
+        # across all hosts.
+        optimizer_metrics, loss = fastmath.nested_map(
+            jnp.mean, (optimizer_metrics, loss))
+
         loss_acc += loss
         step_acc += 1
         for metric_name, value in optimizer_metrics.items():
           optimizer_metrics_acc[metric_name] += value
-        if self._checkpoint_at(self._step):
+        if self._checkpoint_at(self.step):
           self.save_checkpoint(weights, state, slots)
-        if self._eval_at(self._step):
+        if self._eval_at(self.step):
           elapsed_time = time.time() - start_time
           self._model_in_training.weights = weights
           self._model_in_training.state = state
@@ -204,15 +298,30 @@ class Loop:
 
     # Store the final values back into their respective objects, for testing
     # or other inspection/use.
-    self._model_in_training.weights = weights
-    self._model_in_training.state = state
-    self._task.optimizer.slots = slots
+
+    # We keep the standard model weights/state unreplicated and
+    # `tl.Accelerate(model)` will carry the replicated weights/state.
+    # TODO(afrozm): Try to use `tl.Accelerate(model)` everywhere in the Loop.
+    self._model_in_training.weights = self._unreplicate(weights)
+    self._model_in_training.state = self._unreplicate(state)
+    self._task.optimizer.slots = self._unreplicate(slots)
+    self._task.optimizer.opt_params = self._unreplicate(opt_params)
     self._eval_model.weights = self._model.weights
 
   @property
-  def current_step(self):
+  def step(self):
     """Returns current step number in this training session."""
     return self._step
+
+  @property
+  def n_devices(self):
+    """Returns the number of devices to be used in this computation."""
+    return self._n_devices
+
+  @property
+  def is_chief(self):
+    """Returns true if this Loop is the chief."""
+    return self._is_chief
 
   @property
   def model(self):
@@ -226,34 +335,73 @@ class Loop:
 
   def new_rng(self):
     """Returns a new single-use random number generator (JAX PRNG key)."""
-    rng = self._model_in_training.rng
-    rng1, rng2 = fastmath.random.split(rng)
-    self._model_in_training.rng = rng1
-    return rng2
+    self._rng, rng = fastmath.random.split(self._rng)
+    return rng
 
-  def _run_one_step(self, weights, state, slots):
+  def _for_n_devices(self, x):
+    """Replicates/broadcasts `x` for n devices if `self.n_devicess > 1`."""
+    return tl.for_n_devices(x, self.n_devices)
+
+  def _unreplicate(self, x):
+    if self.n_devices == 1:
+      return x
+
+    unreplicate_fn = lambda x: x[0]
+    return fastmath.nested_map(unreplicate_fn, x)
+
+  def _reshape_by_device(self, x):
+    if self.n_devices == 1:
+      return x
+    return tl.reshape_by_device(x, self.n_devices)
+
+  def _run_one_step(self, weights, state, slots, opt_params):
     """Updates model weights/state and optimizer slots by running one step.
 
     Args:
       weights: Weights from model being trained.
       state: State (non-weight parameters) from model being trained.
       slots: Updatable weights for the optimizer in this training loop.
+      opt_params: Dictionary of optimizer (hyper)parameters,
+        e.g. learning rate, momentum.
 
     Returns:
-      Tuple (weights, state, slots, metrics) with new values from one step of
-      training, where metrics are current optimizer metrics.
+      Tuple (loss, weights, state, slots, stats) with new values from one step
+      of training, where stats are current optimizer statistics.
     """
-    step = self.current_step
-    batch = self._task.next_batch()
-    optimizer = self._task.optimizer
-    opt_params = optimizer._init_opt_params  # pylint: disable=protected-access
-    opt_params.update({'learning_rate': self._task.learning_rate(step)})
+    step = self.step
+    # Update the learning rate.
+    opt_params['learning_rate'] = self._for_n_devices(
+        self._task.learning_rate(step))
 
-    (loss, updated_state), gradients = (
-        self._forward_and_backward_fn(batch, weights, state, self.new_rng()))
-    updated_weights, updated_slots, training_metrics = (
-        optimizer.tree_update(step, gradients, weights, slots, opt_params))
-    return loss, updated_weights, updated_state, updated_slots, training_metrics
+    batch = self._task.next_batch()
+    # batch needs to be split across the local devices -- the difference
+    # between _for_n_devices and _reshape_by_device is that the latter splits
+    # the batch dim to batch // n_devices, vs _for_n_devices
+    # broadcasts/replicates to n_devices dimension.
+    batch = self._reshape_by_device(batch)
+
+    rng = self.new_rng()
+    if self.n_devices > 1:
+      rng = jnp.stack(jax_random.split(rng, self.n_devices))
+
+    if logging.vlog_is_on(1) and ((step & step - 1) == 0):
+      # Prints every power of two, if debugging is enabled.
+      logging.info('step[%d]', step)
+      # logging.info('batch[%s]', batch)
+      logging.info('opt_params[%s]', opt_params)
+      logging.info('weights[%s]', weights)
+
+    # NOTE: stats is a replicated dictionary of key to jnp arrays.
+    (weights, slots), state, stats = (
+        self._accelerated_update_fn(
+            (weights, slots), step, opt_params, batch, state, rng)
+        )
+
+    if logging.vlog_is_on(1) and ((step & step - 1) == 0):
+      logging.info('updated weights[%s]', weights)
+      logging.info('stats[%s]', stats)
+
+    return stats['loss'], weights, state, slots, stats
 
   def _log_training_progress(self, total_loss, n_steps, elapsed_time,
                              optimizer_metrics, summary_writer):
@@ -281,21 +429,22 @@ class Loop:
     self._log_scalars(
         {loss_name: total_loss / float(n_steps)},
         summary_writer, 'metrics/', 'train')
-    if self.current_step == 1:
+    if self.step == 1:
       self._save_gin(summary_writer)
-    train_parameters = {}
-    train_parameters['learning_rate'] = self._task.learning_rate(
-        self.current_step)
-    train_parameters['steps per second'] = n_steps / elapsed_time
-    for metric_name in optimizer_metrics.keys():
-      # compute the average
-      optimizer_metrics[metric_name] /= n_steps
+    train_parameters = {
+        'learning_rate': self._task.learning_rate(self.step),
+        'steps per second': n_steps / elapsed_time,
+    }
+    # Average optimizer_metrics over n_steps.
+    optimizer_metrics = {k: v / n_steps for k, v in optimizer_metrics.items()}
     train_parameters.update(optimizer_metrics)
     self._log_scalars(
         train_parameters, summary_writer, 'training/', 'train', stdout=False)
 
   def _save_gin(self, summary_writer=None):
     """"Saves the operative gin config."""
+    if not self.is_chief:
+      return
     assert self._output_dir is not None
     config_path = os.path.join(self._output_dir, 'config.gin')
     config_str = gin.operative_config_str()
@@ -305,6 +454,8 @@ class Loop:
       summary_writer.text('gin_config',
                           jaxboard.markdownify_operative_config_str(config_str))
 
+  # TODO(afrozm): Fix multi-host evals, right now the reported numbers in the
+  #   summary writer are only from the chief and not averaged across hosts.
   def run_evals(self, weights=None, state=None, summary_writer=None):
     """Runs and records evals for this training session.
 
@@ -313,14 +464,27 @@ class Loop:
       state: Current state from model in training.
       summary_writer: Jaxboard summary writer to log metrics.
     """
-    weights = self._model_in_training.weights if weights is None else weights
-    state = self._model_in_training.state if state is None else state
-    eval_task = self._eval_task
+
+    # If weights and state are provided, they are used as is, otherwise we get
+    # them from the training model (they are stored unreplicated) and replicate
+    # them. Replication will only happen if necessary i.e. self.n_devices > 1.
+    weights = (
+        weights if weights is not None else self._for_n_devices(
+            self._model_in_training.weights))
+    state = (
+        state if state is not None else self._for_n_devices(
+            self._model_in_training.state))
+
+    # From the above weights and state, create the weights and state of the
+    # eval model.
     model_weights = weights[0]  # exclude weights from the loss layer
     model_state = state[0]  # exclude state from the loss layer
+
+    # self._eval_{weights/state} are already replicated.
     metrics_weights = (model_weights, self._eval_weights)
     metrics_state = (model_state, self._eval_state)
 
+    eval_task = self._eval_task
     n_batches = eval_task.n_eval_batches
     n_metrics = len(eval_task.metrics)
     sums = np.zeros((n_metrics,))
@@ -345,20 +509,21 @@ class Loop:
       log_prefix: String appended in front of logs.
       stdout: Boolean saying if logs should be logged to stdout as well.
     """
+    should_write_summaries = self.is_chief and summary_writer is not None
     for name, value in scalars.items():
       self._log_step(
           '%s %s | % .8f' %
           (log_prefix.ljust(5), name.rjust(self._rjust_len), value),
           stdout=stdout)
-      if summary_writer is not None:
+      if should_write_summaries:
         full_name = scalar_prefix + name
-        summary_writer.scalar(full_name, value, self.current_step)
-    if summary_writer is not None:
+        summary_writer.scalar(full_name, value, self.step)
+    if should_write_summaries:
       summary_writer.flush()
 
   def _log_step(self, msg, stdout=True):
     """Logs message, labeled with the current training step number."""
-    _log('Step % 6d: %s' % (self.current_step, msg), stdout=stdout)
+    _log('Step % 6d: %s' % (self.step, msg), stdout=stdout)
 
   def save_checkpoint(self, weights=None, state=None, slots=None):
     """Saves checkpoint to disk for the current training step.
@@ -368,6 +533,8 @@ class Loop:
       state: State (non-weight parameters) from model being trained.
       slots: Updatable weights for the optimizer in this training loop.
     """
+    if not self.is_chief:
+      return
     if self._output_dir is None:
       _log('Did not save checkpoint as output_dir is None', stdout=False)
       return
@@ -376,7 +543,7 @@ class Loop:
     slots = self._task.optimizer.slots if slots is None else slots
     flat_weights, flat_state = tl.flatten_weights_and_state(weights, state)
     d = {
-        'step': self.current_step,
+        'step': self.step,
         'flat_weights': flat_weights,
         'flat_state': flat_state,
         'slots': slots,
@@ -455,8 +622,9 @@ def _model_with_metrics(model, eval_task):
   metrics_input_signature = model.output_signature(eval_data_signature)
   _, _ = metrics_layer.init(metrics_input_signature)
 
+  # TODO(afrozm): Should we set model_with_metrics._rng, tl.Serial will assign
+  #  one in any case. But its weights aren't used, so no harm in either case.
   model_with_metrics = tl.Serial(model, metrics_layer)
-  model_with_metrics._rng = model.rng  # pylint: disable=protected-access
   return model_with_metrics
 
 
@@ -512,7 +680,8 @@ class TrainTask:
   def learning_rate(self, step):
     """Return the learning rate for the given step."""
     if self._lr_schedule is not None:
-      return self._lr_schedule(step)
+      with fastmath.use_backend('numpy'):
+        return self._lr_schedule(step)
     params = self._optimizer._init_opt_params  # pylint: disable=protected-access
     return params['learning_rate']
 
@@ -627,3 +796,141 @@ def unpickle_from_file(file_path, gzip=False):
       with gzip_lib.GzipFile(fileobj=f, compresslevel=2) as gzipf:
         obj = pickle.load(gzipf)
   return obj
+
+
+def _init_random_number_generators(seed=None):
+  """Initializes random generators for Python, NumPy, TensorFlow, and JAX."""
+  # Seed Python random (None as seed is okay), then use it to seed the others.
+  random.seed(seed)
+  if seed is None:
+    seed = random.randint(0, 2**31 - 1)
+  np.random.seed(seed)
+  tf.random.set_seed(seed)
+  return jax_random.get_prng(seed)
+
+
+def init_host_and_devices(n_devices=None, random_seed=None):
+  """Initializes host and device attributes for this trainer.
+
+  Args:
+    n_devices: Number of devices this trainer will use. If `None`, get the
+        number from the backend.
+    random_seed: Random seed as the starting point for all random numbers used
+        by the trainer. If `None`, calculate one from system time and host id.
+
+  Returns:
+    is_chief: True if this trainer has special chief responsibilities.
+    host_count: Number of hosts in this computation.
+    n_devices: The passed in value of n_devices or a computed default (for this
+      host).
+    random_seed: The passed in value of random_seed or a computed default.
+  """
+  if fastmath.backend_name() == 'jax':
+    host_id = jax.host_id()
+    host_count = jax.host_count()
+  else:
+    host_id = 0
+    host_count = 1
+  is_chief = (host_id == 0)
+
+  logging.info('Initializing hosts and devices: host_id %d, host_count %d, '
+               'is_chief %d', host_id, host_count, is_chief)
+
+  device_count = fastmath.device_count()
+  n_devices = n_devices or device_count
+  # TODO(lukaszkaiser): remove this restriction when possible.
+  if n_devices != device_count and fastmath.backend_name() == 'jax':
+    raise ValueError('JAX cannot work yet with n_devices != all devices: '
+                     '%d != %d' % (n_devices, device_count))
+
+  if random_seed is None and host_count > 1:
+    random_seed = int(1e6 * (host_id + time.time())) % 2**32
+  return (is_chief, host_count, n_devices,
+          _init_random_number_generators(random_seed))
+
+
+# Returns a function with the following signature:
+# (weights, slots), step, opt_params, batch, state, rng ->
+# (weights, slots), state, stats
+def _accelerate_update_fn(forward_and_backward_fn,
+                          optimizer,
+                          n_devices,
+                          accelerate=True):
+  """Accelerate the given forward_and_backward_fn function."""
+  if n_devices == 1:
+    def single_device_update_fn(
+        weights_and_slots, step, opt_params, batch, state, rng):
+      weights, slots = weights_and_slots
+      (loss, state), gradients = forward_and_backward_fn(
+          batch, weights, state, rng)
+      weights, slots, stats = optimizer.tree_update(
+          step, gradients, weights, slots, opt_params)
+      stats['loss'] = loss
+      return (weights, slots), state, stats
+    if accelerate:
+      # TODO(afrozm): Find out the status of buffer donation on GPUs, then do
+      #  donate_argnums=(0,).
+      single_device_update_fn = fastmath.jit(single_device_update_fn)
+    return single_device_update_fn
+
+  # More than one device (core), i.e. all of TPU configurations etc.
+  assert n_devices > 1, f'{n_devices} should be greater than 1.'
+
+  @functools.partial(fastmath.pmap, axis_name='batch', donate_argnums=(0,))
+  def _multi_device_update_fn(
+      weights_and_slots, step, opt_params, batch, state, rng):
+    # We assume all tensors have the first dimension = n_devices.
+    weights, slots = weights_and_slots
+    (loss, state), gradients = forward_and_backward_fn(
+        batch, weights, state, rng)
+
+    # gradients now need to be summed over all the devices across different host
+    # machines, n_devices is only the number of devices on *this* host machine.
+    gradients = fastmath.psum(gradients, 'batch')
+    n_devices_total = fastmath.psum(jnp.array(1.0), 'batch')
+    # Average across hosts.
+    gradients = jax.tree_util.tree_map(lambda g: g / n_devices_total, gradients)
+
+    weights, slots, stats = optimizer.tree_update(
+        step, gradients, weights, slots, opt_params)
+    stats['loss'] = loss
+    return (weights, slots), state, stats
+
+  def multi_device_update_fn(
+      weights_and_slots, step, opt_params, batch, state, rng):
+    # Need to replicate step to n_devices leading dimension.
+    return _multi_device_update_fn(weights_and_slots,
+                                   jnp.repeat(step, n_devices), opt_params,
+                                   batch, state, rng)
+
+  return multi_device_update_fn
+
+
+def _accelerate_model_with_metrics(model_with_metrics, n_devices,
+                                   accelerate=True, do_mean=True):
+  if not accelerate:
+    return model_with_metrics.pure_fn
+
+  return tl.jit_forward(model_with_metrics.pure_fn, n_devices, do_mean=do_mean)
+
+
+@functools.partial(fastmath.pmap, axis_name='devices', donate_argnums=(0,))
+def _make_weights_and_state_same_across_hosts(weights_and_state):
+  """Makes train and eval model's weights and state the same across hosts."""
+
+  # We assume that they have been already replicated, i.e the leading axis is
+  # self._n_devices
+
+  # This is the total number of devices across all hosts.
+  n_devices_total = fastmath.psum(jnp.array(1.0), 'devices')
+
+  # This sums up the weights and state across all devices.
+  # NOTE: There will not be any leading axis remaining because we psum
+  # over it.
+  weights_and_state = fastmath.psum(weights_and_state, 'devices')
+
+  # We finally take the average over all devices.
+  weights_and_state = jax.tree_util.tree_map(
+      lambda ws: ws / n_devices_total, weights_and_state)
+
+  return weights_and_state

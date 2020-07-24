@@ -67,11 +67,11 @@ class TrainingTest(test.TestCase):
         metric_names=['SGD.L2Loss'])
     training_session = training.Loop(model, [task], eval_tasks=[eval_task],
                                      eval_at=lambda step_n: step_n % 2 == 0)
-    self.assertEqual(0, training_session.current_step)
+    self.assertEqual(0, training_session.step)
     training_session.run(n_steps=15)
-    self.assertEqual(15, training_session.current_step)
+    self.assertEqual(15, training_session.step)
     training_session.run(n_steps=5)
-    self.assertEqual(20, training_session.current_step)
+    self.assertEqual(20, training_session.step)
 
   def test_train_dense_layer_with_momentum(self):
     """Trains with an optimizer that has slots / requires initialization."""
@@ -84,9 +84,9 @@ class TrainingTest(test.TestCase):
         metric_names=['Momentum.L2Loss'])
     training_session = training.Loop(model, [task], eval_tasks=[eval_task],
                                      eval_at=lambda step_n: step_n % 2 == 0)
-    self.assertEqual(0, training_session.current_step)
+    self.assertEqual(0, training_session.step)
     training_session.run(n_steps=20)
-    self.assertEqual(20, training_session.current_step)
+    self.assertEqual(20, training_session.step)
 
   def test_train_dense_layer_evals(self):
     """Trains a very simple network on a very simple task, 2 epochs."""
@@ -98,11 +98,11 @@ class TrainingTest(test.TestCase):
         [tl.L2Loss()])
     training_session = training.Loop(model, [task], eval_tasks=[eval_task],
                                      eval_at=lambda step_n: False)
-    self.assertEqual(0, training_session.current_step)
+    self.assertEqual(0, training_session.step)
     training_session.run(n_steps=10)
-    self.assertEqual(10, training_session.current_step)
+    self.assertEqual(10, training_session.step)
     training_session.run_evals()
-    self.assertEqual(10, training_session.current_step)  # Unchanged
+    self.assertEqual(10, training_session.step)  # Unchanged
 
   def test_summaries_are_written(self):
     """Training writes down metrics when writting is turned on."""
@@ -146,12 +146,12 @@ class TrainingTest(test.TestCase):
                          output_dir=tmp_dir)
     loop.run(4)
     loop2 = training.Loop(model, [task], output_dir=tmp_dir)
-    self.assertEqual(4, loop2.current_step)
+    self.assertEqual(4, loop2.step)
 
 
 def _very_simple_data():
   """"Returns stream of labeled data that maps small integers to constant pi."""
-  inputs_batch = np.arange(7).reshape((7, 1))  # 7 items per batch
+  inputs_batch = np.arange(8).reshape((8, 1))  # 8 items per batch
   targets_batch = np.pi * np.ones_like(inputs_batch)
   labeled_batch = (inputs_batch, targets_batch, np.ones_like(targets_batch))
   while True:

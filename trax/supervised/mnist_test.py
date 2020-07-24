@@ -58,7 +58,7 @@ class MnistTest(absltest.TestCase):
                                      eval_at=lambda step_n: step_n % 50 == 0)
 
     training_session.run(n_steps=1000)
-    self.assertEqual(training_session.current_step, 1000)
+    self.assertEqual(training_session.step, 1000)
 
 
 def _mnist_dataset():

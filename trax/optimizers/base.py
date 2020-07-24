@@ -97,6 +97,14 @@ class Optimizer(object):
   def slots(self, slots):
     self._slots = slots
 
+  @property
+  def opt_params(self):
+    return self._init_opt_params
+
+  @opt_params.setter
+  def opt_params(self, opt_params):
+    self._init_opt_params = opt_params
+
   def tree_init(self, weight_tree):
     """Assembles node-local initializations into full-tree initialization.
 
