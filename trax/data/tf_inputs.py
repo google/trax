@@ -226,6 +226,28 @@ def _train_and_eval_dataset(dataset_name, data_dir, eval_holdout_size,
   return train, valid, keys
 
 
+@gin.configurable()
+def TFDS(dataset_name, data_dir=None,  # pylint: disable=invalid-name
+         keys=None, train=True, eval_holdout_size=0):
+  """Returns an iterator of numpy arrays representing the dataset."""
+  data_dir = download_and_prepare(dataset_name, data_dir)
+
+  (train_data, eval_data, _) = _train_and_eval_dataset(
+      dataset_name, data_dir, eval_holdout_size)
+  dataset = train_data if train else eval_data
+
+  def select_from(example):
+    return tuple(example[k] for k in keys)
+
+  dataset = dataset.map(select_from)
+  dataset = dataset.repeat()
+
+  def gen(unused_arg):
+    for example in fastmath.dataset_as_numpy(dataset):
+      yield example
+  return gen
+
+
 def _select_features(example, feature_list=None):
   """Select a subset of features from the example dict."""
   feature_list = feature_list or ['inputs', 'targets']
@@ -266,17 +288,17 @@ def _train_and_eval_dataset_v1(problem_name, data_dir,
 
 
 # Tokenization.
-def tokenize(stream, indices=None, vocab_type='subword',
+def tokenize(stream, keys=None, vocab_type='subword',
              vocab_file=None, vocab_dir=None, n_reserved_ids=0):
   """Tokenize examples from the stream.
 
   This function assumes that `stream` generates either strings or tuples/dicts
-  containing strings at some `indices`. This function maps these strings to
+  containing strings at some `keys`. This function maps these strings to
   numpy arrays of integers -- the tokenized version of each string.
 
   Args:
     stream: A python generator yielding strings, tuples or dicts.
-    indices: which indices of the tuple/dict to tokenize (by default: all)
+    keys: which keys of the tuple/dict to tokenize (by default: all)
     vocab_type: Type of vocabulary, one of: 'subword', 'sentencepiece', 'char'.
     vocab_file: Name of the vocabulary file.
     vocab_dir: Directory which contains the vocabulary file.
@@ -286,7 +308,7 @@ def tokenize(stream, indices=None, vocab_type='subword',
       reserved) in the vocab_file.
 
   Yields:
-    Examples from stream with strings at `indices` replaced by np.arrays of
+    Examples from stream with strings at `keys` replaced by np.arrays of
     integers -- the tokenized version of these strings.
   """
   vocab = _get_vocab(vocab_type, vocab_file, vocab_dir)
@@ -294,7 +316,7 @@ def tokenize(stream, indices=None, vocab_type='subword',
     if isinstance(example, (list, tuple)):
       new_example = []
       for i, x in enumerate(example):
-        if indices is None or i in indices:
+        if keys is None or i in keys:
           new_example.append(np.array(vocab.encode(x)) + n_reserved_ids)
         else:
           new_example.append(x)
@@ -302,13 +324,22 @@ def tokenize(stream, indices=None, vocab_type='subword',
     elif isinstance(example, dict):
       new_example = {}
       for k in example.keys():
-        if indices is None or k in indices:
+        if keys is None or k in keys:
           new_example[k] = np.array(vocab.encode(example[k])) + n_reserved_ids
         else:
           new_example[k] = example[k]
       yield new_example
     else:
       yield np.array(vocab.encode(example)) + n_reserved_ids
+
+
+@gin.configurable()
+def Tokenize(keys=None, vocab_type='subword',  # pylint: disable=invalid-name
+             vocab_file=None, vocab_dir=None, n_reserved_ids=0):
+  """Returns a function that maps text to integer arrays; see `tokenize`."""
+  return lambda g: tokenize(  # pylint: disable=g-long-lambda
+      g, keys=keys, vocab_type=vocab_type, vocab_file=vocab_file,
+      vocab_dir=vocab_dir, n_reserved_ids=n_reserved_ids)
 
 
 def detokenize(x, vocab_type='subword', vocab_file=None, vocab_dir=None,

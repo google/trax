@@ -14,49 +14,73 @@
 
 import trax.models
 import trax.optimizers
+import trax.data
+import trax.data.inputs
 import trax.data.tf_inputs
+import trax.supervised.lr_schedules
 import trax.supervised.trainer_lib
 
-# Parameters for batcher:
+# Parameters for the inputs pipeline:
 # ==============================================================================
-batcher.data_streams = @tf_inputs.data_streams
-batcher.batch_size_per_device = 128
-batcher.eval_batch_size = 128
-batcher.max_eval_length = 2048
+make_inputs.train_stream = [
+  @train/data.TFDS(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @train/data.FilterByLength(),
+  @data.BucketByLength(),
+  @data.AddLossWeights(),
+]
+train/data.TFDS.dataset_name = 'imdb_reviews'
+train/data.TFDS.keys = ('text', 'label')
+data.Tokenize.vocab_file = 'en_8k.subword'
+data.Tokenize.keys = [0]  # Tokenize only the first element (text, not label).
+train/data.FilterByLength.max_length = 1024
+train/data.FilterByLength.length_keys = [0]
+data.BucketByLength.boundaries =  [32,  64, 128, 256, 512, 1024, 2048]
+data.BucketByLength.batch_sizes = [128, 64,  32,  16,   8,    1,    1, 1]
+data.BucketByLength.length_keys = [0]
+make_inputs.eval_stream = [
+  @eval/data.TFDS(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @eval/data.FilterByLength(),
+  @data.BucketByLength(),
+  @data.AddLossWeights(),
+]
+eval/data.TFDS.dataset_name = 'imdb_reviews'
+eval/data.TFDS.keys = ('text', 'label')
+eval/data.TFDS.train = False
+eval/data.FilterByLength.max_length = 2048
+eval/data.FilterByLength.length_keys = [0]
 
 # Parameters for data_streams:
 # ==============================================================================
 data_streams.data_dir = None
 data_streams.dataset_name = 't2t_sentiment_imdb'
 data_streams.input_name = 'targets'
-data_streams.preprocess_fn = @trax.data.tf_inputs.lm1b_preprocess
 
-# Parameters for multifactor:
+# Parameters for warmup_and_rsqrt_decay:
 # ==============================================================================
-multifactor.constant = 0.1
-multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
-multifactor.warmup_steps = 8000
-
-# Parameters for lm1b_preprocess:
-# ==============================================================================
-lm1b_preprocess.max_target_length = 512
-lm1b_preprocess.max_eval_target_length = 2048
+lr_schedules.warmup_and_rsqrt_decay.max_value = 0.01
+lr_schedules.warmup_and_rsqrt_decay.n_warmup_steps = 1000
 
 # Parameters for train:
 # ==============================================================================
-train.eval_frequency = 100
-train.eval_steps = 10
+train.eval_frequency = 500
+train.eval_steps = 20
 train.model = @trax.models.TransformerEncoder
-train.steps = 1000
+train.steps = 10000
+train.inputs = @trax.data.inputs.make_inputs
+train.lr_schedule_fn = @lr_schedules.warmup_and_rsqrt_decay
 
-# Parameters for TransformerLM:
+# Parameters for TransformerEncoder:
 # ==============================================================================
 TransformerEncoder.d_model = 512
 TransformerEncoder.d_ff = 2048
 TransformerEncoder.dropout = 0.1
 TransformerEncoder.max_len = 2048
 TransformerEncoder.mode = 'train'
-TransformerEncoder.n_classes = 10
+TransformerEncoder.n_classes = 2
 TransformerEncoder.n_heads = 8
 TransformerEncoder.n_layers = 6
-TransformerEncoder.vocab_size = 32000
+TransformerEncoder.vocab_size = 8192

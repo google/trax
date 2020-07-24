@@ -19,7 +19,7 @@
 from absl.testing import absltest
 from absl.testing import parameterized
 import numpy as np
-from trax.data import inputs
+from trax import data
 
 
 class InputsTest(parameterized.TestCase):
@@ -31,7 +31,7 @@ class InputsTest(parameterized.TestCase):
   def test_shuffle_data_raises_error_queue_size(self, queue_size):
     samples = iter(range(10))
     with self.assertRaises(ValueError):
-      _ = list(inputs.shuffle_data(samples, queue_size))
+      _ = list(data.shuffle(samples, queue_size))
 
   @parameterized.named_parameters(
       ('one', 1),
@@ -40,7 +40,7 @@ class InputsTest(parameterized.TestCase):
   )
   def test_shuffle_data_queue_size(self, queue_size):
     samples = iter(range(100, 200))
-    shuffled_stream = inputs.shuffle_data(samples, queue_size)
+    shuffled_stream = data.shuffle(samples, queue_size)
     first_ten = [next(shuffled_stream) for _ in range(10)]
 
     # Queue size limits how far ahead/upstream the current sample can reach.
@@ -63,33 +63,59 @@ class InputsTest(parameterized.TestCase):
   )
   def test_shuffle_data_yields_all_samples(self, queue_size, n_samples):
     samples = iter(range(n_samples))
-    shuffled_stream = inputs.shuffle_data(samples, queue_size)
+    shuffled_stream = data.shuffle(samples, queue_size)
     self.assertLen(list(shuffled_stream), n_samples)
 
   def test_batch_data(self):
     dataset = ((i, i+1) for i in range(10))
-    batches = inputs.batch_data(dataset, 10)
+    batches = data.batch(dataset, 10)
     batch = next(batches)
     self.assertLen(batch, 2)
     self.assertEqual(batch[0].shape, (10,))
 
+  def test_serial(self):
+    dataset = lambda _: ((i, i+1) for i in range(10))
+    batches = data.Serial(dataset, data.Shuffle(3), data.Batch(10))
+    batch = next(batches)
+    self.assertLen(batch, 2)
+    self.assertEqual(batch[0].shape, (10,))
+
+  def test_serial_with_python(self):
+    dataset = lambda _: ((i, i+1) for i in range(10))
+    batches = data.Serial(
+        dataset,
+        lambda g: map(lambda x: (x[0], x[1] + 1), g),
+        lambda g: filter(lambda x: x[0] % 2 == 1, g),
+        data.Batch(2)
+    )
+    batch = next(batches)
+    self.assertLen(batch, 2)
+    (xs, ys) = batch
+    # First tuple after filtering is (1, 3) = (1, 2+1).
+    self.assertEqual(xs[0], 1)
+    self.assertEqual(ys[0], 3)
+    # Second tuple after filtering is (3, 5).
+    self.assertEqual(xs[1], 3)
+    self.assertEqual(ys[1], 5)
+
   def test_pad_to_max_dims(self):
     tensors1 = [np.zeros((3, 10)), np.ones((3, 10))]
-    padded1 = inputs.pad_to_max_dims(tensors1)
+    padded1 = data.inputs.pad_to_max_dims(tensors1)
     self.assertEqual(padded1.shape, (2, 3, 10))
     tensors2 = [np.zeros((2, 10)), np.ones((3, 9))]
-    padded2 = inputs.pad_to_max_dims(tensors2)
+    padded2 = data.inputs.pad_to_max_dims(tensors2)
     self.assertEqual(padded2.shape, (2, 3, 10))
     tensors3 = [np.zeros((8, 10)), np.ones((8, 9))]
-    padded3 = inputs.pad_to_max_dims(tensors3, 12)
-    self.assertEqual(padded3.shape, (2, 8, 12))
+    padded3 = data.inputs.pad_to_max_dims(tensors3, 12)
+    self.assertEqual(padded3.shape, (2, 12, 12))
     tensors4 = [np.zeros((2, 10)), np.ones((3, 9))]
-    padded4 = inputs.pad_to_max_dims(tensors4, 12)
+    padded4 = data.inputs.pad_to_max_dims(tensors4, 12)
     self.assertEqual(padded4.shape, (2, 4, 12))
 
   def test_pad_to_max_dims_boundary_list(self):
     tensors = [np.zeros((1, 15, 31)), np.ones((2, 10, 35)), np.ones((4, 2, 3))]
-    padded_tensors = inputs.pad_to_max_dims(tensors, boundary=(None, 15, 20))
+    padded_tensors = data.inputs.pad_to_max_dims(
+        tensors, boundary=(None, 15, 20))
     # no boundary, only max in the first dim, 15 is already the max len in
     # second dim, last dim padded to multiple of 20.
     # The outer dim is the batch here.
@@ -97,7 +123,7 @@ class InputsTest(parameterized.TestCase):
 
   def test_pad_to_max_dims_strict_pad_on_len(self):
     tensors = [np.ones((15,)), np.ones((12,)), np.ones((14,))]
-    padded_tensors = inputs.pad_to_max_dims(
+    padded_tensors = data.inputs.pad_to_max_dims(
         tensors, boundary=10, strict_pad_on_len=True)
     self.assertEqual(padded_tensors.shape, (3, 20))
 
@@ -109,11 +135,11 @@ class InputsTest(parameterized.TestCase):
     def length_function(example):
       return max(example[0].shape[0], example[1].shape[0])
 
-    batches = list(inputs.bucket_by_length(fake_generator(5, 6),
-                                           length_function,
-                                           [20 + 1],
-                                           [2],
-                                           strict_pad_on_len=True))
+    batches = list(data.bucket_by_length(fake_generator(5, 6),
+                                         length_function,
+                                         [20],
+                                         [2],
+                                         strict_pad_on_len=True))
 
     # We'll get three batches of 2 examples each.
     self.assertLen(batches, 3)

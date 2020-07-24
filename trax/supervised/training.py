@@ -105,6 +105,9 @@ class Loop:
       eval_at: Function (integer --> boolean) that says, for training step n,
           whether that step should run evals. If None, run when checkpointing.
     """
+    # Handle single task case without lists too.
+    if not isinstance(tasks, (list, tuple)):
+      tasks = [tasks]
     assert len(tasks) == 1, 'Multitask training not supported yet.'
     task = tasks[0]
     if eval_tasks is None:

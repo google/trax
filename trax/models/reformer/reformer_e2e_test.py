@@ -78,7 +78,7 @@ class ReformerE2ETest(absltest.TestCase):
 
     gin.bind_parameter('data_streams.data_dir', _TESTDATA)
     gin.bind_parameter('batcher.batch_size_per_device', batch_size_per_device)
-    gin.bind_parameter('batcher.buckets', ([513], [1, 1]))  # batch size 1.
+    gin.bind_parameter('batcher.buckets', ([512], [1, 1]))  # batch size 1.
     gin.bind_parameter('train.steps', steps)
     gin.bind_parameter('ReformerNoEncDecAttention.n_encoder_layers', n_layers)
     gin.bind_parameter('ReformerNoEncDecAttention.n_decoder_layers', n_layers)

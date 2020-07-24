@@ -141,7 +141,7 @@ class TFInputsTest(tf.test.TestCase):
         vocab_dir=_TESTDATA, vocab_file='en_8k.subword')
     self.assertEqual(detok, 'I have a cat.')
 
-  def test_tokenize_indices_reservedids(self):
+  def test_tokenize_keys_reservedids(self):
     def dataset():
       yield ('Cat.', 'Dog.')
 
@@ -151,7 +151,7 @@ class TFInputsTest(tf.test.TestCase):
     self.assertAllEqual(tok_char1[0][1], np.array([ord(c) + 5 for c in 'Dog.']))
 
     tok_char2 = list(tf_inputs.tokenize(
-        dataset(), indices=[0], vocab_type='char', n_reserved_ids=2))
+        dataset(), keys=[0], vocab_type='char', n_reserved_ids=2))
     self.assertAllEqual(tok_char2[0][0], np.array([ord(c) + 2 for c in 'Cat.']))
     self.assertEqual(tok_char2[0][1], 'Dog.')
 
@@ -163,7 +163,7 @@ class TFInputsTest(tf.test.TestCase):
     self.assertAllEqual(tok_char1[0]['a'], np.array([ord(c) for c in 'Cat.']))
     self.assertAllEqual(tok_char1[0]['b'], np.array([ord(c) for c in 'Dog.']))
 
-    tok_char2 = list(tf_inputs.tokenize(dataset(), indices=['a'],
+    tok_char2 = list(tf_inputs.tokenize(dataset(), keys=['a'],
                                         vocab_type='char'))
     self.assertAllEqual(tok_char2[0]['a'], np.array([ord(c) for c in 'Cat.']))
     self.assertEqual(tok_char2[0]['b'], 'Dog.')

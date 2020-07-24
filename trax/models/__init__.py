@@ -14,10 +14,6 @@
 # limitations under the License.
 
 """Models defined in trax."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gin
 
 from trax.models import atari_cnn
