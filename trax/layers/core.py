@@ -378,12 +378,12 @@ def multigaussian_loss(preds, targets, ngauss=1):  # pylint: disable=invalid-nam
   return fastmath.logsumexp(loglogits + glogprobs, axis=-1)
 
 
-def gumbel_sample(log_probs, temperature=1.0):  # pylint: disable=invalid-name
-  """Returns a Gumbel sample from a categorical distribution, with temperature.
+def logsoftmax_sample(log_probs, temperature=1.0):  # pylint: disable=invalid-name
+  """Returns a sample from a log-softmax output, with temperature.
 
   Args:
-    log_probs: <tbd>
-    temperature: <tbd>
+    log_probs: Logarithms of probabilities (often coming from LogSofmax)
+    temperature: For scaling before sampling (1.0 = default, 0.0 = pick argmax)
   """
   # This is equivalent to sampling from a softmax with temperature.
   u = np.random.uniform(low=1e-6, high=1.0 - 1e-6, size=log_probs.shape)

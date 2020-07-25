@@ -93,12 +93,12 @@ class Categorical(Distribution):
     )
 
   def sample(self, inputs, temperature=1.0):
-    # No need for LogSoftmax with Gumbel sampling - softmax normalization is
-    # subtracting a constant from every logit, and Gumbel sampling is taking
+    # No need for LogSoftmax with sampling - softmax normalization is
+    # subtracting a constant from every logit, and sampling is taking
     # a max over logits plus noise, so invariant to adding a constant.
     if temperature == 0.0:
       return jnp.argmax(self._unflatten_inputs(inputs), axis=-1)
-    return tl.gumbel_sample(self._unflatten_inputs(inputs), temperature)
+    return tl.logsoftmax_sample(self._unflatten_inputs(inputs), temperature)
 
   def log_prob(self, inputs, point):
     inputs = tl.LogSoftmax()(self._unflatten_inputs(inputs))

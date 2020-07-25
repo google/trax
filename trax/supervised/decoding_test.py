@@ -53,8 +53,8 @@ class DecodingTest(test.TestCase):
     self.assertLess(s2.shape[1], 11)
     model.init(shapes.ShapeDtype((1, 1), dtype=np.int32))
     prefix = np.array([[1, 2, 3]])
-    s3 = decoding.autoregressive_sample(model, eos_id=-1, max_length=10,
-                                        batch_size=1, prefix=prefix)
+    s3 = decoding.autoregressive_sample(model, prefix, eos_id=-1, max_length=10,
+                                        batch_size=1)
     self.assertEqual(s3.shape[0], 1)
     self.assertEqual(s3.shape[1], 10)
 
@@ -131,7 +131,7 @@ class DecodingTest(test.TestCase):
     pred_model.init_from_file(model_path, weights_only=True,
                               input_signature=(shape11, shape11))
     inputs = np.array([[0, 3, 7, 5, 3, 2, 4, 0]], dtype=np.int32)
-    s = decoding.autoregressive_sample(pred_model, prefix=inputs,
+    s = decoding.autoregressive_sample(pred_model, inputs,
                                        max_length=6, temperature=0.0)
     self.assertEqual(str(s[0]), '[3 7 5 3 2 4]')
 
@@ -146,7 +146,7 @@ class DecodingTest(test.TestCase):
     pred_model.init_from_file(model_path, weights_only=True,
                               input_signature=(shape11, shape11))
     inputs = np.array([[0, 3, 7, 5, 3, 2, 4, 0]], dtype=np.int32)
-    s = decoding.autoregressive_sample(pred_model, prefix=inputs,
+    s = decoding.autoregressive_sample(pred_model, inputs,
                                        max_length=6, temperature=0.0)
     self.assertEqual(str(s[0]), '[3 7 5 3 2 4]')
 
