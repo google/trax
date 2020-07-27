@@ -19,14 +19,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import tensorflow as tf
 import tensorflow_datasets as tfds
 from tensorflow.python.ops import numpy_ops as np
 
+import numpy as onp
+
 
 class MNIST():
-
+    "This module tries to mimmick the NumPy Keras Dataset"
     def __init__(self, batch_size):
-
         """Initializes the MNIST dataset """
         self.batch_size = batch_size
 
@@ -36,8 +38,10 @@ class MNIST():
 
 
         self.mnist_train_images, self.mnist_train_labels = mnist_train['image'], mnist_train['label']
-
         self.mnist_test_images, self.mnist_test_labels = mnist_test['image'], mnist_test['label']
+
+        self.train_len = self.mnist_train_images.shape[0]
+        self.val_len = self.mnist_test_images.shape[0]
 
         print('Loaded dataset with {} training and {} test examples.'.format(
                 self.mnist_train_images.shape[0], self.mnist_test_images.shape[0]))
@@ -53,7 +57,11 @@ class MNIST():
         if split=='train':
             mnist_images, mnist_labels = self.mnist_train_images, self.mnist_train_labels
         elif split=='test':
-            mnist_images, mnist_labels = self.mnist_test_labels, self.mnist_test_labels
+            mnist_images, mnist_labels = self.mnist_test_images, self.mnist_test_labels
+
+        len_dim_0 = mnist_images.shape[0]
+        mnist_images = np.reshape(mnist_images, (len_dim_0, 784))
+        mnist_labels = onp.asarray(tf.one_hot(mnist_labels, 10))
 
         index = 0
         size = mnist_images.shape[0]
@@ -72,9 +80,3 @@ class MNIST():
         zipped = zip(*data)
         random.shuffle(zipped)
         return zip(*zipped)
-
-
-    def to_one_hot(self, label, num_classes=10):
-        vec = np.zeros(num_classes, dtype=np.float32)
-        vec[label] = 1.
-        return vec

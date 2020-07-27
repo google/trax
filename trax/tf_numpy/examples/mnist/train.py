@@ -19,36 +19,53 @@ from __future__ import division
 from __future__ import print_function
 
 from six.moves import range
-import tensorflow.compat.v2 as tf
 
+import tensorflow.compat.v2 as tf
+from tensorflow.python.ops import numpy_ops as np
 import tensorflow_datasets as tfds
 
 from dataset import MNIST
-from tensorflow.python.ops import numpy_ops as np
+from model import Model
 
-BATCH_SIZE = 50
-LEARNING_RATE = 5.0
-NUM_TRAINING_ITERS = 10000
+np.random.seed(0)
+
+BATCH_SIZE = 100
+LEARNING_RATE = 10
+NUM_TRAINING_ITERS = 20000
 VALIDATION_STEPS = 100
 
 
 def train(batch_size, learning_rate, num_training_iters, validation_steps):
+    """ training loop """
 
     mnist_dataset = MNIST(batch_size)
-    train_iter = mnist_dataset.iterator('train', True)
+    train_iter = mnist_dataset.iterator('train', infinite=True)
 
-    model = model_lib.Model([30])
+    model = Model([512, 256, 128], learning_rate=LEARNING_RATE)
 
     for i in range(num_training_iters):
+
             train_x, train_y = next(train_iter)
-            model.train(train_x, train_y, learning_rate)
+            loss = model.train(train_x, train_y)
+
+            # Calculate and print the train and test accuracy
             if not (i + 1) % validation_steps:
-                validation_iter = build_iterator(validation_data, infinite=False)
-                correct_predictions = 0
+                training_iter = mnist_dataset.iterator('train', infinite=False)
+                validation_iter = mnist_dataset.iterator('test', infinite=False)
+
+                correct_train_predictions = 0
+                for train_x, train_y in training_iter:
+                    correct_train_predictions += model.evaluate(train_x, train_y)
+
+                correct_val_predictions = 0
                 for valid_x, valid_y in validation_iter:
-                    correct_predictions += model.evaluate(valid_x, valid_y)
-                print('{}/{} correct validation predictions.'.format(
-                  correct_predictions, len(validation_data[0])))
+                    correct_val_predictions += model.evaluate(valid_x, valid_y)
+
+
+                print('iter {}: {} training accuracy, {} test accuracy.'.format(
+                    i+1,
+                    round(correct_train_predictions/mnist_dataset.train_len, 4),
+                    round(correct_val_predictions/mnist_dataset.val_len, 4)))
 
 
 if __name__ == '__main__':
