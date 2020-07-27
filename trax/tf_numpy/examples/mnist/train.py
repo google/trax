@@ -29,10 +29,11 @@ from model import Model
 
 np.random.seed(0)
 
-BATCH_SIZE = 100
-LEARNING_RATE = 10
-NUM_TRAINING_ITERS = 20000
+BATCH_SIZE = 200
+LEARNING_RATE = 5
+NUM_TRAINING_ITERS = 50000
 VALIDATION_STEPS = 100
+
 
 
 def train(batch_size, learning_rate, num_training_iters, validation_steps):

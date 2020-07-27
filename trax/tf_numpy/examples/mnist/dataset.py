@@ -19,10 +19,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import random
+
 import tensorflow as tf
 import tensorflow_datasets as tfds
 from tensorflow.python.ops import numpy_ops as np
 
+# current convention is to import original numpy as np
 import numpy as onp
 
 
@@ -61,7 +64,9 @@ class MNIST():
 
         len_dim_0 = mnist_images.shape[0]
         mnist_images = np.reshape(mnist_images, (len_dim_0, 784))
-        mnist_labels = onp.asarray(tf.one_hot(mnist_labels, 10))
+        mnist_labels = np.asarray(tf.one_hot(mnist_labels, 10))
+
+        mnist_images, mnist_labels = self.shuffle(mnist_images, mnist_labels)
 
         index = 0
         size = mnist_images.shape[0]
@@ -69,6 +74,7 @@ class MNIST():
             if index + self.batch_size > size:
                 if infinite:
                     index = 0
+                    mnist_images, mnist_labels = self.shuffle(mnist_images, mnist_labels)
                 else:
                     return
 
@@ -76,7 +82,7 @@ class MNIST():
             index += self.batch_size
 
 
-    def shuffle(self, data):
-        zipped = zip(*data)
-        random.shuffle(zipped)
-        return zip(*zipped)
+    def shuffle(self, data, labels):
+        idx = onp.random.permutation(len(data))
+        data, labels = data[idx], labels[idx]
+        return data, labels
