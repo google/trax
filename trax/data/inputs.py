@@ -82,11 +82,12 @@ from trax.fastmath import numpy as jnp
 
 
 def Serial(*fns):  # pylint: disable=invalid-name
-  """Creates an input pipeline by running all functions one after another."""
-  generator = None
-  for f in fastmath.tree_flatten(fns):
-    generator = f(generator)
-  return generator
+  """Combines generator functions into one that runs them in turn."""
+  def composed_fns(generator=None):
+    for f in fastmath.tree_flatten(fns):
+      generator = f(generator)
+    return generator
+  return composed_fns
 
 
 def Log(n_steps_per_example=1, only_shapes=True):  # pylint: disable=invalid-name

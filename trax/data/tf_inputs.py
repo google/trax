@@ -242,7 +242,8 @@ def TFDS(dataset_name, data_dir=None,  # pylint: disable=invalid-name
   dataset = dataset.map(select_from)
   dataset = dataset.repeat()
 
-  def gen(unused_arg):
+  def gen(generator=None):
+    del generator
     for example in fastmath.dataset_as_numpy(dataset):
       yield example
   return gen

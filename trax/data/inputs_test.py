@@ -76,7 +76,16 @@ class InputsTest(parameterized.TestCase):
   def test_serial(self):
     dataset = lambda _: ((i, i+1) for i in range(10))
     batches = data.Serial(dataset, data.Shuffle(3), data.Batch(10))
-    batch = next(batches)
+    batch = next(batches())
+    self.assertLen(batch, 2)
+    self.assertEqual(batch[0].shape, (10,))
+
+  def test_serial_composes(self):
+    """Check that data.Serial works inside another data.Serial."""
+    dataset = lambda _: ((i, i+1) for i in range(10))
+    serial1 = data.Serial(dataset, data.Shuffle(3))
+    batches = data.Serial(serial1, data.Batch(10))
+    batch = next(batches())
     self.assertLen(batch, 2)
     self.assertEqual(batch[0].shape, (10,))
 
@@ -88,7 +97,7 @@ class InputsTest(parameterized.TestCase):
         lambda g: filter(lambda x: x[0] % 2 == 1, g),
         data.Batch(2)
     )
-    batch = next(batches)
+    batch = next(batches())
     self.assertLen(batch, 2)
     (xs, ys) = batch
     # First tuple after filtering is (1, 3) = (1, 2+1).
