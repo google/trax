@@ -19,95 +19,98 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 import tensorflow as tf
 from tensorflow.python.ops import numpy_ops as np
 
 
 class Model(object):
     """A simple neural network with dense layers and sigmoid non-linearity.
-
     The network consists of `len(hidden_layers) + 1` dense layers. The sizes of
     the hidden layers are specified by the user in `hidden_layers` and the
     network takes care of adding layers to match the input and output size.
 
     Attributes:
-    weights: A list of 2-d float32 arrays containing the layer weights.
-    biases: A list of 2-d float32 arrays containing the layer biases.
+        weights: A list of 2-d float32 arrays containing the
+            layer weights and biases.
+        grads: A list of 2-d float32 arrays containing the last gradients
+            (useful for momentum).
 
     Methods:
-    forward: Can be used to perform a forward pass on a batch of
-      flattened images. Output is returned as a batch of one-hot vectors of the
-      classes.
-    train: method performs a forward and backward pass and updates the
-      weights and biases.
-    evaluate: method can be used to evaluate the network on a batch of
-      examples.
+        forward: Can be used to perform a forward pass on a batch of
+            flattened images. Output is returned as a batch of one-hot vectors of the
+            classes.
+            train: method performs a forward and backward pass and updates the
+            weights and biases.
+        evaluate: method can be used to evaluate the network on a batch of
+            examples.
     """
 
-    def __init__(self, hidden_layers, input_size=784, num_classes=10, learning_rate=0.001):
-        """Initializes the neural network.
+    def __init__(self, hidden_layers, input_size=784,
+                num_classes=10, learning_rate=0.001):
+        """Initializes the neural network model.
 
         Args:
-          hidden_layers: List of ints specifying the sizes of hidden layers. Could
-            be empty.
-          input_size: Length of the input array. The network receives the input
-            image as a flattened 1-d array. Defaults to 784(28*28), the default
-            image size for MNIST.
-          num_classes: The number of output classes. Defaults to 10.
+            hidden_layers: List of ints specifying the sizes of hidden layers.
+                Could be empty.
+            input_size: Length of the input array. The network receives the input
+                image as a flattened 1-d array. Defaults to 784(28*28),
+                the default image size for MNIST.
+            num_classes: The number of output classes. Defaults to 10.
         """
         hidden_layers = [input_size] + hidden_layers + [num_classes]
-        self.params = []
+        self.weights = []
         for i in range(len(hidden_layers) - 1):
-            self.params.append(np.random.randn(hidden_layers[i + 1], hidden_layers[i]))
-            self.params.append(np.random.randn(hidden_layers[i + 1]))
+            self.weights.append(np.random.randn(hidden_layers[i],
+                                                hidden_layers[i + 1]))
+            self.weights.append(np.random.randn(hidden_layers[i + 1]))
 
+        # normalization for stable training
+        self.weights = [(param - np.mean(param))/np.var(param)
+                        for param in self.weights]
+
+        self.grads = [np.zeros(weight.shape) for weight in self.weights]
 
     def sigmoid(self, x):
         return 1 / (1 + np.exp(-x))
-
 
     def forward(self, x):
         """Performs the forward pass.
 
         Args:
-          x: 2-d array of size batch_size x image_size.
+            x: 2-d array of size batch_size x image_size.
 
         Returns:
-          A 2-d array of size batch_size x num_classes.
+            A 2-d array of size batch_size x num_classes.
         """
 
-        out = tf.cast(x, tf.float32)
-
-        for i in range(0, len(self.params)-2, 2):
-            out = np.tanh(np.dot(out, self.params[i].T) + self.params[i+1])
-
-        out = self.sigmoid(np.dot(out, self.params[-2].T) + self.params[-1])
+        for i in range(0, len(self.weights)-2, 2):
+            x = np.tanh(np.dot(x, self.weights[i]) + self.weights[i+1])
+        out = self.sigmoid(np.dot(x, self.weights[-2]) + self.weights[-1])
 
         return out
 
-
-    def mean_squared_error(self, x, y):
-        y_out = self.forward(x)
-        loss = tf.math.reduce_sum((y - y_out)**2)
+    def mean_squared_error(self, y_out, y):
+        loss = np.sum((y - y_out)**2)
         return loss
 
-
-    def train(self, x, y, learning_rate=0.01):
+    def train(self, x, y, learning_rate=0.01, momentum=0.2):
         """Runs a single training pass.
 
         Args:
-          x: 2-d array of size batch_size x image_size.
-          y: 2-d array of size batch_size x num_classes in one-hot notation.
-          learning_rate: The learning rate.
+            x: 2-d array of size batch_size x image_size.
+            y: 2-d array of size batch_size x num_classes in one-hot notation.
+            learning_rate: The learning rate.
+
+        Returns:
+            The loss of this training pass
         """
-
         with tf.GradientTape() as tape:
-
-            tape.watch(self.params)
-            loss = self.mean_squared_error(x, y)
-            grads = tape.gradient(loss, self.params)
-            self.params = [param - (learning_rate * np.array(grad)) for param, grad in zip(self.params, grads)]
+            tape.watch(self.weights)
+            y_out = self.forward(x)
+            loss = self.mean_squared_error(y_out, y)
+            grads = [np.array(grad) for grad in tape.gradient(loss, self.weights)]
+            self.grads = [(momentum)*past_grad + (1-momentum)*new_grad for past_grad, new_grad in zip(self.grads, grads)]
+            self.weights = [param - (learning_rate * np.array(grad)) for param, grad in zip(self.weights, self.grads)]
 
         return loss
 
@@ -115,11 +118,11 @@ class Model(object):
         """Returns the number of correct predictions.
 
         Args:
-          x: 2-d array of size batch_size x image_size.
-          y: 2-d array of size batch_size x num_classes.
+            x: 2-d array of size batch_size x image_size.
+            y: 2-d array of size batch_size x num_classes.
 
         Returns:
-          A scalar, the number of correct predictions.
+            A scalar, the number of correct predictions.
         """
         y_actual = np.argmax(y, axis=1)
         y_predicted = np.argmax(self.forward(x), axis=1)

@@ -25,48 +25,75 @@ import tensorflow as tf
 import tensorflow_datasets as tfds
 from tensorflow.python.ops import numpy_ops as np
 
-# current convention is to import original numpy as np
+# current convention is to import original numpy as onp
 import numpy as onp
 
 
 class MNIST():
-    "This module tries to mimmick the NumPy Keras Dataset"
+    """A simple wrapper around the MNIST tensorflow dataset to make it into
+    a NumPy iterable object.
+
+    Attributes:
+        batch_size: an int defining how many examples a single batch contains
+
+    Methods:
+        iterator: can be used to create an iterator over the dataset.
+        _shuffle: shuffles the data points and labels, and returns the result.
+    """
+
     def __init__(self, batch_size):
-        """Initializes the MNIST dataset """
+        """Initializes the MNIST dataset in a NumPy format
+
+        Args:
+            batch_size: an int defining how many examples a single batch contains
+        """
         self.batch_size = batch_size
 
         print('Loading data')
         mnist_train = tfds.load('mnist', split='train', shuffle_files=True, batch_size=-1)
         mnist_test = tfds.load('mnist', split='test', shuffle_files=True, batch_size=-1)
 
-
-        self.mnist_train_images, self.mnist_train_labels = mnist_train['image'], mnist_train['label']
-        self.mnist_test_images, self.mnist_test_labels = mnist_test['image'], mnist_test['label']
+        self.mnist_train_images = mnist_train['image']
+        self.mnist_train_labels = mnist_train['label']
+        self.mnist_test_images = mnist_test['image']
+        self.mnist_test_labels = mnist_test['label']
 
         self.train_len = self.mnist_train_images.shape[0]
         self.val_len = self.mnist_test_images.shape[0]
 
         print('Loaded dataset with {} training and {} test examples.'.format(
-                self.mnist_train_images.shape[0], self.mnist_test_images.shape[0]))
+                self.mnist_train_images.shape[0],
+                self.mnist_test_images.shape[0]))
 
         assert(self.mnist_train_images.shape[0] == self.mnist_train_labels.shape[0])
         assert(self.mnist_test_images.shape[0] == self.mnist_test_labels.shape[0])
         assert(self.mnist_train_images.shape[0] % batch_size == 0)
         assert(self.mnist_test_images.shape[0] % batch_size == 0)
 
-
     def iterator(self, split, infinite=True):
-        """Build the iterator for inputs."""
+        """Build and returns an iterator of hte data.
+
+        Args:
+            split: a string that is either 'train' or 'test'.
+            infinite: boolean that will determine whether iterable object is finite.
+
+        Returns:
+            An iterable object over the MNIST dataset.
+        """
         if split=='train':
-            mnist_images, mnist_labels = self.mnist_train_images, self.mnist_train_labels
+            mnist_images = self.mnist_train_images
+            mnist_labels = self.mnist_train_labels
         elif split=='test':
-            mnist_images, mnist_labels = self.mnist_test_images, self.mnist_test_labels
+            mnist_images = self.mnist_test_images
+            mnist_labels = self.mnist_test_labels
+        else:
+            raise ValueError("split has to be either 'train' or 'test'")
 
         len_dim_0 = mnist_images.shape[0]
         mnist_images = np.reshape(mnist_images, (len_dim_0, 784))
         mnist_labels = np.asarray(tf.one_hot(mnist_labels, 10))
 
-        mnist_images, mnist_labels = self.shuffle(mnist_images, mnist_labels)
+        mnist_images, mnist_labels = self._shuffle(mnist_images, mnist_labels)
 
         index = 0
         size = mnist_images.shape[0]
@@ -74,15 +101,17 @@ class MNIST():
             if index + self.batch_size > size:
                 if infinite:
                     index = 0
-                    mnist_images, mnist_labels = self.shuffle(mnist_images, mnist_labels)
+                    mnist_images,
+                    mnist_labels = self._shuffle(mnist_images, mnist_labels)
                 else:
                     return
 
-            yield mnist_images[index:index + self.batch_size], mnist_labels[index:index + self.batch_size]
+            yield (mnist_images[index:index + self.batch_size],
+                    mnist_labels[index:index + self.batch_size])
             index += self.batch_size
 
-
-    def shuffle(self, data, labels):
+    def _shuffle(self, data, labels):
+        """ shuffles the datapoints and labels, returns the resulting dataset. """
         idx = onp.random.permutation(len(data))
         data, labels = data[idx], labels[idx]
         return data, labels
