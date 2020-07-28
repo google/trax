@@ -90,7 +90,7 @@ class Dense(base.Layer):
       return jnp.dot(x, w)  # Linear map.
 
   def init_weights_and_state(self, input_signature):
-    """Returns newly initialized weights for this layer.
+    """Randomly initializes this layer's weights.
 
     Weights are a `(w, b)` tuple for layers created with `use_bias=True` (the
     default case), or a `w` tensor for layers created with `use_bias=False`.
