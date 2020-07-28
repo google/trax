@@ -6,7 +6,7 @@ Trax Tutorials
 
 .. toctree::
    :caption: Introductory Notebooks
-   :maxdepth: 1
+   :maxdepth: 2
 
    notebooks/layers_intro
 
