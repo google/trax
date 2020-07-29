@@ -4,9 +4,9 @@ trax.data
 inputs
 ------
 
-.. automodule:: trax.supervised.inputs
+.. automodule:: trax.data.inputs
 
 tf\_inputs
 ----------
 
-.. automodule:: trax.supervised.tf_inputs
+.. automodule:: trax.data.tf_inputs
