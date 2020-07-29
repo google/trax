@@ -352,7 +352,7 @@ class PolicyTrainer(RLTrainer):
     pred = pred[0, -1, :]
     sample = self._policy_dist.sample(pred, temperature=temperature)
     result = (sample, pred)
-    if fastmath.backend_name() == 'jax':
+    if fastmath.is_backend(fastmath.Backend.JAX):
       result = fastmath.nested_map(lambda x: x.copy(), result)
     return result
 

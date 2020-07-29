@@ -627,7 +627,7 @@ def Reformer(input_vocab_size,
   # masks on the stack. This causes jax to error, even though the so-called
   # "gradient" wrt the masks is never actually computed.
   # TODO(kitaev): remove this hack.
-  if fastmath.backend_name() == 'jax':
+  if fastmath.is_backend(fastmath.Backend.JAX):
     jax.api._check_inexact_input_vjp = lambda x: None  # pylint: disable=protected-access
 
   def PositionalEncoder(vocab_size, mode):  # tokens --> vectors
@@ -772,7 +772,7 @@ def ReformerNoEncDecAttention(input_vocab_size,
   # masks on the stack. This causes jax to error, even though the so-called
   # "gradient" wrt the masks is never actually computed.
   # TODO(kitaev): remove this hack.
-  if fastmath.backend_name() == 'jax':
+  if fastmath.is_backend(fastmath.Backend.JAX):
     jax.api._check_inexact_input_vjp = lambda x: None  # pylint: disable=protected-access
 
   def PositionalEncoder(vocab_size, mode):  # tokens --> vectors

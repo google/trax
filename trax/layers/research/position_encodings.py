@@ -78,7 +78,7 @@ class AxialPositionalEncoding(layer_base.Layer):
       for dim in self._dropout_broadcast_dims:
         noise_shape[dim] = 1
       keep_prob = 1.0 - self._dropout
-      if fastmath.backend_name() == 'jax':
+      if fastmath.is_backend(fastmath.Backend.JAX):
         keep_prob = jax.lax.tie_in(
             inputs, jnp.full((), keep_prob, dtype=inputs.dtype))
       keep = fastmath.random.bernoulli(rng, keep_prob, tuple(noise_shape))

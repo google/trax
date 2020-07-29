@@ -190,7 +190,7 @@ def reshape_by_device(x, n_devices):
 def for_n_devices(x, n_devices):
   """Replicates/broadcasts `x` for `n_devices`."""
   def f(x):
-    if n_devices > 1 and fastmath.backend_name() == 'jax':
+    if n_devices > 1 and fastmath.is_backend(fastmath.Backend.JAX):
       return _multi_device_put(x)
     elif n_devices > 1:
       return jnp.broadcast_to(x, (n_devices,) + x.shape)

@@ -140,7 +140,7 @@ class TraxKerasLayer(tf.keras.layers.Layer):
         `tf.keras.layers.Layer.__init__` for details.
     """
     super(TraxKerasLayer, self).__init__(dtype=dtype)
-    with math_lib.use_backend("tf"):
+    with math_lib.use_backend(math_lib.Backend.TFNP):
       if initializer_rng is None:
         initializer_rng = math_lib.random.get_prng(0)
       if rng is None:
@@ -154,7 +154,7 @@ class TraxKerasLayer(tf.keras.layers.Layer):
       self._rng_updater = rng_updater
 
   def build(self, input_shape):
-    with math_lib.use_backend("tf"):
+    with math_lib.use_backend(math_lib.Backend.TFNP):
       # Using `is` instead of `==` following Trax's practice
       if self._trax_layer.weights is base.EMPTY_WEIGHTS:
         sanitized_input_shape = math_lib.nested_map(
@@ -175,7 +175,7 @@ class TraxKerasLayer(tf.keras.layers.Layer):
     super(TraxKerasLayer, self).build(input_shape)
 
   def call(self, inputs):
-    with math_lib.use_backend("tf"):
+    with math_lib.use_backend(math_lib.Backend.TFNP):
       inputs = math_lib.nested_map(
           functools.partial(_replace_none_batch, batch_size=self._batch_size),
           inputs)

@@ -29,7 +29,7 @@ from trax.layers.research import efficient_attention
 class EfficientAttentionTest(test.TestCase):
 
   def test_self_attention(self):
-    with fastmath.use_backend('jax'):
+    with fastmath.use_backend(fastmath.Backend.JAX):
       layer = efficient_attention.SelfAttention(
           n_heads=5, d_qk=7, d_v=17, share_qk=False, causal=True,
           chunk_len=8, n_chunks_before=1, n_chunks_after=0,
@@ -40,7 +40,7 @@ class EfficientAttentionTest(test.TestCase):
       self.assertEqual(y.shape, x.shape)
 
   def test_self_attention_tf(self):
-    with fastmath.use_backend('tf'):
+    with fastmath.use_backend(fastmath.Backend.TFNP):
       layer = efficient_attention.SelfAttention(
           n_heads=5, d_qk=7, d_v=17, share_qk=False, causal=True,
           chunk_len=8, n_chunks_before=1, n_chunks_after=0,
@@ -51,7 +51,7 @@ class EfficientAttentionTest(test.TestCase):
       self.assertEqual(y.shape, x.shape)
 
   def test_lsh_self_attention(self):
-    with fastmath.use_backend('jax'):
+    with fastmath.use_backend(fastmath.Backend.JAX):
       layer = efficient_attention.LSHSelfAttention(
           n_heads=5, d_qk=7, d_v=17, causal=True,
           chunk_len=8, n_chunks_before=1, n_chunks_after=0,
@@ -63,7 +63,7 @@ class EfficientAttentionTest(test.TestCase):
       self.assertEqual(y.shape, x.shape)
 
   def test_lsh_self_attention_tf(self):
-    with fastmath.use_backend('tf'):
+    with fastmath.use_backend(fastmath.Backend.TFNP):
       layer = efficient_attention.LSHSelfAttention(
           n_heads=5, d_qk=7, d_v=17, causal=True,
           chunk_len=8, n_chunks_before=1, n_chunks_after=0,
@@ -114,7 +114,7 @@ class EfficientAttentionTest(test.TestCase):
                                    test_weights_grad)
 
   def test_batching_self_attention(self):
-    with fastmath.use_backend('jax'):
+    with fastmath.use_backend(fastmath.Backend.JAX):
       common_kwargs = dict(
           n_heads=6, d_qk=7, d_v=17, share_qk=False, causal=True,
           chunk_len=5, n_chunks_before=1, n_chunks_after=0,
@@ -135,7 +135,7 @@ class EfficientAttentionTest(test.TestCase):
           common_kwargs, *test_kwargs)
 
   def test_batching_lsh_self_attention(self):
-    with fastmath.use_backend('jax'):
+    with fastmath.use_backend(fastmath.Backend.JAX):
       common_kwargs = dict(
           n_heads=6, d_qk=7, d_v=17, causal=True,
           chunk_len=5, n_chunks_before=1, n_chunks_after=0,
@@ -188,7 +188,7 @@ class EfficientAttentionTest(test.TestCase):
       self.assertAllClose(out, ref_out, rtol=1e-3, atol=1e-3)
 
   def test_fast_inference_self_attention(self):
-    with fastmath.use_backend('jax'):
+    with fastmath.use_backend(fastmath.Backend.JAX):
       common_kwargs = dict(
           n_heads=6, d_qk=7, d_v=17, share_qk=False, causal=True,
           chunk_len=5, n_chunks_before=1, n_chunks_after=0,
@@ -211,7 +211,7 @@ class EfficientAttentionTest(test.TestCase):
   def _test_lsh_self_attention_deterministic_given_seed(self, causal=False):
     # Once the initialization and the call seeds are pinned down we have
     # deterministic output.
-    with fastmath.use_backend('jax'):
+    with fastmath.use_backend(fastmath.Backend.JAX):
       layer = efficient_attention.LSHSelfAttention(
           n_heads=5, d_qk=7, d_v=17, causal=causal,
           chunk_len=8, n_chunks_before=1, n_chunks_after=0,
@@ -240,7 +240,7 @@ class EfficientAttentionTest(test.TestCase):
     # Test that when the input that is in the masked area changes the attention
     # for the un-masked outputs doesn't change, but the masked region does
     # change.
-    with fastmath.use_backend('jax'):
+    with fastmath.use_backend(fastmath.Backend.JAX):
       layer = efficient_attention.LSHSelfAttention(
           n_heads=5, d_qk=7, d_v=17, causal=False, masked=True,
           chunk_len=8, n_chunks_before=1, n_chunks_after=0,

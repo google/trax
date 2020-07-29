@@ -23,6 +23,7 @@ import numpy as onp
 
 import tensorflow.compat.v2 as tf
 
+import trax
 from trax import fastmath as math_lib
 from trax import layers
 from trax import trax2keras
@@ -116,7 +117,7 @@ class Trax2KerasTest(tf.test.TestCase, parameterized.TestCase):
         the bare layer. If `True`, we will also test checkpointing and restoring
         using the model.
     """
-    with math_lib.use_backend("tf"):
+    with trax.use_backend("tensorflow-numpy"):
       make_trax_layer, input_shapes_no_batch, dtype, allow_none_batch = (
           _LAYERS[layer_id])
       # We make a fresh trax layer for each test case, so that different test

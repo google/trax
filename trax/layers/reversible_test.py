@@ -24,14 +24,14 @@ from trax import fastmath
 import trax.layers as tl
 
 
-BACKENDS = ['jax', 'tf']
+BACKENDS = [fastmath.Backend.JAX, fastmath.Backend.TFNP]
 
 
 class ReversibleLayerTest(parameterized.TestCase):
 
-  @parameterized.named_parameters([('_' + b, b) for b in BACKENDS])
-  def test_reversible_swap(self, backend_name):
-    with fastmath.use_backend(backend_name):
+  @parameterized.named_parameters([('_' + b.value, b) for b in BACKENDS])
+  def test_reversible_swap(self, backend):
+    with fastmath.use_backend(backend):
       layer = tl.ReversibleSwap()
       xs = [np.array([1, 2]), np.array([10, 20])]
       ys = layer(xs)

@@ -118,7 +118,7 @@ class Trainer(object):
       (slots, opt_params) = opt.tree_init(weights)
       return (OptState(weights, slots, opt_params), state)
 
-    if fastmath.backend_name() == 'jax':
+    if fastmath.is_backend(fastmath.Backend.JAX):
       # JIT parameter initialization to avoid memory fragmentation
       new_opt_state_and_model_state = (
           fastmath.jit(new_opt_state_and_model_state))
@@ -212,7 +212,7 @@ class Trainer(object):
 
   @property
   def learning_rate(self):
-    with fastmath.use_backend('numpy'):
+    with fastmath.use_backend(fastmath.Backend.NUMPY):
       return self._lr_schedule(self._step)
 
   def reset(self, output_dir, init_checkpoint=None):
@@ -407,7 +407,7 @@ class Trainer(object):
       opt_state = OptState(*fastmath.nested_map(first_replica, opt_state))
     # This line, while optional, allows JAX to transfer arrays from the device
     # to the host in parallel, which is particularly important for cloud TPU.
-    if fastmath.backend_name() == 'jax':
+    if fastmath.is_backend(fastmath.Backend.JAX):
       opt_state = jax.device_get(opt_state)
     step, history, model_state = self._step, self._history, self._model_state
     output_dir = self._output_dir
@@ -611,7 +611,7 @@ def train(output_dir,
       # Bookkeeping we do at the first step
       if trainer.step == 1:
         # Save computation graph (single-device only for now)
-        if (save_graphs and fastmath.backend_name() == 'jax'):
+        if (save_graphs and fastmath.is_backend(fastmath.Backend.JAX)):
           trainer.save_computation_graphs()
 
         # Save Gin config

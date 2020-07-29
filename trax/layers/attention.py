@@ -181,7 +181,7 @@ def DotProductAttention(queries, keys, values, mask, dropout, mode, rng):
     # We must ensure that both mask and the -1e9 constant have a data dependency
     # on the input. Broadcasted copies of these use a lot of memory, so they
     # should be computed at runtime (rather than being global constants).
-    if fastmath.backend_name() == 'jax':
+    if fastmath.is_backend(fastmath.Backend.JAX):
       mask = jax.lax.tie_in(dots, mask)
     # JAX's `full_like` already ties in -1e9 to dots.
     dots = jnp.where(mask, dots, jnp.full_like(dots, -1e9))
@@ -272,7 +272,7 @@ class DotProductCausalAttention(base.Layer):
       # Not all backends define jnp.tril. However, using np.tril is inefficient
       # in that it creates a large global constant. TODO(kitaev): try to find an
       # alternative that works across all backends.
-      if fastmath.backend_name() == 'jax':
+      if fastmath.is_backend(fastmath.Backend.JAX):
         mask = jnp.tril(
             jnp.ones((1, mask_size, mask_size), dtype=np.bool_), k=0)
       else:
@@ -360,7 +360,7 @@ class PositionalEncoding(base.Layer):
         for dim in self._dropout_broadcast_dims:
           noise_shape[dim] = 1
         keep_prob = 1.0 - self._dropout
-        if fastmath.backend_name() == 'jax':
+        if fastmath.is_backend(fastmath.Backend.JAX):
           keep_prob = jax.lax.tie_in(x, jnp.full((), keep_prob, dtype=x.dtype))
         keep = fastmath.random.bernoulli(self.rng, keep_prob,
                                          tuple(noise_shape))
@@ -437,9 +437,9 @@ def _fast_inference_update_state(inputs, state):
   Returns:
     Updated state.
   """
-  if fastmath.backend_name() != 'jax':
+  if not fastmath.is_backend(fastmath.Backend.JAX):
     raise ValueError(f'JAX backend is required in predict mode, but found '
-                     f'backend ({fastmath.backend_nameO()}).')
+                     f"backend ({fastmath.backend()['name']}).")
 
   # Fast inference: run step-by-step, storing the sequence
   # of keys and values calculated so far in state.

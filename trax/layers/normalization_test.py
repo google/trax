@@ -35,9 +35,9 @@ class BatchNormTest(parameterized.TestCase):
     self.assertEqual(y.shape, x.shape)
 
   @parameterized.named_parameters(
-      ('jax32', 'jax', np.float32),
-      ('tf32', 'tf', np.float32),
-      ('tf64', 'tf', np.float64),
+      ('jax32', fastmath.Backend.JAX, np.float32),
+      ('tf32', fastmath.Backend.TFNP, np.float32),
+      ('tf64', fastmath.Backend.TFNP, np.float64),
   )
   def test_forward_dtype(self, backend, dtype):
     with fastmath.use_backend(backend):
@@ -98,9 +98,9 @@ class LayerNormTest(parameterized.TestCase):
     self.assertEqual(y.shape, x.shape)
 
   @parameterized.named_parameters(
-      ('jax32', 'jax', np.float32),
-      ('tf32', 'tf', np.float32),
-      ('tf64', 'tf', np.float64),
+      ('jax32', fastmath.Backend.JAX, np.float32),
+      ('tf32', fastmath.Backend.TFNP, np.float32),
+      ('tf64', fastmath.Backend.TFNP, np.float64),
   )
   def test_forward_dtype(self, backend, dtype):
     with fastmath.use_backend(backend):

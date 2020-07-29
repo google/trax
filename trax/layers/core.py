@@ -210,12 +210,12 @@ class Dropout(base.Layer):
     mask_shape = list(x.shape)
     for axis in self._shared_axes:
       mask_shape[axis] = 1
-    if fastmath.backend_name() == 'jax':
+    if fastmath.is_backend(fastmath.Backend.JAX):
       keep_prob = jax.lax.tie_in(self.rng, 1.0 - rate)
     else:
       keep_prob = 1.0 - rate
     keep = fastmath.random.bernoulli(rng, keep_prob, tuple(mask_shape))
-    if fastmath.backend_name() == 'jax':
+    if fastmath.is_backend(fastmath.Backend.JAX):
       keep_prob = jax.lax.tie_in(keep, keep_prob)
     mask = keep.astype(x.dtype) / keep_prob
     return x * mask

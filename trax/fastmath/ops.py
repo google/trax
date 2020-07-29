@@ -30,11 +30,20 @@ You can select which one to use (e.g., for  debugging) with `use_backend`.
 """
 
 import contextlib
+import enum
 
 import gin
 from trax.fastmath.jax import JAX_BACKEND
 from trax.fastmath.numpy import NUMPY_BACKEND
 from trax.fastmath.tf import TF_BACKEND
+
+
+@enum.unique
+class Backend(enum.Enum):
+  JAX = 'jax'
+  TFNP = 'tensorflow-numpy'
+  NUMPY = 'numpy'
+
 
 # For numpy and random modules, we need to call "backend()" lazily, only when
 # the function is called -- so that it can be set by gin configs.
@@ -226,34 +235,63 @@ def device_count(*args, **kwargs):
 
 # Backend selection functions.
 
+override_backend = None
+_backend_dict = {
+    Backend.JAX: JAX_BACKEND,
+    Backend.NUMPY: NUMPY_BACKEND,
+    Backend.TFNP: TF_BACKEND,
+}
 
-override_backend_name = None
+
+def _assert_valid_backend_name(name):
+  for backend_ in Backend:
+    if backend_.value == name:
+      return
+  raise ValueError(f'No backend with name {name}')
+
+
+def _get_backend_from_string(name_str):
+  # name is a string.
+  for backend_ in Backend:
+    if backend_.value == name_str:
+      return _backend_dict[backend_]
+  return JAX_BACKEND
 
 
 @gin.configurable()
 def backend(name='jax'):
-  """Return the backend used to provide fastmath ops ('tf' or 'jax')."""
-  name = name if not override_backend_name else override_backend_name
-  if name == 'numpy':
-    return NUMPY_BACKEND
-  elif name == 'tf':
-    return TF_BACKEND
-  return JAX_BACKEND
+  """Returns the backend used to provide fastmath ops ('tf' or 'jax')."""
+  if override_backend:
+    return _get_backend_from_string(override_backend)
+
+  if isinstance(name, Backend):
+    return _backend_dict[name]
+
+  # name is a string.
+  return _get_backend_from_string(name)
 
 
 @contextlib.contextmanager
 def use_backend(name):
   """Call fastmath functions with a specified backend."""
-  global override_backend_name
-  prev_name = override_backend_name
-  override_backend_name = name
+  if isinstance(name, Backend):
+    name = name.value
+
+  _assert_valid_backend_name(name)
+  global override_backend
+  prev_name_or_backend = override_backend
+  override_backend = name
   # Run the decorated function in try-finally in case it throws, e.g. for tests.
   try:
     yield
   finally:
-    override_backend_name = prev_name
+    override_backend = prev_name_or_backend
 
 
 def backend_name():
   """Returns the name of the backend curently in use ('tf' or 'jax')."""
   return backend()['name']
+
+
+def is_backend(backend_):
+  return backend()['name'] == backend_.value

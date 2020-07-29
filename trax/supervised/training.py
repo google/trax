@@ -691,7 +691,7 @@ class TrainTask:
   def learning_rate(self, step):
     """Return the learning rate for the given step."""
     if self._lr_schedule is not None:
-      with fastmath.use_backend('numpy'):
+      with fastmath.use_backend(fastmath.Backend.NUMPY):
         return self._lr_schedule(step)
     params = self._optimizer._init_opt_params  # pylint: disable=protected-access
     return params['learning_rate']
@@ -836,7 +836,7 @@ def init_host_and_devices(n_devices=None, random_seed=None):
       host).
     random_seed: The passed in value of random_seed or a computed default.
   """
-  if fastmath.backend_name() == 'jax':
+  if fastmath.is_backend(fastmath.Backend.JAX):
     host_id = jax.host_id()
     host_count = jax.host_count()
   else:
@@ -850,7 +850,7 @@ def init_host_and_devices(n_devices=None, random_seed=None):
   device_count = fastmath.device_count()
   n_devices = n_devices or device_count
   # TODO(lukaszkaiser): remove this restriction when possible.
-  if n_devices != device_count and fastmath.backend_name() == 'jax':
+  if n_devices != device_count and fastmath.is_backend(fastmath.Backend.JAX):
     raise ValueError('JAX cannot work yet with n_devices != all devices: '
                      '%d != %d' % (n_devices, device_count))
 

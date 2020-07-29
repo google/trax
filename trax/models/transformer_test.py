@@ -87,7 +87,7 @@ class TransformerTest(parameterized.TestCase):
 
 
   def _test_fast_inference(self, length):
-    with fastmath.use_backend('jax'):
+    with fastmath.use_backend(fastmath.Backend.JAX):
       vocab_size = 16
       model_fn = functools.partial(
           transformer.TransformerLM,

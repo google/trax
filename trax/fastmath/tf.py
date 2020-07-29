@@ -108,7 +108,7 @@ def _tf_pmap(*args, **kwargs):
 
 
 TF_BACKEND = {
-    'name': 'tf',
+    'name': 'tensorflow-numpy',
     'np': tf_np,
     'jit': _tf_jit,
     'stop_gradient': tf_np_extensions.stop_gradient,

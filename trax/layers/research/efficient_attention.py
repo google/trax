@@ -46,7 +46,7 @@ from trax.layers import base
 
 
 def tie_in(x, y):
-  if fastmath.backend_name() == 'jax':
+  if fastmath.is_backend(fastmath.Backend.JAX):
     return jax.lax.tie_in(x, y)
   return y
 
@@ -1158,7 +1158,7 @@ class LSHSelfAttention(SelfAttention):
     rng = fastmath.stop_gradient(tie_in(vecs, rng))
     random_rotations = fastmath.random.normal(rng, rotations_shape).astype(
         np.float32)
-    if fastmath.backend_name() == 'jax':
+    if fastmath.is_backend(fastmath.Backend.JAX):
       rotated_vecs = np.einsum('tf,fhb->htb', vecs, random_rotations)
     else:
       random_rotations = np.reshape(random_rotations,

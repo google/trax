@@ -26,8 +26,8 @@ from trax import shapes
 from trax.fastmath import numpy as jnp
 import trax.layers as tl
 
-BACKENDS = ['jax', 'tf']
-CUSTOM_GRAD_BACKENDS = ['jax']  # TODO(afrozm): Delete after TF 2.3
+BACKENDS = [fastmath.Backend.JAX, fastmath.Backend.TFNP]
+CUSTOM_GRAD_BACKENDS = [fastmath.Backend.JAX]  # TODO(afrozm): del after TF 2.3
 
 
 class BaseLayerTest(parameterized.TestCase):
@@ -65,8 +65,9 @@ class BaseLayerTest(parameterized.TestCase):
     self.assertNotEqual(output_signature, (shapes.ShapeDtype((4, 7)),) * 3)
     self.assertNotEqual(output_signature, (shapes.ShapeDtype((5, 7)),) * 2)
 
-  @parameterized.named_parameters([('_' + b, b) for b in CUSTOM_GRAD_BACKENDS])
-  def test_custom_zero_grad(self, backend_name):
+  @parameterized.named_parameters(
+      [('_' + b.value, b) for b in CUSTOM_GRAD_BACKENDS])
+  def test_custom_zero_grad(self, backend):
 
     class IdWithZeroGrad(tl.Layer):
 
@@ -80,7 +81,7 @@ class BaseLayerTest(parameterized.TestCase):
       def backward(self, inputs, output, grad, weights, state, new_state, rng):
         return (jnp.zeros_like(grad), ())
 
-    with fastmath.use_backend(backend_name):
+    with fastmath.use_backend(backend):
       layer = IdWithZeroGrad()
       rng = fastmath.random.get_prng(0)
       input_signature = shapes.ShapeDtype((9, 17))
@@ -92,8 +93,9 @@ class BaseLayerTest(parameterized.TestCase):
       self.assertEqual(grad.shape, (9, 17))  # Gradient for each input.
       self.assertEqual(sum(sum(grad * grad)), 0.0)  # Each one is 0.
 
-  @parameterized.named_parameters([('_' + b, b) for b in CUSTOM_GRAD_BACKENDS])
-  def test_custom_id_grad(self, backend_name):
+  @parameterized.named_parameters(
+      [('_' + b.value, b) for b in CUSTOM_GRAD_BACKENDS])
+  def test_custom_id_grad(self, backend):
 
     class IdWithIdGrad(tl.Layer):
 
@@ -107,7 +109,7 @@ class BaseLayerTest(parameterized.TestCase):
       def backward(self, inputs, output, grad, weights, state, new_state, rng):
         return (inputs, ())
 
-    with fastmath.use_backend(backend_name):
+    with fastmath.use_backend(backend):
       layer = IdWithIdGrad()
       rng = fastmath.random.get_prng(0)
       input_signature = shapes.ShapeDtype((9, 17))

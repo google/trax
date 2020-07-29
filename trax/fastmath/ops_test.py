@@ -86,6 +86,23 @@ class BackendTest(test.TestCase):
     out = {'a': ([[0, 1], [1, 2]], [2, 3]), 'b': _TestNamedtuple([3, 4])}
     onp.testing.assert_equal(fastmath.nested_stack(inp), out)
 
+  def test_names_match(self):
+    # Names match up.
+    for backend_enum, backend_obj in fastmath.ops._backend_dict.items():
+      self.assertEqual(backend_enum.value, backend_obj['name'])
+
+    # Every backend appears in the dictionary.
+    for backend_enum in fastmath.ops.Backend:
+      self.assertIn(backend_enum, fastmath.ops._backend_dict)
+
+  def test_use_backend_str(self):
+    with fastmath.use_backend('tensorflow-numpy'):
+      self.assertEqual(fastmath.backend_name(), 'tensorflow-numpy')
+
+  def test_use_backend_enum(self):
+    with fastmath.use_backend(fastmath.Backend.NUMPY):
+      self.assertEqual(fastmath.backend_name(), 'numpy')
+
 
 if __name__ == '__main__':
   test.main()

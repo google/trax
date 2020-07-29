@@ -22,4 +22,5 @@ from trax import models
 from trax import optimizers
 from trax import shapes
 from trax import supervised
+from trax.fastmath import use_backend
 from trax.supervised import lr_schedules as lr

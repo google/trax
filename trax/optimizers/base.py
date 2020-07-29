@@ -162,7 +162,7 @@ class Optimizer(object):
 
   def _l2_norm(self, flat_list):
     """Returns the aggregate L2 norm of a list of tensors."""
-    if fastmath.backend_name() == 'jax':
+    if fastmath.is_backend(fastmath.Backend.JAX):
       norm = jnp.sqrt(sum(jnp.vdot(x, x) for x in flat_list))
     else:  # TODO(lukaszkaiser): add vdot to TF-numpy
       norm = jnp.sqrt(sum(jnp.sum(x*x) for x in flat_list))

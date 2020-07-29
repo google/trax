@@ -469,7 +469,8 @@ class SerialWithSideOutputsTest(absltest.TestCase):
     self.assertEqual(output_shapes, [(3,), (5,), (2,)])
 
 
-@parameterized.named_parameters(('_' + b, b) for b in ('jax', 'tf'))
+@parameterized.named_parameters(
+    ('_' + b.value, b) for b in (fastmath.Backend.JAX, fastmath.Backend.TFNP))
 class ScanTest(parameterized.TestCase):
 
   def _AddWithCarry(self):  # pylint: disable=invalid-name
@@ -479,8 +480,8 @@ class ScanTest(parameterized.TestCase):
       return res, res  # output and carry are the same
     return tl.Fn('AddWithCarry', f, n_out=2)
 
-  def test_default_axis(self, backend_name):
-    with fastmath.use_backend(backend_name):
+  def test_default_axis(self, backend):
+    with fastmath.use_backend(backend):
       layer = tl.Scan(self._AddWithCarry())
       xs = [
           np.array([[0, 1, 2, 3],
@@ -497,8 +498,8 @@ class ScanTest(parameterized.TestCase):
                         [9000, 8111, 7222, 6333]
                        ])
 
-  def test_axis_1(self, backend_name):
-    with fastmath.use_backend(backend_name):
+  def test_axis_1(self, backend):
+    with fastmath.use_backend(backend):
       layer = tl.Scan(self._AddWithCarry(), axis=1)
       xs = [
           np.array([[0, 1, 2, 3],
@@ -519,13 +520,13 @@ class ScanTest(parameterized.TestCase):
                          7600]
                        ])
 
-  def test_multi_input(self, backend_name):
+  def test_multi_input(self, backend):
     def _MultiInputFn():  # pylint: disable=invalid-name
       def f(a, b, carry):
         return a + b, b, carry + 1
       return tl.Fn('MultiInputFn', f, n_out=2)
 
-    with fastmath.use_backend(backend_name):
+    with fastmath.use_backend(backend):
       layer = tl.Scan(_MultiInputFn(), axis=1)
       xs = [
           np.array([[0, 1, 2],
@@ -545,11 +546,11 @@ class ScanTest(parameterized.TestCase):
                          8003]
                        ])
 
-  def test_no_carry(self, backend_name):
+  def test_no_carry(self, backend):
     def _AddOne():  # pylint: disable=invalid-name
       return tl.Fn('AddOne', lambda x: x + 1)
 
-    with fastmath.use_backend(backend_name):
+    with fastmath.use_backend(backend):
       layer = tl.Scan(_AddOne(), n_carry=0)
       x = np.array([[1, 3, 7],
                     [10, 30, 70]])

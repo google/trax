@@ -68,7 +68,7 @@ def _test_inputs(n_classes, with_weights=False, input_shape=(6, 6, 3)):
 
 
 
-BACKENDS = ['jax', 'tf']
+BACKENDS = [fastmath.Backend.JAX, fastmath.Backend.TFNP]
 
 
 class TraxTest(test.TestCase, parameterized.TestCase):
@@ -81,10 +81,10 @@ class TraxTest(test.TestCase, parameterized.TestCase):
 
   # TODO(wangpeng): Remove `skipTest`'s when tf-numpy's `pmap` is in place
 
-  def _test_train_eval_predict(self, backend_name):
-    if xla_bridge.device_count() > 1 and backend_name == 'tf':
+  def _test_train_eval_predict(self, backend):
+    if xla_bridge.device_count() > 1 and backend == fastmath.Backend.TFNP:
       self.skipTest("tf-numpy backend does't support multi-devices yet.")
-    with fastmath.use_backend(backend_name), self.tmp_dir() as output_dir:
+    with fastmath.use_backend(backend), self.tmp_dir() as output_dir:
       # Prepare model and inputs
       n_classes = 4
       steps = 2
@@ -127,14 +127,14 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       model(next(inputs)[0], weights=weights, state=state)
 
   @parameterized.parameters(BACKENDS)
-  def test_train_eval_predict(self, backend_name):
-    self._test_train_eval_predict(backend_name)
+  def test_train_eval_predict(self, backend):
+    self._test_train_eval_predict(backend)
 
   @parameterized.parameters(BACKENDS)
-  def test_train_eval_predict_sm3(self, backend_name):
-    if xla_bridge.device_count() > 1 and backend_name == 'tf':
+  def test_train_eval_predict_sm3(self, backend):
+    if xla_bridge.device_count() > 1 and backend == fastmath.Backend.TFNP:
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with fastmath.use_backend(backend_name), self.tmp_dir() as output_dir:
+    with fastmath.use_backend(backend), self.tmp_dir() as output_dir:
       # Prepare model and inputs
       n_classes = 4
       steps = 2
@@ -168,10 +168,10 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       model(next(inputs)[0])
 
   @parameterized.parameters(BACKENDS)
-  def test_train_restart(self, backend_name):
-    if xla_bridge.device_count() > 1 and backend_name == 'tf':
+  def test_train_restart(self, backend):
+    if xla_bridge.device_count() > 1 and backend == fastmath.Backend.TFNP:
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with fastmath.use_backend(backend_name), self.tmp_dir() as output_dir:
+    with fastmath.use_backend(backend), self.tmp_dir() as output_dir:
       # Prepare model and inputs
       n_classes = 4
       steps = 2
@@ -200,10 +200,10 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(state.step, 2 * steps)
 
   @parameterized.parameters(BACKENDS)
-  def test_train_with_weights(self, backend_name):
-    if xla_bridge.device_count() > 1 and backend_name == 'tf':
+  def test_train_with_weights(self, backend):
+    if xla_bridge.device_count() > 1 and backend == fastmath.Backend.TFNP:
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with fastmath.use_backend(backend_name), self.tmp_dir() as output_dir:
+    with fastmath.use_backend(backend), self.tmp_dir() as output_dir:
       # Prepare model and inputs
       n_classes = 4
       steps = 2
@@ -224,10 +224,10 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(state.step, steps)
 
   @parameterized.parameters(BACKENDS)
-  def test_reset_twice(self, backend_name):
-    if xla_bridge.device_count() > 1 and backend_name == 'tf':
+  def test_reset_twice(self, backend):
+    if xla_bridge.device_count() > 1 and backend == fastmath.Backend.TFNP:
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with fastmath.use_backend(backend_name), self.tmp_dir() as output_dir1, \
+    with fastmath.use_backend(backend), self.tmp_dir() as output_dir1, \
           self.tmp_dir() as output_dir2:
       n_classes = 4
       model_fn = functools.partial(
@@ -264,7 +264,8 @@ class TraxTest(test.TestCase, parameterized.TestCase):
     """
     if xla_bridge.device_count() > 1:
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with fastmath.use_backend('tf'), self.tmp_dir() as output_dir:
+    with fastmath.use_backend(fastmath.Backend.TFNP), \
+          self.tmp_dir() as output_dir:
       n_classes = 1001
       model_fn = functools.partial(models.Resnet50,
                                    n_output_classes=n_classes)
