@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 import tensorflow as tf
 from tensorflow.python.ops import numpy_ops as np
 
@@ -37,8 +39,8 @@ class Model(object):
 
     Methods:
         forward: Can be used to perform a forward pass on a batch of
-            flattened images. Output is returned as a batch of one-hot vectors of the
-            classes.
+            flattened images. Output is returned as a batch of one-hot
+            vectors of the classes.
             train: method performs a forward and backward pass and updates the
             weights and biases.
         evaluate: method can be used to evaluate the network on a batch of
@@ -52,23 +54,28 @@ class Model(object):
         Args:
             hidden_layers: List of ints specifying the sizes of hidden layers.
                 Could be empty.
-            input_size: Length of the input array. The network receives the input
-                image as a flattened 1-d array. Defaults to 784(28*28),
+            input_size: Length of the input array. The network receives the
+            input image as a flattened 1-d array. Defaults to 784(28*28),
                 the default image size for MNIST.
             num_classes: The number of output classes. Defaults to 10.
         """
         hidden_layers = [input_size] + hidden_layers + [num_classes]
-        self.weights = []
+        self.layers = []
+        self.Layer = collections.namedtuple('Layer', ['weights', 'biases'])
         for i in range(len(hidden_layers) - 1):
-            self.weights.append(np.random.randn(hidden_layers[i],
-                                                hidden_layers[i + 1]))
-            self.weights.append(np.random.randn(hidden_layers[i + 1]))
+            layer = self.Layer(np.random.randn(hidden_layers[i],
+                        hidden_layers[i + 1]).astype('float32'),
+                        np.random.randn(hidden_layers[i + 1]).astype('float32'))
+            self.layers.append(layer)
 
         # normalization for stable training
-        self.weights = [(param - np.mean(param))/np.var(param)
-                        for param in self.weights]
+        #self.layers = [(param - np.mean(param))/np.var(param)
+        #                for param in self.layers]
 
-        self.grads = [np.zeros(weight.shape) for weight in self.weights]
+        # initialization of grads
+        #self.grads = [np.zeros(weight.shape) for weight in self.layers[0]]
+
+        self.learning_rate = learning_rate
 
     def sigmoid(self, x):
         return 1 / (1 + np.exp(-x))
@@ -82,18 +89,18 @@ class Model(object):
         Returns:
             A 2-d array of size batch_size x num_classes.
         """
+        len_dim_0 = x.shape[0]
+        x = np.reshape(x, (len_dim_0, 784))
 
-        for i in range(0, len(self.weights)-2, 2):
-            x = np.tanh(np.dot(x, self.weights[i]) + self.weights[i+1])
-        out = self.sigmoid(np.dot(x, self.weights[-2]) + self.weights[-1])
-
-        return out
+        for w, b in self.layers:
+            x = np.tanh(np.dot(x, w) + b)
+        return x
 
     def mean_squared_error(self, y_out, y):
-        loss = np.sum((y - y_out)**2)
-        return loss
+        y = tf.one_hot(y, 10, axis=1)
+        return np.sum((y - y_out)**2)
 
-    def train(self, x, y, learning_rate=0.01, momentum=0.2):
+    def train(self, x, y, momentum=0.2):
         """Runs a single training pass.
 
         Args:
@@ -104,13 +111,16 @@ class Model(object):
         Returns:
             The loss of this training pass
         """
+        x = np.asarray(x).astype('float32')
         with tf.GradientTape() as tape:
-            tape.watch(self.weights)
-            y_out = self.forward(x)
-            loss = self.mean_squared_error(y_out, y)
-            grads = [np.array(grad) for grad in tape.gradient(loss, self.weights)]
-            self.grads = [(momentum)*past_grad + (1-momentum)*new_grad for past_grad, new_grad in zip(self.grads, grads)]
-            self.weights = [param - (learning_rate * np.array(grad)) for param, grad in zip(self.weights, self.grads)]
+            tape.watch(self.layers)
+            loss = self.mean_squared_error(self.forward(x), y)
+            grads = tape.gradient(loss, self.layers)
+            # Update the weights
+            for idx, grad in enumerate(grads):
+                new_weights = self.layers[idx].weights - (self.learning_rate * grad.weights)
+                new_biases = self.layers[idx].biases - (self.learning_rate * grad.biases)
+                self.layers[idx] = self.Layer(new_weights, new_biases)
 
         return loss
 
