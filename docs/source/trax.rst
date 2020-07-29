@@ -5,6 +5,7 @@ trax
     fastmath.* <trax.fastmath>
     layers.* <trax.layers>
     models.* <trax.models>
+    data.* <trax.data>
     optimizers.* <trax.optimizers>
     supervised.* <trax.supervised>
     rl.* <trax.rl>

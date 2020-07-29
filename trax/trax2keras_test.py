@@ -117,7 +117,7 @@ class Trax2KerasTest(tf.test.TestCase, parameterized.TestCase):
         the bare layer. If `True`, we will also test checkpointing and restoring
         using the model.
     """
-    with trax.use_backend("tensorflow-numpy"):
+    with trax.fastmath.use_backend("tensorflow-numpy"):
       make_trax_layer, input_shapes_no_batch, dtype, allow_none_batch = (
           _LAYERS[layer_id])
       # We make a fresh trax layer for each test case, so that different test
