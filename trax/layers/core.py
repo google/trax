@@ -150,7 +150,7 @@ class Embedding(base.Layer):
     return jnp.take(self.weights, x, axis=0)
 
   def init_weights_and_state(self, input_signature):
-    """Returns tensor of newly initialized embedding vectors."""
+    """Randomly initializes this layer's weights."""
     del input_signature
     shape_w = (self._vocab_size, self._d_feature)
     # TODO(lukaszkaiser): do we split self.rng for consistency? Add a method?
