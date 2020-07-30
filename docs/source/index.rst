@@ -8,7 +8,7 @@ Trax Tutorials
    :caption: Introductory Notebooks
    :maxdepth: 2
 
-   notebooks/trax_intro
+   notebooks/quick_intro
    notebooks/layers_intro
 
 
