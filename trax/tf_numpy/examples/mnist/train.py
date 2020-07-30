@@ -29,24 +29,21 @@ from dataset import MNIST
 from model import Model
 
 FLAGS = flags.FLAGS
-
-flags.DEFINE_integer('BATCH_SIZE', 100, 'batch size')
-flags.DEFINE_float('LEARNING_RATE', 9, 'learning rate')
+flags.DEFINE_integer('BATCH_SIZE', 50, 'batch size')
+flags.DEFINE_float('LEARNING_RATE', 1, 'learning rate')
 flags.DEFINE_integer('TRAINING_ITERS', 50000,
                      'training will be performed for this many iterations')
-flags.DEFINE_integer('VALIDATION_STEPS', 100,
+flags.DEFINE_integer('VALIDATION_STEPS', 1,
                      'validation is performed every this many training steps')
 
 def train(batch_size, learning_rate, num_training_iters, validation_steps):
     """ training loop """
     mnist_dataset = MNIST(batch_size)
-    train_iter = mnist_dataset.iterator('train', infinite=True)
-
-    model = Model([728, 728], learning_rate=learning_rate)
-
+    model = Model([512], learning_rate=learning_rate)
     for i in range(num_training_iters):
-        train_x, train_y = next(train_iter)
-        loss = model.train(train_x, train_y)
+        training_iter = mnist_dataset.iterator('train', infinite=False)
+        for train_x, train_y in training_iter:
+            loss = model.train(train_x, train_y)
 
         # Calculate and print the train and test accuracy
         if not (i + 1) % validation_steps:
@@ -65,7 +62,7 @@ def train(batch_size, learning_rate, num_training_iters, validation_steps):
                 i+1,
                 loss.data,
                 round(correct_train_predictions/mnist_dataset.train_len, 4),
-                round(correct_val_predictions/mnist_dataset.val_len, 4)))
+                round(correct_val_predictions/mnist_dataset.test_len, 4)))
 
 
 def main(unused_argv):

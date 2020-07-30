@@ -22,8 +22,7 @@ from __future__ import print_function
 import tensorflow as tf
 from tensorflow.python.ops import numpy_ops as np
 
-
-class Model(object):
+class Model():
     """A simple neural network with dense layers and sigmoid non-linearity.
     The network consists of `len(hidden_layers) + 1` dense layers. The sizes of
     the hidden layers are specified by the user in `hidden_layers` and the
@@ -37,23 +36,23 @@ class Model(object):
 
     Methods:
         forward: Can be used to perform a forward pass on a batch of
-            flattened images. Output is returned as a batch of one-hot vectors of the
-            classes.
-            train: method performs a forward and backward pass and updates the
+            flattened images. Output is returned as a batch of one-hot
+            vectors of the classes.
+        train: method performs a forward and backward pass and updates the
             weights and biases.
         evaluate: method can be used to evaluate the network on a batch of
             examples.
     """
 
-    def __init__(self, hidden_layers, input_size=784,
-                num_classes=10, learning_rate=0.001):
+    def __init__(self, hidden_layers, input_size=784, 
+                 num_classes=10, learning_rate=0.1):
         """Initializes the neural network model.
 
         Args:
             hidden_layers: List of ints specifying the sizes of hidden layers.
                 Could be empty.
-            input_size: Length of the input array. The network receives the input
-                image as a flattened 1-d array. Defaults to 784(28*28),
+            input_size: Length of the input array. The network receives the
+                input image as a flattened 1-d array. Defaults to 784(28*28),
                 the default image size for MNIST.
             num_classes: The number of output classes. Defaults to 10.
         """
@@ -67,8 +66,8 @@ class Model(object):
         # normalization for stable training
         self.weights = [(param - np.mean(param))/np.var(param)
                         for param in self.weights]
-
         self.grads = [np.zeros(weight.shape) for weight in self.weights]
+        self.learning_rate = learning_rate
 
     def sigmoid(self, x):
         return 1 / (1 + np.exp(-x))
@@ -82,7 +81,6 @@ class Model(object):
         Returns:
             A 2-d array of size batch_size x num_classes.
         """
-
         for i in range(0, len(self.weights)-2, 2):
             x = np.tanh(np.dot(x, self.weights[i]) + self.weights[i+1])
         out = self.sigmoid(np.dot(x, self.weights[-2]) + self.weights[-1])
@@ -90,10 +88,11 @@ class Model(object):
         return out
 
     def mean_squared_error(self, y_out, y):
+        """ mean squared error loss"""
         loss = np.sum((y - y_out)**2)
         return loss
 
-    def train(self, x, y, learning_rate=0.01, momentum=0.2):
+    def train(self, x, y, momentum=0.2):
         """Runs a single training pass.
 
         Args:
@@ -104,13 +103,18 @@ class Model(object):
         Returns:
             The loss of this training pass
         """
+        len_dim_0 = x.shape[0]
+        x = np.reshape(x, (len_dim_0, 784))
         with tf.GradientTape() as tape:
             tape.watch(self.weights)
             y_out = self.forward(x)
             loss = self.mean_squared_error(y_out, y)
-            grads = [np.array(grad) for grad in tape.gradient(loss, self.weights)]
-            self.grads = [(momentum)*past_grad + (1-momentum)*new_grad for past_grad, new_grad in zip(self.grads, grads)]
-            self.weights = [param - (learning_rate * np.array(grad)) for param, grad in zip(self.weights, self.grads)]
+            grads = [np.array(grad)
+                     for grad in tape.gradient(loss, self.weights)]
+            self.grads = [(momentum)*past_grad + (1-momentum)*new_grad
+                          for past_grad, new_grad in zip(self.grads, grads)]
+            self.weights = [param - (self.learning_rate * np.array(grad))
+                            for param, grad in zip(self.weights, self.grads)]
 
         return loss
 
