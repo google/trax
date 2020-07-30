@@ -39,7 +39,7 @@ import trax
 
 ## 1. Run a pre-trained Transformer
 
-Here is how you create an Engligh-German translator in a few lines of code:
+Here is how you create an English-German translator in a few lines of code:
 
 * create a Transformer model in Trax with [trax.models.Transformer](https://trax-ml.readthedocs.io/en/latest/trax.models.html#trax.models.transformer.Transformer)
 * initialize it from a file with pre-trained weights with [model.init_from_file](https://trax-ml.readthedocs.io/en/latest/trax.layers.html#trax.layers.base.Layer.init_from_file)
