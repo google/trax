@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 import tensorflow as tf
 from tensorflow.python.ops import numpy_ops as np
 
@@ -57,11 +59,13 @@ class Model():
             num_classes: The number of output classes. Defaults to 10.
         """
         hidden_layers = [input_size] + hidden_layers + [num_classes]
-        self.weights = []
+        self.layers = []
+        self.Layer = collections.namedtuple('Layer', ['weights', 'biases'])
         for i in range(len(hidden_layers) - 1):
-            self.weights.append(np.random.randn(hidden_layers[i],
-                                                hidden_layers[i + 1]))
-            self.weights.append(np.random.randn(hidden_layers[i + 1]))
+            layer = self.Layer(np.random.randn(hidden_layers[i],
+                        hidden_layers[i + 1]).astype('float32'),
+                        np.random.randn(hidden_layers[i + 1]).astype('float32'))
+            self.layers.append(layer)
 
         # normalization for stable training
         self.weights = [(param - np.mean(param))/np.var(param)
@@ -81,11 +85,12 @@ class Model():
         Returns:
             A 2-d array of size batch_size x num_classes.
         """
-        for i in range(0, len(self.weights)-2, 2):
-            x = np.tanh(np.dot(x, self.weights[i]) + self.weights[i+1])
-        out = self.sigmoid(np.dot(x, self.weights[-2]) + self.weights[-1])
+        for l in self.layers:
+            w = l.weights
+            b = l.biases
+            x = np.tanh(np.dot(x, w) + b)
 
-        return out
+        return x
 
     def mean_squared_error(self, y_out, y):
         """ mean squared error loss"""

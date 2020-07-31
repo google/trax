@@ -23,14 +23,15 @@ from absl import flags
 
 from six.moves import range
 
+import tensorflow_datasets as tfds
 from tensorflow.python.ops import numpy_ops as np
 
-from dataset import MNIST
 from model import Model
+from dataset import MNIST
 
 FLAGS = flags.FLAGS
 flags.DEFINE_integer('BATCH_SIZE', 50, 'batch size')
-flags.DEFINE_float('LEARNING_RATE', 1, 'learning rate')
+flags.DEFINE_float('LEARNING_RATE', 0.01, 'learning rate')
 flags.DEFINE_integer('TRAINING_ITERS', 50000,
                      'training will be performed for this many iterations')
 flags.DEFINE_integer('VALIDATION_STEPS', 1,
@@ -40,29 +41,28 @@ def train(batch_size, learning_rate, num_training_iters, validation_steps):
     """ training loop """
     mnist_dataset = MNIST(batch_size)
     model = Model([512], learning_rate=learning_rate)
+    training_iter = mnist_dataset.iterator('train', infinite=True)
     for i in range(num_training_iters):
-        training_iter = mnist_dataset.iterator('train', infinite=False)
-        for train_x, train_y in training_iter:
-            loss = model.train(train_x, train_y)
+        train_x, train_y = next(training_iter)
+        loss = model.train(train_x, train_y)
 
         # Calculate and print the train and test accuracy
         if not (i + 1) % validation_steps:
-            training_iter = mnist_dataset.iterator('train', infinite=False)
-            validation_iter = mnist_dataset.iterator('test', infinite=False)
-
             correct_train_predictions = 0
-            for train_x, train_y in training_iter:
+            for train_x, train_y in mnist_dataset.iterator('train', 
+                                                           infinite=False):
                 correct_train_predictions += model.evaluate(train_x, train_y)
 
-            correct_val_predictions = 0
-            for valid_x, valid_y in validation_iter:
-                correct_val_predictions += model.evaluate(valid_x, valid_y)
+            correct_test_predictions = 0
+            for valid_x, valid_y in mnist_dataset.iterator('test', 
+                                                           infinite=False):
+                correct_test_predictions += model.evaluate(valid_x, valid_y)
 
             print('[{}] Loss: {}, train acc: {}, test acc: {}'.format(
                 i+1,
                 loss.data,
                 round(correct_train_predictions/mnist_dataset.train_len, 4),
-                round(correct_val_predictions/mnist_dataset.test_len, 4)))
+                round(correct_test_predictions/mnist_dataset.test_len, 4)))
 
 
 def main(unused_argv):
