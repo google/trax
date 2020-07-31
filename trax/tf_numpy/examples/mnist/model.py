@@ -68,9 +68,7 @@ class Model():
             self.layers.append(layer)
 
         # normalization for stable training
-        self.weights = [(param - np.mean(param))/np.var(param)
-                        for param in self.weights]
-        self.grads = [np.zeros(weight.shape) for weight in self.weights]
+
         self.learning_rate = learning_rate
 
     def sigmoid(self, x):
@@ -89,7 +87,6 @@ class Model():
             w = l.weights
             b = l.biases
             x = np.tanh(np.dot(x, w) + b)
-
         return x
 
     def mean_squared_error(self, y_out, y):
@@ -111,15 +108,20 @@ class Model():
         len_dim_0 = x.shape[0]
         x = np.reshape(x, (len_dim_0, 784))
         with tf.GradientTape() as tape:
-            tape.watch(self.weights)
+            tape.watch(self.layers)
             y_out = self.forward(x)
             loss = self.mean_squared_error(y_out, y)
-            grads = [np.array(grad)
-                     for grad in tape.gradient(loss, self.weights)]
-            self.grads = [(momentum)*past_grad + (1-momentum)*new_grad
-                          for past_grad, new_grad in zip(self.grads, grads)]
-            self.weights = [param - (self.learning_rate * np.array(grad))
-                            for param, grad in zip(self.weights, self.grads)]
+            grads = tape.gradient(loss, self.layers)
+            temp_layers = []
+            for layer, grad in zip(self.layers, grads):
+                w_grad = grad.weights
+                b_grad = grad.biases
+                w = layer.weights
+                b = layer.biases
+                new_w = w - (self.learning_rate * w_grad)
+                new_b = b - (self.learning_rate * b_grad)
+                temp_layers.append(self.Layer(new_w, new_b))
+            self.layers = temp_layers
 
         return loss
 
@@ -133,7 +135,7 @@ class Model():
         Returns:
             A scalar, the number of correct predictions.
         """
-        y_actual = np.argmax(y, axis=1)
+        y_actual = np.argmax(y,  axis=1)
         y_predicted = np.argmax(self.forward(x), axis=1)
         correct = int(np.sum(np.array(y_actual == y_predicted)))
         return correct

@@ -34,13 +34,13 @@ flags.DEFINE_integer('BATCH_SIZE', 50, 'batch size')
 flags.DEFINE_float('LEARNING_RATE', 0.01, 'learning rate')
 flags.DEFINE_integer('TRAINING_ITERS', 50000,
                      'training will be performed for this many iterations')
-flags.DEFINE_integer('VALIDATION_STEPS', 1,
+flags.DEFINE_integer('VALIDATION_STEPS', 5,
                      'validation is performed every this many training steps')
 
 def train(batch_size, learning_rate, num_training_iters, validation_steps):
     """ training loop """
     mnist_dataset = MNIST(batch_size)
-    model = Model([512], learning_rate=learning_rate)
+    model = Model([1024], learning_rate=learning_rate)
     training_iter = mnist_dataset.iterator('train', infinite=True)
     for i in range(num_training_iters):
         train_x, train_y = next(training_iter)
