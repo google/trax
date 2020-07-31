@@ -46,7 +46,7 @@ class Model():
             examples.
     """
 
-    def __init__(self, hidden_layers, input_size=784, 
+    def __init__(self, hidden_layers, input_size=784,
                  num_classes=10, learning_rate=0.1):
         """Initializes the neural network model.
 
@@ -63,8 +63,8 @@ class Model():
         self.Layer = collections.namedtuple('Layer', ['weights', 'biases'])
         for i in range(len(hidden_layers) - 1):
             layer = self.Layer(np.random.randn(hidden_layers[i],
-                        hidden_layers[i + 1]).astype('float32'),
-                        np.random.randn(hidden_layers[i + 1]).astype('float32'))
+                hidden_layers[i + 1]).astype('float32'),
+                np.random.randn(hidden_layers[i + 1]).astype('float32'))
             self.layers.append(layer)
 
         # normalization for stable training
@@ -86,7 +86,7 @@ class Model():
         for l in self.layers:
             w = l.weights
             b = l.biases
-            x = np.tanh(np.dot(x, w) + b)
+            x = self.sigmoid(np.dot(x, w) + b)
         return x
 
     def mean_squared_error(self, y_out, y):
@@ -94,7 +94,7 @@ class Model():
         loss = np.sum((y - y_out)**2)
         return loss
 
-    def train(self, x, y, momentum=0.2):
+    def train(self, x, y):
         """Runs a single training pass.
 
         Args:
@@ -114,12 +114,8 @@ class Model():
             grads = tape.gradient(loss, self.layers)
             temp_layers = []
             for layer, grad in zip(self.layers, grads):
-                w_grad = grad.weights
-                b_grad = grad.biases
-                w = layer.weights
-                b = layer.biases
-                new_w = w - (self.learning_rate * w_grad)
-                new_b = b - (self.learning_rate * b_grad)
+                new_w = layer.weights - (self.learning_rate * grad.weights)
+                new_b = layer.biases - (self.learning_rate * grad.biases)
                 temp_layers.append(self.Layer(new_w, new_b))
             self.layers = temp_layers
 
