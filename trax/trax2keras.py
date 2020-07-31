@@ -53,7 +53,7 @@ def to_arrays(args):
   return math_lib.nested_map(jnp.asarray, args)
 
 
-class TraxKerasLayer(tf.keras.layers.Layer):
+class AsKeras(tf.keras.layers.Layer):
   """A Keras layer built from a Trax layer.
 
   This subclass of `tf.keras.layers.Layer` takes in a Trax layer as a
@@ -63,7 +63,7 @@ class TraxKerasLayer(tf.keras.layers.Layer):
 
   Consider this code snippet::
 
-      keras_layer = TraxKerasLayer(trax_layer, initializer_rng=initializer_rng,
+      keras_layer = AsKeras(trax_layer, initializer_rng=initializer_rng,
                                    rng=rng, rng_updater=rng_updater)
       keras_layer.build(...)  # optional
       outputs = keras_layer(inputs)
@@ -92,19 +92,19 @@ class TraxKerasLayer(tf.keras.layers.Layer):
       keras_layer = ...
       ...
 
-  `TraxKerasLayer` uses `tf.Variable` to store weights, not shared with the
+  `AsKeras` uses `tf.Variable` to store weights, not shared with the
   original Trax layer (which uses tensors to store weights), so using
-  `TraxKerasLayer` may double the memory footprint. This problem can be solved
+  `AsKeras` may double the memory footprint. This problem can be solved
   by making sure that the Trax layer's weights/state are cleared whenever
   `tf.Variable.assign` (and `tf.Variable.assign_add` etc.) is called, because
   `tf.Variable` is copy-on-write by default.
 
   Mutations in those `tf.Variable`s won't affect the Trax layer's weights, but
-  `TraxKerasLayer`'s forward function calls the Trax layer's forward function,
+  `AsKeras`'s forward function calls the Trax layer's forward function,
   which caches the weights in the Trax layer object, so a forward pass may
   change the weights cached in the original Trax layer.
 
-  Note that this class is not thread-safe. If the same `TraxKerasLayer` object
+  Note that this class is not thread-safe. If the same `AsKeras` object
   is used in multiple threads, the `tf.Variable` updates may happen in a
   non-deterministic order.
   """
@@ -125,7 +125,7 @@ class TraxKerasLayer(tf.keras.layers.Layer):
         to an integer, the graph will be traced with `batch_size` as the batch
         size instead of `None`. Note that in this case the graph (and the Keras
         layer) can only be used on a specific batch size. If you want to use a
-        different batch size, you need to create another `TraxKerasLayer` object
+        different batch size, you need to create another `AsKeras` object
         with a different `batch_size`.
       initializer_rng: (optional) an RNG key used to create the weights and
         state if `trax_layer` doesn't have them. If `None`,
@@ -139,7 +139,7 @@ class TraxKerasLayer(tf.keras.layers.Layer):
       dtype: (optional) the dtype of the inputs. See the `dtype` argument of
         `tf.keras.layers.Layer.__init__` for details.
     """
-    super(TraxKerasLayer, self).__init__(dtype=dtype)
+    super(AsKeras, self).__init__(dtype=dtype)
     with math_lib.use_backend(math_lib.Backend.TFNP):
       if initializer_rng is None:
         initializer_rng = math_lib.random.get_prng(0)
@@ -172,7 +172,7 @@ class TraxKerasLayer(tf.keras.layers.Layer):
       self._state = math_lib.nested_map(
           functools.partial(tf.Variable, trainable=False), state)
       self._rng = tf.Variable(self._forward_rng_init, trainable=False)
-    super(TraxKerasLayer, self).build(input_shape)
+    super(AsKeras, self).build(input_shape)
 
   def call(self, inputs):
     with math_lib.use_backend(math_lib.Backend.TFNP):

@@ -47,6 +47,13 @@ class BackendTest(test.TestCase):
     self.assertNotEqual(jnp, backend['np'])
     self.assertEqual(onp, backend['np'])
 
+  def test_backend_can_be_set(self):
+    self.assertEqual(fastmath.backend_name(), 'jax')
+    fastmath.set_backend('tensorflow-numpy')
+    self.assertEqual(fastmath.backend_name(), 'tensorflow-numpy')
+    fastmath.set_backend(None)
+    self.assertEqual(fastmath.backend_name(), 'jax')
+
   def test_numpy_backend_delegation(self):
     # Assert that we are getting JAX's numpy backend.
     backend = fastmath.backend()

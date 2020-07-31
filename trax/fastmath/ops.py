@@ -225,7 +225,9 @@ def abstract_eval(*args, **kwargs):
 
 def dataset_as_numpy(*args, **kwargs):
   """Convert a tf.data.Dataset to a stream of numpy arrays."""
-  return backend()['dataset_as_numpy'](*args, **kwargs)
+  if 'dataset_as_numpy' in backend():
+    return backend()['dataset_as_numpy'](*args, **kwargs)
+  return JAX_BACKEND['dataset_as_numpy'](*args, **kwargs)
 
 
 def device_count(*args, **kwargs):
@@ -236,6 +238,7 @@ def device_count(*args, **kwargs):
 # Backend selection functions.
 
 override_backend = None
+default_backend = None
 _backend_dict = {
     Backend.JAX: JAX_BACKEND,
     Backend.NUMPY: NUMPY_BACKEND,
@@ -248,6 +251,14 @@ def _assert_valid_backend_name(name):
     if backend_.value == name:
       return
   raise ValueError(f'No backend with name {name}')
+
+
+def set_backend(name):
+  """Sets the default backend to use in Trax."""
+  if name:
+    _assert_valid_backend_name(name)
+  global default_backend
+  default_backend = name
 
 
 def _get_backend_from_string(name_str):
@@ -263,6 +274,9 @@ def backend(name='jax'):
   """Returns the backend used to provide fastmath ops ('tf' or 'jax')."""
   if override_backend:
     return _get_backend_from_string(override_backend)
+
+  if default_backend:
+    return _get_backend_from_string(default_backend)
 
   if isinstance(name, Backend):
     return _backend_dict[name]

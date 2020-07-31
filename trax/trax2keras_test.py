@@ -102,18 +102,18 @@ class Trax2KerasTest(tf.test.TestCase, parameterized.TestCase):
       ])
   def testTrain(self, layer_id, rng_updater_id, batch_size, trax_has_weights,
                 explicit_build, use_model):
-    """Tests training (forward and backward pass) for TraxKerasLayer.
+    """Tests training (forward and backward pass) for AsKeras.
 
     Args:
       layer_id: an integer, the index into `_LAYERS`.
       rng_updater_id: an integer, the index into `_RNG_UPDATERS`.
       batch_size: an integer or `None`, the value for the `batch_size` argument
-        in `TraxKerasLayer.__init__`.
+        in `AsKeras.__init__`.
       trax_has_weights: bool, whether to make the trax layer contain weights at
-        the time when `TraxKerasLayer.build` is called.
-      explicit_build: bool, whether to explicitly call `TraxKerasLayer.build`.
+        the time when `AsKeras.build` is called.
+      explicit_build: bool, whether to explicitly call `AsKeras.build`.
       use_model: bool, whether to build a `tf.keras.Model` out of the
-        `TraxKerasLayer` layer and use the model to do the training instead of
+        `AsKeras` layer and use the model to do the training instead of
         the bare layer. If `True`, we will also test checkpointing and restoring
         using the model.
     """
@@ -137,7 +137,7 @@ class Trax2KerasTest(tf.test.TestCase, parameterized.TestCase):
       if trax_has_weights:
         trax_layer(to_arrays(get_inputs()), weights=weights, state=state)
       rng = math_lib.random.get_prng(1234)
-      keras_layer = trax2keras.TraxKerasLayer(
+      keras_layer = trax2keras.AsKeras(
           trax_layer, batch_size=batch_size, initializer_rng=initializer_rng,
           rng=rng, rng_updater=rng_updater)
       if explicit_build:
