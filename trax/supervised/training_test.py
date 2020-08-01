@@ -29,6 +29,7 @@ import numpy as np
 
 from tensorflow.compat.v2 import test
 
+from trax import fastmath
 from trax import layers as tl
 from trax import optimizers
 from trax.supervised import training
@@ -55,6 +56,16 @@ class TrainingTest(test.TestCase):
     training_session = training.Loop(model, [task])
     # Loop should initialize and run successfully, even with no eval task.
     training_session.run(n_steps=5)
+
+  def test_loop_no_eval_task_tfnp(self):
+    """Runs a training loop with no eval task(s), TFNP backend."""
+    with fastmath.use_backend(fastmath.Backend.TFNP):
+      model = tl.Serial(tl.Dense(1))
+      task = training.TrainTask(
+          _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01))
+      training_session = training.Loop(model, [task])
+      # Loop should initialize and run successfully, even with no eval task.
+      training_session.run(n_steps=5)
 
   def test_train_dense_layer(self):
     """Trains a very simple network on a very simple task."""
