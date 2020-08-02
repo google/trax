@@ -62,7 +62,7 @@ class TrainingTest(test.TestCase):
     with fastmath.use_backend(fastmath.Backend.TFNP):
       model = tl.Serial(tl.Dense(1))
       task = training.TrainTask(
-          _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01))
+          _very_simple_data(), tl.L2Loss(), optimizers.Adam(.01))
       training_session = training.Loop(model, [task])
       # Loop should initialize and run successfully, even with no eval task.
       training_session.run(n_steps=5)

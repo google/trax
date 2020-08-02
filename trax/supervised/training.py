@@ -871,6 +871,7 @@ def _accelerate_update_fn(forward_and_backward_fn,
   if n_devices == 1:
     def single_device_update_fn(
         weights_and_slots, step, opt_params, batch, state, rng):
+      step = jnp.array(step, dtype=jnp.int32)  # Needed in TFNP backend.
       weights, slots = weights_and_slots
       (loss, state), gradients = forward_and_backward_fn(
           batch, weights, state, rng)

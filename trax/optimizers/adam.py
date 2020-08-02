@@ -78,6 +78,6 @@ class Adam(opt_base.Optimizer):
     v = (1 - b2) * (grads ** 2) + b2 * v  # Second moment estimate.
     mhat = m / (1 - b1 ** (step + 1))  # Bias correction.
     vhat = v / (1 - b2 ** (step + 1))
-    new_weights = (1 - weight_decay_rate) * weights - (
-        learning_rate * mhat / (jnp.sqrt(vhat) + eps)).astype(weights.dtype)
+    new_weights = ((1 - weight_decay_rate) * weights - (
+        learning_rate * mhat / (jnp.sqrt(vhat) + eps))).astype(weights.dtype)
     return new_weights, (m, v)
