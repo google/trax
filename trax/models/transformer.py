@@ -14,7 +14,11 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Transformer Models."""
+"""Transformer models: encoder, decoder, language model, and encoder-decoder.
+
+The "Transformer" name and network architecture were introduced in the paper
+[Attention Is All You Need](https://arxiv.org/abs/1706.03762).
+"""
 
 import jax
 
@@ -33,26 +37,44 @@ def TransformerEncoder(vocab_size,
                        max_len=2048,
                        mode='train',
                        ff_activation=tl.Relu):
-  """Returns a Transformer encoder model.
+  """Returns a Transformer-style encoder.
 
-  The input to the model is a tensor of tokens.
+  For each item in a batch, this model performs a sequence-to-sequence mapping:
+
+    - input: sequence of integers, usually token id's from a fixed-size
+      vocabulary -- integers in `range(M)`, where `M` is the vocabulary
+      size.
+
+    - output:  same-length sequence of N-dimensional vectors, where each vector
+      can be interpreted as a log-probability distribution over N discrete
+      categories.
 
   Args:
-    vocab_size: int: vocab size
-    n_classes: how many classes on output
-    d_model: int:  depth of embedding
-    d_ff: int: depth of feed-forward layer
-    n_layers: int: number of encoder/decoder layers
-    n_heads: int: number of attention heads
-    dropout: float: dropout rate (how much to drop out)
-    dropout_shared_axes: axes on which to share dropout mask
-    max_len: int: maximum symbol length for positional encoding
-    mode: str: 'train' or 'eval'
-    ff_activation: the non-linearity in feed-forward layer
+    vocab_size: "Vocabulary size" -- input integer id's must be in
+        `range(vocab_size)`. Id's typically come from preprocessing text data
+        with a vocabulary-based tokenizer.
+    n_classes: Size/depth of the output vectors, intended for an N-way
+        classification task.
+    d_model: The basic embedding size (vector depth) of the model. This is the
+        vector size used by the initial embedding layer and at many intermediate
+        points in the model.
+    d_ff: Vector depth (typically greater than `d_model`) used in the
+        feed-forward (`Dense`) layer of each encoder block.
+    n_layers: Number of encoder blocks. Each encoder block includes attention,
+        dropout, residual, feed-forward (`Dense`), and activation layers.
+    n_heads: Number of attention heads.
+    dropout: Stochastic rate (probability) for dropping an activation value
+        when applying dropout within an encoder block.
+    dropout_shared_axes: Tensor axes on which to share a dropout mask.
+    max_len: Maximum symbol length for positional encoding.
+    mode: If `'train'`, each encoder block will include dropout; else, it will
+        pass all values through unaltered.
+    ff_activation: The activation function (layer) at the end of each encoder
+        block.
 
   Returns:
-    A Transformer model as a layer that maps from a tensor of tokens to
-    activations over a set of output classes.
+    A Transformer model as a layer that maps from token id's to activations
+    over a set of output classes.
   """
   positional_encoder = [
       tl.Embedding(vocab_size, d_model),
