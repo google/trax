@@ -20,7 +20,9 @@ from absl.testing import absltest
 import numpy as np
 
 from trax import shapes
+from trax.fastmath import numpy as jnp
 import trax.layers as tl
+import trax.layers.initializers as init
 
 
 class DenseTest(absltest.TestCase):
@@ -199,6 +201,44 @@ class DropoutTest(absltest.TestCase):
     layer = tl.Dropout(rate=0.1, mode='train')
     layer.init(None)
     self.assertEmpty(layer.weights)
+
+
+class WeightsTest(absltest.TestCase):
+  """Test Weights layer."""
+
+  def test_simple(self):
+    layer = tl.Weights(lambda shape, rng: jnp.zeros(shape, dtype=jnp.float32))
+    layer.init(())
+    y = layer(())
+    self.assertEqual(y.tolist(), 0.)
+
+  def test_shape(self):
+    layer = tl.Weights(init.RandomNormalInitializer(), (5, 10, 3))
+    layer.init(())
+    y = layer(())
+    self.assertEqual(y.shape, (5, 10, 3))
+
+  def test_simple_custom_initializer(self):
+    layer = tl.Weights(init.RandomNormalInitializer())
+    layer.init(())
+    y = layer(())
+    self.assertEqual(y.shape, ())
+    self.assertNotEqual(y.tolist(), 0.)
+
+  def test_custom_initializer_shape(self):
+    layer = tl.Weights(lambda shape, rng: jnp.zeros(shape, dtype=jnp.float32),
+                       (2, 2))
+    layer.init(())
+    y = layer(())
+    self.assertEqual(y.tolist(), [[0., 0.],
+                                  [0., 0.]])
+
+    layer = tl.Weights(init.RandomNormalInitializer(), (2, 2))
+    layer.init(())
+    y = layer(())
+    self.assertEqual(y.shape, (2, 2))
+    self.assertNotEqual(y.tolist(), [[0., 0.],
+                                     [0., 0.]])
 
 
 class FlattenTest(absltest.TestCase):

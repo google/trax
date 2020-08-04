@@ -25,6 +25,7 @@ from trax.models import rnn
 from trax.models import transformer
 from trax.models.reformer import reformer
 from trax.models.research import bert
+from trax.models.research import rezero
 from trax.models.research import skipping_transformer
 
 
@@ -49,6 +50,14 @@ ReformerLM = model_configure(reformer.ReformerLM)
 ReformerShortenLM = model_configure(reformer.ReformerShortenLM)
 ReformerNoEncDecAttention = model_configure(reformer.ReformerNoEncDecAttention)
 Resnet50 = model_configure(resnet.Resnet50)
+ReZeroTransformer = model_configure(
+    rezero.ReZeroTransformer)
+ReZeroTransformerDecoder = model_configure(
+    rezero.ReZeroTransformerDecoder)
+ReZeroTransformerEncoder = model_configure(
+    rezero.ReZeroTransformerEncoder)
+ReZeroTransformerLM = model_configure(
+    rezero.ReZeroTransformerLM)
 SkippingTransformerLM = model_configure(
     skipping_transformer.SkippingTransformerLM)
 Transformer = model_configure(transformer.Transformer)

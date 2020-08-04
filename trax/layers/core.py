@@ -221,6 +221,49 @@ class Dropout(base.Layer):
     return x * mask
 
 
+class Weights(base.Layer):
+  """Learnable weights as a layer.
+
+  It takes no input and returns a single tensor: weights.
+  """
+
+  def __init__(self, initializer, shape=tuple()):
+    """Returns a learnable tensor of shape `shape`.
+
+    Args:
+      initializer: Function taking shape and rng as arguments.
+      shape: Shape of the learnable weights.
+    """
+    super().__init__(name=f'Weights_{shape}', n_in=0, n_out=1)
+    self._shape = shape
+    self._initializer = initializer
+
+  def forward(self, x):
+    """Executes this layer as part of a forward pass through the model.
+
+    Args:
+      x: Tensor of same shape and dtype as the input signature used to
+          initialize this layer.
+
+    Returns:
+      Tensor with previously specified shape and dtype.
+    """
+    del x  # Unused. There is no input to this layer.
+    return self.weights
+
+  def init_weights_and_state(self, input_signature):
+    """Returns newly initialized weights for this layer.
+
+    Weights is a single  `w` tensor with previously specified shape.
+
+    Args:
+      input_signature: `ShapeDtype` instance characterizing the input this layer
+          should compute on. Unused.
+    """
+    del input_signature  # Unused. There is no input to this layer.
+    self.weights = self._initializer(self._shape, self.rng)
+
+
 def Flatten(n_axes_to_keep=1):
   """Returns a layer that combines one or more trailing axes of a tensor.
 

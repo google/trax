@@ -31,6 +31,11 @@ def DivideBy(val):  # pylint: disable=invalid-name
   return tl.Fn('DivideBy', lambda x: x / val)
 
 
+def ReturnConst(val):  # pylint: disable=invalid-name
+  """Returns a simple const layer with n_in == 0 and n_out == 1."""
+  return tl.Fn('ReturnConst', lambda: val)
+
+
 # TODO(jonni): Consider a more generic home for this utiliity function.
 def as_list(outputs):
   """Converts layer outputs to a nested list, for easier equality testing.
@@ -75,6 +80,25 @@ class SerialTest(absltest.TestCase):
     layer = tl.Serial(DivideBy(3))
     x = np.array([3, 6, 9, 12])
     y = layer(x)
+    self.assertEqual(as_list(y), [1, 2, 3, 4])
+
+  def test_zero_in_one_out(self):
+    layer = tl.Serial(ReturnConst(np.array([3, 4, 5, 6])))
+    y = layer(())
+    self.assertEqual(as_list(y), [3, 4, 5, 6])
+
+  def test_one_in_two_out(self):
+    layer = tl.Serial(DivideBy(3),
+                      ReturnConst(np.array([3, 4, 5, 6])))
+    x = np.array([3, 6, 9, 12])
+    y = layer(x)
+    self.assertEqual(as_list(y), [[3, 4, 5, 6],
+                                  [1, 2, 3, 4]])
+
+  def test_const_div(self):
+    layer = tl.Serial(ReturnConst(np.array([3, 6, 9, 12])),
+                      DivideBy(3))
+    y = layer(())
     self.assertEqual(as_list(y), [1, 2, 3, 4])
 
   def test_div_div(self):

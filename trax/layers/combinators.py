@@ -774,17 +774,10 @@ def _split_rngs(rng, n_copies):
 
 def _inputs_from_stack(layer, stack, n_in=None):
   """Returns the correct number/format of inputs for the given layer."""
-  is_stack_just_one_item = (_count_items(stack) == 1)
-  if isinstance(stack, (list, tuple)) and is_stack_just_one_item:
-    stack = stack[0]
   if n_in is None:
     n_in = layer.n_in
-  if n_in == 1 and is_stack_just_one_item:
-    return stack
-  elif n_in == 1:
-    return stack[0]
-  else:
-    return stack[:n_in]
+  stack = _make_tuple(stack)
+  return _make_singleitem_or_original(stack[:n_in])
 
 
 def _outputs_onto_stack(layer, outputs, stack, n_in=None, n_out=None):
@@ -793,16 +786,25 @@ def _outputs_onto_stack(layer, outputs, stack, n_in=None, n_out=None):
     n_in = layer.n_in
   if n_out is None:
     n_out = layer.n_out
-  if n_in < _count_items(stack):
-    if n_out == 1:
-      outputs = (outputs,)
-    return outputs + tuple(stack[n_in:])
+  outputs = _make_tuple(outputs)
+  stack = _make_tuple(stack)
+  return _make_singleitem_or_original(outputs + stack[n_in:])
+
+
+def _make_tuple(xs):
+  """Returns a tuple from a list, a tuple, or a single element."""
+  if isinstance(xs, (list, tuple)):
+    return tuple(xs)
   else:
-    return outputs  # NOTE: can be single value or tuple.
+    return (xs,)
 
 
-def _count_items(xs):
-  return len(xs) if isinstance(xs, (list, tuple)) else 1
+def _make_singleitem_or_original(xs):
+  """Returns a single element if possible, or the original list/tuple if not."""
+  if isinstance(xs, (list, tuple)) and len(xs) == 1:
+    return xs[0]
+  else:
+    return xs
 
 
 def _shape_without_axis(x, axis):
