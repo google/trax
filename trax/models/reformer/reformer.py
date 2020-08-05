@@ -648,7 +648,7 @@ def Reformer(input_vocab_size,
         #max_len=max_len, dropout=dropout, mode=mode)
     return [
         tl.Dense( d_model),
-        tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),
+        tl.Dropout(rate=dropout, shared_axes=None, mode=mode),
         positional_encoding = tl.PositionalEncoding(
         max_len=max_len, dropout=dropout, mode=mode),
     ]
