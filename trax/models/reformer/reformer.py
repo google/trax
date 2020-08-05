@@ -681,7 +681,7 @@ def Reformer(input_vocab_size,
   # pylint: enable=g-complex-comprehension
 
   encoder = tl.Serial([
-      tl.Select([3]),
+
       in_encoder,
       tl.Dup(),
       tl.ReversibleSerial(encoder_blocks),
