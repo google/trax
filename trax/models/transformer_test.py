@@ -50,33 +50,6 @@ class TransformerTest(parameterized.TestCase):
     vocab_size = output_vocab_size or input_vocab_size
     self.assertEqual(y.shape, (3, 5, vocab_size))
 
-  def test_transformer_noencdec_forward_shape(self):
-    input_vocab_size = 16
-    output_vocab_size = 16
-
-    model = transformer.TransformerNoEncDecAttention(
-        input_vocab_size, output_vocab_size, d_model=32, d_ff=64,
-        n_encoder_layers=2, n_decoder_layers=2, n_heads=2)
-
-    enc_toks = np.array(
-        [[6, 2, 0, 0, 0, 0],
-         [6, 3, 7, 0, 0, 0]])
-    dec_toks = np.array(
-        [[4, 2, 0, 0],
-         [8, 5, 0, 0]])
-
-    xs = [enc_toks, dec_toks]
-    _, _ = model.init(shapes.signature(xs))
-
-    # decoder output, decoder mask
-    ys = model(xs)
-
-    # (B, L2, H)
-    self.assertEqual(ys[0].shape,
-                     (dec_toks.shape[0], dec_toks.shape[1], output_vocab_size))
-
-    self.assertEqual(ys[1].shape, dec_toks.shape)
-
   @parameterized.named_parameters(
       ('same_vocab', 16, None),
       ('same_size', 16, 16),

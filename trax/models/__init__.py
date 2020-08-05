@@ -27,6 +27,7 @@ from trax.models.reformer import reformer
 from trax.models.research import bert
 from trax.models.research import rezero
 from trax.models.research import skipping_transformer
+from trax.models.research import transformer_no_enc_dec_attention
 
 
 # Ginify
@@ -65,7 +66,7 @@ TransformerDecoder = model_configure(transformer.TransformerDecoder)
 TransformerEncoder = model_configure(transformer.TransformerEncoder)
 TransformerLM = model_configure(transformer.TransformerLM)
 TransformerNoEncDecAttention = model_configure(
-    transformer.TransformerNoEncDecAttention)
+    transformer_no_enc_dec_attention.TransformerNoEncDecAttention)
 WideResnet = model_configure(resnet.WideResnet)
 Policy = model_configure(rl.Policy)
 PolicyAndValue = model_configure(rl.PolicyAndValue)
