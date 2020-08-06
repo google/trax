@@ -585,7 +585,7 @@ def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, ff_activation,
   ]
 
 
-def Reformer(input_vocab_size,
+def Reformer(input_vocab_size=None,
              output_vocab_size=None,
              d_model=512,
              d_ff=2048,
@@ -637,21 +637,23 @@ def Reformer(input_vocab_size,
     positional_encoding = tl.PositionalEncoding(
         max_len=max_len, dropout=dropout, mode=mode)
     return [
-        tl.Embedding(vocab_size, d_model),
+        (tl.Embedding(vocab_size, d_model) if vocab_size is not None
+       else tl.Dense(d_model)),
+
         tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),
         positional_encoding,
     ]
 
-  def PositionalEncode_Encoder(max_len, mode):  # tokens --> vectors
+ # def PositionalEncode_Encoder(max_len, mode):  # tokens --> vectors
     # TODO(kitaev): axial positional encoding is better for very long sequences.
     #positional_encoding = tl.PositionalEncoding(
         #max_len=max_len, dropout=dropout, mode=mode)
-    return [
+   # return [
 
-        tl.Dense( d_model),
-        tl.Dropout(rate=dropout, shared_axes=None, mode=mode),
-        tl.PositionalEncoding(max_len=max_len),
-    ]
+        #tl.Dense( d_model),
+       # tl.Dropout(rate=dropout, shared_axes=None, mode=mode),
+     #   tl.PositionalEncoding(max_len=max_len),
+ #   ]
 
 
 
@@ -666,8 +668,10 @@ def Reformer(input_vocab_size,
   # Mode 'predict' means that the decoder should be run one token at a time.
   # The encoder only ever runs over full sequences, which is why it's switched
   # to 'eval' mode instead.
-  in_encoder = PositionalEncode_Encoder(
-      max_len, mode='eval' if mode == 'predict' else mode)
+  in_encoder = PositionalEncoder(
+      input_vocab_size, mode='eval' if mode == 'predict' else mode)
+
+
   if output_vocab_size is None:
     output_vocab_size = input_vocab_size
   out_encoder = PositionalEncoder(output_vocab_size, mode)
@@ -681,7 +685,7 @@ def Reformer(input_vocab_size,
   # pylint: enable=g-complex-comprehension
 
   encoder = tl.Serial([
- 	tl.Select([3]),
+
       in_encoder,
       tl.Dup(),
       tl.ReversibleSerial(encoder_blocks),
@@ -708,7 +712,7 @@ def Reformer(input_vocab_size,
 
       # Encode.
 
-      tl.Select([3, 1, 2, 0]),                 # vec_e  mask tok_d
+      tl.Select([3, 1, 2]),                 # vec_e  mask tok_d
 
       encoder,                              # vec_e  mask tok_d .....
 
