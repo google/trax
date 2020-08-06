@@ -518,7 +518,7 @@ def train(output_dir,
           metrics=None,
           checkpoint_highest=None,
           checkpoint_lowest=None,
-          use_loop=False):
+          use_loop=True):
   """Train the model on the inputs.
 
   Args:

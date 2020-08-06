@@ -30,7 +30,7 @@ from tensorflow.compat.v2 import test
 from tensorflow.compat.v2.io import gfile
 
 from trax import fastmath
-from trax import layers
+from trax import layers as tl
 from trax import models
 from trax import optimizers as trax_opt
 from trax.data import inputs as inputs_lib
@@ -92,38 +92,29 @@ class TraxTest(test.TestCase, parameterized.TestCase):
 
       # Adds Dropout and BatchNorm to test state handling.
       def model_fn(mode='train'):
-        return layers.Serial(
-            layers.Dropout(mode=mode, rate=0.1), layers.BatchNorm(mode=mode),
+        return tl.Serial(
+            tl.Dropout(mode=mode, rate=0.1), tl.BatchNorm(mode=mode),
             models.MLP(d_hidden=16, n_output_classes=n_classes, mode=mode))
 
       inputs = _test_inputs(n_classes)
 
       # Train and evaluate
-      state = trainer_lib.train(
+      loop = trainer_lib.train(
           output_dir,
           model=model_fn,
           inputs=inputs,
           steps=steps,
-          eval_steps=eval_steps)
+          eval_steps=eval_steps,
+          eval_frequency=1)  # eval at every step.
 
       # Assert total train steps
-      self.assertEqual(steps, state.step)
-
-      # Assert 2 evaluations ran
-      train_acc = state.history.get('train', 'metrics/accuracy')
-      eval_acc = state.history.get('eval', 'metrics/accuracy')
-      self.assertEqual(len(train_acc), len(eval_acc))
-      self.assertLen(eval_acc, 2)
+      self.assertEqual(steps, loop.step)
 
       # Predict with final weights
       inputs = inputs.train_stream(1)
       model = model_fn()
-      weights = state.opt_state.weights[0]
-      state = state.model_state[0]
-      if xla_bridge.device_count() > 1:
-        unreplicate = lambda x: x[0]
-        weights = fastmath.nested_map(unreplicate, weights)
-        state = fastmath.nested_map(unreplicate, state)
+      weights = loop.model.weights
+      state = loop.model.state
       model(next(inputs)[0], weights=weights, state=state)
 
   @parameterized.parameters(BACKENDS)
@@ -144,22 +135,17 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       inputs = _test_inputs(n_classes)
 
       # Train and evaluate
-      state = trainer_lib.train(
+      loop = trainer_lib.train(
           output_dir,
           model=model_fn,
           inputs=inputs,
           steps=steps,
           eval_steps=eval_steps,
+          eval_frequency=1,  # eval every step.
           optimizer=trax_opt.SM3)
 
       # Assert total train steps
-      self.assertEqual(steps, state.step)
-
-      # Assert 2 evaluations ran
-      train_acc = state.history.get('train', 'metrics/accuracy')
-      eval_acc = state.history.get('eval', 'metrics/accuracy')
-      self.assertEqual(len(train_acc), len(eval_acc))
-      self.assertLen(eval_acc, 2)
+      self.assertEqual(steps, loop.step)
 
       # Predict with weights loaded from file.
       inputs = inputs.train_stream(1)
@@ -186,18 +172,21 @@ class TraxTest(test.TestCase, parameterized.TestCase):
           model=model_fn,
           inputs=inputs,
           steps=steps,
-          eval_steps=eval_steps)
+          eval_steps=eval_steps,
+          eval_frequency=1)
 
       # Restart training
-      state = trainer_lib.train(
+      loop = trainer_lib.train(
           output_dir,
           model=model_fn,
           inputs=inputs,
           steps=(2 * steps),
-          eval_steps=eval_steps)
+          eval_steps=eval_steps,
+          eval_frequency=1)
 
-      # Assert total train steps
-      self.assertEqual(state.step, 2 * steps)
+      # Assert total train steps - with loop we don't resume, but train for as
+      # many steps as given, so: steps + 2*steps = 3*steps.
+      self.assertEqual(loop.step, 3 * steps)
 
   @parameterized.parameters(BACKENDS)
   def test_train_with_weights(self, backend):
@@ -236,7 +225,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
 
       trainer = trainer_lib.Trainer(
           model=model_fn,
-          loss_fn=layers.CrossEntropyLoss(),
+          loss_fn=tl.CrossEntropyLoss(),
           optimizer=trax_opt.SM3,
           lr_schedule=lr.multifactor(),
           inputs=inputs,
@@ -272,7 +261,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       inputs = _test_inputs(n_classes, input_shape=(224, 224, 3))
       trainer = trainer_lib.Trainer(
           model=model_fn,
-          loss_fn=layers.CrossEntropyLoss(),
+          loss_fn=tl.CrossEntropyLoss(),
           optimizer=trax_opt.SM3,
           lr_schedule=lr.multifactor(),
           inputs=inputs,
