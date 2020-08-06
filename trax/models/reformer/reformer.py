@@ -647,10 +647,10 @@ def Reformer(input_vocab_size,
     #positional_encoding = tl.PositionalEncoding(
         #max_len=max_len, dropout=dropout, mode=mode)
     return [
- 	tl.Select([3]),
+
         tl.Dense( d_model),
         tl.Dropout(rate=dropout, shared_axes=None, mode=mode),
-        tl.PositionalEncoding(max_len=max_len)
+        tl.PositionalEncoding(max_len=max_len),
     ]
 
 
@@ -681,7 +681,7 @@ def Reformer(input_vocab_size,
   # pylint: enable=g-complex-comprehension
 
   encoder = tl.Serial([
-
+ 	tl.Select([3]),
       in_encoder,
       tl.Dup(),
       tl.ReversibleSerial(encoder_blocks),
