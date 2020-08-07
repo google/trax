@@ -53,7 +53,7 @@ def Attention(d_feature, n_heads=1, dropout=0.0, mode='train'):
     mode: Either 'train' or 'eval'.
   """
   return cb.Serial(
-      cb.Dup(), cb.Dup(),  # TODO(jonni): replace with Select([0, 0, 0])
+      cb.Select([0, 0, 0]),
       AttentionQKV(d_feature, n_heads=n_heads, dropout=dropout, mode=mode),
   )
 
