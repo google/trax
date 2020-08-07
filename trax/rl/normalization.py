@@ -80,7 +80,7 @@ class Normalize(tl.Layer):
   """Numerically stable normalization layer."""
 
   def __init__(self, sample_limit=float('+inf'), epsilon=1e-5, mode='train'):
-    super(Normalize, self).__init__()
+    super().__init__()
     self._sample_limit = sample_limit
     self._epsilon = epsilon
     self._mode = mode

@@ -94,7 +94,7 @@ def scan_reference(f, init, xs):
 class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
 
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
-    super(ExtensionsTest, self).__init__(methodName)
+    super().__init__(methodName)
     physical_devices = tf.config.experimental.list_physical_devices("CPU")
     tf.config.experimental.set_virtual_device_configuration(
         physical_devices[0], [

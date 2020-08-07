@@ -30,7 +30,7 @@ class SkippingSerial(tl.Serial):
   """Serial combinator that also skips layers."""
 
   def __init__(self, *sublayers, **kwargs):
-    super(SkippingSerial, self).__init__(*sublayers)
+    super().__init__(*sublayers)
     self._mode = kwargs.get('mode', 'train')
     # Parameters for skipping: how many steps to warm-up, how often to skip.
     self._skipping_warmup_steps = kwargs.get('skipping_warmup_steps', 20000)

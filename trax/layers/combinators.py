@@ -52,7 +52,7 @@ class Serial(base.Layer):
   """
 
   def __init__(self, *sublayers, name=None, sublayers_to_print=None):
-    super(Serial, self).__init__(
+    super().__init__(
         name=name, sublayers_to_print=sublayers_to_print)
 
     sublayers = _ensure_flat(sublayers)
@@ -172,7 +172,7 @@ class Parallel(base.Layer):
       A new layer in which each of the given sublayers applies to its
       corresponding span of elements in the dataflow stack.
     """
-    super(Parallel, self).__init__(name=name)
+    super().__init__(name=name)
     sublayers = self._validate(sublayers)
     self._n_layers = len(sublayers)
     self._sublayers = sublayers
@@ -274,7 +274,7 @@ class Concatenate(base.Layer):
 
   def __init__(self, n_items=2, axis=-1):
     name = 'Concatenate' if axis == -1 else f'Concatenate_axis{axis}'
-    super(Concatenate, self).__init__(n_in=n_items, name=name)
+    super().__init__(n_in=n_items, name=name)
     self._n_items = n_items
     self._axis = axis
 
@@ -286,7 +286,7 @@ class Split(base.Layer):
   """Splits the input into n items along an axis."""
 
   def __init__(self, n_items=2, axis=-1):
-    super(Split, self).__init__(n_out=n_items)
+    super().__init__(n_out=n_items)
     self._n_items = n_items
     self._axis = axis
 
@@ -368,7 +368,7 @@ class Scan(base.Layer):
   """
 
   def __init__(self, layer, axis=0, n_carry=1, remat=False):
-    super(Scan, self).__init__(n_in=layer.n_in, n_out=layer.n_out)
+    super().__init__(n_in=layer.n_in, n_out=layer.n_out)
     self._sublayers = [layer]
     self._n_carry = n_carry
     self._axis = axis
@@ -639,7 +639,7 @@ class Cache(base.Layer):
   """Applies a layer on the first run and returns the outputs on next calls."""
 
   def __init__(self, layer):
-    super(Cache, self).__init__(n_in=layer.n_in, n_out=layer.n_out)
+    super().__init__(n_in=layer.n_in, n_out=layer.n_out)
     self._sublayers = [layer]
 
   @property
@@ -689,7 +689,7 @@ class BatchLeadingAxes(base.Layer):
   """
 
   def __init__(self, layer, n_last_axes_to_keep=1):
-    super(BatchLeadingAxes, self).__init__(n_in=layer.n_in, n_out=layer.n_out)
+    super().__init__(n_in=layer.n_in, n_out=layer.n_out)
     self._sublayers = [layer]
     self._n_last_axes_to_keep = n_last_axes_to_keep
     self._weights = (None,)

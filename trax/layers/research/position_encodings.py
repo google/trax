@@ -33,7 +33,7 @@ class AxialPositionalEncoding(layer_base.Layer):
   def __init__(self, shape=(64, 64, 3), d_embs=(384, 384, 256),
                kernel_initializer=init.RandomNormalInitializer(1.0),
                dropout=0.0, dropout_broadcast_dims=(), mode='train'):
-    super(AxialPositionalEncoding, self).__init__()
+    super().__init__()
     self._kernel_initializer = kernel_initializer
     assert len(shape) == len(d_embs)
     self._shape = shape
@@ -113,7 +113,7 @@ class FixedBasePositionalEncoding(layer_base.Layer):
   def __init__(self, bases=[11, 13, 14, 15], n_digits=8,  #  pylint: disable=dangerous-default-value
                start_from_zero_one_in=100, base_dropout_one_in=100,
                mode='train', initializer=init.RandomUniformInitializer(1e-4)):
-    super(FixedBasePositionalEncoding, self).__init__()
+    super().__init__()
     self._bases = bases
     self._n_digits = n_digits
     self._mode = mode

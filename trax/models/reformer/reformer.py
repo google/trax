@@ -87,7 +87,7 @@ class ReversibleHalfResidualV2(tl.ReversibleLayer):
   """
 
   def __init__(self, *residual_layers, attention_layer=None):
-    super(ReversibleHalfResidualV2, self).__init__()
+    super().__init__()
 
     self.compute_residual = tl.Serial(*residual_layers)
     self.attention_layer = attention_layer

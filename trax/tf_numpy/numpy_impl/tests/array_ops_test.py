@@ -33,7 +33,7 @@ from trax.tf_numpy.numpy_impl import arrays
 class ArrayCreationTest(tf.test.TestCase):
 
   def setUp(self):
-    super(ArrayCreationTest, self).setUp()
+    super().setUp()
     python_shapes = [
         0, 1, 2, (), (1,), (2,), (1, 2, 3), [], [1], [2], [1, 2, 3]
     ]
@@ -522,7 +522,7 @@ class ArrayCreationTest(tf.test.TestCase):
 class ArrayMethodsTest(tf.test.TestCase):
 
   def setUp(self):
-    super(ArrayMethodsTest, self).setUp()
+    super().setUp()
     self.array_transforms = [
         lambda x: x,
         tf.convert_to_tensor,
@@ -1057,7 +1057,7 @@ class ArrayMethodsTest(tf.test.TestCase):
 class ArrayManipulationTest(tf.test.TestCase):
 
   def setUp(self):
-    super(ArrayManipulationTest, self).setUp()
+    super().setUp()
     self.array_transforms = [
         lambda x: x,
         tf.convert_to_tensor,

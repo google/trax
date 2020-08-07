@@ -139,7 +139,7 @@ class AsKeras(tf.keras.layers.Layer):
       dtype: (optional) the dtype of the inputs. See the `dtype` argument of
         `tf.keras.layers.Layer.__init__` for details.
     """
-    super(AsKeras, self).__init__(dtype=dtype)
+    super().__init__(dtype=dtype)
     with math_lib.use_backend(math_lib.Backend.TFNP):
       if initializer_rng is None:
         initializer_rng = math_lib.random.get_prng(0)
@@ -172,7 +172,7 @@ class AsKeras(tf.keras.layers.Layer):
       self._state = math_lib.nested_map(
           functools.partial(tf.Variable, trainable=False), state)
       self._rng = tf.Variable(self._forward_rng_init, trainable=False)
-    super(AsKeras, self).build(input_shape)
+    super().build(input_shape)
 
   def call(self, inputs):
     with math_lib.use_backend(math_lib.Backend.TFNP):

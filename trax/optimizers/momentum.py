@@ -45,7 +45,7 @@ class Momentum(base.Optimizer):
   def __init__(
       self, learning_rate=0.01, mass=0.9, weight_decay_rate=1e-5, nesterov=True
   ):  # pylint: disable=useless-super-delegation
-    super(Momentum, self).__init__(
+    super().__init__(
         learning_rate=learning_rate,
         mass=mass,
         weight_decay_rate=weight_decay_rate,

@@ -29,7 +29,7 @@ class RMSProp(opt_base.Optimizer):
 
   def __init__(self, learning_rate=0.001, gamma=0.9,
                eps=1e-8, clip_grad_norm=None):  # pylint: disable=useless-super-delegation
-    super(RMSProp, self).__init__(
+    super().__init__(
         learning_rate=learning_rate,
         gamma=gamma,
         eps=eps,

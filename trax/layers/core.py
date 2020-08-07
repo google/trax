@@ -182,7 +182,7 @@ class Dropout(base.Layer):
       mode: If `'train'`, this layer will perform dropout; else, it will pass
           all values through unaltered.
     """
-    super(Dropout, self).__init__()
+    super().__init__()
     self._initial_rate = rate
     self._shared_axes = [] if shared_axes is None else shared_axes
     self._mode = mode

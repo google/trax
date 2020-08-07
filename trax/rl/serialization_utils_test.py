@@ -52,7 +52,7 @@ def TestModel(extra_dim):
 class SerializationTest(parameterized.TestCase):
 
   def setUp(self):
-    super(SerializationTest, self).setUp()
+    super().setUp()
     self._serializer = space_serializer.create(
         gym.spaces.Discrete(2), vocab_size=2
     )

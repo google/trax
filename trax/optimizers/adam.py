@@ -53,7 +53,7 @@ class Adam(opt_base.Optimizer):
       clip_grad_norm: Threshold value above which gradient clipping occurs.
           (This is not part of the core Adam algorithm.)
     """
-    super(Adam, self).__init__(
+    super().__init__(
         learning_rate=learning_rate,
         weight_decay_rate=weight_decay_rate,
         b1=b1,

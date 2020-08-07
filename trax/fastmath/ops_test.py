@@ -30,7 +30,7 @@ _TestNamedtuple = collections.namedtuple('_TestNamedtuple', ['x'])
 class BackendTest(test.TestCase):
 
   def setUp(self):
-    super(BackendTest, self).setUp()
+    super().setUp()
     gin.clear_config()
 
   def override_gin(self, bindings):

@@ -62,7 +62,7 @@ class Adafactor(opt_base.Optimizer):
     self._do_clipping = do_clipping
     self._do_momentum = do_momentum
     # Dynamically configurable parameters will be passed to the update function.
-    super(Adafactor, self).__init__(
+    super().__init__(
         learning_rate=learning_rate,
         beta1=beta1,
         decay_rate=decay_rate,

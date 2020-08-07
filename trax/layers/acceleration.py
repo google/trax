@@ -53,7 +53,7 @@ class Accelerate(base.Layer):
   """
 
   def __init__(self, layer, n_devices=None):
-    super(Accelerate, self).__init__(n_in=layer.n_in, n_out=layer.n_out)
+    super().__init__(n_in=layer.n_in, n_out=layer.n_out)
     self._sublayers = [layer]
     self._n_devices = n_devices or fastmath.device_count()
     self._jit_pure_fn = jit_forward(

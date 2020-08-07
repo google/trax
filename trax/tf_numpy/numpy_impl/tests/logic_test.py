@@ -30,7 +30,7 @@ from trax.tf_numpy.numpy_impl import math_ops
 class LogicTest(tf.test.TestCase):
 
   def setUp(self):
-    super(LogicTest, self).setUp()
+    super().setUp()
     self.array_transforms = [
         lambda x: x,  # Identity,
         tf.convert_to_tensor,

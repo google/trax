@@ -278,7 +278,7 @@ class PolicyTrainer(RLTrainer):
       output_dir: Path telling where to save outputs (evals and checkpoints).
       **kwargs: arguments for the superclass RLTrainer.
     """
-    super(PolicyTrainer, self).__init__(
+    super().__init__(
         task,
         n_eval_episodes=n_eval_episodes,
         output_dir=output_dir,

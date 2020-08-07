@@ -734,7 +734,7 @@ class TestCase(parameterized.TestCase):
 
   # copied from jax.test_util
   def setUp(self):
-    super(TestCase, self).setUp()
+    super().setUp()
     self._rng = npr.RandomState(zlib.adler32(self._testMethodName.encode()))
 
   # copied from jax.test_util

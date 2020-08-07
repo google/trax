@@ -138,7 +138,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
         self._value_eval_model.pure_fn, fastmath.device_count(), do_mean=False)
 
     # Initialize policy training.
-    super(ActorCriticTrainer, self).__init__(task, **kwargs)
+    super().__init__(task, **kwargs)
 
     # Initialize training of the value function.
     value_output_dir = kwargs.get('output_dir', None)
@@ -419,7 +419,7 @@ class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
     self._advantage_estimator = advantage_estimator
     self._advantage_normalization = advantage_normalization
     self._advantage_normalization_epsilon = advantage_normalization_epsilon
-    super(AdvantageBasedActorCriticTrainer, self).__init__(task, **kwargs)
+    super().__init__(task, **kwargs)
 
   def policy_inputs(self, trajectory, values):
     """Create inputs to policy model from a TrajectoryNp and values."""
@@ -495,7 +495,7 @@ class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
 
   @property
   def policy_metrics(self):
-    metrics = super(AdvantageBasedActorCriticTrainer, self).policy_metrics
+    metrics = super().policy_metrics
     metrics.update({
         'advantage_mean': self.advantage_mean,
         'advantage_std': self.advantage_std,
@@ -527,7 +527,7 @@ class A2CTrainer(AdvantageBasedActorCriticTrainer):
   def __init__(self, task, entropy_coeff=0.01, **kwargs):
     """Configures the A2C Trainer."""
     self._entropy_coeff = entropy_coeff
-    super(A2CTrainer, self).__init__(task, **kwargs)
+    super().__init__(task, **kwargs)
 
   @property
   def policy_loss_given_log_probs(self):
@@ -573,7 +573,7 @@ class PPOTrainer(AdvantageBasedActorCriticTrainer):
     """Configures the PPO Trainer."""
     self._entropy_coeff = entropy_coeff
     self._epsilon = epsilon
-    super(PPOTrainer, self).__init__(task, **kwargs)
+    super().__init__(task, **kwargs)
 
   @property
   def policy_loss_given_log_probs(self):
@@ -679,7 +679,7 @@ class AWRTrainer(AdvantageBasedActorCriticTrainer):
     """Configures the AWR Trainer."""
     self._beta = beta
     self._w_max = w_max
-    super(AWRTrainer, self).__init__(task, **kwargs)
+    super().__init__(task, **kwargs)
 
   @property
   def policy_loss_given_log_probs(self):
@@ -688,7 +688,7 @@ class AWRTrainer(AdvantageBasedActorCriticTrainer):
 
   @property
   def policy_metrics(self):
-    metrics = super(AWRTrainer, self).policy_metrics
+    metrics = super().policy_metrics
     metrics.update(awr_metrics(self._beta))
     return metrics
 
@@ -715,7 +715,7 @@ class SamplingAWRTrainer(AdvantageBasedActorCriticTrainer):
     self._beta = beta
     self._w_max = w_max
     self._reweight = reweight
-    super(SamplingAWRTrainer, self).__init__(task, q_value=True, **kwargs)
+    super().__init__(task, q_value=True, **kwargs)
 
   def _policy_inputs_to_advantages(self, preprocess):
     """A layer that computes advantages from policy inputs."""

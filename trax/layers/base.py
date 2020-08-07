@@ -714,7 +714,7 @@ class LayerError(Exception):
     self._caller = caller  # Python inspect object with init caller info.
     self._traceback = traceback_string
     self._input_signature = input_signature
-    super(LayerError, self).__init__(self.message)
+    super().__init__(self.message)
 
   @property
   def message(self):

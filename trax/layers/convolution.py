@@ -33,7 +33,7 @@ class Conv(base.Layer):
                dimension_numbers=('NHWC', 'HWIO', 'NHWC'),
                kernel_initializer=None,
                bias_initializer=init.RandomNormalInitializer(1e-6)):
-    super(Conv, self).__init__()
+    super().__init__()
     self._filters = filters
     self._kernel_size = kernel_size
     self._padding = padding
@@ -99,7 +99,7 @@ class CausalConv(Conv):
                kernel_width=3,
                kernel_initializer=None,
                bias_initializer=init.RandomNormalInitializer(1e-6)):
-    super(CausalConv, self).__init__(
+    super().__init__(
         filters=filters,
         kernel_size=(kernel_width,),
         strides=None,
@@ -118,7 +118,7 @@ class CausalConv(Conv):
     pad = effective_kernel_size - 1
     x_leftpad = (
         jnp.pad(x, pad_width=[[0, 0], [pad, 0], [0, 0]], mode='constant'))
-    return super(CausalConv, self).forward(x_leftpad)
+    return super().forward(x_leftpad)
 
 
 def Conv1d(filters, kernel_size, stride=1, padding='VALID',

@@ -97,7 +97,7 @@ class PureAttention(base.Layer):
   """
 
   def __init__(self, n_heads=1, dropout=0.0, mode='train'):
-    super(PureAttention, self).__init__(n_in=4, n_out=2)
+    super().__init__(n_in=4, n_out=2)
     self._n_heads = n_heads
     self._dropout = dropout
     self._mode = mode
@@ -257,7 +257,7 @@ class DotProductCausalAttention(base.Layer):
   """Computes new activations via causally masked attention-weighted values."""
 
   def __init__(self, dropout=0.0, mode='train'):
-    super(DotProductCausalAttention, self).__init__(n_in=3, n_out=1)
+    super().__init__(n_in=3, n_out=1)
     self._dropout = dropout
     self._mode = mode
 
@@ -337,7 +337,7 @@ class PositionalEncoding(base.Layer):
 
   def __init__(self, max_len=2048, dropout=0.0, dropout_broadcast_dims=(-2,),
                mode='train'):
-    super(PositionalEncoding, self).__init__()
+    super().__init__()
     self._max_len = max_len
     if dropout >= 1.0:
       raise ValueError('Dropout rates must be lower than 1.')

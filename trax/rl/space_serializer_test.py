@@ -97,7 +97,7 @@ class BoxSpaceSerializerTest(test.TestCase):
 class DiscreteSpaceSerializerTest(test.TestCase):
 
   def setUp(self):
-    super(DiscreteSpaceSerializerTest, self).setUp()
+    super().setUp()
     self._space = gym.spaces.Discrete(n=2)
     self._serializer = space_serializer.create(self._space, vocab_size=2)
 
@@ -129,7 +129,7 @@ class DiscreteSpaceSerializerTest(test.TestCase):
 class MultiDiscreteSpaceSerializerTest(test.TestCase):
 
   def setUp(self):
-    super(MultiDiscreteSpaceSerializerTest, self).setUp()
+    super().setUp()
     self._space = gym.spaces.MultiDiscrete(nvec=[2, 2])
     self._serializer = space_serializer.create(self._space, vocab_size=2)
 

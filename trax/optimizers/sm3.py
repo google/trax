@@ -33,7 +33,7 @@ class SM3(opt_base.Optimizer):
       learning_rate: a postitive scalar value for the initial learning rate.
       momentum: optional, a positive scalar value for momentum
     """
-    super(SM3, self).__init__(
+    super().__init__(
         learning_rate=learning_rate,
         momentum=momentum,
     )

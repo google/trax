@@ -25,7 +25,7 @@ class BatchNorm(base.Layer):
 
   def __init__(self, axis=(0, 1, 2), epsilon=1e-5, center=True, scale=True,
                momentum=0.999, mode='train'):
-    super(BatchNorm, self).__init__()
+    super().__init__()
     self._axis = axis
     self._epsilon = epsilon
     self._center = center
@@ -146,7 +146,7 @@ class FilterResponseNorm(base.Layer):
                learn_epsilon=False,
                init_epsilon=1e-6,
                init_learnt_epsilon=1e-4):
-    super(FilterResponseNorm, self).__init__()
+    super().__init__()
 
     del mode
 

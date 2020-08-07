@@ -41,7 +41,7 @@ class LSTMCell(base.Layer):
                forget_bias=1.0,
                kernel_initializer=initializers.GlorotUniformInitializer(),
                bias_initializer=initializers.RandomNormalInitializer(1e-6)):
-    super(LSTMCell, self).__init__(n_in=2, n_out=2)
+    super().__init__(n_in=2, n_out=2)
     self._n_units = n_units
     self._forget_bias = forget_bias
     self._kernel_initializer = kernel_initializer
@@ -110,7 +110,7 @@ class GRUCell(base.Layer):
                forget_bias=0.0,
                kernel_initializer=initializers.RandomUniformInitializer(0.01),
                bias_initializer=initializers.RandomNormalInitializer(1e-6)):
-    super(GRUCell, self).__init__(n_in=2, n_out=2)
+    super().__init__(n_in=2, n_out=2)
     self._n_units = n_units
     self._forget_bias = forget_bias
     self._kernel_initializer = kernel_initializer

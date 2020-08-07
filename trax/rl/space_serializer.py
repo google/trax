@@ -122,7 +122,7 @@ class BoxSpaceSerializer(SpaceSerializer):
           str(bounded_space.low), str(bounded_space.high)
       )
 
-    super(BoxSpaceSerializer, self).__init__(bounded_space, vocab_size)
+    super().__init__(bounded_space, vocab_size)
 
   def serialize(self, data):
     array = data
@@ -171,7 +171,7 @@ class DiscreteSpaceSerializer(SpaceSerializer):
   representation_length = 1
 
   def __init__(self, space, vocab_size):
-    super(DiscreteSpaceSerializer, self).__init__(space, vocab_size)
+    super().__init__(space, vocab_size)
     assert space.n <= vocab_size, (
         'Discrete space size should fit in the number of symbols.')
 
@@ -196,7 +196,7 @@ class MultiDiscreteSpaceSerializer(SpaceSerializer):
   space_type = gym.spaces.MultiDiscrete
 
   def __init__(self, space, vocab_size):
-    super(MultiDiscreteSpaceSerializer, self).__init__(space, vocab_size)
+    super().__init__(space, vocab_size)
     assert np.max(space.nvec) <= vocab_size, (
         'MultiDiscrete maximum number of categories should fit in the number '
         'of symbols.'
