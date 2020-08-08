@@ -22,7 +22,7 @@ from trax import layers as tl
 def autoregressive_sample_stream(model, inputs=None,
                                  batch_size=1, temperature=1.0,
                                  start_id=0, accelerate=True):
-  """Stream aturegressive samples from the provided model.
+  """Stream autoregressive samples from the provided model.
 
   Note that the provided model should be an autoregressive model initialized
   in 'predict' mode. In this mode, a model takes the outputs it is generating
@@ -67,7 +67,7 @@ def autoregressive_sample(model, inputs=None,
                           batch_size=1, temperature=1.0,
                           start_id=0, eos_id=1, max_length=100,
                           accelerate=True):
-  """Perform aturegressive sampling from the provided model.
+  """Perform autoregressive sampling from the provided model.
 
   Note that the provided model should be an autoregressive model initialized
   in 'predict' mode. In this mode, a model takes the outputs it is generating
