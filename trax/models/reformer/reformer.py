@@ -634,28 +634,15 @@ def Reformer(input_vocab_size=None,
 
   def PositionalEncoder(vocab_size, mode):  # tokens --> vectors
     # TODO(kitaev): axial positional encoding is better for very long sequences.
-    positional_encoding = tl.PositionalEncoding(
-        max_len=max_len, dropout=dropout, mode=mode)
+
     return [
         (tl.Embedding(vocab_size, d_model) if vocab_size is not None
        else tl.Dense(d_model)),
 
         tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),
-        positional_encoding,
+            positional_encoding = tl.PositionalEncoding(
+        max_len=max_len, dropout=dropout, mode=mode),
     ]
-
- # def PositionalEncode_Encoder(max_len, mode):  # tokens --> vectors
-    # TODO(kitaev): axial positional encoding is better for very long sequences.
-    #positional_encoding = tl.PositionalEncoding(
-        #max_len=max_len, dropout=dropout, mode=mode)
-   # return [
-
-        #tl.Dense( d_model),
-       # tl.Dropout(rate=dropout, shared_axes=None, mode=mode),
-     #   tl.PositionalEncoding(max_len=max_len),
- #   ]
-
-
 
 
   # TODO(kitaev): The regular trax Transformer shares vocab embeddings and
@@ -707,12 +694,12 @@ def Reformer(input_vocab_size=None,
       tl.Select([0, 1, 1 ,2]),                 # tok_e tok_d tok_d vec_e
       tl.Branch([], [tl.PaddingMask(),
                      tl.Fn('Squeeze',
-                           lambda x: jnp.squeeze(x), n_out=1)]),
+                           lambda x: jnp.squeeze(x , (1,2)), n_out=1)]),
       #                                     # tok_e mask  tok_d vec_e
 
       # Encode.
 
-      tl.Select([3], n_out=1 ),                 # vec_e  mask tok_d
+      tl.Select([3, 1, 2], n_in=4 ),                 # vec_e  mask tok_d
 
       encoder,                              # vec_e  mask tok_d .....
 
