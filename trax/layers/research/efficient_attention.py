@@ -128,11 +128,18 @@ def attend(
   assert v is not None
   share_qk = (k is None)
 
+  # `q_info` and `kv_info` if supplied are 0 indexed, we want them to be 1
+  # indexed instead so that we can mask position 0 as well - see Github #820
+
   if q_info is None:
-    q_info = np.arange(q.shape[-2], dtype=np.int32)
+    q_info = np.arange(1, q.shape[-2] + 1, dtype=np.int32)
+  else:
+    q_info += 1
 
   if kv_info is None and not share_qk:
-    kv_info = np.arange(v.shape[-2], dtype=np.int32)
+    kv_info = np.arange(1, v.shape[-2] + 1, dtype=np.int32)
+  elif kv_info is not None:
+    kv_info += 1
 
   # Split q/k/v into chunks along the time axis, if desired.
   if q_chunk_len is not None:
