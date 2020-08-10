@@ -37,21 +37,21 @@ def TransformerEncoder(vocab_size,
                        max_len=2048,
                        mode='train',
                        ff_activation=tl.Relu):
-  """Returns a Transformer-style encoder.
+  """Returns a Transformer encoder merged with an N-way categorization head.
 
-  For each item in a batch, this model performs a sequence-to-sequence mapping:
+  This model performs text categorization:
 
-    - input: sequence of integers, usually token id's from a fixed-size
-      vocabulary -- integers in `range(M)`, where `M` is the vocabulary
-      size.
+    - input: rank 2 tensor representing a batch of text strings via token IDs;
+      shape is (batch_size, text_length_in_tokens). The tensor elements are
+      integers in `range(vocab_size)`. `0` values mark padding positions rather
+      than actual token IDs.
 
-    - output:  same-length sequence of N-dimensional vectors, where each vector
-      can be interpreted as a log-probability distribution over N discrete
-      categories.
+    - output: rank 2 tensor representing a batch of log-probability
+      distributions over N categories; shape is `(batch_size, n_classes)`.
 
   Args:
-    vocab_size: "Vocabulary size" -- input integer id's must be in
-        `range(vocab_size)`. Id's typically come from preprocessing text data
+    vocab_size: "Vocabulary size" -- input integer IDs must be in
+        `range(vocab_size)`. IDs typically come from preprocessing text data
         with a vocabulary-based tokenizer.
     n_classes: Size/depth of the output vectors, intended for an N-way
         classification task.
@@ -73,8 +73,9 @@ def TransformerEncoder(vocab_size,
         block.
 
   Returns:
-    A Transformer model as a layer that maps from token id's to activations
-    over a set of output classes.
+    A Transformer model that maps strings (each represented as an array of
+    token IDs) to probability-like activations over a range of output
+    classes.
   """
   positional_encoder = [
       tl.Embedding(vocab_size, d_model),
