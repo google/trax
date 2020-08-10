@@ -35,7 +35,7 @@ class MetricsTest(absltest.TestCase):
 
   def test_accuracy(self):
     layer = metrics._Accuracy()
-    xs = [np.ones((9, 4, 4, 20)),
+    xs = [np.ones((9, 4, 4)),
           np.ones((9, 4, 4))]
     y = layer(xs)
     self.assertEqual(y.shape, (9, 4, 4))
@@ -82,8 +82,44 @@ class MetricsTest(absltest.TestCase):
     mean = layer((x, weights))
     np.testing.assert_allclose(mean, 1.)
 
+  def test_binary_cross_entropy_loss(self):
+    layer = tl.BinaryCrossEntropyLoss()
+    xs = [np.ones((9, 1)),
+          np.ones((9, 1)),
+          np.ones((9, 1))]
+    y = layer(xs)
+    self.assertEqual(y.shape, ())
+
   def test_cross_entropy_loss(self):
     layer = tl.CrossEntropyLoss()
+    xs = [np.ones((9, 4, 4, 20)),
+          np.ones((9, 4, 4)),
+          np.ones((9, 4, 4))]
+    y = layer(xs)
+    self.assertEqual(y.shape, ())
+
+  def test_binary_classifier(self):
+    layer = metrics.BinaryClassifier()
+    xs = [np.ones((9, 1))]
+    y = layer(xs)
+    self.assertEqual(y.shape, (9, 1))
+
+  def test_multiclass_classifier(self):
+    layer = metrics.MulticlassClassifier()
+    xs = [np.ones((9, 4, 4, 20))]
+    y = layer(xs)
+    self.assertEqual(y.shape, (9, 4, 4))
+
+  def test_accuracy_binary_scalar(self):
+    layer = tl.Accuracy(classifier=tl.BinaryClassifier())
+    xs = [np.ones((9, 1)),
+          np.ones((9, 1)),
+          np.ones((9, 1))]
+    y = layer(xs)
+    self.assertEqual(y.shape, ())
+
+  def test_accuracy_multiclass_scalar(self):
+    layer = tl.Accuracy(classifier=tl.MulticlassClassifier())
     xs = [np.ones((9, 4, 4, 20)),
           np.ones((9, 4, 4)),
           np.ones((9, 4, 4))]
@@ -121,12 +157,20 @@ class MetricsTest(absltest.TestCase):
   def test_names(self):
     layer = tl.L2Loss()
     self.assertEqual('L2Loss_in3', str(layer))
+    layer = tl.BinaryClassifier()
+    self.assertEqual('BinaryClassifier', str(layer))
+    layer = tl.MulticlassClassifier()
+    self.assertEqual('MulticlassClassifier', str(layer))
     layer = tl.Accuracy()
     self.assertEqual('Accuracy_in3', str(layer))
     layer = tl.SequenceAccuracy()
     self.assertEqual('SequenceAccuracy_in3', str(layer))
+    layer = tl.BinaryCrossEntropyLoss()
+    self.assertEqual('BinaryCrossEntropyLoss_in3', str(layer))
     layer = tl.CrossEntropyLoss()
     self.assertEqual('CrossEntropyLoss_in3', str(layer))
+    layer = tl.BinaryCrossEntropySum()
+    self.assertEqual('BinaryCrossEntropySum_in3', str(layer))
     layer = tl.CrossEntropySum()
     self.assertEqual('CrossEntropySum_in3', str(layer))
 

@@ -78,26 +78,58 @@ def L2Loss():
   return Fn('L2Loss', f)
 
 
-def Accuracy():
+def BinaryClassifier(threshold=0.5):
+  """Returns a layer that performs binary classification of the model output."""
+  def f(model_output):
+    predicted_category = (model_output > threshold).astype(jnp.int32)
+    return predicted_category
+  return Fn('BinaryClassifier', f)
+
+
+def MulticlassClassifier(axis=-1):
+  """Returns a layer that performs multiclass classification of the model output."""
+  def f(model_output):
+    predicted_category = jnp.argmax(model_output, axis=axis)
+    return predicted_category
+  return Fn('MulticlassClassifier', f)
+
+
+def Accuracy(classifier=MulticlassClassifier()):
   """Returns a layer that computes mean category prediction accuracy."""
-  return cb.Serial(_Accuracy(), _WeightedMean(),
+  return cb.Serial(classifier, _Accuracy(), _WeightedMean(),
                    name='Accuracy', sublayers_to_print=[])
 
 
-def SequenceAccuracy():
+def SequenceAccuracy(classifier=MulticlassClassifier()):
   """Returns a layer that computes mean sequence prediction accuracy."""
-  return cb.Serial(_Accuracy(), _WeightedSequenceMean(),
+  return cb.Serial(classifier, _Accuracy(), _WeightedSequenceMean(),
                    name='SequenceAccuracy', sublayers_to_print=[])
 
 
+def BinaryCrossEntropyLoss():
+  """Returns a layer that computes mean prediction-target cross entropy
+     for binary classification problem."""
+  return cb.Serial(_BinaryCrossEntropy(), _WeightedMean(),
+                   name='BinaryCrossEntropyLoss', sublayers_to_print=[])
+
+
 def CrossEntropyLoss():
-  """Returns a layer that computes mean prediction-target cross entropy."""
+  """Returns a layer that computes mean prediction-target cross entropy
+     for multiclass classification problem."""
   return cb.Serial(_CrossEntropy(), _WeightedMean(),
                    name='CrossEntropyLoss', sublayers_to_print=[])
 
 
+def BinaryCrossEntropySum():
+  """Returns a layer that computes sum of prediction-target cross entropies
+     for binary classification problem."""
+  return cb.Serial(_BinaryCrossEntropy(), WeightedSum(),
+                   name='BinaryCrossEntropySum', sublayers_to_print=[])
+
+
 def CrossEntropySum():
-  """Returns a layer that computes sum of prediction-target cross entropies."""
+  """Returns a layer that computes sum of prediction-target cross entropies
+     for multiclass classification problem."""
   return cb.Serial(_CrossEntropy(), WeightedSum(),
                    name='CrossEntropySum', sublayers_to_print=[])
 
@@ -112,14 +144,25 @@ def SumOfWeights():
 # pylint: enable=no-value-for-parameter
 
 
-def _Accuracy(axis=-1):
+def _Accuracy():
   """Returns a layer that scores predicted versus target category."""
-  def f(model_output, target_category):  # pylint: disable=invalid-name
-    predicted_category = jnp.argmax(model_output, axis=axis)
+  def f(predicted_category, target_category):  # pylint: disable=invalid-name
     # TODO(pkozakowski): This assertion breaks some tests. Fix and uncomment.
     # shapes.assert_same_shape(predicted_category, target_category)
     return jnp.equal(predicted_category, target_category).astype(jnp.float32)
   return Fn('_Accuracy', f)
+
+
+def _BinaryCrossEntropy():
+  """Returns a layer that computes prediction-target cross entropies."""
+  def f(model_output, target_category):
+    shapes.assert_same_shape(model_output, target_category)
+    batch_size = model_output.shape[0]
+    j = jnp.dot(jnp.transpose(target_category), jnp.log(model_output))
+    j += jnp.dot(jnp.transpose(1 - target_category), jnp.log(1 - model_output))
+    j = -1.0/batch_size * jnp.squeeze(j)
+    return j
+  return Fn('_BinaryCrossEntropy', f)
 
 
 def _CrossEntropy():
