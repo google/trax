@@ -374,6 +374,7 @@ JAX_BACKEND = {
     'device_count': jax.local_device_count,
     'erf': jax_special.erf,
     'expit': jax_special.expit,
+    'fori_loop': lax.fori_loop,
     'grad': jax.grad,
     'value_and_grad': jax.value_and_grad,
     'jit': jax.jit,
@@ -394,4 +395,5 @@ JAX_BACKEND = {
     'stop_gradient': lax.stop_gradient,
     'sum_pool': jax_sum_pool,
     'vjp': jax.vjp,
+    'vmap': jax.vmap,
 }

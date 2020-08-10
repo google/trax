@@ -80,6 +80,10 @@ class BackendTest(test.TestCase):
     self.assertEqual(onp.isinf, numpy.isinf)
     self.assertEqual(onp.inf, numpy.inf)
 
+  def test_fori_loop(self):
+    res = fastmath.fori_loop(2, 5, lambda i, x: x + i, 1)
+    self.assertEqual(res, 1 + 2 + 3 + 4)
+
   def test_nested_map(self):
     inp = {'a': ([0, 1], 2), 'b': _TestNamedtuple(3)}
     out = {'a': ([1, 2], 3), 'b': _TestNamedtuple(4)}

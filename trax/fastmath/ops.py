@@ -136,6 +136,37 @@ def scan(*args, **kwargs):
   return backend()['scan'](*args, **kwargs)
 
 
+def fori_loop(lower, upper, body_fn, init_val):
+  """Loop from `lower` to `upper` running `body_fn` starting from `init_val`.
+
+  The semantics of `fori_loop` is as follows::
+
+    def fori_loop(lower, upper, body_fn, init_val):
+      val = init_val
+      for i in range(lower, upper):
+        val = body_fn(i, val)
+      return val
+
+  Args:
+    lower: an integer representing the loop index lower bound (inclusive)
+    upper: an integer representing the loop index upper bound (exclusive)
+    body_fn: function of type `(int, a) -> a`.
+    init_val: initial loop carry value of type `a`.
+
+  Returns:
+    Loop value from the final iteration.
+  """
+  if 'fori_loop' in backend():
+    return backend()['fori_loop'](lower, upper, body_fn, init_val)
+  # Use scan otherwise.
+  def scanned_fn(loop_carry, _):
+    i, x = loop_carry
+    return (i + 1, body_fn(i, x)), None
+  (_, result), _ = scan(
+      scanned_fn, (lower, init_val), None, length=upper - lower)
+  return result
+
+
 def remat(*args, **kwargs):
   """Recompute everything in the backward pass to same memory."""
   return backend()['remat'](*args, **kwargs)
@@ -171,6 +202,11 @@ def disable_jit():
   """Disables JIT-compilation; helpful for debugging."""
   global _disable_jit
   _disable_jit = True
+
+
+def vmap(*args, **kwargs):
+  """Vectorizes the specified function (returns a function)."""
+  return backend()['vmap'](*args, **kwargs)
 
 
 def grad(*args, **kwargs):

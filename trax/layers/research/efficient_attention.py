@@ -749,7 +749,7 @@ class EfficientAttentionBase(base.Layer):
         def forward_unbatched_h(i_h, w_h, s_h):
           return forward_unbatched(*i_h, weights=w_h, state=s_h)
         def forward_fn(i_mh, w_mh):
-          o_mh, new_s_mh = jax.vmap(
+          o_mh, new_s_mh = fastmath.vmap(
               forward_unbatched_h, in_axes=(None, 0, 0), out_axes=0)(
                   i_mh, w_mh, s_mh)
           o_mh = o_mh.sum(0)
@@ -776,7 +776,7 @@ class EfficientAttentionBase(base.Layer):
       def forward_single_example(i_x, w_all, s_x):
         def forward_unbatched_h(i_h, w_h, s_h):
           return forward_unbatched(*i_h, weights=w_h, state=s_h)
-        o_x, s_x = jax.vmap(
+        o_x, s_x = fastmath.vmap(
             forward_unbatched_h, in_axes=(None, 0, 0), out_axes=(0, 0))(
                 i_x, w_all, s_x)
         o_x = o_x.sum(0)
@@ -796,7 +796,7 @@ class EfficientAttentionBase(base.Layer):
                                  (-1, self.n_heads) + s.shape[1:]),
             state)
         def forward_fn(i_mex, w_all):
-          o_mex, new_s_mex = jax.vmap(
+          o_mex, new_s_mex = fastmath.vmap(
               forward_single_example, in_axes=(0, None, 0), out_axes=(0, 0))(
                   i_mex, w_all, s_mex)
           new_s_mex = fastmath.nested_map(
@@ -843,7 +843,7 @@ class EfficientAttentionBase(base.Layer):
       for idx in range(loop_hi):
         loop_val = run_inner(idx, loop_val)
     else:
-      loop_val = jax.lax.fori_loop(
+      loop_val = fastmath.fori_loop(
           0, loop_hi, run_inner, loop_val)
 
     (o_all, s_all, i_ct_all, w_ct_all) = loop_val
