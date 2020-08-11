@@ -18,7 +18,6 @@
 
 from trax import fastmath
 from trax.fastmath import numpy as jnp
-from trax.layers import base as layers
 
 
 class Optimizer(object):
@@ -213,4 +212,4 @@ def clip_grads(grad_tree, max_norm):
   """Clip gradients stored as a pytree of arrays to maximum norm `max_norm`."""
   norm = l2_norm(grad_tree)
   normalize = lambda g: jnp.where(norm < max_norm, g, g * (max_norm / norm))
-  return layers.nested_map(grad_tree, normalize)
+  return fastmath.nested_map(grad_tree, normalize)
