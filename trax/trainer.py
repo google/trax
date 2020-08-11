@@ -100,6 +100,7 @@ def _output_dir_or_default():
 
 # TODO(afrozm): Share between trainer.py and rl_trainer.py
 def _jax_and_tf_configure_for_devices():  # pylint: disable=missing-function-docstring
+  jax.config.enable_omnistaging()
   if FLAGS.use_tpu:
     jax.config.update('jax_platform_name', 'tpu')
     jax.config.update('jax_xla_backend', FLAGS.jax_xla_backend)
