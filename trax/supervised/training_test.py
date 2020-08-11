@@ -17,36 +17,27 @@
 """Tests for supervised training: core classes and flows."""
 
 import os
-import sys
 import time
 
-from absl import flags
+from absl.testing import absltest
 
 from jax import test_util  # pylint: disable=unused-import
 from jax.config import config
 
 import numpy as np
 
-from tensorflow.compat.v2 import test
-
 from trax import fastmath
 from trax import layers as tl
 from trax import optimizers
+from trax import test_utils
 from trax.supervised import training
 
 
-class TrainingTest(test.TestCase):
+class TrainingTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
-    # ensure that test_tmpdir flag is availbale
-    try:
-      getattr(flags.FLAGS, 'test_tmpdir')
-    except flags.UnparsedFlagAccessError:
-      # Manually parse flags.
-      flags.FLAGS(sys.argv)
-    finally:
-      assert getattr(flags.FLAGS, 'test_tmpdir')
+    test_utils.ensure_flag('test_tmpdir')
 
   def test_loop_no_eval_task(self):
     """Runs a training loop with no eval task(s)."""
@@ -177,4 +168,4 @@ def _count_files(path):
 
 if __name__ == '__main__':
   config.config_with_absl()
-  test.main()
+  absltest.main()

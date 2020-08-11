@@ -15,10 +15,9 @@
 
 """Tests for trax.supervised.trainer_lib."""
 
-import contextlib
 import functools
 import os
-import tempfile
+from absl.testing import absltest
 from absl.testing import parameterized
 
 from jax import test_util  # pylint: disable=unused-import
@@ -26,13 +25,12 @@ from jax.config import config
 from jax.lib import xla_bridge
 
 import tensorflow.compat.v2 as tf
-from tensorflow.compat.v2 import test
-from tensorflow.compat.v2.io import gfile
 
 from trax import fastmath
 from trax import layers as tl
 from trax import models
 from trax import optimizers as trax_opt
+from trax import test_utils
 from trax.data import inputs as inputs_lib
 from trax.fastmath import numpy as jnp
 from trax.supervised import lr_schedules as lr
@@ -71,20 +69,18 @@ def _test_inputs(n_classes, with_weights=False, input_shape=(6, 6, 3)):
 BACKENDS = [fastmath.Backend.JAX, fastmath.Backend.TFNP]
 
 
-class TraxTest(test.TestCase, parameterized.TestCase):
+class TraxTest(parameterized.TestCase):
 
-  @contextlib.contextmanager
-  def tmp_dir(self):
-    tmp = tempfile.mkdtemp(dir=self.get_temp_dir())
-    yield tmp
-    gfile.rmtree(tmp)
+  def setUp(self):
+    super().setUp()
+    test_utils.ensure_flag('test_tmpdir')
 
   # TODO(wangpeng): Remove `skipTest`'s when tf-numpy's `pmap` is in place
 
   def _test_train_eval_predict(self, backend):
     if xla_bridge.device_count() > 1 and backend == fastmath.Backend.TFNP:
       self.skipTest("tf-numpy backend does't support multi-devices yet.")
-    with fastmath.use_backend(backend), self.tmp_dir() as output_dir:
+    with fastmath.use_backend(backend):
       # Prepare model and inputs
       n_classes = 4
       steps = 2
@@ -99,6 +95,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       inputs = _test_inputs(n_classes)
 
       # Train and evaluate
+      output_dir = self.create_tempdir().full_path
       loop = trainer_lib.train(
           output_dir,
           model=model_fn,
@@ -125,7 +122,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
   def test_train_eval_predict_sm3(self, backend):
     if xla_bridge.device_count() > 1 and backend == fastmath.Backend.TFNP:
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with fastmath.use_backend(backend), self.tmp_dir() as output_dir:
+    with fastmath.use_backend(backend):
       # Prepare model and inputs
       n_classes = 4
       steps = 2
@@ -135,6 +132,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       inputs = _test_inputs(n_classes)
 
       # Train and evaluate
+      output_dir = self.create_tempdir().full_path
       loop = trainer_lib.train(
           output_dir,
           model=model_fn,
@@ -157,7 +155,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
   def test_train_restart(self, backend):
     if xla_bridge.device_count() > 1 and backend == fastmath.Backend.TFNP:
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with fastmath.use_backend(backend), self.tmp_dir() as output_dir:
+    with fastmath.use_backend(backend):
       # Prepare model and inputs
       n_classes = 4
       steps = 2
@@ -167,6 +165,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       inputs = _test_inputs(n_classes)
 
       # Train and evaluate
+      output_dir = self.create_tempdir().full_path
       trainer_lib.train(
           output_dir,
           model=model_fn,
@@ -192,7 +191,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
   def test_train_with_weights(self, backend):
     if xla_bridge.device_count() > 1 and backend == fastmath.Backend.TFNP:
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with fastmath.use_backend(backend), self.tmp_dir() as output_dir:
+    with fastmath.use_backend(backend):
       # Prepare model and inputs
       n_classes = 4
       steps = 2
@@ -202,6 +201,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
       inputs = _test_inputs(n_classes, with_weights=True)
 
       # Train and evaluate
+      output_dir = self.create_tempdir().full_path
       state = trainer_lib.train(
           output_dir,
           model=model_fn,
@@ -216,8 +216,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
   def test_reset_twice(self, backend):
     if xla_bridge.device_count() > 1 and backend == fastmath.Backend.TFNP:
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with fastmath.use_backend(backend), self.tmp_dir() as output_dir1, \
-          self.tmp_dir() as output_dir2:
+    with fastmath.use_backend(backend):
       n_classes = 4
       model_fn = functools.partial(
           models.MLP, d_hidden=16, n_output_classes=n_classes)
@@ -231,8 +230,10 @@ class TraxTest(test.TestCase, parameterized.TestCase):
           inputs=inputs,
       )
 
+      output_dir1 = self.create_tempdir(name='output_dir1').full_path
       trainer.reset(output_dir1)
       trainer.evaluate(1)
+      output_dir2 = self.create_tempdir(name='output_dir2').full_path
       trainer.reset(output_dir2)
       trainer.evaluate(1)
 
@@ -253,8 +254,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
     """
     if xla_bridge.device_count() > 1:
       self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
-    with fastmath.use_backend(fastmath.Backend.TFNP), \
-          self.tmp_dir() as output_dir:
+    with fastmath.use_backend(fastmath.Backend.TFNP):
       n_classes = 1001
       model_fn = functools.partial(models.Resnet50,
                                    n_output_classes=n_classes)
@@ -266,6 +266,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
           lr_schedule=lr.multifactor(),
           inputs=inputs,
       )
+      output_dir = self.create_tempdir().full_path
       trainer.reset(output_dir)
       trainer.train_epoch(1, 0)
       # Those are the things returned by Trainer._jit_update_fn
@@ -279,7 +280,7 @@ class TraxTest(test.TestCase, parameterized.TestCase):
 
 
 
-class EpochsTest(test.TestCase):
+class EpochsTest(absltest.TestCase):
 
   def test_cuts_epoch_when_total_steps_reached(self):
     epoch_steps = trainer_lib.epochs(
@@ -300,4 +301,4 @@ class EpochsTest(test.TestCase):
 if __name__ == '__main__':
   config.config_with_absl()
   tf.compat.v1.enable_eager_execution()
-  test.main()
+  absltest.main()

@@ -15,16 +15,13 @@
 
 """End to end test for Reformer."""
 
-import contextlib
 import os
-import tempfile
 
 from absl.testing import absltest
 import gin
-from tensorflow.compat.v1 import test
-from tensorflow.compat.v1.io import gfile
 
 import trax
+from trax import test_utils
 from trax.models.reformer import reformer  # pylint: disable=unused-import
 from trax.supervised import trainer_lib
 
@@ -39,12 +36,7 @@ class ReformerE2ETest(absltest.TestCase):
     super().setUp()
     gin.clear_config()
     gin.add_config_file_search_path(_CONFIG_DIR)
-
-  @contextlib.contextmanager
-  def tmp_dir(self):
-    tmp = tempfile.mkdtemp(dir=test.get_temp_dir())
-    yield tmp
-    gfile.rmtree(tmp)
+    test_utils.ensure_flag('test_tmpdir')
 
   def test_reformer_wmt_ende(self):
     trax.fastmath.disable_jit()
@@ -63,8 +55,8 @@ class ReformerE2ETest(absltest.TestCase):
     gin.bind_parameter('Reformer.n_decoder_layers', n_layers)
     gin.bind_parameter('Reformer.d_ff', d_ff)
 
-    with self.tmp_dir() as output_dir:
-      _ = trainer_lib.train(output_dir=output_dir)
+    output_dir = self.create_tempdir().full_path
+    _ = trainer_lib.train(output_dir=output_dir)
 
   def test_reformer_noencdecattn_wmt_ende(self):
     trax.fastmath.disable_jit()
@@ -84,8 +76,8 @@ class ReformerE2ETest(absltest.TestCase):
     gin.bind_parameter('ReformerNoEncDecAttention.n_decoder_layers', n_layers)
     gin.bind_parameter('ReformerNoEncDecAttention.d_ff', d_ff)
 
-    with self.tmp_dir() as output_dir:
-      _ = trainer_lib.train(output_dir=output_dir)
+    output_dir = self.create_tempdir().full_path
+    _ = trainer_lib.train(output_dir=output_dir)
 
 if __name__ == '__main__':
   absltest.main()
