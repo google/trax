@@ -270,8 +270,8 @@ def Transformer(input_vocab_size,
                 ff_activation=tl.Relu):
   """Returns a full Transformer model.
 
-  This model is an encoder-decoder that performs string-to-string transduction
-  (e.g., English-to-German translation):
+  This model is an encoder-decoder that performs tokenized string-to-string
+  ("source"-to-"target") transduction:
 
     - inputs (2):
 
@@ -284,6 +284,13 @@ def Transformer(input_vocab_size,
           IDs plus padding markers; shape is (batch_size, sequence_length). The
           tensor elements are integers in `range(output_vocab_size)`, and `0`
           values mark padding positions.
+
+    - output: rank 3 tensor representing a batch of log-probability
+      distributions for each sequence position over possible token IDs;
+      shape is (batch_size, sequence_length, `vocab_size`).
+
+  An example use would be to translate (tokenized) sentences from English to
+  German.
 
   Args:
     input_vocab_size: Input vocabulary size -- each element of the input tensor
@@ -306,14 +313,15 @@ def Transformer(input_vocab_size,
         Sharing along batch and sequence axes (`dropout_shared_axes=(0,1)`) is
         a useful way to save memory and apply consistent masks to activation
         vectors at different sequence positions.
-    mode: If `'predict'`, use fast inference. If `'train'`, each encoder block
-        will include dropout; else, it will pass all values through unaltered.
+    mode: If `'predict'`, use fast inference. If `'train'`, each encoder/decoder
+        block will include dropout; else, it will pass all values through
+        unaltered.
     ff_activation: Type of activation function at the end of each
         encoder/decoder block; must be an activation-type subclass of `Layer`.
 
   Returns:
-    A Transformer model as a layer that maps from a source, target pair to
-    activations over a vocab set.
+    A Transformer model as a layer that maps from a source-target tokenized
+    text pair to activations over a vocab set.
   """
   def Embedder(vocab_size):  # tokens --> vectors
     return [

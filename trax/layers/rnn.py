@@ -81,7 +81,10 @@ class LSTMCell(base.Layer):
 def MakeZeroState(depth_multiplier=1):
   """Makes zeros of shape like x but removing the length (axis 1)."""
   def f(x):  # pylint: disable=invalid-name
-    assert len(x.shape) == 3, 'Expecting x of shape [batch, length, depth].'
+    if len(x.shape) != 3:
+      raise ValueError(f'Layer input should be a rank 3 tensor representing'
+                       f' (batch_size, sequence_length, feature_depth); '
+                       f'instead got shape {x.shape}.')
     return jnp.zeros((x.shape[0], depth_multiplier * x.shape[-1]),
                      dtype=jnp.float32)
   return base.Fn('MakeZeroState', f)
@@ -133,8 +136,11 @@ class GRUCell(base.Layer):
     return new_gru_state, new_gru_state
 
   def init_weights_and_state(self, input_signature):
-    # State last dimension must be n_units.
-    assert input_signature[1].shape[-1] == self._n_units
+    if input_signature[1].shape[-1] != self._n_units:
+      raise ValueError(
+          f'Second argument in input signature should have a final dimension of'
+          f' {self._n_units}; instead got {input_signature[1].shape[-1]}.')
+
     # The dense layer input is the input and half of the GRU state.
     input_shape = input_signature[0].shape[-1] + self._n_units
     rng1, rng2, rng3, rng4 = fastmath.random.split(self.rng, 4)

@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Lint as: python3
-"""RNNs."""
+"""RNNs (recursive neural networks)."""
 
 from trax import layers as tl
 from trax.fastmath import numpy as jnp
@@ -29,24 +29,41 @@ def RNNLM(vocab_size,
           mode='train'):
   """Returns an RNN language model.
 
-  The input to the model is a tensor of tokens (ints).
+  This model performs autoregressive language modeling:
+
+    - input: rank 2 tensor representing a batch of text strings via token IDs
+      plus padding markers; shape is (batch_size, sequence_length). The tensor
+      elements are integers in `range(vocab_size)`, and `0` values mark padding
+      positions.
+
+    - output: rank 3 tensor representing a batch of log-probability
+      distributions for each sequence position over possible token IDs;
+      shape is (batch_size, sequence_length, `vocab_size`).
 
   Args:
-    vocab_size: int: vocab size
-    d_model: int:  depth of embedding (n_units in the RNN cell)
-    n_layers: int: number of RNN layers
-    rnn_cell: the RNN cell
-    rnn_cell_d_state_multiplier: how many times is RNN cell state larger
-    dropout: float: dropout rate (how much to drop out)
-    mode: str: 'train', 'eval' or 'predict', predict mode is for fast inference
+    vocab_size: Input vocabulary size -- each element of the input tensor
+        should be an integer in `range(vocab_size)`. These integers typically
+        represent token IDs from a vocabulary-based tokenizer.
+    d_model: Embedding depth throughout the model.
+    n_layers: Number of RNN layers.
+    rnn_cell: Type of RNN cell; must be a subclass of `Layer`.
+    rnn_cell_d_state_multiplier: Multiplier for feature depth of RNN cell
+        state.
+    dropout: Stochastic rate (probability) for dropping an activation value
+        when applying dropout.
+    mode: If `'predict'`, use fast inference; if `'train'` apply dropout.
 
   Returns:
     An RNN language model as a layer that maps from a tensor of tokens
     to activations over a vocab set.
   """
+
+  if n_layers != 2:  # TODO(jonni): Remove n_layers arg, if it can't vary?
+    raise ValueError(f'Number of layers must be set to 2; instead got'
+                     f' {n_layers}.')
+
   def MultiRNNCell():
     """Multi-layer RNN cell."""
-    assert n_layers == 2
     return tl.Serial(
         tl.Parallel([], tl.Split(n_items=n_layers)),
         tl.SerialWithSideOutputs(
@@ -74,18 +91,29 @@ def GRULM(vocab_size=256,
           d_model=512,
           n_layers=1,
           mode='train'):
-  """Returns an GRU language model.
+  """Returns a GRU (gated recurrent unit) language model.
 
-  The input to the model is a tensor of tokens (ints).
+  This model performs autoregressive language modeling:
+
+    - input: rank 2 tensor representing a batch of text strings via token IDs
+      plus padding markers; shape is (batch_size, sequence_length). The tensor
+      elements are integers in `range(vocab_size)`, and `0` values mark padding
+      positions.
+
+    - output: rank 3 tensor representing a batch of log-probability
+      distributions for each sequence position over possible token IDs;
+      shape is (batch_size, sequence_length, `vocab_size`).
 
   Args:
-    vocab_size: int: vocab size
-    d_model: int:  depth of embedding (n_units in the RNN cell)
-    n_layers: int: number of RNN layers
-    mode: str: 'train', 'eval' or 'predict', predict mode is for fast inference
+    vocab_size: Input vocabulary size -- each element of the input tensor
+        should be an integer in `range(vocab_size)`. These integers typically
+        represent token IDs from a vocabulary-based tokenizer.
+    d_model: Embedding depth throughout the model.
+    n_layers: Number of GRU layers.
+    mode: If `'predict'`, use fast inference (and omit the right shift).
 
   Returns:
-    An RNN language model as a layer that maps from a tensor of tokens
+    A GRU language model as a layer that maps from a tensor of tokens
     to activations over a vocab set.
   """
   return tl.Serial(
@@ -97,6 +125,8 @@ def GRULM(vocab_size=256,
   )
 
 
+# TODO(jonni): Decide names (here and Transformer): input/source, output/target
+# TODO(jonni): Align with Transfomer: (attention-)dropout, n-(attention-)heads
 def LSTMSeq2SeqAttn(input_vocab_size=256,
                     target_vocab_size=256,
                     d_model=512,
@@ -107,8 +137,27 @@ def LSTMSeq2SeqAttn(input_vocab_size=256,
                     mode='train'):
   """Returns an LSTM sequence-to-sequence model with attention.
 
-  The input to the model is a pair (input tokens, target tokens), e.g.,
-  an English sentence (tokenized) and its translation into German (tokenized).
+  This model is an encoder-decoder that performs tokenized string-to-string
+  ("source"-to-"target") transduction:
+
+    - inputs (2):
+
+        - source: rank 2 tensor representing a batch of text strings via token
+          IDs plus padding markers; shape is (batch_size, sequence_length). The
+          tensor elements are integers in `range(input_vocab_size)`, and `0`
+          values mark padding positions.
+
+        - target: rank 2 tensor representing a batch of text strings via token
+          IDs plus padding markers; shape is (batch_size, sequence_length). The
+          tensor elements are integers in `range(output_vocab_size)`, and `0`
+          values mark padding positions.
+
+    - output: rank 3 tensor representing a batch of log-probability
+      distributions for each sequence position over possible token IDs;
+      shape is (batch_size, sequence_length, `vocab_size`).
+
+  An example use would be to translate (tokenized) sentences from English to
+  German.
 
   The model works as follows:
 
@@ -120,17 +169,23 @@ def LSTMSeq2SeqAttn(input_vocab_size=256,
   * Decoder runs on the result, followed by a cross-entropy loss.
 
   Args:
-    input_vocab_size: int: vocab size of the input
-    target_vocab_size: int: vocab size of the target
-    d_model: int:  depth of embedding (n_units in the LSTM cell)
-    n_encoder_layers: int: number of LSTM layers in the encoder
-    n_decoder_layers: int: number of LSTM layers in the decoder after attention
-    n_attention_heads: int: number of attention heads
-    attention_dropout: float, dropout for the attention layer
-    mode: str: 'train', 'eval' or 'predict', predict mode is for fast inference
+    input_vocab_size: Input vocabulary size -- each element of the input tensor
+        should be an integer in `range(vocab_size)`. These integers typically
+        represent token IDs from a vocabulary-based tokenizer.
+    target_vocab_size: Target vocabulary size.
+    d_model: Final dimension of tensors at most points in the model, including
+        the initial embedding output.
+    n_encoder_layers: Number of LSTM layers in the encoder.
+    n_decoder_layers: Number of LSTM layers in the decoder after attention.
+    n_attention_heads: Number of attention heads.
+    attention_dropout: Stochastic rate (probability) for dropping an activation
+        value when applying dropout within an attention block.
+    mode: If `'predict'`, use fast inference. If `'train'`, each attention block
+        will include dropout; else, it will pass all values through unaltered.
 
   Returns:
-    An LSTM sequence-to-sequence model with attention.
+    An LSTM sequence-to-sequence model as a layer that maps from a
+    source-target tokenized text pair to activations over a vocab set.
   """
   input_encoder = tl.Serial(
       tl.Embedding(input_vocab_size, d_model),
