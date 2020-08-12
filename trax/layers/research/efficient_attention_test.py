@@ -39,6 +39,14 @@ class EfficientAttentionTest(test.TestCase):
       y = layer(x)
       self.assertEqual(y.shape, x.shape)
 
+  def test_lsh_ff(self):
+    with fastmath.use_backend(fastmath.Backend.JAX):
+      layer = efficient_attention.LSHFF(d_ff=1024*8, n_buckets=[16, 8])
+      x = np.ones((3, 7, 1024)).astype(np.float32)
+      _, _ = layer.init(shapes.signature(x))
+      y = layer(x)
+      self.assertEqual(y.shape, x.shape)
+
   def test_self_attention_tf(self):
     with fastmath.use_backend(fastmath.Backend.TFNP):
       layer = efficient_attention.SelfAttention(

@@ -40,6 +40,7 @@ import jax
 from trax import fastmath
 from trax.fastmath import numpy as np
 from trax.layers import base
+from trax.layers import initializers as init
 
 
 ####################################################### Functions
@@ -55,6 +56,69 @@ def length_normalized(x, epsilon=1e-6):
   variance = np.mean(x**2, axis=-1, keepdims=True)
   norm_inputs = x / np.sqrt(variance + epsilon)
   return norm_inputs
+
+
+def hash_vecs(vecs, n_buckets_in, n_hashes, rng):
+  """Hash vectors into buckets.
+
+  Args:
+    vecs: vectors to hash, a tensor of shape [batch_size, depth]
+    n_buckets_in: an int or a list of ints, number of hash buckets;
+      if it is a list, we do hierarchical hashing as specified by the list
+    n_hashes: number of hashes
+    rng: random generator to use for hashing
+
+  Returns:
+    A pair (buckets, n_buckets) where buckets is a tensor of shape
+    [n_hashes, batch_size] of integers -- the hash bucket ids, and
+    n_buckets is an int, the total number of hash buckets, equal to
+    the product of all items in n_buckets_in.
+  """
+  # See https://arxiv.org/pdf/1509.02897.pdf
+  # We sample a different random rotation for each round of hashing to
+  # decrease the probability of hash misses.
+  if isinstance(n_buckets_in, int):
+    assert n_buckets_in % 2 == 0
+    rot_size = n_buckets_in
+    n_buckets = n_buckets_in
+  else:
+    # Factorize the hash if n_buckets_in is a list or tuple
+    rot_size, n_buckets = 0, 1
+    for factor in n_buckets_in:
+      assert factor % 2 == 0
+      rot_size += factor
+      n_buckets *= factor
+
+  rotations_shape = (vecs.shape[-1], n_hashes, rot_size // 2)
+  rng = fastmath.stop_gradient(tie_in(vecs, rng))
+  random_rotations = fastmath.random.normal(rng, rotations_shape).astype(
+      np.float32)
+  if fastmath.is_backend(fastmath.Backend.JAX):
+    rotated_vecs = np.einsum('tf,fhb->htb', vecs, random_rotations)
+  else:
+    random_rotations = np.reshape(random_rotations,
+                                  [-1, n_hashes * (rot_size // 2)])
+    rotated_vecs = np.dot(vecs, random_rotations)
+    rotated_vecs = np.reshape(rotated_vecs, [-1, n_hashes, rot_size//2])
+    rotated_vecs = np.transpose(rotated_vecs, (1, 0, 2))
+
+  if isinstance(n_buckets_in, int) or len(n_buckets_in) == 1:
+    rotated_vecs = np.concatenate([rotated_vecs, -rotated_vecs], axis=-1)
+    buckets = np.argmax(rotated_vecs, axis=-1).astype(np.int32)
+  else:
+    # Get the buckets for them and combine.
+    buckets, cur_sum, cur_product = None, 0, 1
+    for factor in n_buckets_in:
+      rv = rotated_vecs[..., cur_sum:cur_sum + (factor // 2)]
+      cur_sum += factor // 2
+      rv = np.concatenate([rv, -rv], axis=-1)
+      if buckets is None:
+        buckets = np.argmax(rv, axis=-1).astype(np.int32)
+      else:
+        buckets += cur_product * np.argmax(rv, axis=-1).astype(np.int32)
+      cur_product *= factor
+
+  return buckets, n_buckets  # buckets is now (n_hashes, batch_size)
 
 
 def look_adjacent(x, n_chunks_before, n_chunks_after):
@@ -1146,60 +1210,17 @@ class LSHSelfAttention(SelfAttention):
       return (buckets, buckets_idx, rng)
 
   def hash_vectors(self, vecs, rng, mask=None):
-    # See https://arxiv.org/pdf/1509.02897.pdf
-    # We sample a different random rotation for each round of hashing to
-    # decrease the probability of hash misses.
-    if isinstance(self.n_buckets, int):
-      assert self.n_buckets % 2 == 0
-      rot_size = self.n_buckets
-      n_buckets = self.n_buckets
-    else:
-      # Factorize the hash if self.n_buckets is a list or tuple
-      rot_size, n_buckets = 0, 1
-      for factor in self.n_buckets:
-        assert factor % 2 == 0
-        rot_size += factor
-        n_buckets *= factor
-
-    rotations_shape = (vecs.shape[-1], self.n_hashes, rot_size // 2)
-    rng = fastmath.stop_gradient(tie_in(vecs, rng))
-    random_rotations = fastmath.random.normal(rng, rotations_shape).astype(
-        np.float32)
-    if fastmath.is_backend(fastmath.Backend.JAX):
-      rotated_vecs = np.einsum('tf,fhb->htb', vecs, random_rotations)
-    else:
-      random_rotations = np.reshape(random_rotations,
-                                    [-1, self.n_hashes * (rot_size // 2)])
-      rotated_vecs = np.dot(vecs, random_rotations)
-      rotated_vecs = np.reshape(rotated_vecs, [-1, self.n_hashes, rot_size//2])
-      rotated_vecs = np.transpose(rotated_vecs, (1, 0, 2))
-
-    if isinstance(self.n_buckets, int) or len(self.n_buckets) == 1:
-      rotated_vecs = np.concatenate([rotated_vecs, -rotated_vecs], axis=-1)
-      buckets = np.argmax(rotated_vecs, axis=-1).astype(np.int32)
-    else:
-      # Get the buckets for them and combine.
-      buckets, cur_sum, cur_product = None, 0, 1
-      for factor in self.n_buckets:
-        rv = rotated_vecs[..., cur_sum:cur_sum + (factor // 2)]
-        cur_sum += factor // 2
-        rv = np.concatenate([rv, -rv], axis=-1)
-        if buckets is None:
-          buckets = np.argmax(rv, axis=-1).astype(np.int32)
-        else:
-          buckets += cur_product * np.argmax(rv, axis=-1).astype(np.int32)
-        cur_product *= factor
+    buckets, n_buckets = hash_vecs(vecs, self.n_buckets, self.n_hashes, rng)
 
     if mask is not None:
       n_buckets += 1  # Create an extra bucket for padding tokens only
       buckets = np.where(mask[None, :], buckets, n_buckets - 1)
 
-    # buckets is now (self.n_hashes, seqlen). Next we add offsets so that
+    # buckets is now (n_hashes, seqlen). Next we add offsets so that
     # bucket numbers from different hashing rounds don't overlap.
     offsets = tie_in(buckets, np.arange(self.n_hashes, dtype=np.int32))
     offsets = np.reshape(offsets * n_buckets, (-1, 1))
     buckets = np.reshape(buckets + offsets, (-1,))
-
     return buckets
 
   def forward_unbatched(self, x, mask=None, *, weights, state, rng,
@@ -1476,3 +1497,91 @@ class EncDecAttention(EfficientAttentionBase):
     out = np.matmul(o, w_o)
     out = apply_broadcasted_dropout(out, self.output_dropout, output_rng)
     return out, state
+
+
+class LSHFF(base.Layer):
+  """Feed-forward block with LSH.
+
+  The original (non-LSH) feed-forward block is a triple Dense(d_ff)-Relu-Dense
+  that takes an input, makes it of size d_ff (usually larger than it was) and
+  then brings it back to the original size after Relu. It is commonly used in
+  Transformer models where it often accounts for most of the trainable weights.
+
+  The original block can be slow in decoding due to the need to fetch a lot of
+  weights from memory. The LSH block aims to exploit this sparsity. So in the
+  first Dense(d_ff) layer, instead of making a full matrix multiplication,
+  this block only multiplies by the parts of the weights matrix that have
+  the highest chance to give non-0 after Relu. This is determined by taking
+  a number of locality-sensitive hashes and masking to only include weights
+  that have one hash identical to the multiplied element.
+  """
+
+  def __init__(self, d_ff, n_buckets, n_hashes=4, mode='train',
+               kernel_initializer=init.GlorotUniformInitializer(),
+               bias_initializer=init.RandomNormalInitializer(1e-6)):
+    """Returns a LSH feed-forward block."""
+    super().__init__(name=f'LSHFF_{d_ff}')
+    self._mode = mode
+    self._d_ff = d_ff
+    self._n_buckets = n_buckets
+    self._n_hashes = n_hashes
+    self._kernel_initializer = kernel_initializer
+    self._bias_initializer = bias_initializer
+
+  def forward(self, x):
+    """Executes this layer as part of a forward pass through the model.
+
+    Args:
+      x: Tensor of same shape and dtype as the input signature used to
+          initialize this layer.
+
+    Returns:
+      Tensor of same shape and dtype as the input.
+    """
+    w1, w2, b2 = self.weights
+    x_shape = x.shape
+    x = np.reshape(x, [-1, x_shape[-1]])  # Easier to operate on flattened x.
+
+    # Hash x into hash buckets; x_buckets is [n_hashes, joint_batch].
+    x_buckets, _ = hash_vecs(x, self._n_buckets, self._n_hashes, self.rng)
+
+    # Hash w1 into hash buckets; w1_buckets is [n_hashes, d_ff].
+    # Note that we use the same self.rng - so the same hash vectors as for x.
+    w1_buckets, _ = hash_vecs(w1, self._n_buckets, self._n_hashes, self.rng)
+
+    # Create a mask to determine which x's have the same hash as which w1's.
+    # First: just subtract the hashes and make them non-negative.
+    hash_mask = (x_buckets[:, :, None] - w1_buckets[:, None, :])**2
+    hash_mask = fastmath.stop_gradient(hash_mask)  # make sure no gradients here
+    # hash_mask is [n_hashes, joint_batch, d_ff], 0 iff hashes were equal
+    hash_mask = 1 - np.minimum(hash_mask, 1)  # now 1 if equal, 0 otherwise
+    # we now sum over n_hashes and use min, it's 1 iff any of n_hashes was equal
+    hash_mask = np.minimum(np.sum(hash_mask, axis=0), 1)
+    hash_mask = hash_mask.astype(np.float32)  # convert to float to use mask
+
+    # First dense layer of the block, with hash masking.
+    mid = np.dot(x, w1.T) * hash_mask  # [joint_batch, d_ff]
+
+    # Relu and the second dense layer, as in a standard feed-forward block.
+    # Note: we merge the second block into this layer because of future plans,
+    # not anything implemented yet. The potential gain would be as follows:
+    # in predict mode, we would pre-hash (once) both w1 and w2 and only do
+    # matmuls (and memory copies) for the parts that correspond to the hash
+    # of the input. The hash of w1 determines which parts of Relu are 0, so
+    # it also determines which parts of w2 can be skipped.
+    relu = np.where(mid <= 0, np.zeros_like(mid), mid)
+    res = np.dot(relu, w2) + b2
+    return np.reshape(res, x_shape)  # un-flatten if needed
+
+  def init_weights_and_state(self, input_signature):
+    """Randomly initializes this layer's weights."""
+    d_model = input_signature.shape[-1]
+    shape_w1 = (self._d_ff, d_model)
+    shape_w2 = (self._d_ff, d_model)
+    shape_b2 = (d_model,)
+
+    rng_w1, rng_w2, rng_b2 = fastmath.random.split(self.rng, 3)
+    w1 = self._kernel_initializer(shape_w1, rng_w1)
+    w2 = self._kernel_initializer(shape_w2, rng_w2)
+    b2 = self._bias_initializer(shape_b2, rng_b2)
+    self.weights = (w1, w2, b2)

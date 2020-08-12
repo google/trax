@@ -155,6 +155,9 @@ def main(_):
   _gin_parse_configs()
   _jax_and_tf_configure_for_devices()
 
+  if FLAGS.disable_jit:
+    fastmath.disable_jit()
+
   output_dir = _output_dir_or_default()
   if FLAGS.use_tpu and fastmath.is_backend(Backend.TFNP):
     _train_using_tf(output_dir)
