@@ -21,7 +21,6 @@ The "Transformer" name and network architecture were introduced in the paper
 """
 
 import jax
-
 from trax import layers as tl
 from trax.fastmath import numpy as jnp
 
@@ -582,9 +581,15 @@ def _ConcatWithPadding():
     L2 = vec_d.shape[1]
     # pylint: enable=invalid-name
 
-    assert (B, L2, H) == vec_d.shape, f'{(B, L2, H)} != {vec_e.shape}'
-    assert (B, L1) == mask_e.shape, f'{(B, L1)} != {mask_e.shape}'
-    assert (B, L2) == mask_d.shape, f'{(B, L2)} != {mask_d.shape}'
+    if vec_d.shape != (B, L2, H):
+      raise ValueError(f'Shape of decoder vector, {vec_d.shape}, does not'
+                       f' equal {(B, L2, H)}.')
+    if mask_e.shape != (B, L1):
+      raise ValueError(f'Shape of encoder mask, {mask_e.shape}, does not'
+                       f' equal {(B, L1)}.')
+    if mask_d.shape != (B, L2):
+      raise ValueError(f'Shape of decoder mask, {mask_d.shape}, does not'
+                       f' equal {(B, L2)}.')
 
     def _UpdateRow(x):
       # row_e - (L1, H), row_d - (L2, H), row_mask_e - (L1,)
@@ -630,9 +635,16 @@ def _StripFromConcatenateWithPadding():
     L1 = tok_e.shape[1]
     L2 = tok_d.shape[1]
     # pylint: enable=invalid-name
-    assert L == L1 + L2
-    assert (B, L1) == tok_e.shape
-    assert (B, L2) == tok_d.shape
+    if L != L1 + L2:
+      raise ValueError(f'Length from encoder-decoder vectors ({L}) does not'
+                       f' equal sum of lengths from encoder ({L1}) and decoder'
+                       f' ({L2}).')
+    if tok_e.shape != (B, L1):
+      raise ValueError(f'Shape of encoder tokens, {tok_e.shape}, does not'
+                       f' equal {(B, L1)}.')
+    if tok_d.shape != (B, L2):
+      raise ValueError(f'Shape of decoder tokens, {tok_d.shape}, does not'
+                       f' equal {(B, L2)}.')
 
     def _UpdateRow(x):
       # (L, H), (L1, H) & (L2, H)
