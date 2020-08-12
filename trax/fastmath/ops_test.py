@@ -16,6 +16,7 @@
 """Tests for trax.fastmath.ops."""
 
 import collections
+from absl.testing import parameterized
 
 import gin
 import jax.numpy as jnp
@@ -27,7 +28,7 @@ from trax import fastmath
 _TestNamedtuple = collections.namedtuple('_TestNamedtuple', ['x'])
 
 
-class BackendTest(test.TestCase):
+class BackendTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
@@ -80,9 +81,12 @@ class BackendTest(test.TestCase):
     self.assertEqual(onp.isinf, numpy.isinf)
     self.assertEqual(onp.inf, numpy.inf)
 
-  def test_fori_loop(self):
-    res = fastmath.fori_loop(2, 5, lambda i, x: x + i, 1)
-    self.assertEqual(res, 1 + 2 + 3 + 4)
+  @parameterized.named_parameters(
+      ('_' + b.value, b) for b in (fastmath.Backend.JAX, fastmath.Backend.TFNP))
+  def test_fori_loop(self, backend):
+    with fastmath.use_backend(backend):
+      res = fastmath.fori_loop(2, 5, lambda i, x: x + i, 1)
+      self.assertEqual(res, 1 + 2 + 3 + 4)
 
   def test_nested_map(self):
     inp = {'a': ([0, 1], 2), 'b': _TestNamedtuple(3)}

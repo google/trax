@@ -91,6 +91,10 @@ def scan_reference(f, init, xs):
   return carry, ys
 
 
+def spec(*args):
+  return tf.TensorSpec(args, tf.float32)
+
+
 class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
 
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
@@ -444,9 +448,9 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
     rng = np.random.RandomState(0)
 
     d = rng.randn(2)
-    def f(c_g, a_e):
+    def f(c_g, a_e_h):
       c, g = c_g
-      a, e = a_e
+      a, e, h = a_e_h
       assert a.shape == (3,)
       assert e.shape == ()  # pylint: disable=g-explicit-bool-comparison
       assert c.shape == (4,)
@@ -458,20 +462,21 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
       g = tf_np.sin(g * b)
       assert b.shape == ()  # pylint: disable=g-explicit-bool-comparison
       assert f.shape == (3,)
-      return [c, g], (b, f)
+      return [c, g], (b, f, h)
 
-    xs = (rng.randn(5, 3), rng.randn(5))
+    xs = (rng.randn(5, 3), rng.randn(5), None)
     init = [rng.randn(4), rng.randn(2)]
 
-    c_g, b_f = extensions.scan(f, init, xs)
+    c_g, b_f_h = extensions.scan(f, init, xs)
     self.assertIsInstance(c_g, list)
-    self.assertIsInstance(b_f, tuple)
+    self.assertIsInstance(b_f_h, tuple)
     c, g = c_g
-    b, f = b_f
+    b, f, h = b_f_h
     self.assertEqual((4,), c.shape)
     self.assertEqual((2,), g.shape)
     self.assertEqual((5,), b.shape)
     self.assertEqual((5, 3), f.shape)
+    self.assertIsNone(h)
 
   @parameterized.named_parameters(
       (f"_{jit_scan}_{jit_f}", jit_scan, jit_f)  # pylint: disable=g-complex-comprehension
@@ -516,6 +521,19 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
     theoretical, numerical = tf.test.compute_gradient(
         to_tf_fn(functools.partial(losses, scan)), (c, xs))
     self.assertAllClose(theoretical, numerical, atol=1e-3, rtol=3e-4)
+
+  @parameterized.named_parameters(
+      (f"_{i}", *args)  # pylint: disable=g-complex-comprehension
+      for i, args in enumerate([
+          (lambda c, x: (c + 1, tf_np.sum(c + x, 0)),
+           [spec(2), spec(4, 3, 2)], [spec(2), spec(4, 2)]),
+          (lambda c, x: (c + 1, tf_np.sum(c + x, 0)),
+           [spec(2), spec(0, 3, 2), 0], [spec(2), spec(0, 2)]),
+      ]))
+  def testScanShape(self, f, inputs, expected_outputs):
+    outputs = extensions.eval_on_shapes(
+        functools.partial(extensions.scan, f), static_argnums=(2,))(*inputs)
+    self.assertAllEqual(expected_outputs, outputs)
 
   def testPrng(self):
     self.assertAllEqual(tf_np.asarray(123, np.int64), extensions.prng(123))
