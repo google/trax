@@ -106,7 +106,7 @@ LSHSelfAttention.predict_mem_len = 16384
 ReformerLM.attention_type = %attn_type
 ReformerLM.d_attention_key = %attn_kv
 ReformerLM.d_attention_value = %attn_kv
-ReformerLM.d_model = 1024
+ReformerLM.d_model = 768  # Use 1024 if more memory is available
 ReformerLM.d_ff = 2048  # Use 4096 if more memory is available
 ReformerLM.dropout = %dropout
 ReformerLM.ff_activation = @trax.layers.Relu
@@ -116,4 +116,4 @@ ReformerLM.n_heads = 8
 ReformerLM.n_layers = %n_layers
 ReformerLM.vocab_size = 258  # Includes pad token and unused EOS token
 ReformerLM.axial_pos_shape = (128, 512)
-ReformerLM.d_axial_pos_embs= (256, 768)
+ReformerLM.d_axial_pos_embs= (256, 512)  # Use (256, 768) if d_model = 1024
