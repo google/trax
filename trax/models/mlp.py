@@ -38,9 +38,8 @@ def PureMLP(
     layer_widths: Tuple of ints telling the number of layers and the width of
         each layer. For example, setting `layer_widths=(128, 64, 32)` would
         yield 3 layers with successive widths of 128, 64, and 32.
-    activation_fn: Layer that computes a nonlinear activation between pairs
-        of fully connnected layers. An activation function typically acts
-        elementwise, and its output has the same shape and dtype as its input.
+    activation_fn: Type of activation function between pairs of fully connected
+        layers; must be an activation-type subclass of `Layer`.
     out_activation: If True, include a copy of the activation function as the
         last layer in the network.
     flatten: If True, insert a layer at the head of the network to flatten the
