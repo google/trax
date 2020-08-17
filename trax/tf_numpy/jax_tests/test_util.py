@@ -52,6 +52,7 @@ import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy.jax_tests.config import flags, bool_env
 import trax.tf_numpy.extensions as npe
+import trax.tf_numpy.numpy as tf_np
 
 
 tree_map = tf.nest.map_structure
@@ -255,49 +256,6 @@ def check_vjp(f, f_vjp, args, atol=None, rtol=None, eps=EPS):
   ip = inner_prod(tangent, cotangent_out)
   ip_expected = inner_prod(tangent_out, cotangent)
   check_close(ip, ip_expected, atol=atol, rtol=rtol)
-
-
-def check_grads(f, args, order,
-                modes=["fwd", "rev"], atol=None, rtol=None, eps=None):
-  """Check gradients from automatic differentiation against finite differences.
-
-  Gradients are only checked in a single randomly chosen direction, which
-  ensures that the finite difference calculation does not become prohibitively
-  expensive even for large input/output spaces.
-
-  Args:
-    f: function to check at ``f(*args)``.
-    args: tuple of argument values.
-    order: forward and backwards gradients up to this order are checked.
-    modes: lists of gradient modes to check ('fwd' and/or 'rev').
-    atol: absolute tolerance for gradient equality.
-    rtol: relative tolerance for gradient equality.
-    eps: step size used for finite differences.
-
-  Raises:
-    AssertionError: if gradients do not match.
-  """
-  args = tuple(args)
-  eps = eps or EPS
-
-  _check_jvp = partial(check_jvp, atol=atol, rtol=rtol, eps=eps)
-  _check_vjp = partial(check_vjp, atol=atol, rtol=rtol, eps=eps)
-
-  def _check_grads(f, args, order):
-    if "fwd" in modes:
-      _check_jvp(f, partial(api.jvp, f), args)
-      if order > 1:
-        _check_grads(partial(api.jvp, f), (args, args), order - 1)
-
-    if "rev" in modes:
-      _check_vjp(f, partial(api.vjp, f), args)
-      if order > 1:
-        def f_vjp(*args):
-          out_primal_py, vjp_py = api.vjp(f, *args)
-          return vjp_py(out_primal_py)
-        _check_grads(f_vjp, args, order - 1)
-
-  _check_grads(f, args, order)
 
 
 @contextmanager
@@ -729,6 +687,18 @@ def cases_from_gens(*gens):
       yield ('_{}_{}'.format(size, i),) + tuple(gen(size) for gen in gens)
 
 
+def to_tf(a):
+  return tf.nest.map_structure(lambda x: x.data, a)
+
+
+def to_np(a):
+  return tf.nest.map_structure(tf_np.asarray, a)
+
+
+def to_tf_fn(f):
+  return lambda *args: to_tf(f(*to_np(args)))
+
+
 class TestCase(parameterized.TestCase):
   """Base class for tests including numerical checks and boilerplate."""
 
@@ -919,6 +889,26 @@ class TestCase(parameterized.TestCase):
             fun, static_argnums=static_argnums, input_signature=specs)
         compiled_ans = cfun(*args)
         self.assertAllClose(python_ans, compiled_ans, check_dtypes, atol, rtol)
+
+  def check_grads(self, f, args, atol=None, rtol=None, delta=None):
+    """Check gradients against finite differences.
+
+    Args:
+      f: function to check at ``f(*args)``.
+      args: a list or tuple of argument values.
+      atol: absolute tolerance for gradient equality.
+      rtol: relative tolerance for gradient equality.
+      delta: step size used for finite differences.
+    """
+    if delta is None:
+      # Optimal stepsize for central difference is O(epsilon^{1/3}).
+      dtype = tf_np.result_type(*args)
+      epsilon = onp.finfo(dtype).eps
+      delta = epsilon ** (1.0 / 3.0)
+    theoretical, numerical = tf.test.compute_gradient(
+        to_tf_fn(f), args, delta=delta)
+    self.assertAllClose(theoretical, numerical, check_dtypes=False, atol=atol,
+                        rtol=rtol)
 
 
 @contextmanager

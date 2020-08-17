@@ -29,6 +29,7 @@
 
 
 import collections
+import enum
 from functools import partial
 import itertools
 import unittest
@@ -699,6 +700,147 @@ class IndexingTest(jtu.TestCase):
   def testIndexOutOfBounds(self):  # https://github.com/google/jax/issues/2245
     array = jnp.ones(5)
     self.assertAllClose(array, array[:10], check_dtypes=True)
+
+
+def _broadcastable_shapes(shape):
+  """Returns all shapes that broadcast to `shape`."""
+  def f(rshape):
+    yield []
+    if rshape:
+      for s in f(rshape[1:]):
+        yield rshape[0:1] + s
+      if rshape[0] != 1:
+        for s in f(rshape[1:]):
+          yield [1] + s
+  for x in f(list(reversed(shape))):
+    yield list(reversed(x))
+
+
+def _update_shape(shape, indexer):
+  return onp.zeros(shape)[indexer].shape
+
+
+class UpdateOps(enum.Enum):
+  UPDATE = 0
+  # TODO(wangpeng): Enable these ops
+  # ADD = 1
+  # MUL = 2
+  # MIN = 3
+  # MAX = 4
+
+  def np_fn(op, indexer, x, y):  # pylint: disable=no-self-argument
+    x = x.copy()
+    x[indexer] = {
+      UpdateOps.UPDATE: lambda: y,
+      # UpdateOps.ADD: lambda: x[indexer] + y,
+      # UpdateOps.MUL: lambda: x[indexer] * y,
+      # UpdateOps.MIN: lambda: onp.minimum(x[indexer], y),
+      # UpdateOps.MAX: lambda: onp.maximum(x[indexer], y),
+    }[op]()
+    return x
+
+  def tfnp_fn(op, indexer, x, y):  # pylint: disable=no-self-argument
+    return {
+      UpdateOps.UPDATE: npe.index_update,
+      # UpdateOps.ADD: npe.index_add,
+      # UpdateOps.MUL: npe.index_mul,
+      # UpdateOps.MIN: npe.index_min,
+      # UpdateOps.MAX: npe.index_max,
+    }[op](x, indexer, y)
+
+
+class IndexedUpdateTest(jtu.TestCase):
+
+  @parameterized.named_parameters(jtu.cases_from_list({  # pylint: disable=g-complex-comprehension
+      "testcase_name": "_{}_{}_{}_{}".format(
+          jtu.format_shape_dtype_string(shape, dtype), indexer,
+          jtu.format_shape_dtype_string(update_shape, update_dtype), op.name),
+      "shape": shape, "dtype": dtype, "rng_factory": rng_factory,
+      "indexer": indexer, "update_shape": update_shape,
+      "update_dtype": update_dtype, "op": op
+  } for name, index_specs in STATIC_INDEXING_TESTS
+    for shape, indexer in index_specs
+    for op in UpdateOps
+    for dtype in (all_dtypes if op == UpdateOps.UPDATE else default_dtypes)
+    for update_shape in _broadcastable_shapes(_update_shape(shape, indexer))
+    for update_dtype in all_dtypes
+    for rng_factory in [jtu.rand_default]))
+  def testStaticIndexing(self, shape, dtype, update_shape, update_dtype,
+                         rng_factory, indexer, op):
+    rng = rng_factory()
+    args_maker = lambda: [rng(shape, dtype), rng(update_shape, update_dtype)]
+    np_fn = lambda x, y: UpdateOps.np_fn(op, indexer, x, y)
+    tfnp_fn = lambda x, y: UpdateOps.tfnp_fn(op, indexer, x, y)
+    self._CheckAgainstNumpy(np_fn, tfnp_fn, args_maker)
+    self._CompileAndCheck(tfnp_fn, args_maker, check_incomplete_shape=True)
+
+  @parameterized.named_parameters(jtu.cases_from_list({  # pylint: disable=g-complex-comprehension
+      "testcase_name": "_{}_{}_{}_{}".format(
+          jtu.format_shape_dtype_string(shape, dtype), indexer,
+          jtu.format_shape_dtype_string(update_shape, update_dtype), op.name),
+      "shape": shape, "dtype": dtype, "rng_factory": rng_factory,
+      "indexer": indexer, "update_shape": update_shape,
+      "update_dtype": update_dtype, "op": op
+  } for name, index_specs in ADVANCED_INDEXING_TESTS_NO_REPEATS
+    for shape, indexer in index_specs
+    for op in UpdateOps
+    for dtype in (all_dtypes if op == UpdateOps.UPDATE else default_dtypes)
+    for update_shape in _broadcastable_shapes(_update_shape(shape, indexer))
+    for update_dtype in all_dtypes
+    for rng_factory in [jtu.rand_default]))
+  def testAdvancedIndexing(self, shape, dtype, update_shape, update_dtype,
+                           rng_factory, indexer, op):
+    rng = rng_factory()
+    args_maker = lambda: [rng(shape, dtype), rng(update_shape, update_dtype)]
+    np_fn = lambda x, y: UpdateOps.np_fn(op, indexer, x, y)
+    tfnp_fn = lambda x, y: UpdateOps.tfnp_fn(op, indexer, x, y)
+    self._CheckAgainstNumpy(np_fn, tfnp_fn, args_maker)
+    self._CompileAndCheck(tfnp_fn, args_maker, check_incomplete_shape=True)
+
+  @parameterized.named_parameters(jtu.cases_from_list({  # pylint: disable=g-complex-comprehension
+      "testcase_name": "_{}_{}_{}_{}".format(
+          jtu.format_shape_dtype_string(shape, dtype), indexer,
+          jtu.format_shape_dtype_string(update_shape, update_dtype), op.name),
+      "shape": shape, "dtype": dtype, "rng_factory": rng_factory,
+      "indexer": indexer, "update_shape": update_shape,
+      "update_dtype": update_dtype, "op": op
+  } for name, index_specs in MIXED_ADVANCED_INDEXING_TESTS_NO_REPEATS
+    for shape, indexer in index_specs
+    for op in UpdateOps
+    for dtype in (all_dtypes if op == UpdateOps.UPDATE else default_dtypes)
+    for update_shape in _broadcastable_shapes(_update_shape(shape, indexer))
+    for update_dtype in all_dtypes
+    for rng_factory in [jtu.rand_default]))
+  def testMixedAdvancedIndexing(self, shape, dtype, update_shape, update_dtype,
+                                rng_factory, indexer, op):
+    rng = rng_factory()
+    args_maker = lambda: [rng(shape, dtype), rng(update_shape, update_dtype)]
+    np_fn = lambda x, y: UpdateOps.np_fn(op, indexer, x, y)
+    tfnp_fn = lambda x, y: UpdateOps.tfnp_fn(op, indexer, x, y)
+    self._CheckAgainstNumpy(np_fn, tfnp_fn, args_maker)
+    self._CompileAndCheck(tfnp_fn, args_maker, check_incomplete_shape=True)
+
+  @parameterized.named_parameters(jtu.cases_from_list({  # pylint: disable=g-complex-comprehension
+      "testcase_name": "_{}_{}_{}_{}".format(
+          jtu.format_shape_dtype_string(shape, dtype), indexer,
+          jtu.format_shape_dtype_string(update_shape, update_dtype), op.name),
+      "shape": shape, "dtype": dtype, "rng_factory": rng_factory,
+      "indexer": indexer, "update_shape": update_shape,
+      "update_dtype": update_dtype, "op": op
+  } for name, index_specs in STATIC_INDEXING_TESTS
+    for shape, indexer in index_specs
+    for op in UpdateOps
+    for dtype in float_dtypes
+    for update_shape in _broadcastable_shapes(_update_shape(shape, indexer))
+    for update_dtype in float_dtypes
+    for rng_factory in [jtu.rand_default]))
+  def testStaticIndexingGrads(self, shape, dtype, update_shape, update_dtype,
+                              rng_factory, indexer, op):
+    rng = rng_factory()
+    tfnp_fn = lambda x, y: UpdateOps.tfnp_fn(op, indexer, x, y)
+    x = rng(shape, dtype)
+    y = rng(update_shape, update_dtype)
+    self.check_grads(tfnp_fn, (x, y), rtol=1e-3, atol=1e-3, delta=1.)
 
 
 if __name__ == "__main__":
