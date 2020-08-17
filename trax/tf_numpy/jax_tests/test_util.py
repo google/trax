@@ -801,7 +801,6 @@ class TestCase(parameterized.TestCase):
     self.assertAllClose(numpy_ans, lax_ans, check_dtypes=check_dtypes,
                         atol=tol, rtol=tol)
 
-  # TODO(wangpeng): Make check_incomplete_shape default to True.
   def _CompileAndCheck(self,
                        fun,
                        args_maker,
@@ -809,7 +808,7 @@ class TestCase(parameterized.TestCase):
                        rtol=None,
                        atol=None,
                        check_eval_on_shapes=True,
-                       check_incomplete_shape=False,
+                       check_incomplete_shape=True,
                        check_unknown_rank=True,
                        static_argnums=()):
     """Compiles the function and checks the results.

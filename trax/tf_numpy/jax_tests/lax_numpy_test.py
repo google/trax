@@ -82,13 +82,16 @@ def _shape_and_dtypes(shapes, dtypes):
 OpRecord = collections.namedtuple(
   "OpRecord",
   ["name", "nargs", "dtypes", "shapes", "rng_factory", "diff_modes",
-   "test_name", "check_dtypes", "tolerance", "inexact"])
+   "test_name", "check_dtypes", "tolerance", "inexact", 
+   "check_incomplete_shape"])
 
 def op_record(name, nargs, dtypes, shapes, rng_factory, diff_modes,
-              test_name=None, check_dtypes=True, tolerance=None, inexact=False):
+              test_name=None, check_dtypes=True, tolerance=None, inexact=False,
+              check_incomplete_shape=True):
   test_name = test_name or name
   return OpRecord(name, nargs, dtypes, shapes, rng_factory, diff_modes,
-                  test_name, check_dtypes, tolerance, inexact)
+                  test_name, check_dtypes, tolerance, inexact, 
+                  check_incomplete_shape)
 
 
 def minus(a, b):
@@ -206,7 +209,8 @@ JAX_COMPOUND_OP_RECORDS = [
               inexact=True),
     op_record("hypot", 2, default_dtypes, all_shapes, jtu.rand_default, [],
               inexact=True),
-    op_record("kron", 2, number_dtypes, nonempty_shapes, jtu.rand_default, []),
+    op_record("kron", 2, number_dtypes, nonempty_shapes, jtu.rand_default, [], 
+              check_incomplete_shape=False),
     op_record("outer", 2, number_dtypes, all_shapes, jtu.rand_default, []),
     op_record("imag", 1, number_dtypes, all_shapes, jtu.rand_some_inf, []),
     op_record("iscomplex", 1, number_dtypes, all_shapes, jtu.rand_some_inf, []),
@@ -237,7 +241,8 @@ JAX_COMPOUND_OP_RECORDS = [
               tolerance={onp.float16: 1e-2}, inexact=True),
     op_record("polyval", 2, number_dtypes, nonempty_nonscalar_array_shapes,
               jtu.rand_default, [], check_dtypes=False,
-              tolerance={onp.float16: 1e-2, onp.float64: 1e-12}),
+              tolerance={onp.float16: 1e-2, onp.float64: 1e-12}, 
+              check_incomplete_shape=False),
     op_record("positive", 1, number_dtypes, all_shapes, jtu.rand_default, ["rev"]),
     op_record("power", 2, number_dtypes, all_shapes, jtu.rand_positive, ["rev"],
               tolerance={onp.complex128: 1e-14}),
@@ -260,7 +265,8 @@ JAX_COMPOUND_OP_RECORDS = [
               check_dtypes=False),
     op_record("true_divide", 2, all_dtypes, all_shapes, jtu.rand_nonzero,
               ["rev"], inexact=True),
-    op_record("diff", 1, number_dtypes, nonzerodim_shapes, jtu.rand_default, ["rev"]),
+    op_record("diff", 1, number_dtypes, nonzerodim_shapes, jtu.rand_default, 
+              ["rev"], check_incomplete_shape=False),
 ]
 
 JAX_BITWISE_OP_RECORDS = [
@@ -481,7 +487,8 @@ class LaxBackedNumpyTests(jtu.TestCase):
          "rng_factory": rec.rng_factory, "shapes": shapes, "dtypes": dtypes,
          "onp_op": getattr(onp, rec.name), "lnp_op": getattr(lnp, rec.name),
          "check_dtypes": rec.check_dtypes, "tolerance": rec.tolerance,
-         "inexact": rec.inexact}
+         "inexact": rec.inexact, 
+         "check_incomplete_shape": rec.check_incomplete_shape}
         for shapes in filter(
           _shapes_are_broadcast_compatible,
           CombosWithReplacement(rec.shapes, rec.nargs))
@@ -490,7 +497,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
       for rec in itertools.chain(JAX_ONE_TO_ONE_OP_RECORDS,
                                  JAX_COMPOUND_OP_RECORDS)))
   def testOp(self, onp_op, lnp_op, rng_factory, shapes, dtypes, check_dtypes,
-             tolerance, inexact):
+             tolerance, inexact, check_incomplete_shape):
     # TODO(b/147769803): Remove this skipping
     if lnp_op.__name__ == "kron" and shapes == ((2, 3, 4), (2, 3, 4)):
       self.skipTest("Case disabled because of b/147769803")
@@ -502,7 +509,8 @@ class LaxBackedNumpyTests(jtu.TestCase):
     self._CheckAgainstNumpy(_promote_like_lnp(onp_op, inexact), lnp_op,
                             args_maker, check_dtypes=check_dtypes, tol=tol)
     self._CompileAndCheck(lnp_op, args_maker, check_dtypes=check_dtypes,
-                          atol=tol, rtol=tol)
+                          atol=tol, rtol=tol, 
+                          check_incomplete_shape=check_incomplete_shape)
 
   @named_parameters(itertools.chain.from_iterable(
       jtu.cases_from_list(
@@ -1148,7 +1156,8 @@ class LaxBackedNumpyTests(jtu.TestCase):
     args_maker = lambda: [rng(shape, dtype)]
 
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=False)
 
   def testIssue1233(self):
     '''
@@ -1163,7 +1172,8 @@ class LaxBackedNumpyTests(jtu.TestCase):
       self.assertAllClose(lax_ans, numpy_ans, check_dtypes=True, rtol=tol, atol=tol)
 
       lnp_fun = lambda arg: lnp.repeat(arg, repeats = repeats, axis=axis)
-      self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+      self._CompileAndCheck(
+          lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=False)
 
     m = lnp.array([1,2,3,4,5,6])
     args_maker = lambda: [m]
@@ -1237,7 +1247,8 @@ class LaxBackedNumpyTests(jtu.TestCase):
     args_maker = lambda: [rng(shape, dtype)]
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
     # Incomplete shape support is not implemented at the moment.
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=False)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_ndim={}_n={}".format(ndim, n),
