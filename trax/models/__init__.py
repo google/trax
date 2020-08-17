@@ -25,6 +25,7 @@ from trax.models import rnn
 from trax.models import transformer
 from trax.models.reformer import reformer
 from trax.models.research import bert
+from trax.models.research import layerdrop_transformer
 from trax.models.research import rezero
 from trax.models.research import skipping_transformer
 from trax.models.research import transformer_no_enc_dec_attention
@@ -61,6 +62,10 @@ ReZeroTransformerLM = model_configure(
     rezero.ReZeroTransformerLM)
 SkippingTransformerLM = model_configure(
     skipping_transformer.SkippingTransformerLM)
+LayerDropSkippingTransformerLM = model_configure(
+    layerdrop_transformer.LayerDropSkippingTransformerLM)
+LayerDropTransformerLM = model_configure(
+    layerdrop_transformer.LayerDropTransformerLM)
 Transformer = model_configure(transformer.Transformer)
 TransformerDecoder = model_configure(transformer.TransformerDecoder)
 TransformerEncoder = model_configure(transformer.TransformerEncoder)

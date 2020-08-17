@@ -241,6 +241,32 @@ class WeightsTest(absltest.TestCase):
                                      [0., 0.]])
 
 
+class RandomUniformTest(absltest.TestCase):
+  """Test Weights layer."""
+
+  def test_simple(self):
+    layer = tl.RandomUniform()
+    layer.init(())
+    y = layer(())
+    self.assertEqual(y.shape, ())
+    self.assertBetween(y, 0.0, 1.0)
+
+  def test_shape(self):
+    layer = tl.RandomUniform(shape=(5, 10, 3))
+    layer.init(())
+    y = layer(())
+    self.assertEqual(y.shape, (5, 10, 3))
+
+  def test_simple_range(self):
+    layer = tl.RandomUniform(1., 2., shape=(1000,))
+    layer.init(())
+    y = layer(())
+    self.assertEqual(y.shape, (1000,))
+    self.assertBetween(min(y.tolist()), 1., 2.)
+    self.assertBetween(max(y.tolist()), 1., 2.)
+    self.assertBetween(1.5, min(y.tolist()), max(y.tolist()))
+
+
 class FlattenTest(absltest.TestCase):
 
   def test_keep_default(self):

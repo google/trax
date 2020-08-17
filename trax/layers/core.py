@@ -264,6 +264,40 @@ class Weights(base.Layer):
     self.weights = self._initializer(self._shape, self.rng)
 
 
+class RandomUniform(base.Layer):
+  """Layer returning a tensor with random values distributed uniformly."""
+
+  def __init__(self, min_val=0.0, max_val=1.0, shape=(), dtype=jnp.float32,
+               sync=False):
+    """Layer returning a tensor with random values distributed uniformly.
+
+    Args:
+      min_val: Lower end of uniform distribution.
+      max_val: Upper end of uniform distribution.
+      shape: Shape of the tensor to return. Values are sampled independently.
+      dtype: Type of value to return.
+      sync: Whether to synchronise `rng` across devices.
+    """
+    super().__init__(n_in=0, n_out=1)
+    self._min_val = min_val
+    self._max_val = max_val
+    self._shape = shape
+    self._dtype = dtype
+    self._sync = sync
+
+  def forward(self, xs):
+    rng = self._get_conditionally_synced_rng()
+    result = fastmath.random.uniform(
+        rng, self._shape, self._dtype, self._min_val, self._max_val)
+    return result
+
+  def _get_conditionally_synced_rng(self):
+    if self._sync and fastmath.device_count() > 1:
+      return fastmath.psum(self.rng, 'batch')
+    else:
+      return self.rng
+
+
 def Flatten(n_axes_to_keep=1):
   """Returns a layer that combines one or more trailing axes of a tensor.
 
