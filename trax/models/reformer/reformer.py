@@ -640,13 +640,6 @@ def Reformer(input_vocab_size,
         positional_encoding,
     ]
 
-  # TODO(kitaev): The regular trax Transformer shares vocab embeddings and
-  # position embeddings between the encoder and decoder if output_vocab_size is
-  # None. This isn't supported here because (a) Trax shares weights by sharing
-  # layer instances, but we need two separate instances to have mode == 'eval'
-  # for the encoder but mode == 'predict' for the decoder; and (b) tl.Cache does
-  # not work if its sublayers participate in any weight sharing.
-
   # Mode 'predict' means that the decoder should be run one token at a time.
   # The encoder only ever runs over full sequences, which is why it's switched
   # to 'eval' mode instead.
@@ -791,13 +784,6 @@ def ReformerNoEncDecAttention(input_vocab_size,
         tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),
         positional_encoding,
     ]
-
-  # TODO(kitaev): The regular trax Transformer shares vocab embeddings and
-  # position embeddings between the encoder and decoder if output_vocab_size is
-  # None. This isn't supported here because (a) Trax shares weights by sharing
-  # layer instances, but we need two separate instances to have mode == 'eval'
-  # for the encoder but mode == 'predict' for the decoder; and (b) tl.Cache does
-  # not work if its sublayers participate in any weight sharing.
 
   # Mode 'predict' means that the decoder should be run one token at a time.
   # The encoder only ever runs over full sequences, which is why it's switched
