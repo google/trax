@@ -41,6 +41,7 @@ from trax import fastmath
 from trax.fastmath import numpy as np
 from trax.layers import base
 from trax.layers import initializers as init
+from trax.layers import metrics
 
 
 ####################################################### Functions
@@ -1585,3 +1586,131 @@ class LSHFF(base.Layer):
     w2 = self._kernel_initializer(shape_w2, rng_w2)
     b2 = self._bias_initializer(shape_b2, rng_b2)
     self.weights = (w1, w2, b2)
+
+
+class SparseFF(base.Layer):
+  """Feed-forward block with sparsity.
+
+  The original (non-LSH) feed-forward block is a triple Dense(d_ff)-Relu-Dense
+  that takes an input, makes it of size d_ff (usually larger than it was) and
+  then brings it back to the original size after Relu. It is commonly used in
+  Transformer models where it often accounts for most of the trainable weights.
+
+  The original block can be slow in decoding due to the need to fetch a lot of
+  weights from memory. This sparse block only allows one non-zero element
+  in a block of a specified size. This is trained with straight-through Gumbel
+  softmax trick.
+  """
+
+  def __init__(self, d_ff, n_elements_in_block=32, d_lowrank=64,
+               temperature=0.7, mode='train',
+               kernel_initializer=init.GlorotUniformInitializer(),
+               bias_initializer=init.RandomNormalInitializer(1e-6)):
+    """Returns a sparse feed-forward block."""
+    super().__init__(name=f'SparseFF_{d_ff}')
+    self._mode = mode
+    self._d_ff = d_ff
+    self._d_lowrank = d_lowrank
+    # Q: what temperature is actually most useful in training?
+    self._temperature = temperature if mode == 'train' else 0.0
+    self._n_elements_in_block = n_elements_in_block
+    self._kernel_initializer = kernel_initializer
+    self._bias_initializer = bias_initializer
+    # Helper numbers as d_ff will be divided by n_elements_in_block.
+    assert self._d_ff % self._n_elements_in_block == 0
+    self._d1 = self._d_ff // self._n_elements_in_block
+    self._d2 = self._n_elements_in_block
+
+  def forward(self, x):
+    """Executes this layer as part of a forward pass through the model.
+
+    Args:
+      x: Tensor of same shape and dtype as the input signature used to
+          initialize this layer.
+
+    Returns:
+      Tensor of same shape and dtype as the input.
+    """
+    m1, m2, mb, w1, w2, b2 = self.weights
+    x_shape = x.shape
+    x = np.reshape(x, [-1, x_shape[-1]])  # Easier to operate on flattened x.
+
+    # Q: should we add bias and/or put relu after the low-rank m1 dot?
+    mask_logits = np.dot(np.dot(x, m1), m2) + mb
+    mask_logits = np.reshape(mask_logits, [-1, self._d1, self._d2])
+    # Softmax.
+    mask_logsumexp = fastmath.logsumexp(mask_logits, axis=-1, keepdims=True)
+    log_mask = mask_logits - mask_logsumexp
+    mask = np.exp(log_mask)
+    # Gumbel-softmax with straight-through discretization.
+    rng1, rng2 = fastmath.random.split(self.rng, 2)
+    u = fastmath.random.uniform(rng1, mask.shape, np.float32, 1e-6, 1.0 - 1e-6)
+    g = -np.log(-np.log(u))
+    quant_mask = np.argmax(log_mask + g * self._temperature, axis=-1)
+    if self._mode == 'train':
+      # Tricks from Section 2.1 in https://arxiv.org/abs/1801.09797
+      quant_mask = metrics.one_hot(quant_mask, self._n_elements_in_block)
+      quant_mask = fastmath.stop_gradient(quant_mask)
+      quant_mask += mask - fastmath.stop_gradient(mask)  # straight-through
+      # We will sometimes (50% of the batches) use the soft-mask instead of
+      # the quantized mask to improve training stability (see the paper above).
+      # Q: is selecting 50% of batches the best? Other %? Mixed in-batch?
+      select = fastmath.random.uniform(rng2, (), np.float32, -1.0, 1.0)
+      quant_mask = np.where(select > 0.0, quant_mask, mask)
+      quant_mask = np.reshape(quant_mask, [-1, self._d_ff])
+
+    if self._mode == 'train':
+      # In training, run full matmul to get benefits from the above tricks.
+      w1 = np.reshape(w1, (self._d_ff, -1))
+      mid = np.dot(x, w1.T) * quant_mask  # [joint_batch, d_ff]
+      relu = np.where(mid <= 0, np.zeros_like(mid), mid)
+      w2 = np.reshape(w2, (self._d_ff, -1))
+      res = np.dot(relu, w2) + b2
+    else:
+      # This implementation mimicks inference. It's not efficient for large
+      # size of joint_batch, but at inference that will be 1 most of the time.
+      # Shapes:
+      # quant_mask is [joint_batch, self._d1]
+      # w1 is [d_model, self._d1, self._d2]
+      # we'll index w1 with advanced numpy indexing, first range over
+      # self._d1 times the batch size, second range being quant_mask
+      batch_size = quant_mask.shape[0]
+      idx1 = np.array([np.arange(self._d1)] * batch_size)
+      # flatten indices and select from w1
+      idx1 = np.reshape(idx1, [-1])
+      idx2 = np.reshape(quant_mask, [-1])
+      w = w1[idx1, idx2, :]  # now we have per-element weights with batch dim
+      w = np.reshape(w, [batch_size, self._d1, -1])
+      mid = np.einsum('ai,aji->aj', x, w)
+      relu = np.where(mid <= 0, np.zeros_like(mid), mid)
+      # w2 is [self._d1, self._d2, d_model]
+      v = w2[idx1, idx2, :]
+      v = np.reshape(v, [batch_size, self._d1, -1])
+      res = np.einsum('ai,aij->aj', relu, v) + b2
+
+    return np.reshape(res, x_shape)  # un-flatten if needed
+
+  def init_weights_and_state(self, input_signature):
+    """Randomly initializes this layer's weights."""
+    d_model = input_signature.shape[-1]
+    shape_m1 = (d_model, self._d_lowrank)
+    shape_m2 = (self._d_lowrank, self._d_ff)
+    shape_mb = (self._d_ff,)
+    shape_w1 = (d_model, self._d_ff)
+    shape_w2 = (self._d_ff, d_model)
+    shape_b2 = (d_model,)
+
+    rng_m1, rng_m2, rng_mb, rng_w1, rng_w2, rng_b2 = fastmath.random.split(
+        self.rng, 6)
+    m1 = self._kernel_initializer(shape_m1, rng_m1)
+    m2 = self._kernel_initializer(shape_m2, rng_m2)
+    mb = self._bias_initializer(shape_mb, rng_mb)
+    w1 = self._kernel_initializer(shape_w1, rng_w1)
+    # We keep w1 and w2 in the (d1, d2, d_model) shape to make numpy
+    # indexing faster at inference time.
+    w1 = np.reshape(w1.T, (self._d1, self._d2, d_model))
+    w2 = self._kernel_initializer(shape_w2, rng_w2)
+    w2 = np.reshape(w2, (self._d1, self._d2, d_model))
+    b2 = self._bias_initializer(shape_b2, rng_b2)
+    self.weights = (m1, m2, mb, w1, w2, b2)
+
