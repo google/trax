@@ -21,8 +21,7 @@ import jax
 from trax import fastmath
 from trax import layers as tl
 from trax.fastmath import numpy as jnp
-from trax.layers.combinators import (  # pylint: disable=g-multiple-import
-    _split_rngs, _inputs_from_stack, _outputs_onto_stack)
+
 
 # TODO(afrozm): Move pvt fns here.
 from trax.models.transformer import (  # pylint: disable=g-multiple-import
@@ -66,159 +65,6 @@ def ChunkedFeedForward(d_model, d_ff, dropout, activation, act_dropout,
   ]
 
 
-class ReversibleHalfResidualV2(tl.ReversibleLayer):
-  """Half of a RevNet-style residual that optionally performs attention.
-
-  When attention_layer is None, this layer has the signature ::
-
-      [accumulator, *context] -> [accumulator + f(context), *context]
-
-  The attention_layer must be an instance of EfficientAttentionBase or one of
-  its subclasses (see efficient_attention.py), or None.
-
-  Attention is special-cased for the following two reasons:
-
-  - LSH attention needs to save bucket assignments from the forward pass to the
-    backward pass, for training stability. This requires special-casing it.
-  - We can call attention_layer.forward_and_or_backward to compute its output
-    (needed for inverting a reversible residual layer) while simultaneously
-    performing the backward pass. Sharing computation between these two
-    operations improves training speed.
-  """
-
-  def __init__(self, *residual_layers, attention_layer=None):
-    super().__init__()
-
-    self.compute_residual = tl.Serial(*residual_layers)
-    self.attention_layer = attention_layer
-
-    if self.attention_layer is None:
-      self._sublayers = (self.compute_residual,)
-    else:
-      assert hasattr(attention_layer, 'forward_and_or_backward')
-      self._sublayers = (self.compute_residual, self.attention_layer)
-
-    running_max = 0
-    running_total = 0
-    for layer in self._sublayers:
-      running_total += layer.n_in
-      running_max = max(running_max, running_total)
-      running_total -= layer.n_out
-    self._n_in = self._n_out = running_max + 1
-
-  def forward(self, xs):
-    rngs = _split_rngs(self.rng, len(self.sublayers))
-    accumulator, *context = xs
-    stack = context = tuple(context)
-    new_state = []
-    for layer, w, s, rng in zip(self.sublayers, self.weights, self.state, rngs):
-      inputs = _inputs_from_stack(layer, stack)
-      outputs, s = layer.pure_fn(inputs, w, s, rng)
-      stack = _outputs_onto_stack(layer, outputs, stack)
-      new_state.append(s)
-    residual = stack[0] if isinstance(stack, (tuple, list)) else stack
-
-    output = accumulator + residual
-    stack = (output,) + context
-    self.state = tuple(new_state)
-    return stack
-
-  def reverse(self, output, weights=(), state=(), new_state=(), rng=None):
-    raise NotImplementedError('Only reverse_and_grad is actually used.')
-
-  def reverse_and_grad(self, output, ct, weights=(), state=(), new_state=(),
-                       rng=None):
-    rngs = _split_rngs(rng, len(self.sublayers))
-
-    accumulator_output, *context = output
-    context = tuple(context)
-    accumulator_output_ct, *context_ct = ct
-    context_ct = tuple(context_ct)
-
-    # Forward pass through self.compute_residual. Outputs that will not receive
-    # a gradient signal from subsequent layers are moved to aux.
-    def call_compute_residual(x, weights):
-      res, _ = self.compute_residual.pure_fn(
-          x, weights=weights, state=state[0], rng=rngs[0])
-      if not isinstance(res, (tuple, list)):
-        return res, None
-      else:
-        n_differentiable = 1
-        if self.attention_layer is not None:
-          n_differentiable = min(len(res), self.attention_layer.n_in)
-        return res[:n_differentiable], res[n_differentiable:]
-
-    stack = context
-    inputs = _inputs_from_stack(self.compute_residual, stack)
-    outputs, compute_residual_vjpfun, outputs_aux = fastmath.vjp(
-        call_compute_residual, inputs, weights[0], has_aux=True)
-    if outputs_aux is not None:
-      n_differentiable_outputs = len(outputs)
-      outputs = outputs + outputs_aux
-    stack = _outputs_onto_stack(self.compute_residual, outputs, stack)
-
-    stack_ct = accumulator_output_ct
-    if self.attention_layer is None:
-      residual = stack[0] if isinstance(stack, (tuple, list)) else stack
-    else:
-      inputs = _inputs_from_stack(self.attention_layer, stack)
-      (residual, _, attn_inputs_ct, attn_weights_ct
-      ) = self.attention_layer.forward_and_or_backward(
-          inputs, weights[1], new_state[1], rngs[1],
-          output_grad=accumulator_output_ct,
-          compute_output=True, update_state=False)
-      stack_ct = _outputs_onto_stack(
-          self.attention_layer, attn_inputs_ct, stack_ct,
-          self.attention_layer.n_out, self.attention_layer.n_in)
-
-    compute_residual_ct = _inputs_from_stack(
-        self.compute_residual, stack_ct, self.compute_residual.n_out)
-    if outputs_aux is not None:
-      if not isinstance(compute_residual_ct, (tuple, list)):
-        compute_residual_ct = (compute_residual_ct,)
-      compute_residual_ct = compute_residual_ct[:n_differentiable_outputs]
-      assert len(compute_residual_ct) == n_differentiable_outputs
-    (compute_residual_inputs_ct, compute_residual_weights_ct
-    ) = compute_residual_vjpfun(compute_residual_ct)
-    stack_ct = _outputs_onto_stack(
-        self.compute_residual, compute_residual_inputs_ct, stack_ct,
-        self.compute_residual.n_out, self.compute_residual.n_in)
-    if not isinstance(stack_ct, (tuple, list)):
-      stack_ct = (stack_ct,)
-    stack_ct = (accumulator_output_ct,) + fastmath.nested_map_multiarg(
-        lambda x, y: x+y, context_ct[:len(stack_ct)], stack_ct
-        ) + context_ct[len(stack_ct):]
-
-    reconstructed_x = accumulator_output - residual
-    stack = (reconstructed_x,) + context
-    if self.attention_layer is None:
-      weights_ct = (compute_residual_weights_ct,)
-    else:
-      weights_ct = (compute_residual_weights_ct, attn_weights_ct)
-    return stack, (stack_ct, weights_ct)
-
-  # pylint: disable=protected-access
-  def init_weights_and_state(self, input_signature):
-    stack = input_signature[1:]
-    if len(stack) == 1:
-      stack = stack[0]
-
-    inputs = _inputs_from_stack(self.compute_residual, stack)
-    weights, state = self.compute_residual.init(inputs)
-    outputs, _ = self.compute_residual._forward_abstract(inputs)
-    stack = _outputs_onto_stack(self.compute_residual, outputs, stack)
-
-    if self.attention_layer is None:
-      self.state = (state,)
-      self.weights = (weights,)
-    else:
-      inputs = _inputs_from_stack(self.attention_layer, stack)
-      attn_weights, attn_state = self.attention_layer.init(inputs)
-      self.state = (state, attn_state)
-      self.weights = (weights, attn_weights)
-  # pylint: enable=protected-access
-
-
 def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
                  n_heads, attention_type,
                  dropout, ff_activation, ff_use_sru, ff_chunk_size, mode):
@@ -243,7 +89,7 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
   attention = attention_type(
       n_heads=n_heads, d_qk=d_attention_key, d_v=d_attention_value,
       causal=True, output_dropout=dropout, mode=mode)
-  attention_half_residual = ReversibleHalfResidualV2(
+  attention_half_residual = tl.ReversibleHalfResidual(
       tl.LayerNorm(),
       attention_layer=attention,
   )
@@ -257,7 +103,7 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
   return [
       attention_half_residual,
       tl.ReversibleSwap(),
-      ReversibleHalfResidualV2(feed_forward),
+      tl.ReversibleHalfResidual(feed_forward),
       tl.ReversibleSwap(),
   ]
 
@@ -519,7 +365,7 @@ def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
       masked=True, causal=False,
       attention_dropout=dropout, output_dropout=dropout,
       mode=mode)
-  attention_half_residual = ReversibleHalfResidualV2(
+  attention_half_residual = tl.ReversibleHalfResidual(
       tl.LayerNorm(),
       attention_layer=attention,
   )
@@ -530,7 +376,7 @@ def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
   return [
       attention_half_residual,
       tl.ReversibleSwap(),
-      ReversibleHalfResidualV2(feed_forward),
+      tl.ReversibleHalfResidual(feed_forward),
       tl.ReversibleSwap(),
   ]
 
@@ -555,7 +401,7 @@ def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, ff_activation,
       n_heads=n_heads, d_qk=d_model//n_heads, d_v=d_model//n_heads,
       attention_dropout=dropout, output_dropout=dropout,
       mode=mode)
-  enc_dec_attention_half_residual = ReversibleHalfResidualV2(
+  enc_dec_attention_half_residual = tl.ReversibleHalfResidual(
       tl.LayerNorm(),
       attention_layer=enc_dec_attention,
   )
@@ -565,7 +411,7 @@ def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, ff_activation,
       causal=True,
       attention_dropout=dropout, output_dropout=dropout,
       mode=mode)
-  causal_attention_half_residual = ReversibleHalfResidualV2(
+  causal_attention_half_residual = tl.ReversibleHalfResidual(
       tl.LayerNorm(),
       attention_layer=causal_attention,
   )
@@ -578,7 +424,7 @@ def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, ff_activation,
       tl.ReversibleSwap(),
       enc_dec_attention_half_residual,
       tl.ReversibleSwap(),
-      ReversibleHalfResidualV2(feed_forward),
+      tl.ReversibleHalfResidual(feed_forward),
       tl.ReversibleSwap(),
   ]
 
