@@ -1,0 +1,47 @@
+# Copyright 2020 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# -*-Python-*-
+
+import trax.models
+import trax.data.inputs
+import trax.data.tf_inputs
+
+include 'scientific_papers.gin'
+
+train.model = @trax.models.ReformerLM
+
+generic_text_dataset_preprocess_fn.token_preprocess_fns = [
+    @trax.data.tf_inputs.add_eos_to_output_features,
+    @trax.data.tf_inputs.truncate_dataset_on_len,
+    @trax.data.tf_inputs.filter_dataset_on_len,
+    @trax.data.tf_inputs.lm_token_preprocessing
+]
+
+
+# Parameters for filter_dataset_on_len:
+# ==============================================================================
+filter_dataset_on_len.len_map = {'inputs': (1, 15360), 'targets': (1, 1023)}
+filter_dataset_on_len.filter_on_eval = True
+
+
+# Parameters for truncate_dataset_on_len:
+# ==============================================================================
+truncate_dataset_on_len.len_map = {'inputs': 15360, 'targets': 1023}
+truncate_dataset_on_len.truncate_on_eval = True
+
+
+# Parameters for pad_dataset_to_length:
+# ==============================================================================
+pad_dataset_to_length.len_map = {'inputs': 15360, 'targets': 1023}
