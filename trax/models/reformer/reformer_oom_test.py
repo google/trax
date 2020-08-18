@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Tests for OOM for ReformerNoEncDecAttention ."""
+"""Tests for OOM for Reformer2 ."""
 
 import functools
 import operator
@@ -49,7 +49,7 @@ class ReformerOOMTest(absltest.TestCase):
         predict_mem_len=1024,
     )
 
-  def test_reformer_no_enc_dec_attention_one_step(self):
+  def test_reformer2_one_step(self):
     d_model = 1024
     vocab_size = 14041
     max_len = 16384
@@ -79,7 +79,7 @@ class ReformerOOMTest(absltest.TestCase):
         lsh_self_attention, n_chunks_after=0,
         chunk_len=decoder_chunk_len)
 
-    model = reformer.ReformerNoEncDecAttention(
+    model = reformer.Reformer2(
         vocab_size,
         d_model=d_model,
         d_ff=d_ff,

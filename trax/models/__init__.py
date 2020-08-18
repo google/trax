@@ -50,7 +50,7 @@ NeuralGPU = model_configure(neural_gpu.NeuralGPU)
 Reformer = model_configure(reformer.Reformer)
 ReformerLM = model_configure(reformer.ReformerLM)
 ReformerShortenLM = model_configure(reformer.ReformerShortenLM)
-ReformerNoEncDecAttention = model_configure(reformer.ReformerNoEncDecAttention)
+Reformer2 = model_configure(reformer.Reformer2)
 Resnet50 = model_configure(resnet.Resnet50)
 ReZeroTransformer = model_configure(
     rezero.ReZeroTransformer)

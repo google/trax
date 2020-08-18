@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ReformerNoEncDecAttention.d_ff: [2048, 4096]
-ReformerNoEncDecAttention.ff_chunk_size: [0, 2048, 4096, 8192]
+Reformer2.d_ff: [2048, 4096]
+Reformer2.ff_chunk_size: [0, 2048, 4096, 8192]
 LSHSelfAttention.chunk_len: [64, 128, 256]
 LSHSelfAttention.n_buckets: [128, 256, 512]
 multifactor.constant: [0.03125, 0.0442, 1.0]

@@ -111,7 +111,7 @@ class ReformerTest(absltest.TestCase):
         x, weights, state, fastmath.random.get_prng(0))
     self.assertEqual(logits.shape, (1, 65536, 256))
 
-  def test_reformer_no_enc_dec_attention_one_step(self):
+  def test_reformer2_one_step(self):
     vocab_size = 256
     max_len = 65536
     axial_pos = 256
@@ -128,7 +128,7 @@ class ReformerTest(absltest.TestCase):
 
     timebin_self_attention = self._timebin_self_attention_fn()
 
-    model = reformer.ReformerNoEncDecAttention(
+    model = reformer.Reformer2(
         vocab_size,
         d_model=256,
         d_ff=512,

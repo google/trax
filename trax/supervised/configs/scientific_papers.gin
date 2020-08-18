@@ -113,33 +113,33 @@ Adafactor.multiply_by_parameter_scale = True
 # ==============================================================================
 train.eval_frequency = 500
 train.eval_steps = 10
-train.model = @trax.models.ReformerNoEncDecAttention
+train.model = @trax.models.Reformer2
 train.steps = 1000000
 train.optimizer = @trax.optimizers.Adafactor
 
 # We are using T5's 32k SPM model by default.
 vocab_size = 32000
 
-# Parameters for ReformerNoEncDecAttention:
+# Parameters for Reformer2:
 # ==============================================================================
-ReformerNoEncDecAttention.d_model = %d_model  # was  512
-ReformerNoEncDecAttention.d_ff = %d_ff        # was 2048
-ReformerNoEncDecAttention.dropout = %dropout  # was  0.1
-ReformerNoEncDecAttention.ff_activation = @trax.layers.Relu
-ReformerNoEncDecAttention.ff_dropout = 0.1
-ReformerNoEncDecAttention.ff_chunk_size = %ff_chunk_size
-ReformerNoEncDecAttention.max_len = %max_len
-ReformerNoEncDecAttention.mode = 'train'
-ReformerNoEncDecAttention.n_heads = %n_heads
-ReformerNoEncDecAttention.n_encoder_layers = %n_layers
-ReformerNoEncDecAttention.n_decoder_layers = %n_layers
-ReformerNoEncDecAttention.input_vocab_size = %vocab_size
-ReformerNoEncDecAttention.d_attention_key = %attn_kv    # d_model // n_heads
-ReformerNoEncDecAttention.d_attention_value = %attn_kv  # d_model // n_heads
-ReformerNoEncDecAttention.encoder_attention_type = @LSHSelfAttention
-ReformerNoEncDecAttention.encoder_decoder_attention_type = @LSHSelfAttention
-ReformerNoEncDecAttention.axial_pos_shape  = %axial_pos_shape
-ReformerNoEncDecAttention.d_axial_pos_embs = %d_axial_pos_embs
+Reformer2.d_model = %d_model  # was  512
+Reformer2.d_ff = %d_ff        # was 2048
+Reformer2.dropout = %dropout  # was  0.1
+Reformer2.ff_activation = @trax.layers.Relu
+Reformer2.ff_dropout = 0.1
+Reformer2.ff_chunk_size = %ff_chunk_size
+Reformer2.max_len = %max_len
+Reformer2.mode = 'train'
+Reformer2.n_heads = %n_heads
+Reformer2.n_encoder_layers = %n_layers
+Reformer2.n_decoder_layers = %n_layers
+Reformer2.input_vocab_size = %vocab_size
+Reformer2.d_attention_key = %attn_kv    # d_model // n_heads
+Reformer2.d_attention_value = %attn_kv  # d_model // n_heads
+Reformer2.encoder_attention_type = @LSHSelfAttention
+Reformer2.encoder_decoder_attention_type = @LSHSelfAttention
+Reformer2.axial_pos_shape  = %axial_pos_shape
+Reformer2.d_axial_pos_embs = %d_axial_pos_embs
 
 # Parameters for ReformerLM:
 # ==============================================================================
