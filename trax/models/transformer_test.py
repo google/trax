@@ -201,7 +201,7 @@ class TransformerTest(parameterized.TestCase):
                    [0, 0, 0, 0, 0, 0, 0, 0]]]))
 
   def test_mask_of_right_shift_unshifted(self):
-    layer = transformer._MaskOfRightShiftedArray(n_shifts=0)
+    layer = transformer._MaskOfRightShiftedArray(n_positions=0)
     x = np.array(
         [[9, 8, 7, 0],
          [1, 2, 0, 0]]
@@ -213,7 +213,7 @@ class TransformerTest(parameterized.TestCase):
                   [True, True, False, False]]))
 
   def test_mask_of_right_shift(self):
-    layer = transformer._MaskOfRightShiftedArray(n_shifts=2)
+    layer = transformer._MaskOfRightShiftedArray(n_positions=2)
     x = np.array(
         [[0, 0, 9, 8, 7, 0],
          [0, 0, 1, 2, 0, 0]]
@@ -225,7 +225,7 @@ class TransformerTest(parameterized.TestCase):
                   [True, True, True, True, False, False]]))
 
   def test_mask_of_right_shift_3dims(self):
-    layer = transformer._MaskOfRightShiftedArray(n_shifts=2)
+    layer = transformer._MaskOfRightShiftedArray(n_positions=2)
 
     # pylint: disable=bad-whitespace
     x = np.array(

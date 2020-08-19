@@ -614,24 +614,30 @@ def _ConcatWithPadding():
   return tl.Fn('ConcatWithPadding', __ConcatWithPadding, n_out=1)
 
 
-def _MaskOfRightShiftedArray(n_shifts=1, mode='train'):
-  """Gives us the mask of a right shifted by n_shifts array."""
+def _MaskOfRightShiftedArray(n_positions=1, mode='train'):
+  """Returns a layer that creates a right-shifted mask.
+
+  Args:
+    n_positions: Number of positions to shift rightward.
+    mode: If `'train', create a mask with the specified shift; if `'predict'`,
+        raise a `ValueError`.
+  """
 
   def F(x):
     # TODO(afrozm): What to do in this case?
     if mode == 'predict':
       raise ValueError('MaskOfRightShiftedArray not implemented for predict.')
 
-    mask = x != 0
+    mask = (x != 0)
 
-    if n_shifts == 0:
+    if n_positions == 0:
       return mask
 
-    # Need to set (B, n_shifts, ...) section to True.
-    trues_shape = (x.shape[0], n_shifts) + mask.shape[2:]
+    # Need to set (B, n_positions, ...) section to True.
+    trues_shape = (x.shape[0], n_positions) + mask.shape[2:]
     trues = jnp.full(trues_shape, True)
-    return jnp.concatenate([trues, mask[:, n_shifts:, ...]], axis=1)
-  return tl.Fn(f'MaskOfRightShiftedArray({n_shifts})', F)
+    return jnp.concatenate([trues, mask[:, n_positions:, ...]], axis=1)
+  return tl.Fn(f'MaskOfRightShiftedArray({n_positions})', F)
 
 
 def _StripFromConcatenateWithPadding():

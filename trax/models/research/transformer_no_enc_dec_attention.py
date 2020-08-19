@@ -100,7 +100,7 @@ def TransformerNoEncDecAttention(input_vocab_size,
       # Simple encoder mask, doesn't contain extra dims.
       tl.Select([2, 0, 2], n_in=3),     # tok_e vec_e tok_e tok_d tok_d
       transformer._MaskOfRightShiftedArray(
-          n_shifts=0),                  # mask_e vec_e tok_e tok_d tok_d
+          n_positions=0),               # mask_e vec_e tok_e tok_d tok_d
 
       # Decode.
       tl.Select([3, 1, 0, 2]),          #  tok_d vec_e mask_e tok_e tok_d

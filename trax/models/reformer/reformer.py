@@ -311,7 +311,7 @@ def ReformerShortenLM(vocab_size,
       # and [BC] has access to C -- it will learn to copy it, peek into
       # the future. Shifting twice to [00][AB] solves the problem as the first
       # "big" symbol becomes all-0 and the rest is shifted enough.
-      tl.ShiftRight(n_shifts=shorten_factor - 1),
+      tl.ShiftRight(n_positions=shorten_factor - 1),
       tl.Fn('Shorten', lambda x: jnp.reshape(  # Shorten -- move to depth.
           x, (x.shape[0], x.shape[1] // shorten_factor, -1)), n_out=1),
       tl.Dense(d_model),

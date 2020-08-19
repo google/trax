@@ -83,7 +83,7 @@ def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train'):
 
 
 class PureAttention(base.Layer):
-  """Layer that maps from (queries, keys, values, mask) to (activations, mask).
+  """Returns a layer that maps (q, k, v, mask) to (activations, mask).
 
   This layer type performs the inner workings of one pass of multi-head
   self-attention. It:
@@ -254,7 +254,17 @@ def CausalAttention(d_feature, n_heads=1, dropout=0.0, mode='train'):
 
 
 class DotProductCausalAttention(base.Layer):
-  """Computes new activations via causally masked attention-weighted values."""
+  """Layer that computes attention activations by masking out the "future".
+
+  Causal attention uses masking to prevent a given sequence position from
+  attending to positions greater than / following it. This is used, for
+  example, when training autoregressive sequence models, or when decoding a
+  sequence symbol by symbol.
+
+  This layer performs the core per-head attention calculation. The layer
+  assumes that any splitting into attention heads precedes it, and that any
+  merging of attention heads will follow it.
+  """
 
   def __init__(self, dropout=0.0, mode='train'):
     super().__init__(n_in=3, n_out=1)
@@ -291,44 +301,74 @@ class DotProductCausalAttention(base.Layer):
       self.state = _fast_inference_init_state(input_signature, max_len)
 
 
-def zero_pad(x, pad, axis):
-  """Helper for jnp.pad with 0s for single-axis case."""
-  pad_widths = [(0, 0)] * len(x.shape)
-  pad_widths[axis] = pad  # Padding on axis.
-  return jnp.pad(x, pad_widths, mode='constant',
-                 constant_values=x.dtype.type(0))
+def ShiftRight(n_positions=1, mode='train'):
+  """Returns a layer that can insert padding to shift the input sequence.
 
-
-def ShiftRight(n_shifts=1, mode='train'):
-  """Layer to shift the tensor to the right by padding on axis 1."""
+  Args:
+    n_positions: Number of positions to shift the input sequence rightward;
+        initial positions freed by the shift get padded with zeros.
+    mode: If `'train'`, perform the specified shift; if `'predict'`, do nothing.
+  """
+  # TODO(jonni): Include pad arg, like PaddingMask, to allow non-default pads?
   def f(x):
     if mode == 'predict':
-      # Do nothing in predict mode, as then the sequence length is 1.
       return x
-    padded = zero_pad(x, (n_shifts, 0), 1)
-    return padded[:, :-n_shifts]
-  return Fn(f'ShiftRight({n_shifts})', f)
+    padded = _zero_pad(x, (n_positions, 0), 1)
+    return padded[:, :-n_positions]
+  return Fn(f'ShiftRight({n_positions})', f)
 
 
 def PaddingMask(pad=0):
-  """Layer to distinguish positions with real content/tokens vs. padding."""
+  """Returns a layer that maps integer sequences to padding masks.
+
+  The layer expects as input a batch of integer sequences. The layer output is
+  a tensor that marks for each sequence position whether the integer (e.g., a
+  token ID) in that position represents padding -- value `pad` -- versus
+  text/content -- all other values. The padding mask shape is
+  (batch_size, 1, 1, encoder_sequence_length), such that axis 1 will broadcast
+  to cover any number of attention heads and axis 2 will broadcast to cover
+  decoder sequence positions.
+
+  Args:
+    pad: Integer that represents padding rather than a token/content ID.
+  """
   def f(x):
-    # TODO(jonni): Check/require that len(x.shape) == 2?
+    if len(x.shape) != 2:
+      raise ValueError(
+          f'Input to PaddingMask must be a rank 2 tensor with shape '
+          f'(batch_size, sequence_length); instead got shape {x.shape}.')
     batch_size = x.shape[0]
-    d_feature = x.shape[-1]
+    sequence_length = x.shape[1]
     content_positions = (x != pad)
-    return content_positions.reshape((batch_size, 1, 1, d_feature))
+    return content_positions.reshape((batch_size, 1, 1, sequence_length))
   return Fn(f'PaddingMask({pad})', f)
 
 
 def EncoderDecoderMask():
-  """Makes encoder-decoder mask from decoder input and a padding mask."""
+  """Returns a layer that creates a mask for encoder-decoder cross attention.
+
+  The layer expects two inputs:
+
+      - decoder_input: batch of integer (e.g., token ID) sequences
+      - mask: padding mask from the encoder
+
+  The layer output is a mask that marks for each sequence position (for both
+  encoder and decoder) whether that position can be attended to or not. The
+  encoder-decoder mask shape is (batch_size, 1, decoder_sequence_length,
+  encoder_sequence_length), such that axis 1 will automatically broadcast to
+  cover any number of attention heads.
+  """
   def f(decoder_input, mask):
+    if len(decoder_input.shape) != 3:
+      raise ValueError(
+          f'Decoder input to EncoderDecoderMask must be a rank 3 tensor with '
+          f'shape (batch_size, decoder_sequence_length, d_model); instead got '
+          f'shape {decoder_input.shape}.')
     batch_size = mask.shape[0]
-    d_feature = mask.shape[-1]
-    mask = mask.reshape((batch_size, 1, 1, d_feature))
-    # Final mask shape is [batch, 1 for heads, decoder-len, encoder-len].
-    return mask + jnp.zeros((1, 1, decoder_input.shape[1], 1))
+    encoder_sequence_length = mask.shape[-1]
+    decoder_sequence_length = decoder_input.shape[1]
+    mask = mask.reshape((batch_size, 1, 1, encoder_sequence_length))
+    return mask + jnp.zeros((1, 1, decoder_sequence_length, 1))
   return Fn('EncoderDecoderMask', f)
 
 
@@ -401,6 +441,14 @@ class PositionalEncoding(base.Layer):
     if self._mode == 'predict':
       batch_size = input_signature.shape[0]
       self.state = jnp.zeros((batch_size,), dtype=jnp.int32)
+
+
+def _zero_pad(x, pad, axis):
+  """Helper for jnp.pad with 0s for single-axis case."""
+  pad_widths = [(0, 0)] * len(x.shape)
+  pad_widths[axis] = pad  # Padding on axis.
+  return jnp.pad(x, pad_widths, mode='constant',
+                 constant_values=x.dtype.type(0))
 
 
 def _fast_inference_init_state(input_signature, buffer_length):
