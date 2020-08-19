@@ -28,6 +28,8 @@ import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy import extensions
 import trax.tf_numpy.numpy as tf_np
+from jax import lax
+import jax.numpy as jnp
 
 FLAGS = flags.FLAGS
 
@@ -367,6 +369,49 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
     check_trace_only_once(tf_np.asarray(1), tf_np.asarray(2))
     check_trace_only_once(
         tf.convert_to_tensor(value=1), tf.convert_to_tensor(value=2))
+
+
+  @parameterized.parameters(
+    {"lhs": ['i', 'j'], "rhs": ['j', 'k'], "dims": (((1,), (0,)), ((), ())),
+      "result": "ik"},
+    {"lhs": ['a', 'i', 'j'], "rhs": ['a', 'j', 'k'], "dims": \
+      (((2,), (1,)), ((0,), (0,))), "result": "aik"},
+    {"lhs": ['a', 'b', 'i', 'j'], "rhs": ['a', 'b', 'j', 'k'], "dims": \
+      (((3,), (2,)), ((0, 1,), (0, 1,))), "result": "abik"},
+  )
+  def test_compose_output_rep(self, lhs, rhs, dims, result):
+    contraction, batch = dims
+    lhs_contraction, rhs_contraction = contraction
+    lhs_batch, rhs_batch = batch
+    output_rep = compose_output_rep(lhs, rhs, lhs_contraction, rhs_contraction,
+                                    lhs_batch, rhs_batch)
+    self.assertEqual(output_rep, result)
+
+  @parameterized.parameters(
+    {"lhs_np": np.ones((5, 3)), "rhs_np": np.ones((3, 2)),
+      "dims": (((1,), (0,)), ((), ()))},
+    {"lhs_np": np.ones((5, 3)), "rhs_np": np.ones((5, 3)),
+      "dims": (((0, 1), (0, 1)), ((), ()))},
+    {"lhs_np": np.ones((5, 3, 2)), "rhs_np": np.ones((2, 3, 2)),
+      "dims": (((1, 2), (1, 0)), ((), ()))},
+    {"lhs_np": np.ones((6, 5, 3)), "rhs_np": np.ones((6, 3, 2)),
+      "dims": (((2,), (1,)), ((0,), (0,)))},
+    {"lhs_np": np.ones((6, 3, 5)), "rhs_np": np.ones((6, 3, 2)),
+      "dims": (((1,), (1,)), ((0,), (0,)))},
+    {"lhs_np": np.ones((5, 3, 2, 2)), "rhs_np": np.ones((5, 2, 2, 6)),
+      "dims": (((2, 3), (1, 2)), ((0,), (0,)))},
+    {"lhs_np": np.ones((2, 2, 5, 3)), "rhs_np": np.ones((2, 2, 3, 2)),
+      "dims": (((3,), (2,)), ((0, 1), (0, 1)))},
+    {"lhs_np": np.ones((2, 2, 5, 2)), "rhs_np": np.ones((2, 2, 3, 2)),
+      "dims": (((3,), (1,)), ((0,), (0,)))},
+    {"lhs_np": np.ones((2, 2, 5, 3, 3)), "rhs_np": np.ones((2, 3, 2, 3, 2)),
+      "dims": (((4,), (1,)), ((0,), (0,)))},
+  )
+  def test_tf_dot_general(self, lhs_np, rhs_np, dims):
+    ans = lax.dot_general(jnp.array(lhs_np), jnp.array(rhs_np), dims)
+    result = extensions.tf_dot_general(tf.constant(lhs_np), tf.constant(rhs_np), dims)
+    self.assertTrue((result.numpy() == np.array(ans)).all())
+
 
   def testConv(self):
     y = extensions.conv(
