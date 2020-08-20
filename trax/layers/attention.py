@@ -14,7 +14,31 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Attention Layers."""
+"""Attention-related layers.
+
+Attention is a powerful extension of basic neural network ideas.
+In a classic neural network:
+
+    - node activations are floating point values (one float per node), and
+    - inter-node connections are trainable weights (one float per connection).
+
+Attention assembles networks of *vectors* and uses vector calculations to
+derive connection strength; in other words:
+
+    - node activations are floating point vectors, and
+    - inter-node connections come from trainable vector computations.
+
+Attention thus involves extra concepts/mechanisms -- queries, keys, values,
+masks, attention heads -- that factor heavily into this module's API. See
+specific classes and functions for details.
+
+NOTE: Attention layers in this module include `mode`-dependent behavior.
+The possible modes are:
+
+    - `'train'`: in training -- dropouts and position shifts active
+    - `'eval'`:  in evals -- dropouts inactive, position shifts active
+    - `'predict'`: in prediction -- dropouts and position shifts inactive
+"""
 
 import jax
 import numpy as np
@@ -37,20 +61,22 @@ def Attention(d_feature, n_heads=1, dropout=0.0, mode='train'):
   This layer type represents one pass of multi-head self-attention, best
   known for its central role in Transformer models. Internally, it:
 
-    - maps activations to `(queries, keys, values)` triples,
-    - splits `queries`, `keys`, and `values` into multiple 'heads',
-    - computes per-head attention weights from per-head `(queries, keys)`,
-    - applies `mask` to screen out positions that come from padding tokens,
-    - optionally applies dropout to attention weights,
-    - uses attention weights to combine per-head `values` vectors, and
-    - fuses per-head results into activations matching original input shapes.
+    - maps incoming sequence of activations to sequence of (query, key, value)
+      triples,
+    - splits queries, keys, and values into multiple 'heads',
+    - computes per-head attention weights from per-head (queries, keys),
+    - applies mask to screen out positions that come from padding tokens,
+    - [in `'train'` mode] applies dropout to attention weights,
+    - uses attention weights to combine per-head values vectors, and
+    - fuses per-head results into outgoing activations matching original input
+      activation shapes.
 
   Args:
     d_feature: Depth/dimensionality of feature embedding.
     n_heads: Number of attention heads.
     dropout: Probababilistic rate for internal dropout applied to attention
         activations (based on query-key pairs) before dotting them with values.
-    mode: Either 'train' or 'eval'.
+    mode: One of `'train'`, `'eval'`, or `'predict'`.
   """
   return cb.Serial(
       cb.Select([0, 0, 0]),
@@ -68,7 +94,7 @@ def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train'):
     n_heads: Number of attention heads.
     dropout: Probababilistic rate for internal dropout applied to attention
         activations (based on query-key pairs) before dotting them with values.
-    mode: Either 'train' or 'eval'.
+    mode: One of `'train'`, `'eval'`, or `'predict'`.
   """
   return cb.Serial(
       cb.Parallel(
@@ -88,28 +114,34 @@ class PureAttention(base.Layer):
   This layer type performs the inner workings of one pass of multi-head
   self-attention. It:
 
-    - splits `queries`, `keys`, and `values` into multiple 'heads',
-    - computes per-head attention weights from per-head `(queries, keys)`,
-    - applies `mask` to screen out positions that come from padding tokens,
-    - optionally applies dropout to attention weights,
-    - uses attention weights to combine per-head `values` vectors, and
-    - merges per-head results into activations matching original input shapes.
+    - splits queries, keys, and values into multiple 'heads',
+    - computes per-head attention weights from per-head (queries, keys),
+    - applies mask to screen out positions that come from padding tokens,
+    - [in `'train'` mode] applies dropout to attention weights,
+    - uses attention weights to combine per-head values vectors, and
+    - merges per-head results into outgoing activations matching original input
+      activation vector shapes.
   """
 
   def __init__(self, n_heads=1, dropout=0.0, mode='train'):
+    """Returns a new PureAttention instance.
+
+    Args:
+      n_heads: Number of attention heads.
+      dropout: Probababilistic rate for dropout applied to attention strengths
+          (based on query-key pairs) before applying them to values.
+      mode: One of `'train'`, `'eval'`, or `'predict'`.
+    """
     super().__init__(n_in=4, n_out=2)
     self._n_heads = n_heads
     self._dropout = dropout
     self._mode = mode
 
   def forward(self, inputs):
-    """Returns attention-computed activations, unmodified mask, and state.
+    """Returns attention-computed activations and unmodified mask.
 
     Args:
-      inputs: Tuple of (queries, keys, values, mask).
-
-    Returns:
-      The pair (activations, mask).
+      inputs: A (queries, keys, values, mask) tuple.
     """
     q, k, v, mask = inputs
 
@@ -155,7 +187,7 @@ def DotProductAttention(queries, keys, values, mask, dropout, mode, rng):
   """Computes new activations via masked attention-weighted sum of values.
 
   This function is the core of the attention mechanism. It:
-    - computes per-head attention weights from per-head `(queries, keys)`,
+    - computes per-head attention weights from per-head `queries` and `keys`,
     - applies `mask` to screen out positions that come from padding tokens,
     - optionally applies dropout to attention weights, and
     - uses attention weights to combine per-head `values` vectors.
@@ -165,9 +197,9 @@ def DotProductAttention(queries, keys, values, mask, dropout, mode, rng):
     keys: Per-head activations representing attention keys.
     values: Per-head activations to be combined by computed attention weights.
     mask: Mask that distinguishes positions with real content vs. padding.
-    dropout: Probababilistic rate for dropout applied to attention activations
-        (based on query-key pairs) before dotting them with values.
-    mode: Either 'train' or eval'. Dropout applies only in 'train' mode.
+    dropout: Probababilistic rate for dropout applied to attention strengths
+        (based on query-key pairs) before applying them to values.
+    mode: One of `'train'`, `'eval'`, or `'predict'`.
     rng: Single-use random number generator (JAX PRNG key).
 
   Returns:
@@ -200,14 +232,14 @@ def CausalAttention(d_feature, n_heads=1, dropout=0.0, mode='train'):
   """Returns a layer that maps activations to activations, with causal masking.
 
   Like `Attention`, this layer type represents one pass of multi-head
-  self-attention, but with causal masking in place of padding-based masking.
+  self-attention, but with causal masking rather than padding-based masking.
 
   Args:
     d_feature: Depth/dimensionality of feature embedding.
     n_heads: Number of attention heads.
     dropout: Probababilistic rate for internal dropout applied to attention
         activations (based on query-key pairs) before dotting them with values.
-    mode: Either 'train' or 'eval'.
+    mode: One of `'train'`, `'eval'`, or `'predict'`.
   """
   if d_feature % n_heads != 0:
     raise ValueError(
@@ -217,7 +249,7 @@ def CausalAttention(d_feature, n_heads=1, dropout=0.0, mode='train'):
   d_head = d_feature // n_heads
 
   def _split_into_heads():
-    """Layer that reshapes tensors to prepare for multi-headed computation."""
+    """Returns a layer that reshapes tensors for multi-headed computation."""
     def f(x):
       batch_size = x.shape[0]
       seq_len = x.shape[1]
@@ -230,7 +262,7 @@ def CausalAttention(d_feature, n_heads=1, dropout=0.0, mode='train'):
     return Fn('SplitIntoHeads', f)
 
   def _merge_heads():
-    """Layer that undoes splitting, after multi-head computation."""
+    """Returns a layer that undoes splitting, after multi-head computation."""
     def f(x):
       seq_len = x.shape[1]
 
@@ -254,7 +286,7 @@ def CausalAttention(d_feature, n_heads=1, dropout=0.0, mode='train'):
 
 
 class DotProductCausalAttention(base.Layer):
-  """Layer that computes attention activations by masking out the "future".
+  """Layer that computes attention strengths by masking out the "future".
 
   Causal attention uses masking to prevent a given sequence position from
   attending to positions greater than / following it. This is used, for
@@ -267,11 +299,23 @@ class DotProductCausalAttention(base.Layer):
   """
 
   def __init__(self, dropout=0.0, mode='train'):
+    """Creates a DotProductCausalAttention instance.
+
+    Args:
+      dropout: Probababilistic rate for dropout applied to attention strengths
+          (based on query-key pairs) before applying them to values.
+      mode: One of `'train'`, `'eval'`, or `'predict'`.
+    """
     super().__init__(n_in=3, n_out=1)
     self._dropout = dropout
     self._mode = mode
 
   def forward(self, inputs):
+    """Returns attention-computed activations.
+
+    Args:
+      inputs: A (queries, keys, values) tuple.
+    """
     q, k, v = inputs
 
     if self._mode == 'predict':
@@ -296,6 +340,7 @@ class DotProductCausalAttention(base.Layer):
     return res
 
   def init_weights_and_state(self, input_signature):
+    """Initializes this layer for fast inference, if in `'predict'` mode."""
     if self._mode == 'predict':
       max_len = 2048  # Hardcoded.  TODO(pkozakowski): Pass it from the model.
       self.state = _fast_inference_init_state(input_signature, max_len)
@@ -307,7 +352,7 @@ def ShiftRight(n_positions=1, mode='train'):
   Args:
     n_positions: Number of positions to shift the input sequence rightward;
         initial positions freed by the shift get padded with zeros.
-    mode: If `'train'`, perform the specified shift; if `'predict'`, do nothing.
+    mode: One of `'train'`, `'eval'`, or `'predict'`.
   """
   # TODO(jonni): Include pad arg, like PaddingMask, to allow non-default pads?
   def f(x):
@@ -373,10 +418,26 @@ def EncoderDecoderMask():
 
 
 class PositionalEncoding(base.Layer):
-  """Implements bare positional encoding."""
+  """Implements bare positional encoding.
+
+  Positional encoding includes a kind of dropout, if the layer is created in
+  `'train'` mode with a nonzero `dropout` value. For such a layer, on each
+  forward pass a subset of sequence positions selected at random will *not*
+  receive positional marking.
+  """
 
   def __init__(self, max_len=2048, dropout=0.0, dropout_broadcast_dims=(-2,),
                mode='train'):
+    """Creates a PositionalEncoding instance.
+
+    Args:
+      max_len: Maximum input sequence length.
+      dropout: Probability of *not* adding positional encoding to a sequence
+          position.
+      dropout_broadcast_dims: Axes along which dropout mask values are
+          broadcast rather than individually set at random.
+      mode: One of `'train'`, `'eval'`, or `'predict'`.
+    """
     super().__init__()
     self._max_len = max_len
     if dropout >= 1.0:
@@ -389,6 +450,7 @@ class PositionalEncoding(base.Layer):
     self._mode = mode
 
   def forward(self, inputs):
+    """Returns the input activations, with added positional information."""
     if self._mode != 'predict':
       x = inputs
       symbol_size = jnp.shape(x)[1]
@@ -429,6 +491,12 @@ class PositionalEncoding(base.Layer):
         return inputs + jnp.stack(emb, 0)
 
   def init_weights_and_state(self, input_signature):
+    """Randomly initializes the positional encoding vectors.
+
+    Args:
+      input_signature: `ShapeDtype` instance characterizing the input this
+          layer should compute on.
+    """
     d_feature = input_signature.shape[-1]
     pe = np.zeros((self._max_len, d_feature), dtype=np.float32)
     position = np.arange(0, self._max_len)[:, np.newaxis]
