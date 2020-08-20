@@ -454,12 +454,17 @@ def erf(x):
   return tf_np.asarray(tf.math.erf(x.data))
 
 
-# Given lhs representation, rhs representation, contraction and batch dimensions,
-# compose the output representation.
-#   e.g., ij, jk, (((1,), (0,)), ((), ())) -> ik
-#         aij, ajk, (((2,), (1,)), ((0,), (0,))) -> aik
-def compose_output_rep(lhs_rep, rhs_rep, lhs_contraction, rhs_contraction,
+def _minus(a, b):
+  return [x for x in a if x not in b]
+
+
+def _compose_output_rep(lhs_rep, rhs_rep, lhs_contraction, rhs_contraction,
                         lhs_batch, rhs_batch):
+  """ Given lhs representation, rhs representation, contraction and batch dimensions,
+  compose the output representation.
+    e.g., ij, jk, (((1,), (0,)), ((), ())) -> ik
+          aij, ajk, (((2,), (1,)), ((0,), (0,))) -> aik
+  """
   output_rep = []
   for dim in lhs_batch:
     output_rep.append(lhs_rep[dim])
@@ -467,45 +472,45 @@ def compose_output_rep(lhs_rep, rhs_rep, lhs_contraction, rhs_contraction,
     if rhs_rep[dim] not in output_rep:
       output_rep.append(rhs_rep[dim])
 
-  for i in range(len(lhs_rep)):
-    if i not in lhs_batch and i not in lhs_contraction:
-      output_rep.append(lhs_rep[i])
-  for i in range(len(rhs_rep)):
-    if i not in rhs_batch and i not in rhs_contraction:
-      output_rep.append(rhs_rep[i])
+  for i in _minus(range(len(lhs_rep)), lhs_batch + lhs_contraction):
+    output_rep.append(lhs_rep[i])
+  for i in _minus(range(len(rhs_rep)), rhs_batch + rhs_contraction):
+    output_rep.append(rhs_rep[i])
   return ''.join(output_rep)
 
 
-# If it is the general non-batched/single-batched matrix multiplication,
-# use the highly optimized kernel `tf.tensordot` to handle it.
-def non_batched_matmul(lhs, rhs, lhs_contraction, rhs_contraction):
+def _non_batched_matmul(lhs, rhs, lhs_contraction, rhs_contraction):
+  """ If it is the general non-batched/single-batched matrix multiplication,
+  use the highly optimized kernel `tf.tensordot` to handle it.
+  """
   return tf.tensordot(lhs, rhs, axes=(list(lhs_contraction), list(rhs_contraction)))
 
 
-# An equivalent general dot operation as that in JAX -
-#    <https://jax.readthedocs.io/en/latest/_autosummary/jax.lax.dot_general.html>
-#
-# Although there is an implementation in TF XLA, avoid directly using XLA when
-# possible.
-#
-#   e.g., non-batched: ij,jk->ik
-#         batched: ijk,ikl->ijl
 def tf_dot_general(lhs, rhs, dimension_numbers):
+  """ An equivalent general dot operation as that in JAX -
+     <https://jax.readthedocs.io/en/latest/_autosummary/jax.lax.dot_general.html>
 
-  char_list = list(string.ascii_lowercase)[8:]
-  lhs_dim, rhs_dim = len(lhs.shape), len(rhs.shape)
-  lhs_rep = char_list[:lhs_dim]
-  rhs_rep = char_list[lhs_dim:lhs_dim+rhs_dim]
+  Although there is an implementation in TF XLA, avoid directly using XLA when
+  possible.
+
+    e.g., non-batched: ij,jk->ik
+          batched: ijk,ikl->ijl
+  """
+  char_list = list(string.ascii_lowercase)
+  char_list = char_list[8:] + char_list[:8]
+  lhs_rank, rhs_rank = len(lhs.shape), len(rhs.shape)
+  lhs_rep = char_list[:lhs_rank]
+  rhs_rep = char_list[lhs_rank:lhs_rank+rhs_rank]
   contraction, batch = dimension_numbers
   lhs_contraction, rhs_contraction = contraction
   lhs_batch, rhs_batch = batch
 
   if len(lhs_batch) == 0 and len(rhs_batch) == 0:
-    return non_batched_matmul(lhs, rhs, lhs_contraction, rhs_contraction)
+    return _non_batched_matmul(lhs, rhs, lhs_contraction, rhs_contraction)
 
-  cond_a = lhs_dim == rhs_dim == 3
+  cond_a = lhs_rank == rhs_rank == 3
   cond_b = lhs_batch == (0,) and rhs_batch == (0,)
-  cond_c = lhs_contraction == (lhs_dim - 1,) and rhs_contraction == (1,)
+  cond_c = lhs_contraction == (2,) and rhs_contraction == (1,)
   if cond_a and cond_b and cond_c:
     return tf.linalg.matmul(lhs, rhs)
 
@@ -515,7 +520,7 @@ def tf_dot_general(lhs, rhs, dimension_numbers):
     if i < len(rhs_batch):
       rhs_rep[rhs_batch[i]] = lhs_rep[lhs_batch[i]]
 
-  output_rep = compose_output_rep(lhs_rep, rhs_rep, lhs_contraction,
+  output_rep = _compose_output_rep(lhs_rep, rhs_rep, lhs_contraction,
                                   rhs_contraction, lhs_batch, rhs_batch)
   equation = ''.join(lhs_rep) + ',' + ''.join(rhs_rep) + "->" + output_rep
   return tf.einsum(equation, lhs, rhs)

@@ -408,9 +408,9 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
       "dims": (((4,), (1,)), ((0,), (0,)))},
   )
   def test_tf_dot_general(self, lhs_np, rhs_np, dims):
-    ans = lax.dot_general(jnp.array(lhs_np), jnp.array(rhs_np), dims)
-    result = extensions.tf_dot_general(tf.constant(lhs_np), tf.constant(rhs_np), dims)
-    self.assertTrue((result.numpy() == np.array(ans)).all())
+    ans = lax.dot_general(lhs_np, rhs_np, dims)
+    result = extensions.tf_dot_general(lhs_np, rhs_np, dims)
+    self.assertAllClose(result, np.array(ans))
 
 
   def testConv(self):
