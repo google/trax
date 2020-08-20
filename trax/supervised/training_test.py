@@ -107,7 +107,7 @@ class TrainingTest(absltest.TestCase):
     self.assertEqual(10, training_session.step)  # Unchanged
 
   def test_summaries_are_written(self):
-    """Training writes down metrics when writting is turned on."""
+    """Training writes down metrics when writing is turned on."""
     model = tl.Serial(tl.Dense(1))
     task = training.TrainTask(
         _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01))

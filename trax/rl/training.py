@@ -244,7 +244,7 @@ class RLTrainer:
 class PolicyTrainer(RLTrainer):
   """Trainer that uses a deep learning model for policy.
 
-  Many deep RL methods, such as policy gradeints (reinforce) or actor-critic
+  Many deep RL methods, such as policy gradients (reinforce) or actor-critic
   ones fall into this category, so a lot of classes will be subclasses of this
   one. But some methods only have a value or Q function, these are different.
   """

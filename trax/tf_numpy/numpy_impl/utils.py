@@ -303,7 +303,7 @@ def _maybe_static(x):
     return value
 
 
-# All the following functions exist becaues get_static_value can't handle
+# All the following functions exist because get_static_value can't handle
 # their TF counterparts.
 
 

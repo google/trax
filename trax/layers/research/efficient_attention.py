@@ -289,7 +289,7 @@ def permute_via_gather(val, permutation, inverse_permutation, axis=0):
     permuted = permute_impl(fastmath.stop_gradient(val))
     def vjpfun(permuted_grad):
       # JAX autodiff would synthesize a scatter operation because it doesn't
-      # know that the indices are a permutatation. However on TPU, gathers are
+      # know that the indices are a permutation. However on TPU, gathers are
       # faster than scatters (at least in the regime the LSH attention uses).
       return (np.take(permuted_grad, inverse_permutation, axis=axis),)
     return permuted, vjpfun

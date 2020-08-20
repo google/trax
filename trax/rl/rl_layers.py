@@ -71,7 +71,7 @@ def ProbsRatio(dist_inputs, actions, old_log_probs, log_prob_fun):
       f'new_log_probs.shape was {new_log_probs.shape} and'
       f'old_log_probs.shape was {old_log_probs.shape}')
   # The ratio between new_probs and old_probs expressed
-  # using log_probs and exponentaion
+  # using log_probs and exponentiation
   probs_ratio = jnp.exp(new_log_probs - old_log_probs)
   return probs_ratio
 

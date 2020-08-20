@@ -520,7 +520,7 @@ class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
 
 
 class A2CTrainer(AdvantageBasedActorCriticTrainer):
-  """Trains policy and value models using the A2C algortithm."""
+  """Trains policy and value models using the A2C algorithm."""
 
   on_policy = True
 
@@ -564,7 +564,7 @@ class A2CTrainer(AdvantageBasedActorCriticTrainer):
 class PPOTrainer(AdvantageBasedActorCriticTrainer):
   """The Proximal Policy Optimization Algorithm aka PPO.
 
-  Trains policy and value models using the PPO algortithm.
+  Trains policy and value models using the PPO algorithm.
   """
 
   on_policy = True
@@ -596,7 +596,7 @@ class PPOTrainer(AdvantageBasedActorCriticTrainer):
                          ', %s != %s' % (new_log_probs.shape, mask.shape))
 
       # The ratio between new_probs and old_probs expressed
-      # using log_probs and exponentaion
+      # using log_probs and exponentiation
       probs_ratio = jnp.exp(new_log_probs - old_log_probs)
       if advantages.shape != probs_ratio.shape:
         raise ValueError('New log-probs and old log probs shapes '

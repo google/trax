@@ -489,7 +489,7 @@ class Trainer(object):
             and (self._step == 1 or self._step % 10 == 0))
 
   def _for_n_devices(self, x):
-    """Replicates/broadcasts `x` for n devices if `self.n_devicess > 1`."""
+    """Replicates/broadcasts `x` for n devices if `self.n_devices > 1`."""
     return tl.for_n_devices(x, self.n_devices)  # pylint: disable=protected-access
 
   def close(self):

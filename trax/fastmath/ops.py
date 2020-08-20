@@ -339,7 +339,7 @@ def use_backend(name):
 
 
 def backend_name():
-  """Returns the name of the backend curently in use ('tf' or 'jax')."""
+  """Returns the name of the backend currently in use ('tf' or 'jax')."""
   return backend()['name']
 
 
