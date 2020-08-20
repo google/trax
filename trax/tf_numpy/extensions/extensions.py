@@ -460,7 +460,9 @@ def _minus(a, b):
 
 def _compose_output_rep(lhs_rep, rhs_rep, lhs_contraction, rhs_contraction,
                         lhs_batch, rhs_batch):
-  """ Given lhs representation, rhs representation, contraction and batch dimensions,
+  """ Compose the output string representation.
+
+  Given lhs representation, rhs representation, contraction and batch dimensions,
   compose the output representation.
     e.g., ij, jk, (((1,), (0,)), ((), ())) -> ik
           aij, ajk, (((2,), (1,)), ((0,), (0,))) -> aik
@@ -488,7 +490,9 @@ def _compose_output_rep(lhs_rep, rhs_rep, lhs_contraction, rhs_contraction,
 
 
 def _non_batched_matmul(lhs, rhs, lhs_contraction, rhs_contraction):
-  """ If it is the general non-batched/single-batched matrix multiplication,
+  """ Compute the non-batched matrix multiplication.
+
+  If it is the general non-batched/single-batched matrix multiplication,
   use the highly optimized kernel `tf.tensordot` to handle it.
 
   Args:
@@ -504,9 +508,10 @@ def _non_batched_matmul(lhs, rhs, lhs_contraction, rhs_contraction):
 
 
 def tf_dot_general(lhs, rhs, dimension_numbers):
-  """ An equivalent general dot operation as that in JAX -
-     <https://jax.readthedocs.io/en/latest/_autosummary/jax.lax.dot_general.html>
+  """ The general dot operation for TensorFlow.
 
+  An equivalent general dot operation as that in JAX -
+     <https://jax.readthedocs.io/en/latest/_autosummary/jax.lax.dot_general.html>
   Although there is an implementation in TF XLA, avoid directly using XLA when
   possible.
 
