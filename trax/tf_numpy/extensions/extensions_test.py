@@ -372,22 +372,6 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
 
 
   @parameterized.parameters(
-    {"lhs": ['i', 'j'], "rhs": ['j', 'k'], "dims": (((1,), (0,)), ((), ())),
-      "result": "ik"},
-    {"lhs": ['a', 'i', 'j'], "rhs": ['a', 'j', 'k'], "dims": \
-      (((2,), (1,)), ((0,), (0,))), "result": "aik"},
-    {"lhs": ['a', 'b', 'i', 'j'], "rhs": ['a', 'b', 'j', 'k'], "dims": \
-      (((3,), (2,)), ((0, 1,), (0, 1,))), "result": "abik"},
-  )
-  def test_compose_output_rep(self, lhs, rhs, dims, result):
-    contraction, batch = dims
-    lhs_contraction, rhs_contraction = contraction
-    lhs_batch, rhs_batch = batch
-    output_rep = compose_output_rep(lhs, rhs, lhs_contraction, rhs_contraction,
-                                    lhs_batch, rhs_batch)
-    self.assertEqual(output_rep, result)
-
-  @parameterized.parameters(
     {"lhs_np": np.ones((5, 3)), "rhs_np": np.ones((3, 2)),
       "dims": (((1,), (0,)), ((), ()))},
     {"lhs_np": np.ones((5, 3)), "rhs_np": np.ones((5, 3)),
