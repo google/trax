@@ -462,10 +462,8 @@ def _compose_output_rep(lhs_rep, rhs_rep, lhs_contraction, rhs_contraction,
                         lhs_batch, rhs_batch):
   """ Compose the output string representation.
 
-  Given lhs representation, rhs representation, contraction and batch dimensions,
-  compose the output representation.
-    e.g., ij, jk, (((1,), (0,)), ((), ())) -> ik
-          aij, ajk, (((2,), (1,)), ((0,), (0,))) -> aik
+  e.g., ij, jk, (((1,), (0,)), ((), ())) -> ik
+        aij, ajk, (((2,), (1,)), ((0,), (0,))) -> aik
 
   Args:
     lhs_rep: A string representation for the left-hand side input array
@@ -515,8 +513,8 @@ def tf_dot_general(lhs, rhs, dimension_numbers):
   Although there is an implementation in TF XLA, avoid directly using XLA when
   possible.
 
-    e.g., non-batched: ij,jk->ik
-          batched: ijk,ikl->ijl
+  e.g., non-batched: ij,jk->ik
+        batched: ijk,ikl->ijl
 
   Args:
     lhs: an array (the left-hand side matrix/vector to be multiplied)
