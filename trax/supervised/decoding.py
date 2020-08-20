@@ -37,7 +37,7 @@ def autoregressive_sample_stream(model, inputs=None,
   Args:
     model: A layer object (subclass of `trax.layers.Layer`) created in
         `'predict'` mode and initialized from trained weights. The model
-        must have a structure that allows it to run as autoregressive
+        must have a structure that allows it to run as an autoregressive
         one-sample-at-a-time predictor (e.g., `trax.models.TransformerLM`).
     inputs: Sequence of symbols the model sees as input the first time it
         generates an output. If None, the model must generate the first output
@@ -110,9 +110,8 @@ def autoregressive_sample(model, inputs=None,
 
   Returns:
     Tensor of integers with shape (`batch_size`, output_length) representing
-    a batch of outputs. output_length is either `max_length` or, if all
-    outputs in the batch happened to be shorter than that then the max of their
-    lengths.
+    a batch of output sequences. output_length is the maximum length of the
+    output sequences, where each sequence can be no longer than `max_length`.
   """
   result = []
   eos_seen = []
