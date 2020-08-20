@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Helper functions for decoding using Trax models, esp. autoregressive ones."""
+"""Decoding with Trax models."""
 
 import numpy as np
 from trax import layers as tl
@@ -22,26 +22,39 @@ from trax import layers as tl
 def autoregressive_sample_stream(model, inputs=None,
                                  batch_size=1, temperature=1.0,
                                  start_id=0, accelerate=True):
-  """Stream autoregressive samples from the provided model.
+  """Yields samples from `model`, in autoregressive language model fashion.
 
-  Note that the provided model should be an autoregressive model initialized
-  in 'predict' mode. In this mode, a model takes the outputs it is generating
-  one-by-one (instead of taking them all at once, as, e.g., during training).
-  Model state is used to store the intermediate information needed, and usually
-  the model perfoms inference in this mode faster than in 'eval' mode.
+  This function uses `model` to generate outputs one position at a time, with
+  access to inputs for the current position and all preceding positions. The
+  new output becomes the next position's input, and further calls to
+  `autoregressive_sample_stream` repeat the process for successive positions
+  indefinitely.
+
+  Inputs and outputs always come in batches, even if size 1. If `inputs` is
+  present, it must have shape (`batch_size`, inputs_sequence_length), and each
+  output in the stream has shape (`batch_size`, 1).
 
   Args:
-    model: instance of trax.Layer, the model to sample from (at mode='predict')
-    inputs: optional tensor [batch_size, M]: inputs to provide to the model;
-      for language models (with n_in=1) we use inputs as prefix to the model
-    batch_size: how many batches to sample (default: 1)
-    temperature: sampling temperature (default: 1.0)
-    start_id: int, id for the start symbol fed at the beginning (default: 1)
-    accelerate: whether to accelerate the model before decoding (default: True)
+    model: A layer object (subclass of `trax.layers.Layer`) created in
+        `'predict'` mode and initialized from trained weights. The model
+        must have a structure that allows it to run as autoregressive
+        one-sample-at-a-time predictor (e.g., `trax.models.TransformerLM`).
+    inputs: Sequence of symbols the model sees as input the first time it
+        generates an output. If None, the model must generate the first output
+        with no input to guide it.
+    batch_size: Number of sequences to generate in parallel as a batch.
+    temperature: Parameter that controls the sharpness of the softmax that
+        feeds the sampling process. Values range from 0.0 (all probability mass
+        goes to one candidate; like an argmax) to positive infinity (all
+        candidates have equal probability).
+    start_id: Integer representing the start symbol for the autoregressive
+        process.
+    accelerate: If True, create an accelerated version of `model` and use it
+        for generating outputs.
 
   Yields:
-    Tensor of ints of shape [batch_size] containing subsequent
-    autoregressive samples from the model.
+    Tensor of integers with shape (`batch_size`, 1), representing the batch of
+    outputs for the next position in the stream.
   """
   if inputs is not None and inputs.shape[0] != batch_size:
     raise ValueError(f'Inputs batch size {inputs.shape[0]} != {batch_size}.')
@@ -59,7 +72,7 @@ def autoregressive_sample_stream(model, inputs=None,
     sample = tl.logsoftmax_sample(logits[:, -1, :], temperature=temperature)
     yield sample
     # Note: we're using 'predict' mode autoregressive models here, so history
-    # is caches in the model state and we are only feeding one symbol next.
+    # is cached in the model state and we are only feeding one symbol next.
     cur_symbol = sample[:, None]
 
 
@@ -67,28 +80,39 @@ def autoregressive_sample(model, inputs=None,
                           batch_size=1, temperature=1.0,
                           start_id=0, eos_id=1, max_length=100,
                           accelerate=True):
-  """Perform autoregressive sampling from the provided model.
+  """Returns a batch of sequences created by autoregressive sampling.
 
-  Note that the provided model should be an autoregressive model initialized
-  in 'predict' mode. In this mode, a model takes the outputs it is generating
-  one-by-one (instead of taking them all at once, as, e.g., during training).
-  Model state is used to store the intermediate information needed, and usually
-  the model perfoms inference in this mode faster than in 'eval' mode.
+  This function uses `model` to generate outputs one position at a time, with
+  access to inputs for the current position and all preceding positions. The
+  new output becomes the next position's input, and this loop repeats until
+  either the model outputs the `eos_id` value or the output sequence reaches
+  `max_length` items.
 
   Args:
-    model: instance of trax.Layer, the model to sample from (at mode='predict')
-    inputs: optional tensor [batch_size, M]: inputs to provide to the model;
-      for language models (with n_in=1) we use inputs as prefix to the model
-    batch_size: how many batches to sample (default: 1)
-    temperature: sampling temperature (default: 1.0)
-    start_id: int, id for the start symbol fed at the beginning (default: 1)
-    eos_id: int, id of the end-of-sequence symbol used to stop (default: 1)
-    max_length: maximum length to sample (default: 100)
-    accelerate: whether to accelerate the model before decoding (default: True)
+    model: A layer object (subclass of `trax.layers.Layer`) created in
+        `'predict'` mode and initialized from trained weights. The model
+        must have a structure that allows it to run as autoregressive
+        one-sample-at-a-time predictor (e.g., `trax.models.TransformerLM`).
+    inputs: Sequence of symbols the model sees as input the first time it
+        generates an output. If None, the model must generate the first output
+        with no input to guide it.
+    batch_size: Number of sequences to generate in parallel as a batch.
+    temperature: Parameter that controls the sharpness of the softmax that
+        feeds the sampling process. Values range from 0.0 (all probability mass
+        goes to one candidate; like an argmax) to positive infinity (all
+        candidates have equal probability).
+    start_id: The start symbol (ID/integer) for the autoregressive process.
+    eos_id: The end-of-sequence symbol (ID/integer) for the autoregressive
+        process.
+    max_length: Maximum length for generated sequences.
+    accelerate: If True, create an accelerated version of `model` and use it
+        for generating outputs.
 
   Returns:
-    a tensor of ints of shape [batch_size, N] with N <= max_length containing
-    the autoregressively sampled output from the model
+    Tensor of integers with shape (`batch_size`, output_length) representing
+    a batch of outputs. output_length is either `max_length` or, if all
+    outputs in the batch happened to be shorter than that then the max of their
+    lengths.
   """
   result = []
   eos_seen = []
