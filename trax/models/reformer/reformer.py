@@ -616,10 +616,10 @@ def Reformer2(input_vocab_size,
     activations over a vocab set.
   """
 
-  # assert d_model // n_heads == d_attention_key, \
-  #     f'{d_model} // {n_heads} != {d_attention_key}'
-  # assert d_model // n_heads == d_attention_value, \
-  #     f'{d_model} // {n_heads} != {d_attention_value}'
+  assert d_model // n_heads == d_attention_key, \
+      f'{d_model} // {n_heads} != {d_attention_key}'
+  assert d_model // n_heads == d_attention_value, \
+      f'{d_model} // {n_heads} != {d_attention_value}'
 
   # The current API for custom gradients assumes that a layer must be
   # differentiable wrt all of its inputs, but the Transformer puts bool-dtype

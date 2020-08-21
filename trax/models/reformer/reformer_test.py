@@ -132,8 +132,8 @@ class ReformerTest(absltest.TestCase):
         vocab_size,
         d_model=256,
         d_ff=512,
-        d_attention_key=64,
-        d_attention_value=64,
+        d_attention_key=128,    # d_model // n_heads == d_attention_key
+        d_attention_value=128,  # d_model // n_heads == d_attention_value
         n_encoder_layers=2,
         n_decoder_layers=2,
         n_heads=2,
