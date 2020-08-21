@@ -506,14 +506,15 @@ def _non_batched_matmul(lhs, rhs, lhs_contraction, rhs_contraction):
 
 
 def tf_dot_general(lhs, rhs, dimension_numbers):
-  """ An equivalent general dot operation as that in JAX -
-     <https://jax.readthedocs.io/en/latest/_autosummary/jax.lax.dot_general.html>
+  """ The general dot operation for TensorFlow.
 
+  An equivalent general dot operation as that in JAX -
+     <https://jax.readthedocs.io/en/latest/_autosummary/jax.lax.dot_general.html>
   Although there is an implementation in TF XLA, avoid directly using XLA when
   possible.
-
-    e.g., non-batched: ij,jk->ik
-          batched: ijk,ikl->ijl
+  
+  e.g., non-batched: ij,jk->ik
+        batched: ijk,ikl->ijl
 
   Args:
     lhs: an array (the left-hand side matrix/vector to be multiplied)
