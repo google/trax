@@ -75,11 +75,7 @@ class TraxTest(parameterized.TestCase):
     super().setUp()
     test_utils.ensure_flag('test_tmpdir')
 
-  # TODO(wangpeng): Remove `skipTest`'s when tf-numpy's `pmap` is in place
-
   def _test_train_eval_predict(self, backend):
-    if xla_bridge.device_count() > 1 and backend == fastmath.Backend.TFNP:
-      self.skipTest("tf-numpy backend does't support multi-devices yet.")
     with fastmath.use_backend(backend):
       # Prepare model and inputs
       n_classes = 4
@@ -120,8 +116,6 @@ class TraxTest(parameterized.TestCase):
 
   @parameterized.parameters(BACKENDS)
   def test_train_eval_predict_sm3(self, backend):
-    if xla_bridge.device_count() > 1 and backend == fastmath.Backend.TFNP:
-      self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
     with fastmath.use_backend(backend):
       # Prepare model and inputs
       n_classes = 4
@@ -153,8 +147,6 @@ class TraxTest(parameterized.TestCase):
 
   @parameterized.parameters(BACKENDS)
   def test_train_restart(self, backend):
-    if xla_bridge.device_count() > 1 and backend == fastmath.Backend.TFNP:
-      self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
     with fastmath.use_backend(backend):
       # Prepare model and inputs
       n_classes = 4
@@ -189,8 +181,6 @@ class TraxTest(parameterized.TestCase):
 
   @parameterized.parameters(BACKENDS)
   def test_train_with_weights(self, backend):
-    if xla_bridge.device_count() > 1 and backend == fastmath.Backend.TFNP:
-      self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
     with fastmath.use_backend(backend):
       # Prepare model and inputs
       n_classes = 4
@@ -214,8 +204,6 @@ class TraxTest(parameterized.TestCase):
 
   @parameterized.parameters(BACKENDS)
   def test_reset_twice(self, backend):
-    if xla_bridge.device_count() > 1 and backend == fastmath.Backend.TFNP:
-      self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
     with fastmath.use_backend(backend):
       n_classes = 4
       model_fn = functools.partial(
@@ -252,8 +240,6 @@ class TraxTest(parameterized.TestCase):
     computation to copy int32/uint32 outputs to CPU. This test makes sure that
     won't happen.
     """
-    if xla_bridge.device_count() > 1:
-      self.skipTest("tf-numpy backend doesn't support multi-devices yet.")
     with fastmath.use_backend(fastmath.Backend.TFNP):
       n_classes = 1001
       model_fn = functools.partial(models.Resnet50,
