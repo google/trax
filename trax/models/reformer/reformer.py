@@ -108,6 +108,31 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
   ]
 
 
+def PositionalEncoding(mode, dropout=None, max_len=None,
+                       axial_pos_shape=None, d_axial_pos_embs=None):
+  """Returns the positional encoding layer depending on the arguments."""
+  if not axial_pos_shape:
+    positional_encoding = tl.PositionalEncoding(
+        max_len=max_len, dropout=dropout, mode=mode)
+  elif axial_pos_shape == 'fixed-base':  # TODO(lukaszkaiser): remove this HACK
+    positional_encoding = tl.FixedBasePositionalEncoding(mode=mode)
+  elif axial_pos_shape == 'infinite':  # TODO(lukaszkaiser): remove this HACK
+    positional_encoding = tl.InfinitePositionalEncoding(affine=False)
+  elif axial_pos_shape == 'infinite-affine':
+    # TODO(lukaszkaiser): remove this HACK
+    positional_encoding = tl.InfinitePositionalEncoding()
+  elif axial_pos_shape == 'time-bin':  # TODO(lukaszkaiser): remove this HACK
+    positional_encoding = tl.TimeBinPositionalEncoding()
+  else:
+    assert d_axial_pos_embs is not None
+    positional_encoding = tl.AxialPositionalEncoding(
+        shape=axial_pos_shape, d_embs=d_axial_pos_embs,
+        dropout_broadcast_dims=tuple(range(1, len(axial_pos_shape) + 1)),
+        dropout=dropout, mode=mode)
+
+  return positional_encoding
+
+
 def ReformerLM(vocab_size,
                d_model=512,
                d_ff=2048,
@@ -149,24 +174,8 @@ def ReformerLM(vocab_size,
   Returns:
     the layer.
   """
-  if not axial_pos_shape:
-    positional_encoding = tl.PositionalEncoding(
-        max_len=max_len, dropout=dropout, mode=mode)
-  elif axial_pos_shape == 'fixed-base':  # TODO(lukaszkaiser): remove this HACK
-    positional_encoding = tl.FixedBasePositionalEncoding(mode=mode)
-  elif axial_pos_shape == 'infinite':  # TODO(lukaszkaiser): remove this HACK
-    positional_encoding = tl.InfinitePositionalEncoding(affine=False)
-  elif axial_pos_shape == 'infinite-affine':
-    # TODO(lukaszkaiser): remove this HACK
-    positional_encoding = tl.InfinitePositionalEncoding()
-  elif axial_pos_shape == 'time-bin':  # TODO(lukaszkaiser): remove this HACK
-    positional_encoding = tl.TimeBinPositionalEncoding()
-  else:
-    assert d_axial_pos_embs is not None
-    positional_encoding = tl.AxialPositionalEncoding(
-        shape=axial_pos_shape, d_embs=d_axial_pos_embs,
-        dropout_broadcast_dims=tuple(range(1, len(axial_pos_shape) + 1)),
-        dropout=dropout, mode=mode)
+  positional_encoding = PositionalEncoding(
+      mode, dropout, max_len, axial_pos_shape, d_axial_pos_embs)
 
   positional_embedder = [
       tl.Embedding(vocab_size, d_model),
@@ -561,7 +570,7 @@ def Reformer2(input_vocab_size,
               max_len=2048,
               encoder_attention_type=tl.SelfAttention,
               encoder_decoder_attention_type=tl.SelfAttention,
-              axial_pos_shape=(),
+              axial_pos_shape='infinite',
               d_axial_pos_embs=None,
               ff_activation=tl.Relu,
               ff_use_sru=0,
@@ -606,6 +615,12 @@ def Reformer2(input_vocab_size,
     A Reformer model as a layer that maps from a target, source pair to
     activations over a vocab set.
   """
+
+  # assert d_model // n_heads == d_attention_key, \
+  #     f'{d_model} // {n_heads} != {d_attention_key}'
+  # assert d_model // n_heads == d_attention_value, \
+  #     f'{d_model} // {n_heads} != {d_attention_value}'
+
   # The current API for custom gradients assumes that a layer must be
   # differentiable wrt all of its inputs, but the Transformer puts bool-dtype
   # masks on the stack. This causes jax to error, even though the so-called
@@ -615,15 +630,8 @@ def Reformer2(input_vocab_size,
     jax.api._check_inexact_input_vjp = lambda x: None  # pylint: disable=protected-access
 
   def PositionalEncoder(vocab_size, mode):  # tokens --> vectors
-    if not axial_pos_shape:
-      positional_encoding = tl.PositionalEncoding(
-          max_len=max_len, dropout=dropout, mode=mode)
-    else:
-      assert d_axial_pos_embs is not None
-      positional_encoding = tl.AxialPositionalEncoding(
-          shape=axial_pos_shape, d_embs=d_axial_pos_embs,
-          dropout_broadcast_dims=tuple(range(1, len(axial_pos_shape) + 1)),
-          dropout=dropout, mode=mode)
+    positional_encoding = PositionalEncoding(
+        mode, dropout, max_len, axial_pos_shape, d_axial_pos_embs)
 
     return [
         tl.Embedding(vocab_size, d_model),
