@@ -102,6 +102,11 @@ class Accelerate(base.Layer):
     self.sublayer.weights = weights
     self._weights = for_n_devices(weights, self._n_devices)
 
+  def replicate_state(self, state):
+    """Sets the state of the sublayer and replicates it for this layer."""
+    self.sublayer.state = state
+    self._state = for_n_devices(state, self._n_devices)
+
   def _unreplicate(self, x):
     """Return a single-device version of x using the first component only."""
     if self._n_devices < 2:
