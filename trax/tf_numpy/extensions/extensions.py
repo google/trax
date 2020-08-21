@@ -506,15 +506,14 @@ def _non_batched_matmul(lhs, rhs, lhs_contraction, rhs_contraction):
 
 
 def tf_dot_general(lhs, rhs, dimension_numbers):
-  """ The general dot operation for TensorFlow.
-
-  An equivalent general dot operation as that in JAX -
+  """ An equivalent general dot operation as that in JAX -
      <https://jax.readthedocs.io/en/latest/_autosummary/jax.lax.dot_general.html>
+
   Although there is an implementation in TF XLA, avoid directly using XLA when
   possible.
 
-  e.g., non-batched: ij,jk->ik
-        batched: ijk,ikl->ijl
+    e.g., non-batched: ij,jk->ik
+          batched: ijk,ikl->ijl
 
   Args:
     lhs: an array (the left-hand side matrix/vector to be multiplied)
@@ -533,12 +532,12 @@ def tf_dot_general(lhs, rhs, dimension_numbers):
   rhs_rep = char_list[lhs_rank:lhs_rank+rhs_rank]
   contraction, batch = dimension_numbers
   lhs_contraction, rhs_contraction = contraction
-  if not (len(lhs_contraction) == len(rhs_contraction)):
+  if len(lhs_contraction) != len(rhs_contraction):
     raise ValueError("The input matrices are required to have the same number "
                      "of contraction dimensions, but got: lhs {}, rhs: {}".format(
                      len(lhs_contraction), len(rhs_contraction)))
   lhs_batch, rhs_batch = batch
-  if not (len(lhs_batch) == len(rhs_batch)):
+  if len(lhs_batch) != len(rhs_batch):
     raise ValueError("The input matrices are required to have the same number "
                      "of batch dimensions, but got: lhs {}, rhs: {}".format(
                      len(lhs_batch), len(rhs_batch)))
@@ -546,8 +545,8 @@ def tf_dot_general(lhs, rhs, dimension_numbers):
   if len(lhs_batch) == 0 and len(rhs_batch) == 0:
     return _non_batched_matmul(lhs, rhs, lhs_contraction, rhs_contraction)
 
-  if (lhs_rank == rhs_rank == 3) and (lhs_batch == (0,) and rhs_batch == (0,)) \
-      and (lhs_contraction == (2,) and rhs_contraction == (1,)):
+  if (lhs_rank == rhs_rank == 3 and lhs_batch == (0,) and rhs_batch == (0,)
+      and lhs_contraction == (2,) and rhs_contraction == (1,)):
     return tf.linalg.matmul(lhs, rhs)
 
   for i in range(len(lhs_contraction)):
