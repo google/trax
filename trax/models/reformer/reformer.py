@@ -39,10 +39,10 @@ def FeedForward(d_model, d_ff, dropout, activation, act_dropout, mode):
   return [
       tl.LayerNorm(),
       tl.Dense(d_ff),
-      tl.Dropout(rate=act_dropout, shared_axes=[-2], mode=mode),  # pylint: disable=no-value-for-parameter
+      tl.Dropout(rate=act_dropout, shared_axes=[-2], mode=mode),
       activation(),
       tl.Dense(d_model),
-      tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),  # pylint: disable=no-value-for-parameter
+      tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),
   ]
 
 
@@ -65,9 +65,24 @@ def ChunkedFeedForward(d_model, d_ff, dropout, activation, act_dropout,
   ]
 
 
+def FeedForwardWithOptions(d_model, d_ff, dropout, ff_activation, ff_dropout,
+                           ff_chunk_size, ff_use_sru, ff_sparsity, mode):
+  """Feed-Forward block with all the options."""
+  if ff_use_sru:
+    return [tl.SRU(d_model) for _ in range(ff_use_sru)]
+  elif ff_sparsity:
+    return [tl.LayerNorm(),
+            tl.SparseFF(d_ff, n_elements_in_block=ff_sparsity,
+                        d_lowrank=d_ff // ff_sparsity),
+            tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode)]
+  else:
+    return [ChunkedFeedForward(d_model, d_ff, dropout, ff_activation,
+                               ff_dropout, ff_chunk_size, mode)]
+
+
 def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
-                 n_heads, attention_type,
-                 dropout, ff_activation, ff_use_sru, ff_chunk_size, mode):
+                 n_heads, attention_type, dropout, ff_activation,
+                 ff_dropout, ff_use_sru, ff_chunk_size, ff_sparsity, mode):
   """Reversible transformer decoder layer.
 
   Args:
@@ -79,8 +94,10 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
     attention_type: subclass of tl.BaseCausalAttention: attention class to use
     dropout: float: dropout rate (how much to drop out)
     ff_activation: the non-linearity in feed-forward layer
+    ff_dropout: the dropout rate in feed-forward layer
     ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
+    ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
     mode: str: 'train' or 'eval'
 
   Returns:
@@ -94,11 +111,9 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
       attention_layer=attention,
   )
 
-  if ff_use_sru:
-    feed_forward = [tl.SRU(d_model) for _ in range(ff_use_sru)]
-  else:
-    feed_forward = [ChunkedFeedForward(d_model, d_ff, dropout, ff_activation,
-                                       dropout, ff_chunk_size, mode)]
+  feed_forward = FeedForwardWithOptions(
+      d_model, d_ff, dropout, ff_activation, ff_dropout,
+      ff_chunk_size, ff_use_sru, ff_sparsity, mode)
 
   return [
       attention_half_residual,
@@ -148,6 +163,7 @@ def ReformerLM(vocab_size,
                ff_activation=tl.FastGelu,
                ff_use_sru=0,
                ff_chunk_size=0,
+               ff_sparsity=0,
                mode='train'):
   """Reversible transformer language model (only uses a decoder, no encoder).
 
@@ -169,6 +185,7 @@ def ReformerLM(vocab_size,
     ff_activation: the non-linearity in feed-forward layer
     ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
+    ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
     mode: str: 'train', 'eval', or 'predict'
 
   Returns:
@@ -196,8 +213,10 @@ def ReformerLM(vocab_size,
         attention_type=layer_attention_type,
         dropout=dropout,
         ff_activation=ff_activation,
+        ff_dropout=dropout,
         ff_use_sru=ff_use_sru,
         ff_chunk_size=ff_chunk_size,
+        ff_sparsity=ff_sparsity,
         mode=mode)
     decoder_blocks.append(decoder_block)
 
@@ -233,6 +252,7 @@ def ReformerShortenLM(vocab_size,
                       ff_activation=tl.FastGelu,
                       ff_use_sru=0,
                       ff_chunk_size=0,
+                      ff_sparsity=0,
                       mode='train'):
   """Reversible transformer language model with shortening.
 
@@ -266,6 +286,7 @@ def ReformerShortenLM(vocab_size,
     ff_activation: the non-linearity in feed-forward layer
     ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
+    ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
     mode: str: 'train' or 'eval'
 
   Returns:
@@ -302,8 +323,10 @@ def ReformerShortenLM(vocab_size,
         attention_type=layer_attention_type,
         dropout=dropout,
         ff_activation=ff_activation,
+        ff_dropout=dropout,
         ff_use_sru=ff_use_sru,
         ff_chunk_size=ff_chunk_size,
+        ff_sparsity=ff_sparsity,
         mode=mode)
     decoder_blocks.append(decoder_block)
 
@@ -343,7 +366,8 @@ def ReformerShortenLM(vocab_size,
 
 
 def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
-                 ff_dropout, mode):
+                 ff_dropout, ff_use_sru=0, ff_chunk_size=0, ff_sparsity=0,
+                 mode='train'):
   """Returns a list of layers that implements a Reformer encoder block.
 
   The input to the layer is a pair, (activations, mask), where the mask was
@@ -358,6 +382,9 @@ def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
     dropout: float: dropout rate (how much to drop out)
     ff_activation: the non-linearity in feed-forward layer
     ff_dropout: the dropout rate in feed-forward layer
+    ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
+    ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
+    ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
     mode: str: 'train' or 'eval'
 
   Returns:
@@ -379,8 +406,9 @@ def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
       attention_layer=attention,
   )
 
-  feed_forward = FeedForward(
-      d_model, d_ff, dropout, ff_activation, ff_dropout, mode)
+  feed_forward = FeedForwardWithOptions(
+      d_model, d_ff, dropout, ff_activation, ff_dropout,
+      ff_chunk_size, ff_use_sru, ff_sparsity, mode)
 
   return [
       attention_half_residual,
@@ -508,7 +536,7 @@ def Reformer(input_vocab_size,
   encoder_blocks = [
       EncoderBlock(
           d_model, d_ff, n_heads, tl.SelfAttention, dropout, ff_activation,
-          ff_dropout, mode)
+          ff_dropout, mode=mode)
       for _ in range(n_encoder_layers)]
   # pylint: enable=g-complex-comprehension
 
@@ -570,12 +598,13 @@ def Reformer2(input_vocab_size,
               max_len=2048,
               encoder_attention_type=tl.SelfAttention,
               encoder_decoder_attention_type=tl.SelfAttention,
-              axial_pos_shape='infinite',
+              axial_pos_shape='fixed-base',
               d_axial_pos_embs=None,
               ff_activation=tl.Relu,
               ff_use_sru=0,
               ff_chunk_size=0,
               ff_dropout=None,
+              ff_sparsity=0,
               mode='train'):
   """Reversible transformer encoder-decoder model.
 
@@ -609,18 +638,13 @@ def Reformer2(input_vocab_size,
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
     ff_dropout: float: (optional) separate dropout rate at feed-forward
       nonlinearity. This is called relu_dropout in T2T.
+    ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
     mode: str: 'train' or 'eval'
 
   Returns:
     A Reformer model as a layer that maps from a target, source pair to
     activations over a vocab set.
   """
-
-  # assert d_model // n_heads == d_attention_key, \
-  #     f'{d_model} // {n_heads} != {d_attention_key}'
-  # assert d_model // n_heads == d_attention_value, \
-  #     f'{d_model} // {n_heads} != {d_attention_value}'
-
   # The current API for custom gradients assumes that a layer must be
   # differentiable wrt all of its inputs, but the Transformer puts bool-dtype
   # masks on the stack. This causes jax to error, even though the so-called
@@ -651,8 +675,14 @@ def Reformer2(input_vocab_size,
   # pylint: disable=g-complex-comprehension
   encoder_blocks = [
       EncoderBlock(
-          d_model, d_ff, n_heads, encoder_attention_type, dropout,
-          ff_activation, ff_dropout, mode)
+          d_model, d_ff, n_heads, encoder_attention_type,
+          dropout=dropout,
+          ff_activation=ff_activation,
+          ff_dropout=ff_dropout,
+          ff_use_sru=ff_use_sru,
+          ff_chunk_size=ff_chunk_size,
+          ff_sparsity=ff_sparsity,
+          mode=mode)
       for _ in range(n_encoder_layers)]
   # pylint: enable=g-complex-comprehension
 
@@ -680,8 +710,10 @@ def Reformer2(input_vocab_size,
         attention_type=layer_attention_type,
         dropout=dropout,
         ff_activation=ff_activation,
+        ff_dropout=ff_dropout,
         ff_use_sru=ff_use_sru,
         ff_chunk_size=ff_chunk_size,
+        ff_sparsity=ff_sparsity,
         mode=mode)
     decoder_blocks.append(decoder_block)
 

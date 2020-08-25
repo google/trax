@@ -26,7 +26,7 @@ sequence_length = {'inputs': 512, 'targets': 512}
 mean_noise_span_length = 3.0
 noise_density = 0.15
 
-dropout = 0.2
+dropout = 0.1
 d_axial_pos_embs = (512, 512)  # should sum out to d_model
 ff_chunk_size = 0
 
@@ -66,8 +66,8 @@ batcher.data_streams = @tf_inputs.data_streams
 # With 64, we get an average of weights_per_core = 450, so 450*8 = 3600 tokens
 # per batch on a 2x2 TPU on average per step. T5's batch is ~65k tokens/batch.
 # i.e. 18x bigger than ours.
-batcher.batch_size_per_device = 32
-batcher.eval_batch_size = 32
+batcher.batch_size_per_device = 64
+batcher.eval_batch_size = 64
 batcher.max_eval_length = %max_length
 batcher.buckets_include_inputs_in_length=True
 batcher.id_to_mask = 0
@@ -127,6 +127,7 @@ Reformer2.dropout = %dropout  # was  0.1
 Reformer2.ff_activation = @trax.layers.Relu
 Reformer2.ff_dropout = 0.1
 Reformer2.ff_chunk_size = %ff_chunk_size
+Reformer2.ff_sparsity = 0
 Reformer2.max_len = %max_length
 Reformer2.mode = 'train'
 Reformer2.n_heads = %n_heads

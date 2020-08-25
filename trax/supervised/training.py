@@ -34,6 +34,7 @@ Key classes:
     training step number.
 """
 import collections
+from concurrent import futures
 import contextlib
 import functools
 import gzip as gzip_lib
@@ -937,3 +938,5 @@ def _make_weights_and_state_same_across_hosts(weights_and_state):
       lambda ws: ws / n_devices_total, weights_and_state)
 
   return weights_and_state
+
+

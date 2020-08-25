@@ -18,11 +18,11 @@
 from trax.fastmath import jax as jax_math
 from trax.fastmath import numpy as numpy_math
 from trax.fastmath import tf as tf_math
-from trax.fastmath.jax import nested_map
-from trax.fastmath.jax import nested_map_multiarg
-from trax.fastmath.jax import nested_stack
-from trax.fastmath.jax import nested_zip
-from trax.fastmath.jax import tree_flatten
-from trax.fastmath.jax import tree_leaves
-from trax.fastmath.jax import tree_unflatten
+from trax.fastmath.numpy import nested_map
+from trax.fastmath.numpy import nested_map_multiarg
+from trax.fastmath.numpy import nested_stack
+from trax.fastmath.numpy import nested_zip
+from trax.fastmath.numpy import tree_flatten
+from trax.fastmath.numpy import tree_leaves
+from trax.fastmath.numpy import tree_unflatten
 from trax.fastmath.ops import *  # pylint: disable=wildcard-import
