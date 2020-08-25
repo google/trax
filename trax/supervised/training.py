@@ -117,13 +117,17 @@ class Loop:
           their two inputs.
       tasks: List of TrainTask instances, which define the training data, loss
           function, and optimizer to be used in respective tasks in this
-          training loop.
+          training loop. It can also be a single TrainTask instance which is
+          treated in the same way as a singleton list.
       eval_model: Optional Trax layer, representing model used for evaluation,
         e.g., with dropout turned off. If None, the training model (model)
         will be used.
-      eval_tasks: List of lists of EvalTask instances, or None. The outer lists
-        goes over training tasks, the inner list contains the eval tasks for
-        a particular train task - so for a particular per-task head.
+      eval_tasks: List of EvalTask instances which define how to evaluate
+        the model: which validation data to use and which metrics to report.
+        Evaluation on each of the tasks and will run and be reported separately
+        which allows to score a model on different subtasks. This argument can
+        also be None, in which case no evals will be run, or a single
+        EvalTask, which wil be treated in the same way as a singleton list.
       output_dir: Path telling where to save outputs (evals and checkpoints).
           Can be None if both `eval_task` and `checkpoint_at` are None.
       checkpoint_at: Function (integer --> boolean) telling, for step n, whether
@@ -147,18 +151,11 @@ class Loop:
     if not tasks:
       raise ValueError('Must provide at least one training task.')
     if eval_tasks is None:
-      eval_tasks = ((),) * len(tasks)
+      eval_tasks = []
       eval_at = _never
     else:
       if not isinstance(eval_tasks, (list, tuple)):
-        eval_tasks = [[eval_tasks]]
-      if len(tasks) != len(eval_tasks):
-        raise ValueError('Eval task lists should match with train tasks.')
-      # Allow specifying single eval tasks per head outside of a nested list.
-      eval_tasks = tuple(
-          tasks if isinstance(tasks, (list, tuple)) else (tasks,)
-          for tasks in eval_tasks
-      )
+        eval_tasks = [eval_tasks]
 
     self._tasks = tasks
     self._model = model
@@ -200,10 +197,7 @@ class Loop:
       self._sync_weights_and_state_across_hosts()
 
     # Create the optimizer for the training loss function.
-    self._trainer_per_task = tuple(
-        self._init_trainer(task_index, task)
-        for (task_index, task) in enumerate(tasks)
-    )
+    self._trainer_per_task = tuple(self._init_trainer(task) for task in tasks)
     self.load_checkpoint()
 
     # Prepare eval components.
@@ -212,52 +206,46 @@ class Loop:
     loss_names = [task.loss_layer.name for task in self._tasks]
     metric_names = [
         name  # pylint: disable=g-complex-comprehension
-        for head_eval_tasks in self._eval_tasks
-        for eval_task in head_eval_tasks
+        for eval_task in self._eval_tasks
         for name in eval_task.metric_names
     ]
     self._rjust_len = max(map(len, loss_names + metric_names))
     self._evaluator_per_task = tuple(
-        tuple(  # pylint: disable=g-complex-comprehension
-            self._init_evaluator(train_task_index, eval_task)
-            for eval_task in head_eval_tasks
-        )
-        for (train_task_index, head_eval_tasks) in enumerate(self._eval_tasks)
-    )
+        self._init_evaluator(eval_task) for eval_task in self._eval_tasks)
 
     if self._output_dir is None:
       _log('Will not write evaluation metrics, because output_dir is None.')
 
-    def task_output_dir(task_index):
+    def task_output_dir(task_index, task_list):
       if self._output_dir is not None:
-        output_dir = os.path.join(self._output_dir, str(task_index))
+        if len(task_list) < 2:
+          output_dir = self._output_dir
+        else:
+          output_dir = os.path.join(self._output_dir, str(task_index))
         tf.io.gfile.makedirs(output_dir)
         return output_dir
       else:
         return None
-    self._output_dir_per_task = tuple(
-        map(task_output_dir, range(len(eval_tasks)))
-    )
+    self._output_dir_per_eval_task = [
+        task_output_dir(i, eval_tasks) for i in range(len(eval_tasks))]
+    self._output_dir_per_train_task = [
+        task_output_dir(i, tasks) for i in range(len(tasks))]
 
-  def _select_head(self, model, head_index):
-    return tl.Serial(model, tl.Select([head_index], n_in=len(self._tasks)))
-
-  def _init_trainer(self, head_index, task):
+  def _init_trainer(self, task):
     """Initializes the per-task trainer."""
     # Build the per-task model, sharing weights with other tasks.
     model_in_training = _model_with_ends(
-        self._select_head(self._model, head_index),
+        self._model,
         [task.loss_layer],
         shapes.signature(task.sample_batch)
     )
     task.optimizer.tree_init(model_in_training.weights)
     return optimizers.Trainer(model_in_training, task.optimizer)
 
-  def _init_evaluator(self, head_index, eval_task):
+  def _init_evaluator(self, eval_task):
     """Initializes the per-task evaluator."""
     model_with_metrics = _model_with_metrics(
-        self._select_head(self._eval_model, head_index), eval_task
-    )
+        self._eval_model, eval_task)
     return _Evaluator(
         # Replicate the eval part of weights and state.
         weights=self._for_n_devices(model_with_metrics.weights[1]),
@@ -305,9 +293,8 @@ class Loop:
     Args:
       n_steps: Stop training after completing n steps.
     """
-    with self._open_summary_writers(('train', 'eval')) as (
-        train_summary_writers, eval_summary_writers
-    ):
+    with self._open_summary_writers() as (
+        train_summary_writers, eval_summary_writers):
       loss_acc, step_acc = 0.0, 0
       start_time = time.time()
       optimizer_metrics_acc = collections.defaultdict(float)
@@ -509,8 +496,7 @@ class Loop:
       model_state = trainer.accelerated_loss_layer.state[0]
 
       for (eval_task, evaluator) in zip(
-          self._eval_tasks[task_index], self._evaluator_per_task[task_index]
-      ):
+          self._eval_tasks, self._evaluator_per_task):
         # evaluator.{weights,state} are already replicated.
         metrics_weights = (model_weights, evaluator.weights)
         metrics_state = (model_state, evaluator.state)
@@ -612,42 +598,30 @@ class Loop:
     self._eval_model.state = self._model.state
 
   @contextlib.contextmanager
-  def _open_summary_writers(self, subdirs):
+  def _open_summary_writers(self):
     """Opens the Jaxboard summary writers wrapped by context manager.
 
-    Args:
-      subdirs: List of names of subdirectories to open summary writers for.
-
     Yields:
-      Tuple (writers_1, ..., writers_n) of tuples of Jaxboard summary
-      writers wrapped in a GeneratorContextManager object. Elements of the outer
-      tuple correspond to subdirs. Elements of the inner tuples correspond to
-      tasks. If there was no output_dir provided, yields the same nested tuple
-      of None writers.
+      A pair (train_summary_writers, eval_summary_writers) of lists of
+      Jaxboard summary writers wrapped in a GeneratorContextManager object.
+      Elements of the lists correspond to the training and evaluation task
+      directories created during initialization. If there was no output_dir
+      provided, yields lists of Nones with the appropriate length.
     """
     if self._output_dir is not None:
-      _log(
-          'Metrics will be written in {}.'.format(self._output_dir),
-          stdout=False,
-      )
-      writer_per_subdir_and_task = tuple(
-          tuple(  # pylint: disable=g-complex-comprehension
-              jaxboard.SummaryWriter(os.path.join(output_dir, subdir))
-              for output_dir in self._output_dir_per_task
-          )
-          for subdir in subdirs
-      )
+      _log(f'Metrics will be written in {self._output_dir}.', stdout=False)
+      train_writers = [jaxboard.SummaryWriter(os.path.join(output_dir, 'train'))
+                       for output_dir in self._output_dir_per_train_task]
+      eval_writers = [jaxboard.SummaryWriter(os.path.join(output_dir, 'eval'))
+                      for output_dir in self._output_dir_per_eval_task]
       try:
-        yield writer_per_subdir_and_task
+        yield (train_writers, eval_writers)
       finally:
-        for writer_per_task in writer_per_subdir_and_task:
-          for writer in writer_per_task:
-            writer.close()
-        _log(
-            'Metrics were written in {}.'.format(self._output_dir), stdout=False
-        )
+        for writer in train_writers + eval_writers:
+          writer.close()
+        _log(f'Metrics were written in {self._output_dir}', stdout=False)
     else:
-      yield ((None,) * len(self._tasks),) * len(subdirs)
+      yield ([None] * len(self._tasks), [None] * len(self._eval_tasks))
 
 
 def _model_with_ends(model, end_layers, batch_signature):

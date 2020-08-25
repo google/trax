@@ -66,7 +66,7 @@ class TrainingTest(absltest.TestCase):
         _very_simple_data(),  # deliberately re-using training data
         [tl.L2Loss()],
         metric_names=['SGD.L2Loss'])
-    training_session = training.Loop(model, [task], eval_tasks=[[eval_task]],
+    training_session = training.Loop(model, [task], eval_tasks=[eval_task],
                                      eval_at=lambda step_n: step_n % 2 == 0)
     self.assertEqual(0, training_session.step)
     training_session.run(n_steps=15)
@@ -83,7 +83,7 @@ class TrainingTest(absltest.TestCase):
         _very_simple_data(),  # deliberately re-using training data
         [tl.L2Loss()],
         metric_names=['Momentum.L2Loss'])
-    training_session = training.Loop(model, [task], eval_tasks=[[eval_task]],
+    training_session = training.Loop(model, [task], eval_tasks=[eval_task],
                                      eval_at=lambda step_n: step_n % 2 == 0)
     self.assertEqual(0, training_session.step)
     training_session.run(n_steps=20)
@@ -97,7 +97,7 @@ class TrainingTest(absltest.TestCase):
     eval_task = training.EvalTask(
         _very_simple_data(),  # deliberately re-using training data
         [tl.L2Loss()])
-    training_session = training.Loop(model, [task], eval_tasks=[[eval_task]],
+    training_session = training.Loop(model, [task], eval_tasks=[eval_task],
                                      eval_at=lambda step_n: False)
     self.assertEqual(0, training_session.step)
     training_session.run(n_steps=10)
@@ -115,11 +115,11 @@ class TrainingTest(absltest.TestCase):
         [tl.L2Loss()],
         metric_names=['SGD.L2Loss'])
     tmp_dir = self.create_tempdir().full_path
-    training_session = training.Loop(model, [task], eval_tasks=[[eval_task]],
+    training_session = training.Loop(model, [task], eval_tasks=[eval_task],
                                      eval_at=lambda step_n: step_n % 2 == 0,
                                      output_dir=tmp_dir)
-    expected_train_metric_dir = os.path.join(tmp_dir, '0', 'train')
-    expected_eval_metric_dir = os.path.join(tmp_dir, '0', 'eval')
+    expected_train_metric_dir = os.path.join(tmp_dir, 'train')
+    expected_eval_metric_dir = os.path.join(tmp_dir, 'eval')
     for directory in [expected_train_metric_dir, expected_eval_metric_dir]:
       self.assertFalse(
           os.path.isdir(directory), 'Failed for directory %s.' % directory)
@@ -151,9 +151,12 @@ class TrainingTest(absltest.TestCase):
 
   def test_trains_on_two_tasks(self):
     """Trains a very simple network on two very simple tasks."""
-    model = tl.Serial(tl.Dense(3), tl.Branch(tl.Dense(1), tl.Dense(1)))
+    model = tl.Serial(tl.Dense(3), tl.Dense(1))
     task = training.TrainTask(
-        _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01))
+        _very_simple_data(),
+        tl.L2Loss(),
+        optimizers.SGD(.01)
+    )
     eval_task = training.EvalTask(
         _very_simple_data(),  # deliberately re-using training data
         [tl.L2Loss()],
@@ -161,7 +164,7 @@ class TrainingTest(absltest.TestCase):
     training_session = training.Loop(
         model,
         tasks=(task, task),
-        eval_tasks=([eval_task], [eval_task]),
+        eval_tasks=(eval_task, eval_task),
         which_task=lambda step_n: step_n % 2,
     )
     self.assertEqual(0, training_session.step)
@@ -172,26 +175,23 @@ class TrainingTest(absltest.TestCase):
 
   def test_can_predict_with_trained_model(self):
     model = tl.Serial(tl.Dense(3), tl.Branch(tl.Dense(1), tl.Dense(2)))
-    tasks = tuple(
-        training.TrainTask(  # pylint: disable=g-complex-comprehension
-            _very_simple_data(output_dim),
-            tl.L2Loss(),
-            optimizers.SGD(.01),
-        )
-        for output_dim in (1, 2)
-    )
-    eval_tasks = tuple(
-        [training.EvalTask(  # pylint: disable=g-complex-comprehension
-            # deliberately re-using training data
-            _very_simple_data(output_dim),
-            [tl.L2Loss()],
-        )]
-        for output_dim in (1, 2)
-    )
+    train_tasks, eval_tasks = [], []
+    for output_dim in [1, 2]:
+      # The head we select from the model: 0 for output_dim 1 and 1 for 2.
+      head_index = output_dim - 1
+      train_tasks.append(training.TrainTask(
+          _very_simple_data(output_dim),
+          tl.Serial(tl.Select([head_index], n_in=2), tl.L2Loss()),
+          optimizers.SGD(.01)
+      ))
+      eval_tasks.append(training.EvalTask(
+          _very_simple_data(output_dim),  # deliberately re-use training data
+          [tl.Serial(tl.Select([head_index], n_in=2), tl.L2Loss())]
+      ))
     tmp_dir = self.create_tempdir().full_path
     training_session = training.Loop(
         model,
-        tasks=tasks,
+        tasks=train_tasks,
         eval_tasks=eval_tasks,
         checkpoint_at=lambda step_n: step_n == 1,
         output_dir=tmp_dir,
