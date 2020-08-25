@@ -487,7 +487,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
          "rng_factory": rec.rng_factory, "shapes": shapes, "dtypes": dtypes,
          "onp_op": getattr(onp, rec.name), "lnp_op": getattr(lnp, rec.name),
          "check_dtypes": rec.check_dtypes, "tolerance": rec.tolerance,
-         "inexact": rec.inexact, 
+         "inexact": rec.inexact,
          "check_incomplete_shape": rec.check_incomplete_shape}
         for shapes in filter(
           _shapes_are_broadcast_compatible,
@@ -509,7 +509,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
     self._CheckAgainstNumpy(_promote_like_lnp(onp_op, inexact), lnp_op,
                             args_maker, check_dtypes=check_dtypes, tol=tol)
     self._CompileAndCheck(lnp_op, args_maker, check_dtypes=check_dtypes,
-                          atol=tol, rtol=tol, 
+                          atol=tol, rtol=tol,
                           check_incomplete_shape=check_incomplete_shape)
 
   @named_parameters(itertools.chain.from_iterable(
@@ -946,6 +946,54 @@ class LaxBackedNumpyTests(jtu.TestCase):
     rng = rng_factory()
     onp_fun = lambda x: onp.clip(x, a_min=a_min, a_max=a_max)
     lnp_fun = lambda x: lnp.clip(x, a_min=a_min, a_max=a_max)
+    args_maker = lambda: [rng(shape, dtype)]
+    tol_spec = {onp.float64: 2e-7}
+    tol = jtu.tolerance(dtype, tol_spec)
+    is_x32_scalar = (dtype in [onp.int32, onp.float32] and
+                     shape in [jtu.NUMPY_SCALAR_SHAPE, ()])
+    # Turns check_dtypes off if is_x32_scalar is True because there is
+    # a weird promotion inconsistency in numpy:
+    # ```
+    # print(np.result_type(np.ones([], np.int32), 1))
+    # print(np.result_type(np.ones([1], np.int32), 1))
+    # print(np.result_type(np.int32(1), 1))
+    # print(np.result_type(np.int32, 1))
+    # print(np.result_type(np.ones([], np.float32), 1))
+    # print(np.result_type(np.ones([1], np.float32), 1))
+    # print(np.result_type(np.float32(1), 1))
+    # print(np.result_type(np.float32, 1))
+    # ```
+    # >>>
+    # int64
+    # int32
+    # int64
+    # int32
+    # float64
+    # float32
+    # float64
+    # float32
+    self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker,
+                            check_dtypes=not is_x32_scalar, tol=tol)
+    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=not is_x32_scalar,
+                          atol=tol, rtol=tol, check_incomplete_shape=True)
+
+  @named_parameters(jtu.cases_from_list(
+      {"testcase_name": "_{}_amin={}_amax={}".format(
+          jtu.format_shape_dtype_string(shape, dtype), a_min, a_max),
+       "shape": shape, "dtype": dtype, "a_min": a_min, "a_max": a_max,
+       "rng_factory": jtu.rand_default}
+      for shape in array_shapes + [jtu.NUMPY_SCALAR_SHAPE]
+      for dtype in minus(number_dtypes, complex_dtypes)
+      for a_min, a_max in [(-1, None), (None, 1), (-1, 1),
+                           (-onp.ones(1), None),
+                           (None, onp.ones(1)),
+                           (-onp.ones(1), onp.ones(1))]))
+  @new_test
+  def testClipAsMethodStaticBounds(
+      self, shape, dtype, a_min, a_max, rng_factory):
+    rng = rng_factory()
+    onp_fun = lambda x: onp.clip(x, a_min=a_min, a_max=a_max)
+    lnp_fun = lambda x: lnp.asarray(x).clip(a_min=a_min, a_max=a_max)
     args_maker = lambda: [rng(shape, dtype)]
     tol_spec = {onp.float64: 2e-7}
     tol = jtu.tolerance(dtype, tol_spec)
