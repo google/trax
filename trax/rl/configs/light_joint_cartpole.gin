@@ -82,5 +82,5 @@ AWRJoint.max_slice_length = 1
 # Parameters for train_rl:
 # ==============================================================================
 train_rl.light_rl = True
-train_rl.light_rl_trainer = @trax.rl.PPOJoint
+train_rl.light_rl_agent = @trax.rl.agents.PPOJoint
 train_rl.n_epochs = 10000

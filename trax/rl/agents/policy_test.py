@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Tests for RL training."""
+"""Tests for policy agents."""
 
 import functools
 import math
@@ -29,11 +29,11 @@ from trax import models
 from trax import optimizers as opt
 from trax import test_utils
 from trax.rl import task as rl_task
-from trax.rl import training
+from trax.rl.agents import policy
 from trax.supervised import lr_schedules
 
 
-class TrainingTest(absltest.TestCase):
+class PolicyTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
@@ -50,7 +50,7 @@ class TrainingTest(absltest.TestCase):
         ),
     )
     tmp_dir = self.create_tempdir().full_path
-    trainer1 = training.PolicyGradient(
+    trainer1 = policy.PolicyGradient(
         task,
         policy_model=model,
         policy_optimizer=opt.Adam,
@@ -64,7 +64,7 @@ class TrainingTest(absltest.TestCase):
     self.assertEqual(trainer1.current_epoch, 2)
     self.assertEqual(trainer1._policy_trainer.step, 2)
     # Trainer 2 starts where trainer 1 stopped.
-    trainer2 = training.PolicyGradient(
+    trainer2 = policy.PolicyGradient(
         task,
         policy_model=model,
         policy_optimizer=opt.Adam,
@@ -77,7 +77,7 @@ class TrainingTest(absltest.TestCase):
     self.assertEqual(trainer2.current_epoch, 3)
     self.assertEqual(trainer2._policy_trainer.step, 3)
     # Trainer 3 has 2x steps-per-epoch, but epoch 3, should raise an error.
-    trainer3 = training.PolicyGradient(
+    trainer3 = policy.PolicyGradient(
         task,
         policy_model=model,
         policy_optimizer=opt.Adam,
@@ -95,7 +95,7 @@ class TrainingTest(absltest.TestCase):
     # Trainer 3 still should fail as steps between evals are 2, cannot do 1.
     self.assertRaises(ValueError, trainer3.run)
     # Trainer 4 does 1 step per eval, should train 1 step in epoch 2.
-    trainer4 = training.PolicyGradient(
+    trainer4 = policy.PolicyGradient(
         task,
         policy_model=model,
         policy_optimizer=opt.Adam,
@@ -127,7 +127,7 @@ class TrainingTest(absltest.TestCase):
         constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
     max_avg_returns = -math.inf
     for _ in range(5):
-      trainer = training.PolicyGradient(
+      trainer = policy.PolicyGradient(
           task,
           policy_model=model,
           policy_optimizer=opt.Adam,

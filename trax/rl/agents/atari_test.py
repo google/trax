@@ -23,8 +23,8 @@ from absl.testing import absltest
 from trax import models
 from trax import optimizers as opt
 from trax.models import atari_cnn
-from trax.rl import actor_critic
 from trax.rl import task as rl_task
+from trax.rl.agents import actor_critic
 from trax.supervised import lr_schedules
 
 

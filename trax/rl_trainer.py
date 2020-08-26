@@ -45,7 +45,7 @@ from trax import fastmath
 from trax import rl  # pylint: disable=unused-import
 from trax import trainer_flags  # pylint: disable=unused-import
 from trax.rl import task as rl_task
-from trax.rl import training as light_trainers
+from trax.rl.agents import policy
 from trax.tf_numpy import numpy as tf_np
 
 
@@ -71,7 +71,7 @@ def train_rl(
     trajectory_dump_dir=None,
     num_actions=None,
     light_rl=True,
-    light_rl_trainer=light_trainers.RLTrainer,
+    light_rl_agent=policy.PolicyGradient,
 ):
   """Train the RL agent.
 
@@ -94,7 +94,7 @@ def train_rl(
     num_actions: None unless one wants to use the discretization wrapper. Then
       num_actions specifies the number of discrete actions.
     light_rl: whether to use the light RL setting (experimental).
-    light_rl_trainer: whichh light RL trainer to use (experimental).
+    light_rl_agent: whichh light RL agent to use (experimental).
   """
   tf_np.set_allow_float64(FLAGS.tf_allow_float64)
 
@@ -118,7 +118,7 @@ def train_rl(
 
 
   if light_rl:
-    trainer = light_rl_trainer(task=task, output_dir=output_dir)
+    trainer = light_rl_agent(task=task, output_dir=output_dir)
     def light_training_loop():
       """Run the trainer for n_epochs and call close on it."""
       try:

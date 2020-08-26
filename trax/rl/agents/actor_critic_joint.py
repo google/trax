@@ -23,15 +23,15 @@ from trax import layers as tl
 from trax import supervised
 from trax.fastmath import numpy as jnp
 from trax.fastmath import stop_gradient
-from trax.rl import actor_critic
 from trax.rl import distributions
 from trax.rl import rl_layers
-from trax.rl import training as rl_training
+from trax.rl.agents import actor_critic
+from trax.rl.agents import base
 from trax.supervised import lr_schedules as lr
 
 
 # pylint: disable=g-long-lambda
-class ActorCriticJointAgent(rl_training.Agent):
+class ActorCriticJointAgent(base.Agent):
   """Trains a joint policy-and-value model using actor-critic methods."""
 
   def __init__(self, task,
@@ -195,7 +195,7 @@ class ActorCriticJointAgent(rl_training.Agent):
 
   def train_epoch(self):
     """Trains RL for one epoch."""
-    n_evals = rl_training.remaining_evals(
+    n_evals = base.remaining_evals(
         self._trainer.step,
         self._epoch,
         self._train_steps_per_epoch,

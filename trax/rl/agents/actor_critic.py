@@ -30,11 +30,12 @@ from trax import shapes
 from trax import supervised
 from trax.fastmath import numpy as jnp
 from trax.rl import advantages as rl_advantages
-from trax.rl import training as rl_training
+from trax.rl.agents import base
+from trax.rl.agents import policy
 from trax.supervised import lr_schedules as lr
 
 
-class ActorCriticAgent(rl_training.PolicyAgent):
+class ActorCriticAgent(policy.PolicyAgent):
   """Trains policy and value models using actor-critic methods.
 
   Attrs:
@@ -328,7 +329,7 @@ class ActorCriticAgent(rl_training.PolicyAgent):
     self._value_eval_model.weights = self._value_trainer.model_weights
     self._value_eval_model.state = self._value_trainer.model_state
 
-    n_value_evals = rl_training.remaining_evals(
+    n_value_evals = base.remaining_evals(
         self._value_trainer.step,
         self._epoch,
         self._value_train_steps_per_epoch,
@@ -344,7 +345,7 @@ class ActorCriticAgent(rl_training.PolicyAgent):
       _copy_model_weights_and_state(
           0, self._n_shared_layers, self._value_trainer, self._policy_trainer
       )
-    n_policy_evals = rl_training.remaining_evals(
+    n_policy_evals = base.remaining_evals(
         self._policy_trainer.step,
         self._epoch,
         self._policy_train_steps_per_epoch,

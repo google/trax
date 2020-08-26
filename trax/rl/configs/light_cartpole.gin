@@ -173,5 +173,5 @@ SamplingAWR.reweight = False
 # Parameters for train_rl:
 # ==============================================================================
 train_rl.light_rl = True
-train_rl.light_rl_trainer = @trax.rl.PolicyGradient
+train_rl.light_rl_agent = @trax.rl.agents.PolicyGradient
 train_rl.n_epochs = 200

@@ -13,28 +13,3 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Trax RL library."""
-
-import gin
-
-from trax.rl import actor_critic
-from trax.rl import actor_critic_joint
-from trax.rl import training
-
-
-def configure_rl(*args, **kwargs):
-  kwargs['module'] = 'trax.rl'
-  kwargs['blacklist'] = ['task', 'output_dir']
-  return gin.external_configurable(*args, **kwargs)
-
-
-A2C = configure_rl(actor_critic.A2C)
-AWR = configure_rl(actor_critic.AWR)
-PPO = configure_rl(actor_critic.PPO)
-SamplingAWR = configure_rl(actor_critic.SamplingAWR)
-
-A2CJoint = configure_rl(actor_critic_joint.A2CJoint)
-AWRJoint = configure_rl(actor_critic_joint.AWRJoint)
-PPOJoint = configure_rl(actor_critic_joint.PPOJoint)
-
-PolicyGradient = configure_rl(training.PolicyGradient)

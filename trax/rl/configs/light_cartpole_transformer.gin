@@ -71,5 +71,5 @@ AWR.added_policy_slice_length = 1
 # Parameters for train_rl:
 # ==============================================================================
 train_rl.light_rl = True
-train_rl.light_rl_trainer = @trax.rl.AWR
+train_rl.light_rl_agent = @trax.rl.agents.AWR
 train_rl.n_epochs = 50
