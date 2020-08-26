@@ -209,6 +209,7 @@ autodoc_mock_imports = [
     'gin',
     'jax',
     'numpy',
+    'scipy',
     'tensorflow',
     'tensorflow_datasets',
     'funcsigs',
