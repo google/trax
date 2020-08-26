@@ -74,74 +74,74 @@ RLTask.num_stacked_frames = 4
 # ==============================================================================
 td_lambda.lambda_ = 0.95
 
-# Parameters for AWRTrainer:
+# Parameters for AWR:
 # ==============================================================================
-AWRTrainer.value_model = @trax.models.Value
-AWRTrainer.value_optimizer = @trax.optimizers.Adam
-AWRTrainer.value_batch_size = %batch_size
-AWRTrainer.value_train_steps_per_epoch = %value_train_steps
-AWRTrainer.value_lr_schedule = @value/multifactor
-AWRTrainer.value_evals_per_epoch = 1
-AWRTrainer.value_eval_steps = 10
-AWRTrainer.policy_model = @trax.models.Policy
-AWRTrainer.policy_optimizer = @trax.optimizers.Adam
-AWRTrainer.policy_batch_size = %batch_size
-AWRTrainer.policy_train_steps_per_epoch = %policy_train_steps
-AWRTrainer.policy_lr_schedule = @policy/multifactor
-AWRTrainer.policy_evals_per_epoch = 1
-AWRTrainer.policy_eval_steps = 10
-AWRTrainer.n_trajectories_per_epoch = None
-AWRTrainer.n_interactions_per_epoch = 10000
-AWRTrainer.n_eval_episodes = 1
-AWRTrainer.eval_steps = [2000]
-AWRTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
-AWRTrainer.beta = 1.0
-AWRTrainer.w_max = 100
-AWRTrainer.max_slice_length = 1
-AWRTrainer.added_policy_slice_length = %added_policy_slice_length
-AWRTrainer.n_replay_epochs = 2
-AWRTrainer.scale_value_targets = True
-AWRTrainer.n_shared_layers = 0
-AWRTrainer.q_value = True
-AWRTrainer.q_value_n_samples = %q_value_n_samples
-AWRTrainer.q_value_aggregate_max = True
+AWR.value_model = @trax.models.Value
+AWR.value_optimizer = @trax.optimizers.Adam
+AWR.value_batch_size = %batch_size
+AWR.value_train_steps_per_epoch = %value_train_steps
+AWR.value_lr_schedule = @value/multifactor
+AWR.value_evals_per_epoch = 1
+AWR.value_eval_steps = 10
+AWR.policy_model = @trax.models.Policy
+AWR.policy_optimizer = @trax.optimizers.Adam
+AWR.policy_batch_size = %batch_size
+AWR.policy_train_steps_per_epoch = %policy_train_steps
+AWR.policy_lr_schedule = @policy/multifactor
+AWR.policy_evals_per_epoch = 1
+AWR.policy_eval_steps = 10
+AWR.n_trajectories_per_epoch = None
+AWR.n_interactions_per_epoch = 10000
+AWR.n_eval_episodes = 1
+AWR.eval_steps = [2000]
+AWR.advantage_estimator = @trax.rl.advantages.td_lambda
+AWR.beta = 1.0
+AWR.w_max = 100
+AWR.max_slice_length = 1
+AWR.added_policy_slice_length = %added_policy_slice_length
+AWR.n_replay_epochs = 2
+AWR.scale_value_targets = True
+AWR.n_shared_layers = 0
+AWR.q_value = True
+AWR.q_value_n_samples = %q_value_n_samples
+AWR.q_value_aggregate_max = True
 
-# Parameters for SamplingAWRTrainer:
+# Parameters for SamplingAWR:
 # ==============================================================================
-SamplingAWRTrainer.value_model = @trax.models.Value
-SamplingAWRTrainer.value_optimizer = @trax.optimizers.Adam
-SamplingAWRTrainer.value_batch_size = %batch_size
-SamplingAWRTrainer.value_train_steps_per_epoch = %value_train_steps
-SamplingAWRTrainer.value_lr_schedule = @value/multifactor
-SamplingAWRTrainer.value_evals_per_epoch = 2
-SamplingAWRTrainer.value_eval_steps = 1
-SamplingAWRTrainer.policy_model = @trax.models.Policy
-SamplingAWRTrainer.policy_optimizer = @trax.optimizers.Adam
-SamplingAWRTrainer.policy_batch_size = %batch_size
-SamplingAWRTrainer.policy_train_steps_per_epoch = %policy_train_steps
-SamplingAWRTrainer.policy_lr_schedule = @policy/multifactor
-SamplingAWRTrainer.policy_evals_per_epoch = 2
-SamplingAWRTrainer.policy_eval_steps = 1
-SamplingAWRTrainer.n_trajectories_per_epoch = None
-SamplingAWRTrainer.n_interactions_per_epoch = 10000
-SamplingAWRTrainer.n_eval_episodes = 1
-SamplingAWRTrainer.eval_steps = [2000]
-SamplingAWRTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
-SamplingAWRTrainer.beta = 1.0
-SamplingAWRTrainer.w_max = 100
-SamplingAWRTrainer.max_slice_length = 1
-SamplingAWRTrainer.added_policy_slice_length = %added_policy_slice_length
-SamplingAWRTrainer.n_replay_epochs = 2
-SamplingAWRTrainer.scale_value_targets = True
-SamplingAWRTrainer.n_shared_layers = 0
-SamplingAWRTrainer.q_value_n_samples = %q_value_n_samples
-SamplingAWRTrainer.q_value_aggregate_max = True
-SamplingAWRTrainer.reweight = False
+SamplingAWR.value_model = @trax.models.Value
+SamplingAWR.value_optimizer = @trax.optimizers.Adam
+SamplingAWR.value_batch_size = %batch_size
+SamplingAWR.value_train_steps_per_epoch = %value_train_steps
+SamplingAWR.value_lr_schedule = @value/multifactor
+SamplingAWR.value_evals_per_epoch = 2
+SamplingAWR.value_eval_steps = 1
+SamplingAWR.policy_model = @trax.models.Policy
+SamplingAWR.policy_optimizer = @trax.optimizers.Adam
+SamplingAWR.policy_batch_size = %batch_size
+SamplingAWR.policy_train_steps_per_epoch = %policy_train_steps
+SamplingAWR.policy_lr_schedule = @policy/multifactor
+SamplingAWR.policy_evals_per_epoch = 2
+SamplingAWR.policy_eval_steps = 1
+SamplingAWR.n_trajectories_per_epoch = None
+SamplingAWR.n_interactions_per_epoch = 10000
+SamplingAWR.n_eval_episodes = 1
+SamplingAWR.eval_steps = [2000]
+SamplingAWR.advantage_estimator = @trax.rl.advantages.td_lambda
+SamplingAWR.beta = 1.0
+SamplingAWR.w_max = 100
+SamplingAWR.max_slice_length = 1
+SamplingAWR.added_policy_slice_length = %added_policy_slice_length
+SamplingAWR.n_replay_epochs = 2
+SamplingAWR.scale_value_targets = True
+SamplingAWR.n_shared_layers = 0
+SamplingAWR.q_value_n_samples = %q_value_n_samples
+SamplingAWR.q_value_aggregate_max = True
+SamplingAWR.reweight = False
 
 # Parameters for train_rl:
 # ==============================================================================
 train_rl.light_rl = True
-train_rl.light_rl_trainer = @trax.rl.SamplingAWRTrainer
+train_rl.light_rl_trainer = @trax.rl.SamplingAWR
 train_rl.n_epochs = 1000
 
 # TODO(pkozakowski): Add PPO config here once we get it to work on MuJoCo.

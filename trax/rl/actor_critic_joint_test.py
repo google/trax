@@ -45,7 +45,7 @@ class ActorCriticJointTest(absltest.TestCase):
         body=lambda mode: tl.Serial(tl.Dense(64), tl.Relu()),
     )
     tmp_dir = self.create_tempdir().full_path
-    trainer1 = actor_critic_joint.AWRJointTrainer(
+    trainer1 = actor_critic_joint.AWRJoint(
         task,
         joint_model=joint_model,
         optimizer=opt.Adam,
@@ -56,8 +56,8 @@ class ActorCriticJointTest(absltest.TestCase):
     trainer1.run(2)
     self.assertEqual(trainer1.current_epoch, 2)
     self.assertEqual(trainer1._trainer.step, 2)
-    # Trainer 2 starts where trainer 1 stopped.
-    trainer2 = actor_critic_joint.AWRJointTrainer(
+    # Agent 2 starts where agent 1 stopped.
+    trainer2 = actor_critic_joint.AWRJoint(
         task,
         joint_model=joint_model,
         optimizer=opt.Adam,
@@ -84,7 +84,7 @@ class ActorCriticJointTest(absltest.TestCase):
     lr = lambda: lr_schedules.multifactor(  # pylint: disable=g-long-lambda
         constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
 
-    trainer = actor_critic_joint.PPOJointTrainer(
+    trainer = actor_critic_joint.PPOJoint(
         task,
         joint_model=joint_model,
         optimizer=opt.Adam,
@@ -105,7 +105,7 @@ class ActorCriticJointTest(absltest.TestCase):
     )
     lr = lambda: lr_schedules.multifactor(  # pylint: disable=g-long-lambda
         constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
-    trainer = actor_critic_joint.AWRJointTrainer(
+    trainer = actor_critic_joint.AWRJoint(
         task,
         joint_model=joint_model,
         optimizer=opt.Adam,
@@ -126,7 +126,7 @@ class ActorCriticJointTest(absltest.TestCase):
     )
     lr = lambda: lr_schedules.multifactor(  # pylint: disable=g-long-lambda
         constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
-    trainer = actor_critic_joint.A2CJointTrainer(
+    trainer = actor_critic_joint.A2CJoint(
         task,
         joint_model=joint_model,
         optimizer=opt.RMSProp,
@@ -144,7 +144,7 @@ class ActorCriticJointTest(absltest.TestCase):
     body = lambda mode: models.TransformerDecoder(  # pylint: disable=g-long-lambda
         d_model=32, d_ff=32, n_layers=1, n_heads=1, mode=mode)
     joint_model = functools.partial(models.PolicyAndValue, body=body)
-    trainer = actor_critic_joint.AWRJointTrainer(
+    trainer = actor_critic_joint.AWRJoint(
         task,
         joint_model=joint_model,
         optimizer=opt.Adam,
@@ -162,7 +162,7 @@ class ActorCriticJointTest(absltest.TestCase):
     body = lambda mode: models.TransformerDecoder(  # pylint: disable=g-long-lambda
         d_model=32, d_ff=32, n_layers=1, n_heads=1, mode=mode)
     joint_model = functools.partial(models.PolicyAndValue, body=body)
-    trainer = actor_critic_joint.A2CJointTrainer(
+    trainer = actor_critic_joint.A2CJoint(
         task,
         joint_model=joint_model,
         optimizer=opt.RMSProp,

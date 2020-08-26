@@ -44,43 +44,43 @@ RLTask.initial_trajectories = 0
 RLTask.gamma = 0.99
 RLTask.max_steps = 200
 
-# Parameters for PPOTrainer:
+# Parameters for PPO:
 # ==============================================================================
-PPOJointTrainer.joint_model = @trax.models.PolicyAndValue
-PPOJointTrainer.optimizer = @trax.optimizers.Adam
-PPOJointTrainer.batch_size = 256
-PPOJointTrainer.train_steps_per_epoch = 30
-PPOJointTrainer.lr_schedule = @multifactor
-PPOJointTrainer.n_trajectories_per_epoch = 50
-PPOJointTrainer.epsilon = 0.1
-PPOJointTrainer.value_loss_coeff = 0.1
-PPOJointTrainer.entropy_coeff = 0.01
+PPOJoint.joint_model = @trax.models.PolicyAndValue
+PPOJoint.optimizer = @trax.optimizers.Adam
+PPOJoint.batch_size = 256
+PPOJoint.train_steps_per_epoch = 30
+PPOJoint.lr_schedule = @multifactor
+PPOJoint.n_trajectories_per_epoch = 50
+PPOJoint.epsilon = 0.1
+PPOJoint.value_loss_coeff = 0.1
+PPOJoint.entropy_coeff = 0.01
 
-# Parameters for A2CTrainer:
+# Parameters for A2C:
 # ==============================================================================
-A2CJointTrainer.joint_model = @trax.models.PolicyAndValue
-A2CJointTrainer.optimizer = @trax.optimizers.Adam
-A2CJointTrainer.batch_size = 256
-A2CJointTrainer.train_steps_per_epoch = 30
-A2CJointTrainer.lr_schedule = @multifactor
-A2CJointTrainer.n_trajectories_per_epoch = 50
-A2CJointTrainer.value_loss_coeff = 0.1
-A2CJointTrainer.entropy_coeff = 0.01
+A2CJoint.joint_model = @trax.models.PolicyAndValue
+A2CJoint.optimizer = @trax.optimizers.Adam
+A2CJoint.batch_size = 256
+A2CJoint.train_steps_per_epoch = 30
+A2CJoint.lr_schedule = @multifactor
+A2CJoint.n_trajectories_per_epoch = 50
+A2CJoint.value_loss_coeff = 0.1
+A2CJoint.entropy_coeff = 0.01
 
-# Parameters for AWRTrainer:
+# Parameters for AWR:
 # ==============================================================================
-AWRJointTrainer.joint_model = @trax.models.PolicyAndValue
-AWRJointTrainer.optimizer = @trax.optimizers.Adam
-AWRJointTrainer.batch_size = 32
-AWRJointTrainer.train_steps_per_epoch = 1000
-AWRJointTrainer.lr_schedule = @multifactor
-AWRJointTrainer.n_trajectories_per_epoch = 10
-AWRJointTrainer.beta = 1.0
-AWRJointTrainer.w_max = 20
-AWRJointTrainer.max_slice_length = 1
+AWRJoint.joint_model = @trax.models.PolicyAndValue
+AWRJoint.optimizer = @trax.optimizers.Adam
+AWRJoint.batch_size = 32
+AWRJoint.train_steps_per_epoch = 1000
+AWRJoint.lr_schedule = @multifactor
+AWRJoint.n_trajectories_per_epoch = 10
+AWRJoint.beta = 1.0
+AWRJoint.w_max = 20
+AWRJoint.max_slice_length = 1
 
 # Parameters for train_rl:
 # ==============================================================================
 train_rl.light_rl = True
-train_rl.light_rl_trainer = @trax.rl.PPOJointTrainer
+train_rl.light_rl_trainer = @trax.rl.PPOJoint
 train_rl.n_epochs = 10000

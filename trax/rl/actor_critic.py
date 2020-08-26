@@ -34,7 +34,7 @@ from trax.rl import training as rl_training
 from trax.supervised import lr_schedules as lr
 
 
-class ActorCriticTrainer(rl_training.PolicyTrainer):
+class ActorCriticAgent(rl_training.PolicyAgent):
   """Trains policy and value models using actor-critic methods.
 
   Attrs:
@@ -59,7 +59,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
                q_value=False,
                q_value_aggregate_max=True,
                q_value_n_samples=1,
-               **kwargs):  # Arguments of PolicyTrainer come here.
+               **kwargs):  # Arguments of PolicyAgent come here.
     """Configures the actor-critic trainer.
 
     Args:
@@ -89,7 +89,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
       q_value_aggregate_max: If `True`, aggregate Q-values with max (or mean).
       q_value_n_samples: Number of samples to average over when calculating
           baselines based on Q-values.
-      **kwargs: Arguments for `PolicyTrainer` superclass.
+      **kwargs: Arguments for `PolicyAgent` superclass.
     """
     self._n_shared_layers = n_shared_layers
     self._value_batch_size = value_batch_size
@@ -98,7 +98,7 @@ class ActorCriticTrainer(rl_training.PolicyTrainer):
     self._value_eval_steps = value_eval_steps
 
     # The 2 below will be initalized in super.__init__ anyway, but are needed
-    # to construct value batches which are needed before PolicyTrainer init
+    # to construct value batches which are needed before PolicyAgent init
     # since policy input creation calls the value model -- hence this code.
     self._task = task
     self._max_slice_length = kwargs.get('max_slice_length', 1)
@@ -405,7 +405,7 @@ def _copy_model_weights_and_state(  # pylint: disable=invalid-name
 ### Implementations of common actor-critic algorithms.
 
 
-class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
+class AdvantageBasedActorCriticAgent(ActorCriticAgent):
   """Base class for advantage-based actor-critic algorithms."""
 
   def __init__(
@@ -519,7 +519,7 @@ class AdvantageBasedActorCriticTrainer(ActorCriticTrainer):
     ])
 
 
-class A2CTrainer(AdvantageBasedActorCriticTrainer):
+class A2C(AdvantageBasedActorCriticAgent):
   """Trains policy and value models using the A2C algortithm."""
 
   on_policy = True
@@ -561,7 +561,7 @@ class A2CTrainer(AdvantageBasedActorCriticTrainer):
     return tl.Fn('A2CLoss', f)
 
 
-class PPOTrainer(AdvantageBasedActorCriticTrainer):
+class PPO(AdvantageBasedActorCriticAgent):
   """The Proximal Policy Optimization Algorithm aka PPO.
 
   Trains policy and value models using the PPO algortithm.
@@ -670,7 +670,7 @@ def AWRLoss(beta, w_max):  # pylint: disable=invalid-name
   return tl.Fn('AWRLoss', f)
 
 
-class AWRTrainer(AdvantageBasedActorCriticTrainer):
+class AWR(AdvantageBasedActorCriticAgent):
   """Trains policy and value models using AWR."""
 
   on_policy = False
@@ -705,7 +705,7 @@ def SamplingAWRLoss(beta, w_max, reweight=False, sampled_all_discrete=False):  #
   return tl.Fn('SamplingAWRLoss', f)
 
 
-class SamplingAWRTrainer(AdvantageBasedActorCriticTrainer):
+class SamplingAWR(AdvantageBasedActorCriticAgent):
   """Trains policy and value models using Sampling AWR."""
 
   on_policy = False

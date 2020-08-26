@@ -37,8 +37,8 @@ from trax.rl import task as rl_task
 from trax.supervised import lr_schedules as lr
 
 
-class RLTrainer:
-  """Abstract class for RL Trainers, presenting the required API."""
+class Agent:
+  """Abstract class for RL agents, presenting the required API."""
 
   def __init__(self, task: rl_task.RLTask,
                n_trajectories_per_epoch=None,
@@ -48,7 +48,7 @@ class RLTrainer:
                only_eval=False,
                output_dir=None,
                timestep_to_np=None):
-    """Configures the RL Trainer.
+    """Configures the Agent.
 
     Note that subclasses can have many more arguments, which will be configured
     using defaults and gin. But task and output_dir are passed explicitly.
@@ -164,7 +164,7 @@ class RLTrainer:
     raise NotImplementedError
 
   def train_epoch(self):
-    """Trains this RL Trainer for one epoch -- main RL logic goes here."""
+    """Trains this Agent for one epoch -- main RL logic goes here."""
     raise NotImplementedError
 
   def run(self, n_epochs=1, n_epochs_is_total_epochs=False):
@@ -241,12 +241,12 @@ class RLTrainer:
     self._sw = None
 
 
-class PolicyTrainer(RLTrainer):
-  """Trainer that uses a deep learning model for policy.
+class PolicyAgent(Agent):
+  """Agent that uses a deep learning model for policy.
 
-  Many deep RL methods, such as policy gradeints (reinforce) or actor-critic
-  ones fall into this category, so a lot of classes will be subclasses of this
-  one. But some methods only have a value or Q function, these are different.
+  Many deep RL methods, such as policy gradient (REINFORCE) or actor-critic fall
+  into this category, so a lot of classes will be subclasses of this one. But
+  some methods only have a value or Q function, these are different.
   """
 
   def __init__(self, task, policy_model=None, policy_optimizer=None,
@@ -276,7 +276,7 @@ class PolicyTrainer(RLTrainer):
         for evaluation purposes, but they are not recorded.
       max_slice_length: the maximum length of trajectory slices to use.
       output_dir: Path telling where to save outputs (evals and checkpoints).
-      **kwargs: arguments for the superclass RLTrainer.
+      **kwargs: arguments for the superclass Agent.
     """
     super().__init__(
         task,
@@ -403,7 +403,7 @@ def remaining_evals(cur_step, epoch, train_steps_per_epoch, evals_per_epoch):
   return evals_per_epoch - (done_steps_this_epoch // train_steps_per_eval)
 
 
-class PolicyGradientTrainer(PolicyTrainer):
+class PolicyGradient(PolicyAgent):
   """Trains a policy model using policy gradient on the given RLTask."""
 
   @property

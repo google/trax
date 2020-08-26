@@ -44,7 +44,7 @@ class ActorCriticTest(absltest.TestCase):
     policy_model = functools.partial(models.Policy, body=body)
     value_model = functools.partial(models.Value, body=body)
     tmp_dir = self.create_tempdir().full_path
-    trainer1 = actor_critic.A2CTrainer(
+    trainer1 = actor_critic.A2C(
         task,
         value_model=value_model,
         value_optimizer=opt.Adam,
@@ -62,7 +62,7 @@ class ActorCriticTest(absltest.TestCase):
     self.assertEqual(trainer1._value_trainer.step, 2)
     self.assertEqual(trainer1._policy_trainer.step, 4)
     # Trainer 2 starts where trainer 1 stopped.
-    trainer2 = actor_critic.A2CTrainer(
+    trainer2 = actor_critic.A2C(
         task,
         value_model=value_model,
         value_optimizer=opt.Adam,
@@ -91,7 +91,7 @@ class ActorCriticTest(absltest.TestCase):
     value_model = functools.partial(models.Value, body=body)
     lr = lambda: lr_schedules.multifactor(  # pylint: disable=g-long-lambda
         constant=1e-4, warmup_steps=100, factors='constant * linear_warmup')
-    trainer = actor_critic.A2CTrainer(
+    trainer = actor_critic.A2C(
         task,
         n_shared_layers=1,
         value_model=value_model,
@@ -121,7 +121,7 @@ class ActorCriticTest(absltest.TestCase):
     body = lambda mode: tl.Serial(tl.Dense(64), tl.Relu())
     policy_model = functools.partial(models.Policy, body=body)
     value_model = functools.partial(models.Value, body=body)
-    trainer = actor_critic.PPOTrainer(
+    trainer = actor_critic.PPO(
         task,
         n_shared_layers=1,
         value_model=value_model,
@@ -149,7 +149,7 @@ class ActorCriticTest(absltest.TestCase):
     value_model = functools.partial(models.Value, body=body)
     lr = lambda: lr_schedules.multifactor(  # pylint: disable=g-long-lambda
         constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
-    trainer = actor_critic.AWRTrainer(
+    trainer = actor_critic.AWR(
         task,
         n_shared_layers=0,
         max_slice_length=2,
@@ -178,7 +178,7 @@ class ActorCriticTest(absltest.TestCase):
     value_model = functools.partial(models.Value, body=body)
     lr = lambda: lr_schedules.multifactor(  # pylint: disable=g-long-lambda
         constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
-    trainer = actor_critic.SamplingAWRTrainer(
+    trainer = actor_critic.SamplingAWR(
         task,
         n_shared_layers=0,
         added_policy_slice_length=1,
@@ -211,7 +211,7 @@ class ActorCriticTest(absltest.TestCase):
     value_model = functools.partial(models.Value, body=body)
     lr = lambda: lr_schedules.multifactor(  # pylint: disable=g-long-lambda
         constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
-    trainer = actor_critic.SamplingAWRTrainer(
+    trainer = actor_critic.SamplingAWR(
         task,
         n_shared_layers=0,
         added_policy_slice_length=1,
@@ -244,7 +244,7 @@ class ActorCriticTest(absltest.TestCase):
     value_model = functools.partial(models.Value, body=body)
     lr = lambda: lr_schedules.multifactor(  # pylint: disable=g-long-lambda
         constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
-    trainer = actor_critic.SamplingAWRTrainer(
+    trainer = actor_critic.SamplingAWR(
         task,
         n_shared_layers=0,
         added_policy_slice_length=1,

@@ -46,30 +46,30 @@ RLTask.initial_trajectories = 1000
 RLTask.gamma = 0.99
 RLTask.max_steps = 200
 
-# Parameters for AWRTrainer:
+# Parameters for AWR:
 # ==============================================================================
-AWRTrainer.value_model = @trax.models.Value
-AWRTrainer.value_optimizer = @trax.optimizers.Adam
-AWRTrainer.value_batch_size = 32
-AWRTrainer.value_train_steps_per_epoch = 200
-AWRTrainer.value_lr_schedule = @value/multifactor
-AWRTrainer.value_evals_per_epoch = 2
-AWRTrainer.value_eval_steps = 1
-AWRTrainer.policy_model = @trax.models.Policy
-AWRTrainer.policy_optimizer = @trax.optimizers.Adam
-AWRTrainer.policy_batch_size = 32
-AWRTrainer.policy_train_steps_per_epoch = 500
-AWRTrainer.policy_lr_schedule = @policy/multifactor
-AWRTrainer.policy_evals_per_epoch = 2
-AWRTrainer.policy_eval_steps = 1
-AWRTrainer.n_trajectories_per_epoch = 200
-AWRTrainer.beta = 1.0
-AWRTrainer.w_max = 20
-AWRTrainer.max_slice_length = 128
-AWRTrainer.added_policy_slice_length = 1
+AWR.value_model = @trax.models.Value
+AWR.value_optimizer = @trax.optimizers.Adam
+AWR.value_batch_size = 32
+AWR.value_train_steps_per_epoch = 200
+AWR.value_lr_schedule = @value/multifactor
+AWR.value_evals_per_epoch = 2
+AWR.value_eval_steps = 1
+AWR.policy_model = @trax.models.Policy
+AWR.policy_optimizer = @trax.optimizers.Adam
+AWR.policy_batch_size = 32
+AWR.policy_train_steps_per_epoch = 500
+AWR.policy_lr_schedule = @policy/multifactor
+AWR.policy_evals_per_epoch = 2
+AWR.policy_eval_steps = 1
+AWR.n_trajectories_per_epoch = 200
+AWR.beta = 1.0
+AWR.w_max = 20
+AWR.max_slice_length = 128
+AWR.added_policy_slice_length = 1
 
 # Parameters for train_rl:
 # ==============================================================================
 train_rl.light_rl = True
-train_rl.light_rl_trainer = @trax.rl.AWRTrainer
+train_rl.light_rl_trainer = @trax.rl.AWR
 train_rl.n_epochs = 50
