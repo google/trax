@@ -25,6 +25,7 @@ import string
 import threading
 import numpy as np
 import six
+from more_itertools import sort_together
 
 import tensorflow.compat.v2 as tf
 
