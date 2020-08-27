@@ -566,6 +566,20 @@ def tf_dot_general(lhs, rhs, dimension_numbers):
 
 
 # TODO (Zhibo Zhang): Run pylint and complement the docstring.
+def _eval_output_shape(lhs_shape, rhs_shape, padding, window_strides):
+  """ Evaluate the output shape in for transpose convolutions.
+  """
+  output_shape = [lhs_shape[0]]
+  for i in range(1, len(lhs_shape) - 1):
+    if padding == "SAME":
+      output_shape.append((lhs_shape[i] - 1) * window_strides[i-1] + rhs_shape[i])
+    if padding == "VALID":
+      output_shape.append((lhs_shape[i] - 1) * window_strides[i-1])
+  output_shape.append(lhs_shape[-1])
+  return tf.constant(output_shape)
+
+
+# TODO (Zhibo Zhang): Run pylint and complement the docstring.
 def _conv_general_param_type_converter(window_strides, lhs_dilation, rhs_dilation):
   """ Convert the inputs strides, lhs_dilation, rhs_dilation to the standard
   TF conv inputs.
