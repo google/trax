@@ -28,6 +28,7 @@ import six
 from more_itertools import sort_together
 
 import tensorflow.compat.v2 as tf
+from tensorflow import nn
 
 import trax.tf_numpy.numpy as tf_np
 
@@ -565,22 +566,24 @@ def tf_dot_general(lhs, rhs, dimension_numbers):
   return tf.einsum(equation, lhs, rhs)
 
 
-# TODO (Zhibo Zhang): Run pylint and complement the docstring.
+# TODO (DarrenZhang01): Complement the docstring.
 def _eval_output_shape(lhs_shape, rhs_shape, padding, window_strides):
   """ Evaluate the output shape in for transpose convolutions.
   """
   output_shape = [lhs_shape[0]]
   for i in range(1, len(lhs_shape) - 1):
     if padding == "SAME":
-      output_shape.append((lhs_shape[i] - 1) * window_strides[i-1] + rhs_shape[i])
+      output_shape.append((lhs_shape[i] - 1) * window_strides[i-1] +
+                          rhs_shape[i])
     if padding == "VALID":
       output_shape.append((lhs_shape[i] - 1) * window_strides[i-1])
   output_shape.append(lhs_shape[-1])
   return tf.constant(output_shape)
 
 
-# TODO (Zhibo Zhang): Run pylint and complement the docstring.
-def _conv_general_param_type_converter(window_strides, lhs_dilation, rhs_dilation):
+# TODO (DarrenZhang01): Complement the docstring.
+def _conv_general_param_type_converter(window_strides, lhs_dilation,
+                                       rhs_dilation):
   """ Convert the inputs strides, lhs_dilation, rhs_dilation to the standard
   TF conv inputs.
   For example,
@@ -598,11 +601,11 @@ def _conv_general_param_type_converter(window_strides, lhs_dilation, rhs_dilatio
   return (strides, lhs_dilation, rhs_dilation)
 
 
-# TODO (Zhibo Zhang): Run pylint and complement the docstring.
-# TOTO (Zhibo Zhang): Expand the test cases of general convolution and revise
+# TODO (DarrenZhang01): Expand the test cases of general convolution and revise
 #                     the according bugs.
-# TODO (Zhibo Zhang): Support feature_group_count, batch_group_count and precision, and
-#       allow lhs_dilation and rhs_dilation to happen at the same time.
+# TODO (DarrenZhang01): Support feature_group_count, batch_group_count and
+#       precision, and allow lhs_dilation and rhs_dilation to happen at the
+#       same time.
 def conv_general_dilated(lhs, rhs, window_strides, padding, output_shape,
                          lhs_dilation=None, rhs_dilation=None,
                          dimension_numbers=None, feature_group_count=1,
@@ -612,26 +615,26 @@ def conv_general_dilated(lhs, rhs, window_strides, padding, output_shape,
   dim = None
   lhs_spec, rhs_spec, out_spec = dimension_numbers
   if lhs_spec != out_spec:
-    raise TypeError("Current implementation requires the `data_format` of the "
+    raise ValueError("Current implementation requires the `data_format` of the "
                     "inputs and outputs to be the same.")
   if len(lhs_spec) >= 6:
-    raise TypeError("Current implmentation does not support 4 or higher"
+    raise ValueError("Current implmentation does not support 4 or higher"
                     "dimensional convolution, but got: ", len(lhs_spec) - 2)
   dim = len(lhs_spec) - 2
   if lhs_dilation and rhs_dilation:
     if lhs_dilation == (1,) * dim and rhs_dilation == (1,) * dim:
       lhs_dilation, rhs_dilation = None, None
     else:
-      raise TypeError("Current implementation does not support that deconvolution"
-                    "and dilation to be performed at the same time, but got"
-                    " lhs_dilation: {}, rhs_dilation: {}".format(lhs_dilation,
-                    rhs_dilation))
+      raise ValueError("Current implementation does not support that "
+                      "deconvolution and dilation to be performed at the same "
+                      "time, but got lhs_dilation: {}, rhs_dilation: {}".format(
+                          lhs_dilation, rhs_dilation))
   if padding not in ["SAME", "VALID"]:
-    raise TypeError("Current implementation requires the padding parameter"
+    raise ValueError("Current implementation requires the padding parameter"
                     "to be either 'VALID' or 'SAME', but got: ", padding)
   # Convert params from int/Sequence[int] to list of ints.
   strides, lhs_dilation, rhs_dilation = _conv_general_param_type_converter(
-    window_strides, lhs_dilation, rhs_dilation
+      window_strides, lhs_dilation, rhs_dilation
   )
   # Preprocess the shapes
   dim_maps = {}
