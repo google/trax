@@ -24,6 +24,7 @@ from absl import flags
 from absl.testing import parameterized
 
 from jax import lax
+import jax.numpy as jnp
 import numpy as np
 import tensorflow.compat.v2 as tf
 
@@ -420,6 +421,53 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
     ans = lax.dot_general(lhs_np, rhs_np, dims)
     result = extensions.tf_dot_general(lhs_np, rhs_np, dims)
     self.assertAllClose(result, np.array(ans))
+
+
+  # TODO (Zhibo Zhang): Run pylint on this function.
+  @parameterized.named_parameters([
+      ("_lhs_shape={}_rhs_shape={}_strides={}_padding={}"
+       "_lhs_dilation={}_rhs_dilation={}"
+       "_feature_group_count={}_batch_group_count={}_dims={}"
+       "_perms={}".format(lhs_shape, rhs_shape,
+           strides, padding, lhs_dilation, rhs_dilation,
+           feature_group_count, batch_group_count, ",".join(dimension_numbers), perms),
+           lhs_shape, rhs_shape, strides, padding, lhs_dilation, rhs_dilation,
+           feature_group_count, batch_group_count, dimension_numbers, perms)
+      for batch_group_count, feature_group_count in [(1, 1)]
+      for lhs_shape, rhs_shape in [
+          ((b * batch_group_count, i * feature_group_count, 9, w),
+           (j * feature_group_count * batch_group_count, i, 4, 5))
+          for w in [0, 10]
+          for b, i, j in itertools.product([2, 3], repeat=3)]
+      for strides in [(1, 1), (2, 1)]
+      for padding in ['SAME']
+      for lhs_dilation, rhs_dilation in [
+        (None, (1, 1))
+      ]
+      for dimension_numbers, perms in [
+        (("NHWC", "HWIO", "NHWC"), ([0, 2, 3, 1], [2, 3, 1, 0]))
+      ]])
+  def testConvGeneralDilated(self, lhs_shape, rhs_shape, strides,
+                             padding, lhs_dilation, rhs_dilation,
+                             feature_group_count, batch_group_count,
+                             dimension_numbers, perms):
+    tf.print("dimension_numbers: {}".format(dimension_numbers), output_stream=sys.stdout)
+    lhs_perm, rhs_perm = perms  # permute to compatible shapes
+
+    lhs_tf = tf_np.transpose(tf_np.ones(lhs_shape), lhs_perm)
+    rhs_tf = tf_np.transpose(tf_np.ones(rhs_shape), rhs_perm)
+
+    lhs_jax = jnp.transpose(jnp.ones(lhs_shape), lhs_perm)
+    rhs_jax = jnp.transpose(jnp.ones(rhs_shape), rhs_perm)
+
+    jax_conv = jax.lax.conv_general_dilated(lhs_jax, rhs_jax, strides, padding, lhs_dilation,
+      rhs_dilation, dimension_numbers, feature_group_count, batch_group_count)
+
+    tf_conv = lax.conv_general_dilated(lhs_tf, rhs_tf, strides, padding, jax_conv.shape, lhs_dilation,
+      rhs_dilation, dimension_numbers, feature_group_count, batch_group_count)
+
+    self.assertAllEqual(tf_conv, tf_np.asarray(jax_conv))
+
 
   def testConv(self):
     y = extensions.conv(

@@ -565,6 +565,93 @@ def tf_dot_general(lhs, rhs, dimension_numbers):
   return tf.einsum(equation, lhs, rhs)
 
 
+# TODO (Zhibo Zhang): Run pylint and complement the docstring.
+def _conv_general_param_type_converter(window_strides, lhs_dilation, rhs_dilation):
+  """ Convert the inputs strides, lhs_dilation, rhs_dilation to the standard
+  TF conv inputs.
+  For example,
+   in the 3D case, if lhs_dilation = 2, then convert it to [2, 2, 2]
+                   if lhs_dilation = (2, 2, 2), convert it also to [2, 2, 2]
+  """
+  strides = [window_strides] * dim if isinstance(window_strides, int) else \
+            list(window_strides)
+  if lhs_dilation:
+    lhs_dilation = [lhs_dilation] * dim if isinstance(lhs_dilation, int) else \
+                    list(lhs_dilation)
+  if rhs_dilation:
+    rhs_dilation = [rhs_dilation] * dim if isinstance(rhs_dilation, int) else \
+                    list(rhs_dilation)
+  return (strides, lhs_dilation, rhs_dilation)
+
+
+# TODO (Zhibo Zhang): Run pylint and complement the docstring.
+# TOTO (Zhibo Zhang): Expand the test cases of general convolution and revise
+#                     the according bugs.
+# TODO (Zhibo Zhang): Support feature_group_count, batch_group_count and precision, and
+#       allow lhs_dilation and rhs_dilation to happen at the same time.
+def conv_general_dilated(lhs, rhs, window_strides, padding, output_shape,
+                         lhs_dilation=None, rhs_dilation=None,
+                         dimension_numbers=None, feature_group_count=1,
+                         batch_group_count=1, precision=None):
+  """ A general conv API that integrates normal conv, deconvolution,
+  dilated convolution, etc."""
+  dim = None
+  lhs_spec, rhs_spec, out_spec = dimension_numbers
+  if lhs_spec != out_spec:
+    raise TypeError("Current implementation requires the `data_format` of the "
+                    "inputs and outputs to be the same.")
+  if len(lhs_spec) >= 6:
+    raise TypeError("Current implmentation does not support 4 or higher"
+                    "dimensional convolution, but got: ", len(lhs_spec) - 2)
+  dim = len(lhs_spec) - 2
+  if lhs_dilation and rhs_dilation:
+    if lhs_dilation == (1,) * dim and rhs_dilation == (1,) * dim:
+      lhs_dilation, rhs_dilation = None, None
+    else:
+      raise TypeError("Current implementation does not support that deconvolution"
+                    "and dilation to be performed at the same time, but got"
+                    " lhs_dilation: {}, rhs_dilation: {}".format(lhs_dilation,
+                    rhs_dilation))
+  if padding not in ["SAME", "VALID"]:
+    raise TypeError("Current implementation requires the padding parameter"
+                    "to be either 'VALID' or 'SAME', but got: ", padding)
+  # Convert params from int/Sequence[int] to list of ints.
+  strides, lhs_dilation, rhs_dilation = _conv_general_param_type_converter(
+    window_strides, lhs_dilation, rhs_dilation
+  )
+  # Preprocess the shapes
+  dim_maps = {}
+  if isinstance(lhs_spec, str):
+    dim_maps['I'] = list(rhs_spec).index('I')
+    dim_maps['O'] = list(rhs_spec).index('O')
+    dim_maps['N'] = list(lhs_spec).index('N')
+    dim_maps['C'] = list(lhs_spec).index('C')
+  else:
+    dim_maps['I'] = rhs_spec[1]
+    dim_maps['O'] = rhs_spec[0]
+    dim_maps['N'] = lhs_spec[0]
+    dim_maps['C'] = lhs_spec[1]
+
+  lhs = np.moveaxis(lhs, (dim_maps['N'], dim_maps['C']), (0, dim + 1))
+  # Adjust the filters, put the dimension 'I' and 'O' at last.
+  rhs = np.moveaxis(rhs, (dim_maps['O'], dim_maps['I']), (dim + 1, dim))
+  spatial_dim_maps = {1: 'W', 2: "HW", 3: "DHW"}
+  data_format = 'N' + spatial_dim_maps[dim] + 'C'
+  tf_nn_APIs = {1: [nn.conv1d, nn.conv1d_transpose],
+                2: [nn.conv2d, nn.conv2d_transpose],
+                3: [nn.conv3d, nn.conv3d_transpose]}
+
+  output = None
+  if rhs_dilation or (lhs_dilation is None and rhs_dilation is None):
+    output = tf_nn_APIs[dim][0](lhs, rhs, strides, padding, data_format,
+                                rhs_dilation)
+  else:
+    output = tf_nn_APIs[dim][1](lhs, rhs, tf.constant(output_shape), strides,
+                                padding, data_format, lhs_dilation)
+  output = np.moveaxis(output, (0, dim + 1), (dim_maps['N'], dim_maps['C']))
+  return np.asarray(output)
+
+
 def conv(inp,
          fltr,
          window_strides,
