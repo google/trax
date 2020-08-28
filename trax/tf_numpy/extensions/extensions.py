@@ -39,6 +39,9 @@ _int_dtypes = [
     tf.int64, tf.int32, tf.int16, tf.int8, tf.uint8, tf.uint16, tf.uint32,
     tf.uint64
 ]
+_tf_nn_APIs = {1: [nn.conv1d, nn.conv1d_transpose],
+               2: [nn.conv2d, nn.conv2d_transpose],
+               3: [nn.conv3d, nn.conv3d_transpose]}
 
 
 def most_precise_int_dtype(x):
@@ -583,22 +586,20 @@ def _eval_output_shape(lhs_shape, rhs_shape, padding, window_strides):
 
 # TODO (DarrenZhang01): Complement the docstring.
 def _conv_general_param_type_converter(window_strides, lhs_dilation,
-                                       rhs_dilation):
+                                       rhs_dilation, dim):
   """ Convert the inputs strides, lhs_dilation, rhs_dilation to the standard
   TF conv inputs.
   For example,
    in the 3D case, if lhs_dilation = 2, then convert it to [2, 2, 2]
                    if lhs_dilation = (2, 2, 2), convert it also to [2, 2, 2]
   """
-  strides = [window_strides] * dim if isinstance(window_strides, int) else \
-            list(window_strides)
-  if lhs_dilation:
-    lhs_dilation = [lhs_dilation] * dim if isinstance(lhs_dilation, int) else \
-                    list(lhs_dilation)
-  if rhs_dilation:
-    rhs_dilation = [rhs_dilation] * dim if isinstance(rhs_dilation, int) else \
-                    list(rhs_dilation)
-  return (strides, lhs_dilation, rhs_dilation)
+  def _as_list_of_size(item, size):
+    if item is None:
+      return None
+    return [item] * size if isinstance(item, int) else list(item)
+  return (_as_list_of_size(window_strides, dim),
+          _as_list_of_size(lhs_dilation, dim),
+          _as_list_of_size(rhs_dilation, dim))
 
 
 # TODO (DarrenZhang01): Expand the test cases of general convolution and revise
@@ -634,7 +635,7 @@ def conv_general_dilated(lhs, rhs, window_strides, padding, output_shape,
                     "to be either 'VALID' or 'SAME', but got: ", padding)
   # Convert params from int/Sequence[int] to list of ints.
   strides, lhs_dilation, rhs_dilation = _conv_general_param_type_converter(
-      window_strides, lhs_dilation, rhs_dilation
+      window_strides, lhs_dilation, rhs_dilation, dim
   )
   # Preprocess the shapes
   dim_maps = {}
@@ -649,24 +650,21 @@ def conv_general_dilated(lhs, rhs, window_strides, padding, output_shape,
     dim_maps['N'] = lhs_spec[0]
     dim_maps['C'] = lhs_spec[1]
 
-  lhs = np.moveaxis(lhs, (dim_maps['N'], dim_maps['C']), (0, dim + 1))
+  lhs = tf_np.moveaxis(lhs, (dim_maps['N'], dim_maps['C']), (0, dim + 1))
   # Adjust the filters, put the dimension 'I' and 'O' at last.
-  rhs = np.moveaxis(rhs, (dim_maps['O'], dim_maps['I']), (dim + 1, dim))
+  rhs = tf_np.moveaxis(rhs, (dim_maps['O'], dim_maps['I']), (dim + 1, dim))
   spatial_dim_maps = {1: 'W', 2: "HW", 3: "DHW"}
   data_format = 'N' + spatial_dim_maps[dim] + 'C'
-  tf_nn_APIs = {1: [nn.conv1d, nn.conv1d_transpose],
-                2: [nn.conv2d, nn.conv2d_transpose],
-                3: [nn.conv3d, nn.conv3d_transpose]}
 
   output = None
   if rhs_dilation or (lhs_dilation is None and rhs_dilation is None):
-    output = tf_nn_APIs[dim][0](lhs, rhs, strides, padding, data_format,
+    output = _tf_nn_APIs[dim][0](lhs, rhs, strides, padding, data_format,
                                 rhs_dilation)
   else:
-    output = tf_nn_APIs[dim][1](lhs, rhs, tf.constant(output_shape), strides,
+    output = _tf_nn_APIs[dim][1](lhs, rhs, tf.constant(output_shape), strides,
                                 padding, data_format, lhs_dilation)
-  output = np.moveaxis(output, (0, dim + 1), (dim_maps['N'], dim_maps['C']))
-  return np.asarray(output)
+  output = tf_np.moveaxis(output, (0, dim + 1), (dim_maps['N'], dim_maps['C']))
+  return tf_np.asarray(output)
 
 
 def conv(inp,
