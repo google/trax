@@ -117,7 +117,12 @@ class Embedding(base.Layer):
   def __init__(self,
                vocab_size,
                d_feature,
-               kernel_initializer=init.RandomNormalInitializer(1.0)):
+               kernel_initializer=
+               init.ScaledInitializer(out_dim=-1,
+                                      in_dim=-2,
+                                      scale=1.,
+                                      mode='fan_out',
+                                      distribution='uniform')):
     """Returns an embedding layer with given vocabulary size and vector size.
 
     The layer clips input values (token ids) to the range `[0, vocab_size)`.
