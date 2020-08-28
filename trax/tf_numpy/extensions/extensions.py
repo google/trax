@@ -27,7 +27,6 @@ import numpy as np
 import six
 
 import tensorflow.compat.v2 as tf
-from tensorflow import nn
 
 import trax.tf_numpy.numpy as tf_np
 
@@ -38,9 +37,9 @@ _int_dtypes = [
     tf.int64, tf.int32, tf.int16, tf.int8, tf.uint8, tf.uint16, tf.uint32,
     tf.uint64
 ]
-_tf_nn_APIs = {1: [nn.conv1d, nn.conv1d_transpose],
-               2: [nn.conv2d, nn.conv2d_transpose],
-               3: [nn.conv3d, nn.conv3d_transpose]}
+_tf_nn_APIs = {1: [tf.nn.conv1d, tf.nn.conv1d_transpose],
+               2: [tf.nn.conv2d, tf.nn.conv2d_transpose],
+               3: [tf.nn.conv3d, tf.nn.conv3d_transpose]}
 
 
 def most_precise_int_dtype(x):
@@ -607,7 +606,8 @@ def tf_conv_general_dilated(lhs, rhs, window_strides, padding, output_shape,
     padding: either the string ‘SAME’, the string ‘VALID’, or a sequence of n
              (low, high) integer pairs that give the padding to apply before and
              after each spatial dimension.
-    output_shape: the output shape of the convolution.
+    output_shape: the output shape of the convolution (only required for
+                  transpose convolution).
     lhs_dilation: None, or a sequence of n integers, giving the dilation factor
                   to apply in each spatial dimension of lhs. LHS dilation is
                   also known as transposed convolution.
@@ -617,10 +617,15 @@ def tf_conv_general_dilated(lhs, rhs, window_strides, padding, output_shape,
     dimension_numbers: either None, a ConvDimensionNumbers object, or a 3-tuple
                        (lhs_spec, rhs_spec, out_spec), where each element is a
                        string of length n+2.
-    feature_group_count:  integer, default 1.
-    batch_group_count: integer, default 1.
+    feature_group_count:  integer, default 1. Changing this is currently not
+                          supported.
+    batch_group_count: integer, default 1. Changing this is currently not
+                       supported.
     precision: Optional. Either None, which means the default precision for the
                backend, or a Precision enum value.
+
+  Returns:
+    A TF NumPy array that contains the convolution result.
   """
   dim = None
   lhs_spec, rhs_spec, out_spec = dimension_numbers
@@ -642,6 +647,12 @@ def tf_conv_general_dilated(lhs, rhs, window_strides, padding, output_shape,
   if padding not in ["SAME", "VALID"]:
     raise ValueError("Current implementation requires the padding parameter"
                      "to be either 'VALID' or 'SAME', but got: ", padding)
+  if batch_group_count != 1 or feature_group_count != 1:
+    raise NotImplementedError("batch_group_count and feature_group_count "
+                              "other than 1 is currently not supported, but"
+                              " got feature_group_count: {}, batch_group_count"
+                              ": {}".format(feature_group_count,
+                                            batch_group_count))
   # Convert params from int/Sequence[int] to list of ints.
   strides, lhs_dilation, rhs_dilation = _conv_general_param_type_converter(
       window_strides, lhs_dilation, rhs_dilation, dim

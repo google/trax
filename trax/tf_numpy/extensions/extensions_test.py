@@ -24,7 +24,6 @@ from absl import flags
 import itertools
 from absl.testing import parameterized
 
-import jax
 from jax import lax
 import numpy as np
 import tensorflow.compat.v2 as tf
@@ -458,14 +457,14 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
     lhs = np.transpose(np.ones(lhs_shape), lhs_perm)
     rhs = np.transpose(np.ones(rhs_shape), rhs_perm)
 
-    jax_conv = jax.lax.conv_general_dilated(lhs, rhs, strides, padding,
+    jax_conv = lax.conv_general_dilated(lhs, rhs, strides, padding,
                                             lhs_dilation, rhs_dilation,
                                             dimension_numbers,
                                             feature_group_count,
                                             batch_group_count)
 
     tf_conv = extensions.tf_conv_general_dilated(lhs, rhs, strides,
-                                                 padding, jax_conv.shape,
+                                                 padding, None,
                                                  lhs_dilation, rhs_dilation,
                                                  dimension_numbers,
                                                  feature_group_count,
