@@ -653,6 +653,9 @@ def tf_conv_general_dilated(lhs, rhs, window_strides, padding, output_shape,
                               " got feature_group_count: {}, batch_group_count"
                               ": {}".format(feature_group_count,
                                             batch_group_count))
+  if precision is not None:
+    raise NotImplementedError("precision other than `None` is currently not "
+                              "supported, but got: {}".format(precision))
   # Convert params from int/Sequence[int] to list of ints.
   strides, lhs_dilation, rhs_dilation = _conv_general_param_type_converter(
       window_strides, lhs_dilation, rhs_dilation, dim
