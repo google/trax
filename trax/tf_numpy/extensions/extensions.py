@@ -25,7 +25,6 @@ import string
 import threading
 import numpy as np
 import six
-from more_itertools import sort_together
 
 import tensorflow.compat.v2 as tf
 from tensorflow import nn
@@ -569,22 +568,6 @@ def tf_dot_general(lhs, rhs, dimension_numbers):
   return tf.einsum(equation, lhs, rhs)
 
 
-# TODO (DarrenZhang01): Complement the docstring.
-def _eval_output_shape(lhs_shape, rhs_shape, padding, window_strides):
-  """ Evaluate the output shape in for transpose convolutions.
-  """
-  output_shape = [lhs_shape[0]]
-  for i in range(1, len(lhs_shape) - 1):
-    if padding == "SAME":
-      output_shape.append((lhs_shape[i] - 1) * window_strides[i-1] +
-                          rhs_shape[i])
-    if padding == "VALID":
-      output_shape.append((lhs_shape[i] - 1) * window_strides[i-1])
-  output_shape.append(lhs_shape[-1])
-  return tf.constant(output_shape)
-
-
-# TODO (DarrenZhang01): Complement the docstring.
 def _conv_general_param_type_converter(window_strides, lhs_dilation,
                                        rhs_dilation, dim):
   """ Convert the inputs strides, lhs_dilation, rhs_dilation to the standard
@@ -607,32 +590,58 @@ def _conv_general_param_type_converter(window_strides, lhs_dilation,
 # TODO (DarrenZhang01): Support feature_group_count, batch_group_count and
 #       precision, and allow lhs_dilation and rhs_dilation to happen at the
 #       same time.
-def conv_general_dilated(lhs, rhs, window_strides, padding, output_shape,
-                         lhs_dilation=None, rhs_dilation=None,
-                         dimension_numbers=None, feature_group_count=1,
-                         batch_group_count=1, precision=None):
-  """ A general conv API that integrates normal conv, deconvolution,
-  dilated convolution, etc."""
+def tf_conv_general_dilated(lhs, rhs, window_strides, padding, output_shape,
+                            lhs_dilation=None, rhs_dilation=None,
+                            dimension_numbers=None, feature_group_count=1,
+                            batch_group_count=1, precision=None):
+  """ A general conv API for TensorFlow.
+
+  According JAX version:
+    https://jax.readthedocs.io/en/stable/_autosummary/jax.lax.conv_general_dilated.html
+
+  Args: (Use JAX documentation as a reference)
+    lhs: a rank n+2 dimensional input array.
+    rhs: a rank n+2 dimensional array of kernel weights.
+    window_strides: a sequence of n integers, representing the inter-window
+                    strides.
+    padding: either the string ‘SAME’, the string ‘VALID’, or a sequence of n
+             (low, high) integer pairs that give the padding to apply before and
+             after each spatial dimension.
+    output_shape: the output shape of the convolution.
+    lhs_dilation: None, or a sequence of n integers, giving the dilation factor
+                  to apply in each spatial dimension of lhs. LHS dilation is
+                  also known as transposed convolution.
+    rhs_dilation: None, or a sequence of n integers, giving the dilation factor
+                  to apply in each spatial dimension of rhs. RHS dilation is
+                  also known as atrous convolution.
+    dimension_numbers: either None, a ConvDimensionNumbers object, or a 3-tuple
+                       (lhs_spec, rhs_spec, out_spec), where each element is a
+                       string of length n+2.
+    feature_group_count:  integer, default 1.
+    batch_group_count: integer, default 1.
+    precision: Optional. Either None, which means the default precision for the
+               backend, or a Precision enum value.
+  """
   dim = None
   lhs_spec, rhs_spec, out_spec = dimension_numbers
   if lhs_spec != out_spec:
     raise ValueError("Current implementation requires the `data_format` of the "
-                    "inputs and outputs to be the same.")
+                     "inputs and outputs to be the same.")
   if len(lhs_spec) >= 6:
     raise ValueError("Current implmentation does not support 4 or higher"
-                    "dimensional convolution, but got: ", len(lhs_spec) - 2)
+                     "dimensional convolution, but got: ", len(lhs_spec) - 2)
   dim = len(lhs_spec) - 2
   if lhs_dilation and rhs_dilation:
     if lhs_dilation == (1,) * dim and rhs_dilation == (1,) * dim:
       lhs_dilation, rhs_dilation = None, None
     else:
       raise ValueError("Current implementation does not support that "
-                      "deconvolution and dilation to be performed at the same "
-                      "time, but got lhs_dilation: {}, rhs_dilation: {}".format(
-                          lhs_dilation, rhs_dilation))
+                       "deconvolution and dilation to be performed at the same "
+                       "time, but got lhs_dilation: {}, rhs_dilation: {}"
+                       .format(lhs_dilation, rhs_dilation))
   if padding not in ["SAME", "VALID"]:
     raise ValueError("Current implementation requires the padding parameter"
-                    "to be either 'VALID' or 'SAME', but got: ", padding)
+                     "to be either 'VALID' or 'SAME', but got: ", padding)
   # Convert params from int/Sequence[int] to list of ints.
   strides, lhs_dilation, rhs_dilation = _conv_general_param_type_converter(
       window_strides, lhs_dilation, rhs_dilation, dim
@@ -656,15 +665,14 @@ def conv_general_dilated(lhs, rhs, window_strides, padding, output_shape,
   spatial_dim_maps = {1: 'W', 2: "HW", 3: "DHW"}
   data_format = 'N' + spatial_dim_maps[dim] + 'C'
 
-  output = None
   if rhs_dilation or (lhs_dilation is None and rhs_dilation is None):
     output = _tf_nn_APIs[dim][0](lhs, rhs, strides, padding, data_format,
-                                rhs_dilation)
+                                 rhs_dilation)
   else:
     output = _tf_nn_APIs[dim][1](lhs, rhs, tf.constant(output_shape), strides,
-                                padding, data_format, lhs_dilation)
+                                 padding, data_format, lhs_dilation)
   output = tf_np.moveaxis(output, (0, dim + 1), (dim_maps['N'], dim_maps['C']))
-  return tf_np.asarray(output)
+  return output
 
 
 def conv(inp,
