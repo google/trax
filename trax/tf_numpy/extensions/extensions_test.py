@@ -20,6 +20,8 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import itertools
+
 from absl import flags
 from absl.testing import parameterized
 
@@ -29,6 +31,7 @@ import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy import extensions
 import trax.tf_numpy.numpy as tf_np
+
 
 FLAGS = flags.FLAGS
 
@@ -420,6 +423,54 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
     ans = lax.dot_general(lhs_np, rhs_np, dims)
     result = extensions.tf_dot_general(lhs_np, rhs_np, dims)
     self.assertAllClose(result, np.array(ans))
+
+  @parameterized.named_parameters([
+      ("_lhs_shape={}_rhs_shape={}_strides={}_padding={}"  # pylint: disable=g-complex-comprehension
+       "_lhs_dilation={}_rhs_dilation={}"
+       "_feature_group_count={}_batch_group_count={}_dims={}"
+       "_perms={}".format(lhs_shape, rhs_shape,
+                          strides, padding, lhs_dilation, rhs_dilation,
+                          feature_group_count, batch_group_count, ",".join(
+                              dimension_numbers), perms),
+       lhs_shape, rhs_shape, strides, padding, lhs_dilation, rhs_dilation,
+       feature_group_count, batch_group_count, dimension_numbers, perms)
+      for batch_group_count, feature_group_count in [(1, 1)]
+      for lhs_shape, rhs_shape in [
+          ((b * batch_group_count, i * feature_group_count, 9, w),
+           (j * feature_group_count * batch_group_count, i, 4, 5))
+          for w in [0, 10]
+          for b, i, j in itertools.product([2, 3], repeat=3)]
+      for strides in [(1, 1), (2, 1)]
+      for padding in ["SAME"]
+      for lhs_dilation, rhs_dilation in [
+          (None, (1, 1))
+      ]
+      for dimension_numbers, perms in [
+          (("NHWC", "HWIO", "NHWC"), ([0, 2, 3, 1], [2, 3, 1, 0]))
+      ]])
+  def testConvGeneralDilated(self, lhs_shape, rhs_shape, strides,
+                             padding, lhs_dilation, rhs_dilation,
+                             feature_group_count, batch_group_count,
+                             dimension_numbers, perms):
+    lhs_perm, rhs_perm = perms  # permute to compatible shapes
+
+    lhs = np.transpose(np.ones(lhs_shape), lhs_perm)
+    rhs = np.transpose(np.ones(rhs_shape), rhs_perm)
+
+    jax_conv = lax.conv_general_dilated(lhs, rhs, strides, padding,
+                                        lhs_dilation, rhs_dilation,
+                                        dimension_numbers,
+                                        feature_group_count,
+                                        batch_group_count)
+
+    tf_conv = extensions.tf_conv_general_dilated(lhs, rhs, strides,
+                                                 padding, None,
+                                                 lhs_dilation, rhs_dilation,
+                                                 dimension_numbers,
+                                                 feature_group_count,
+                                                 batch_group_count)
+
+    self.assertAllEqual(tf_conv, tf_np.asarray(jax_conv))
 
   def testConv(self):
     y = extensions.conv(
