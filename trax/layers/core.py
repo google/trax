@@ -269,6 +269,50 @@ class Weights(base.Layer):
     self.weights = self._initializer(self._shape, self.rng)
 
 
+class SummaryScalar(base.Layer):
+  """A layer receiving a tensor, and adding it to TensorBoard as a scalar.
+
+  It takes an input and returns no values. It stores this input as a state to be
+  used as a metric in TensorBoard.
+  """
+
+  def __init__(self, name):
+    """Takes a tensor, returns nothing.
+
+    Args:
+      name: Name of the state.
+    """
+    name = 'metric_' + name
+    super().__init__(name=f'State_{name}', n_in=1, n_out=0)
+    self._name = name
+
+  def forward(self, x):
+    """Executes this layer as part of a forward pass through the model.
+
+    Args:
+      x: Tensor of same shape and dtype as the input signature used to
+          initialize this layer.
+
+    Returns:
+      Tensor with previously specified shape and dtype.
+    """
+    self.state[self._name] = jnp.mean(x, None, keepdims=False)
+    return ()
+
+  def init_weights_and_state(self, input_signature):
+    """Returns newly initialized weights for this layer.
+
+    Weights is a single  `w` tensor with previously specified shape.
+
+    Args:
+      input_signature: `ShapeDtype` instance characterizing the input this layer
+          should compute on. Unused.
+    """
+    del input_signature  # Unused.
+    self.weights = ()
+    self.state = {self._name: jnp.array(0.)}
+
+
 class RandomUniform(base.Layer):
   """Layer returning a tensor with random values distributed uniformly."""
 
@@ -359,6 +403,24 @@ def Softmax(axis=-1):
             lambda x: jnp.exp(x - fastmath.logsumexp(x, axis, keepdims=True)))
 
 
+def Min(axis=-1):
+  """Returns a layer that applies min along one tensor axis.
+
+  Args:
+    axis: Axis along which values are grouped for computing maximum.
+  """
+  return Fn('Min', lambda x: jnp.min(x, axis, keepdims=True))
+
+
+def Max(axis=-1):
+  """Returns a layer that applies max along one tensor axis.
+
+  Args:
+    axis: Axis along which values are grouped for computing maximum.
+  """
+  return Fn('Max', lambda x: jnp.max(x, axis, keepdims=True))
+
+
 def ToFloat():
   """Returns a layer that changes the dtype of a tensor to `float32`."""
   return Fn('ToFloat', lambda x: x.astype(np.float32))
@@ -401,6 +463,11 @@ def Sum(axis=-1, keepdims=False):
 def Negate():
   """Returns a layer that computes the element-wise negation of a tensor."""
   return Fn('Negate', lambda x: -x)
+
+
+def StopGradient():
+  """Returns a layer that computes the element-wise exponential of a tensor."""
+  return Fn('StopGradient', lambda x: fastmath.stop_gradient(x))  # pylint: disable=unnecessary-lambda
 
 
 def log_gaussian_pdf(x, mu, sigma):  # pylint: disable=invalid-name
