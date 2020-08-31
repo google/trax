@@ -23,12 +23,12 @@ from trax import shapes
 from trax.models.research import layerdrop_transformer
 
 
-class LayerDropSkippingTransformerTest(absltest.TestCase):
+class SkippingTransformerTest(absltest.TestCase):
 
   def test_skipping_transformer_forward_shape(self):
     """Tests that the forward pass runs and returns the expected shape."""
     vocab_size = 16
-    model = layerdrop_transformer.LayerDropSkippingTransformerLM(
+    model = layerdrop_transformer.SkippingTransformerLM(
         vocab_size, d_model=16, d_ff=32, n_layers=2, n_heads=2, max_len=16)
     xs = [np.ones((1, 8)).astype(np.int32),
           np.ones((1, 8)).astype(np.int32)]
