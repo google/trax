@@ -27,6 +27,7 @@ from trax.models.reformer import reformer
 from trax.models.research import bert
 from trax.models.research import layerdrop_transformer
 from trax.models.research import rezero
+from trax.models.research import tokenlayerdrop_transformer
 from trax.models.research import transformer_no_enc_dec_attention
 
 
@@ -63,6 +64,8 @@ SkippingTransformerLM = model_configure(
     layerdrop_transformer.SkippingTransformerLM)
 LayerDropTransformerLM = model_configure(
     layerdrop_transformer.LayerDropTransformerLM)
+ConfidenceDropTransformerLM = model_configure(
+    tokenlayerdrop_transformer.ConfidenceDropTransformerLM)
 Transformer = model_configure(transformer.Transformer)
 TransformerDecoder = model_configure(transformer.TransformerDecoder)
 TransformerEncoder = model_configure(transformer.TransformerEncoder)
