@@ -319,5 +319,67 @@ class LogGaussianTest(absltest.TestCase):
     self.assertEqual(int(prob[1]), -6)
 
 
+class StopGradientTest(absltest.TestCase):
+
+  def test_passes(self):
+    layer = tl.StopGradient()
+    x = np.array([[3., 5.], [2., 6.]])
+    y = layer(x)
+    self.assertEqual(y.shape, (2, 2))
+    self.assertEqual(y.tolist(), [[3., 5.], [2., 6.]])
+
+
+class MinMaxTest(absltest.TestCase):
+
+  def test_min(self):
+    layer = tl.Min()
+    x = np.array([[3., 5.], [2., 6.]])
+    y = layer(x)
+    self.assertEqual(y.shape, (2,))
+    self.assertEqual(y.tolist(), [3., 2.])
+
+    layer = tl.Min(axis=0)
+    x = np.array([[3., 5.], [2., 6.]])
+    y = layer(x)
+    self.assertEqual(y.shape, (2,))
+    self.assertEqual(y.tolist(), [2., 5.])
+
+    layer = tl.Min(axis=None)
+    x = np.array([[3., 5.], [2., 6.]])
+    y = layer(x)
+    self.assertEqual(y.shape, ())
+    self.assertEqual(y.tolist(), 2.)
+
+    layer = tl.Min(keepdims=True)
+    x = np.array([[3., 5.], [2., 6.]])
+    y = layer(x)
+    self.assertEqual(y.shape, (2, 1))
+    self.assertEqual(y.tolist(), [[3.], [2.]])
+
+  def test_max(self):
+    layer = tl.Max()
+    x = np.array([[3., 5.], [2., 6.]])
+    y = layer(x)
+    self.assertEqual(y.shape, (2,))
+    self.assertEqual(y.tolist(), [5., 6.])
+
+    layer = tl.Max(axis=0)
+    x = np.array([[3., 5.], [2., 6.]])
+    y = layer(x)
+    self.assertEqual(y.shape, (2,))
+    self.assertEqual(y.tolist(), [3., 6.])
+
+    layer = tl.Max(axis=None)
+    x = np.array([[3., 5.], [2., 6.]])
+    y = layer(x)
+    self.assertEqual(y.shape, ())
+    self.assertEqual(y.tolist(), 6.)
+
+    layer = tl.Max(axis=0, keepdims=True)
+    x = np.array([[3., 5.], [2., 6.]])
+    y = layer(x)
+    self.assertEqual(y.shape, (1, 2))
+    self.assertEqual(y.tolist(), [[3., 6.]])
+
 if __name__ == '__main__':
   absltest.main()
