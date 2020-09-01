@@ -71,7 +71,7 @@ def train_rl(
     trajectory_dump_dir=None,
     num_actions=None,
     light_rl=True,
-    light_rl_trainer=light_trainers.RLTrainer,
+    light_rl_trainer=light_trainers.PolicyGradient,
 ):
   """Train the RL agent.
 
