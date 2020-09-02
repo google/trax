@@ -79,5 +79,25 @@ class ReformerE2ETest(absltest.TestCase):
     output_dir = self.create_tempdir().full_path
     _ = trainer_lib.train(output_dir=output_dir)
 
+  def test_reformer2_copy(self):
+    trax.fastmath.disable_jit()
+
+    batch_size_per_device = 1  # Ignored, but needs to be set.
+    steps = 1
+    n_layers = 2
+    d_ff = 32
+
+    gin.parse_config_file('reformer2_copy.gin')
+
+    gin.bind_parameter('batcher.batch_size_per_device', batch_size_per_device)
+    gin.bind_parameter('batcher.buckets', ([64], [1, 1]))  # batch size 1.
+    gin.bind_parameter('train.steps', steps)
+    gin.bind_parameter('Reformer2.n_encoder_layers', n_layers)
+    gin.bind_parameter('Reformer2.n_decoder_layers', n_layers)
+    gin.bind_parameter('Reformer2.d_ff', d_ff)
+
+    output_dir = self.create_tempdir().full_path
+    _ = trainer_lib.train(output_dir=output_dir)
+
 if __name__ == '__main__':
   absltest.main()
