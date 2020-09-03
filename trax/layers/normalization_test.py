@@ -48,12 +48,12 @@ class BatchNormTest(parameterized.TestCase):
       self.assertEqual(y.dtype, dtype)
 
   @parameterized.named_parameters(
-      ('inertia_999', .999),
-      ('inertia_900', .900),
-      ('inertia_800', .800),
+      ('momentum_999', .999),
+      ('momentum_900', .900),
+      ('momentum_800', .800),
   )
-  def test_forward(self, inertia):
-    layer = tl.BatchNorm(inertia=inertia)
+  def test_forward(self, momentum):
+    layer = tl.BatchNorm(momentum=momentum)
     x = np.array([[[0, 1, 2, 3],
                    [4, 5, 6, 7],
                    [8, 9, 10, 11]],
@@ -64,8 +64,8 @@ class BatchNormTest(parameterized.TestCase):
     y = layer(x)
     running_mean, running_var, n_batches = layer.state
 
-    fraction_old = inertia
-    fraction_new = 1.0 - inertia
+    fraction_old = momentum
+    fraction_new = 1.0 - momentum
     mean_of_x = 11.5  # mean of range(24)
     var_of_x = 47.9167  # variance of range(24)
     np.testing.assert_allclose(

@@ -33,13 +33,13 @@ class BatchNorm(base.Layer):
   """
 
   def __init__(self, axis=(0, 1, 2), epsilon=1e-5, center=True, scale=True,
-               inertia=0.999, mode='train'):
+               momentum=0.999, mode='train'):
     super().__init__()
     self._axis = axis
     self._epsilon = epsilon
     self._center = center
     self._scale = scale
-    self._inertia = inertia
+    self._momentum = momentum
     self._mode = mode
 
   def forward(self, x):
@@ -49,8 +49,8 @@ class BatchNorm(base.Layer):
       n_batches += 1
       mean, var = self._fast_mean_and_variance(x)
       # Gather smoothed input statistics for later use in evals or inference.
-      running_mean = _exponentially_smoothed(self._inertia, running_mean, mean)
-      running_var = _exponentially_smoothed(self._inertia, running_var, var)
+      running_mean = _exponentially_smoothed(self._momentum, running_mean, mean)
+      running_var = _exponentially_smoothed(self._momentum, running_var, var)
       self.state = (running_mean, running_var, n_batches)
     else:
       mean = running_mean
@@ -202,6 +202,6 @@ class FilterResponseNorm(base.Layer):
     self.weights = gamma, beta, epsilon_l
 
 
-def _exponentially_smoothed(inertia, old, new):
-  smoothed_value = inertia * old + (1 - inertia) * new
+def _exponentially_smoothed(momentum, old, new):
+  smoothed_value = momentum * old + (1 - momentum) * new
   return smoothed_value.astype(old.dtype)
