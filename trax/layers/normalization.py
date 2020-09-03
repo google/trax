@@ -21,16 +21,25 @@ from trax.layers import base
 
 
 class BatchNorm(base.Layer):
-  """Batch normalization."""
+  """Layer that performs batch normalization.
+
+  In training, batch normalization keeps smoothed cumulative statistics across
+  batches of input data and modifies each new batch so that its components are
+  normally distributed. In eval or inference, a `BatchNorm` instance uses its
+  stored mean and variance to approximately normalize each new batch of data.
+
+  See https://arxiv.org/abs/1502.03167 for original presentation and motivation
+  of batch normalization).
+  """
 
   def __init__(self, axis=(0, 1, 2), epsilon=1e-5, center=True, scale=True,
-               momentum=0.999, mode='train'):
+               inertia=0.999, mode='train'):
     super().__init__()
     self._axis = axis
     self._epsilon = epsilon
     self._center = center
     self._scale = scale
-    self._momentum = momentum
+    self._inertia = inertia
     self._mode = mode
 
   def forward(self, x):
@@ -39,8 +48,9 @@ class BatchNorm(base.Layer):
     if self._mode == 'train':
       n_batches += 1
       mean, var = self._fast_mean_and_variance(x)
-      running_mean = self._exponential_smoothing(mean, running_mean)
-      running_var = self._exponential_smoothing(var, running_var)
+      # Gather smoothed input statistics for later use in evals or inference.
+      running_mean = _exponentially_smoothed(self._inertia, running_mean, mean)
+      running_var = _exponentially_smoothed(self._inertia, running_var, var)
       self.state = (running_mean, running_var, n_batches)
     else:
       mean = running_mean
@@ -92,10 +102,6 @@ class BatchNorm(base.Layer):
     variance = m1 - mean**2
     return mean, variance
 
-  def _exponential_smoothing(self, new, old):
-    smoothed_value = self._momentum * old + (1 - self._momentum) * new
-    return smoothed_value.astype(old.dtype)
-
   def _z_score(self, x, mean, variance):
     mu = mean.astype(x.dtype)
     sigma = jnp.sqrt(variance + self._epsilon).astype(x.dtype)
@@ -123,9 +129,9 @@ class LayerNorm(base.Layer):
   def forward(self, x):
     scale, bias = self.weights
     mean = jnp.mean(x, axis=-1, keepdims=True)
-    sub = x - mean
-    variance = jnp.mean(sub * sub, axis=-1, keepdims=True)
-    norm_inputs = sub / jnp.sqrt(variance + self._epsilon)
+    centered = x - mean
+    variance = jnp.mean(centered * centered, axis=-1, keepdims=True)
+    norm_inputs = centered / jnp.sqrt(variance + self._epsilon)
     return norm_inputs * scale + bias
 
   def init_weights_and_state(self, input_signature):
@@ -194,3 +200,8 @@ class FilterResponseNorm(base.Layer):
       epsilon_l = (self._init_learnt_epsilon,)
 
     self.weights = gamma, beta, epsilon_l
+
+
+def _exponentially_smoothed(inertia, old, new):
+  smoothed_value = inertia * old + (1 - inertia) * new
+  return smoothed_value.astype(old.dtype)
