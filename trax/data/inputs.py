@@ -27,7 +27,7 @@ training sentiment analysis tasks on the IMDB dataset::
     data.FilterByLength(max_length=2048, length_keys=[0]),
     data.BucketByLength(boundaries=[  32, 128, 512, 2048],
                         batch_sizes=[128,  32,   8,    2, 1],
-                        length_keys=[0])
+                        length_keys=[0]),
     data.AddLossWeights()
   )
 
@@ -47,7 +47,7 @@ The other combinators, like Tokenize and Shuffle, take a generator and output
 another generator, in this way converting tuples into other tuples or mixing
 the training stream. For example, Tokenize(..., keys=[0]) will tokenize the
 first element of the tuple - and in this way convert it from text to a tensor of
-integers. Shuffle will not change the exmples, but will randomize their order.
+integers. Shuffle will not change the examples, but will randomize their order.
 
 Note that all elements in the data pipeline are just functions on generators,
 so you can use python's `map` and `filter` and other native functions too.
