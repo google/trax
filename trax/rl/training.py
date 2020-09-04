@@ -16,6 +16,7 @@
 # Lint as: python3
 """Classes for RL training in Trax."""
 
+import contextlib
 import functools
 import os
 import pickle
@@ -83,9 +84,6 @@ class Agent:
     self._avg_returns = []
     self._n_eval_episodes = n_eval_episodes
     self._avg_returns_temperature0 = {step: [] for step in self._eval_steps}
-    self._sw = None
-    if output_dir is not None:
-      self._sw = jaxboard.SummaryWriter(os.path.join(output_dir, 'rl'))
 
   @property
   def current_epoch(self):
@@ -101,15 +99,16 @@ class Agent:
   def avg_returns(self):
     return self._avg_returns
 
-  def save_gin(self):
+  def save_gin(self, summary_writer=None):
     assert self._output_dir is not None
     config_path = os.path.join(self._output_dir, 'config.gin')
     config_str = gin.operative_config_str()
     with tf.io.gfile.GFile(config_path, 'w') as f:
       f.write(config_str)
-    if self._sw:
-      self._sw.text('gin_config',
-                    jaxboard.markdownify_operative_config_str(config_str))
+    if summary_writer is not None:
+      summary_writer.text(
+          'gin_config', jaxboard.markdownify_operative_config_str(config_str)
+      )
 
   def save_to_file(self, file_name='rl.pkl',
                    task_file_name='trajectories.pkl'):
@@ -167,6 +166,25 @@ class Agent:
     """Trains this Agent for one epoch -- main RL logic goes here."""
     raise NotImplementedError
 
+  @contextlib.contextmanager
+  def _open_summary_writer(self):
+    """Opens the Jaxboard summary writer wrapped by a context manager.
+
+    Yields:
+      A Jaxboard summary writer wrapped in a GeneratorContextManager object.
+      Elements of the lists correspond to the training and evaluation task
+      directories created during initialization. If there is no output_dir
+      provided, yields None.
+    """
+    if self._output_dir is not None:
+      writer = jaxboard.SummaryWriter(os.path.join(self._output_dir, 'rl'))
+      try:
+        yield writer
+      finally:
+        writer.close()
+    else:
+      yield None
+
   def run(self, n_epochs=1, n_epochs_is_total_epochs=False):
     """Runs this loop for n epochs.
 
@@ -177,68 +195,68 @@ class Agent:
     """
     if self._output_dir is not None:
       self.init_from_file()
-    n_epochs_to_run = n_epochs
-    if n_epochs_is_total_epochs:
-      n_epochs_to_run -= self._epoch
-    cur_n_interactions = 0
-    for _ in range(n_epochs_to_run):
-      self._epoch += 1
-      cur_time = time.time()
-      self.train_epoch()
-      supervised.trainer_lib.log(
-          'RL training took %.2f seconds.' % (time.time() - cur_time))
-      cur_time = time.time()
-      avg_return = self._collect_trajectories()
-      self._avg_returns.append(avg_return)
-      if self._n_trajectories_per_epoch:
+    with self._open_summary_writer() as sw:
+      n_epochs_to_run = n_epochs
+      if n_epochs_is_total_epochs:
+        n_epochs_to_run -= self._epoch
+      cur_n_interactions = 0
+      for _ in range(n_epochs_to_run):
+        self._epoch += 1
+        cur_time = time.time()
+        self.train_epoch()
         supervised.trainer_lib.log(
-            'Collecting %d episodes took %.2f seconds.'
-            % (self._n_trajectories_per_epoch, time.time() - cur_time))
-      else:
-        supervised.trainer_lib.log(
-            'Collecting %d interactions took %.2f seconds.'
-            % (self._n_interactions_per_epoch, time.time() - cur_time))
-      supervised.trainer_lib.log(
-          'Average return in epoch %d was %.2f.' % (self._epoch, avg_return))
-      if self._n_eval_episodes > 0:
-        for steps in self._eval_steps:
-          avg_return_temperature0 = self.task.collect_trajectories(
-              lambda x: self.policy(x, temperature=0.0),
-              n_trajectories=self._n_eval_episodes,
-              max_steps=steps, only_eval=True)
-          self._avg_returns_temperature0[steps].append(avg_return_temperature0)
+            'RL training took %.2f seconds.' % (time.time() - cur_time))
+        cur_time = time.time()
+        avg_return = self._collect_trajectories()
+        self._avg_returns.append(avg_return)
+        if self._n_trajectories_per_epoch:
           supervised.trainer_lib.log(
-              'Avg return with temperature 0 at %d steps in epoch %d was %.2f.'
-              % (steps, self._epoch, avg_return_temperature0))
-      if self._sw is not None:
-        self._sw.scalar('timing/collect', time.time() - cur_time,
-                        step=self._epoch)
-        self._sw.scalar('rl/avg_return', avg_return, step=self._epoch)
+              'Collecting %d episodes took %.2f seconds.'
+              % (self._n_trajectories_per_epoch, time.time() - cur_time))
+        else:
+          supervised.trainer_lib.log(
+              'Collecting %d interactions took %.2f seconds.'
+              % (self._n_interactions_per_epoch, time.time() - cur_time))
+        supervised.trainer_lib.log(
+            'Average return in epoch %d was %.2f.' % (self._epoch, avg_return))
         if self._n_eval_episodes > 0:
           for steps in self._eval_steps:
-            self._sw.scalar('rl/avg_return_temperature0_steps%d' % steps,
-                            self._avg_returns_temperature0[steps][-1],
-                            step=self._epoch)
-        self._sw.scalar('rl/n_interactions', self.task.n_interactions(),
+            avg_return_temperature0 = self.task.collect_trajectories(
+                lambda x: self.policy(x, temperature=0.0),
+                n_trajectories=self._n_eval_episodes,
+                max_steps=steps, only_eval=True)
+            self._avg_returns_temperature0[steps].append(
+                avg_return_temperature0
+            )
+            supervised.trainer_lib.log(
+                'Avg return with temperature 0 at %d steps in epoch %d was %.2f.'
+                % (steps, self._epoch, avg_return_temperature0))
+        if sw is not None:
+          sw.scalar('timing/collect', time.time() - cur_time,
+                    step=self._epoch)
+          sw.scalar('rl/avg_return', avg_return, step=self._epoch)
+          if self._n_eval_episodes > 0:
+            for steps in self._eval_steps:
+              sw.scalar('rl/avg_return_temperature0_steps%d' % steps,
+                        self._avg_returns_temperature0[steps][-1],
                         step=self._epoch)
-        self._sw.scalar('rl/n_interactions_per_second',
-                        (self.task.n_interactions() - cur_n_interactions)/ \
-                        (time.time() - cur_time),
-                        step=self._epoch)
-        cur_n_interactions = self.task.n_interactions()
-        self._sw.scalar('rl/n_trajectories', self.task.n_trajectories(),
-                        step=self._epoch)
-        self._sw.flush()
-      if self._output_dir is not None and self._epoch == 1:
-        self.save_gin()
-      if self._output_dir is not None:
-        self.save_to_file()
+          sw.scalar('rl/n_interactions', self.task.n_interactions(),
+                    step=self._epoch)
+          sw.scalar('rl/n_interactions_per_second',
+                    (self.task.n_interactions() - cur_n_interactions)/ \
+                    (time.time() - cur_time),
+                    step=self._epoch)
+          cur_n_interactions = self.task.n_interactions()
+          sw.scalar('rl/n_trajectories', self.task.n_trajectories(),
+                    step=self._epoch)
+          sw.flush()
+        if self._output_dir is not None and self._epoch == 1:
+          self.save_gin(sw)
+        if self._output_dir is not None:
+          self.save_to_file()
 
   def close(self):
-    if self._sw is None:
-      return
-    self._sw.close()
-    self._sw = None
+    pass
 
 
 class PolicyAgent(Agent):
