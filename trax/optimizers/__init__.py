@@ -24,6 +24,7 @@ from trax.optimizers import base
 from trax.optimizers import momentum
 from trax.optimizers import rms_prop
 from trax.optimizers import sm3
+from trax.optimizers.trainer import ReversibleSerialTrainer
 from trax.optimizers.trainer import Trainer
 
 

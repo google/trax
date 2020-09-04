@@ -204,6 +204,26 @@ def for_n_devices(x, n_devices):
   return fastmath.nested_map(f, x)
 
 
+def on_cpu(x):
+  """Put the tensor x in CPU memory in JAX."""
+  return jax.device_put(x, jax.devices('cpu')[0])
+
+
+def on_accelerator(x):
+  """Put the tensor x in (single) accelerator memory in JAX."""
+  try:
+    accelerator_devices = jax.devices('gpu')
+  except RuntimeError:
+    try:
+      accelerator_devices = jax.devices('tpu')
+    except RuntimeError:
+      accelerator_devices = []
+  if not accelerator_devices:
+    return x
+  assert len(accelerator_devices) == 1
+  return jax.device_put(x, accelerator_devices[0])
+
+
 def _multi_device_put(x, devices=None):
   """Memory efficient multi-device replication / broadcast in JAX.
 
