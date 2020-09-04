@@ -653,24 +653,28 @@ def Reformer2(input_vocab_size,
   if fastmath.is_backend(fastmath.Backend.JAX):
     jax.api._check_inexact_input_vjp = lambda x: None  # pylint: disable=protected-access
 
-  def PositionalEncoder(vocab_size, mode):  # tokens --> vectors
-    positional_encoding = PositionalEncoding(
-        mode, dropout, max_len, axial_pos_shape, d_axial_pos_embs)
-
+  def Embedder(vocab_size):  # tokens --> vectors
     return [
         tl.Embedding(vocab_size, d_model),
         tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),
-        positional_encoding,
     ]
+
+  in_embedder = Embedder(input_vocab_size)
+  out_embedder = (in_embedder if output_vocab_size is None
+                  else Embedder(output_vocab_size))
+
+  def PositionalEnc(mode):
+    return PositionalEncoding(
+        mode, dropout, max_len, axial_pos_shape, d_axial_pos_embs)
 
   # Mode 'predict' means that the decoder should be run one token at a time.
   # The encoder only ever runs over full sequences, which is why it's switched
   # to 'eval' mode instead.
-  in_encoder = PositionalEncoder(
-      input_vocab_size, mode='eval' if mode == 'predict' else mode)
+  encoder_mode = 'eval' if mode == 'predict' else mode
+  in_encoder = in_embedder + [PositionalEnc(encoder_mode)]
+  out_encoder = out_embedder + [PositionalEnc(mode)]
   if output_vocab_size is None:
     output_vocab_size = input_vocab_size
-  out_encoder = PositionalEncoder(output_vocab_size, mode)
 
   # pylint: disable=g-complex-comprehension
   encoder_blocks = [
