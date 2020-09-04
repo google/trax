@@ -40,8 +40,8 @@ def autoregressive_sample_stream(model, inputs=None,
         must have a structure that allows it to run as an autoregressive
         one-sample-at-a-time predictor (e.g., `trax.models.TransformerLM`).
     inputs: Sequence of symbols the model sees as input the first time it
-        generates an output. If None, the model must generate the first output
-        with no input to guide it.
+        generates an output. If None, the model generates the first output
+        based on just the start symbol.
     batch_size: Number of sequences to generate in parallel as a batch.
     temperature: Parameter that controls the sharpness of the softmax that
         feeds the sampling process. Values range from 0.0 (all probability mass
@@ -57,23 +57,27 @@ def autoregressive_sample_stream(model, inputs=None,
     outputs for the next position in the stream.
   """
   if inputs is not None and inputs.shape[0] != batch_size:
-    raise ValueError(f'Inputs batch size {inputs.shape[0]} != {batch_size}.')
+    raise ValueError(f'Inputs batch size ({inputs.shape[0]}) does not match '
+                     f'batch_size arg ({batch_size}.')
+
   fast_model = tl.Accelerate(model) if accelerate else model
-  cur_symbol = np.full((batch_size, 1), start_id, dtype=np.int32)
-  if inputs is not None and model.n_in == 1:  # use inputs as prefix
-    cur_symbol = np.concatenate([cur_symbol, inputs], axis=1)
+  start_symbol = np.full((batch_size, 1), start_id, dtype=np.int32)
+  if model.n_in == 1 and inputs is not None:
+    current_symbols = np.concatenate([start_symbol, inputs], axis=1)
+  else:
+    current_symbols = start_symbol
+
   while True:
-    model_input = cur_symbol
-    if inputs is not None and model.n_in > 1:
-      model_input = (inputs, cur_symbol)
-    logits = fast_model(model_input)
-    if inputs is not None and model.n_in > 1:
-      logits = logits[0]  # Pick first element from model output (a pair here)
+    if model.n_in > 1 and inputs is not None:
+      logits = fast_model((inputs, current_symbols))[0]
+    else:
+      logits = fast_model(current_symbols)
     sample = tl.logsoftmax_sample(logits[:, -1, :], temperature=temperature)
     yield sample
-    # Note: we're using 'predict' mode autoregressive models here, so history
-    # is cached in the model state and we are only feeding one symbol next.
-    cur_symbol = sample[:, None]
+    # NOTE: Because the model is autoregressive and in 'predict' mode, its
+    # history is cached in the model state and the next input is the single
+    # symbol just sampled.
+    current_symbols = sample[:, None]
 
 
 def autoregressive_sample(model, inputs=None,

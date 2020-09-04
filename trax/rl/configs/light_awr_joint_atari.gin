@@ -34,20 +34,20 @@ RLTask.gamma = 0.99
 RLTask.max_steps = 200
 RLTask.dm_suite = True
 
-# Parameters for AWRTrainer:
+# Parameters for AWR:
 # ==============================================================================
-AWRJointTrainer.joint_model = @trax.models.PolicyAndValue
-AWRJointTrainer.optimizer = @trax.optimizers.Adam
-AWRJointTrainer.batch_size = 32
-AWRJointTrainer.train_steps_per_epoch = 1000
-AWRJointTrainer.lr_schedule = @multifactor
-AWRJointTrainer.n_trajectories_per_epoch = 10
-AWRJointTrainer.beta = 1.0
-AWRJointTrainer.w_max = 20
-AWRJointTrainer.max_slice_length = 1
+AWRJoint.joint_model = @trax.models.PolicyAndValue
+AWRJoint.optimizer = @trax.optimizers.Adam
+AWRJoint.batch_size = 32
+AWRJoint.train_steps_per_epoch = 1000
+AWRJoint.lr_schedule = @multifactor
+AWRJoint.n_trajectories_per_epoch = 10
+AWRJoint.beta = 1.0
+AWRJoint.w_max = 20
+AWRJoint.max_slice_length = 1
 
 # Parameters for train_rl:
 # ==============================================================================
 train_rl.light_rl = True
-train_rl.light_rl_trainer = @trax.rl.AWRJointTrainer
+train_rl.light_rl_trainer = @trax.rl.AWRJoint
 train_rl.n_epochs = 10000

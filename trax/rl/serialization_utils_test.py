@@ -19,18 +19,25 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+import itertools
+
 from absl.testing import parameterized
 import gin
 import gym
 from jax import numpy as jnp
 import numpy as np
 from tensorflow import test
-
+from trax import fastmath as trax_math
+from trax import models as trax_models
 from trax import shapes
+from trax import test_utils
+from trax.data import inputs as trax_input
 from trax.layers import base as layers_base
 from trax.models import transformer
 from trax.rl import serialization_utils
 from trax.rl import space_serializer
+from trax.supervised import trainer_lib
 
 
 # pylint: disable=invalid-name
@@ -49,6 +56,36 @@ def TestModel(extra_dim):
   # pylint: enable=invalid-name
 
 
+def generate_signals(seq_len, depth=1):
+  while True:
+    yield (
+        np.random.uniform(size=(seq_len, depth)),  # the 1st time series
+        np.random.uniform(size=(seq_len, depth)),  # the 2nd time series
+    )
+
+
+def batch_stream(stream, batch_size):
+  while True:
+    yield trax_math.nested_stack(list(itertools.islice(stream, batch_size)))
+
+
+def signal_inputs(seq_len, batch_size, depth=1):
+  def stream_fn(num_devices):
+    del num_devices
+    for (x, y) in batch_stream(
+        generate_signals(seq_len=seq_len, depth=depth),
+        batch_size=batch_size,
+    ):
+      mask = np.ones_like(x).astype(np.float32)
+      # (input_x, input_y, target_x, target_y, mask)
+      yield (x, y, x, y, mask)
+
+  return trax_input.Inputs(
+      train_stream=stream_fn,
+      eval_stream=stream_fn,
+  )
+
+
 class SerializationTest(parameterized.TestCase):
 
   def setUp(self):
@@ -62,6 +99,7 @@ class SerializationTest(parameterized.TestCase):
         'action_serializer': self._serializer,
         'representation_length': self._repr_length,
     }
+    test_utils.ensure_flag('test_tmpdir')
 
   def test_serialized_model_discrete(self):
     vocab_size = 3
@@ -98,6 +136,7 @@ class SerializationTest(parameterized.TestCase):
 
     example = (obs, act, obs, mask)
     serialized_model.init(shapes.signature(example))
+
     (obs_logits, obs_repr, weights) = serialized_model(example)
     # Check that the model has been called with the correct input.
     np.testing.assert_array_equal(
@@ -117,7 +156,41 @@ class SerializationTest(parameterized.TestCase):
     # Check that the observations are correct.
     np.testing.assert_array_equal(obs_repr, obs)
     # Check weights.
-    np.testing.assert_array_equal(weights, [[[1, 1], [1, 1], [1, 1], [0, 0]]])
+    np.testing.assert_array_equal(weights, [[1., 1., 1., 1., 1., 1., 1., 1., \
+                                             1., 1., 1., 1., 0., 0., 0., 0.]])
+
+  def test_train_model_with_serialization(self):
+    # Serializer handles discretization of the data.
+    number_of_time_series = 4
+    srl = space_serializer.BoxSpaceSerializer(
+        space=gym.spaces.Box(shape=(number_of_time_series,),
+                             low=0.0, high=16.0),
+        vocab_size=16,
+        precision=2,
+    )
+
+    def model(mode):
+      return serialization_utils.SerializedHalfModel(
+          trax_models.TransformerLM(
+              mode=mode,
+              vocab_size=16,
+              d_model=16,
+              d_ff=8,
+              n_layers=1,
+              n_heads=1),
+          observation_serializer=srl,
+          action_serializer=srl,
+          significance_decay=0.9,
+      )
+
+    output_dir = self.create_tempdir().full_path
+    state = trainer_lib.train(
+        output_dir=output_dir,
+        model=model,
+        inputs=functools.partial(signal_inputs, seq_len=5,
+                                 batch_size=64, depth=number_of_time_series),
+        steps=2)
+    self.assertEqual(2, state.step)
 
   def test_serialized_model_continuous(self):
     precision = 3
@@ -143,12 +216,15 @@ class SerializationTest(parameterized.TestCase):
 
     example = (obs, act, obs, mask)
     serialized_model.init(shapes.signature(example))
+
     (obs_logits, obs_repr, weights) = serialized_model(example)
     self.assertEqual(obs_logits.shape, obs_repr.shape + (vocab_size,))
     self.assertEqual(
         obs_repr.shape, (1, obs.shape[1], obs.shape[2] * precision)
     )
-    self.assertEqual(obs_repr.shape, weights.shape)
+    self.assertEqual(obs_repr.shape[0], weights.shape[0])
+    self.assertEqual(obs_repr.shape[1]*obs_repr.shape[2] +
+                     obs_logits.shape[1]*obs_logits.shape[2], weights.shape[1])
 
   def test_extract_inner_model(self):
     vocab_size = 3

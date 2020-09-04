@@ -1,0 +1,57 @@
+# Copyright 2020 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# -*-Python-*-
+
+include 'reformer_copy.gin'
+
+import trax.models
+import trax.optimizers
+import trax.data.inputs
+import trax.data.tf_inputs
+import trax.supervised.trainer_lib
+
+# Sequence copy with len 64 can create inputs/targets this long.
+max_len = 128
+
+# Parameters for sequence_copy_inputs:
+# ==============================================================================
+sequence_copy_inputs.pad_to_multiple = %max_len  # for axial position embedding
+
+# Parameters for Reformer2:
+# ==============================================================================
+Reformer2.d_model = 256
+Reformer2.d_ff = 512
+Reformer2.dropout = 0.05
+Reformer2.max_len = %max_len
+Reformer2.n_heads = 4
+Reformer2.mode = 'train'
+Reformer2.n_encoder_layers = 3
+Reformer2.n_decoder_layers = 3
+Reformer2.ff_use_sru = 1
+Reformer2.d_attention_key = 64
+Reformer2.d_attention_value = 64
+Reformer2.encoder_attention_type = @LSHSelfAttention
+Reformer2.encoder_decoder_attention_type = @LSHSelfAttention
+Reformer2.input_vocab_size = %vocab_size
+# Choice of either this or fixed-base
+Reformer2.d_axial_pos_embs = (128, 128)  # should sum to d_model
+Reformer2.axial_pos_shape  = (8, 16)  # should multiply out to max_len
+# Reformer2.axial_pos_shape = 'fixed-base'
+
+
+# Parameters for train:
+# ==============================================================================
+train.inputs = @trax.data.inputs.sequence_copy_inputs
+train.model = @trax.models.Reformer2

@@ -102,6 +102,11 @@ class Accelerate(base.Layer):
     self.sublayer.weights = weights
     self._weights = for_n_devices(weights, self._n_devices)
 
+  def replicate_state(self, state):
+    """Sets the state of the sublayer and replicates it for this layer."""
+    self.sublayer.state = state
+    self._state = for_n_devices(state, self._n_devices)
+
   def _unreplicate(self, x):
     """Return a single-device version of x using the first component only."""
     if self._n_devices < 2:
@@ -197,6 +202,26 @@ def for_n_devices(x, n_devices):
     else:
       return x
   return fastmath.nested_map(f, x)
+
+
+def on_cpu(x):
+  """Put the tensor x in CPU memory in JAX."""
+  return jax.device_put(x, jax.devices('cpu')[0])
+
+
+def on_accelerator(x):
+  """Put the tensor x in (single) accelerator memory in JAX."""
+  try:
+    accelerator_devices = jax.devices('gpu')
+  except RuntimeError:
+    try:
+      accelerator_devices = jax.devices('tpu')
+    except RuntimeError:
+      accelerator_devices = []
+  if not accelerator_devices:
+    return x
+  assert len(accelerator_devices) == 1
+  return jax.device_put(x, accelerator_devices[0])
 
 
 def _multi_device_put(x, devices=None):

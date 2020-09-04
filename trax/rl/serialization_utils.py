@@ -95,10 +95,15 @@ def RepresentationMask(serializer):
   # Trax enforces the mask to be of the same size as the target. Get rid of the
   # extra dimensions.
   def representation_mask(mask):
+    # mask shape (batch_size,4)
     mask = jnp.amax(mask, axis=tuple(range(2, mask.ndim)))
-    return jnp.broadcast_to(
-        mask[:, :, None], mask.shape + (serializer.representation_length,)
-    )
+    # mask shape (batch_size,4)
+    mask = jnp.repeat(
+        mask[..., jnp.newaxis],
+        repeats=2*serializer.representation_length,
+        axis=2)
+    # mask shape (batch_size,4,2*representation_length)
+    return mask
   return tl.Fn('RepresentationMask', representation_mask)
 
 
@@ -106,8 +111,32 @@ def SignificanceWeights(serializer, decay):
   """Multiplies a binary mask with a symbol significance mask."""
   def significance_weights(mask):
     # (repr,) -> (batch, length, repr)
-    significance = serializer.significance_map[None, None]
-    return mask * decay ** jnp.broadcast_to(significance, mask.shape)
+    # significance = [0, 1, 2]
+    significance = serializer.significance_map
+    assert significance.shape[0] * 2 == mask.shape[2]
+    significance = jnp.repeat(significance[jnp.newaxis, ...], repeats=2, axis=0)
+    # significance = [0, 1, 2, 0, 1, 2]
+    significance = jnp.concatenate(significance, axis=0)
+    assert significance.shape[0] == mask.shape[2]
+    # significance = batch_size * [0, 1, 2, 0, 1, 2]
+    significance = jnp.repeat(
+        significance[np.newaxis, ...], repeats=mask.shape[0], axis=0)
+    # significance = batch_size * [0, 1, 2, 0, 1, 2] * mask.shape[1]
+    significance = jnp.repeat(
+        significance[..., jnp.newaxis], repeats=mask.shape[1], axis=2)
+    # significance = batch_size *  mask.shape[1] * [0, 1, 2, 0, 1, 2]
+    significance = jnp.swapaxes(significance, 1, 2)
+    assert significance.shape == mask.shape
+    sig_weights = mask * decay ** significance
+    batch_size = sig_weights.shape[0]
+    mask_size = sig_weights.shape[1]*sig_weights.shape[2]
+    # TODO(henrykm): Make sure that the reshape works in the desired way
+    sig_weights = np.reshape(sig_weights, (batch_size, mask_size))
+    # Alternatively we also can do something like
+    # sig_weights = jnp.concatenate(sig_weights, axis=1)
+    # sig_weights = jnp.concatenate(sig_weights, axis=0)
+    # sig_weights = jnp.reshape(sig_weights, (batch_size, mask_size))
+    return sig_weights
   return tl.Fn('SignificanceWeights', significance_weights)
 
 
@@ -164,6 +193,63 @@ def SerializedModel(
       # (obs_logits, act_logits, obs_repr, mask)
       tl.Parallel(None, tl.Drop(), None, weigh_by_significance),
       # (obs_logits, obs_repr, weights)
+  )
+
+
+def SerializedHalfModel(
+    seq_model,
+    observation_serializer,
+    action_serializer,
+    significance_decay,
+):
+  """Wraps a world model in serialization machinery for training.
+
+  The resulting model takes as input the observation and action sequences,
+  serializes them and interleaves into one sequence, which is fed into a given
+  autoregressive model. In contrast to SerializedModel it does not involve
+  deinterleaving.
+
+  Args:
+    seq_model: Trax autoregressive model taking as input a sequence of symbols
+      and outputting a sequence of symbol logits.
+    observation_serializer: Serializer to use for observations.
+    action_serializer: Serializer to use for actions.
+    significance_decay: Float from (0, 1) for exponential weighting of symbols
+      in the representation.
+
+  Returns:
+    A model of signature
+    (obs, act, obs, mask) -> (obs_logits, obs_repr, weights), where obs are
+    observations (the second occurrence is the target), act are actions, mask is
+    the observation mask, obs_logits are logits of the output observation
+    representation, obs_repr is the target observation representation and
+    weights are the target weights.
+  """
+  weigh_by_significance = [
+      # (mask,)
+      RepresentationMask(serializer=observation_serializer),
+      # (repr_mask)
+      SignificanceWeights(serializer=observation_serializer,
+                          decay=significance_decay),
+      # (mask, sig_weights)
+  ]
+
+  serialize = lambda: tl.Serial(  # pylint: disable=g-long-lambda
+      # (series_a, series_b)
+      tl.Parallel(
+          Serialize(serializer=observation_serializer),
+          Serialize(serializer=action_serializer),
+      ),
+      Interleave(),
+  )
+
+  return tl.Serial(
+      # (obs, act, obs, act, mask)
+      tl.Parallel(serialize(),
+                  serialize(),
+                  weigh_by_significance),
+      # (obs_repr, obs_repr, mask)
+      seq_model,
   )
 
 

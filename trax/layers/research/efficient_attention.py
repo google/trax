@@ -1661,12 +1661,12 @@ class SparseFF(base.Layer):
 
     if self._mode == 'train':
       # In training, run full matmul to get benefits from the above tricks.
-      w1 = np.reshape(w1, (self._d_ff, -1))
-      mid = np.dot(x, w1.T) * quant_mask  # [joint_batch, d_ff]
+      mid = np.dot(x, w1) * quant_mask  # [joint_batch, d_ff]
       relu = np.where(mid <= 0, np.zeros_like(mid), mid)
-      w2 = np.reshape(w2, (self._d_ff, -1))
       res = np.dot(relu, w2) + b2
-    else:
+    elif self._mode == 'predict':
+      w1 = np.reshape(w1.T, (self._d1, self._d2, -1))
+      w2 = np.reshape(w2, (self._d1, self._d2, -1))
       # This implementation mimicks inference. It's not efficient for large
       # size of joint_batch, but at inference that will be 1 most of the time.
       # Shapes:
@@ -1687,6 +1687,12 @@ class SparseFF(base.Layer):
       v = w2[idx1, idx2, :]
       v = np.reshape(v, [batch_size, self._d1, -1])
       res = np.einsum('ai,aij->aj', relu, v) + b2
+    else:
+      quant_mask = metrics.one_hot(quant_mask, self._n_elements_in_block)
+      quant_mask = np.reshape(quant_mask, [-1, self._d_ff])
+      mid = np.dot(x, w1) * quant_mask  # [joint_batch, d_ff]
+      relu = np.where(mid <= 0, np.zeros_like(mid), mid)
+      res = np.dot(relu, w2) + b2
 
     return np.reshape(res, x_shape)  # un-flatten if needed
 
@@ -1706,11 +1712,7 @@ class SparseFF(base.Layer):
     m2 = self._kernel_initializer(shape_m2, rng_m2)
     mb = self._bias_initializer(shape_mb, rng_mb)
     w1 = self._kernel_initializer(shape_w1, rng_w1)
-    # We keep w1 and w2 in the (d1, d2, d_model) shape to make numpy
-    # indexing faster at inference time.
-    w1 = np.reshape(w1.T, (self._d1, self._d2, d_model))
     w2 = self._kernel_initializer(shape_w2, rng_w2)
-    w2 = np.reshape(w2, (self._d1, self._d2, d_model))
     b2 = self._bias_initializer(shape_b2, rng_b2)
     self.weights = (m1, m2, mb, w1, w2, b2)
 

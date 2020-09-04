@@ -24,25 +24,17 @@ from trax.rl import training
 
 def configure_rl(*args, **kwargs):
   kwargs['module'] = 'trax.rl'
+  kwargs['blacklist'] = ['task', 'output_dir']
   return gin.external_configurable(*args, **kwargs)
 
 
-PolicyGradientTrainer = configure_rl(
-    training.PolicyGradientTrainer, blacklist=['task', 'output_dir'])
-ActorCriticTrainer = configure_rl(
-    actor_critic.ActorCriticTrainer, blacklist=['task'])
-A2CTrainer = configure_rl(
-    actor_critic.A2CTrainer,
-    blacklist=['task', 'output_dir'])
-AWRTrainer = configure_rl(
-    actor_critic.AWRTrainer, blacklist=['task', 'output_dir'])
-SamplingAWRTrainer = configure_rl(
-    actor_critic.SamplingAWRTrainer, blacklist=['task', 'output_dir'])
-AWRJointTrainer = configure_rl(
-    actor_critic_joint.AWRJointTrainer, blacklist=['task', 'output_dir'])
-PPOTrainer = configure_rl(
-    actor_critic.PPOTrainer, blacklist=['task', 'output_dir'])
-PPOJointTrainer = configure_rl(
-    actor_critic_joint.PPOJointTrainer, blacklist=['task', 'output_dir'])
-A2CJointTrainer = configure_rl(
-    actor_critic_joint.A2CJointTrainer, blacklist=['task', 'output_dir'])
+A2C = configure_rl(actor_critic.A2C)
+AWR = configure_rl(actor_critic.AWR)
+PPO = configure_rl(actor_critic.PPO)
+SamplingAWR = configure_rl(actor_critic.SamplingAWR)
+
+A2CJoint = configure_rl(actor_critic_joint.A2CJoint)
+AWRJoint = configure_rl(actor_critic_joint.AWRJoint)
+PPOJoint = configure_rl(actor_critic_joint.PPOJoint)
+
+PolicyGradient = configure_rl(training.PolicyGradient)

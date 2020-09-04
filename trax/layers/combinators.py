@@ -441,12 +441,13 @@ class Cond(base.Layer):
   conditionally run long computations. The state of non-executed function is not
   updated. Note that different branches may be executed on different devices
   if `cond` returns different values on them.
+  By default 'false' function is an identity.
 
   `cond` must return exactly one element: a Boolean value.
   `true` and `false` must have the same n_in, and the same n_out.
   """
 
-  def __init__(self, cond, true, false, name=None):
+  def __init__(self, cond, true, false=None, name=None):
     super(Cond, self).__init__(name=name)
 
     sublayers = [cond, true, false]
@@ -454,7 +455,14 @@ class Cond(base.Layer):
     self._n_layers = len(sublayers)
     self._cond = cond
     self._true = true
-    self._false = false
+    if false is None:
+      self._identity_false_fun = True
+      # We don't need this function, but it will be useful for checking if
+      # 'true' has proper n_in/n_out.
+      self._false = Serial()
+    else:
+      self._identity_false_fun = False
+      self._false = false
 
     if cond.n_out != 1:
       raise ValueError(
@@ -531,7 +539,11 @@ class Cond(base.Layer):
           t[0][0], t[1][0], t[2][0], t[3][0])
       # t[2][1] is old_false_state which is not changing if true is executed.
       return outputs, (new_true_state, t[2][1])
+
     def false_func(t):
+      if self._identity_false_fun:
+        # Memory optimization: we don't need pure_fn call.
+        return t[0][1], t[2]
       outputs, new_false_state = self._false.pure_fn(
           t[0][1], t[1][1], t[2][1], t[3][1])
       # t[2][1] is old_true_state, which is not changing if false is executed.

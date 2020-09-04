@@ -21,6 +21,8 @@ from __future__ import print_function
 
 import bisect
 import contextlib
+import string
+import sys
 import threading
 import numpy as np
 import six
@@ -36,6 +38,9 @@ _int_dtypes = [
     tf.int64, tf.int32, tf.int16, tf.int8, tf.uint8, tf.uint16, tf.uint32,
     tf.uint64
 ]
+_tf_nn_APIs = {1: [tf.nn.conv1d, tf.nn.conv1d_transpose],
+               2: [tf.nn.conv2d, tf.nn.conv2d_transpose],
+               3: [tf.nn.conv3d, tf.nn.conv3d_transpose]}
 
 
 def most_precise_int_dtype(x):
@@ -451,6 +456,248 @@ def expit(x):
 def erf(x):
   """Computes the Gauss error function of x element-wise."""
   return tf_np.asarray(tf.math.erf(x.data))
+
+
+def _minus(a, b):
+  return [x for x in a if x not in b]
+
+
+def _compose_output_rep(lhs_rep, rhs_rep, lhs_contraction, rhs_contraction,
+                        lhs_batch, rhs_batch):
+  """Compose the output string representation.
+
+  e.g., ij, jk, (((1,), (0,)), ((), ())) -> ik
+        aij, ajk, (((2,), (1,)), ((0,), (0,))) -> aik
+
+  Args:
+    lhs_rep: A string representation for the left-hand side input array
+    rhs_rep: A string representation for the right-hand side input array
+    lhs_contraction: Sequence[int] (the contraction dimensions of lhs)
+    rhs_contraction: Sequence[int] (the contraction dimensions of rhs)
+    lhs_batch: Sequence[int] (the batch dimensions of lhs)
+    rhs_batch: Sequence[int] (the batch dimensions of rhs)
+
+  Returns:
+    A string representation of the result array.
+  """
+  output_rep = []
+  for dim in lhs_batch:
+    output_rep.append(lhs_rep[dim])
+
+  for i in _minus(range(len(lhs_rep)), lhs_batch + lhs_contraction):
+    output_rep.append(lhs_rep[i])
+  for i in _minus(range(len(rhs_rep)), rhs_batch + rhs_contraction):
+    output_rep.append(rhs_rep[i])
+  return "".join(output_rep)
+
+
+def _non_batched_matmul(lhs, rhs, lhs_contraction, rhs_contraction):
+  """Compute the non-batched matrix multiplication.
+
+  If it is the general non-batched/single-batched matrix multiplication,
+  use the highly optimized kernel `tf.tensordot` to handle it.
+
+  Args:
+    lhs: an array (the left-hand side matrix/vector to be multiplied)
+    rhs: an array (the right-hand side matrix/vector to be multiplied)
+    lhs_contraction: Sequence[int] (the contraction dimensions of lhs)
+    rhs_contraction: Sequence[int] (the contraction dimensions of rhs)
+
+  Returns:
+    An array that contains the result.
+  """
+  return tf.tensordot(
+      lhs, rhs, axes=(list(lhs_contraction), list(rhs_contraction)))
+
+
+def tf_dot_general(lhs, rhs, dimension_numbers):
+  """The general dot operation for TensorFlow.
+
+  An equivalent general dot operation as that in JAX -
+     <https://jax.readthedocs.io/en/latest/_autosummary/jax.lax.dot_general.html>
+  Although there is an implementation in TF XLA, avoid directly using XLA when
+  possible.
+
+  e.g., non-batched: ij,jk->ik
+        batched: ijk,ikl->ijl
+
+  Args:
+    lhs: an array (the left-hand side matrix/vector to be multiplied)
+    rhs: an array (the right-hand side matrix/vector to be multiplied)
+    dimension_numbers: (Tuple[Tuple[Sequence[int], Sequence[int]],
+      Tuple[Sequence[int], Sequence[int]]]) – a tuple of tuples of the form
+      ((lhs_contracting_dims, rhs_contracting_dims), (lhs_batch_dims,
+      rhs_batch_dims))
+
+  Returns:
+    An array that contains the result.
+  """
+  char_list = list(string.ascii_lowercase)
+  char_list = char_list[8:] + char_list[:8]
+  lhs_rank, rhs_rank = len(lhs.shape), len(rhs.shape)
+  lhs_rep = char_list[:lhs_rank]
+  rhs_rep = char_list[lhs_rank:lhs_rank + rhs_rank]
+  contraction, batch = dimension_numbers
+  lhs_contraction, rhs_contraction = contraction
+  if len(lhs_contraction) != len(rhs_contraction):
+    raise ValueError(
+        "The input matrices are required to have the same number "
+        "of contraction dimensions, but got: lhs {}, rhs: {}".format(
+            len(lhs_contraction), len(rhs_contraction)))
+  lhs_batch, rhs_batch = batch
+  if len(lhs_batch) != len(rhs_batch):
+    raise ValueError("The input matrices are required to have the same number "
+                     "of batch dimensions, but got: lhs {}, rhs: {}".format(
+                         len(lhs_batch), len(rhs_batch)))
+
+  if not lhs_batch and not rhs_batch:
+    return _non_batched_matmul(lhs, rhs, lhs_contraction, rhs_contraction)
+
+  if (lhs_rank == rhs_rank == 3 and lhs_batch == (0,) and rhs_batch == (0,) and
+      lhs_contraction == (2,) and rhs_contraction == (1,)):
+    return tf.linalg.matmul(lhs, rhs)
+
+  for i in range(len(lhs_contraction)):
+    rhs_rep[rhs_contraction[i]] = lhs_rep[lhs_contraction[i]]
+  for i in range(len(lhs_batch)):
+    rhs_rep[rhs_batch[i]] = lhs_rep[lhs_batch[i]]
+
+  output_rep = _compose_output_rep(lhs_rep, rhs_rep, lhs_contraction,
+                                   rhs_contraction, lhs_batch, rhs_batch)
+  equation = "".join(lhs_rep) + "," + "".join(rhs_rep) + "->" + output_rep
+  return tf.einsum(equation, lhs, rhs)
+
+
+def _conv_general_param_type_converter(window_strides, lhs_dilation,
+                                       rhs_dilation, dim):
+  """Convert strides, lhs_dilation, rhs_dilation to match TF convention.
+
+  For example,
+   in the 3D case, if lhs_dilation = 2, then convert it to [2, 2, 2]
+                   if lhs_dilation = (2, 2, 2), convert it also to [2, 2, 2]
+
+  Args:
+    window_strides: window_strides to be converted
+    lhs_dilation: lhs_dilation to be converted
+    rhs_dilation: rhs_dilation to be converted
+    dim: dim to be converted
+
+  Returns:
+    The updated window_strides, lhs_dilation and rhs_dilation
+  """
+  def _as_list_of_size(item, size):
+    if item is None:
+      return None
+    return [item] * size if isinstance(item, int) else list(item)
+  return (_as_list_of_size(window_strides, dim),
+          _as_list_of_size(lhs_dilation, dim),
+          _as_list_of_size(rhs_dilation, dim))
+
+
+# pylint: disable=g-bad-todo
+# TODO(DarrenZhang01): Expand the test cases of general convolution and revise
+# the according bugs.
+# TODO(DarrenZhang01): Support feature_group_count, batch_group_count and
+# precision, and allow lhs_dilation and rhs_dilation to happen at the same time.
+# pylint: enable=g-bad-todo
+def tf_conv_general_dilated(lhs, rhs, window_strides, padding, output_shape,
+                            lhs_dilation=None, rhs_dilation=None,
+                            dimension_numbers=None, feature_group_count=1,
+                            batch_group_count=1, precision=None):
+  """A general conv API for TensorFlow.
+
+  According JAX version:
+    https://jax.readthedocs.io/en/stable/_autosummary/jax.lax.conv_general_dilated.html
+
+  Args:
+    lhs: a rank n+2 dimensional input array.
+    rhs: a rank n+2 dimensional array of kernel weights.
+    window_strides: a sequence of n integers, representing the inter-window
+                    strides.
+    padding: either the string ‘SAME’, the string ‘VALID’, or a sequence of n
+             (low, high) integer pairs that give the padding to apply before and
+             after each spatial dimension.
+    output_shape: the output shape of the convolution (only required for
+                  transpose convolution).
+    lhs_dilation: None, or a sequence of n integers, giving the dilation factor
+                  to apply in each spatial dimension of lhs. LHS dilation is
+                  also known as transposed convolution.
+    rhs_dilation: None, or a sequence of n integers, giving the dilation factor
+                  to apply in each spatial dimension of rhs. RHS dilation is
+                  also known as atrous convolution.
+    dimension_numbers: either None, a ConvDimensionNumbers object, or a 3-tuple
+                       (lhs_spec, rhs_spec, out_spec), where each element is a
+                       string of length n+2.
+    feature_group_count:  integer, default 1. Changing this is currently not
+                          supported.
+    batch_group_count: integer, default 1. Changing this is currently not
+                       supported.
+    precision: Optional. Either None, which means the default precision for the
+               backend, or a Precision enum value.
+
+  Returns:
+    A TF NumPy array that contains the convolution result.
+  """
+  dim = None
+  lhs_spec, rhs_spec, out_spec = dimension_numbers
+  if lhs_spec != out_spec:
+    raise ValueError("Current implementation requires the `data_format` of the "
+                     "inputs and outputs to be the same.")
+  if len(lhs_spec) >= 6:
+    raise ValueError("Current implmentation does not support 4 or higher"
+                     "dimensional convolution, but got: ", len(lhs_spec) - 2)
+  dim = len(lhs_spec) - 2
+  if lhs_dilation and rhs_dilation:
+    if lhs_dilation == (1,) * dim and rhs_dilation == (1,) * dim:
+      lhs_dilation, rhs_dilation = None, None
+    else:
+      raise ValueError("Current implementation does not support that "
+                       "deconvolution and dilation to be performed at the same "
+                       "time, but got lhs_dilation: {}, rhs_dilation: {}"
+                       .format(lhs_dilation, rhs_dilation))
+  if padding not in ["SAME", "VALID"]:
+    raise ValueError("Current implementation requires the padding parameter"
+                     "to be either 'VALID' or 'SAME', but got: ", padding)
+  if batch_group_count != 1 or feature_group_count != 1:
+    raise NotImplementedError("batch_group_count and feature_group_count "
+                              "other than 1 is currently not supported, but"
+                              " got feature_group_count: {}, batch_group_count"
+                              ": {}".format(feature_group_count,
+                                            batch_group_count))
+  if precision is not None:
+    raise NotImplementedError("precision other than `None` is currently not "
+                              "supported, but got: {}".format(precision))
+  # Convert params from int/Sequence[int] to list of ints.
+  strides, lhs_dilation, rhs_dilation = _conv_general_param_type_converter(
+      window_strides, lhs_dilation, rhs_dilation, dim
+  )
+  # Preprocess the shapes
+  dim_maps = {}
+  if isinstance(lhs_spec, str):
+    dim_maps["I"] = list(rhs_spec).index("I")
+    dim_maps["O"] = list(rhs_spec).index("O")
+    dim_maps["N"] = list(lhs_spec).index("N")
+    dim_maps["C"] = list(lhs_spec).index("C")
+  else:
+    dim_maps["I"] = rhs_spec[1]
+    dim_maps["O"] = rhs_spec[0]
+    dim_maps["N"] = lhs_spec[0]
+    dim_maps["C"] = lhs_spec[1]
+
+  lhs = tf_np.moveaxis(lhs, (dim_maps["N"], dim_maps["C"]), (0, dim + 1))
+  # Adjust the filters, put the dimension 'I' and 'O' at last.
+  rhs = tf_np.moveaxis(rhs, (dim_maps["O"], dim_maps["I"]), (dim + 1, dim))
+  spatial_dim_maps = {1: "W", 2: "HW", 3: "DHW"}
+  data_format = "N" + spatial_dim_maps[dim] + "C"
+
+  if rhs_dilation or (lhs_dilation is None and rhs_dilation is None):
+    output = _tf_nn_APIs[dim][0](lhs, rhs, strides, padding, data_format,
+                                 rhs_dilation)
+  else:
+    output = _tf_nn_APIs[dim][1](lhs, rhs, tf.constant(output_shape), strides,
+                                 padding, data_format, lhs_dilation)
+  output = tf_np.moveaxis(output, (0, dim + 1), (dim_maps["N"], dim_maps["C"]))
+  return output
 
 
 def conv(inp,
@@ -1296,17 +1543,113 @@ def accelerators(devices=None):
   return tpu_devices(devices) or gpu_devices(devices)
 
 
-# TODO(agarwal): support axes arguments.
-def vmap(f):
+def _tree_broadcast(to, s):
+  """Broadcasts `s` to the nested structure `to`."""
+  if not isinstance(to, (list, tuple, dict)):
+    if not isinstance(s, (int, type(None))):
+      raise ValueError
+    return s
+  if isinstance(s, (int, type(None))):
+    return tf.nest.map_structure(lambda x: s, to)
+  if isinstance(to, (list, tuple)):
+    if len(to) != len(s):
+      raise ValueError
+    new_s = [_tree_broadcast(x, y) for x, y in zip(to, s)]
+    if isinstance(to, tuple):
+      new_s = tuple(new_s)
+    return new_s
+  elif isinstance(to, dict):
+    return {k: _tree_broadcast(to[k], s[k]) for k in to.keys()}
+  else:
+    raise TypeError("Unsupported type %s" % type(to))
+
+
+def vmap(f, in_axes=0, out_axes=0):
   """Returns a function that maps `f` over first dimension of inputs."""
+  in_axes_flat = tf.nest.flatten(in_axes)
+  if not all(isinstance(l, (type(None), int))
+             for l in in_axes_flat):
+    raise TypeError(
+        "vmap in_axes must be an int, None, or (nested) container with "
+        "those types as leaves, but got {}.".format(in_axes))
+  if all(isinstance(l, type(None)) for l in in_axes_flat):
+    raise ValueError("vmap must have at least one non-None value in in_axes")
+
+  out_axes_flat = tf.nest.flatten(out_axes)
+  if not all(isinstance(l, (type(None), int))
+             for l in out_axes_flat):
+    raise TypeError(
+        "vmap out_axes must be an int, None, or (nested) container with "
+        "those types as leaves, but got {}.".format(out_axes))
 
   def _f(*args):
-    tf_args = tf.nest.map_structure(lambda x: tf_np.asarray(x).data, args)
+    flat_args = tf.nest.flatten(args)
+    try:
+      f_in_axes = _tree_broadcast(args, in_axes)
+    except ValueError:
+      six.reraise(
+          ValueError,
+          ValueError(
+              "vmap in_axes specification must be a tree prefix of the "
+              r"corresponding value, got specification %s for value tree %s" % (
+                  in_axes, args)),
+          sys.exc_info()[2])
+    f_in_axes_flat = tf.nest.flatten(f_in_axes)
 
-    def tf_f(x):
-      return f(*x)
+    def tf_f(tf_args):
+      """Function passed to tf.vectorized_map call."""
+      # Note that unbatched arguments are not passed to tf_f. Here we fill thos
+      # arguments back before calling `f`.
+      tf_flat_args = []
+      j = 0
+      for arg, axis in zip(flat_args, f_in_axes_flat):
+        if axis is None:
+          tf_flat_args.append(arg)
+        else:
+          tf_flat_args.append(tf_args[j])
+          j += 1
+      unbatched_args = tf.nest.pack_sequence_as(args, tf_flat_args)
+      return f(*unbatched_args)
 
+    # Constructs arguments to pass to `tf_f`.
+    # Unbatch arguments are skipped. Arguments with non-zero axis are
+    # transposed.
+    tf_args = []
+    for arg, axis in zip(flat_args, f_in_axes_flat):
+      if axis is None:
+        continue
+      arg = tf_np.asarray(arg)
+      if axis != 0:
+        arg = tf_np.moveaxis(arg, axis, 0)
+      tf_args.append(arg)
+    # TODO(agarwal): consider creating a tf.function outside of _f and reusing
+    # that to avoid overheads of re-vectorizing the code when running eagerly.
     outputs = tf.vectorized_map(tf_f, tf_args)
-    return tf.nest.map_structure(tf_np.asarray, outputs)
+    try:
+      f_out_axes = _tree_broadcast(outputs, out_axes)
+    except ValueError:
+      six.reraise(
+          ValueError,
+          ValueError(
+              "vmap out_axes specification must be a tree prefix of the "
+              r"corresponding value, got specification %s for value tree %s" % (
+                  out_axes, outputs)),
+          sys.exc_info()[2])
+
+    def map_output(x, axis):
+      """Maps output of tf.vectorized_map to the final output."""
+      x = tf_np.asarray(x)
+      if axis is None:
+        # Note that `tf.vectorized_map always batches the outputs.
+        # Here we unbatch it again.
+        return x[0, ...]
+      elif axis == 0:
+        return x
+      else:
+        # Need to transpose the output.
+        return tf_np.moveaxis(x, 0, axis)
+    new_outputs = [map_output(output, axis) for output, axis in zip(
+        tf.nest.flatten(outputs), tf.nest.flatten(f_out_axes))]
+    return tf.nest.pack_sequence_as(outputs, new_outputs)
 
   return _f

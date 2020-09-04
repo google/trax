@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-PPOJointTrainer.train_steps_per_epoch: [10, 100]
+PPOJoint.train_steps_per_epoch: [10, 100]
 multifactor.constant: [0.0001, 0.000025]
-PPOJointTrainer.value_loss_coeff: [0.01, 0.1, 1]
-PPOJointTrainer.batch_size: [8, 16, 32, 256]
-PPOJointTrainer.epsilon: [0.1, 0.2, 0.3]
+PPOJoint.value_loss_coeff: [0.01, 0.1, 1]
+PPOJoint.batch_size: [8, 16, 32, 256]
+PPOJoint.epsilon: [0.1, 0.2, 0.3]
 RLTask.max_steps: [200, 2000]
 RLTask.env: ["pong", "boxing", "breakout", "freeway"]

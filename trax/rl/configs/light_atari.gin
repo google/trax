@@ -44,50 +44,50 @@ RLTask.dm_suite = True
 # ==============================================================================
 td_lambda.lambda_ = 0.95
 
-# Parameters for AWRTrainer:
+# Parameters for AWR:
 # ==============================================================================
-AWRTrainer.value_model = @trax.models.Value
-AWRTrainer.value_optimizer = @trax.optimizers.Adam
-AWRTrainer.value_batch_size = 32
-AWRTrainer.value_train_steps_per_epoch = 1000
-AWRTrainer.value_lr_schedule = @value/multifactor
-AWRTrainer.value_evals_per_epoch = 10
-AWRTrainer.value_eval_steps = 10
-AWRTrainer.policy_model = @trax.models.Policy
-AWRTrainer.policy_optimizer = @trax.optimizers.Adam
-AWRTrainer.policy_batch_size = 32
-AWRTrainer.policy_train_steps_per_epoch = 1000
-AWRTrainer.policy_lr_schedule = @policy/multifactor
-AWRTrainer.policy_evals_per_epoch = 10
-AWRTrainer.policy_eval_steps = 10
-AWRTrainer.n_trajectories_per_epoch = 10
-AWRTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
-AWRTrainer.beta = 1.0
-AWRTrainer.w_max = 20
-AWRTrainer.max_slice_length = 1
+AWR.value_model = @trax.models.Value
+AWR.value_optimizer = @trax.optimizers.Adam
+AWR.value_batch_size = 32
+AWR.value_train_steps_per_epoch = 1000
+AWR.value_lr_schedule = @value/multifactor
+AWR.value_evals_per_epoch = 10
+AWR.value_eval_steps = 10
+AWR.policy_model = @trax.models.Policy
+AWR.policy_optimizer = @trax.optimizers.Adam
+AWR.policy_batch_size = 32
+AWR.policy_train_steps_per_epoch = 1000
+AWR.policy_lr_schedule = @policy/multifactor
+AWR.policy_evals_per_epoch = 10
+AWR.policy_eval_steps = 10
+AWR.n_trajectories_per_epoch = 10
+AWR.advantage_estimator = @trax.rl.advantages.td_lambda
+AWR.beta = 1.0
+AWR.w_max = 20
+AWR.max_slice_length = 1
 
-# Parameters for PPOTrainer:
+# Parameters for PPO:
 # ==============================================================================
-PPOTrainer.n_shared_layers=0
-PPOTrainer.value_model = @trax.models.Value
-PPOTrainer.value_optimizer = @trax.optimizers.Adam
-PPOTrainer.value_batch_size = 32
-PPOTrainer.value_train_steps_per_epoch = 10
-PPOTrainer.value_evals_per_epoch = 1
-PPOTrainer.value_eval_steps = 1
-PPOTrainer.value_lr_schedule = @value/multifactor
-PPOTrainer.policy_model = @trax.models.Policy
-PPOTrainer.policy_optimizer = @trax.optimizers.Adam
-PPOTrainer.policy_batch_size = 32
-PPOTrainer.policy_train_steps_per_epoch = 10
-PPOTrainer.policy_lr_schedule = @policy/multifactor
-PPOTrainer.policy_evals_per_epoch = 1
-PPOTrainer.policy_eval_steps = 1
-PPOTrainer.advantage_estimator = @trax.rl.advantages.td_lambda
-PPOTrainer.n_trajectories_per_epoch = 10
+PPO.n_shared_layers=0
+PPO.value_model = @trax.models.Value
+PPO.value_optimizer = @trax.optimizers.Adam
+PPO.value_batch_size = 32
+PPO.value_train_steps_per_epoch = 10
+PPO.value_evals_per_epoch = 1
+PPO.value_eval_steps = 1
+PPO.value_lr_schedule = @value/multifactor
+PPO.policy_model = @trax.models.Policy
+PPO.policy_optimizer = @trax.optimizers.Adam
+PPO.policy_batch_size = 32
+PPO.policy_train_steps_per_epoch = 10
+PPO.policy_lr_schedule = @policy/multifactor
+PPO.policy_evals_per_epoch = 1
+PPO.policy_eval_steps = 1
+PPO.advantage_estimator = @trax.rl.advantages.td_lambda
+PPO.n_trajectories_per_epoch = 10
 
 # Parameters for train_rl:
 # ==============================================================================
 train_rl.light_rl = True
-train_rl.light_rl_trainer = @trax.rl.AWRTrainer
+train_rl.light_rl_trainer = @trax.rl.AWR
 train_rl.n_epochs = 5000

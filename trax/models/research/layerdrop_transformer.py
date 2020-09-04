@@ -28,16 +28,16 @@ def LargerThan(val):
   return tl.Fn('LargerThan', lambda x: x > val)
 
 
-def LayerDropSkippingTransformerLM(vocab_size,
-                                   d_model=512,
-                                   d_ff=2048,
-                                   n_layers=6,
-                                   n_heads=8,
-                                   dropout=0.1,
-                                   max_len=2048,
-                                   mode='train',
-                                   ff_activation=tl.Relu,
-                                   skip_fraction=0.4):
+def SkippingTransformerLM(vocab_size,
+                          d_model=512,
+                          d_ff=2048,
+                          n_layers=6,
+                          n_heads=8,
+                          dropout=0.1,
+                          max_len=2048,
+                          mode='train',
+                          ff_activation=tl.Relu,
+                          skip_fraction=0.4):
   """Returns a Skipping Transformer language model.
 
   The input to the model is a tensor of tokens. (This model uses only the

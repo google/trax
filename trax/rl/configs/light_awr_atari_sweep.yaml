@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-AWRJointTrainer.train_steps_per_epoch: [10, 100, 1000]
+AWRJoint.train_steps_per_epoch: [10, 100, 1000]
 multifactor.constant: [0.0001, 0.001, 0.01]
-AWRJointTrainer.batch_size: [32, 128]
+AWRJoint.batch_size: [32, 128]
 RLTask.max_steps: [200, 2000]
 RLTask.env: ["boxing"]

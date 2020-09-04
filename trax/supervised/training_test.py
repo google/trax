@@ -20,15 +20,14 @@ import os
 import time
 
 from absl.testing import absltest
-
 from jax import test_util  # pylint: disable=unused-import
 from jax.config import config
-
 import numpy as np
 
 from trax import fastmath
 from trax import layers as tl
 from trax import optimizers
+from trax import shapes
 from trax import test_utils
 from trax.supervised import training
 
@@ -150,11 +149,69 @@ class TrainingTest(absltest.TestCase):
     loop2 = training.Loop(model, [task], output_dir=tmp_dir)
     self.assertEqual(4, loop2.step)
 
+  def test_trains_on_two_tasks(self):
+    """Trains a very simple network on two very simple tasks."""
+    model = tl.Serial(tl.Dense(3), tl.Dense(1))
+    task = training.TrainTask(
+        _very_simple_data(),
+        tl.L2Loss(),
+        optimizers.SGD(.01)
+    )
+    eval_task = training.EvalTask(
+        _very_simple_data(),  # deliberately re-using training data
+        [tl.L2Loss()],
+    )
+    training_session = training.Loop(
+        model,
+        tasks=(task, task),
+        eval_tasks=(eval_task, eval_task),
+        which_task=lambda step_n: step_n % 2,
+    )
+    self.assertEqual(0, training_session.step)
+    training_session.run(n_steps=15)
+    self.assertEqual(15, training_session.step)
+    training_session.run(n_steps=5)
+    self.assertEqual(20, training_session.step)
 
-def _very_simple_data():
+  def test_can_predict_with_trained_model(self):
+    model = tl.Serial(tl.Dense(3), tl.Branch(tl.Dense(1), tl.Dense(2)))
+    train_tasks, eval_tasks = [], []
+    for output_dim in [1, 2]:
+      # The head we select from the model: 0 for output_dim 1 and 1 for 2.
+      head_index = output_dim - 1
+      train_tasks.append(training.TrainTask(
+          _very_simple_data(output_dim),
+          tl.Serial(tl.Select([head_index], n_in=2), tl.L2Loss()),
+          optimizers.SGD(.01)
+      ))
+      eval_tasks.append(training.EvalTask(
+          _very_simple_data(output_dim),  # deliberately re-use training data
+          [tl.Serial(tl.Select([head_index], n_in=2), tl.L2Loss())]
+      ))
+    tmp_dir = self.create_tempdir().full_path
+    training_session = training.Loop(
+        model,
+        tasks=train_tasks,
+        eval_tasks=eval_tasks,
+        checkpoint_at=lambda step_n: step_n == 1,
+        output_dir=tmp_dir,
+        which_task=lambda step_n: step_n % 2,
+    )
+    training_session.run(n_steps=2)
+
+    trained_model = training_session.eval_model
+    inp = next(_very_simple_data())[0]
+    out = trained_model(inp)
+    self.assertEqual(
+        shapes.signature(out),
+        (shapes.ShapeDtype((8, 1)), shapes.ShapeDtype((8, 2))),
+    )
+
+
+def _very_simple_data(output_dim=1):
   """"Returns stream of labeled data that maps small integers to constant pi."""
   inputs_batch = np.arange(8).reshape((8, 1))  # 8 items per batch
-  targets_batch = np.pi * np.ones_like(inputs_batch)
+  targets_batch = np.pi * np.ones((8, output_dim))
   labeled_batch = (inputs_batch, targets_batch, np.ones_like(targets_batch))
   while True:
     yield labeled_batch

@@ -27,7 +27,7 @@ training sentiment analysis tasks on the IMDB dataset::
     data.FilterByLength(max_length=2048, length_keys=[0]),
     data.BucketByLength(boundaries=[  32, 128, 512, 2048],
                         batch_sizes=[128,  32,   8,    2, 1],
-                        length_keys=[0])
+                        length_keys=[0]),
     data.AddLossWeights()
   )
 

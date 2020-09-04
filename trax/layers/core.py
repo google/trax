@@ -117,7 +117,12 @@ class Embedding(base.Layer):
   def __init__(self,
                vocab_size,
                d_feature,
-               kernel_initializer=init.RandomNormalInitializer(1.0)):
+               kernel_initializer=
+               init.ScaledInitializer(out_dim=-1,
+                                      in_dim=-2,
+                                      scale=1.,
+                                      mode='fan_out',
+                                      distribution='uniform')):
     """Returns an embedding layer with given vocabulary size and vector size.
 
     The layer clips input values (token ids) to the range `[0, vocab_size)`.
@@ -376,6 +381,28 @@ def Mean(axis=-1, keepdims=False):
   return Fn('Mean', lambda x: jnp.mean(x, axis=axis, keepdims=keepdims))
 
 
+def Min(axis=-1, keepdims=False):
+  """Returns a layer that applies min along one tensor axis.
+
+  Args:
+    axis: Axis along which values are grouped for computing minimum.
+    keepdims: If `True`, keep the resulting size 1 axis as a separate tensor
+        axis; else, remove that axis.
+  """
+  return Fn('Min', lambda x: jnp.min(x, axis, keepdims=keepdims))
+
+
+def Max(axis=-1, keepdims=False):
+  """Returns a layer that applies max along one tensor axis.
+
+  Args:
+    axis: Axis along which values are grouped for computing maximum.
+    keepdims: If `True`, keep the resulting size 1 axis as a separate tensor
+        axis; else, remove that axis.
+  """
+  return Fn('Max', lambda x: jnp.max(x, axis, keepdims=keepdims))
+
+
 def Sum(axis=-1, keepdims=False):
   """Returns a layer that computes sums using one tensor axis.
 
@@ -396,6 +423,11 @@ def Sum(axis=-1, keepdims=False):
 def Negate():
   """Returns a layer that computes the element-wise negation of a tensor."""
   return Fn('Negate', lambda x: -x)
+
+
+def StopGradient():
+  """Returns an identity layer with a stop gradient."""
+  return Fn('StopGradient', lambda x: fastmath.stop_gradient(x))  # pylint: disable=unnecessary-lambda
 
 
 def log_gaussian_pdf(x, mu, sigma):  # pylint: disable=invalid-name

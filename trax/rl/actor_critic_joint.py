@@ -31,7 +31,7 @@ from trax.supervised import lr_schedules as lr
 
 
 # pylint: disable=g-long-lambda
-class ActorCriticJointTrainer(rl_training.RLTrainer):
+class ActorCriticJointAgent(rl_training.Agent):
   """Trains a joint policy-and-value model using actor-critic methods."""
 
   def __init__(self, task,
@@ -206,7 +206,7 @@ class ActorCriticJointTrainer(rl_training.RLTrainer):
           self._supervised_eval_steps)
 
 
-class PPOJointTrainer(ActorCriticJointTrainer):
+class PPOJoint(ActorCriticJointAgent):
   """The Proximal Policy Optimization Algorithm aka PPO.
 
   Trains policy and value models using the PPO algortithm.
@@ -455,7 +455,7 @@ class PPOJointTrainer(ActorCriticJointTrainer):
     return tl.Fn('PPOObjectiveMean', f)
 
 
-class A2CJointTrainer(ActorCriticJointTrainer):
+class A2CJoint(ActorCriticJointAgent):
   """The A2C algorithm.
 
   Trains policy and value models using the A2C algortithm.
@@ -618,7 +618,7 @@ class A2CJointTrainer(ActorCriticJointTrainer):
     return tl.Fn('A2CObjectiveMean', f, n_out=1)
 
 
-class AWRJointTrainer(ActorCriticJointTrainer):
+class AWRJoint(ActorCriticJointAgent):
   """Trains a joint policy-and-value model using AWR."""
 
   # TODO(henrykm): value_loss_coeff looks like a common parameter

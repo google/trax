@@ -26,14 +26,48 @@ sequence_length = {'inputs': 512, 'targets': 512}
 mean_noise_span_length = 3.0
 noise_density = 0.15
 
+dropout = 0.1
+d_axial_pos_embs = (512, 512)  # should sum out to d_model
+ff_chunk_size = 0
+
+# Corresponds roughly to T5 'large' ~ 770m params, i.e. T5's `bi_v1_large.gin`.
+d_model = 1024
+d_ff = 4096
+n_heads = 16
+n_layers = 24
+attn_kv = 64
+
+# We are using T5's 32k SPM model by default.
+vocab_size = 32000
+
+
+# Parameters for LSHSelfAttention:
+# ==============================================================================
+SelfAttention.attention_dropout = %dropout
+SelfAttention.chunk_len = None  # full attention
+
+# Parameters for LSHSelfAttention:
+# ==============================================================================
+LSHSelfAttention.attention_dropout = %dropout
+LSHSelfAttention.chunk_len = 128
+LSHSelfAttention.n_buckets = 8
+LSHSelfAttention.n_chunks_after = 0
+LSHSelfAttention.n_chunks_before = 1
+LSHSelfAttention.n_hashes = 2
+LSHSelfAttention.n_parallel_heads = 1
+LSHSelfAttention.predict_drop_len = 128
+LSHSelfAttention.predict_mem_len = %max_length
+# Reformer2's *encoder* is bidirectional.
+ref2_encoder/LSHSelfAttention.n_chunks_after = 1
+
 # Parameters for batcher:
 # ==============================================================================
 batcher.data_streams = @tf_inputs.data_streams
 # With 64, we get an average of weights_per_core = 450, so 450*8 = 3600 tokens
 # per batch on a 2x2 TPU on average per step. T5's batch is ~65k tokens/batch.
 # i.e. 18x bigger than ours.
-batcher.batch_size_per_device = 64
-batcher.eval_batch_size = 64
+batcher.batch_size_per_device = 128
+batcher.eval_batch_size = 128
 batcher.max_eval_length = %max_length
 batcher.buckets_include_inputs_in_length=True
 batcher.id_to_mask = 0
@@ -71,42 +105,41 @@ c4_bare_preprocess_fn.sequence_length = %sequence_length
 # ==============================================================================
 train.eval_frequency = 1000
 train.eval_steps = 10
-train.model = @trax.models.Transformer  # NoEncDecAttention
+train.model = @trax.models.Reformer2
 # T5 pretrains on C4 for 2^19 steps. Our batches are ~ 1/9th the size.
 train.steps = 524288
 train.optimizer = @trax.optimizers.Adafactor
 train.checkpoint_highest = 'accuracy'
 train.checkpoint_lowest = 'loss'
 
-# Corresponds roughly to T5 'large' ~ 770m params, i.e. T5's `bi_v1_large.gin`.
-d_model = 1024
-d_ff = 4096
-n_layers = 24
-n_heads = 16
+# attn_type = @LSHSelfAttention
+# enc_attn_type = @ref2_encoder/LSHSelfAttention
 
-# Parameters for Transformer:
-# ==============================================================================
-Transformer.d_model = %d_model
-Transformer.d_ff = %d_ff
-Transformer.dropout = 0.1
-Transformer.max_len = 2048
-Transformer.mode = 'train'
-Transformer.n_heads = %n_heads
-Transformer.n_encoder_layers = %n_layers
-Transformer.n_decoder_layers = %n_layers
-Transformer.input_vocab_size = 32000
+attn_type = @SelfAttention
+enc_attn_type = @SelfAttention
 
-# Parameters for TransformerNoEncDecAttention:
+
+# Parameters for Reformer2:
 # ==============================================================================
-TransformerNoEncDecAttention.d_model = %d_model
-TransformerNoEncDecAttention.d_ff = %d_ff
-TransformerNoEncDecAttention.dropout = 0.1
-TransformerNoEncDecAttention.max_len = 2048
-TransformerNoEncDecAttention.mode = 'train'
-TransformerNoEncDecAttention.n_heads = %n_heads
-TransformerNoEncDecAttention.n_encoder_layers = %n_layers
-TransformerNoEncDecAttention.n_decoder_layers = %n_layers
-TransformerNoEncDecAttention.input_vocab_size = 32000
+Reformer2.d_model = %d_model  # was  512
+Reformer2.d_ff = %d_ff        # was 2048
+Reformer2.dropout = %dropout  # was  0.1
+Reformer2.ff_activation = @trax.layers.Relu
+Reformer2.ff_dropout = 0.1
+Reformer2.ff_chunk_size = %ff_chunk_size
+Reformer2.ff_sparsity = 0
+Reformer2.max_len = %max_length
+Reformer2.mode = 'train'
+Reformer2.n_heads = %n_heads
+Reformer2.n_encoder_layers = %n_layers
+Reformer2.n_decoder_layers = %n_layers
+Reformer2.input_vocab_size = %vocab_size
+Reformer2.d_attention_key = %attn_kv    # d_model // n_heads
+Reformer2.d_attention_value = %attn_kv  # d_model // n_heads
+Reformer2.encoder_attention_type = %attn_type
+Reformer2.encoder_decoder_attention_type = %enc_attn_type
+Reformer2.d_axial_pos_embs = %d_axial_pos_embs
+
 
 # Parameters for T5
 

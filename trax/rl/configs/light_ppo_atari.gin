@@ -45,23 +45,23 @@ RLTask.gamma = 0.99
 RLTask.max_steps = 200
 RLTask.dm_suite = True
 
-# Parameters for PPOTrainer:
+# Parameters for PPO:
 # ==============================================================================
-PPOTrainer.n_shared_layers=0
-PPOTrainer.value_model = @trax.models.Value
-PPOTrainer.value_optimizer = @trax.optimizers.Adam
-PPOTrainer.value_batch_size = 4
-PPOTrainer.value_train_steps_per_epoch = 10
-PPOTrainer.value_lr_schedule = @value/multifactor
-PPOTrainer.policy_model = @trax.models.Policy
-PPOTrainer.policy_optimizer = @trax.optimizers.Adam
-PPOTrainer.policy_batch_size = 4
-PPOTrainer.policy_train_steps_per_epoch = 10
-PPOTrainer.policy_lr_schedule = @policy/multifactor
-PPOTrainer.n_trajectories_per_epoch = 50
+PPO.n_shared_layers=0
+PPO.value_model = @trax.models.Value
+PPO.value_optimizer = @trax.optimizers.Adam
+PPO.value_batch_size = 4
+PPO.value_train_steps_per_epoch = 10
+PPO.value_lr_schedule = @value/multifactor
+PPO.policy_model = @trax.models.Policy
+PPO.policy_optimizer = @trax.optimizers.Adam
+PPO.policy_batch_size = 4
+PPO.policy_train_steps_per_epoch = 10
+PPO.policy_lr_schedule = @policy/multifactor
+PPO.n_trajectories_per_epoch = 50
 
 # Parameters for train_rl:
 # ==============================================================================
 train_rl.light_rl = True
-train_rl.light_rl_trainer = @trax.rl.PPOTrainer
+train_rl.light_rl_trainer = @trax.rl.PPO
 train_rl.n_epochs = 5000
