@@ -559,6 +559,9 @@ class Loop:
 
   def save_checkpoint(self):
     """Saves checkpoint to disk for the current training step."""
+    if not self.is_chief:
+      _log('Did not save checkpoint as we are not chief.')
+      return
     if self._output_dir is None:
       _log('Did not save checkpoint as output_dir is None')
       return
