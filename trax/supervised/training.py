@@ -483,6 +483,18 @@ class Loop:
     self._eval_model.weights = self._model.weights
     self._eval_model.state = self._model.state
 
+    def recursively_look_for_printable_states(state):
+      if isinstance(state, (tuple, list)):
+        for substate in state:
+          for item in recursively_look_for_printable_states(substate):
+            yield item
+      if isinstance(state, dict):
+        for key, value in state.items():
+          if isinstance(key, str) and key.startswith('summary_'):
+            for device_id, device_value in enumerate(value):
+              yield ('device{}/{}'.format(device_id, key[len('summary_'):]),
+                     device_value)
+
     for task_index in range(len(self._eval_tasks)):
       eval_task = self._eval_tasks[task_index]
       if eval_task is None:
@@ -513,6 +525,10 @@ class Loop:
         averages = sums / n_batches
         all_metrics = dict(zip(eval_task.metric_names, averages))
         self._log_scalars(all_metrics, summary_writer, 'metrics/', 'eval')
+
+        summary_metrics = dict(recursively_look_for_printable_states(
+            model_state))
+        self._log_scalars(summary_metrics, summary_writer, 'summary_', 'eval')
 
   def _log_scalars(self, scalars, summary_writer, scalar_prefix, log_prefix,
                    stdout=True):

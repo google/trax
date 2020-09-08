@@ -269,6 +269,55 @@ class Weights(base.Layer):
     self.weights = self._initializer(self._shape, self.rng)
 
 
+class SummaryScalar(base.Layer):
+  """A layer receiving a tensor, and adding it to TensorBoard as a scalar.
+
+  It takes an input and returns it unchanged. It stores this input as a state to
+  be used as a metric in TensorBoard.
+  It converts a tensor to a scalar by running a given aggregation function (mean
+  by default). On TensorBoard, results for each device will be reported
+  separately.
+  """
+
+  def __init__(self, name, aggregation_fun=jnp.mean):
+    """Takes a tensor and returns it.
+
+    Args:
+      name: Name of the metric to be reported.
+      aggregation_fun: Aggregation function to be used.
+    """
+    super().__init__(name=f'Summary_{name}', n_in=1, n_out=1)
+    name = 'summary_' + name
+    self._name = name
+    self._aggregation_fun = aggregation_fun
+
+  def forward(self, x):
+    """Executes this layer as part of a forward pass through the model.
+
+    Args:
+      x: Tensor of same shape and dtype as the input signature used to
+          initialize this layer.
+
+    Returns:
+      Tensor with previously specified shape and dtype.
+    """
+    self.state = {self._name: self._aggregation_fun(x)}
+    return x
+
+  def init_weights_and_state(self, input_signature):
+    """Returns newly initialized weights for this layer.
+
+    Weights is a single  `w` tensor with previously specified shape.
+
+    Args:
+      input_signature: `ShapeDtype` instance characterizing the input this layer
+          should compute on. Unused.
+    """
+    del input_signature  # Unused.
+    self.weights = ()
+    self.state = {self._name: jnp.array(0.)}
+
+
 class RandomUniform(base.Layer):
   """Layer returning a tensor with random values distributed uniformly."""
 

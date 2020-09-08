@@ -241,6 +241,16 @@ class WeightsTest(absltest.TestCase):
                                      [0., 0.]])
 
 
+class SummaryScalarTest(absltest.TestCase):
+
+  def test_passes(self):
+    layer = tl.SummaryScalar('test')
+    x = np.array([[3., 5.], [2., 6.]])  # 10,000 values
+    y = layer(x)
+    self.assertEqual(y.tolist(), [[3., 5.], [2., 6.]])
+    self.assertEqual(layer.state['summary_test'].tolist(), 4.0)
+
+
 class RandomUniformTest(absltest.TestCase):
   """Test Weights layer."""
 
