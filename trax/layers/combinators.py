@@ -450,19 +450,21 @@ class Cond(base.Layer):
   def __init__(self, cond, true, false=None, name=None):
     super(Cond, self).__init__(name=name)
 
+    if false is None:
+      self._identity_false_fun = True
+      # We don't need this function, but it will be useful for checking if
+      # 'true' has proper n_in/n_out.
+      false = Serial()
+      self._false = false
+    else:
+      self._identity_false_fun = False
+      self._false = false
+
     sublayers = [cond, true, false]
     self._sublayers = sublayers
     self._n_layers = len(sublayers)
     self._cond = cond
     self._true = true
-    if false is None:
-      self._identity_false_fun = True
-      # We don't need this function, but it will be useful for checking if
-      # 'true' has proper n_in/n_out.
-      self._false = Serial()
-    else:
-      self._identity_false_fun = False
-      self._false = false
 
     if cond.n_out != 1:
       raise ValueError(

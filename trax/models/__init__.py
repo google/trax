@@ -63,6 +63,8 @@ SkippingTransformerLM = model_configure(
     layerdrop_transformer.SkippingTransformerLM)
 LayerDropTransformerLM = model_configure(
     layerdrop_transformer.LayerDropTransformerLM)
+EveryOtherLayerDropTransformerLM = model_configure(
+    layerdrop_transformer.EveryOtherLayerDropTransformerLM)
 Transformer = model_configure(transformer.Transformer)
 TransformerDecoder = model_configure(transformer.TransformerDecoder)
 TransformerEncoder = model_configure(transformer.TransformerEncoder)

@@ -62,5 +62,21 @@ class LayerDropTransformerTest(absltest.TestCase):
     ys = model(xs)
     self.assertEqual([y.shape for y in ys], [(1, 8, 16), (1, 8)])
 
+
+class EveryOtherLayerDropTransformerTest(absltest.TestCase):
+
+  def test_everyother_layerdrop_transformer_forward(self):
+    """Tests that the forward pass runs and returns the expected shape."""
+    vocab_size = 16
+    model = layerdrop_transformer.EveryOtherLayerDropTransformerLM(
+        vocab_size, d_model=16, d_ff=32, n_layers=2, n_heads=2, max_len=16,
+        skip_mode='1half')
+    xs = [np.ones((1, 8)).astype(np.int32),
+          np.ones((1, 8)).astype(np.int32)]
+    _, _ = model.init(shapes.signature(xs))
+    ys = model(xs)
+    self.assertEqual([y.shape for y in ys], [(1, 8, 16), (1, 8)])
+
+
 if __name__ == '__main__':
   absltest.main()

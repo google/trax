@@ -640,6 +640,15 @@ class CondTest(absltest.TestCase):
     ys = layer(xs)
     self.assertEqual(as_list(ys), [1., 3.])
 
+  def test_condition_func_default_false(self):
+    cond = SmallerThan(3.0)
+    true = DivideBy(2.)
+    layer = tl.Cond(cond, true)
+    xs = (np.array(4.), np.array([4., 12.]))
+    layer.init(shapes.signature(xs))
+    ys = layer(xs)
+    self.assertEqual(as_list(ys), [4., 12.])
+
   def test_exception_n_out(self):
     cond = SmallerThan(3.0)
     true = DivideBy(2.)
