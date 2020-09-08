@@ -38,111 +38,99 @@ class TrainingTest(absltest.TestCase):
   def setUp(self):
     super().setUp()
     test_utils.ensure_flag('test_tmpdir')
-
-  def test_policytrainer_save_restore(self):
-    """Check save and restore of policy trainer."""
-    task = rl_task.RLTask('CartPole-v0', initial_trajectories=10,
-                          max_steps=200)
-    model = functools.partial(
+    self._model_fn = functools.partial(
         models.Policy,
         body=lambda mode: tl.Serial(  # pylint: disable=g-long-lambda
             tl.Dense(64), tl.Relu(), tl.Dense(64), tl.Relu()
         ),
     )
+
+  def test_policy_gradient_smoke(self):
+    """Check save and restore of policy agent."""
+    task = rl_task.RLTask('CartPole-v0', max_steps=2)
     tmp_dir = self.create_tempdir().full_path
-    trainer1 = training.PolicyGradient(
+    agent = training.PolicyGradient(
         task,
-        policy_model=model,
-        policy_optimizer=opt.Adam,
-        policy_batch_size=128,
-        policy_train_steps_per_epoch=1,
+        model_fn=self._model_fn,
+        optimizer=opt.Adam,
+        batch_size=2,
         n_trajectories_per_epoch=2,
         n_eval_episodes=1,
         output_dir=tmp_dir)
-    trainer1.run(1)
-    trainer1.run(1)
-    self.assertEqual(trainer1.current_epoch, 2)
-    self.assertEqual(trainer1._policy_trainer.step, 2)
-    # Trainer 2 starts where trainer 1 stopped.
-    trainer2 = training.PolicyGradient(
+    agent.run(1)
+    self.assertEqual(agent.current_epoch, 1)
+
+  def test_policy_gradient_save_restore(self):
+    """Check save and restore of policy agent."""
+    task = rl_task.RLTask('CartPole-v0', max_steps=2)
+    tmp_dir = self.create_tempdir().full_path
+    agent1 = training.PolicyGradient(
         task,
-        policy_model=model,
-        policy_optimizer=opt.Adam,
-        policy_batch_size=128,
-        policy_train_steps_per_epoch=1,
+        model_fn=self._model_fn,
+        optimizer=opt.Adam,
+        batch_size=2,
         n_trajectories_per_epoch=2,
         n_eval_episodes=1,
         output_dir=tmp_dir)
-    trainer2.run(1)
-    self.assertEqual(trainer2.current_epoch, 3)
-    self.assertEqual(trainer2._policy_trainer.step, 3)
-    # Trainer 3 has 2x steps-per-epoch, but epoch 3, should raise an error.
-    trainer3 = training.PolicyGradient(
+    agent1.run(1)
+    agent1.run(1)
+    self.assertEqual(agent1.current_epoch, 2)
+    self.assertEqual(agent1.loop.step, 2)
+    # Trainer 2 starts where agent 1 stopped.
+    agent2 = training.PolicyGradient(
         task,
-        policy_model=model,
-        policy_optimizer=opt.Adam,
-        policy_batch_size=128,
-        policy_train_steps_per_epoch=2,
+        model_fn=self._model_fn,
+        optimizer=opt.Adam,
+        batch_size=2,
         n_trajectories_per_epoch=2,
         n_eval_episodes=1,
         output_dir=tmp_dir)
-    self.assertRaises(ValueError, trainer3.run)
+    agent2.run(1)
+    self.assertEqual(agent2.current_epoch, 3)
+    self.assertEqual(agent2.loop.step, 3)
     # Manually set saved epoch to 1.
     dictionary = {'epoch': 1, 'avg_returns': [0.0],
                   'avg_returns_temperature0': {200: [0.0]}}
     with tf.io.gfile.GFile(os.path.join(tmp_dir, 'rl.pkl'), 'wb') as f:
       pickle.dump(dictionary, f)
-    # Trainer 3 still should fail as steps between evals are 2, cannot do 1.
-    self.assertRaises(ValueError, trainer3.run)
-    # Trainer 4 does 1 step per eval, should train 1 step in epoch 2.
-    trainer4 = training.PolicyGradient(
-        task,
-        policy_model=model,
-        policy_optimizer=opt.Adam,
-        policy_batch_size=128,
-        policy_train_steps_per_epoch=2,
-        policy_evals_per_epoch=2,
-        n_trajectories_per_epoch=2,
-        n_eval_episodes=1,
-        output_dir=tmp_dir)
-    trainer4.run(1)
-    self.assertEqual(trainer4.current_epoch, 2)
-    self.assertEqual(trainer4._policy_trainer.step, 4)
-    trainer1.close()
-    trainer2.close()
-    trainer3.close()
-    trainer4.close()
-
-  def test_policytrainer_cartpole(self):
-    """Trains a policy on cartpole."""
-    task = rl_task.RLTask('CartPole-v0', initial_trajectories=1,
-                          max_steps=200)
-    model = functools.partial(
-        models.Policy,
-        body=lambda mode: tl.Serial(  # pylint: disable=g-long-lambda
-            tl.Dense(64), tl.Relu(), tl.Dense(64), tl.Relu()
-        ),
-    )
-    lr = lambda: lr_schedules.multifactor(  # pylint: disable=g-long-lambda
-        constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
-    max_avg_returns = -math.inf
-    for _ in range(5):
-      trainer = training.PolicyGradient(
+    # Trainer 3 restores from a checkpoint with Agent/Loop step mistmatch,
+    # should fail.
+    def agent3_fn():
+      return training.PolicyGradient(
           task,
-          policy_model=model,
-          policy_optimizer=opt.Adam,
-          policy_lr_schedule=lr,
-          policy_batch_size=128,
-          policy_train_steps_per_epoch=1,
-          n_trajectories_per_epoch=2)
+          model_fn=self._model_fn,
+          optimizer=opt.Adam,
+          batch_size=2,
+          n_trajectories_per_epoch=2,
+          n_eval_episodes=1,
+          output_dir=tmp_dir,
+      )
+    self.assertRaises(ValueError, agent3_fn)
+    agent1.close()
+    agent2.close()
+
+  def test_policy_gradient_cartpole(self):
+    """Trains a policy on cartpole."""
+    task = rl_task.RLTask('CartPole-v0', max_steps=200)
+    lr = lambda: lr_schedules.multifactor(constant=1e-2, factors='constant')
+    max_avg_returns = -math.inf
+    for _ in range(2):
+      agent = training.PolicyGradient(
+          task,
+          model_fn=self._model_fn,
+          optimizer=opt.Adam,
+          lr_schedule=lr,
+          batch_size=128,
+          n_trajectories_per_epoch=2,
+      )
       # Assert that we get to 200 at some point and then exit so the test is as
       # fast as possible.
       for ep in range(200):
-        trainer.run(1)
-        self.assertEqual(trainer.current_epoch, ep + 1)
-        if trainer.avg_returns[-1] == 200.0:
+        agent.run(1)
+        self.assertEqual(agent.current_epoch, ep + 1)
+        if agent.avg_returns[-1] == 200.0:
           return
-      max_avg_returns = max(max_avg_returns, trainer.avg_returns[-1])
+      max_avg_returns = max(max_avg_returns, agent.avg_returns[-1])
     self.fail(
         'The expected score of 200 has not been reached. '
         'Maximum at end was {}.'.format(max_avg_returns)

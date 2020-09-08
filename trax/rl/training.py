@@ -32,8 +32,11 @@ from trax import jaxboard
 from trax import layers as tl
 from trax import shapes
 from trax import supervised
+from trax.optimizers import adam
+from trax.rl import advantages
 from trax.rl import distributions
 from trax.rl import normalization  # So gin files see it. # pylint: disable=unused-import
+from trax.rl import policy_tasks
 from trax.rl import task as rl_task
 from trax.supervised import lr_schedules as lr
 
@@ -84,6 +87,8 @@ class Agent:
     self._avg_returns = []
     self._n_eval_episodes = n_eval_episodes
     self._avg_returns_temperature0 = {step: [] for step in self._eval_steps}
+    if self._output_dir is not None:
+      self.init_from_file()
 
   @property
   def current_epoch(self):
@@ -193,8 +198,6 @@ class Agent:
       n_epochs_is_total_epochs: if True, consider n_epochs as the total
         number of epochs to train, including previously trained ones
     """
-    if self._output_dir is not None:
-      self.init_from_file()
     with self._open_summary_writer() as sw:
       n_epochs_to_run = n_epochs
       if n_epochs_is_total_epochs:
@@ -421,23 +424,162 @@ def remaining_evals(cur_step, epoch, train_steps_per_epoch, evals_per_epoch):
   return evals_per_epoch - (done_steps_this_epoch // train_steps_per_eval)
 
 
-class PolicyGradient(PolicyAgent):
+class PolicyGradient(Agent):
   """Trains a policy model using policy gradient on the given RLTask."""
 
-  @property
-  def policy_loss(self):
-    """Policy loss."""
-    return distributions.LogLoss(distribution=self._policy_dist)
+  def __init__(
+      self, task, model_fn,
+      optimizer=adam.Adam,
+      lr_schedule=lr.multifactor,
+      batch_size=64,
+      network_eval_at=None,
+      n_eval_batches=1,
+      max_slice_length=1,
+      **kwargs
+  ):
+    """Initializes PolicyGradient.
 
-  def policy_batches_stream(self):
-    """Use self.task to create inputs to the policy model."""
-    for np_trajectory in self._task.trajectory_batch_stream(
-        self._policy_batch_size,
+    Args:
+      task: Instance of trax.rl.task.RLTask.
+      model_fn: Function (policy_distribution, mode) -> policy_model.
+      optimizer: Optimizer for network training.
+      lr_schedule: Learning rate schedule for network training.
+      batch_size: Batch size for network training.
+      network_eval_at: Function step -> bool indicating the training steps, when
+        network evaluation should be performed.
+      n_eval_batches: Number of batches to run during network evaluation.
+      max_slice_length: The length of trajectory slices to run the network on.
+      **kwargs: Keyword arguments passed to the superclass.
+    """
+    super().__init__(task, **kwargs)
+
+    self._max_slice_length = max_slice_length
+    trajectory_batch_stream = task.trajectory_batch_stream(
+        batch_size,
         epochs=[-1],
         max_slice_length=self._max_slice_length,
-        sample_trajectories_uniformly=True):
-      ret = np_trajectory.returns
-      ret = (ret - np.mean(ret)) / np.std(ret)  # Normalize returns.
-      # We return a triple (observations, actions, normalized returns) which is
-      # later used by the model as (inputs, targets, loss weights).
-      yield (np_trajectory.observations, np_trajectory.actions, ret)
+        sample_trajectories_uniformly=True,
+    )
+    self._policy_dist = distributions.create_distribution(task.action_space)
+    train_task = policy_tasks.PolicyTrainTask(
+        trajectory_batch_stream,
+        optimizer(),
+        lr_schedule(),
+        self._policy_dist,
+        # Policy gradient uses the MC estimator.
+        advantage_estimator=advantages.monte_carlo,
+        # No need for margin - the MC estimator only uses empirical returns.
+        margin=0,
+        value_fn=self._value_fn,
+        gamma=task.gamma,
+    )
+    eval_task = policy_tasks.PolicyEvalTask(train_task, n_eval_batches)
+    model_fn = functools.partial(
+        model_fn,
+        policy_distribution=self._policy_dist,
+    )
+
+    if self._output_dir is not None:
+      policy_output_dir = os.path.join(self._output_dir, 'policy')
+    else:
+      policy_output_dir = None
+    # Checkpoint every epoch. We do one step per epoch, so that's every step.
+    checkpoint_at = lambda _: True
+    self._loop = supervised.training.Loop(
+        model=model_fn(mode='train'),
+        tasks=[train_task],
+        eval_model=model_fn(mode='eval'),
+        eval_tasks=[eval_task],
+        output_dir=policy_output_dir,
+        eval_at=network_eval_at,
+        checkpoint_at=checkpoint_at,
+    )
+    self._collect_model = model_fn(mode='collect')
+
+    # Validate the restored checkpoints. The number of network training steps
+    # (self.loop.step) should be equal to the number of epochs (self._epoch),
+    # because we do exactly one gradient step per epoch.
+    # TODO(pkozakowski): Move this to the base class once all Agents use Loop.
+    if self.loop.step != self._epoch:
+      raise ValueError(
+          'The number of Loop steps must equal the number of Agent epochs, '
+          'got {} and {}.'.format(self.loop.step, self._epoch)
+      )
+
+  @property
+  def loop(self):
+    """Loop exposed for testing."""
+    return self._loop
+
+  def policy(self, trajectory, temperature=1.0):
+    """Policy function that allows to play using this agent."""
+    tr_slice = trajectory[-self._max_slice_length:]
+    trajectory_np = tr_slice.to_np(timestep_to_np=self.task.timestep_to_np)
+    return network_policy(
+        collect_model=self._collect_model,
+        policy_distribution=self._policy_dist,
+        loop=self.loop,
+        trajectory_np=trajectory_np,
+        temperature=temperature,
+    )
+
+  def train_epoch(self):
+    """Trains RL for one epoch."""
+    # Perform one gradient step per training epoch to ensure we stay on policy.
+    self._loop.run(n_steps=1)
+
+  @staticmethod
+  def _value_fn(trajectory_batch):
+    # Estimate the value of every state as the mean return across trajectories
+    # and timesteps in a batch.
+    value = np.mean(trajectory_batch.returns)
+    return np.broadcast_to(value, trajectory_batch.returns.shape)
+
+
+def network_policy(
+    collect_model, policy_distribution, loop, trajectory_np, temperature=1.0
+):
+  """Policy function powered by a neural network.
+
+  Used to implement Agent.policy() in policy-based agents.
+
+  Args:
+    collect_model: the model used for collecting trajectories
+    policy_distribution: an instance of trax.rl.distributions.Distribution
+    loop: trax.supervised.training.Loop used to train the policy network
+    trajectory_np: an instance of trax.rl.task.TrajectoryNp
+    temperature: temperature used to sample from the policy (default=1.0)
+
+  Returns:
+    a pair (action, dist_inputs) where action is the action taken and
+    dist_inputs is the parameters of the policy distribution, that will later
+    be used for training.
+  """
+  if temperature == 1.0:
+    model = collect_model
+  else:
+    # When evaluating (t != 1.0), use the evaluation model instead of the
+    # collection model - some models accumulate normalization statistics
+    # during data collection, and we don't want to do it in eval to avoid data
+    # leakage.
+    model = loop.eval_model
+    model.state = collect_model.state
+  # Copying weights from loop.model should work, because the raw model's
+  # weights should be updated automatically during training, but it doesn't.
+  # TODO(pkozakowski): Debug.
+  acc = loop._trainer_per_task[0].accelerated_loss_layer  # pylint: disable=protected-access
+  model.weights = acc._unreplicate(acc.weights[0])  # pylint: disable=protected-access
+  # Add batch dimension to trajectory_np and run the model.
+  pred = model(trajectory_np.observations[None, ...])
+  assert pred.shape == (
+      1, trajectory_np.observations.shape[0], policy_distribution.n_inputs
+  )
+  # Pick element 0 from the batch (the only one), last (current) timestep.
+  pred = pred[0, -1, :]
+  sample = policy_distribution.sample(pred, temperature=temperature)
+  result = (sample, pred)
+  if fastmath.is_backend(fastmath.Backend.JAX):
+    # The result is composed of mutable numpy arrays. We copy them to avoid
+    # accidental modification.
+    result = fastmath.nested_map(lambda x: x.copy(), result)
+  return result
