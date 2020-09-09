@@ -35,6 +35,7 @@ revealed several limitations, which this code attempts to address:
    only supported causal masking.
 """
 import functools
+import math
 import jax
 
 from trax import fastmath
@@ -1160,9 +1161,9 @@ class LSHSelfAttention(SelfAttention):
                n_heads=2, d_qk=64, d_v=64, share_qk='unused',
                causal=False,
                masked=False,
-               chunk_len=None, n_chunks_before=1, n_chunks_after=0,
+               chunk_len=128, n_chunks_before=1, n_chunks_after=0,
                n_hashes=1,
-               n_buckets=256,
+               n_buckets=None,
                mode='train',
                predict_mem_len=2048, predict_drop_len=256,
                attention_dropout=0.0,
@@ -1211,7 +1212,22 @@ class LSHSelfAttention(SelfAttention):
       return (buckets, buckets_idx, rng)
 
   def hash_vectors(self, vecs, rng, mask=None):
-    buckets, n_buckets = hash_vecs(vecs, self.n_buckets, self.n_hashes, rng)
+    n_buckets_list = self.n_buckets
+
+    # Determine the number of buckets needed from input length if not set.
+    if n_buckets_list is None:
+      length = vecs.shape[0]
+      n_buckets = 2 * (length // self.chunk_len)
+      if n_buckets <= 128:
+        n_buckets_list = n_buckets
+      else:  # Factorize n_buckets.
+        n_buckets_div = 2**math.ceil(math.log2(math.sqrt(n_buckets)))
+        # Both factors must be even.
+        n_buckets_rest = 2 * (n_buckets // (2 * n_buckets_div))
+        n_buckets_list = [n_buckets_div, n_buckets_rest]
+
+    # Hash vectors.
+    buckets, n_buckets = hash_vecs(vecs, n_buckets_list, self.n_hashes, rng)
 
     if mask is not None:
       n_buckets += 1  # Create an extra bucket for padding tokens only
