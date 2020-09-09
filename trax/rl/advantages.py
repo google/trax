@@ -20,42 +20,39 @@ import gin
 import numpy as np
 
 
-common_args = [
-    'rewards', 'returns', 'values', 'dones', 'gamma', 'n_extra_steps'
-]
+common_args = ['gamma', 'margin']
 
 
 @gin.configurable(blacklist=common_args)
-def monte_carlo(rewards, returns, values, dones, gamma, n_extra_steps):
+def monte_carlo(gamma, margin):
   """Calculate Monte Carlo advantage.
 
   We assume the values are a tensor of shape [batch_size, length] and this
   is the same shape as rewards and returns.
 
   Args:
-    rewards: the rewards, tensor of shape [batch_size, length]
-    returns: discounted returns, tensor of shape [batch_size, length]
-    values: the value function computed for this trajectory (shape as above)
-    dones: trajectory termination flags
     gamma: float, gamma parameter for TD from the underlying task
-    n_extra_steps: number of extra steps in the sequence
+    margin: number of extra steps in the sequence
 
   Returns:
-    the advantages, a tensor of shape [batch_size, length - n_extra_steps].
+    Function (rewards, returns, values, dones) -> advantages, where advantages
+    advantages is an array of shape [batch_size, length - margin].
   """
   del gamma
-  (_, length) = returns.shape
-  # Make sure that the future returns and the values at "done" states are zero.
-  returns[dones] = rewards[dones]
-  values[dones] = 0
-  return (returns - values)[:, :(length - n_extra_steps)]
+  def estimator(rewards, returns, values, dones):
+    (_, length) = returns.shape
+    # Make sure that the future returns and values at "done" states are zero.
+    returns[dones] = rewards[dones]
+    values[dones] = 0
+    return (returns - values)[:, :(length - margin)]
+  return estimator
 
 
 @gin.configurable(blacklist=common_args)
-def td_k(rewards, returns, values, dones, gamma, n_extra_steps):
+def td_k(gamma, margin):
   """Calculate TD-k advantage.
 
-  The k parameter is assumed to be the same as n_extra_steps.
+  The k parameter is assumed to be the same as margin.
 
   We calculate advantage(s_i) as:
 
@@ -65,96 +62,88 @@ def td_k(rewards, returns, values, dones, gamma, n_extra_steps):
   discounting by powers of gamma.
 
   Args:
-    rewards: the rewards, tensor of shape [batch_size, length]
-    returns: discounted returns, tensor of shape [batch_size, length]
-    values: the value function computed for this trajectory (shape as above)
-    dones: trajectory termination flags
     gamma: float, gamma parameter for TD from the underlying task
-    n_extra_steps: number of extra steps in the sequence, also controls the
-      number of steps k
+    margin: number of extra steps in the sequence
 
   Returns:
-    the advantages, a tensor of shape [batch_size, length - n_extra_steps].
+    Function (rewards, returns, values, dones) -> advantages, where advantages
+    advantages is an array of shape [batch_size, length - margin].
   """
-  del returns
-  # Here we calculate advantage with TD-k, where k=n_extra_steps.
-  k = n_extra_steps
-  assert k > 0
-  advantages = (gamma ** k) * values[:, k:]
-  discount = 1.0
-  for i in range(n_extra_steps):
-    advantages += discount * rewards[:, i:-(n_extra_steps - i)]
-    discount *= gamma
-  # Zero out the future returns at "done" states.
-  dones = dones[:, :-k]
-  advantages[dones] = rewards[:, :-k][dones]
-  # Subtract the baseline (value).
-  advantages -= values[:, :-k]
-  return advantages
+  def estimator(rewards, returns, values, dones):
+    del returns
+    # Here we calculate advantage with TD-k, where k=margin.
+    k = margin
+    assert k > 0
+    advantages = (gamma ** k) * values[:, k:]
+    discount = 1.0
+    for i in range(margin):
+      advantages += discount * rewards[:, i:-(margin - i)]
+      discount *= gamma
+    # Zero out the future returns at "done" states.
+    dones = dones[:, :-k]
+    advantages[dones] = rewards[:, :-k][dones]
+    # Subtract the baseline (value).
+    advantages -= values[:, :-k]
+    return advantages
+  return estimator
 
 
 @gin.configurable(blacklist=common_args)
-def td_lambda(
-    rewards, returns, values, dones, gamma, n_extra_steps, lambda_=0.95
-):
+def td_lambda(gamma, margin, lambda_=0.95):
   """Calculate TD-lambda advantage.
 
   The estimated return is an exponentially-weighted average of different TD-k
   returns.
 
   Args:
-    rewards: the rewards, tensor of shape [batch_size, length]
-    returns: discounted returns, tensor of shape [batch_size, length]
-    values: the value function computed for this trajectory (shape as above)
-    dones: trajectory termination flags
     gamma: float, gamma parameter for TD from the underlying task
-    n_extra_steps: number of extra steps in the sequence
-    lambda_: discount parameter of the exponentially-weighted average
+    margin: number of extra steps in the sequence
+    lambda_: float, the lambda parameter of TD-lambda
 
   Returns:
-    the advantages, a tensor of shape [batch_size, length - n_extra_steps].
+    Function (rewards, returns, values, dones) -> advantages, where advantages
+    advantages is an array of shape [batch_size, length - margin].
   """
-  td_returns = np.zeros_like(returns)
-  (_, length) = returns.shape
-  td_returns[:, -1] = values[:, -1]
-  for i in reversed(range(length - 1)):
-    td_returns[:, i] = rewards[:, i] + (1 - dones[:, i]) * gamma * (
-        (1 - lambda_) * values[:, i + 1] + lambda_ * td_returns[:, i + 1]
-    )
-  return (td_returns - values)[:, :(returns.shape[1] - n_extra_steps)]
-
-
-common_args = ['rewards', 'values', 'gamma', 'gae_lambda', 'n_extra_steps']
+  def estimator(rewards, returns, values, dones):
+    td_returns = np.zeros_like(returns)
+    (_, length) = returns.shape
+    td_returns[:, -1] = values[:, -1]
+    for i in reversed(range(length - 1)):
+      td_returns[:, i] = rewards[:, i] + (1 - dones[:, i]) * gamma * (
+          (1 - lambda_) * values[:, i + 1] + lambda_ * td_returns[:, i + 1]
+      )
+    return (td_returns - values)[:, :(returns.shape[1] - margin)]
+  return estimator
 
 
 @gin.configurable(blacklist=common_args)
-def discount_gae(rewards, values, gamma, n_extra_steps, gae_lambda=0.95):
+def gae(gamma, margin, lambda_=0.95):
   """Calculate Generalized Advantage Estimation.
 
   Calculate state values bootstrapping off the following state values -
   Generalized Advantage Estimation https://arxiv.org/abs/1506.02438
 
   Args:
-    rewards: the rewards, tensor of shape [batch_size, length]
-    values: the value function computed for this trajectory (shape as above)
     gamma: float, gamma parameter for TD from the underlying task
-    n_extra_steps: number of extra steps in the sequence
-    gae_lambda: discount parameter of the exponentially-weighted average
+    margin: number of extra steps in the sequence
+    lambda_: float, the lambda parameter of GAE
 
   Returns:
-    the advantages, a tensor of shape [batch_size, length - n_extra_steps].
+    Function (rewards, returns, values, dones) -> advantages, where advantages
+    advantages is an array of shape [batch_size, length - margin].
   """
+  def estimator(rewards, returns, values, dones):
+    del returns
+    advantages = np.zeros_like(rewards)
+    (_, length) = rewards.shape
 
-  advantages = np.zeros_like(rewards)
-  (_, length) = rewards.shape
+    for i in reversed(range(length - 1)):
+      bellman_delta = rewards[:, i] - values[:, i] + (1 - dones[:, i]) * (
+          gamma * values[:, i + 1]
+      )
+      advantages[:, i] = bellman_delta + (1 - dones[:, i]) * (
+          gamma * lambda_ * advantages[:, i + 1]
+      )
 
-  # Accmulate sums
-  sum_accumulator = 0
-
-  for i in reversed(range(length-1)):
-    bellman_delta = (rewards[:, i] + gamma * values[:, i + 1] - values[:, i])
-
-    advantages[:, i] = sum_accumulator = (
-        bellman_delta + gamma * gae_lambda * sum_accumulator)
-
-  return advantages[:, :(rewards.shape[1] - n_extra_steps)]
+    return advantages[:, :(rewards.shape[1] - margin)]
+  return estimator

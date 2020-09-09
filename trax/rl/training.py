@@ -466,12 +466,10 @@ class PolicyGradient(Agent):
         optimizer(),
         lr_schedule(),
         self._policy_dist,
-        # Policy gradient uses the MC estimator.
-        advantage_estimator=advantages.monte_carlo,
-        # No need for margin - the MC estimator only uses empirical returns.
-        margin=0,
+        # Policy gradient uses the MC estimator. No need for margin - the MC
+        # estimator only uses empirical returns.
+        advantage_estimator=advantages.monte_carlo(task.gamma, margin=0),
         value_fn=self._value_fn,
-        gamma=task.gamma,
     )
     eval_task = policy_tasks.PolicyEvalTask(train_task, n_eval_batches)
     model_fn = functools.partial(

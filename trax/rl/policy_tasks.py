@@ -26,8 +26,6 @@ replaceable component. To implement a policy-based Agent using policy tasks:
   4. In policy(), call network_policy() defined in this module.
 """
 
-import functools
-
 import numpy as np
 
 from trax import layers as tl
@@ -51,8 +49,6 @@ class PolicyTrainTask(training.TrainTask):
       policy_distribution,
       advantage_estimator,
       value_fn,
-      gamma,
-      margin,
       weight_fn=(lambda x: x),
       advantage_normalization=True,
       advantage_normalization_epsilon=1e-5,
@@ -64,13 +60,13 @@ class PolicyTrainTask(training.TrainTask):
       optimizer: Optimizer for network training.
       lr_schedule: Learning rate schedule for network training.
       policy_distribution: Distribution over actions.
-      advantage_estimator: Advantage estimator from trax.rl.advantages.
+      advantage_estimator: Function
+        (rewards, returns, values, dones) -> advantages, created by one of the
+        functions from trax.rl.advantages.
       value_fn: Function TrajectoryNp -> array (batch_size, seq_len) calculating
         the baseline for advantage calculation. Can be used to implement
         actor-critic algorithms, by substituting a call to the value network
         as value_fn.
-      gamma: Discount factor.
-      margin: The number of extra timesteps to use when calculating TD returns.
       weight_fn: Function float -> float to apply to advantages. Examples:
         - A2C: weight_fn = id
         - AWR: weight_fn = exp
@@ -80,9 +76,7 @@ class PolicyTrainTask(training.TrainTask):
         advantages.
     """
     self._value_fn = value_fn
-    self._advantage_estimator = functools.partial(
-        advantage_estimator, gamma=gamma, n_extra_steps=margin
-    )
+    self._advantage_estimator = advantage_estimator
     self._weight_fn = weight_fn
     self._advantage_normalization = advantage_normalization
     self._advantage_normalization_epsilon = advantage_normalization_epsilon

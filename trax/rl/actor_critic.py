@@ -255,8 +255,6 @@ class ActorCriticAgent(rl_training.PolicyAgent):
           returns=np_trajectory.returns,
           values=values,
           dones=np_trajectory.dones,
-          gamma=self._task.gamma,
-          n_extra_steps=self._added_policy_slice_length,
       )
       length = advantages.shape[1]
       values = values[:, :length]
@@ -414,12 +412,17 @@ class AdvantageBasedActorCriticAgent(ActorCriticAgent):
       advantage_estimator=rl_advantages.td_lambda,
       advantage_normalization=True,
       advantage_normalization_epsilon=1e-5,
+      added_policy_slice_length=0,
       **kwargs
   ):
-    self._advantage_estimator = advantage_estimator
+    self._advantage_estimator = advantage_estimator(
+        gamma=task.gamma, margin=added_policy_slice_length
+    )
     self._advantage_normalization = advantage_normalization
     self._advantage_normalization_epsilon = advantage_normalization_epsilon
-    super().__init__(task, **kwargs)
+    super().__init__(
+        task, added_policy_slice_length=added_policy_slice_length, **kwargs
+    )
 
   def policy_inputs(self, trajectory, values):
     """Create inputs to policy model from a TrajectoryNp and values."""
@@ -430,8 +433,6 @@ class AdvantageBasedActorCriticAgent(ActorCriticAgent):
         returns=trajectory.returns,
         values=values,
         dones=trajectory.dones,
-        gamma=self._task.gamma,
-        n_extra_steps=self._added_policy_slice_length,
     )
     # Observations should be the same length as advantages - so if we are
     # using n_extra_steps, we need to trim the length to match.
