@@ -80,20 +80,42 @@ class ReversibleLayer(base.Layer):
     return inputs_weights_grad
 
 
-class ReversibleSwap(ReversibleLayer):
-  """Swap the first two element on the stack."""
+class ReversibleSelect(ReversibleLayer):
+  """Reversible version of the Select combinator."""
 
-  def __init__(self):
-    super().__init__(n_in=2, n_out=2)
+  def __init__(self, indices, n_in=None, name=None):
+    if n_in is None:
+      n_in = max(indices) + 1
+    if name is None:
+      name = f'ReversibleSelect{indices}'.replace(' ', '')
+    super().__init__(n_in=n_in, n_out=len(indices), name=name)
+    self._indices = indices
+
+    # Calculate reverse indices.
+    self._reverse_indices = []
+    for i in range(n_in):
+      if i not in indices:
+        raise ValueError('To be reversible, all inputs to Select must be in '
+                         'indices. Did not find %d in indices.' % i)
+      else:
+        self._reverse_indices.append(indices.index(i))
 
   def forward(self, inputs):
-    x0, x1 = inputs
-    return x1, x0
+    if not isinstance(inputs, (tuple, list)):
+      inputs = (inputs,)
+    selected = tuple(inputs[i] for i in self._indices)
+    return selected[0] if len(selected) == 1 else selected
 
-  def reverse(self, output, weights=(), state=(), new_state=(), rng=None):
+  def reverse(self, outputs, weights=(), state=(), new_state=(), rng=None):
     del state, new_state, rng, weights
-    # Swap is its own inverse, except that reverse doesn't return the state.
-    return self.forward(output)
+    if not isinstance(outputs, (tuple, list)):
+      outputs = (outputs,)
+    selected = tuple(outputs[i] for i in self._reverse_indices)
+    return selected[0] if len(selected) == 1 else selected
+
+
+def ReversibleSwap():  # pylint: disable=invalid-name
+  return ReversibleSelect([1, 0], name='ReversibleSwap')
 
 
 class ReversibleSerial(ReversibleLayer, cb.Serial):

@@ -139,6 +139,7 @@ Reformer2.d_attention_value = %attn_kv  # d_model // n_heads
 Reformer2.encoder_attention_type = %attn_type
 Reformer2.encoder_decoder_attention_type = %enc_attn_type
 Reformer2.d_axial_pos_embs = %d_axial_pos_embs
+Reformer2.n_layers_forget = 12
 
 
 # Parameters for T5

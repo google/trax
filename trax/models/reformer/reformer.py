@@ -604,6 +604,7 @@ def Reformer2(input_vocab_size,
               ff_chunk_size=0,
               ff_dropout=None,
               ff_sparsity=0,
+              n_layers_forget=0,
               mode='train'):
   """Reversible transformer encoder-decoder model.
 
@@ -638,6 +639,7 @@ def Reformer2(input_vocab_size,
     ff_dropout: float: (optional) separate dropout rate at feed-forward
       nonlinearity. This is called relu_dropout in T2T.
     ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
+    n_layers_forget: how often to have a forgetting block between layers
     mode: str: 'train' or 'eval'
 
   Returns:
@@ -692,8 +694,9 @@ def Reformer2(input_vocab_size,
   encoder = tl.Serial([                # tok_e mask_e tok_e tok_d tok_d
       in_encoder,                      # vec_e mask_e tok_e tok_d tok_d
       tl.Dup(),                        # vec_e1 vec_e2 mask_e tok_e tok_d tok_d
-      tl.ReversibleSerial(encoder_blocks),
+      _ReversibleSerialForget(encoder_blocks, d_model, n_layers_forget),
       tl.Fn('XYAvg', lambda x, y: (x + y) / 2.0),
+      tl.Dense(d_model),
       tl.LayerNorm(),
   ])
   if mode == 'predict':
@@ -744,7 +747,8 @@ def Reformer2(input_vocab_size,
 
       # Run (encoder and) decoder blocks.
       tl.Dup(),                                    # vec_ed1 vec_ed2 tok_e tok_d
-      tl.ReversibleSerial(decoder_blocks),         # vec_ed1 vec_ed2 tok_e tok_d
+      _ReversibleSerialForget(decoder_blocks, d_model,
+                              n_layers_forget),    # vec_ed1 vec_ed2 tok_e tok_d
       tl.Fn('XYAvg',
             lambda x, y: (x + y) / 2.0),           # vec_ed tok_e tok_d
       tl.LayerNorm(),                              # vec_ed tok_e tok_d
@@ -756,4 +760,18 @@ def Reformer2(input_vocab_size,
       # Map to output vocab.
       tl.Dense(output_vocab_size),                 # vec_d tok_d
       tl.LogSoftmax(),                             # vec_d tok_d
+  )
+
+
+def _ReversibleSerialForget(layers, d_model, n_layers):
+  """ReversibleSerial but with a forgetting block every n_layers."""
+  if not n_layers or len(layers) <= n_layers + 1:
+    return tl.ReversibleSerial(layers)
+  layers1, layers2 = layers[:n_layers], layers[n_layers:]
+  return tl.Serial(
+      tl.ReversibleSerial(layers1),
+      tl.Fn('XYAvg', lambda x, y: (x + y) / 2.0),
+      tl.Dense(d_model),
+      tl.Dup(),
+      _ReversibleSerialForget(layers2, d_model, n_layers)
   )
