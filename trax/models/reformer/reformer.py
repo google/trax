@@ -24,9 +24,8 @@ from trax.fastmath import numpy as jnp
 
 
 # TODO(afrozm): Move pvt fns here.
-from trax.models.transformer import (  # pylint: disable=g-multiple-import
-    _ConcatWithPadding, _MaskOfRightShiftedArray,
-    _StripFromConcatenateWithPadding)
+from trax.models.research.transformer_no_enc_dec_attention import (  # pylint: disable=g-multiple-import
+    _ConcatWithPadding, _StripFromConcatenateWithPadding)
 
 # Layers are always CamelCase, but functions in general are snake_case
 # pylint: disable=invalid-name
@@ -737,15 +736,11 @@ def Reformer2(input_vocab_size,
       # Decode.
       tl.Select([3, 0, 1, 2]),                 #  tok_d vec_e mask_e tok_e tok_d
       tl.ShiftRight(mode=mode),                # stok_d vec_e mask_e tok_e tok_d
-      tl.Branch(
-          [],
-          _MaskOfRightShiftedArray()
-      ),                                # stok_d mask_d vec_e mask_e tok_e tok_d
-      out_encoder,                      # svec_d mask_d vec_e mask_e tok_e tok_d
+      out_encoder,                             # svec_d vec_e mask_e tok_e tok_d
 
       # Concat encoder and decoder, given their masks.
-      tl.Select([2, 0, 3, 1]),          # svec_d mask_d vec_e mask_e tok_e tok_d
-      _ConcatWithPadding(),                        # vec_ed tok_e tok_d
+      tl.Select([1, 0]),                       # vec_e svec_d mask_e tok_e tok_d
+      _ConcatWithPadding(),                    # vec_ed tok_e tok_d
 
       # Run (encoder and) decoder blocks.
       tl.Dup(),                                    # vec_ed1 vec_ed2 tok_e tok_d

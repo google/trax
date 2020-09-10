@@ -16,7 +16,9 @@
 # Lint as: python3
 """Transformer variant -- no encoder-decoder attention."""
 
+import jax
 from trax import layers as tl
+from trax.fastmath import numpy as jnp
 from trax.models import transformer
 
 
@@ -98,22 +100,18 @@ def TransformerNoEncDecAttention(input_vocab_size,
       encoder,                          # vec_e mask_e tok_e tok_d tok_d
 
       # Simple encoder mask, doesn't contain extra dims.
-      tl.Select([2, 0, 2], n_in=3),     # tok_e vec_e tok_e tok_d tok_d
-      transformer._MaskOfRightShiftedArray(
-          n_positions=0),               # mask_e vec_e tok_e tok_d tok_d
+      tl.Select([2, 0, 2], n_in=3),     #  tok_e vec_e tok_e tok_d tok_d
+      tl.Fn('EncoderMask',              # mask_e vec_e tok_e tok_d tok_d
+            lambda x: x != 0, n_out=1),
 
       # Decode.
       tl.Select([3, 1, 0, 2]),          #  tok_d vec_e mask_e tok_e tok_d
       tl.ShiftRight(mode=mode),         # stok_d vec_e mask_e tok_e tok_d
-      tl.Branch(
-          [],
-          transformer._MaskOfRightShiftedArray()
-      ),                                # stok_d mask_d vec_e mask_e tok_e tok_d
-      out_encoder,                      # svec_d mask_d vec_e mask_e tok_e tok_d
+      out_encoder,                      # svec_d vec_e mask_e tok_e tok_d
 
       # Concat encoder and decoder.
-      tl.Select([2, 0, 3, 1]),          # vec_e svec_d mask_e mask_d tok_e tok_d
-      transformer._ConcatWithPadding(),  # vec_ed tok_e tok_d
+      tl.Select([1, 0]),                # vec_e svec_d mask_e tok_e tok_d
+      _ConcatWithPadding(),             # vec_ed tok_e tok_d
 
       # Decoder blocks with causal attention
       decoder_blocks,                   # vec_ed tok_e tok_d
@@ -121,9 +119,75 @@ def TransformerNoEncDecAttention(input_vocab_size,
 
       # Separate out the encoder part from the concatenated vector.
       tl.Select([0, 1, 2, 2]),          # vec_ed tok_e tok_d tok_d
-      transformer._StripFromConcatenateWithPadding(),  # vec_d tok_d
+      _StripFromConcatenateWithPadding(),  # vec_d tok_d
 
       # Map to output vocab.
       tl.Dense(output_vocab_size),      # vec_d tok_d
       tl.LogSoftmax(),                  # vec_d tok_d
   )
+
+
+def _ConcatWithPadding():
+  """Concatenates two length padded (B, L, H) arrays (of different lenghts)."""
+
+  # Arg shapes: (B, L1, H), (B, L2, H), (B, L1).
+  def __ConcatWithPadding(vec_e, vec_d, mask_e):
+    # pylint: disable=invalid-name
+    B, L1, H = vec_e.shape
+    L2 = vec_d.shape[1]
+    # pylint: enable=invalid-name
+
+    if vec_d.shape != (B, L2, H):
+      raise ValueError(f'Shape of decoder vector, {vec_d.shape}, does not'
+                       f' equal {(B, L2, H)}.')
+    if mask_e.shape != (B, L1):
+      raise ValueError(f'Shape of encoder mask, {mask_e.shape}, does not'
+                       f' equal {(B, L1)}.')
+
+    def _UpdateRow(x):
+      # row_e - (L1, H), row_d - (L2, H), row_mask_e - (L1,)
+      row_e, row_d, row_mask_e = x
+      # final_row - (L1+L2, H)
+      final_row = jnp.concatenate([row_e, jnp.zeros_like(row_d)], axis=0)
+      # Find the last real token/vector of the encoder.
+      e_idx = jnp.sum(row_mask_e, dtype=jnp.int32)
+      # Starting after that index, update with the decoder row.
+      return jax.lax.dynamic_update_slice(final_row, row_d, (e_idx, 0))
+
+    return jax.lax.map(_UpdateRow, [vec_e, vec_d, mask_e])
+
+  return tl.Fn('ConcatWithPadding', __ConcatWithPadding, n_out=1)
+
+
+def _StripFromConcatenateWithPadding():
+  """Strips out the leading encoder tokens from the concatenated array."""
+
+  def _StripEncToks(vec_ed, tok_e, tok_d):
+    # pylint: disable=invalid-name
+    B, L, H = vec_ed.shape
+    L1 = tok_e.shape[1]
+    L2 = tok_d.shape[1]
+    # pylint: enable=invalid-name
+    if L != L1 + L2:
+      raise ValueError(f'Length from encoder-decoder vectors ({L}) does not'
+                       f' equal sum of lengths from encoder ({L1}) and decoder'
+                       f' ({L2}).')
+    if tok_e.shape != (B, L1):
+      raise ValueError(f'Shape of encoder tokens, {tok_e.shape}, does not'
+                       f' equal {(B, L1)}.')
+    if tok_d.shape != (B, L2):
+      raise ValueError(f'Shape of decoder tokens, {tok_d.shape}, does not'
+                       f' equal {(B, L2)}.')
+
+    def _UpdateRow(x):
+      # (L, H), (L1, H) & (L2, H)
+      row_ed, row_e, _ = x
+      mask_e = row_e != 0
+      len_e = jnp.sum(mask_e, dtype=jnp.int32)
+      # In `row_ed` start where encoder tokens/vecs end, i.e. are index `len_e`
+      # and pick up (L2, H) tensor slice from there.
+      return jax.lax.dynamic_slice(row_ed, (len_e, 0), (L2, H))
+
+    return jax.lax.map(_UpdateRow, [vec_ed, tok_e, tok_d])
+
+  return tl.Fn('StripFromConcatenateWithPadding', _StripEncToks, n_out=1)

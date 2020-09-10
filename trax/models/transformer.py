@@ -20,9 +20,7 @@ The "Transformer" name and network architecture were introduced in the paper
 [Attention Is All You Need](https://arxiv.org/abs/1706.03762).
 """
 
-import jax
 from trax import layers as tl
-from trax.fastmath import numpy as jnp
 
 
 def TransformerEncoder(vocab_size,
@@ -578,97 +576,3 @@ def _FeedForwardBlock(d_model, d_ff, dropout, dropout_shared_axes,
       dropout_final,
   ]
 
-
-def _ConcatWithPadding():
-  """Concatenates two length padded (B, L, H) arrays (of different lenghts)."""
-
-  # Arg shapes: (B, L1, H), (B, L2, H), (B, L1) & (B, L2)
-  def __ConcatWithPadding(vec_e, vec_d, mask_e, mask_d):
-    # pylint: disable=invalid-name
-    B, L1, H = vec_e.shape
-    L2 = vec_d.shape[1]
-    # pylint: enable=invalid-name
-
-    if vec_d.shape != (B, L2, H):
-      raise ValueError(f'Shape of decoder vector, {vec_d.shape}, does not'
-                       f' equal {(B, L2, H)}.')
-    if mask_e.shape != (B, L1):
-      raise ValueError(f'Shape of encoder mask, {mask_e.shape}, does not'
-                       f' equal {(B, L1)}.')
-    if mask_d.shape != (B, L2):
-      raise ValueError(f'Shape of decoder mask, {mask_d.shape}, does not'
-                       f' equal {(B, L2)}.')
-
-    def _UpdateRow(x):
-      # row_e - (L1, H), row_d - (L2, H), row_mask_e - (L1,)
-      row_e, row_d, row_mask_e = x
-      # final_row - (L1+L2, H)
-      final_row = jnp.concatenate([row_e, jnp.zeros_like(row_d)], axis=0)
-      # Find the last real token/vector of the encoder.
-      e_idx = jnp.sum(row_mask_e, dtype=jnp.int32)
-      # Starting after that index, update with the decoder row.
-      return jax.lax.dynamic_update_slice(final_row, row_d, (e_idx, 0))
-
-    return jax.lax.map(_UpdateRow, [vec_e, vec_d, mask_e])
-
-  return tl.Fn('ConcatWithPadding', __ConcatWithPadding, n_out=1)
-
-
-def _MaskOfRightShiftedArray(n_positions=1, mode='train'):
-  """Returns a layer that creates a right-shifted mask.
-
-  Args:
-    n_positions: Number of positions to shift rightward.
-    mode: If `'train', create a mask with the specified shift; if `'predict'`,
-        raise a `ValueError`.
-  """
-
-  def F(x):
-    # TODO(afrozm): What to do in this case?
-    if mode == 'predict':
-      raise ValueError('MaskOfRightShiftedArray not implemented for predict.')
-
-    mask = (x != 0)
-
-    if n_positions == 0:
-      return mask
-
-    # Need to set (B, n_positions, ...) section to True.
-    trues_shape = (x.shape[0], n_positions) + mask.shape[2:]
-    trues = jnp.full(trues_shape, True)
-    return jnp.concatenate([trues, mask[:, n_positions:, ...]], axis=1)
-  return tl.Fn(f'MaskOfRightShiftedArray({n_positions})', F)
-
-
-def _StripFromConcatenateWithPadding():
-  """Strips out the leading encoder tokens from the concatenated array."""
-
-  def _StripEncToks(vec_ed, tok_e, tok_d):
-    # pylint: disable=invalid-name
-    B, L, H = vec_ed.shape
-    L1 = tok_e.shape[1]
-    L2 = tok_d.shape[1]
-    # pylint: enable=invalid-name
-    if L != L1 + L2:
-      raise ValueError(f'Length from encoder-decoder vectors ({L}) does not'
-                       f' equal sum of lengths from encoder ({L1}) and decoder'
-                       f' ({L2}).')
-    if tok_e.shape != (B, L1):
-      raise ValueError(f'Shape of encoder tokens, {tok_e.shape}, does not'
-                       f' equal {(B, L1)}.')
-    if tok_d.shape != (B, L2):
-      raise ValueError(f'Shape of decoder tokens, {tok_d.shape}, does not'
-                       f' equal {(B, L2)}.')
-
-    def _UpdateRow(x):
-      # (L, H), (L1, H) & (L2, H)
-      row_ed, row_e, _ = x
-      mask_e = row_e != 0
-      len_e = jnp.sum(mask_e, dtype=jnp.int32)
-      # In `row_ed` start where encoder tokens/vecs end, i.e. are index `len_e`
-      # and pick up (L2, H) tensor slice from there.
-      return jax.lax.dynamic_slice(row_ed, (len_e, 0), (L2, H))
-
-    return jax.lax.map(_UpdateRow, [vec_ed, tok_e, tok_d])
-
-  return tl.Fn('StripFromConcatenateWithPadding', _StripEncToks, n_out=1)
