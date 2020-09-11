@@ -280,99 +280,21 @@ class ReversibleSerialTrainer(object):
       opt_params = self._replicate(optimizer.opt_params)
       self._replicated_opt_params.append(opt_params)
 
-    # Forward + backward + optimizer-update functions for all layers.
-    # We call them in short FBO for "Forward + Backward + Optimizer update".
-
-    def first_fbo(inputs, weights, state, slots, opt_params, rng, step, grads):
-      """FBO of the first layer."""
-      # We need the first layer's pure_fn but only for inputs and weights.
-      def first_layer_pure_fn_without_state_and_rng(x, w):
-        return first_layer.pure_fn(x, w, state, rng)
-
-      # Calculate vector-Jacobian product of the reduced first layer pure fn.
-      activations_after_first_layer, vjp_fn, new_state = fastmath.vjp(
-          first_layer_pure_fn_without_state_and_rng,
-          inputs, weights, has_aux=True)
-      del activations_after_first_layer  # unused
-
-      # The vjp function returns gradients with respect to inputs and weights.
-      _, grads_weights = vjp_fn(grads)
-
-      # In multi-device setting, average gradients from multiple devices.
-      if self._n_devices > 1:
-        grads_weights = _average_multidevice_gradients(grads_weights)
-
-      # Run the first layer optimizer, which is the first one.
-      new_weights, new_slots, stats = self._optimizers[0].tree_update(
-          step, grads_weights, weights, slots, opt_params)
-      return new_weights, new_state, new_slots, stats
-
     # Accelerate the first layer FBO function and store it.
+    first_fbo = _fbo_with_layer_and_opt(
+        self._first_layer, self._optimizers[0], self._n_devices)
     self._first_fbo = self._pjit(first_fbo)
 
-    # Loss layer FBO is like the first layer, but has no gradients argument
-    # as it is the last layer and we always use 1.0 for that. On the other
-    # hand, it adds the final activation (loss) into the returned stats.
-
-    def loss_fbo(inputs, weights, state, slots, opt_params, rng, step):
-      """FBO of the final loss layer."""
-      # We need a loss layer pure_fn but only for inputs and weights.
-      def loss_pure_fn_without_state_and_rng(x, w):
-        return loss_layer.pure_fn(x, w, state, rng)
-
-      # Calculate the vector-Jacobian product of the reduced loss pure fn.
-      loss, vjp_fn, new_state = fastmath.vjp(
-          loss_pure_fn_without_state_and_rng, inputs, weights, has_aux=True)
-
-      # The vjp function returns gradients with respect to inputs and weights.
-      # Since loss is scalar and there are no other layers, run it at 1.0.
-      grads_inputs, grads_weights = vjp_fn(jnp.ones((), dtype=loss.dtype))
-
-      # In multi-device setting, average gradients from multiple devices.
-      if self._n_devices > 1:
-        grads_weights = _average_multidevice_gradients(grads_weights)
-
-      # Run the loss optimizer, which is the last one since it's the last layer.
-      new_weights, new_slots, stats = self._optimizers[-1].tree_update(
-          step, grads_weights, weights, slots, opt_params)
-      stats['loss'] = loss
-      return new_weights, new_state, new_slots, grads_inputs, stats
-
     # Accelerate the loss layer FBO function and store it.
+    loss_fbo = _fbo_with_layer_and_opt(
+        self._loss_layer, self._optimizers[-1], self._n_devices, 'loss')
     self._loss_fbo = self._pjit(loss_fbo)
-
-    # Reversible layers define a reverse_and_fbo function that both reverses
-    # and runs the forward-backward pass and applied the optimizer.
-    # This function uses the `reverse_and_grad` method of reversible layers.
-
-    def reverse_and_fbo_with_layer_and_opt(layer, optimizer):
-      """Create the reverse_and_fbo function for a given layer and optimizer."""
-      def reverse_and_fbo(output, weights, state, new_state,
-                          slots, opt_params, rng, step, grads):
-        """Reverse and FBO of the layer."""
-        # Call the reverse_and_grad method of the layer.
-        inputs, (grads_inputs, grads_weights) = layer.reverse_and_grad(
-            output, grads, weights, state, new_state, rng=rng)
-
-        # For non-trainable layers, return the calculated arguments.
-        if not weights:
-          return weights, slots, inputs, grads_inputs, {}
-
-        # In multi-device setting, average gradients from multiple devices.
-        if self._n_devices > 1:
-          grads_weights = _average_multidevice_gradients(grads_weights)
-
-        # Run the optimizer.
-        new_weights, new_slots, stats = optimizer.tree_update(
-            step, grads_weights, weights, slots, opt_params)
-
-        return new_weights, new_slots, inputs, grads_inputs, stats
-      return reverse_and_fbo
 
     # Accelerate the reverse_and_fbo functions and store them.
     self._reverse_and_fbos = []
     for layer, opt in zip(reversible_layers, self._optimizers[1:-1]):
-      reverse_and_fbo = reverse_and_fbo_with_layer_and_opt(layer, opt)
+      reverse_and_fbo = _reverse_and_fbo_with_layer_and_opt(
+          layer, opt, self._n_devices)
       self._reverse_and_fbos.append(self._pjit(reverse_and_fbo))
 
   @property
@@ -445,72 +367,172 @@ class ReversibleSerialTrainer(object):
     stack = batch
 
     # Run the first layer.
-    first_layer_inputs = _inputs_from_stack(self._first_layer, stack)
-    first_layer_weights = self._replicate(self._first_layer.weights)
-    first_layer_state = self._replicate(self._first_layer.state)
-    outputs, first_layer_new_state = self._accelerated_first_layer_fn(
-        first_layer_inputs, first_layer_weights, first_layer_state, rngs[0])
-    stack = _outputs_onto_stack(self._first_layer, outputs, stack)
+    stack, first_layer_inputs, first_layer_state = self._run_forward_standard(
+        stack, self._first_layer, self._accelerated_first_layer_fn, rngs[0])
 
     # Run the reversible layers and collect old and new states.
+    stack, old_states, new_states = self._run_forward_reversible(
+        stack, self._reversible_layers,
+        self._accelerated_reversible_layers_fns, rngs[1:])
+
+    # Run the loss layer forward and backward with optimizer update.
+    loss_state = self._replicate(self._loss_layer.state)
+    loss_inputs = _inputs_from_stack(self._loss_layer, stack)
+    loss_stats, grad_stack = self._run_backward_standard(
+        None, step, self._loss_layer, loss_inputs,
+        loss_state, self._loss_fbo, rngs[-1], self._optimizers[-1],
+        self._replicated_opt_params[-1])
+    stats = [loss_stats]
+
+    # Run reversible layers backward with optimizer update.
+    stack, grad_stack, new_stats = self._run_backward_reversible(
+        stack, grad_stack, step,
+        self._reversible_layers, self._reverse_and_fbos,
+        old_states, new_states, rngs[1:-1],
+        self._optimizers[1:-1], self._replicated_opt_params[1:-1])
+    stats.extend(new_stats)
+
+    # Run the first layer forward-and-backward pass and optimizer update.
+    first_layer_stats, _ = self._run_backward_standard(
+        grad_stack, step, self._first_layer, first_layer_inputs,
+        first_layer_state, self._first_fbo, rngs[0], self._optimizers[0],
+        self._replicated_opt_params[0])
+    stats.append(first_layer_stats)
+
+    return stats[0]['loss'], stats
+
+  def _run_forward_standard(self, stack, layer, accelerated_fn, rng):
+    """Run standard layer forward."""
+    layer_inputs = _inputs_from_stack(layer, stack)
+    layer_weights = self._replicate(layer.weights)
+    layer_state = self._replicate(layer.state)
+    outputs, layer_new_state = accelerated_fn(
+        layer_inputs, layer_weights, layer_state, rng)
+    stack = _outputs_onto_stack(layer, outputs, stack)
+    return stack, layer_inputs, layer_new_state
+
+  def _run_forward_reversible(self, stack, rev_layers, accelerated_fns, rngs):
+    """Run reversible layers forward, collect states for backwards pass."""
     old_states, new_states = [], []
-    for i, layer in enumerate(self._reversible_layers):
+    for i, layer in enumerate(rev_layers):
       weights = self._replicate(layer.weights)  # also copies cpu -> accelerator
       state = self._replicate(layer.state)
       old_states.append(state)
       inputs = _inputs_from_stack(layer, stack)
-      outputs, new_state = self._accelerated_reversible_layers_fns[i](
-          inputs, weights, state, rngs[i+1])
+      outputs, new_state = accelerated_fns[i](
+          inputs, weights, state, rngs[i])
       stack = _outputs_onto_stack(layer, outputs, stack)
       new_states.append(new_state)
+    return stack, old_states, new_states
 
-    # Run the loss layer forward and backward with optimizer update.
-    loss_weights = self._replicate(self._loss_layer.weights)
-    loss_state = self._replicate(self._loss_layer.state)
-    loss_inputs = _inputs_from_stack(self._loss_layer, stack)
-    loss_slots = self._replicate(self._optimizers[-1].slots)
-    new_weights, new_state, new_slots, grad_stack, loss_stats = self._loss_fbo(
-        loss_inputs, loss_weights, loss_state,
-        loss_slots, self._replicated_opt_params[-1], rngs[-1], step)
-    stats = [loss_stats]
-    self._loss_layer.weights = self._unreplicate(new_weights)  # acceler. -> cpu
-    self._loss_layer.state = self._unreplicate(new_state)
-    self._optimizers[-1].slots = self._unreplicate(new_slots)
+  def _run_backward_standard(self, grad_stack, step, layer, inp, state,
+                             fbo_fn, rng, optimizer, replicated_opt_params):
+    """Run reversible layers backwards."""
+    if grad_stack is not None:
+      grads = _inputs_from_stack(layer, grad_stack, layer.n_out)
+    else:
+      grads = None
+    slots = self._replicate(optimizer.slots)
+    weights = self._replicate(layer.weights)
+    new_weights, new_state, new_slots, new_grads, stats = fbo_fn(
+        inp, weights, state, slots, replicated_opt_params, rng, step, grads)
+    layer.weights = self._unreplicate(new_weights)
+    layer.state = self._unreplicate(new_state)
+    optimizer.slots = self._unreplicate(new_slots)
+    return stats, new_grads
 
-    # Run reversible layers backward with optimizer update.
-    counter = -1
+  def _run_backward_reversible(self, stack, grad_stack, step,
+                               rev_layers, rev_and_fbos,
+                               old_states, new_states, rngs,
+                               optimizers, replicated_opt_params):
+    """Run reversible layers backwards."""
+    counter = 0
+    stats = []
     for layer, reverse_and_fbo, old_state, new_state, rng in reversed(list(zip(
-        self._reversible_layers, self._reverse_and_fbos,
-        old_states, new_states, rngs[1:-1]))):
+        rev_layers, rev_and_fbos,
+        old_states, new_states, rngs))):
       counter -= 1
       # We are running backwards and reversing, so we get *outputs* from stack.
       outputs = _inputs_from_stack(layer, stack, layer.n_out)
       grads = _inputs_from_stack(layer, grad_stack, layer.n_out)
-      slots = self._replicate(self._optimizers[counter].slots)
-      opt_params = self._replicated_opt_params[counter]
+      slots = self._replicate(optimizers[counter].slots)
+      opt_params = replicated_opt_params[counter]
       weights = self._replicate(layer.weights)  # cpu -> accelerator
       new_weights, new_slots, inputs, grads, layer_stats = reverse_and_fbo(
           outputs, weights, old_state, new_state,
           slots, opt_params, rng, step, grads)
       layer.weights = self._unreplicate(new_weights)  # accelerator -> cpu
       layer.state = self._unreplicate(new_state)
-      self._optimizers[counter].slots = self._unreplicate(new_slots)
+      optimizers[counter].slots = self._unreplicate(new_slots)
       stats.append(layer_stats)
       stack = _outputs_onto_stack(
           layer, inputs, stack, layer.n_out, layer.n_in)
       grad_stack = _outputs_onto_stack(
           layer, grads, grad_stack, layer.n_out, layer.n_in)
+    return stack, grad_stack, stats
 
-    # Run the first layer forward-and-backward pass and optimizer update.
-    grads = _inputs_from_stack(
-        self._first_layer, grad_stack, self._first_layer.n_out)
-    slots = self._replicate(self._optimizers[0].slots)
-    new_weights, new_state, new_slots, first_layer_stats = self._first_fbo(
-        first_layer_inputs, first_layer_weights, first_layer_new_state,
-        slots, self._replicated_opt_params[0], rngs[0], step, grads)
-    stats.append(first_layer_stats)
-    self._first_layer.weights = self._unreplicate(new_weights)
-    self._first_layer.state = self._unreplicate(new_state)
-    self._optimizers[0].slots = self._unreplicate(new_slots)
 
-    return stats[0]['loss'], stats
+# Forward + backward + optimizer-update functions for all layers.
+# We call them in short FBO for "Forward + Backward + Optimizer update".
+
+
+def _fbo_with_layer_and_opt(layer, optimizer, n_devices, stats_name=None):
+  """Create the fbo function for a given layer and optimizer."""
+  def fbo(inputs, weights, state, slots, opt_params, rng, step, grads):
+    """FBO of the layer."""
+    # We need a layer pure_fn but only for inputs and weights.
+    def pure_fn_without_state_and_rng(x, w):
+      return layer.pure_fn(x, w, state, rng)
+
+    # Calculate the vector-Jacobian product of the reduced pure fn.
+    activations, vjp_fn, new_state = fastmath.vjp(
+        pure_fn_without_state_and_rng, inputs, weights, has_aux=True)
+
+    # In the loss layer, set gradients to 1 with the dtype of activations=loss.
+    if grads is None and stats_name is not None:
+      grads = jnp.ones((), dtype=activations.dtype)
+
+    # The vjp function returns gradients with respect to inputs and weights.
+    grads_inputs, grads_weights = vjp_fn(grads)
+
+    # In multi-device setting, average gradients from multiple devices.
+    if n_devices > 1:
+      grads_weights = _average_multidevice_gradients(grads_weights)
+
+    # Run the optimizer.
+    new_weights, new_slots, stats = optimizer.tree_update(
+        step, grads_weights, weights, slots, opt_params)
+    if stats_name is not None:
+      stats[stats_name] = activations
+    return new_weights, new_state, new_slots, grads_inputs, stats
+  return fbo
+
+
+# Reversible layers define a reverse_and_fbo function that both reverses
+# and runs the forward-backward pass and applied the optimizer.
+# This function uses the `reverse_and_grad` method of reversible layers.
+
+
+def _reverse_and_fbo_with_layer_and_opt(layer, optimizer, n_devices):
+  """Create the reverse_and_fbo function for a given layer and optimizer."""
+  def reverse_and_fbo(output, weights, state, new_state,
+                      slots, opt_params, rng, step, grads):
+    """Reverse and FBO of the layer."""
+    # Call the reverse_and_grad method of the layer.
+    inputs, (grads_inputs, grads_weights) = layer.reverse_and_grad(
+        output, grads, weights, state, new_state, rng=rng)
+
+    # For non-trainable layers, return the calculated arguments.
+    if not weights:
+      return weights, slots, inputs, grads_inputs, {}
+
+    # In multi-device setting, average gradients from multiple devices.
+    if n_devices > 1:
+      grads_weights = _average_multidevice_gradients(grads_weights)
+
+    # Run the optimizer.
+    new_weights, new_slots, stats = optimizer.tree_update(
+        step, grads_weights, weights, slots, opt_params)
+
+    return new_weights, new_slots, inputs, grads_inputs, stats
+  return reverse_and_fbo
