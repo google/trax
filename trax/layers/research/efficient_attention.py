@@ -1217,7 +1217,7 @@ class LSHSelfAttention(SelfAttention):
     # Determine the number of buckets needed from input length if not set.
     if n_buckets_list is None:
       length = vecs.shape[0]
-      n_buckets = 2 * (length // self.chunk_len)
+      n_buckets = 2 * max(1, length // self.chunk_len)
       if n_buckets <= 128:
         n_buckets_list = n_buckets
       else:  # Factorize n_buckets.
