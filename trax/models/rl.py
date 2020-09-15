@@ -136,3 +136,24 @@ def PolicyAndValue(
           value_top(mode=mode),
       ),
   )
+
+
+def Quality(
+    body=None,
+    normalizer=None,
+    batch_axes=None,
+    mode='train',
+    n_actions=2
+):
+  """The network takes as input an observation and outputs values of actions."""
+
+  if body is None:
+    body = lambda mode: []
+  if normalizer is None:
+    normalizer = lambda mode: []
+
+  return tl.Serial(
+      _Batch(normalizer(mode=mode), batch_axes),
+      _Batch(body(mode=mode), batch_axes),
+      tl.Dense(n_actions),
+  )

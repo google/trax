@@ -136,6 +136,27 @@ class TrainingTest(absltest.TestCase):
         'Maximum at end was {}.'.format(max_avg_returns)
     )
 
+  def test_dqntrainer_cartpole(self):
+    """Test-runs joint PPO on CartPole."""
+
+    task = rl_task.RLTask('CartPole-v0', initial_trajectories=0,
+                          max_steps=2)
+    value_body = lambda mode: tl.Serial(tl.Dense(64), tl.Relu())
+
+    lr = lambda: lr_schedules.multifactor(  # pylint: disable=g-long-lambda
+        constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
+
+    trainer = training.DQN(
+        task,
+        value_body=value_body,
+        value_optimizer=opt.Adam,
+        value_lr_schedule=lr,
+        value_batch_size=4,
+        value_train_steps_per_epoch=2,
+        n_trajectories_per_epoch=5)
+    trainer.run(2)
+    self.assertEqual(2, trainer.current_epoch)
+
 
 if __name__ == '__main__':
   absltest.main()

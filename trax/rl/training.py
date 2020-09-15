@@ -23,6 +23,7 @@ import pickle
 import time
 
 import gin
+import jax
 import numpy as np
 import tensorflow as tf
 
@@ -30,13 +31,16 @@ from trax import data
 from trax import fastmath
 from trax import jaxboard
 from trax import layers as tl
+from trax import models
 from trax import shapes
 from trax import supervised
+from trax.fastmath import numpy as jnp
 from trax.optimizers import adam
 from trax.rl import advantages
 from trax.rl import distributions
 from trax.rl import normalization  # So gin files see it. # pylint: disable=unused-import
 from trax.rl import policy_tasks
+from trax.rl import rl_layers
 from trax.rl import task as rl_task
 from trax.supervised import lr_schedules as lr
 
@@ -581,3 +585,278 @@ def network_policy(
     # accidental modification.
     result = fastmath.nested_map(lambda x: x.copy(), result)
   return result
+
+
+class ValueAgent(Agent):
+  """Trainer that uses a deep learning model for value function.
+
+  Compute the loss using variants of the Bellman equation.
+  """
+
+  def __init__(self, task,
+               value_body=None,
+               value_optimizer=None,
+               value_lr_schedule=lr.multifactor,
+               value_batch_size=64,
+               value_train_steps_per_epoch=500,
+               value_evals_per_epoch=1,
+               value_eval_steps=1,
+               exploration_rate=functools.partial(
+                   lr.multifactor,
+                   factors='constant * decay_every',
+                   constant=0.1,  # pylint: disable=redefined-outer-name
+                   decay_factor=0.99,
+                   steps_per_decay=1),
+               n_eval_episodes=0,
+               only_eval=False,
+               n_replay_epochs=1,
+               max_slice_length=1,
+               scale_value_targets=True,
+               output_dir=None,
+               **kwargs):
+    """Configures the value trainer.
+
+    Args:
+      task: RLTask instance, which defines the environment to train on.
+      value_body: Trax layer, representing the body of the value model.
+          functions and eval functions (a.k.a. metrics) are considered to be
+          outside the core model, taking core model output and data labels as
+          their two inputs.
+      value_optimizer: the optimizer to use to train the policy model.
+      value_lr_schedule: learning rate schedule to use to train the policy.
+      value_batch_size: batch size used to train the policy model.
+      value_train_steps_per_epoch: how long to train policy in each RL epoch.
+      value_evals_per_epoch: number of policy trainer evaluations per RL epoch
+          - only affects metric reporting.
+      value_eval_steps: number of policy trainer steps per evaluation - only
+          affects metric reporting.
+      exploration_rate: exploration rate schedule - used in the policy method.
+      n_eval_episodes: number of episodes to play with policy at
+        temperature 0 in each epoch -- used for evaluation only
+      only_eval: If set to True, then trajectories are collected only for
+        for evaluation purposes, but they are not recorded.
+      n_replay_epochs: Number of last epochs to take into the replay buffer;
+          only makes sense for off-policy algorithms.
+      max_slice_length: the maximum length of trajectory slices to use; it is
+          the second dimenions of the value network output:
+          (batch, max_slice_length, number of actions)
+          Higher max_slice_length implies that the network has to predict more
+          values into the future.
+      scale_value_targets: If `True`, scale value function targets by
+          `1 / (1 - gamma)`. We are trying to fix the problem with very large
+          returns in some games in a way which does not introduce an additional
+          hyperparameters.
+      output_dir: Path telling where to save outputs (evals and checkpoints).
+      **kwargs: arguments for the superclass RLTrainer.
+    """
+    super(ValueAgent, self).__init__(
+        task,
+        n_eval_episodes=n_eval_episodes,
+        output_dir=output_dir,
+        **kwargs
+    )
+    self._value_batch_size = value_batch_size
+    self._value_train_steps_per_epoch = value_train_steps_per_epoch
+    self._value_evals_per_epoch = value_evals_per_epoch
+    self._value_eval_steps = value_eval_steps
+    self._only_eval = only_eval
+    self._max_slice_length = max_slice_length
+    self._policy_dist = distributions.create_distribution(task.action_space)
+    self._n_replay_epochs = n_replay_epochs
+
+    self._exploration_rate = exploration_rate()
+
+    if scale_value_targets:
+      self._value_network_scale = 1 / (1 - self._task.gamma)
+    else:
+      self._value_network_scale = 1
+
+    value_model = functools.partial(
+        models.Quality,
+        body=value_body,
+        n_actions=self.task.action_space.n)
+
+    self._value_eval_model = value_model(mode='eval')
+    self._value_eval_model.init(self._value_model_signature)
+    self._value_eval_jit = tl.jit_forward(
+        self._value_eval_model.pure_fn, fastmath.device_count(), do_mean=False)
+
+    # Inputs to the value model are produced by self._values_batches_stream.
+    self._inputs = data.inputs.Inputs(
+        train_stream=lambda _: self.value_batches_stream())
+
+    # This is the value Trainer that will be used to train the value model.
+    # * inputs to the trainer come from self.value_batches_stream
+    # * outputs, targets and weights are passed to self.value_loss
+    self._value_trainer = supervised.Trainer(
+        model=value_model,
+        optimizer=value_optimizer,
+        lr_schedule=value_lr_schedule(),
+        loss_fn=tl.L2Loss(),
+        inputs=self._inputs,
+        output_dir=output_dir,
+        metrics={'value_loss': tl.L2Loss()}
+    )
+    value_batch = next(self.value_batches_stream())
+    self._eval_model = tl.Accelerate(
+        value_model(mode='collect'), n_devices=1)
+    self._eval_model.init(shapes.signature(value_batch))
+    if self._task._initial_trajectories == 0:
+      self._task.remove_epoch(0)
+      self._collect_trajectories()
+
+  @property
+  def _value_model_signature(self):
+    obs_sig = shapes.signature(self._task.observation_space)
+    target_sig = mask_sig = shapes.ShapeDtype(
+        shape=(1, 1, self._task.action_space),
+    )
+    inputs_sig = obs_sig.replace(shape=(1, 1) + obs_sig.shape)
+    return (inputs_sig, target_sig, mask_sig)
+
+  def value_batches_stream(self):
+    """Use self.task to create inputs to the policy model."""
+    return NotImplementedError
+
+  def policy(self, trajectory, temperature=1):
+    """Chooses an action to play after a trajectory."""
+    tr_slice = trajectory[-self._max_slice_length:]
+    trajectory_np = tr_slice.to_np(timestep_to_np=self.task.timestep_to_np)
+    # Add batch dimension to trajectory_np and run the model.
+    obs = trajectory_np.observations[None, ...]
+    values = self._run_value_model(obs)
+    # We insisit that values and observations have the shape
+    # (batch, length, ...), where the length is the number of subsequent
+    # observations on a given trajectory
+    assert values.shape[:1] == obs.shape[:1]
+    # We select the last element in the batch and the value
+    # related to the last (current) observation
+    values = values[0, -1, :]
+    # temperature == 0 is used in another place in order to trigger eval
+    if np.random.random_sample() < self._exploration_rate(self._epoch) and \
+        temperature == 1:
+      sample = np.array(self.task.action_space.sample())
+    else:
+      # this is our way of doing the argmax
+      sample = jnp.argmax(values)
+    result = (sample, values)
+    if fastmath.backend_name() == 'jax':
+      result = fastmath.nested_map(lambda x: x.copy(), result)
+    return result
+
+  def train_epoch(self):
+    """Trains RL for one epoch."""
+    # Update the target value network.
+    self._value_eval_model.weights = self._value_trainer.model_weights
+    self._value_eval_model.state = self._value_trainer.model_state
+
+    # When restoring, calculate how many evals are remaining.
+    n_evals = remaining_evals(
+        self._value_trainer.step,
+        self._epoch,
+        self._value_train_steps_per_epoch,
+        self._value_evals_per_epoch)
+    for _ in range(n_evals):
+      self._value_trainer.train_epoch(
+          self._value_train_steps_per_epoch // self._value_evals_per_epoch,
+          self._value_eval_steps)
+
+    # Update the target value network.
+    self._value_eval_model.weights = self._value_trainer.model_weights
+    self._value_eval_model.state = self._value_trainer.model_state
+
+  def close(self):
+    self._value_trainer.close()
+    super().close()
+
+  def _run_value_model(self, obs):
+    """Runs value model."""
+    n_devices = fastmath.device_count()
+    weights = tl.for_n_devices(self._value_eval_model.weights, n_devices)
+    state = tl.for_n_devices(self._value_eval_model.state, n_devices)
+    rng = self._value_eval_model.rng
+    # TODO(henrykm): the line below fails on TPU with the error
+    # ValueError: Number of devices (8) does not evenly divide batch size (1).
+    obs_batch = obs.shape[0]
+    if n_devices > obs_batch:
+      obs = jnp.repeat(obs, int(n_devices / obs_batch), axis=0)
+    values, _ = self._value_eval_jit(obs, weights, state, rng)
+    values = values[:obs_batch]
+    values *= self._value_network_scale
+    return values
+
+
+class DQN(ValueAgent):
+  """Trains a value model using DQN on the given RLTask."""
+
+  def __init__(
+      self,
+      task,
+      advantage_estimator=advantages.monte_carlo,
+      max_slice_length=1,
+      **kwargs
+  ):
+
+    self._max_slice_length = max_slice_length
+    self._advantage_estimator = advantage_estimator(
+        task.gamma, self._max_slice_length-1)
+    super(DQN, self).__init__(task=task,
+                              max_slice_length=max_slice_length,
+                              **kwargs)
+
+  @property
+  def value_loss(self):
+    """Value loss - so far generic for all A2C."""
+    def f(dist_inputs, values, returns):
+      del dist_inputs
+      return rl_layers.ValueLoss(values, returns, 1)
+    return tl.Fn('ValueLoss', f)
+
+  @property
+  def _replay_epochs(self):
+    return [-(ep + 1) for ep in range(self._n_replay_epochs)]
+
+  def value_batches_stream(self):
+    """Use the RLTask self._task to create inputs to the value model."""
+    max_slice_length = self._max_slice_length
+    min_slice_length = 1
+    for np_trajectory in self._task.trajectory_batch_stream(
+        self._value_batch_size,
+        max_slice_length=max_slice_length,
+        min_slice_length=min_slice_length,
+        margin=0,
+        epochs=self._replay_epochs,
+    ):
+      values = self._run_value_model(
+          np_trajectory.observations
+      )
+      values_max = np.array(jnp.max(values, axis=-1))
+
+      adv = self._advantage_estimator(
+          rewards=np_trajectory.rewards,
+          returns=np_trajectory.returns,
+          values=values_max,
+          dones=np_trajectory.dones,
+      )
+
+      length = adv.shape[1]
+      values = values[:, :length, :]
+      indices_max = (np.arange(values.shape[0]), np.arange(values.shape[1]),
+                     np.argmax(values, axis=-1))
+      # TODO(henrykm): change it to fastmath instead of jax.ops
+      target_returns = jax.ops.index_add(values, indices_max, adv)
+      inputs = np_trajectory.observations[:, :length, :]
+
+      yield (
+          # Inputs are observations
+          # (batch, length, obs)
+          inputs,
+          # Targets: computed returns.
+          # target_returns, we expect here shapes such as
+          # (batch, length, num_actions)
+          target_returns / self._value_network_scale,
+          # TODO(henrykm): mask has the shape (batch, max_slice_length)
+          # that is it misses the action dimension; the preferred format
+          # would be np_trajectory.mask[:, :length, :] but for now we pass:
+          np.ones(shape=target_returns.shape)
+      )
