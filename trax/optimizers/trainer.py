@@ -465,10 +465,8 @@ class ReversibleSerialTrainer(object):
       layer.state = self._unreplicate(new_state)
       optimizers[counter].slots = self._unreplicate(new_slots)
       stats.append(layer_stats)
-      stack = _outputs_onto_stack(
-          layer, inputs, stack, layer.n_out, layer.n_in)
-      grad_stack = _outputs_onto_stack(
-          layer, grads, grad_stack, layer.n_out, layer.n_in)
+      stack = _outputs_onto_stack(layer, inputs, stack, layer.n_out)
+      grad_stack = _outputs_onto_stack(layer, grads, grad_stack, layer.n_out)
     return stack, grad_stack, stats
 
 

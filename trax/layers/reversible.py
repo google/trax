@@ -143,8 +143,7 @@ class ReversibleSerial(ReversibleLayer, cb.Serial):
         self.sublayers, weights, state, new_state, rngs))):
       layer_val = _inputs_from_stack(layer, stack, layer.n_out)
       layer_val = layer.reverse(layer_val, p, s, ns, rng=rng)
-      stack = _outputs_onto_stack(
-          layer, layer_val, stack, layer.n_out, layer.n_in)
+      stack = _outputs_onto_stack(layer, layer_val, stack, layer.n_out)
 
     return stack
 
@@ -165,10 +164,8 @@ class ReversibleSerial(ReversibleLayer, cb.Serial):
           layer_val, layer_ct, p, s, ns, rng=rng)
       layer_ct, p_ct = layer_ct
       weights_grad.insert(0, p_ct)
-      stack = _outputs_onto_stack(
-          layer, layer_val, stack, layer.n_out, layer.n_in)
-      stack_grad = _outputs_onto_stack(
-          layer, layer_ct, stack_grad, layer.n_out, layer.n_in)
+      stack = _outputs_onto_stack(layer, layer_val, stack, layer.n_out)
+      stack_grad = _outputs_onto_stack(layer, layer_ct, stack_grad, layer.n_out)
 
     return stack, (stack_grad, tuple(weights_grad))
 
@@ -276,7 +273,7 @@ class ReversibleHalfResidual(ReversibleLayer):
           compute_output=True, update_state=False)
       stack_ct = _outputs_onto_stack(
           self.attention_layer, attn_inputs_ct, stack_ct,
-          self.attention_layer.n_out, self.attention_layer.n_in)
+          self.attention_layer.n_out)
 
     compute_residual_ct = _inputs_from_stack(
         self.compute_residual, stack_ct, self.compute_residual.n_out)
@@ -289,7 +286,7 @@ class ReversibleHalfResidual(ReversibleLayer):
     ) = compute_residual_vjpfun(compute_residual_ct)
     stack_ct = _outputs_onto_stack(
         self.compute_residual, compute_residual_inputs_ct, stack_ct,
-        self.compute_residual.n_out, self.compute_residual.n_in)
+        self.compute_residual.n_out)
     if not isinstance(stack_ct, (tuple, list)):
       stack_ct = (stack_ct,)
     stack_ct = (accumulator_output_ct,) + fastmath.nested_map_multiarg(

@@ -929,12 +929,10 @@ def _inputs_from_stack(layer, stack, n_in=None):
   return _make_singleitem_or_original(stack[:n_in])
 
 
-def _outputs_onto_stack(layer, outputs, stack, n_in=None, n_out=None):
+def _outputs_onto_stack(layer, outputs, stack, n_in=None):
   """"Returns the new stack after outputs have been pushed onto it."""
   if n_in is None:
     n_in = layer.n_in
-  if n_out is None:
-    n_out = layer.n_out
   outputs = _make_tuple(outputs)
   stack = _make_tuple(stack)
   return _make_singleitem_or_original(outputs + stack[n_in:])
