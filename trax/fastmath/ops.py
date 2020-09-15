@@ -182,6 +182,22 @@ def lt(*args, **kwargs):
   return backend()['lt'](*args, **kwargs)
 
 
+def index_update(*args, **kwargs):
+  return backend()['index_update'](*args, **kwargs)
+
+
+def index_add(*args, **kwargs):
+  return backend()['index_add'](*args, **kwargs)
+
+
+def index_min(*args, **kwargs):
+  return backend()['index_min'](*args, **kwargs)
+
+
+def index_max(*args, **kwargs):
+  return backend()['index_max'](*args, **kwargs)
+
+
 def stop_gradient(*args, **kwargs):
   """Identity on the forward pass but 0 (no gradient) on the backward pass."""
   return backend()['stop_gradient'](*args, **kwargs)

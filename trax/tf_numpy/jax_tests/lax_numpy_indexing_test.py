@@ -722,30 +722,29 @@ def _update_shape(shape, indexer):
 
 class UpdateOps(enum.Enum):
   UPDATE = 0
-  # TODO(wangpeng): Enable these ops
-  # ADD = 1
+  ADD = 1
   # MUL = 2
-  # MIN = 3
-  # MAX = 4
+  MIN = 3
+  MAX = 4
 
   def np_fn(op, indexer, x, y):  # pylint: disable=no-self-argument
     x = x.copy()
     x[indexer] = {
       UpdateOps.UPDATE: lambda: y,
-      # UpdateOps.ADD: lambda: x[indexer] + y,
+      UpdateOps.ADD: lambda: x[indexer] + y,
       # UpdateOps.MUL: lambda: x[indexer] * y,
-      # UpdateOps.MIN: lambda: onp.minimum(x[indexer], y),
-      # UpdateOps.MAX: lambda: onp.maximum(x[indexer], y),
+      UpdateOps.MIN: lambda: onp.minimum(x[indexer], y),
+      UpdateOps.MAX: lambda: onp.maximum(x[indexer], y),
     }[op]()
     return x
 
   def tfnp_fn(op, indexer, x, y):  # pylint: disable=no-self-argument
     return {
       UpdateOps.UPDATE: npe.index_update,
-      # UpdateOps.ADD: npe.index_add,
+      UpdateOps.ADD: npe.index_add,
       # UpdateOps.MUL: npe.index_mul,
-      # UpdateOps.MIN: npe.index_min,
-      # UpdateOps.MAX: npe.index_max,
+      UpdateOps.MIN: npe.index_min,
+      UpdateOps.MAX: npe.index_max,
     }[op](x, indexer, y)
 
 
@@ -829,7 +828,7 @@ class IndexedUpdateTest(jtu.TestCase):
       "update_dtype": update_dtype, "op": op
   } for name, index_specs in STATIC_INDEXING_TESTS
     for shape, indexer in index_specs
-    for op in UpdateOps
+    for op in [UpdateOps.ADD, UpdateOps.UPDATE]
     for dtype in float_dtypes
     for update_shape in _broadcastable_shapes(_update_shape(shape, indexer))
     for update_dtype in float_dtypes

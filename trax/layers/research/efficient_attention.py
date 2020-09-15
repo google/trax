@@ -569,7 +569,7 @@ class EfficientAttentionBase(base.Layer):
       def update_mem(mem_element, new_vals):
         assert new_vals.shape[1] == seqlen
         if seqlen == 1:
-          return jax.ops.index_update(
+          return fastmath.index_update(
               mem_element, jax.ops.index[:, mem_end], new_vals[:, 0, ...])
         else:
           return jax.lax.dynamic_update_slice_in_dim(
@@ -726,12 +726,12 @@ class EfficientAttentionBase(base.Layer):
 
     def tree_update(tree, indices, new_values):
       return fastmath.nested_map_multiarg(
-          lambda x, y: jax.ops.index_update(x, jax.ops.index[indices], y),
+          lambda x, y: fastmath.index_update(x, jax.ops.index[indices], y),
           tree, new_values)
 
     def tree_add(tree, indices, new_values):
       return fastmath.nested_map_multiarg(
-          lambda x, y: jax.ops.index_add(x, jax.ops.index[indices], y),
+          lambda x, y: fastmath.index_add(x, jax.ops.index[indices], y),
           tree, new_values)
 
     if compute_grad:
@@ -791,7 +791,7 @@ class EfficientAttentionBase(base.Layer):
           o_h, s_h = forward_fn(i_h, w_h)
 
         if compute_output:
-          o_all = jax.ops.index_add(o_all, example_idx, o_h)
+          o_all = fastmath.index_add(o_all, example_idx, o_h)
         if update_state:
           s_all = tree_update(s_all, idx, s_h)
         if compute_grad:
@@ -830,7 +830,7 @@ class EfficientAttentionBase(base.Layer):
           o_mh, s_mh = forward_fn(i_mh, w_mh)
 
         if compute_output:
-          o_all = jax.ops.index_add(o_all, example_idx, o_mh)
+          o_all = fastmath.index_add(o_all, example_idx, o_mh)
         if update_state:
           s_all = tree_update(s_all, state_range, s_mh)
         if compute_grad:
@@ -880,7 +880,7 @@ class EfficientAttentionBase(base.Layer):
           o_mex, s_mex = forward_fn(i_mex, weights)
 
         if compute_output:
-          o_all = jax.ops.index_add(o_all, jax.ops.index[example_range], o_mex)
+          o_all = fastmath.index_add(o_all, jax.ops.index[example_range], o_mex)
         if update_state:
           s_all = tree_update(s_all, state_range, s_mex)
         if compute_grad:
@@ -1731,4 +1731,3 @@ class SparseFF(base.Layer):
     w2 = self._kernel_initializer(shape_w2, rng_w2)
     b2 = self._bias_initializer(shape_b2, rng_b2)
     self.weights = (m1, m2, mb, w1, w2, b2)
-

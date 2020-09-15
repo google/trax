@@ -411,14 +411,96 @@ def eval_on_shapes(f, static_argnums=()):
   return f_return
 
 
-def index_update(x, idx, y):
+def _index_update_helper(updater, x, idx, y):
   x = tf_np.asarray(x)
-  # TODO(b/164251540): Remove these two lines once
-  #   tf.tensor_strided_slice_update and tf.tensor_scatter_nd_update support
-  #   broadcasting.
-  y = tf_np.asarray(y, x.dtype)
+  y = tf_np.asarray(y)
+  # TODO(b/164251540): Remove this expensive manual broadcasting once
+  #   tf.raw_ops.tensor_strided_slice_update and tf.tensor_scatter_nd_update
+  #   support broadcasting.
   y = tf.broadcast_to(y.data, tf.shape(x[idx].data))
-  return x._with_update(idx, y)  # pylint: disable=protected-access
+  return updater(x, idx, y)
+
+
+# pylint: disable=protected-access
+def index_update(x, idx, y):
+  """Pure equivalent of `x[idx] = y`.
+
+  Returns the value of x that would result from the NumPy-style indexed
+  assignment `x[idx] = y`. Because it's a pure function, `x` itself won't be
+  changed.
+
+  Args:
+    x: an array with the values to be updated.
+    idx: a Numpy-style index, consisting of `None`, integers, slice objects,
+      ellipses, ndarrays with integer dtypes, or a tuple of the above.
+    y: the array of updates. `y` must be broadcastable to the shape of the array
+      that would be returned by `x[idx]`.
+
+  Returns:
+    The updated version of `x`.
+  """
+  return _index_update_helper(tf_np.ndarray._with_index_update, x, idx, y)
+
+
+def index_add(x, idx, y):
+  """Pure equivalent of `x[idx] += y`.
+
+  Returns the value of x that would result from the NumPy-style indexed
+  assignment `x[idx] += y`. Because it's a pure function, `x` itself won't be
+  changed.
+
+  Args:
+    x: an array with the values to be updated.
+    idx: a Numpy-style index, consisting of `None`, integers, slice objects,
+      ellipses, ndarrays with integer dtypes, or a tuple of the above.
+    y: the array of updates. `y` must be broadcastable to the shape of the array
+      that would be returned by `x[idx]`.
+
+  Returns:
+    The updated version of `x`.
+  """
+  return _index_update_helper(tf_np.ndarray._with_index_add, x, idx, y)
+
+
+def index_min(x, idx, y):
+  """Pure equivalent of `x[idx] = minimum(x[idx], y)`.
+
+  Returns the value of x that would result from the NumPy-style indexed
+  assignment `x[idx] = minimum(x[idx], y)`. Because it's a pure function, `x`
+  itself won't be changed.
+
+  Args:
+    x: an array with the values to be updated.
+    idx: a Numpy-style index, consisting of `None`, integers, slice objects,
+      ellipses, ndarrays with integer dtypes, or a tuple of the above.
+    y: the array of updates. `y` must be broadcastable to the shape of the array
+      that would be returned by `x[idx]`.
+
+  Returns:
+    The updated version of `x`.
+  """
+  return _index_update_helper(tf_np.ndarray._with_index_min, x, idx, y)
+
+
+def index_max(x, idx, y):
+  """Pure equivalent of `x[idx] = maximum(x[idx], y)`.
+
+  Returns the value of x that would result from the NumPy-style indexed
+  assignment `x[idx] = maximum(x[idx], y)`. Because it's a pure function, `x`
+  itself won't be changed.
+
+  Args:
+    x: an array with the values to be updated.
+    idx: a Numpy-style index, consisting of `None`, integers, slice objects,
+      ellipses, ndarrays with integer dtypes, or a tuple of the above.
+    y: the array of updates. `y` must be broadcastable to the shape of the array
+      that would be returned by `x[idx]`.
+
+  Returns:
+    The updated version of `x`.
+  """
+  return _index_update_helper(tf_np.ndarray._with_index_max, x, idx, y)
+# pylint: enable=protected-access
 
 
 def logsumexp(x, axis=None, keepdims=None):
