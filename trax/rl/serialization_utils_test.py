@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
-import itertools
 
 from absl.testing import parameterized
 import gin
@@ -28,7 +27,7 @@ import gym
 from jax import numpy as jnp
 import numpy as np
 from tensorflow import test
-from trax import fastmath as trax_math
+# from trax import fastmath as trax_math
 from trax import models as trax_models
 from trax import shapes
 from trax import test_utils
@@ -56,29 +55,14 @@ def TestModel(extra_dim):
   # pylint: enable=invalid-name
 
 
-def generate_signals(seq_len, depth=1):
-  while True:
-    yield (
-        np.random.uniform(size=(seq_len, depth)),  # the 1st time series
-        np.random.uniform(size=(seq_len, depth)),  # the 2nd time series
-    )
-
-
-def batch_stream(stream, batch_size):
-  while True:
-    yield trax_math.nested_stack(list(itertools.islice(stream, batch_size)))
-
-
 def signal_inputs(seq_len, batch_size, depth=1):
   def stream_fn(num_devices):
     del num_devices
-    for (x, y) in batch_stream(
-        generate_signals(seq_len=seq_len, depth=depth),
-        batch_size=batch_size,
-    ):
+    while True:
+      x = np.random.uniform(size=(batch_size, seq_len, depth))
+      y = np.random.uniform(size=(batch_size, seq_len, depth))
       mask = np.ones_like(x).astype(np.float32)
-      # (input_x, input_y, target_x, target_y, mask)
-      yield (x, y, x, y, mask)
+      yield (x, y, x, mask)
 
   return trax_input.Inputs(
       train_stream=stream_fn,
@@ -156,24 +140,28 @@ class SerializationTest(parameterized.TestCase):
     # Check that the observations are correct.
     np.testing.assert_array_equal(obs_repr, obs)
     # Check weights.
-    np.testing.assert_array_equal(weights, [[1., 1., 1., 1., 1., 1., 1., 1., \
-                                             1., 1., 1., 1., 0., 0., 0., 0.]])
+    np.testing.assert_array_equal(
+        weights,
+        [[[1., 1.], [1., 1.], [1., 1.], [0., 0.]]],
+    )
 
   def test_train_model_with_serialization(self):
     # Serializer handles discretization of the data.
-    number_of_time_series = 4
+    precision = 2
+    number_of_time_series = 2
+    vocab_size = 16
     srl = space_serializer.BoxSpaceSerializer(
         space=gym.spaces.Box(shape=(number_of_time_series,),
                              low=0.0, high=16.0),
-        vocab_size=16,
-        precision=2,
+        vocab_size=vocab_size,
+        precision=precision,
     )
 
     def model(mode):
-      return serialization_utils.SerializedHalfModel(
+      return serialization_utils.SerializedModel(
           trax_models.TransformerLM(
               mode=mode,
-              vocab_size=16,
+              vocab_size=vocab_size,
               d_model=16,
               d_ff=8,
               n_layers=1,
@@ -222,9 +210,7 @@ class SerializationTest(parameterized.TestCase):
     self.assertEqual(
         obs_repr.shape, (1, obs.shape[1], obs.shape[2] * precision)
     )
-    self.assertEqual(obs_repr.shape[0], weights.shape[0])
-    self.assertEqual(obs_repr.shape[1]*obs_repr.shape[2] +
-                     obs_logits.shape[1]*obs_logits.shape[2], weights.shape[1])
+    self.assertEqual(obs_repr.shape, weights.shape)
 
   def test_extract_inner_model(self):
     vocab_size = 3
