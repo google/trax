@@ -40,7 +40,6 @@ class PolicyTrainTask(training.TrainTask):
   Trains the policy based on action advantages.
   """
 
-  # TODO(pkozakowski): Find a way to decrease the number of arguments.
   def __init__(
       self,
       trajectory_batch_stream,
@@ -52,6 +51,7 @@ class PolicyTrainTask(training.TrainTask):
       weight_fn=(lambda x: x),
       advantage_normalization=True,
       advantage_normalization_epsilon=1e-5,
+      head_selector=(),
   ):
     """Initializes PolicyTrainTask.
 
@@ -74,6 +74,9 @@ class PolicyTrainTask(training.TrainTask):
       advantage_normalization: Whether to normalize advantages.
       advantage_normalization_epsilon: Epsilon to use then normalizing
         advantages.
+      head_selector: Layer to apply to the network output to select the value
+        head. Only needed in multitask training. By default, use a no-op layer,
+        signified by an empty sequence of layers, ().
     """
     self._value_fn = value_fn
     self._advantage_estimator = advantage_estimator
@@ -84,6 +87,7 @@ class PolicyTrainTask(training.TrainTask):
 
     labeled_data = map(self.policy_batch, trajectory_batch_stream)
     loss_layer = distributions.LogLoss(distribution=policy_distribution)
+    loss_layer = tl.Serial(head_selector, loss_layer)
     super().__init__(
         labeled_data, loss_layer, optimizer,
         lr_schedule=lr_schedule,
@@ -101,10 +105,11 @@ class PolicyTrainTask(training.TrainTask):
       advantage-based weights for the policy loss. Shapes:
       - observations: (batch_size, seq_len) + observation_shape
       - actions: (batch_size, seq_len) + action_shape
-      - weight: (batch_size, seq_len)
+      - weights: (batch_size, seq_len)
     """
     (batch_size, seq_len) = trajectory_batch.observations.shape[:2]
     assert trajectory_batch.actions.shape[:2] == (batch_size, seq_len)
+    assert trajectory_batch.mask.shape == (batch_size, seq_len)
     # Compute the value, i.e. baseline in advantage computation.
     values = np.array(self._value_fn(trajectory_batch))
     assert values.shape == (batch_size, seq_len)
@@ -115,30 +120,48 @@ class PolicyTrainTask(training.TrainTask):
         dones=trajectory_batch.dones,
         values=values,
     )
-    assert advantages.shape == (batch_size, seq_len)
+    adv_seq_len = advantages.shape[1]
+    # The advantage sequence should be shorter by the margin. Margin is the
+    # number of timesteps added to the trajectory slice, to make the advantage
+    # estimation more accurate. adv_seq_len determines the length of the target
+    # sequence, and is later used to trim the inputs and targets in the training
+    # batch. Example for margin 2:
+    # observations.shape == (4, 5, 6)
+    # rewards.shape == values.shape == (4, 5)
+    # advantages.shape == (4, 3)
+    assert adv_seq_len <= seq_len
+    assert advantages.shape == (batch_size, adv_seq_len)
     if self._advantage_normalization:
       # Normalize advantages.
       advantages -= np.mean(advantages)
       advantages /= (np.std(advantages) + self._advantage_normalization_epsilon)
+    # Trim observations, actions and mask to match the target length.
+    observations = trajectory_batch.observations[:, :adv_seq_len]
+    actions = trajectory_batch.actions[:, :adv_seq_len]
+    mask = trajectory_batch.mask[:, :adv_seq_len]
     # Compute advantage-based weights for the log loss in policy training.
-    weights = self._weight_fn(advantages)
-    assert weights.shape == (batch_size, seq_len)
-    return (trajectory_batch.observations, trajectory_batch.actions, weights)
+    weights = self._weight_fn(advantages) * mask
+    assert weights.shape == (batch_size, adv_seq_len)
+    return (observations, actions, weights)
 
 
 class PolicyEvalTask(training.EvalTask):
   """Task for policy evaluation."""
 
-  def __init__(self, train_task, n_eval_batches=1):
+  def __init__(self, train_task, n_eval_batches=1, head_selector=()):
     """Initializes PolicyEvalTask.
 
     Args:
       train_task: PolicyTrainTask used to train the policy network.
       n_eval_batches: Number of batches per evaluation.
+      head_selector: Layer to apply to the network output to select the value
+        head. Only needed in multitask training.
     """
     self._policy_dist = train_task.policy_distribution
     # TODO(pkozakowski): Implement more metrics.
     metrics = [self.entropy_metric]
+    # Select the appropriate head for evaluation.
+    metrics = [tl.Serial(head_selector, metric) for metric in metrics]
     super().__init__(
         train_task.labeled_data, metrics, n_eval_batches=n_eval_batches
     )
