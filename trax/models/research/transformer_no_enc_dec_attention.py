@@ -152,7 +152,8 @@ def _ConcatWithPadding():
       # Find the last real token/vector of the encoder.
       e_idx = jnp.sum(row_mask_e, dtype=jnp.int32)
       # Starting after that index, update with the decoder row.
-      return jax.lax.dynamic_update_slice(final_row, row_d, (e_idx, 0))
+      zero = jnp.array(0, dtype=e_idx.dtype)  # avoid int32/int64 mismatch
+      return jax.lax.dynamic_update_slice(final_row, row_d, (e_idx, zero))
 
     return jax.lax.map(_UpdateRow, [vec_e, vec_d, mask_e])
 
@@ -186,7 +187,10 @@ def _StripFromConcatenateWithPadding():
       len_e = jnp.sum(mask_e, dtype=jnp.int32)
       # In `row_ed` start where encoder tokens/vecs end, i.e. are index `len_e`
       # and pick up (L2, H) tensor slice from there.
-      return jax.lax.dynamic_slice(row_ed, (len_e, 0), (L2, H))
+      zero = jnp.array(0, dtype=len_e.dtype)  # avoid int32/int64 mismatch
+      l2_np = jnp.array(L2, dtype=len_e.dtype)
+      h_np = jnp.array(H, dtype=len_e.dtype)
+      return jax.lax.dynamic_slice(row_ed, (len_e, zero), (l2_np, h_np))
 
     return jax.lax.map(_UpdateRow, [vec_ed, tok_e, tok_d])
 

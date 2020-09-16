@@ -588,8 +588,8 @@ def Reformer2(input_vocab_size,
               output_vocab_size=None,
               d_model=512,
               d_ff=2048,
-              d_attention_key=64,
-              d_attention_value=64,
+              d_attention_key=None,
+              d_attention_value=None,
               n_encoder_layers=6,
               n_decoder_layers=6,
               n_heads=8,
@@ -654,6 +654,17 @@ def Reformer2(input_vocab_size,
   if fastmath.is_backend(fastmath.Backend.JAX):
     jax.api._check_inexact_input_vjp = lambda x: None  # pylint: disable=protected-access
 
+  # Set default dimensions for attention head key and value sizes.
+  if d_attention_key is None:
+    if d_model % n_heads != 0:
+      raise ValueError(f'n_heads ({n_heads}) must divide d_model ({d_model})')
+    d_attention_key = d_model // n_heads
+  if d_attention_value is None:
+    if d_model % n_heads != 0:
+      raise ValueError(f'n_heads ({n_heads}) must divide d_model ({d_model})')
+    d_attention_value = d_model // n_heads
+
+  # Vector embeddings.
   def Embedder(vocab_size):  # tokens --> vectors
     return [
         tl.Embedding(vocab_size, d_model),
@@ -691,8 +702,7 @@ def Reformer2(input_vocab_size,
       for _ in range(n_encoder_layers)]
   # pylint: enable=g-complex-comprehension
 
-  encoder = tl.Serial([                # tok_e mask_e tok_e tok_d tok_d
-      in_encoder,                      # vec_e mask_e tok_e tok_d tok_d
+  encoder = tl.Serial([                # vec_e mask_e tok_e tok_d tok_d
       tl.Dup(),                        # vec_e1 vec_e2 mask_e tok_e tok_d tok_d
       _ReversibleSerialForget(encoder_blocks, d_model, n_layers_forget),
       tl.Fn('XYAvg', lambda x, y: (x + y) / 2.0),
@@ -727,22 +737,25 @@ def Reformer2(input_vocab_size,
   return tl.Serial(
       # Input: encoder_side_tokens, decoder_side_tokens
       # Copy decoder tokens for use in loss.
-      tl.Select([0, 0, 1, 1]),                  # tok_e tok_e tok_d tok_d
-      tl.Branch([], [tl.PaddingMask(),
-                     tl.Fn('Squeeze',
-                           lambda x: jnp.squeeze(x, (1, 2)), n_out=1)]),
-      #                                         # tok_e mask_e tok_e tok_d tok_d
+      tl.Select([0, 0, 0, 1, 1]),                # tok_e tok_e tok_e tok_d tok_d
+
+      # Embed in and out tokens; done together as weights may be shared.
+      tl.Parallel(in_encoder, [], [],            # vec_e tok_e tok_e vec_d tok_d
+                  [tl.ShiftRight(mode=mode), out_encoder]),
+
+      tl.Parallel([], [tl.PaddingMask(),
+                       tl.Fn('Squeeze',
+                             lambda x: jnp.squeeze(x, (1, 2)), n_out=1)]),
+      #                                         # vec_e mask_e tok_e vec_d tok_d
 
       # Encode.
-      encoder,                                  # vec_e mask_e tok_e tok_d tok_d
+      encoder,                                  # vec_e mask_e tok_e vec_d tok_d
 
       # Decode.
-      tl.Select([3, 0, 1, 2]),                 #  tok_d vec_e mask_e tok_e tok_d
-      tl.ShiftRight(mode=mode),                # stok_d vec_e mask_e tok_e tok_d
-      out_encoder,                             # svec_d vec_e mask_e tok_e tok_d
+      tl.Select([3, 0, 1, 2]),                 #  vec_d vec_e mask_e tok_e tok_d
 
       # Concat encoder and decoder, given their masks.
-      tl.Select([1, 0]),                       # vec_e svec_d mask_e tok_e tok_d
+      tl.Select([1, 0]),                       # vec_e vec_d mask_e tok_e tok_d
       _ConcatWithPadding(),                    # vec_ed tok_e tok_d
 
       # Run (encoder and) decoder blocks.

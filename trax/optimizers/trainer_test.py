@@ -26,6 +26,7 @@ from trax import fastmath
 from trax import layers as tl
 from trax import optimizers
 from trax import shapes
+from trax.models.reformer import reformer
 
 
 class TrainerTest(absltest.TestCase):
@@ -162,6 +163,52 @@ class TrainerTest(absltest.TestCase):
     self._assert_all_equal(mid_layer_weights1, mid_layer.weights)
     self._assert_all_equal(rev_layer12_weights1, rev_layers1[2].weights)
     self._assert_all_equal(first_layer_weights1, first_layer.weights)
+
+  def test_run_reversible_same_as_default_reformer2(self):
+    """Runs the reversible trainer, check results are the same as default."""
+    inputs_batch = np.arange(8).reshape((2, 4))
+    targets_batch = 2 * inputs_batch
+    labeled_batch = (inputs_batch, targets_batch, np.ones_like(targets_batch))
+    int_sig = shapes.ShapeDtype((2, 4), dtype=np.int32)
+    input_sig = (int_sig, int_sig, int_sig)
+    # We want to test rng propagation too, so adding some dropout layers.
+    model = reformer.Reformer2(20, d_model=8, d_ff=16, n_heads=1,
+                               n_encoder_layers=1, n_decoder_layers=1)
+    loss = tl.CrossEntropyLoss()
+    optimizer_fn = optimizers.SGD  # Adafactor
+    blocks, loss_layer = optimizers.trainer.extract_reversible_blocks(
+        [model, loss])
+    blocks_serial = [(tl.Serial(std), rev) for (std, rev) in blocks]
+    model_with_loss = tl.Serial(blocks_serial + [loss_layer])
+    rng_init = fastmath.random.get_prng(12)
+    model_with_loss.init(input_sig, rng=rng_init)
+
+    # Make 3 steps with the original trainer.
+    optimizer = optimizer_fn()
+    optimizer.tree_init(model_with_loss.weights)
+    trainer = optimizers.Trainer(model_with_loss, optimizer)
+    rng_step1 = fastmath.random.get_prng(7)
+    rng_step2 = fastmath.random.get_prng(8)
+    rng_step3 = fastmath.random.get_prng(9)
+    trainer.one_step(labeled_batch, rng_step1)
+    trainer.one_step(labeled_batch, rng_step2, learning_rate=0.02)
+    trainer.one_step(labeled_batch, rng_step3, learning_rate=0.03)
+    first_weights = blocks_serial[0][0].weights
+    first_rev_weights = blocks[0][1][0].weights
+    loss_weights = loss_layer.weights
+
+    # Now make 3 steps with reversible trainer.
+    model_with_loss.init(input_sig, rng=rng_init)
+    trainer = optimizers.ReversibleSerialTrainer(
+        blocks, loss_layer, optimizer_fn)
+    trainer.one_step(labeled_batch, rng_step1)
+    trainer.one_step(labeled_batch, rng_step2, learning_rate=0.02)
+    trainer.one_step(labeled_batch, rng_step3, learning_rate=0.03)
+
+    # Check that weights end up the same.
+    self._assert_all_equal(loss_weights, loss_layer.weights)
+    self._assert_all_equal(first_rev_weights, blocks[0][1][0].weights)
+    self._assert_all_equal(first_weights, blocks_serial[0][0].weights)
 
   def test_run_reversible_large_weights(self):
     """Runs the reversible trainer with a lot of weights to test memory use."""

@@ -798,21 +798,16 @@ def _is_empty(container):
 
 def _find_frame(frame):
   """Find the frame with the caller on the stack."""
-  # TODO(lukaszkaiser): rewrite this function in a systematic way.
-  # We want to find the first place where the layer was called
-  # that is *not* an __init__ function of an inheriting layer.
-  # We also need to exclude a few decorator functions.
-  while frame.f_code.co_name in ['__init__', 'gin_wrapper', '_validate',
-                                 '_validate_forward_inputs', '_init']:
-    # We only skip __init__ in internal layers, return otherwise.
+  def _dirname_is_trax_layers(frame):
+    """Skip frames coming from trax/layers."""
     try:
-      dirname = frame.f_code.co_filename.split('/')[-2]
+      dirname1 = frame.f_code.co_filename.split('/')[-3]
+      dirname2 = frame.f_code.co_filename.split('/')[-2]
+      return dirname1 == 'trax' and dirname2 == 'layers'
     except IndexError:
-      # Notebook cells have dummy filenames that do not contain any slashes
-      dirname = frame.f_code.co_filename
-    if dirname != 'layers' and frame.f_code.co_name == '__init__':
-      return frame
-    # If we are in an init, move up.
+      return False
+
+  while _dirname_is_trax_layers(frame):
     frame = frame.f_back
   return frame
 

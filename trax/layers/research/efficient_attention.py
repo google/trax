@@ -868,13 +868,14 @@ class EfficientAttentionBase(base.Layer):
           new_s_mex = fastmath.nested_map(
               lambda s: np.reshape(s, (n_parallel_heads,) + s.shape[2:]),
               new_s_mex)
-          return o_mex, new_s_mex
+          return o_mex.astype(i_mex[0].dtype), new_s_mex
 
         if compute_grad:
           o_mex, backward_fn, s_mex = vjp(forward_fn, i_mex, weights,
                                           has_aux=True)
           ct_mex = output_grad[example_range]
-          assert o_mex.shape == ct_mex.shape
+          assert o_mex.shape == ct_mex.shape, str(ct_mex.shape)
+          assert o_mex.dtype == ct_mex.dtype, str(ct_mex.dtype)
           i_ct_mex, w_ct_mex = backward_fn(ct_mex)
         else:
           o_mex, s_mex = forward_fn(i_mex, weights)

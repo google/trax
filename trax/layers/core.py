@@ -16,6 +16,7 @@
 # Lint as: python3
 """Core layer types, such as `Dense`, `Embedding`, and `Dropout`."""
 
+from absl import logging
 import jax
 import numpy as np
 
@@ -267,6 +268,16 @@ class Weights(base.Layer):
     """
     del input_signature  # Unused. There is no input to this layer.
     self.weights = self._initializer(self._shape, self.rng)
+
+
+def PrintShape(n_in=1, msg=''):
+  """Prints the shapes of `n_in` inputs and returns then unchanged."""
+  def Fwd(xs):
+    info = 'PrintShape: ' + msg + ' ' + ' '.join([str(x.shape) for x in xs])
+    print(info)
+    logging.info(info)
+    return xs
+  return base.PureLayer(Fwd, n_in=n_in, n_out=n_in, name=f'PrintShape_{n_in}')
 
 
 class SummaryScalar(base.Layer):

@@ -231,6 +231,8 @@ class ReversibleSerialTrainer(object):
   This happens by caching the weights in CPU memory and transferring only
   the weights of one layer at a time. The reversible layers are used to make
   the backward pass without using additional memory for storing activations.
+
+  Note: we do not allow sharing weights between blocks for now.
   """
 
   def __init__(self, blocks, loss_layer, optimizer_fn, n_devices=None):
@@ -582,3 +584,39 @@ def _is_empty_tuple(x):
     if not _is_empty_tuple(y):
       return False
   return True
+
+
+def extract_reversible_blocks(layers):
+  """Extracts blocks and loss layer for use with ReversibleSerialTrainer.
+
+  Args:
+    layers: a list of layers of a single layer to extract blocks from;
+      should end with a loss, e.g., [model, loss] or tl.Serial(model, loss).
+
+  Returns:
+    a pair (blocks, loss_layer) to use with ReversibleSerialTrainer.
+  """
+  def _flatten(l):
+    """Flatten all Serial layers and sub(sub-...) layers into a list."""
+    if isinstance(l, (list, tuple)):
+      return [x for layer in l for x in _flatten(layer)]  # pylint: disable=g-complex-comprehension
+    elif isinstance(l, tl.Serial):
+      return _flatten(l.sublayers)
+    else:
+      return [l]
+
+  # Extract standard and reversible layer blocks.
+  blocks, std_layers, rev_layers = [], [], []
+  for layer in _flatten(layers):
+    if isinstance(layer, tl.ReversibleLayer):
+      rev_layers.append(layer)
+    elif not rev_layers:
+      std_layers.append(layer)
+    else:
+      blocks.append((std_layers, rev_layers))
+      std_layers, rev_layers = [], []
+      std_layers.append(layer)
+  if rev_layers:
+    raise ValueError('The final layer must be a standard loss, not reversible.')
+  loss_layer = tl.Serial(std_layers)
+  return blocks, loss_layer
