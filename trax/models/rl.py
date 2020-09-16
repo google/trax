@@ -18,6 +18,7 @@
 
 from trax import layers as tl
 from trax import models
+from trax.fastmath import numpy as jnp
 
 
 def _Batch(x, batch_axes):
@@ -65,7 +66,8 @@ def Value(
     batch_axes=None,
     mode='train',
     is_discrete=False,
-    vocab_size=2
+    vocab_size=2,
+    multiplicative_action_injection=False
 ):
   """Attaches a value head to a model body."""
   if body is None:
@@ -85,10 +87,17 @@ def Value(
             tl.Dense(inject_actions_dim),
             tl.Dense(inject_actions_dim),
         )
+      if multiplicative_action_injection:
+        action_injector = tl.Serial(
+            tl.Fn('TanhMulGate', lambda x, a: x * jnp.tanh(a)),
+            tl.LayerNorm()  # compensate for reduced variance
+        )
+      else:
+        action_injector = tl.Add()
       return tl.Serial(
           # Input: (body output, actions).
           encode_layer,
-          tl.Add(),
+          action_injector,
           models.PureMLP(
               layer_widths=(inject_actions_dim,) * inject_actions_n_layers,
               out_activation=True,

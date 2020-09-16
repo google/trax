@@ -34,6 +34,7 @@ Policy.normalizer = @trax.rl.normalization.Normalize
 Value.body = @trax.models.PureMLP
 Value.normalizer = @trax.rl.normalization.Normalize
 Value.inject_actions_dim = 256
+Value.multiplicative_action_injection = False
 
 # Parameters for Normalize:
 # ==============================================================================
