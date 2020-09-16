@@ -251,14 +251,4 @@ def _multi_device_put(x, devices=None):
   # Calculate the abstract shape of the replicated array.
   if not devices:
     devices = jax.local_devices()
-  n_devices = len(devices)
-  x_aval = jax.xla.abstractify(x)
-  broadcast_x_aval = jax.abstract_arrays.ShapedArray(
-      (n_devices,) + x_aval.shape,
-      x_aval.dtype)
-  # Create copies of the underlying device buffer for each local device.
-  broadcast_buffers = [
-      jax.interpreters.xla.device_put(x, dv)
-      for dv in devices
-  ]
-  return jax.pxla.ShardedDeviceArray(broadcast_x_aval, broadcast_buffers)
+  return jax.api.device_put_sharded(len(devices) * [x], devices)
