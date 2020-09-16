@@ -220,34 +220,33 @@ def _accelerate_update_fn(forward_and_backward_fn,
 
 
 class ReversibleSerialTrainer(object):
-  """Runs an optimizer on a series of layers, all but 2 of them reversible.
+  """Runs an optimizer on a series of layers, reversible and not.
+
+  We provide layers to this trainer in blocks, each block consisting of
+  a list of standard layers and a list of reversible layers. They all run
+  in turn (like one huge Serial block) but in a more memory-efficient way.
 
   The main motivation for this class is to save memory: it allows to train
   models that have more weights than the memory available on accelerators.
   This happens by caching the weights in CPU memory and transferring only
-  the weights of one layer at a time. To make the backward pass without
-  using additional memory, we require that all layers except for the first
-  and last one are reversible.
+  the weights of one layer at a time. The reversible layers are used to make
+  the backward pass without using additional memory for storing activations.
   """
 
-  def __init__(self, first_layer, reversible_layers, loss_layer,
-               optimizer_fn, n_devices=None):
+  def __init__(self, blocks, loss_layer, optimizer_fn, n_devices=None):
     """Creates a ReversibleSerialTrainer and the needed optimizers.
 
     This trainer performs updates equivalent to using the default Trainer on::
 
-      tl.Serial([first_layer] + reversible_layer + [loss_layer]).
+      tl.Serial(blocks + [loss_layer]).
 
     It is more memory-efficient though since weights are stored on CPU and only
-    sent to accelerator layer-by-layer. Note that the first layer and loss layer
-    can be arbitrary layers, so they can be a `tl.Serial` combination of layers
-    too. For now, we only support one block of reversible layers though.
+    sent to accelerator layer-by-layer. Blocks are pairs consisting of a list
+    of standard (arbitrary) layers and a list of reversible layers which help
+    save memory thanks to being reversible.
 
     Args:
-      first_layer: The first layer of the model, it can be arbitraty.
-      reversible_layers: A list of reversible layers that are executed after
-        the first layer. We do not keep their activations in memory and weights
-        are moved to CPU RAM after each layer to free accelerator memory.
+      blocks: A list of pairs of lists of standard and reversible layers.
       loss_layer: The final layer of the model; it can have trainable weights
         but should end with a loss: it is required to produce a scalar output.
       optimizer_fn: A function to create the optimizer, e.g., `optimizers.Adam`.
@@ -257,45 +256,47 @@ class ReversibleSerialTrainer(object):
     # TODO(lukaszkaiser): remove these 2 lines once PR #4039 lands for JAX.
     if fastmath.is_backend(fastmath.Backend.JAX):
       jax.api._check_inexact_input_vjp = lambda x: None  # pylint: disable=protected-access
-    self._first_layer = first_layer
-    self._reversible_layers = reversible_layers
+    self._blocks = [(tl.Serial(std), rev) for (std, rev) in blocks]
     self._loss_layer = loss_layer
     self._optimizer_fn = optimizer_fn
     self._n_devices = n_devices or fastmath.device_count()
+    self._n_layers = 1 + sum([len(revs) + 1 for (_, revs) in self._blocks])
 
     # Create accelerated versions of layers as pmaped/jited pure_fn.
-    self._accelerated_first_layer_fn = self._pjit(first_layer.pure_fn)
-
-    self._accelerated_reversible_layers_fns = []
-    for layer in reversible_layers:
-      self._accelerated_reversible_layers_fns.append(
-          self._pjit(layer.pure_fn))
+    self._accelerated_layer_fns = fastmath.nested_map(
+        lambda layer: self._pjit(layer.pure_fn), self._blocks)
 
     # Create per-layer optimizers and replicate opt_params.
-    self._optimizers, self._replicated_opt_params = [], []
-    for layer in [first_layer] + reversible_layers + [loss_layer]:
-      optimizer = optimizer_fn()
-      optimizer.tree_init(layer.weights)
-      self._optimizers.append(optimizer)
-      opt_params = self._replicate(optimizer.opt_params)
-      self._replicated_opt_params.append(opt_params)
+    def _make_optimizer(layer):
+      opt = optimizer_fn()
+      opt.tree_init(layer.weights)
+      return opt
 
-    # Accelerate the first layer FBO function and store it.
-    first_fbo = _fbo_with_layer_and_opt(
-        self._first_layer, self._optimizers[0], self._n_devices)
-    self._first_fbo = self._pjit(first_fbo)
+    self._optimizers = fastmath.nested_map(_make_optimizer, self._blocks)
+    self._replicated_opt_params = fastmath.nested_map(
+        lambda opt: self._replicate(opt.opt_params), self._optimizers)
 
-    # Accelerate the loss layer FBO function and store it.
+    self._loss_opt = _make_optimizer(loss_layer)
+    self._replicated_loss_opt_params = self._replicate(
+        self._loss_opt.opt_params)
+
+    # Forward + backward + optimizer-update functions for all layers.
+    # We call them in short FBO for "Forward + Backward + Optimizer update".
+    # Reversible layers define a reverse_and_fbo function that also reverses.
+
+    self._fbos = []
+    for i, (std_layer, rev_layers) in enumerate(self._blocks):
+      (std_opt, rev_opts) = self._optimizers[i]
+      std_fbo = _fbo_with_layer_and_opt(std_layer, std_opt, self._n_devices)
+      rev_and_fbos = []
+      for layer, opt in zip(rev_layers, rev_opts):
+        rev_and_fbos.append(self._pjit(_reverse_and_fbo_with_layer_and_opt(
+            layer, opt, self._n_devices)))
+      self._fbos.append((self._pjit(std_fbo), rev_and_fbos))
+
     loss_fbo = _fbo_with_layer_and_opt(
-        self._loss_layer, self._optimizers[-1], self._n_devices, 'loss')
+        self._loss_layer, self._loss_opt, self._n_devices, 'loss')
     self._loss_fbo = self._pjit(loss_fbo)
-
-    # Accelerate the reverse_and_fbo functions and store them.
-    self._reverse_and_fbos = []
-    for layer, opt in zip(reversible_layers, self._optimizers[1:-1]):
-      reverse_and_fbo = _reverse_and_fbo_with_layer_and_opt(
-          layer, opt, self._n_devices)
-      self._reverse_and_fbos.append(self._pjit(reverse_and_fbo))
 
   @property
   def loss_layer(self):
@@ -339,9 +340,14 @@ class ReversibleSerialTrainer(object):
     """
     # Update the learning rate if needed.
     if learning_rate is not None:
-      for op in self._replicated_opt_params:
-        op['learning_rate'] = tl.for_n_devices(
+      self._replicated_loss_opt_params['learning_rate'] = tl.for_n_devices(
+          learning_rate, self._n_devices)
+      for (std_op, rev_ops) in self._replicated_opt_params:
+        std_op['learning_rate'] = tl.for_n_devices(
             learning_rate, self._n_devices)
+        for op in rev_ops:
+          op['learning_rate'] = tl.for_n_devices(
+              learning_rate, self._n_devices)
 
     # Batch needs to be split across the local devices -- the difference
     # between _for_n_devices and _reshape_by_device is that the latter splits
@@ -351,53 +357,71 @@ class ReversibleSerialTrainer(object):
       batch = tl.reshape_by_device(batch, self._n_devices)
       step = jnp.repeat(step, self._n_devices)
 
-    # Separate rng needs to be created for each device.
+    # Create separate rng for each device and layer.
     if self._n_devices == 1:
-      rngs = fastmath.random.split(rng, len(self._reversible_layers) + 2)
+      rngs = fastmath.random.split(rng, self._n_layers)
     else:
       # Splitting by device first to be identical with default trainer.
       per_device_rng = fastmath.random.split(rng, self._n_devices)
       per_device_rngs = [
-          fastmath.random.split(r, len(self._reversible_layers) + 2)
-          for r in per_device_rng]
+          fastmath.random.split(r, self._n_layers) for r in per_device_rng]
       rngs = [jnp.stack([r[i] for r in per_device_rngs])
-              for i in range(len(self._reversible_layers) + 2)]
+              for i in range(self._n_layers)]
+    # Group rngs by layer blocks.
+    rng_blocks, rng_i = [], 0
+    for _, rev_layers in self._blocks:
+      l = len(rev_layers)
+      rng_blocks.append((rngs[rng_i], rngs[rng_i + 1: rng_i + l + 1]))
+      rng_i += l + 1
 
     # Run the layers forward upto the loss layer.
     stack = batch
+    block_inputs_states = []
+    for i, (std_layer, rev_layers) in enumerate(self._blocks):
+      acc_std_layer_fn, acc_rev_layer_fns = self._accelerated_layer_fns[i]
+      std_rng, rev_rngs = rng_blocks[i]
+      # Run the standard layer.
+      stack, std_inputs, std_state = self._run_forward_standard(
+          stack, std_layer, acc_std_layer_fn, std_rng)
 
-    # Run the first layer.
-    stack, first_layer_inputs, first_layer_state = self._run_forward_standard(
-        stack, self._first_layer, self._accelerated_first_layer_fn, rngs[0])
-
-    # Run the reversible layers and collect old and new states.
-    stack, old_states, new_states = self._run_forward_reversible(
-        stack, self._reversible_layers,
-        self._accelerated_reversible_layers_fns, rngs[1:])
+      # Run the reversible layers and collect old and new states.
+      stack, rev_old_states, rev_new_states = self._run_forward_reversible(
+          stack, rev_layers, acc_rev_layer_fns, rev_rngs)
+      block_inputs_states.append(
+          ((std_inputs, std_state), (rev_old_states, rev_new_states)))
 
     # Run the loss layer forward and backward with optimizer update.
     loss_state = self._replicate(self._loss_layer.state)
     loss_inputs = _inputs_from_stack(self._loss_layer, stack)
     loss_stats, grad_stack = self._run_backward_standard(
         None, step, self._loss_layer, loss_inputs,
-        loss_state, self._loss_fbo, rngs[-1], self._optimizers[-1],
-        self._replicated_opt_params[-1])
+        loss_state, self._loss_fbo, rngs[-1], self._loss_opt,
+        self._replicated_loss_opt_params)
     stats = [loss_stats]
 
-    # Run reversible layers backward with optimizer update.
-    stack, grad_stack, new_stats = self._run_backward_reversible(
-        stack, grad_stack, step,
-        self._reversible_layers, self._reverse_and_fbos,
-        old_states, new_states, rngs[1:-1],
-        self._optimizers[1:-1], self._replicated_opt_params[1:-1])
-    stats.extend(new_stats)
+    # Run the layers backward and run optimizer updates.
+    for i in range(len(self._blocks) - 1, -1, -1):
+      std_layer, rev_layers = self._blocks[i]
+      (std_inputs, std_state), (rev_old_states,
+                                rev_new_states) = block_inputs_states[i]
+      std_fbo, rev_fbos = self._fbos[i]
+      std_opt, rev_opts = self._optimizers[i]
+      std_rng, rev_rngs = rng_blocks[i]
+      repl_std_opt_params, repl_rev_opts_params = self._replicated_opt_params[i]
 
-    # Run the first layer forward-and-backward pass and optimizer update.
-    first_layer_stats, _ = self._run_backward_standard(
-        grad_stack, step, self._first_layer, first_layer_inputs,
-        first_layer_state, self._first_fbo, rngs[0], self._optimizers[0],
-        self._replicated_opt_params[0])
-    stats.append(first_layer_stats)
+      # Run reversible layers backward with optimizer update.
+      stack, grad_stack, new_stats = self._run_backward_reversible(
+          stack, grad_stack, step, rev_layers, rev_fbos, rev_old_states,
+          rev_new_states, rev_rngs, rev_opts, repl_rev_opts_params)
+      stats.extend(new_stats)
+
+      # Run the standard layer forward-and-backward pass and optimizer update.
+      std_layer_stats, grad_stack = self._run_backward_standard(
+          grad_stack, step, std_layer, std_inputs, std_state, std_fbo, std_rng,
+          std_opt, repl_std_opt_params)
+      stack = _outputs_onto_stack(  # Put layer inputs on the stack.
+          std_layer, std_inputs, stack, std_layer.n_out)
+      stats.append(std_layer_stats)
 
     return stats[0]['loss'], stats
 
@@ -439,7 +463,12 @@ class ReversibleSerialTrainer(object):
     layer.weights = self._unreplicate(new_weights)
     layer.state = self._unreplicate(new_state)
     optimizer.slots = self._unreplicate(new_slots)
-    return stats, new_grads
+    if grad_stack is not None:
+      grad_stack = _outputs_onto_stack(
+          layer, new_grads, grad_stack, layer.n_out)
+    else:
+      grad_stack = new_grads
+    return stats, grad_stack
 
   def _run_backward_reversible(self, stack, grad_stack, step,
                                rev_layers, rev_and_fbos,
@@ -493,6 +522,13 @@ def _fbo_with_layer_and_opt(layer, optimizer, n_devices, stats_name=None):
     # The vjp function returns gradients with respect to inputs and weights.
     grads_inputs, grads_weights = vjp_fn(grads)
 
+    # For non-trainable layers, return the calculated arguments.
+    if _is_empty_tuple(weights):
+      stats = {}
+      if stats_name is not None:
+        stats[stats_name] = activations
+      return weights, new_state, slots, grads_inputs, stats
+
     # In multi-device setting, average gradients from multiple devices.
     if n_devices > 1:
       grads_weights = _average_multidevice_gradients(grads_weights)
@@ -503,6 +539,7 @@ def _fbo_with_layer_and_opt(layer, optimizer, n_devices, stats_name=None):
     if stats_name is not None:
       stats[stats_name] = activations
     return new_weights, new_state, new_slots, grads_inputs, stats
+
   return fbo
 
 
@@ -521,7 +558,7 @@ def _reverse_and_fbo_with_layer_and_opt(layer, optimizer, n_devices):
         output, grads, weights, state, new_state, rng=rng)
 
     # For non-trainable layers, return the calculated arguments.
-    if not weights:
+    if _is_empty_tuple(weights):
       return weights, slots, inputs, grads_inputs, {}
 
     # In multi-device setting, average gradients from multiple devices.
@@ -533,4 +570,15 @@ def _reverse_and_fbo_with_layer_and_opt(layer, optimizer, n_devices):
         step, grads_weights, weights, slots, opt_params)
 
     return new_weights, new_slots, inputs, grads_inputs, stats
+
   return reverse_and_fbo
+
+
+def _is_empty_tuple(x):
+  """Check if x is either empty or a tuple of (tuples of) empty things."""
+  if not isinstance(x, (list, tuple)):
+    return False
+  for y in x:
+    if not _is_empty_tuple(y):
+      return False
+  return True

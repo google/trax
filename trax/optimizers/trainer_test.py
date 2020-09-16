@@ -64,7 +64,7 @@ class TrainerTest(absltest.TestCase):
       rng = fastmath.random.get_prng(0)
       trainer.one_step(labeled_batch, rng)
 
-  def test_run_reversible_same_as_default(self):
+  def test_run_reversible_same_as_default_basic(self):
     """Runs the reversible trainer, check results are the same as default."""
     inputs_batch = np.arange(8).reshape((2, 4))
     targets_batch = 2 * inputs_batch
@@ -82,6 +82,54 @@ class TrainerTest(absltest.TestCase):
     model.init(labeled_batch, rng=rng_init)
     optimizer_fn = optimizers.Adam  # to test slots
 
+    # Make 2 steps with the original trainer.
+    optimizer = optimizer_fn()
+    optimizer.tree_init(model.weights)
+    trainer = optimizers.Trainer(model, optimizer)
+    rng_step1 = fastmath.random.get_prng(7)
+    rng_step2 = fastmath.random.get_prng(8)
+    trainer.one_step(labeled_batch, rng_step1)
+    trainer.one_step(labeled_batch, rng_step2, learning_rate=0.02)
+    first_layer_weights1 = first_layer.weights
+    rev_layer0_weights1 = rev_layers[0].weights
+    rev_layer2_weights1 = rev_layers[2].weights
+    loss_layer_weights1 = loss_layer.weights
+
+    # Now make 2 steps with reversible trainer.
+    model.init(labeled_batch, rng=rng_init)
+    trainer = optimizers.ReversibleSerialTrainer(
+        [(first_layer.sublayers, rev_layers)], loss_layer, optimizer_fn)
+    trainer.one_step(labeled_batch, rng_step1)
+    trainer.one_step(labeled_batch, rng_step2, learning_rate=0.02)
+
+    # Check that weights end up the same.
+    self._assert_all_equal(loss_layer_weights1, loss_layer.weights)
+    self._assert_all_equal(rev_layer2_weights1, rev_layers[2].weights)
+    self._assert_all_equal(rev_layer0_weights1, rev_layers[0].weights)
+    self._assert_all_equal(first_layer_weights1, first_layer.weights)
+
+  def test_run_reversible_same_as_default_extended(self):
+    """Runs the reversible trainer, check results are the same as default."""
+    inputs_batch = np.arange(8).reshape((2, 4))
+    targets_batch = 2 * inputs_batch
+    labeled_batch = (inputs_batch, targets_batch, np.ones_like(targets_batch))
+    # We want to test rng propagation too, so adding some dropout layers.
+    first_layer = tl.Serial(tl.Embedding(9, 4), tl.Dropout(0.5), tl.Dup())
+    rev_layers1 = [tl.ReversibleHalfResidual(tl.Dense(4), tl.Dropout(0.2)),
+                   tl.ReversibleSwap(),
+                   tl.ReversibleHalfResidual(tl.Dropout(0.5), tl.Dense(4)),
+                   tl.ReversibleSwap()]
+    mid_layer = tl.Serial(tl.Add(), tl.Dense(4), tl.Dup())
+    rev_layers2 = [tl.ReversibleHalfResidual(tl.Dense(4), tl.Dropout(0.3)),
+                   tl.ReversibleSwap()]
+    loss_layer = tl.Serial(tl.Concatenate(), tl.Dense(19), tl.Dropout(0.3),
+                           tl.LogSoftmax(), tl.CrossEntropyLoss())
+    model = tl.Serial([first_layer] + rev_layers1 + [mid_layer] +
+                      rev_layers2 + [loss_layer])
+    rng_init = fastmath.random.get_prng(12)
+    model.init(labeled_batch, rng=rng_init)
+    optimizer_fn = optimizers.Adam  # to test slots
+
     # Make 3 steps with the original trainer.
     optimizer = optimizer_fn()
     optimizer.tree_init(model.weights)
@@ -93,22 +141,26 @@ class TrainerTest(absltest.TestCase):
     trainer.one_step(labeled_batch, rng_step2, learning_rate=0.02)
     trainer.one_step(labeled_batch, rng_step3, learning_rate=0.03)
     first_layer_weights1 = first_layer.weights
-    rev_layer0_weights1 = rev_layers[0].weights
-    rev_layer2_weights1 = rev_layers[2].weights
+    rev_layer12_weights1 = rev_layers1[2].weights
+    mid_layer_weights1 = mid_layer.weights
+    rev_layer20_weights1 = rev_layers2[0].weights
     loss_layer_weights1 = loss_layer.weights
 
     # Now make 3 steps with reversible trainer.
     model.init(labeled_batch, rng=rng_init)
     trainer = optimizers.ReversibleSerialTrainer(
-        first_layer, rev_layers, loss_layer, optimizer_fn)
+        [(first_layer.sublayers, rev_layers1),
+         (mid_layer.sublayers, rev_layers2)],
+        loss_layer, optimizer_fn)
     trainer.one_step(labeled_batch, rng_step1)
     trainer.one_step(labeled_batch, rng_step2, learning_rate=0.02)
     trainer.one_step(labeled_batch, rng_step3, learning_rate=0.03)
 
     # Check that weights end up the same.
     self._assert_all_equal(loss_layer_weights1, loss_layer.weights)
-    self._assert_all_equal(rev_layer2_weights1, rev_layers[2].weights)
-    self._assert_all_equal(rev_layer0_weights1, rev_layers[0].weights)
+    self._assert_all_equal(rev_layer20_weights1, rev_layers2[0].weights)
+    self._assert_all_equal(mid_layer_weights1, mid_layer.weights)
+    self._assert_all_equal(rev_layer12_weights1, rev_layers1[2].weights)
     self._assert_all_equal(first_layer_weights1, first_layer.weights)
 
   def test_run_reversible_large_weights(self):
@@ -147,7 +199,7 @@ class TrainerTest(absltest.TestCase):
 
     # Make a step with reversible trainer.
     trainer = optimizers.ReversibleSerialTrainer(
-        first_layer, rev_layers, loss_layer, optimizer_fn)
+        [(first_layer, rev_layers)], loss_layer, optimizer_fn)
     trainer.one_step(labeled_batch, rng_step)
 
 
