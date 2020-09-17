@@ -655,7 +655,7 @@ def _jit_update_fn(predict_fn, loss_fn, optimizer, n_devices, jit=True):
       return single_update
 
   # Else, for n_devices > 1:
-  @functools.partial(fastmath.pmap, axis_name='batch', donate_argnums=(0,))
+  @functools.partial(fastmath.pmap, axis_name='batch')  # donate_argnums=(0,))
   def mapped_update(weights_and_slots, i, opt_params, batch, state, rng):
     """This is a multi-device version of the update function above."""
     # We assume all tensors have the first dimension = n_devices.
