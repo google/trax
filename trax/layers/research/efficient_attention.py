@@ -608,7 +608,8 @@ class EfficientAttentionBase(base.Layer):
         if x.dtype != np.float32:
           return x
         return jax.lax.cond(
-            pred=jax.lax.eq(mem_end, 0), true_operand=x, true_fun=lambda x: x,
+            pred=jax.lax.eq(mem_end, np.array(0, dtype=mem_end.dtype)),
+            true_operand=x, true_fun=lambda x: x,
             false_operand=x, false_fun=lambda x: x * np.nan)
       inputs = fastmath.nested_map(replace_with_nan_if_not_seq_start, inputs)
       return inputs, state, 0, mem, np.minimum(seqlen, self.predict_mem_len)

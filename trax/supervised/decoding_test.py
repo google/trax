@@ -164,6 +164,42 @@ class DecodingTest(test.TestCase):
                                        eos_id=1, max_length=10, temperature=0.0)
     self.assertEqual(str(s[0]), '[3 7 5 3 2 4 1]')
 
+  def test_autoregressive_sample_reformer2(self):
+    max_len = 128
+
+    pred_model = models.Reformer2(
+        mode='predict',
+        d_model=256,
+        d_ff=512,
+        dropout=0.05,
+        max_len=max_len,
+        n_heads=4,
+        n_encoder_layers=3,
+        n_decoder_layers=3,
+        ff_use_sru=1,
+        d_attention_key=64,
+        d_attention_value=64,
+        encoder_attention_type=self._lsh_self_attention_fn(),
+        encoder_decoder_attention_type=self._lsh_self_attention_fn(),
+        input_vocab_size=256,
+        axial_pos_shape=None,
+    )
+
+    shape11 = shapes.ShapeDtype((1, 1), dtype=np.int32)
+    shape1l = shapes.ShapeDtype((1, max_len), dtype=np.int32)
+    pred_model.init(input_signature=(shape1l, shape11))
+
+    # 0w0w
+    inputs = np.array(
+        [[0, 3, 7, 5, 3, 2, 4, 1, 8, 0, 3, 7, 5, 3, 2, 4, 1, 8]],
+        dtype=np.int32)
+    inputs = np.pad(inputs, [(0, 0), (0, max_len - inputs.shape[1])],
+                    mode='constant', constant_values=0)
+    s = decoding.autoregressive_sample(
+        pred_model, inputs=inputs, eos_id=-1, max_length=10, temperature=0.0)
+
+    self.assertEqual(s.shape[0], 1)
+    self.assertEqual(s.shape[1], 10)
 
 if __name__ == '__main__':
   config.config_with_absl()

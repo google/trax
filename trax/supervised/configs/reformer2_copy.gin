@@ -45,10 +45,14 @@ Reformer2.d_attention_value = 64
 Reformer2.encoder_attention_type = @LSHSelfAttention
 Reformer2.encoder_decoder_attention_type = @LSHSelfAttention
 Reformer2.input_vocab_size = %vocab_size
-# Choice of either this or fixed-base
-Reformer2.d_axial_pos_embs = (128, 128)  # should sum to d_model
-Reformer2.axial_pos_shape  = (8, 16)  # should multiply out to max_len
-# Reformer2.axial_pos_shape = 'fixed-base'
+Reformer2.axial_pos_shape  = None  # Uses tl.PositionalEncoding
+
+
+# Parameters for LSHSelfAttention:
+# ==============================================================================
+# 0 < predict_drop_len <= predict_mem_len
+LSHSelfAttention.predict_mem_len = %max_len
+LSHSelfAttention.predict_drop_len = %max_len
 
 
 # Parameters for train:
