@@ -111,15 +111,15 @@ def TransformerNoEncDecAttention(input_vocab_size,
 
       # Concat encoder and decoder.
       tl.Select([1, 0]),                # vec_e svec_d mask_e tok_e tok_d
-      _ConcatWithPadding(),             # vec_ed tok_e tok_d
+      ConcatWithPadding(mode=mode),     # vec_ed tok_e tok_d
 
       # Decoder blocks with causal attention
       decoder_blocks,                   # vec_ed tok_e tok_d
       tl.LayerNorm(),                   # vec_ed tok_e tok_d
 
       # Separate out the encoder part from the concatenated vector.
-      tl.Select([0, 1, 2, 2]),          # vec_ed tok_e tok_d tok_d
-      _StripFromConcatenateWithPadding(),  # vec_d tok_d
+      tl.Select([0, 1, 2, 2]),                     # vec_ed tok_e tok_d tok_d
+      StripFromConcatenateWithPadding(mode=mode),  # vec_d tok_d
 
       # Map to output vocab.
       tl.Dense(output_vocab_size),      # vec_d tok_d
@@ -127,11 +127,11 @@ def TransformerNoEncDecAttention(input_vocab_size,
   )
 
 
-def _ConcatWithPadding():
+class ConcatWithPadding(tl.Layer):
   """Concatenates two length padded (B, L, H) arrays (of different lenghts)."""
 
   # Arg shapes: (B, L1, H), (B, L2, H), (B, L1).
-  def __ConcatWithPadding(vec_e, vec_d, mask_e):
+  def _ConcatWithPadding(self, vec_e, vec_d, mask_e):
     # pylint: disable=invalid-name
     B, L1, H = vec_e.shape
     L2 = vec_d.shape[1]
@@ -157,13 +157,34 @@ def _ConcatWithPadding():
 
     return jax.lax.map(_UpdateRow, [vec_e, vec_d, mask_e])
 
-  return tl.Fn('ConcatWithPadding', __ConcatWithPadding, n_out=1)
+  def __init__(self, n_in=3, n_out=1, mode='train'):
+    super().__init__(n_in=n_in, n_out=n_out)
+    self._mode = mode
+
+  def init_weights_and_state(self, input_signature):
+    """Sets layer-specific internal state."""
+    del input_signature
+    self.state = jnp.array(0, dtype=jnp.int32)
+
+  def forward(self, inputs):
+    vec_e, vec_d, mask_e = inputs
+
+    # In training/eval mode or at the first step predict mode i.e. when
+    # state.shape is (), i.e. at first step, we return the concatenated output.
+    if self._mode != 'predict' or not self.state.shape:
+      # Now state.shape will not evaluate to false.
+      self.state = self.state.reshape((1,))
+      return self._ConcatWithPadding(vec_e, vec_d, mask_e)
+
+    # In predict mode and on subsequent steps (i.e. after the first step) we
+    # don't concatenate anymore, but just return the decoder vector.
+    return vec_d
 
 
-def _StripFromConcatenateWithPadding():
+class StripFromConcatenateWithPadding(tl.Layer):
   """Strips out the leading encoder tokens from the concatenated array."""
 
-  def _StripEncToks(vec_ed, tok_e, tok_d):
+  def _StripFromConcatenateWithPadding(self, vec_ed, tok_e, tok_d):
     # pylint: disable=invalid-name
     B, L, H = vec_ed.shape
     L1 = tok_e.shape[1]
@@ -194,4 +215,25 @@ def _StripFromConcatenateWithPadding():
 
     return jax.lax.map(_UpdateRow, [vec_ed, tok_e, tok_d])
 
-  return tl.Fn('StripFromConcatenateWithPadding', _StripEncToks, n_out=1)
+  def __init__(self, n_in=3, n_out=1, mode='train'):
+    super().__init__(n_in=n_in, n_out=n_out)
+    self._mode = mode
+
+  def init_weights_and_state(self, input_signature):
+    """Sets layer-specific internal state."""
+    del input_signature
+    self.state = jnp.array(0, dtype=jnp.int32)
+
+  def forward(self, inputs):
+    vec_ed, tok_e, tok_d = inputs
+
+    # In training/eval mode or at the first step predict mode i.e. when
+    # state.shape is (), i.e. at first step, we do the actual compuration
+    if self._mode != 'predict' or not self.state.shape:
+      # Now state.shape will not evaluate to false.
+      self.state = self.state.reshape((1,))
+      return self._StripFromConcatenateWithPadding(vec_ed, tok_e, tok_d)
+
+    # In predict mode and on subsequent steps (i.e. after the first step) vec_ed
+    # is actually vec_d, since no concatenation happened at all.
+    return vec_ed

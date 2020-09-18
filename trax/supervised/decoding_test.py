@@ -201,6 +201,53 @@ class DecodingTest(test.TestCase):
     self.assertEqual(s.shape[0], 1)
     self.assertEqual(s.shape[1], 10)
 
+  def test_autoregressive_sample_reformer2_copy_self_attn_quality(self):
+    max_len = 32
+
+    def _self_attention_fn():
+      return functools.partial(
+          layers.SelfAttention,
+          predict_drop_len=2 * max_len + 10,
+          predict_mem_len=2 * max_len + 10,
+      )
+
+    pred_model = models.Reformer2(
+        mode='predict',
+        d_model=256,
+        d_ff=512,
+        dropout=0.05,
+        max_len=max_len,
+        n_heads=4,
+        n_encoder_layers=3,
+        n_decoder_layers=3,
+        ff_use_sru=1,
+        d_attention_key=64,
+        d_attention_value=64,
+        encoder_attention_type=_self_attention_fn(),
+        encoder_decoder_attention_type=_self_attention_fn(),
+        input_vocab_size=13,
+        axial_pos_shape=None,
+    )
+
+    shape11 = shapes.ShapeDtype((1, 1), dtype=np.int32)
+    shape1l = shapes.ShapeDtype((1, max_len), dtype=np.int32)
+
+    model_path = os.path.join(_TESTDATA,
+                              'reformer2_copy_self_attn.pkl.gz')
+    pred_model.init_from_file(model_path, weights_only=True,
+                              input_signature=(shape1l, shape11))
+
+    inputs = np.array([[11, 5, 1, 2, 3, 4]], dtype=np.int32)
+    inp_len = inputs.shape[1]
+    inputs = np.pad(inputs, [(0, 0), (0, max_len - inp_len)],
+                    mode='constant', constant_values=0)
+    s = decoding.autoregressive_sample(
+        pred_model, inputs=inputs, eos_id=-1, max_length=inp_len,
+        temperature=0.0)
+
+    np.testing.assert_equal(s[0], inputs[0, :inp_len])
+
+
 if __name__ == '__main__':
   config.config_with_absl()
   test.main()

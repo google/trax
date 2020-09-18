@@ -1416,7 +1416,8 @@ class LSHSelfAttention(SelfAttention):
     mask_fn = functools.partial(
         mask_self_attention, causal=True, masked=True, exclude_self=True)
     q_info = q_start + np.arange(q_len, dtype=np.int32)
-    kv_info = kv_indices
+    kv_info = kv_indices.astype(np.int32)
+    q_info = q_info.astype(np.int32)
     # TODO(kitaev): is it better to mask out attention across buckets?
     # kv_info = np.where(is_valid_target[kv_indices], kv_indices, -kv_indices)
     o, _ = attend(

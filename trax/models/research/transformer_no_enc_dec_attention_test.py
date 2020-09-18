@@ -21,10 +21,6 @@ import numpy as np
 
 from trax import shapes
 from trax.models.research import transformer_no_enc_dec_attention
-# pylint: disable=g-multiple-import
-from trax.models.research.transformer_no_enc_dec_attention import (
-    _ConcatWithPadding, _StripFromConcatenateWithPadding)
-# pylint: enable=g-multiple-import
 
 
 class TransformerNoEncDecAttentionTest(absltest.TestCase):
@@ -62,8 +58,10 @@ class TransformerNoEncDecAttentionTest(absltest.TestCase):
           [0, 0, 0, 0, 0, 0, 0, 0]]]
     )
 
-    layer = _ConcatWithPadding()
-    y = layer((vec_e, vec_d, mask_e))
+    layer = transformer_no_enc_dec_attention.ConcatWithPadding(mode='train')
+    inp = (vec_e, vec_d, mask_e)
+    _, _ = layer.init(shapes.signature(inp))
+    y = layer(inp)
 
     np.testing.assert_equal(
         y,
@@ -91,6 +89,76 @@ class TransformerNoEncDecAttentionTest(absltest.TestCase):
               [0, 0, 0, 0, 0, 0, 0, 0]]]
         )
     )
+
+  def test_concat_with_padding_predict(self):
+    vec_e = np.array(
+        [[[7, 5, 2, 8, 8, 8, 6, 7],
+          [8, 2, 6, 2, 1, 1, 4, 2],
+          [0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0]],
+
+         [[4, 3, 1, 7, 5, 6, 2, 1],
+          [6, 9, 9, 4, 1, 3, 2, 1],
+          [3, 8, 2, 4, 7, 9, 4, 1],
+          [0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0]]]
+    )
+
+    # vec_e[:,:,0] != 0
+    mask_e = np.array([[True, True, False, False, False, False],
+                       [True, True, True, False, False, False]])
+
+    vec_d = np.array(
+        [[[4, 7, 7, 4, 8, 9, 9, 9],
+          [6, 8, 2, 9, 3, 6, 6, 8],
+          [0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0]],
+
+         [[3, 7, 5, 6, 2, 9, 3, 1],
+          [4, 7, 3, 2, 1, 1, 1, 6],
+          [0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0]]]
+    )
+
+    layer = transformer_no_enc_dec_attention.ConcatWithPadding(mode='predict')
+    inp = (vec_e, vec_d, mask_e)
+    _, _ = layer.init(shapes.signature(inp))
+    y = layer(inp)
+
+    np.testing.assert_equal(
+        y,
+        np.array(
+            [[[7, 5, 2, 8, 8, 8, 6, 7],
+              [8, 2, 6, 2, 1, 1, 4, 2],
+              [4, 7, 7, 4, 8, 9, 9, 9],
+              [6, 8, 2, 9, 3, 6, 6, 8],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0]],
+
+             [[4, 3, 1, 7, 5, 6, 2, 1],
+              [6, 9, 9, 4, 1, 3, 2, 1],
+              [3, 8, 2, 4, 7, 9, 4, 1],
+              [3, 7, 5, 6, 2, 9, 3, 1],
+              [4, 7, 3, 2, 1, 1, 1, 6],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0]]]
+        )
+    )
+
+    # On subsequent runs however, we should get vec_d only.
+    for _ in range(2):
+      y = layer(inp)
+      np.testing.assert_equal(y, vec_d)
 
   def test_strip_from_concatenate_with_padding(self):
     enc_dec = np.array(
@@ -120,8 +188,11 @@ class TransformerNoEncDecAttentionTest(absltest.TestCase):
     tok_e = np.array([[7, 8, 0, 0, 0, 0], [4, 6, 3, 0, 0, 0]])
     tok_d = np.array([[4, 6, 0, 0], [3, 4, 1, 0]])
 
-    layer = _StripFromConcatenateWithPadding()
-    y = layer((enc_dec, tok_e, tok_d))
+    layer = transformer_no_enc_dec_attention.StripFromConcatenateWithPadding(
+        mode='train')
+    inp = (enc_dec, tok_e, tok_d)
+    _, _ = layer.init(shapes.signature(inp))
+    y = layer(inp)
 
     np.testing.assert_equal(
         y,
@@ -133,6 +204,56 @@ class TransformerNoEncDecAttentionTest(absltest.TestCase):
                    [4, 7, 3, 2, 1, 1, 1, 6],
                    [4, 7, 3, 2, 1, 1, 1, 6],
                    [0, 0, 0, 0, 0, 0, 0, 0]]]))
+
+  def test_strip_from_concatenate_with_padding_predict(self):
+    enc_dec = np.array(
+        [[[7, 5, 2, 8, 8, 8, 6, 7],
+          [8, 2, 6, 2, 1, 1, 4, 2],
+          [4, 7, 7, 4, 8, 9, 9, 9],
+          [6, 8, 2, 9, 3, 6, 6, 8],
+          [0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0]],
+
+         [[4, 3, 1, 7, 5, 6, 2, 1],
+          [6, 9, 9, 4, 1, 3, 2, 1],
+          [3, 8, 2, 4, 7, 9, 4, 1],
+          [3, 7, 5, 6, 2, 9, 3, 1],
+          [4, 7, 3, 2, 1, 1, 1, 6],
+          [4, 7, 3, 2, 1, 1, 1, 6],
+          [0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0]]]
+    )
+
+    tok_e = np.array([[7, 8, 0, 0, 0, 0], [4, 6, 3, 0, 0, 0]])
+    tok_d = np.array([[4, 6, 0, 0], [3, 4, 1, 0]])
+
+    layer = transformer_no_enc_dec_attention.StripFromConcatenateWithPadding(
+        mode='predict')
+    inp = (enc_dec, tok_e, tok_d)
+    _, _ = layer.init(shapes.signature(inp))
+    y = layer(inp)
+
+    np.testing.assert_equal(
+        y,
+        np.array([[[4, 7, 7, 4, 8, 9, 9, 9],
+                   [6, 8, 2, 9, 3, 6, 6, 8],
+                   [0, 0, 0, 0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0, 0, 0, 0]],
+                  [[3, 7, 5, 6, 2, 9, 3, 1],
+                   [4, 7, 3, 2, 1, 1, 1, 6],
+                   [4, 7, 3, 2, 1, 1, 1, 6],
+                   [0, 0, 0, 0, 0, 0, 0, 0]]]))
+
+    # On subsequent runs however, we should get enc_dec only.
+    for _ in range(2):
+      y = layer(inp)
+      np.testing.assert_equal(y, enc_dec)
 
   def test_transformer_noencdec_forward_shape(self):
     input_vocab_size = 16

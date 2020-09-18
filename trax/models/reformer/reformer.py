@@ -21,11 +21,14 @@ import jax
 from trax import fastmath
 from trax import layers as tl
 from trax.fastmath import numpy as jnp
+from trax.models.research import transformer_no_enc_dec_attention
 
 
-# TODO(afrozm): Move pvt fns here.
-from trax.models.research.transformer_no_enc_dec_attention import (  # pylint: disable=g-multiple-import
-    _ConcatWithPadding, _StripFromConcatenateWithPadding)
+StripFromConcatenateWithPadding = (
+    transformer_no_enc_dec_attention.StripFromConcatenateWithPadding
+)
+ConcatWithPadding = transformer_no_enc_dec_attention.ConcatWithPadding
+
 
 # Layers are always CamelCase, but functions in general are snake_case
 # pylint: disable=invalid-name
@@ -754,9 +757,9 @@ def Reformer2(input_vocab_size,
       # Decode.
       tl.Select([3, 0, 1, 2]),                 #  vec_d vec_e mask_e tok_e tok_d
 
-      # Concat encoder and decoder, given their masks.
+      # Concat encoder and decoder, given encoder mask.
       tl.Select([1, 0]),                       # vec_e vec_d mask_e tok_e tok_d
-      _ConcatWithPadding(),                    # vec_ed tok_e tok_d
+      ConcatWithPadding(mode=mode),            # vec_ed tok_e tok_d
 
       # Run (encoder and) decoder blocks.
       tl.Dup(),                                    # vec_ed1 vec_ed2 tok_e tok_d
@@ -768,7 +771,7 @@ def Reformer2(input_vocab_size,
 
       # Separate out the encoder part from the concatenated vector.
       tl.Select([0, 1, 2, 2]),                     # vec_ed tok_e tok_d tok_d
-      _StripFromConcatenateWithPadding(),          # vec_d tok_d
+      StripFromConcatenateWithPadding(mode=mode),  # vec_d tok_d
 
       # Map to output vocab.
       tl.Dense(output_vocab_size),                 # vec_d tok_d

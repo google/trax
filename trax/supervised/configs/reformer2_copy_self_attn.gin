@@ -1,0 +1,46 @@
+# Copyright 2020 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# -*-Python-*-
+
+include 'reformer2_copy.gin'
+
+import trax.models
+
+
+# Parameters for Reformer2:
+# ==============================================================================
+Reformer2.encoder_attention_type = @SelfAttention
+Reformer2.encoder_decoder_attention_type = @SelfAttention
+
+
+# Parameters for SelfAttention:
+# ==============================================================================
+# 0 < predict_drop_len <= predict_mem_len
+SelfAttention.predict_mem_len = %max_len
+SelfAttention.predict_drop_len = %max_len
+
+# Parameters for simple_sequence_copy_inputs:
+# ==============================================================================
+simple_sequence_copy_inputs.vocab_size = %vocab_size
+simple_sequence_copy_inputs.batch_size = 128
+simple_sequence_copy_inputs.train_length = 64
+simple_sequence_copy_inputs.eval_min_length = 32
+simple_sequence_copy_inputs.eval_max_length = 64
+simple_sequence_copy_inputs.pad_to_multiple = 32
+
+
+# Parameters for train:
+# ==============================================================================
+train.inputs = @trax.data.inputs.simple_sequence_copy_inputs

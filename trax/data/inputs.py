@@ -699,6 +699,43 @@ def sequence_copy_inputs(
   )
 
 
+@gin.configurable()
+def simple_sequence_copy_inputs(
+    vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, train_length=gin.REQUIRED,
+    eval_min_length=gin.REQUIRED, eval_max_length=gin.REQUIRED,
+    pad_to_multiple=32):
+  """Inputs for the sequence copy problem: w for w in [1..vocab_size-1]*.
+
+  Args:
+    vocab_size: how many symbols to use.
+    batch_size: how large are the batches.
+    train_length: maximum length of w for training.
+    eval_min_length: minimum length of w for eval.
+    eval_max_length : maximum length of w for eval.
+    pad_to_multiple: int, pad length to be multiple of this number.
+
+  Returns:
+    trax.inputs.Inputs
+  """
+  def random_minibatches(length_list):
+    """Generate a stream of random mini-batches."""
+    while True:
+      length = random.choice(length_list)
+      x = np.random.randint(low=1, high=vocab_size-1,
+                            size=(batch_size, length))
+      loss_weights = np.ones((batch_size, length))
+      x = _pad_to_multiple_of(x, pad_to_multiple, 1)
+      loss_weights = _pad_to_multiple_of(loss_weights, pad_to_multiple, 1)
+      yield (x, x, loss_weights)  # Here inputs and targets are the same.
+
+  train_lengths = list(range(train_length - 1))
+  eval_lengths = list(range(eval_min_length, eval_max_length))
+  return Inputs(
+      train_stream=lambda _: random_minibatches(train_lengths),
+      eval_stream=lambda _: random_minibatches(eval_lengths)
+  )
+
+
 def lower_endian_to_number(l, base):
   """Helper function: convert a list of digits in the given base to a number."""
   return sum([d * (base**i) for i, d in enumerate(l)])
