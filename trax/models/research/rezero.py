@@ -198,7 +198,7 @@ def ReZeroTransformerLM(vocab_size,
     ff_activation: the non-linearity in feed-forward layer
 
   Returns:
-    A ReZero trasnformer language model as a layer that maps from a tensor of
+    A ReZero transformer language model as a layer that maps from a tensor of
     tokens to activations over a vocab set.
   """
   positional_encoder = [

@@ -461,7 +461,7 @@ class Loop:
       task (TrainTask): The current task.
       total_loss: Total training loss accumulated over n_steps training steps.
       n_steps: Number of steps over which the metrics were accumulated.
-      elapsed_time: Time of execusion of n_steps training steps.
+      elapsed_time: Time of execution of n_steps training steps.
       optimizer_metrics: Dict from optimizer metric name to metric values.
       summary_writer: Jaxboard summary writer for saving provided metrics.
     """

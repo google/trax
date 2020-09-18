@@ -36,7 +36,7 @@ class Trainer(object):
   have already been initialized.
 
   The output after running the `one_step` function is just the loss from the
-  loss layer and optimizer statisics but, as a side effect, it also updates
+  loss layer and optimizer statistics but, as a side effect, it also updates
   the weights of the loss layer and the slots of the optimizer.
   """
 

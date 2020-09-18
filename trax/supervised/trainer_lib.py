@@ -325,8 +325,8 @@ class Trainer(object):
     if self._should_log_now():
       for name, value in stat.items():
         # TODO(afrozm): value is a scalar, but sometimes JAX is crashing here
-        # with a device put array error complaning that it should be an array.
-        # On  multiple devices, take the mean.
+        # with a device put array error complaining that it should be an array.
+        # On multiple devices, take the mean.
         scalar_value = np.mean(np.array(value))
         self._train_sw.scalar('training/' + name, scalar_value, step=self._step)
     self._step += 1
@@ -489,7 +489,7 @@ class Trainer(object):
             and (self._step == 1 or self._step % 10 == 0))
 
   def _for_n_devices(self, x):
-    """Replicates/broadcasts `x` for n devices if `self.n_devicess > 1`."""
+    """Replicates/broadcasts `x` for n devices if `self.n_devices > 1`."""
     return tl.for_n_devices(x, self.n_devices)  # pylint: disable=protected-access
 
   def close(self):

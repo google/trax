@@ -179,7 +179,7 @@ def pad_to_max_dims(tensors, boundary=None, strict_pad_on_len=False):
   to (3, 10) both and the returned tensor will have shape (2, 3, 10).
 
   When boundary is specified, we try to pad all unknown dimensions to boundary
-  if possible, which can help reduce the number of different shapes occuring
+  if possible, which can help reduce the number of different shapes occurring
   in the tensors and speed up XLA compilation. So, for example, a pair of
   tensors of shapes (8, 10), (8, 9) with boundary=12 will be padded to (8, 12).
 
@@ -293,7 +293,7 @@ def _buckets_for_length(bucket_length, batch_size, max_eval_length, n_devices,
                         batch_size // 16, 1]
   if not training:
     # The last bucket batch size is always 1, but the one-but-last is
-    # sized to accomodate the final length = bucket_boundaries[-1], which
+    # sized to accommodate the final length = bucket_boundaries[-1], which
     # we changed for eval above -- so adjusting here too.
 
     # Resize if needed, since bucket_batch_sizes may not be the same size
@@ -382,7 +382,7 @@ def add_loss_weights(generator, id_to_mask=None):
   - If the stream consists of pairs `(inputs, targets)`, a loss mask is added
     that is creates as a tensor of ones of the same shape as targets.
   - If `id_to_mask` is not `None`, and the stream (after the previous point)
-    has triples `(inputs, targets, weights)`, the weights are multipled by a
+    has triples `(inputs, targets, weights)`, the weights are multiplied by a
     0/1 mask that is 0 iff targets is equal to `id_to_mask` (1 otherwise).
 
   Args:

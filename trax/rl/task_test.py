@@ -209,7 +209,7 @@ class TaskTest(absltest.TestCase):
           self.assertTrue(next_slice.timesteps[i].done)
           self.assertFalse(next_slice.timesteps[i].mask)
         got_done = True
-    # Assert that we got a done somewhere, otherwise the test is not trigerred.
+    # Assert that we got a done somewhere, otherwise the test is not triggered.
     # Not getting done has low probability (1/2^10) but is possible, flaky test.
     self.assertTrue(got_done)
 

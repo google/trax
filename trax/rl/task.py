@@ -697,7 +697,7 @@ class RLTask:
         ])
         # Where act, rew and ret will usually have the following shape:
         # [batch_size, trajectory_length-1], which we call [B, L-1].
-        # Observations are more complex and will usuall be [B, L] + S where S
+        # Observations are more complex and will usually be [B, L] + S where S
         # is the shape of the observation space (self.observation_space.shape).
         # We stop the recursion at level 1, so we pass lists of arrays into
         # pad().

@@ -94,7 +94,7 @@ def train_rl(
     num_actions: None unless one wants to use the discretization wrapper. Then
       num_actions specifies the number of discrete actions.
     light_rl: whether to use the light RL setting (experimental).
-    light_rl_trainer: whichh light RL trainer to use (experimental).
+    light_rl_trainer: which light RL trainer to use (experimental).
   """
   tf_np.set_allow_float64(FLAGS.tf_allow_float64)
 
@@ -213,7 +213,7 @@ def main(argv):
   gin_configs = FLAGS.config or []
   gin.parse_config_files_and_bindings(FLAGS.config_file, gin_configs)
 
-  logging.info('Gin cofig:')
+  logging.info('Gin config:')
   logging.info(gin_configs)
 
   train_rl(
