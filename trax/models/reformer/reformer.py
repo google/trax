@@ -75,7 +75,7 @@ def FeedForwardWithOptions(d_model, d_ff, dropout, ff_activation, ff_dropout,
   elif ff_sparsity:
     return [tl.LayerNorm(),
             tl.SparseFF(d_ff, n_elements_in_block=ff_sparsity,
-                        d_lowrank=d_ff // ff_sparsity),
+                        d_lowrank=d_ff // ff_sparsity, mode=mode),
             tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode)]
   else:
     return [ChunkedFeedForward(d_model, d_ff, dropout, ff_activation,

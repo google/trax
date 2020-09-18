@@ -41,7 +41,7 @@ attn_kv = 64
 vocab_size = 32000
 
 
-# Parameters for LSHSelfAttention:
+# Parameters for SelfAttention:
 # ==============================================================================
 SelfAttention.attention_dropout = %dropout
 SelfAttention.chunk_len = None  # full attention
@@ -50,12 +50,12 @@ SelfAttention.chunk_len = None  # full attention
 # ==============================================================================
 LSHSelfAttention.attention_dropout = %dropout
 LSHSelfAttention.chunk_len = 128
-LSHSelfAttention.n_buckets = 8
+LSHSelfAttention.n_buckets = None
 LSHSelfAttention.n_chunks_after = 0
 LSHSelfAttention.n_chunks_before = 1
 LSHSelfAttention.n_hashes = 2
 LSHSelfAttention.n_parallel_heads = 1
-LSHSelfAttention.predict_drop_len = 128
+LSHSelfAttention.predict_drop_len = %max_length
 LSHSelfAttention.predict_mem_len = %max_length
 # Reformer2's *encoder* is bidirectional.
 ref2_encoder/LSHSelfAttention.n_chunks_after = 1
@@ -66,8 +66,8 @@ batcher.data_streams = @tf_inputs.data_streams
 # With 64, we get an average of weights_per_core = 450, so 450*8 = 3600 tokens
 # per batch on a 2x2 TPU on average per step. T5's batch is ~65k tokens/batch.
 # i.e. 18x bigger than ours.
-batcher.batch_size_per_device = 128
-batcher.eval_batch_size = 128
+batcher.batch_size_per_device = 256
+batcher.eval_batch_size = 64
 batcher.max_eval_length = %max_length
 batcher.buckets_include_inputs_in_length=True
 batcher.id_to_mask = 0
@@ -103,8 +103,8 @@ c4_bare_preprocess_fn.sequence_length = %sequence_length
 
 # Parameters for train:
 # ==============================================================================
-train.eval_frequency = 1000
-train.eval_steps = 10
+train.eval_frequency = 200
+train.eval_steps = 2
 train.model = @trax.models.Reformer2
 # T5 pretrains on C4 for 2^19 steps. Our batches are ~ 1/9th the size.
 train.steps = 524288
@@ -114,7 +114,6 @@ train.checkpoint_lowest = 'loss'
 
 # attn_type = @LSHSelfAttention
 # enc_attn_type = @ref2_encoder/LSHSelfAttention
-
 attn_type = @SelfAttention
 enc_attn_type = @SelfAttention
 
