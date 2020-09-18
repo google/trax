@@ -78,6 +78,38 @@ def L2Loss():
   return Fn('L2Loss', f)
 
 
+def SmoothL1Loss():
+  """Returns a layer that computes total smooth L1 loss for one batch."""
+  def smoothl1loss(model_output, targets, weights):  # pylint: disable=invalid-name
+    r"""Returns elementwise-weighted smooth L1 norm of `model_output - targets`.
+
+    The smooth L1 loss, also known as the Huber loss, is defined using the
+    following formula:
+    .. math::
+        z_i =
+        \begin{cases}
+        0.5 (x_i - y_i)^2, & \text{if } |x_i - y_i| < 1 \\
+        |x_i - y_i| - 0.5, & \text{otherwise }
+        \end{cases}
+
+    Args:
+      model_output: Output from one batch, treated as an unanalyzed tensor.
+      targets: Tensor of same shape as `model_output` containing element-wise
+          target values.
+      weights: Tensor of same shape as `model_output` and `targets`.
+    """
+    shapes.assert_same_shape(model_output, targets)
+    shapes.assert_same_shape(targets, weights)
+    l1_dist = jnp.abs(model_output - targets)
+    smooth_dist = jnp.where(l1_dist < 1,
+                            0.5*l1_dist**2,
+                            l1_dist-0.5)
+    shapes.assert_same_shape(smooth_dist, weights)
+    weighted_smooth_dist = weights * smooth_dist
+    return jnp.sum(weighted_smooth_dist) / jnp.sum(weights)
+  return Fn('SmoothL1Loss', smoothl1loss)
+
+
 def BinaryClassifier(threshold=0.5):
   """Returns a layer that performs binary classification of the model output."""
   def f(model_output):  # pylint: disable=invalid-name

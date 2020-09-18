@@ -154,6 +154,36 @@ class MetricsTest(absltest.TestCase):
     loss = layer((x, target, weights))
     np.testing.assert_allclose(loss, 0.5)
 
+  def test_smooth_l1_loss(self):
+    layer = tl.SmoothL1Loss()
+    sample_input = np.ones((2, 2))
+    sample_target = np.ones((2, 2))
+    sample_weights = np.ones((2, 2))
+    full_signature = shapes.signature([sample_input,
+                                       sample_target,
+                                       sample_weights])
+    layer.init(full_signature)
+
+    x = np.array([[1., 1.], [1., 2.]])
+    target = np.array([[1., 1.], [1., 0.]])
+    l1_dist = 2
+
+    weights = np.array([[1., 1.], [1., 0.]])
+    loss = layer((x, target, weights))
+    np.testing.assert_allclose(loss, 0.0)
+
+    weights = np.array([[1., 0.], [0., 1.]])
+    sum_weights = 2
+
+    loss = layer((x, target, weights))
+    np.testing.assert_allclose(loss, (l1_dist-0.5)/sum_weights)
+
+    x = np.array([[1., 1.], [1., 1.5]])
+    target = np.array([[1., 1.], [1., 1.]])
+    l1_dist = 0.5
+    loss = layer((x, target, weights))
+    np.testing.assert_allclose(loss, 0.5*l1_dist**2/sum_weights)
+
   def test_names(self):
     layer = tl.L2Loss()
     self.assertEqual('L2Loss_in3', str(layer))
