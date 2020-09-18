@@ -20,11 +20,8 @@ from trax import fastmath
 from trax.layers import base
 from trax.layers import combinators as cb
 
-# pylint: disable=protected-access
-_inputs_from_stack = cb._inputs_from_stack
-_outputs_onto_stack = cb._outputs_onto_stack
-_split_rngs = cb._split_rngs
-# pylint: enable=protected-access
+
+_split_rngs = cb._split_rngs  # pylint: disable=protected-access
 
 
 class ReversibleLayer(base.Layer):
@@ -141,9 +138,9 @@ class ReversibleSerial(ReversibleLayer, cb.Serial):
     stack = output
     for layer, p, s, ns, rng in reversed(list(zip(
         self.sublayers, weights, state, new_state, rngs))):
-      layer_val = _inputs_from_stack(layer, stack, layer.n_out)
+      layer_val = cb.inputs_from_stack(stack, layer.n_out)
       layer_val = layer.reverse(layer_val, p, s, ns, rng=rng)
-      stack = _outputs_onto_stack(layer, layer_val, stack, layer.n_out)
+      stack = cb.outputs_onto_stack(layer_val, stack, layer.n_out)
 
     return stack
 
@@ -158,14 +155,14 @@ class ReversibleSerial(ReversibleLayer, cb.Serial):
     weights_grad = []
     for layer, p, s, ns, rng in reversed(list(zip(
         self.sublayers, weights, state, new_state, rngs))):
-      layer_val = _inputs_from_stack(layer, stack, layer.n_out)
-      layer_ct = _inputs_from_stack(layer, stack_grad, layer.n_out)
+      layer_val = cb.inputs_from_stack(stack, layer.n_out)
+      layer_ct = cb.inputs_from_stack(stack_grad, layer.n_out)
       layer_val, layer_ct = layer.reverse_and_grad(
           layer_val, layer_ct, p, s, ns, rng=rng)
       layer_ct, p_ct = layer_ct
       weights_grad.insert(0, p_ct)
-      stack = _outputs_onto_stack(layer, layer_val, stack, layer.n_out)
-      stack_grad = _outputs_onto_stack(layer, layer_ct, stack_grad, layer.n_out)
+      stack = cb.outputs_onto_stack(layer_val, stack, layer.n_out)
+      stack_grad = cb.outputs_onto_stack(layer_ct, stack_grad, layer.n_out)
 
     return stack, (stack_grad, tuple(weights_grad))
 
@@ -216,9 +213,9 @@ class ReversibleHalfResidual(ReversibleLayer):
     stack = context = tuple(context)
     new_state = []
     for layer, w, s, rng in zip(self.sublayers, self.weights, self.state, rngs):
-      inputs = _inputs_from_stack(layer, stack)
+      inputs = cb.inputs_from_stack(stack, layer.n_in)
       outputs, s = layer.pure_fn(inputs, w, s, rng)
-      stack = _outputs_onto_stack(layer, outputs, stack)
+      stack = cb.outputs_onto_stack(outputs, stack, layer.n_in)
       new_state.append(s)
     residual = stack[0] if isinstance(stack, (tuple, list)) else stack
 
@@ -253,30 +250,29 @@ class ReversibleHalfResidual(ReversibleLayer):
         return res[:n_differentiable], res[n_differentiable:]
 
     stack = context
-    inputs = _inputs_from_stack(self.compute_residual, stack)
+    inputs = cb.inputs_from_stack(stack, self.compute_residual.n_in)
     outputs, compute_residual_vjpfun, outputs_aux = fastmath.vjp(
         call_compute_residual, inputs, weights[0], has_aux=True)
     if outputs_aux is not None:
       n_differentiable_outputs = len(outputs)
       outputs = outputs + outputs_aux
-    stack = _outputs_onto_stack(self.compute_residual, outputs, stack)
+    stack = cb.outputs_onto_stack(outputs, stack, self.compute_residual.n_in)
 
     stack_ct = accumulator_output_ct
     if self.attention_layer is None:
       residual = stack[0] if isinstance(stack, (tuple, list)) else stack
     else:
-      inputs = _inputs_from_stack(self.attention_layer, stack)
+      inputs = cb.inputs_from_stack(stack, self.attention_layer.n_in)
       (residual, _, attn_inputs_ct, attn_weights_ct
       ) = self.attention_layer.forward_and_or_backward(
           inputs, weights[1], new_state[1], rngs[1],
           output_grad=accumulator_output_ct,
           compute_output=True, update_state=False)
-      stack_ct = _outputs_onto_stack(
-          self.attention_layer, attn_inputs_ct, stack_ct,
-          self.attention_layer.n_out)
+      stack_ct = cb.outputs_onto_stack(
+          attn_inputs_ct, stack_ct, self.attention_layer.n_out)
 
-    compute_residual_ct = _inputs_from_stack(
-        self.compute_residual, stack_ct, self.compute_residual.n_out)
+    compute_residual_ct = cb.inputs_from_stack(
+        stack_ct, self.compute_residual.n_out)
     if outputs_aux is not None:
       if not isinstance(compute_residual_ct, (tuple, list)):
         compute_residual_ct = (compute_residual_ct,)
@@ -284,9 +280,8 @@ class ReversibleHalfResidual(ReversibleLayer):
       assert len(compute_residual_ct) == n_differentiable_outputs
     (compute_residual_inputs_ct, compute_residual_weights_ct
     ) = compute_residual_vjpfun(compute_residual_ct)
-    stack_ct = _outputs_onto_stack(
-        self.compute_residual, compute_residual_inputs_ct, stack_ct,
-        self.compute_residual.n_out)
+    stack_ct = cb.outputs_onto_stack(
+        compute_residual_inputs_ct, stack_ct, self.compute_residual.n_out)
     if not isinstance(stack_ct, (tuple, list)):
       stack_ct = (stack_ct,)
     stack_ct = (accumulator_output_ct,) + fastmath.nested_map_multiarg(
@@ -307,16 +302,16 @@ class ReversibleHalfResidual(ReversibleLayer):
     if len(stack) == 1:
       stack = stack[0]
 
-    inputs = _inputs_from_stack(self.compute_residual, stack)
+    inputs = cb.inputs_from_stack(stack, self.compute_residual.n_in)
     weights, state = self.compute_residual.init(inputs)
     outputs, _ = self.compute_residual._forward_abstract(inputs)
-    stack = _outputs_onto_stack(self.compute_residual, outputs, stack)
+    stack = cb.outputs_onto_stack(outputs, stack, self.compute_residual.n_in)
 
     if self.attention_layer is None:
       self.state = (state,)
       self.weights = (weights,)
     else:
-      inputs = _inputs_from_stack(self.attention_layer, stack)
+      inputs = cb.inputs_from_stack(stack, self.attention_layer.n_in)
       attn_weights, attn_state = self.attention_layer.init(inputs)
       self.state = (state, attn_state)
       self.weights = (weights, attn_weights)

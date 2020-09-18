@@ -23,11 +23,6 @@ from trax import layers as tl
 from trax.fastmath import numpy as jnp
 from trax.layers import combinators as cb
 
-# pylint: disable=protected-access
-_inputs_from_stack = cb._inputs_from_stack
-_outputs_onto_stack = cb._outputs_onto_stack
-# pylint: enable=protected-access
-
 
 class Trainer(object):
   """Accelerates running an optimizer on a Trax layer returning a scalar loss.
@@ -310,6 +305,18 @@ class ReversibleSerialTrainer(object):
     """Returns the optimizer function used to initialize this class."""
     return self._optimizer_fn
 
+  @property
+  def slots(self):
+    """Returns the slots of all optimizers."""
+    return fastmath.nested_map(lambda opt: opt.slots, self._optimizers)
+
+  @slots.setter
+  def slots(self, slots):
+    """Sets the slots of all optimizers."""
+    for ((s_opts, r_opts), (s_slots, r_slots)) in zip(self._optimizers, slots):
+      for (opt, slot) in zip(s_opts + r_opts, s_slots + r_slots):
+        opt.slots = slot
+
   def _pjit(self, f):
     """JIT f if 1 device is available and pmap if more are available."""
     if self._n_devices == 1:
@@ -394,7 +401,7 @@ class ReversibleSerialTrainer(object):
 
     # Run the loss layer forward and backward with optimizer update.
     loss_state = self._replicate(self._loss_layer.state)
-    loss_inputs = _inputs_from_stack(self._loss_layer, stack)
+    loss_inputs = cb.inputs_from_stack(stack, self._loss_layer.n_in)
     loss_stats, grad_stack = self._run_backward_standard(
         None, step, self._loss_layer, loss_inputs,
         loss_state, self._loss_fbo, rngs[-1], self._loss_opt,
@@ -421,20 +428,25 @@ class ReversibleSerialTrainer(object):
       std_layer_stats, grad_stack = self._run_backward_standard(
           grad_stack, step, std_layer, std_inputs, std_state, std_fbo, std_rng,
           std_opt, repl_std_opt_params)
-      stack = _outputs_onto_stack(  # Put layer inputs on the stack.
-          std_layer, std_inputs, stack, std_layer.n_out)
+      stack = cb.outputs_onto_stack(  # Put layer inputs on the stack.
+          std_inputs, stack, std_layer.n_out)
       stats.append(std_layer_stats)
 
-    return stats[0]['loss'], stats
+    # Join stats from different optimizers into one.
+    joint_stats = {}
+    for i, stat in enumerate(reversed(stats)):
+      for k, v in stat.items():
+        joint_stats[f'layer{i}/' + k] = v
+    return stats[0]['loss'], joint_stats
 
   def _run_forward_standard(self, stack, layer, accelerated_fn, rng):
     """Run standard layer forward."""
-    layer_inputs = _inputs_from_stack(layer, stack)
+    layer_inputs = cb.inputs_from_stack(stack, layer.n_in)
     layer_weights = self._replicate(layer.weights)
     layer_state = self._replicate(layer.state)
     outputs, layer_new_state = accelerated_fn(
         layer_inputs, layer_weights, layer_state, rng)
-    stack = _outputs_onto_stack(layer, outputs, stack)
+    stack = cb.outputs_onto_stack(outputs, stack, layer.n_in)
     return stack, layer_inputs, layer_new_state
 
   def _run_forward_reversible(self, stack, rev_layers, accelerated_fns, rngs):
@@ -444,10 +456,10 @@ class ReversibleSerialTrainer(object):
       weights = self._replicate(layer.weights)  # also copies cpu -> accelerator
       state = self._replicate(layer.state)
       old_states.append(state)
-      inputs = _inputs_from_stack(layer, stack)
+      inputs = cb.inputs_from_stack(stack, layer.n_in)
       outputs, new_state = accelerated_fns[i](
           inputs, weights, state, rngs[i])
-      stack = _outputs_onto_stack(layer, outputs, stack)
+      stack = cb.outputs_onto_stack(outputs, stack, layer.n_in)
       new_states.append(new_state)
     return stack, old_states, new_states
 
@@ -455,7 +467,7 @@ class ReversibleSerialTrainer(object):
                              fbo_fn, rng, optimizer, replicated_opt_params):
     """Run reversible layers backwards."""
     if grad_stack is not None:
-      grads = _inputs_from_stack(layer, grad_stack, layer.n_out)
+      grads = cb.inputs_from_stack(grad_stack, layer.n_out)
     else:
       grads = None
     slots = self._replicate(optimizer.slots)
@@ -466,8 +478,7 @@ class ReversibleSerialTrainer(object):
     layer.state = self._unreplicate(new_state)
     optimizer.slots = self._unreplicate(new_slots)
     if grad_stack is not None:
-      grad_stack = _outputs_onto_stack(
-          layer, new_grads, grad_stack, layer.n_out)
+      grad_stack = cb.outputs_onto_stack(new_grads, grad_stack, layer.n_out)
     else:
       grad_stack = new_grads
     return stats, grad_stack
@@ -484,8 +495,8 @@ class ReversibleSerialTrainer(object):
         old_states, new_states, rngs))):
       counter -= 1
       # We are running backwards and reversing, so we get *outputs* from stack.
-      outputs = _inputs_from_stack(layer, stack, layer.n_out)
-      grads = _inputs_from_stack(layer, grad_stack, layer.n_out)
+      outputs = cb.inputs_from_stack(stack, layer.n_out)
+      grads = cb.inputs_from_stack(grad_stack, layer.n_out)
       slots = self._replicate(optimizers[counter].slots)
       opt_params = replicated_opt_params[counter]
       weights = self._replicate(layer.weights)  # cpu -> accelerator
@@ -496,8 +507,8 @@ class ReversibleSerialTrainer(object):
       layer.state = self._unreplicate(new_state)
       optimizers[counter].slots = self._unreplicate(new_slots)
       stats.append(layer_stats)
-      stack = _outputs_onto_stack(layer, inputs, stack, layer.n_out)
-      grad_stack = _outputs_onto_stack(layer, grads, grad_stack, layer.n_out)
+      stack = cb.outputs_onto_stack(inputs, stack, layer.n_out)
+      grad_stack = cb.outputs_onto_stack(grads, grad_stack, layer.n_out)
     return stack, grad_stack, stats
 
 
@@ -620,3 +631,26 @@ def extract_reversible_blocks(layers):
     raise ValueError('The final layer must be a standard loss, not reversible.')
   loss_layer = tl.Serial(std_layers)
   return blocks, loss_layer
+
+
+def init_reversible_blocks(blocks, loss_layer, input_signature, rng):
+  """Initialize reversible blocks and the loss layer and place weights on CPU.
+
+  Args:
+    blocks: List of reversible blocks (pairs of layer lists).
+    loss_layer: The final loss layer to initialize.
+    input_signature: The signature of the input to the blocks.
+    rng: Random key used to initialize the layers.
+  """
+  sig_stack = input_signature
+  for (std_layers, rev_layers) in blocks:
+    rngs = fastmath.random.split(rng, len(std_layers) + len(rev_layers) + 1)
+    rng = rngs[0]
+    for layer, layer_rng in zip(std_layers + rev_layers, rngs[1:]):
+      sig = cb.inputs_from_stack(sig_stack, layer.n_in)
+      layer.init(sig, rng=layer_rng)
+      layer.weights = tl.on_cpu(layer.weights)  # store weights in cpu memory
+      out_sig = layer.output_signature(sig)
+      sig_stack = cb.outputs_onto_stack(out_sig, sig_stack, layer.n_in)
+  loss_layer.init(cb.inputs_from_stack(sig_stack, loss_layer.n_in), rng=rng)
+  loss_layer.weights = tl.on_cpu(loss_layer.weights)

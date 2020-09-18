@@ -107,6 +107,7 @@ class Loop:
       which_task=None,
       n_devices=None,
       random_seed=None,
+      use_memory_efficient_trainer=False,
   ):
     """Configures a training `Loop`, including a random initialization.
 
@@ -140,6 +141,8 @@ class Loop:
           training.
       n_devices: integer or None, the number of devices for this computation.
       random_seed: the random seed to use; time/os dependent if None (default).
+      use_memory_efficient_trainer: whether to use a special memory-efficient
+        trainer
     """
     self._is_chief, self._n_hosts, self._n_devices, self._rng = (
         init_host_and_devices(n_devices, random_seed))
@@ -160,6 +163,14 @@ class Loop:
     self._tasks = tasks
     self._model = model
     self._eval_model = eval_model or model
+
+    self._use_memory_efficient_trainer = use_memory_efficient_trainer
+    # TODO(lukaszkaiser): can we have different eval models and save memory?
+    if use_memory_efficient_trainer:
+      assert len(tasks) == 1, 'only single task supported for now'
+      assert len(eval_tasks) < 2, 'a most 1 eval task supported for now'
+      self._eval_model = model
+
     default_at = _at_step_1_and_every_nth_step(tasks[0].n_steps_per_checkpoint)
     if output_dir is not None:
       self._output_dir = os.path.expanduser(output_dir)
@@ -181,9 +192,11 @@ class Loop:
     # different hosts, leading to different weights on the different hosts.
     self._batch_signature = shapes.signature(tasks[0].sample_batch)
     self._model.rng = self.new_rng()
-    self._model.init(self._batch_signature)
-    self._eval_model.rng = self.new_rng()
-    self._eval_model.init(self._batch_signature)
+    # In the memory-efficient case, we initialize in init_trainer.
+    if not use_memory_efficient_trainer:
+      self._model.init(self._batch_signature)
+      self._eval_model.rng = self.new_rng()
+      self._eval_model.init(self._batch_signature)
 
     # To handle the above case (i.e. random_seed = None), we psum the weights
     # and state and average them.
@@ -234,26 +247,42 @@ class Loop:
   def _init_trainer(self, task):
     """Initializes the per-task trainer."""
     # Build the per-task model, sharing weights with other tasks.
-    model_in_training = _model_with_ends(
-        self._model,
-        [task.loss_layer],
-        shapes.signature(task.sample_batch)
-    )
-    task.optimizer.tree_init(model_in_training.weights)
-    return optimizers.Trainer(model_in_training, task.optimizer)
+    if not self._use_memory_efficient_trainer:
+      model_in_training = _model_with_ends(
+          self._model,
+          [task.loss_layer],
+          shapes.signature(task.sample_batch)
+      )
+      task.optimizer.tree_init(model_in_training.weights)
+      return optimizers.Trainer(model_in_training, task.optimizer)
+    # In the memory-efficient path, we initialize the model here.
+    blocks, loss_layer = optimizers.trainer.extract_reversible_blocks(
+        [self._model, task.loss_layer])
+    rng = self._model.rng
+    sig = shapes.signature(task.sample_batch)
+    optimizers.trainer.init_reversible_blocks(blocks, loss_layer, sig, rng)
+    # TODO(lukaszkaiser): here optimizer is a function, revisit this.
+    return optimizers.ReversibleSerialTrainer(
+        blocks, loss_layer, task.optimizer)
 
   def _init_evaluator(self, eval_task):
     """Initializes the per-task evaluator."""
     model_with_metrics = _model_with_metrics(
         self._eval_model, eval_task)
-    return _Evaluator(
-        # Replicate the eval part of weights and state.
-        weights=self._for_n_devices(model_with_metrics.weights[1]),
-        state=self._for_n_devices(model_with_metrics.state[1]),
-        metrics_fn=_accelerate_model_with_metrics(
-            model_with_metrics, self.n_devices
-        )
-    )
+    if self._use_memory_efficient_trainer:
+      return _Evaluator(
+          weights=model_with_metrics.weights[1],
+          state=model_with_metrics.state[1],
+          metrics_fn=_accelerate_model_with_metrics(model_with_metrics, 0)
+      )
+    else:
+      return _Evaluator(
+          # Replicate the eval part of weights and state.
+          weights=self._for_n_devices(model_with_metrics.weights[1]),
+          state=self._for_n_devices(model_with_metrics.state[1]),
+          metrics_fn=_accelerate_model_with_metrics(
+              model_with_metrics, self.n_devices)
+      )
 
   def _sync_weights_and_state_across_hosts(self):
     """Sync weights and state across all the hosts in the computation."""
@@ -504,8 +533,11 @@ class Loop:
       summary_writer = summary_writers[task_index]
 
       # Extract the actual model weights and state, excluding the loss layer.
-      model_weights = trainer.accelerated_loss_layer.weights[0]
-      model_state = trainer.accelerated_loss_layer.state[0]
+      if self._use_memory_efficient_trainer:
+        model_weights, model_state = self._model.weights, self._model.state
+      else:
+        model_weights = trainer.accelerated_loss_layer.weights[0]
+        model_state = trainer.accelerated_loss_layer.state[0]
 
       for (eval_task, evaluator) in zip(
           self._eval_tasks, self._evaluator_per_task):
@@ -567,18 +599,24 @@ class Loop:
       return
     weights = self._model.weights
     state = self._model.state
-    slots_per_task = tuple(task.optimizer.slots for task in self._tasks)
+    if self._use_memory_efficient_trainer:
+      slots_per_task = [trainer.slots for trainer in self._trainer_per_task]
+    else:
+      slots_per_task = tuple(task.optimizer.slots for task in self._tasks)
     # We only need the input signature for the body, not for the loss layers.
     # That part is the same across tasks - take it from the first one.
     input_signature = self._batch_signature[:self._model.n_in]
     flat_weights, flat_state = tl.flatten_weights_and_state(weights, state)
+    _, flat_eval_state = tl.flatten_weights_and_state(
+        weights, self._eval_model.state)
     d = {
         'step': self.step,
         'flat_weights': flat_weights,
         'flat_state': flat_state,
+        'flat_eval_state': flat_eval_state,
         'slots_per_task': slots_per_task,
         'input_signature': input_signature,
-        'version_timestamp': 'Aug-21-2020'  # To update in the future if needed.
+        'version_timestamp': 'Sep-17-2020'  # To update in the future if needed.
     }
     ckpt_file = os.path.join(self._output_dir, 'model.pkl.gz')
     pickle_to_file(d, ckpt_file, gzip=True)
@@ -609,12 +647,29 @@ class Loop:
             'Can\'t load a single-task checkpoint into a multitask Loop.'
         )
       d['slots_per_task'] = [d['slots']]
-    for (task, slots) in zip(self._tasks, d['slots_per_task']):
-      task.optimizer.slots = slots
-    # TODO(lukaszkaiser): this call will read the file again, optimize it.
-    self._model.init_from_file(path)
+    if self._use_memory_efficient_trainer:
+      for (trainer, slots) in zip(self._trainer_per_task, d['slots_per_task']):
+        trainer.slots = slots
+    else:
+      for (task, slots) in zip(self._tasks, d['slots_per_task']):
+        task.optimizer.slots = slots
+    # This is self._model.init_from_file but optimized to not re-read.
+    input_signature = d['input_signature']
+    weights_and_state_sig = self._model.weights_and_state_signature(
+        input_signature)
+    weights, state = tl.unflatten_weights_and_state(
+        d['flat_weights'], d['flat_state'], weights_and_state_sig)
+    self._model.state = state
+    self._model.weights = weights
     self._eval_model.weights = self._model.weights
-    self._eval_model.state = self._model.state
+    # Restore eval model state; note: it's not always the same as train state.
+    if 'flat_eval_state' in d:
+      flat_eval_state = d['flat_eval_state']
+    else:  # It wasn't saved in old checkpoints; remove this branch once ported.
+      flat_eval_state = d['flat_state']
+    _, eval_state = tl.unflatten_weights_and_state(
+        d['flat_weights'], flat_eval_state, weights_and_state_sig)
+    self._eval_model.state = eval_state
 
   @contextlib.contextmanager
   def _open_summary_writers(self):
@@ -736,7 +791,10 @@ class TrainTask:
     if self._lr_schedule is not None:
       with fastmath.use_backend(fastmath.Backend.NUMPY):
         return self._lr_schedule(step)
-    params = self._optimizer._init_opt_params  # pylint: disable=protected-access
+    opt = self._optimizer
+    if callable(opt):  # when optimizer is a function, like Adam, not Adam()
+      opt = opt()
+    params = opt._init_opt_params  # pylint: disable=protected-access
     return params['learning_rate']
 
 

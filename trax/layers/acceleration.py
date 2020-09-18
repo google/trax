@@ -141,7 +141,8 @@ class Accelerate(base.Layer):
 def jit_forward(forward, n_devices, do_mean=True):
   """Returns a JIT-compiled forward function running on `n_devices`."""
   model_predict = _accelerate(forward, n_devices)
-  if n_devices == 1:
+  # n_devices == 0 => CPU
+  if n_devices < 2:
     return model_predict
 
   def predict(x, weights, state, rng):
@@ -172,6 +173,9 @@ def _combine_devices(x_tuple):
 
 def _accelerate(f, n_devices):
   """JIT-compiled version of `f` running on `n_devices`."""
+  if n_devices == 0:  # no accelerators - run on CPU
+    return fastmath.jit(f, device=jax.devices('cpu')[0])
+
   if n_devices == 1:
     return fastmath.jit(f)
 

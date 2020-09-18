@@ -84,9 +84,9 @@ class Serial(base.Layer):
           f'number of sublayers ({n_layers}).')
 
     for layer, w, s, rng in zip(self.sublayers, weights, state, rngs):
-      inputs = _inputs_from_stack(layer, stack)
+      inputs = inputs_from_stack(stack, layer.n_in)
       outputs, s = layer.pure_fn(inputs, w, s, rng, use_cache=True)
-      stack = _outputs_onto_stack(layer, outputs, stack)
+      stack = outputs_onto_stack(outputs, stack, layer.n_in)
       new_state.append(s)
     self.state = new_state
     return stack
@@ -99,11 +99,11 @@ class Serial(base.Layer):
     # dtypes), but weights and states are non-abstract actual values.
     stack = input_signature
     for sublayer in self.sublayers:
-      inputs = _inputs_from_stack(sublayer, stack)
+      inputs = inputs_from_stack(stack, sublayer.n_in)
       weights_or_cache_marker, state_or_cache_marker = (
           sublayer.init(inputs, use_cache=True))
       outputs, _ = sublayer._forward_abstract(inputs)
-      stack = _outputs_onto_stack(sublayer, outputs, stack)
+      stack = outputs_onto_stack(outputs, stack, sublayer.n_in)
 
       weights.append(weights_or_cache_marker)
       states.append(state_or_cache_marker)
@@ -492,17 +492,17 @@ class Cond(base.Layer):
     stack = _make_tuple(input_signature)
 
     # Inputs/outputs of `cond`.
-    inputs = _inputs_from_stack(self._cond, stack)
+    inputs = inputs_from_stack(stack, self._cond.n_in)
     weights_or_cache_marker, state_or_cache_marker = (
         self._cond.init(inputs, use_cache=True))
     weights.append(weights_or_cache_marker)
     states.append(state_or_cache_marker)
     self._cond._forward_abstract(inputs)
-    stack = _make_tuple(_outputs_onto_stack(self._cond, [], stack))
+    stack = _make_tuple(outputs_onto_stack([], stack, self._cond.n_in))
 
     # Inputs/outputs of `true` and `false`.
     for sublayer in [self._true, self._false]:
-      inputs = _inputs_from_stack(sublayer, stack)
+      inputs = inputs_from_stack(stack, sublayer.n_in)
       weights_or_cache_marker, state_or_cache_marker = (
           sublayer.init(inputs, use_cache=True))
       weights.append(weights_or_cache_marker)
@@ -551,10 +551,10 @@ class Cond(base.Layer):
       # t[2][1] is old_true_state, which is not changing if false is executed.
       return outputs, (t[2][0], new_false_state)
 
-    cond_inputs = _inputs_from_stack(self._cond, xs)
+    cond_inputs = inputs_from_stack(xs, self._cond.n_in)
     cond_output, s = self._cond.pure_fn(cond_inputs, self.weights[0],
                                         self.state[0], rngs[0], use_cache=True)
-    stack = _outputs_onto_stack(self._cond, [], stack)
+    stack = outputs_onto_stack([], stack, self._cond.n_in)
     self._cond.state = s
 
     outputs, both_states = fastmath.cond(
@@ -566,15 +566,15 @@ class Cond(base.Layer):
          (self.state[1], self.state[2]),
          (rngs[1], rngs[2])]
     )
-    stack = _outputs_onto_stack(self._cond, [], stack)
+    stack = outputs_onto_stack([], stack, self._cond.n_in)
 
     # We don't know which (`true` or `false`) branch was run, but both of them
     # are adding (n_out) and removing (n_in) the same number of elements of the
-    # stack (this was checked in __init__). _outputs_onto_stack just uses the
-    # layer's n_in and n_out, so we can pass either `true` or `false` to it.
+    # stack (this was checked in __init__). outputs_onto_stack just uses the
+    # layer's n_in, so we can pass either `true` or `false` to it.
     # Note that `outputs` is the actual output of `true` or `false` branch,
     # whichever was run, and we add it to the stack in any case.
-    stack = _outputs_onto_stack(self._true, outputs, stack)
+    stack = outputs_onto_stack(outputs, stack, self._true.n_in)
     self._true.state = both_states[0]
     self._false.state = both_states[1]
     return _make_singleitem_or_original(stack)
@@ -921,21 +921,17 @@ def _split_rngs(rng, n_copies):
   return fastmath.random.split(rng, n_copies)
 
 
-def _inputs_from_stack(layer, stack, n_in=None):
-  """Returns the correct number/format of inputs for the given layer."""
-  if n_in is None:
-    n_in = layer.n_in
+def inputs_from_stack(stack, n):
+  """Returns n inputs from stack."""
   stack = _make_tuple(stack)
-  return _make_singleitem_or_original(stack[:n_in])
+  return _make_singleitem_or_original(stack[:n])
 
 
-def _outputs_onto_stack(layer, outputs, stack, n_in=None):
-  """"Returns the new stack after outputs have been pushed onto it."""
-  if n_in is None:
-    n_in = layer.n_in
+def outputs_onto_stack(outputs, stack, n):
+  """"Returns the new stack after removing n items and pushing outputs there."""
   outputs = _make_tuple(outputs)
   stack = _make_tuple(stack)
-  return _make_singleitem_or_original(outputs + stack[n_in:])
+  return _make_singleitem_or_original(outputs + stack[n:])
 
 
 def _make_tuple(xs):

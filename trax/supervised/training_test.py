@@ -207,6 +207,45 @@ class TrainingTest(absltest.TestCase):
         (shapes.ShapeDtype((8, 1)), shapes.ShapeDtype((8, 2))),
     )
 
+  def test_train_memory_efficient(self):
+    """Trains a large network in a memory-efficient way."""
+    # This test requires > 20GB RAM, only run on TPUs. It does pass on GPU
+    # and CPU when you run it locally, but it's too big for unit-testing.
+    ram_limited = True  # Set to False to run this test locally.
+    if fastmath.device_count() == 1 and ram_limited:
+      return
+
+    # Create the model.
+    n_layers = 20  # 20 layers each 16K x 16K = 256M weights ~= 1GB, 20GB ram
+    model = tl.Serial(
+        tl.Embedding(9, 16*1024),
+        tl.Dup(),
+        [[tl.ReversibleHalfResidual(tl.Dense(16*1024)), tl.ReversibleSwap()]
+         for _ in range(n_layers)],
+        tl.Concatenate(),
+        tl.Dense(9),
+        tl.LogSoftmax()
+    )
+
+    # Create inputs.
+    inputs_batch = np.arange(8).reshape((2, 4))
+    targets_batch = inputs_batch
+    labeled_batch = (inputs_batch, targets_batch, np.ones_like(targets_batch))
+    def _data_gen():
+      while True:
+        yield labeled_batch
+
+    # Run training.
+    task = training.TrainTask(
+        _data_gen(), tl.CrossEntropyLoss(), optimizers.Adafactor)
+    eval_task = training.EvalTask(_data_gen(), [tl.CrossEntropyLoss()])
+    loop = training.Loop(model, [task], eval_tasks=[eval_task],
+                         eval_at=lambda step_n: step_n == 2,
+                         use_memory_efficient_trainer=True)
+    self.assertEqual(0, loop.step)
+    loop.run(n_steps=2)
+    self.assertEqual(2, loop.step)
+
 
 def _very_simple_data(output_dim=1):
   """"Returns stream of labeled data that maps small integers to constant pi."""

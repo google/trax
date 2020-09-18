@@ -518,7 +518,8 @@ def train(output_dir,
           metrics=None,
           checkpoint_highest=None,
           checkpoint_lowest=None,
-          use_loop=True):
+          use_loop=True,
+          use_memory_efficient_trainer=False):
   """Train the model on the inputs.
 
   Args:
@@ -544,6 +545,7 @@ def train(output_dir,
     checkpoint_highest: save the checkpoint highest at this metric.
     checkpoint_lowest: save the checkpoint lowest at this metric.
     use_loop: whether to use training.Loop instead of Trainer.
+    use_memory_efficient_trainer: whether to use memory-efficient trainer.
 
   Returns:
     trax.TrainerState or training.Loop if use_loop is True
@@ -555,9 +557,10 @@ def train(output_dir,
     # Inputs is either an Inputs instance or a function that returns it.
     if callable(inputs):  # If we pass a function, e.g., through gin, call it.
       inputs = inputs()
+    opt = optimizer if use_memory_efficient_trainer else optimizer()
     train_task = training.TrainTask(inputs.train_stream(n_devices),
                                     loss_layer=loss_fn,
-                                    optimizer=optimizer(),
+                                    optimizer=opt,
                                     lr_schedule=lr_schedule_fn(),
                                     n_steps_per_checkpoint=eval_frequency)
 
@@ -573,14 +576,16 @@ def train(output_dir,
     checkpoint_at = None
     if checkpoints_at is not None:
       checkpoint_at = lambda step: step in checkpoints_at
-    loop = training.Loop(model(mode='train'),
-                         [train_task],
-                         eval_model=model(mode='eval'),
-                         eval_tasks=[eval_task],
-                         output_dir=output_dir,
-                         checkpoint_at=checkpoint_at,
-                         n_devices=n_devices,
-                         random_seed=random_seed)
+    loop = training.Loop(
+        model(mode='train'),
+        [train_task],
+        eval_model=model(mode='eval'),
+        eval_tasks=[eval_task],
+        output_dir=output_dir,
+        checkpoint_at=checkpoint_at,
+        n_devices=n_devices,
+        use_memory_efficient_trainer=use_memory_efficient_trainer,
+        random_seed=random_seed)
 
     # Train and return the loop.
     loop.run(steps)
