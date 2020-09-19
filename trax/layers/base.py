@@ -439,7 +439,9 @@ class Layer:
 
   def weights_and_state_signature(self, input_signature):
     """Return a pair containing the signatures of weights and state."""
+    rng = self.rng
     abstract_init = fastmath.abstract_eval(self.init)
+    self.rng = rng
     return abstract_init(input_signature)
 
   @property

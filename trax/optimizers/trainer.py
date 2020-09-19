@@ -313,8 +313,8 @@ class ReversibleSerialTrainer(object):
   @slots.setter
   def slots(self, slots):
     """Sets the slots of all optimizers."""
-    for ((s_opts, r_opts), (s_slots, r_slots)) in zip(self._optimizers, slots):
-      for (opt, slot) in zip(s_opts + r_opts, s_slots + r_slots):
+    for ((s_opt, r_opts), (s_slots, r_slots)) in zip(self._optimizers, slots):
+      for (opt, slot) in zip([s_opt] + r_opts, [s_slots] + r_slots):
         opt.slots = slot
 
   def _pjit(self, f):

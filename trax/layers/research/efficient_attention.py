@@ -1651,6 +1651,9 @@ class SparseFF(base.Layer):
       Tensor of same shape and dtype as the input.
     """
     m1, m2, mb, w1, w2, b2 = self.weights
+    if self._mode != 'predict':
+      w1 = np.reshape(w1.T, (-1, self._d_ff))
+      w2 = np.reshape(w2, (self._d_ff, -1))
     x_shape = x.shape
     x = np.reshape(x, [-1, x_shape[-1]])  # Easier to operate on flattened x.
 
@@ -1684,8 +1687,8 @@ class SparseFF(base.Layer):
       relu = np.where(mid <= 0, np.zeros_like(mid), mid)
       res = np.dot(relu, w2) + b2
     elif self._mode == 'predict':
-      w1 = np.reshape(w1.T, (self._d1, self._d2, -1))
-      w2 = np.reshape(w2, (self._d1, self._d2, -1))
+      # w1 = np.reshape(w1.T, (self._d1, self._d2, -1))
+      # w2 = np.reshape(w2, (self._d1, self._d2, -1))
       # This implementation mimicks inference. It's not efficient for large
       # size of joint_batch, but at inference that will be 1 most of the time.
       # Shapes:
@@ -1733,4 +1736,7 @@ class SparseFF(base.Layer):
     w1 = self._kernel_initializer(shape_w1, rng_w1)
     w2 = self._kernel_initializer(shape_w2, rng_w2)
     b2 = self._bias_initializer(shape_b2, rng_b2)
+
+    w1 = np.reshape(w1.T, (self._d1, self._d2, -1))
+    w2 = np.reshape(w2, (self._d1, self._d2, -1))
     self.weights = (m1, m2, mb, w1, w2, b2)

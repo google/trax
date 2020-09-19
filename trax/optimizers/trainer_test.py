@@ -65,6 +65,19 @@ class TrainerTest(absltest.TestCase):
       rng = fastmath.random.get_prng(0)
       trainer.one_step(labeled_batch, rng)
 
+  def test_run_reversible_slots(self):
+    """Tests that slots can be read and assigned in reversible trainer."""
+    layers = [tl.Dense(4), tl.Dup()]
+    rev_layers = [tl.ReversibleHalfResidual(tl.Dense(4)),
+                  tl.ReversibleSwap()]
+    loss_layer = tl.Serial(tl.Concatenate(), tl.Dense(4),
+                           tl.LogSoftmax(), tl.CrossEntropyLoss())
+    trainer = optimizers.ReversibleSerialTrainer(
+        [(layers, rev_layers)], loss_layer, optimizers.Adam)
+    slots = trainer.slots
+    trainer.slots = slots
+    self.assertEqual(slots, trainer.slots)
+
   def test_run_reversible_same_as_default_basic(self):
     """Runs the reversible trainer, check results are the same as default."""
     inputs_batch = np.arange(8).reshape((2, 4))

@@ -230,6 +230,7 @@ class SerializationTest(parameterized.TestCase):
         action_serializer=act_serializer,
         significance_decay=0.9,
     )
+    rng = inner_model.rng
 
     obs_sig = shapes.ShapeDtype((1, 2))
     act_sig = shapes.ShapeDtype((1, 1))
@@ -239,6 +240,7 @@ class SerializationTest(parameterized.TestCase):
     (inner_weights, inner_state) = map(
         serialization_utils.extract_inner_model, (weights, state)
     )
+    inner_model.rng = rng
     inner_model(jnp.array([[0]]), weights=inner_weights, state=inner_state)
 
   @parameterized.named_parameters(('raw', None), ('serialized', 32))
