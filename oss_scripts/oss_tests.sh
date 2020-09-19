@@ -56,12 +56,20 @@ alias pytest='coverage run -m pytest'
 # parse flags, so it is important that no other flags be given to pytest for
 # these.
 
+# Disabled the decoding test for now, since it OOMs.
+
 pytest --disable-warnings \
+  --ignore=trax/supervised/trainer_lib_test.py \
   --ignore=trax/supervised/training_test.py \
+  --ignore=trax/supervised/decoding_test.py \
   trax/supervised
 set_status
 
-pytest trax/supervised/training_test.py
+# TODO(afrozm): Add the decoding_test.py back again.
+
+pytest \
+  trax/supervised/trainer_lib_test.py \
+  trax/supervised/training_test.py
 set_status
 
 pytest --disable-warnings \
@@ -92,6 +100,7 @@ set_status
 pytest --disable-warnings \
   --ignore=trax/rl/actor_critic_joint_test.py \
   --ignore=trax/rl/actor_critic_test.py \
+  --ignore=trax/rl/serialization_utils_test.py \
   --ignore=trax/rl/task_test.py \
   --ignore=trax/rl/training_test.py \
   trax/rl
@@ -100,6 +109,7 @@ set_status
 pytest \
   trax/rl/actor_critic_joint_test.py \
   trax/rl/actor_critic_test.py \
+  trax/rl/serialization_utils_test.py \
   trax/rl/task_test.py \
   trax/rl/training_test.py
 set_status
