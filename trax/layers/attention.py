@@ -228,7 +228,8 @@ def DotProductAttention(queries, keys, values, mask, dropout, mode, rng):
   return out, dots
 
 
-def CausalAttention(d_feature, n_heads=1, dropout=0.0, mode='train'):
+def CausalAttention(d_feature, n_heads=1, dropout=0.0,
+                    max_inference_length=2048, mode='train'):
   """Returns a layer that maps activations to activations, with causal masking.
 
   Like `Attention`, this layer type represents one pass of multi-head
@@ -239,6 +240,7 @@ def CausalAttention(d_feature, n_heads=1, dropout=0.0, mode='train'):
     n_heads: Number of attention heads.
     dropout: Probababilistic rate for internal dropout applied to attention
         activations (based on query-key pairs) before dotting them with values.
+    max_inference_length: maximum length for inference.
     mode: One of `'train'`, `'eval'`, or `'predict'`.
   """
   if d_feature % n_heads != 0:
@@ -279,7 +281,9 @@ def CausalAttention(d_feature, n_heads=1, dropout=0.0, mode='train'):
           [core.Dense(d_feature), _split_into_heads()],
           [core.Dense(d_feature), _split_into_heads()],
       ),
-      DotProductCausalAttention(dropout=dropout, mode=mode),
+      DotProductCausalAttention(
+          dropout=dropout, max_inference_length=max_inference_length,
+          mode=mode),
       _merge_heads(),
       core.Dense(d_feature),
   )
@@ -298,17 +302,19 @@ class DotProductCausalAttention(base.Layer):
   merging of attention heads will follow it.
   """
 
-  def __init__(self, dropout=0.0, mode='train'):
+  def __init__(self, dropout=0.0, max_inference_length=2048, mode='train'):
     """Creates a DotProductCausalAttention instance.
 
     Args:
       dropout: Probababilistic rate for dropout applied to attention strengths
           (based on query-key pairs) before applying them to values.
+      max_inference_length: maximum length of sequences during inference.
       mode: One of `'train'`, `'eval'`, or `'predict'`.
     """
     super().__init__(n_in=3, n_out=1)
     self._dropout = dropout
     self._mode = mode
+    self._max_len = max_inference_length
 
   def forward(self, inputs):
     """Returns attention-computed activations.
@@ -342,8 +348,7 @@ class DotProductCausalAttention(base.Layer):
   def init_weights_and_state(self, input_signature):
     """Initializes this layer for fast inference, if in `'predict'` mode."""
     if self._mode == 'predict':
-      max_len = 2048  # Hardcoded.  TODO(pkozakowski): Pass it from the model.
-      self.state = _fast_inference_init_state(input_signature, max_len)
+      self.state = _fast_inference_init_state(input_signature, self._max_len)
 
 
 def ShiftRight(n_positions=1, mode='train'):

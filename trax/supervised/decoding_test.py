@@ -209,8 +209,12 @@ class DecodingTest(test.TestCase):
       return functools.partial(
           layers.SelfAttention,
           predict_drop_len=2 * max_len,
-          predict_mem_len=2 * max_len,
-      )
+          predict_mem_len=2 * max_len)
+
+    def _causal_attention_fn():
+      return functools.partial(
+          layers.CausalAttention,
+          max_inference_length=2 * max_len)
 
     pred_model = models.Reformer2(
         mode='predict',
@@ -222,7 +226,7 @@ class DecodingTest(test.TestCase):
         n_encoder_layers=3,
         n_decoder_layers=3,
         encoder_attention_type=_self_attention_fn(),
-        encoder_decoder_attention_type=_self_attention_fn(),
+        encoder_decoder_attention_type=_causal_attention_fn(),
         input_vocab_size=32,
         ff_sparsity=128,
         axial_pos_shape=None,

@@ -16,6 +16,7 @@
 # Lint as: python3
 """Implementations of reversible layers."""
 
+import jax
 from trax import fastmath
 from trax.layers import base
 from trax.layers import combinators as cb
@@ -196,7 +197,11 @@ class ReversibleHalfResidual(ReversibleLayer):
     if self.attention_layer is None:
       self._sublayers = (self.compute_residual,)
     else:
-      assert hasattr(attention_layer, 'forward_and_or_backward')
+      if hasattr(attention_layer, 'forward_and_or_backward'):
+        self._forward_and_or_backward = attention_layer.forward_and_or_backward
+      else:
+        self._forward_and_or_backward = _forward_and_or_backward(
+            attention_layer)
       self._sublayers = (self.compute_residual, self.attention_layer)
 
     running_max = 0
@@ -264,7 +269,7 @@ class ReversibleHalfResidual(ReversibleLayer):
     else:
       inputs = cb.inputs_from_stack(stack, self.attention_layer.n_in)
       (residual, _, attn_inputs_ct, attn_weights_ct
-      ) = self.attention_layer.forward_and_or_backward(
+      ) = self._forward_and_or_backward(
           inputs, weights[1], new_state[1], rngs[1],
           output_grad=accumulator_output_ct,
           compute_output=True, update_state=False)
@@ -316,3 +321,52 @@ class ReversibleHalfResidual(ReversibleLayer):
       self.state = (state, attn_state)
       self.weights = (weights, attn_weights)
   # pylint: enable=protected-access
+
+
+def _forward_and_or_backward(layer):
+  """Create forward_and_or_backward for layers that don't define it."""
+  # TODO(lukaszkaiser): remove these 2 lines once PR #4039 lands for JAX.
+  if fastmath.is_backend(fastmath.Backend.JAX):
+    jax.api._check_inexact_input_vjp = lambda x: None  # pylint: disable=protected-access
+
+  def forward_and_or_backward(inputs, weights, state, rng, output_grad=None,
+                              compute_output=True, update_state=True):
+    """Performs batched forward and/or backward passes.
+
+    Args:
+      inputs: inputs to the attention layer
+      weights: weights for the attention layer
+      state: state of the attention layer
+      rng: PRNG key for the layer (shared across all examples and heads)
+      output_grad: gradient of the loss wrt the output of the layer, or None.
+          This function performs the backward pass iff `output_grad` is not
+          None.
+      compute_output: bool: whether to return the output of the forward pass
+          (for example, a pure backwards pass does not need to return the
+          output).
+      update_state: bool: whether to return an updated layer state.
+
+    Returns:
+      A tuple (output, new_state, inputs_grad, weights_grad).
+      - output is not None iff compute_output is True
+      - new_state is not None iff update_state is True
+      - inputs_grad & weights_grad are not None iff output_grad is not None
+    """
+    # We need a layer pure_fn but only for inputs and weights.
+    def pure_fn_without_state_and_rng(x, w):
+      return layer.pure_fn(x, w, state, rng)
+
+    # Calculate the vector-Jacobian product of the layer pure_fn.
+    output, vjp_fn, new_state = fastmath.vjp(
+        pure_fn_without_state_and_rng, inputs, weights, has_aux=True)
+    output = output if compute_output else None
+    new_state = new_state if update_state else None
+
+    # The vjp function returns gradients with respect to inputs and weights.
+    if output_grad is not None:
+      grads_inputs, grads_weights = vjp_fn(output_grad)
+    else:
+      grads_inputs, grads_weights = None, None
+
+    return (output, new_state, grads_inputs, grads_weights)
+  return forward_and_or_backward

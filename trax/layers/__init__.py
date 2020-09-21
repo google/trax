@@ -63,6 +63,7 @@ BatchNorm = layer_configure(BatchNorm)
 FilterResponseNorm = layer_configure(FilterResponseNorm)
 ThresholdedLinearUnit = layer_configure(ThresholdedLinearUnit)
 
+CausalAttention = layer_configure(CausalAttention, blacklist=['mode'])
 DotProductCausalAttention = layer_configure(
     DotProductCausalAttention, blacklist=['mode'])
 SelfAttention = layer_configure(SelfAttention, blacklist=['mode'])

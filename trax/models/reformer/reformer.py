@@ -105,9 +105,14 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
   Returns:
     the layer.
   """
-  attention = attention_type(
-      n_heads=n_heads, d_qk=d_attention_key, d_v=d_attention_value,
-      causal=True, output_dropout=dropout, mode=mode)
+  # TODO(lukaszkaiser): unify attention layers API and remove this branch
+  try:
+    attention = attention_type(
+        n_heads=n_heads, d_qk=d_attention_key, d_v=d_attention_value,
+        causal=True, output_dropout=dropout, mode=mode)
+  except TypeError:  # No d_qk arguments in less advanced layers.
+    attention = attention_type(d_model, n_heads=n_heads,
+                               dropout=dropout, mode=mode)
   attention_half_residual = tl.ReversibleHalfResidual(
       tl.LayerNorm(),
       attention_layer=attention,
