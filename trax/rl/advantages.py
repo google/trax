@@ -49,8 +49,8 @@ def monte_carlo(gamma, margin):
 
 
 @gin.configurable(blacklist=common_args)
-def td_k(gamma, margin):
-  """Calculate TD-k advantage.
+def td_k(gamma, margin, n_step=False):
+  """Calculate TD-k advantage or n_step returns.
 
   The k parameter is assumed to be the same as margin.
 
@@ -64,6 +64,9 @@ def td_k(gamma, margin):
   Args:
     gamma: float, gamma parameter for TD from the underlying task
     margin: number of extra steps in the sequence
+    n_step: if set to True, then we return
+
+    gamma^n_steps * value(s_{i + n_steps}) + discounted_rewards
 
   Returns:
     Function (rewards, returns, values, dones) -> advantages, where advantages
@@ -83,7 +86,8 @@ def td_k(gamma, margin):
     dones = dones[:, :-k]
     advantages[dones] = rewards[:, :-k][dones]
     # Subtract the baseline (value).
-    advantages -= values[:, :-k]
+    if not n_step:
+      advantages -= values[:, :-k]
     return advantages
   return estimator
 
