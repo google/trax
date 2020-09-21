@@ -29,10 +29,11 @@ noise_density = 0.15
 # Parameters for batcher:
 # ==============================================================================
 batcher.data_streams = @tf_inputs.data_streams
+batcher.bucket_length = 512
 # With 64, we get an average of weights_per_core = 450, so 450*8 = 3600 tokens
 # per batch on a 2x2 TPU on average per step. T5's batch is ~65k tokens/batch.
 # i.e. 18x bigger than ours.
-batcher.batch_size_per_device = 64
+batcher.batch_size_per_device = 4
 batcher.eval_batch_size = 64
 batcher.max_eval_length = %max_length
 batcher.buckets_include_inputs_in_length=True
@@ -50,8 +51,7 @@ data_streams.bare_preprocess_fn=@trax.data.tf_inputs.c4_bare_preprocess_fn
 # ==============================================================================
 multifactor.constant = 1.0
 multifactor.factors = 'constant * rsqrt_decay'
-# NOTE: T5's batch is 18x bigger, so we just 18x-ed their warmup steps (10k).
-multifactor.warmup_steps = 180000
+multifactor.warmup_steps = 10000
 
 # Parameters for Adafactor:
 # ==============================================================================
