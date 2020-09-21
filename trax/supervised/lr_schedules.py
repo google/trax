@@ -60,7 +60,8 @@ def multifactor(factors='constant * linear_warmup * rsqrt_decay',
                 warmup_steps=400,
                 decay_factor=0.5,
                 steps_per_decay=20000,
-                steps_per_cycle=100000):
+                steps_per_cycle=100000,
+                minimum=0):
   """Factor-based learning rate schedule.
 
   Interprets factors in the factors string which can consist of:
@@ -77,6 +78,7 @@ def multifactor(factors='constant * linear_warmup * rsqrt_decay',
     decay_factor: The amount to decay the learning rate by.
     steps_per_decay: How often to decay the learning rate.
     steps_per_cycle: Steps per cycle when using cosine decay.
+    minimum: if the computed rate is below the minimum, then return the minimum.
 
   Returns:
     a function learning_rate(step): float -> {'learning_rate': float}, the
@@ -105,7 +107,12 @@ def multifactor(factors='constant * linear_warmup * rsqrt_decay',
         ret *= (0.5 * (1.0 + jnp.cos(jnp.pi * (progress % 1.0))))
       else:
         raise ValueError('Unknown factor %s.' % name)
-    return float(ret)
+    # TODO(henrykm): return float(jnp.max(minimum, ret)) would be
+    # better but causes TypeError: 'numpy.float64' object cannot
+    # be interpreted as an integer
+    if ret <= minimum:
+      return minimum
+    return ret
 
   return learning_rate
 
