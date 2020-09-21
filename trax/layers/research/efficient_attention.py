@@ -558,7 +558,7 @@ class EfficientAttentionBase(base.Layer):
              np.zeros_like(buf[:, :self.predict_drop_len])], axis=1)
 
       do_roll_mem = (mem_end + seqlen > self.predict_mem_len)
-      mem = jax.lax.cond(
+      mem = fastmath.cond(
           pred=do_roll_mem,
           true_operand=mem,
           true_fun=lambda x: fastmath.nested_map(roll_mem, x),
@@ -599,7 +599,7 @@ class EfficientAttentionBase(base.Layer):
                        dtype=inp.dtype)
           ], axis=1)
         new_flat_mem.append(new_mem_val)
-      mem = jax.tree_unflatten(jax.tree_structure(mem), new_flat_mem)
+      mem, _ = fastmath.tree_unflatten(new_flat_mem, mem)
 
       # This code only works at the start of the sequence. There's no "assert"
       # primitive we can use to signal an error, so we instead signal the error
@@ -607,8 +607,8 @@ class EfficientAttentionBase(base.Layer):
       def replace_with_nan_if_not_seq_start(x):
         if x.dtype != np.float32:
           return x
-        return jax.lax.cond(
-            pred=jax.lax.eq(mem_end, np.array(0, dtype=mem_end.dtype)),
+        return fastmath.cond(
+            pred=np.equal(mem_end, np.array(0, dtype=mem_end.dtype)),
             true_operand=x, true_fun=lambda x: x,
             false_operand=x, false_fun=lambda x: x * np.nan)
       inputs = fastmath.nested_map(replace_with_nan_if_not_seq_start, inputs)
@@ -758,7 +758,8 @@ class EfficientAttentionBase(base.Layer):
             leaves.append(non_differentiable_leaves.pop(0))
         assert not differentiable_leaves
         assert not non_differentiable_leaves
-        return jax.tree_unflatten(jax.tree_structure(inputs), leaves)
+        tree, _ = fastmath.tree_unflatten(leaves, inputs)
+        return tree
 
       def vjp(fn, inp, *args, has_aux=False):
         d_inp, nd_inp = split_differentiable(inp)
@@ -1369,7 +1370,7 @@ class LSHSelfAttention(SelfAttention):
       new_buckets = np.reshape(new_buckets, (-1,))
       return new_buckets
 
-    buckets = jax.lax.cond(
+    buckets = fastmath.cond(
         pred=buckets_idx > q_start,
         true_operand=buckets,
         true_fun=roll_buckets,

@@ -130,10 +130,11 @@ class FixedBasePositionalEncoding(layer_base.Layer):
     positions = jnp.arange(0, length)[None, :]
     if self._mode == 'train':
       # In 1% of training cases still start from 0 to be exactly as in eval.
-      start_from_nonzero = jax.random.randint(
+      start_from_nonzero = fastmath.random.randint(
           rng1, (batch_size,), 0, self._start_from_zero_one_in)
       start_from_nonzero = jnp.minimum(1, start_from_nonzero)
-      random_start = jax.random.randint(rng2, (batch_size,), 0, max_pos-length)
+      random_start = fastmath.random.randint(
+          rng2, (batch_size,), 0, max_pos-length)
       random_start *= start_from_nonzero
       positions += random_start[:, None]
     res = []
@@ -147,7 +148,7 @@ class FixedBasePositionalEncoding(layer_base.Layer):
         pos_embeddings.append(cur_indices.astype(jnp.float32)[:, :, None] * s)
       embeddings = jnp.concatenate(pos_embeddings, axis=-1)
       if self._mode == 'train':
-        base_dropout = jax.random.randint(
+        base_dropout = fastmath.random.randint(
             rng3, (batch_size,), 0, self._base_dropout_one_in)
         base_dropout = jnp.minimum(1, base_dropout).astype(jnp.float32)
         embeddings *= base_dropout[:, None, None]
