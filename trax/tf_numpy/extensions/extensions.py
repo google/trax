@@ -1001,7 +1001,16 @@ def scan(f, init, xs, length=None, reverse=False):
       lambda t: (tf.TensorArray(t.dtype, size=0, dynamic_size=True).unstack(t)  # pylint: disable=g-long-lambda
                  if t is not None else None),
       xs)
-  def body(i, carry, ys_ta):
+  # tf.while_loop doesn't allow None in loop_vars, so we mask them.
+  is_init_none = tf.nest.map_structure(lambda x: x is None, init)
+  def to_safe(carry):
+    return tf.nest.map_structure(
+        lambda x, is_none: tf.zeros([]) if is_none else x, carry, is_init_none)
+  def from_safe(safe_carry):
+    return tf.nest.map_structure(
+        lambda x, is_none: None if is_none else x, safe_carry, is_init_none)
+  def body(i, safe_carry, ys_ta):
+    carry = from_safe(safe_carry)
     if reverse:
       i_ = length - 1 - i
     else:
@@ -1013,7 +1022,8 @@ def scan(f, init, xs, length=None, reverse=False):
         lambda y_ta, y: (y_ta.write(i_, y) if y is not None else y_ta),
         ys_ta, ys)
     i = i + 1
-    return i, carry, ys_ta
+    safe_carry = to_safe(carry)
+    return i, safe_carry, ys_ta
   xs_spec = tf.nest.map_structure(
       lambda t: tf.TensorSpec(t.shape[1:], t.dtype) if t is not None else None,
       xs)
@@ -1024,8 +1034,10 @@ def scan(f, init, xs, length=None, reverse=False):
       lambda y: tf.TensorArray(y.dtype if y is not None else tf.float32, size=0,  # pylint: disable=g-long-lambda
                                dynamic_size=True),
       ys_spec)
-  _, carry, ys_ta = tf.while_loop(
-      lambda i, *_: i < length, body, (0, init, ys_ta))
+  safe_init = to_safe(init)
+  _, safe_carry, ys_ta = tf.while_loop(
+      lambda i, *_: i < length, body, (0, safe_init, ys_ta))
+  carry = from_safe(safe_carry)
   def _stack(a, spec):
     if spec is None:
       return None
