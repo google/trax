@@ -469,6 +469,8 @@ class Loop:
     # only here do avoid potential divide-by-0
     n_steps = max(1, n_steps)
     _log('')  # Separator for visibility on terminals.
+    if self.step == 1:
+      self._log_n_weights()
     self._log_step('Ran %d train steps in %0.2f secs' % (n_steps, elapsed_time))
     self._log_scalars(
         {loss_name: total_loss / float(n_steps)},
@@ -497,6 +499,17 @@ class Loop:
       summary_writer.text(
           'gin_config', jaxboard.markdownify_operative_config_str(config_str)
       )
+
+  def _log_n_weights(self):
+    """"Logs the number of weights in the training model."""
+    def _size(x):
+      try:
+        return x.size
+      except Exception:  # pylint: disable=broad-except
+        return 0
+    sizes = fastmath.nested_map(_size, self._model.weights)
+    total_size = sum(fastmath.tree_flatten(sizes))
+    self._log_step('Total number of trainable weights: %d' % total_size)
 
   # TODO(afrozm): Fix multi-host evals, right now the reported numbers in the
   #   summary writer are only from the chief and not averaged across hosts.

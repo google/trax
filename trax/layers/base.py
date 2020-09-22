@@ -800,16 +800,16 @@ def _is_empty(container):
 
 def _find_frame(frame):
   """Find the frame with the caller on the stack."""
-  def _dirname_is_trax_layers(frame):
-    """Skip frames coming from trax/layers."""
+  def _dirname_is_trax_layers_or_gin(frame):
+    """Skip frames coming from trax/layers or .../gin."""
     try:
       dirname1 = frame.f_code.co_filename.split('/')[-3]
       dirname2 = frame.f_code.co_filename.split('/')[-2]
-      return dirname1 == 'trax' and dirname2 == 'layers'
+      return (dirname1 == 'trax' and dirname2 == 'layers') or dirname2 == 'gin'
     except IndexError:
       return False
 
-  while _dirname_is_trax_layers(frame):
+  while _dirname_is_trax_layers_or_gin(frame):
     frame = frame.f_back
   return frame
 
