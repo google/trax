@@ -19,6 +19,7 @@
 import gin
 import numpy as np
 
+from trax import fastmath
 
 common_args = ['gamma', 'margin']
 
@@ -81,7 +82,11 @@ def td_k(gamma, margin):
       discount *= gamma
     # Zero out the future returns at "done" states.
     dones = dones[:, :-k]
-    advantages[dones] = rewards[:, :-k][dones]
+    # TPU friendly version of the formula
+    # advantages[dones] = rewards[:, :-k][dones]
+    advantages = fastmath.index_update(advantages,
+                                       dones,
+                                       rewards[:, :-k][dones])
     # Subtract the baseline (value).
     advantages -= values[:, :-k]
     return advantages
