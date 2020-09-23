@@ -308,45 +308,81 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
     check_trace_only_once(
         tf.convert_to_tensor(value=1), tf.convert_to_tensor(value=2))
 
-  def _testEvalOnShapes(self, transformer):
+  def _testEvalOnShapes(self, transformer, allow_static_outputs):
 
-    def f(a, b):
-      return tf_np.sum(tf_np.sqrt(tf_np.exp(a)) + b)
+    # A class that's not convertable to tensor
+    class Thing:
 
-    f_prime = transformer(f)
+      def __init__(self, value):
+        self.value = value
+
+    def f(a, b, reverse=False):
+      res = tf_np.sum(tf_np.sqrt(tf_np.exp(a)) + b)
+      res = (res, 10)
+      if allow_static_outputs:
+        res = res + (Thing(20),)
+      if reverse:
+        res = tuple(reversed(res))
+      return res
+
+    f_prime = transformer(
+        f, static_argnums=(2,), allow_static_outputs=allow_static_outputs)
     shape = [10]
     dtype = np.float16
     a = tf_np.zeros(shape=shape, dtype=dtype)
     b = tf_np.zeros(shape=shape, dtype=dtype)
-    expected = f(a, b)
+    expected, *_ = f(a, b)
     got = f_prime(a, b)
-    self.assertAllEqual(expected.shape, got.shape)
-    self.assertAllEqual(expected.dtype, got.dtype)
+    def check(got):
+      self.assertIsInstance(got[0], (tf.TensorSpec, tf_np.ndarray))
+      self.assertAllEqual(expected.shape, got[0].shape)
+      self.assertAllEqual(expected.dtype, got[0].dtype)
+      if allow_static_outputs:
+        self.assertIsInstance(got[1], int)
+        self.assertEqual(10, got[1])
+        self.assertIsInstance(got[2], Thing)
+        self.assertEqual(20, got[2].value)
+      else:
+        self.assertIsInstance(got[1], (tf.TensorSpec, tf_np.ndarray))
+        self.assertAllEqual((), got[1].shape)
+    check(got)
     # Call again since the code path is different on second call
     got = f_prime(a, b)
-    self.assertAllEqual(expected.shape, got.shape)
-    self.assertAllEqual(expected.dtype, got.dtype)
+    check(got)
+    # Retrace and check again
+    got = f_prime(a, b, True)
+    check(tuple(reversed(got)))
+    got = f_prime(a, b, True)
+    check(tuple(reversed(got)))
 
-  def testEvalOnShapes(self):
+  @parameterized.named_parameters(("_%s" % b, b) for b in [False, True])
+  def testEvalOnShapes(self, allow_static_outputs):
+    self._testEvalOnShapes(extensions.eval_on_shapes, allow_static_outputs)
 
-    def transformer(f):
-      return extensions.eval_on_shapes(f)
-
-    self._testEvalOnShapes(transformer)
+  def testEvalOnShapesNested(self):
+    transformer = functools.partial(extensions.eval_on_shapes,
+                                    allow_static_outputs=True)
+    @transformer
+    def outer():
+      @transformer
+      def inner():
+        return 1
+      return inner() + 2
+    r = outer()
+    self.assertIsInstance(r, int)
+    self.assertEqual(3, r)
 
   def testJitOfEvalOnShapes(self):
     """Tests that eval_on_shapes can be called within jit."""
 
-    def transformer(f):
+    def transformer(f, **kwargs):
+      def f_prime(*args):
+        res = extensions.eval_on_shapes(f, **kwargs)(*args)
+        return tf.nest.map_structure(
+            lambda x: tf_np.zeros(x.shape, x.dtype), res)
+      return extensions.jit(f_prime, kwargs.get("static_argnums", ()))
 
-      @extensions.jit
-      def f_prime(a, b):
-        shape_dtype = extensions.eval_on_shapes(f)(a, b)
-        return tf_np.zeros(shape=shape_dtype.shape, dtype=shape_dtype.dtype)
-
-      return f_prime
-
-    self._testEvalOnShapes(transformer)
+    self._testEvalOnShapes(transformer, False)
 
   def testEvalOnShapesNoUnnecessaryTracing(self):
 

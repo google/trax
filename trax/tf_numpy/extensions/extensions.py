@@ -273,12 +273,10 @@ def grad(f, has_aux=False):
 _orig_result_is_list = threading.local()
 
 
-def _record_result_type(f):
-  # A wrapper just for setting _orig_result_is_list, as a workaround for
-  # b/121383831
+def _record_result_type(recorder, f):
   def wrapper(*args, **kwargs):
     res = f(*args, **kwargs)
-    _orig_result_is_list.val = isinstance(res, list)
+    res = recorder(args, kwargs, res)
     return res
 
   return wrapper
@@ -336,7 +334,11 @@ def jit(f,
     kwargs = {k: _tf_to_np(v) for k, v in kwargs.items()}
     if xla_forced_compile:
       # Workaround b/121383831
-      f_ = _record_result_type(f)
+      def recorder(args, kwargs, res):
+        del args, kwargs
+        _orig_result_is_list.val = isinstance(res, list)
+        return res
+      f_ = _record_result_type(recorder, f)
       np_out = tf.xla.experimental.compile(lambda: f_(*np_args, **kwargs))
       # Workaround b/121383831
       if (isinstance(np_out, list) and len(np_out) == 1 and
@@ -360,7 +362,7 @@ def jit(f,
   return _f
 
 
-def eval_on_shapes(f, static_argnums=()):
+def eval_on_shapes(f, static_argnums=(), allow_static_outputs=False):
   """Returns a function that evaluates `f` given input shapes and dtypes.
 
   It transforms function `f` to a function that performs the same computation as
@@ -368,13 +370,62 @@ def eval_on_shapes(f, static_argnums=()):
 
   Args:
     f: the function to be transformed.
-    static_argnums: See documentation of `jit`.
+    static_argnums: see documentation of `jit`.
+    allow_static_outputs: whether to allow non-array outputs. If True, non-array
+      outputs (e.g. Python integers) will be returned as-is; otherwise, they
+      will be converted to ndarrays, and then specs of those ndarrays will be
+      returned.
 
   Returns:
     A function whose input arguments can be either the same as `f`'s or only
     their shapes/dtypes represented by `tf.TensorSpec`, and whose return values
-    are `tf.TensorSpec`s with the same nested structure as `f`'s return values.
+    are `tf.TensorSpec`s with the same nested structure as `f`'s return
+    values. If `allow_static_outputs` is True, when `f` returns some non-array
+    outputs (e.g. Python integers), the converted function will return them
+    as-is instead of returning `tf.TensorSpec`s for them.
   """
+  def abstractify(args):
+    def _abstractify(x):
+      x = _canonicalize_jit_arg(x)
+      if isinstance(x, (tf.Tensor, tf_np.ndarray)):
+        return tf.TensorSpec(x.shape, x.dtype)
+      else:
+        return x
+    new_args = []
+    for i, arg in enumerate(args):
+      if i in static_argnums:
+        new_args.append(arg)
+      else:
+        new_args.append(tf.nest.map_structure(_abstractify, arg))
+    return new_args
+
+  if allow_static_outputs:
+    # When `tf_f` below is called (via get_concrete_function) with the same
+    # arugments (after abstraction), the Python function `f` won't be run, so we
+    # need this python_outputs_map to retrieve the Python outputs we've seen
+    # before that correspond the arguments.
+    python_outputs_map = {}
+    def recorder(args, kwargs, res):
+      # Since the get_concrete_function below only uses positional args, we also
+      # only positional args here.
+      del args, kwargs
+      def is_tensor_like(x):
+        if hasattr(x, "_type_spec"):
+          return True  # x is a CompositeTensor
+        return isinstance(x, (tf_np.ndarray, tf.Tensor))
+      py_values = tf.nest.map_structure(
+          lambda x: None if is_tensor_like(x) else x,
+          res)
+      key = id(tf.compat.v1.get_default_graph())
+      python_outputs_map[key] = py_values
+      # Set non-tensor outputs to None to avoid tf.function calling
+      # tf.convert_to_tensor on them.
+      res = tf.nest.map_structure(
+          lambda x: None if not is_tensor_like(x) else x,
+          res)
+      return res
+    f = _record_result_type(recorder, f)
+
   # TODO(wangpeng): tf.function could add a knob to turn off materializing the
   #   graph, so that we don't waste computation and memory when we just want
   #   shape inference.
@@ -382,29 +433,29 @@ def eval_on_shapes(f, static_argnums=()):
 
   # pylint: disable=missing-docstring
   def f_return(*args):
-
-    def abstractify(x):
-      x = _canonicalize_jit_arg(x)
-      if isinstance(x, (tf.Tensor, tf_np.ndarray)):
-        return tf.TensorSpec(x.shape, x.dtype)
-      else:
-        return x
-
     def to_tensor_spec(x):
       if isinstance(x, tf.Tensor):
         return tf.TensorSpec(x.shape, x.dtype)
       else:
         return x
 
-    new_args = []
-    for i, arg in enumerate(args):
-      if i in static_argnums:
-        new_args.append(arg)
-      else:
-        new_args.append(tf.nest.map_structure(abstractify, arg))
-    res = tf_f.get_concrete_function(*new_args).structured_outputs
+    new_args = abstractify(args)
+    cfun = tf_f.get_concrete_function(*new_args)
+    res = cfun.structured_outputs
+    res = tf.nest.map_structure(to_tensor_spec, res)
 
-    return tf.nest.map_structure(to_tensor_spec, res)
+    if allow_static_outputs:
+      key = id(cfun.graph)
+      py_values = python_outputs_map[key]
+      # We can also call tf.get_static_value on structured_outputs to retrieve
+      # the Python values, but since we'll need to use python_outputs_map to
+      # record "which outputs are static?" anyway, we choose to directly store
+      # the Python values in python_outputs_map.
+      res = tf.nest.map_structure(
+          lambda x, python_value: x if python_value is None else python_value,
+          res, py_values)
+
+    return res
 
   # Provides access to `tf_f` for testing purpose.
   f_return._tf_function = tf_f  # pylint: disable=protected-access
@@ -1459,7 +1510,11 @@ def _get_pmap_impl(f, devices, has_tpu):
   """
   if has_tpu:
     # Workaround b/121383831
-    f = _record_result_type(f)
+    def recorder(args, kwargs, res):
+      del args, kwargs
+      _orig_result_is_list.val = isinstance(res, list)
+      return res
+    f = _record_result_type(recorder, f)
 
   def tf_f(*tf_args):
     """A wrapper for `f` that takes/returns tensors."""
