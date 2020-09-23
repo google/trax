@@ -62,6 +62,7 @@ pytest --disable-warnings \
   --ignore=trax/supervised/trainer_lib_test.py \
   --ignore=trax/supervised/training_test.py \
   --ignore=trax/supervised/decoding_test.py \
+  --ignore=trax/supervised/decoding_timing_test.py \
   trax/supervised
 set_status
 
