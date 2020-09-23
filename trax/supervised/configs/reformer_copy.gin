@@ -23,7 +23,7 @@ vocab_size = 13  #  For addition, base = vocab_size - 3.
 # Parameters for data_streams:
 # ==============================================================================
 data_streams.data_dir = None
-data_streams.dataset_name = 'addition'
+data_streams.dataset_name = 'copy'
 
 # Parameters for sequence_copy_inputs:
 # ==============================================================================
@@ -70,7 +70,7 @@ ReformerLM.n_heads = 4
 ReformerLM.n_layers = 3
 ReformerLM.ff_use_sru = 1
 ReformerLM.axial_pos_shape = 'fixed-base'
-ReformerLM.attention_type = @LSHSelfAttention
+ReformerLM.attention_type = @LSHSelfAttention  # @CausalFavor
 ReformerLM.vocab_size = %vocab_size
 
 # Parameters for TransformerLM:

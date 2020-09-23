@@ -41,6 +41,8 @@ import jax
 from trax import fastmath
 from trax.fastmath import numpy as np
 from trax.layers import base
+from trax.layers import combinators as cb
+from trax.layers import core
 from trax.layers import initializers as init
 from trax.layers import metrics
 
@@ -1518,6 +1520,174 @@ class EncDecAttention(EfficientAttentionBase):
     out = np.matmul(o, w_o)
     out = apply_broadcasted_dropout(out, self.output_dropout, output_rng)
     return out, state
+
+
+def CausalFavor(d_feature, n_heads=1, dropout=0.0,  # pylint: disable=invalid-name
+                numerical_stabilizer=0.001, precision=None, mode='train'):
+  """Returns a layer that maps activations to activations, with causal masking.
+
+  Like `CausalAttention`, this layer type represents one pass of multi-head
+  causal attention, but using FAVOR fast attention as in the following paper:
+  https://arxiv.org/abs/2006.03555
+
+  Args:
+    d_feature: Depth/dimensionality of feature embedding.
+    n_heads: Number of attention heads.
+    dropout: Probababilistic rate for internal dropout applied to attention
+        activations (based on query-key pairs) before dotting them with values.
+    numerical_stabilizer: float, small number used for numerical stability.
+    precision: passed to np.einsum to define arithmetic precision.
+    mode: One of `'train'`, `'eval'`, or `'predict'`.
+  """
+  del dropout, mode  # not implemented yet but needed in the API
+
+  # TODO(lukaszkaiser): make an API for split/merge heads in core layers,
+  # and use it here so we don't duplicate these functions.
+  if d_feature % n_heads != 0:
+    raise ValueError(
+        f'Dimensionality of feature embedding ({d_feature}) is not a multiple '
+        f'of the requested number of attention heads ({n_heads}).')
+
+  d_head = d_feature // n_heads
+
+  def _split_into_heads():
+    """Returns a layer that reshapes tensors for multi-headed computation."""
+    def f(x):
+      batch_size = x.shape[0]
+      seq_len = x.shape[1]
+
+      # (b_size, seq_len, d_feature) --> (b_size*n_heads, seq_len, d_head)
+      x = x.reshape((batch_size, seq_len, n_heads, d_head))
+      x = x.transpose((0, 2, 1, 3))
+      x = x.reshape((-1, seq_len, d_head))
+      return x
+    return base.Fn('SplitIntoHeads', f)
+
+  def _merge_heads():
+    """Returns a layer that undoes splitting, after multi-head computation."""
+    def f(x):
+      seq_len = x.shape[1]
+
+      # (b_size*n_heads, seq_len, d_head) --> (b_size, seq_len, d_feature)
+      x = x.reshape((-1, n_heads, seq_len, d_head))
+      x = x.transpose((0, 2, 1, 3))
+      x = x.reshape((-1, seq_len, n_heads * d_head))
+      return x
+    return base.Fn('MergeHeads', f)
+
+  def favor_numerator_fwd(init_prefix_sum_value, precision,
+                          query_prime, key_prime, value):
+    def body(p, qkv):
+      (q, k, v) = qkv
+      p += np.einsum('...m,...d->...md', k, v, precision=precision)
+      x_slice = np.einsum('...m,...md->...d', q, p, precision=precision)
+      return p, x_slice
+    p, w = fastmath.scan(body, init_prefix_sum_value,
+                         (query_prime, key_prime, value))
+    return w, (p, query_prime, key_prime, value)
+
+  def favor_numerator_bwd(init_prefix_sum_value, precision, pqkv, w_ct):
+    del init_prefix_sum_value
+
+    def body(carry, qkv_xct):
+      p, p_ct = carry
+      q, k, v, x_ct = qkv_xct
+      q_ct = np.einsum('...d,...md->...m', x_ct, p, precision=precision)
+      p_ct += np.einsum('...d,...m->...md', x_ct, q, precision=precision)
+      k_ct = np.einsum('...md,...d->...m', p_ct, v, precision=precision)
+      v_ct = np.einsum('...md,...m->...d', p_ct, k, precision=precision)
+      p -= np.einsum('...m,...d->...md', k, v, precision=precision)
+      return (p, p_ct), (q_ct, k_ct, v_ct)
+
+    p, qs, ks, vs = pqkv
+    _, (qs_ct, ks_ct, vs_ct) = fastmath.scan(
+        body, (p, np.zeros_like(p)), (qs, ks, vs, w_ct), reverse=True)
+    return qs_ct, ks_ct, vs_ct
+
+  @functools.partial(jax.custom_vjp, nondiff_argnums=(0, 1))
+  def favor_numerator(init_prefix_sum_value, precision, query_prime,
+                      key_prime, value):
+    w, _ = favor_numerator_fwd(init_prefix_sum_value, precision,
+                               query_prime, key_prime, value)
+    return w
+
+  favor_numerator.defvjp(favor_numerator_fwd, favor_numerator_bwd)
+
+  def favor_denominator_fwd(init_prefix_sum_value, precision,
+                            query_prime, key_prime):
+    def body(p, qk):
+      q, k = qk
+      p += k
+      x = np.einsum('...m,...m->...', q, p, precision=precision)
+      return p, x
+
+    p, r = fastmath.scan(body, init_prefix_sum_value, (query_prime, key_prime))
+    return r, (query_prime, key_prime, p)
+
+  def favor_denominator_bwd(init_prefix_sum_value, precision, qkp, r_ct):
+    del init_prefix_sum_value
+
+    def body(carry, qkx):
+      p, p_ct = carry
+      q, k, x_ct = qkx
+      q_ct = np.einsum('...,...m->...m', x_ct, p, precision=precision)
+      p_ct += np.einsum('...,...m->...m', x_ct, q, precision=precision)
+      k_ct = p_ct
+      p -= k
+      return (p, p_ct), (q_ct, k_ct)
+
+    qs, ks, p = qkp
+    _, (qs_ct, ks_ct) = fastmath.scan(
+        body, (p, np.zeros_like(p)), (qs, ks, r_ct), reverse=True)
+    return (qs_ct, ks_ct)
+
+  @functools.partial(jax.custom_vjp, nondiff_argnums=(0, 1))
+  def favor_denominator(init_prefix_sum_value, precision, query_prime,
+                        key_prime):
+    r, _ = favor_denominator_fwd(init_prefix_sum_value, precision,
+                                 query_prime, key_prime)
+    return r
+
+  favor_denominator.defvjp(favor_denominator_fwd, favor_denominator_bwd)
+
+  def relu(x):
+    return np.where(x <= 0, np.zeros_like(x), x)
+
+  def favor(query, key, value):
+    query_prime = relu(query) + numerical_stabilizer
+    key_prime = relu(key) + numerical_stabilizer
+    prefix_sum_tensor_shape = (key.shape[0], key.shape[-1], value.shape[-1])
+    t_slice_shape = (key.shape[0], key.shape[-1])
+    init_prefix_sum_value_numerator = np.zeros(prefix_sum_tensor_shape)
+    init_prefix_sum_value_denominator = np.zeros(t_slice_shape)
+
+    w = favor_numerator(init_prefix_sum_value_numerator, precision,
+                        np.moveaxis(query_prime, 1, 0),
+                        np.moveaxis(key_prime, 1, 0),
+                        np.moveaxis(value, 1, 0))
+    r = favor_denominator(init_prefix_sum_value_denominator,
+                          precision,
+                          np.moveaxis(query_prime, 1, 0),
+                          np.moveaxis(key_prime, 1, 0))
+    w = np.moveaxis(w, 0, 1)
+    r = np.moveaxis(r, 0, 1)
+
+    r = r + 2 * numerical_stabilizer * (np.abs(r) <= numerical_stabilizer)
+    r = np.reciprocal(r)
+    r = np.expand_dims(r, len(r.shape))
+    renormalized_attention = w * r
+    return renormalized_attention
+
+  return cb.Serial(
+      cb.Branch(
+          [core.Dense(d_feature), _split_into_heads()],
+          [core.Dense(d_feature), _split_into_heads()],
+          [core.Dense(d_feature), _split_into_heads()],
+      ),
+      base.Fn('FAVOR', favor),
+      _merge_heads(),
+      core.Dense(d_feature),
+  )
 
 
 class LSHFF(base.Layer):
