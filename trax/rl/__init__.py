@@ -38,3 +38,4 @@ AWRJoint = configure_rl(actor_critic_joint.AWRJoint)
 PPOJoint = configure_rl(actor_critic_joint.PPOJoint)
 
 PolicyGradient = configure_rl(training.PolicyGradient)
+DQN = configure_rl(training.DQN)
