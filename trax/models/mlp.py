@@ -24,6 +24,7 @@ def PureMLP(
     activation_fn=tl.Relu,
     out_activation=False,
     flatten=True,
+    layer_norm=False,
     mode='train'):
   """A "multilayer perceptron" (MLP) network.
 
@@ -44,6 +45,7 @@ def PureMLP(
         last layer in the network.
     flatten: If True, insert a layer at the head of the network to flatten the
         input tensor into a matrix of shape (batch_size. -1).
+    layer_norm: Add layer norm.
     mode: Ignored.
 
   Returns:
@@ -57,10 +59,14 @@ def PureMLP(
   for width in layer_widths:
     layers.append(tl.Dense(width))
     layers.append(activation_fn())
+    if layer_norm:
+      layers.append(tl.LayerNorm())
 
   if not out_activation:
     # Don't need the last activation.
     layers.pop()
+    if layer_norm:
+      layers.pop()
 
   return tl.Serial(
       [tl.Flatten()] if flatten else [],
