@@ -156,7 +156,16 @@ class ActorCriticAgent(rl_training.PolicyAgent):
         loss_fn=tl.L2Loss(),
         inputs=self._value_inputs,
         output_dir=value_output_dir,
-        metrics={'value_loss': tl.L2Loss()})
+        metrics={'value_loss': tl.L2Loss(),
+                 'value_mean': self.value_mean})
+
+  @property
+  def value_mean(self):
+    """The mean value of the value function."""
+    # TODO(henrykm): A better solution would take into account the masks
+    def f(values):
+      return jnp.mean(values)
+    return tl.Fn('ValueMean', f)
 
   @property
   def _value_model_signature(self):
