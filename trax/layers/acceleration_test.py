@@ -49,6 +49,17 @@ class AccelerationTest(absltest.TestCase):
       self.assertAlmostEqual(float(y[i, 0]), float(z[i, 0]), places=4)
       self.assertAlmostEqual(float(y[i, 1]), float(z[i, 1]), places=4)
 
+  def test_chunk_memory(self):
+    """Test chunking here to exercise accelerator memory usage."""
+    layer = tl.Serial(tl.Dense(1024*1024), tl.Dense(128))
+    chunked = tl.Chunk(layer, 256)
+    x = np.random.uniform(size=(16*1024, 16))
+    chunked.init(shapes.signature(x))
+    y = chunked(x)
+    z = tl.Accelerate(chunked)(x)
+    self.assertEqual(y.shape, (16*1024, 128))
+    self.assertEqual(z.shape, (16*1024, 128))
+
 
 if __name__ == '__main__':
   config.config_with_absl()

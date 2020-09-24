@@ -54,17 +54,8 @@ def ChunkedFeedForward(d_model, d_ff, dropout, activation, act_dropout,
   ff = FeedForward(d_model, d_ff, dropout, activation, act_dropout, mode)
   if chunk_size < 1:
     return ff
-  def reshape_to_chunks(x):
-    batch_times_length = x.shape[0] * x.shape[1]
-    assert batch_times_length % chunk_size == 0
-    n_chunks = batch_times_length // chunk_size
-    return jnp.reshape(x, [n_chunks, 1, chunk_size] + list(x.shape[2:]))
-  return [
-      tl.Dup(),  # Just to have shape for later after scan.
-      tl.Fn('ReshapeToChunks', reshape_to_chunks, n_out=1),
-      tl.Scan(tl.Serial(ff), axis=0, n_carry=0, remat=True),
-      tl.Fn('ReshapeXToY', lambda x, y: jnp.reshape(x, y.shape))
-  ]
+  return tl.BatchLeadingAxes(tl.Chunk(tl.Serial(ff), chunk_size),
+                             n_last_axes_to_keep=1)
 
 
 def FeedForwardWithOptions(d_model, d_ff, dropout, ff_activation, ff_dropout,

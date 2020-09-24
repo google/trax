@@ -484,6 +484,17 @@ class SwapTest(absltest.TestCase):
                                    [1, 2, 3]])
 
 
+class ChunkTest(absltest.TestCase):
+
+  def test_chunk(self):
+    layer = tl.Dense(4)
+    x = np.array([[1, 2, 3], [4, 5, 6]])
+    layer.init(x)
+    y = layer(x)
+    z = tl.Chunk(layer, 1)(x)
+    self.assertLess(np.sum((y - z)**2), 1e-5)  # y == z upto numerics
+
+
 class SerialWithSideOutputsTest(absltest.TestCase):
 
   def test_serial_with_side_outputs_div_div(self):
