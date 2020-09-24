@@ -1,0 +1,81 @@
+# Copyright 2020 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.supervised.lr_schedules
+import trax.models
+import trax.optimizers
+import trax.rl
+import trax.rl.distributions
+import trax.rl.normalization
+
+# Parameters for Quality:
+# ==============================================================================
+Quality.body = @trax.models.PureMLP
+
+# Parameters for PureMLP:
+# ==============================================================================
+PureMLP.flatten = False
+PureMLP.layer_widths = (32,32,)
+PureMLP.out_activation = True
+PureMLP.layer_norm = True
+
+value_lr = 0.0001
+initial_exploration_rate = 1
+exploration_decay_factor = 0.995
+minimum_exploration = 0.1
+steps_per_decay = 1
+
+# Parameters for multifactor:
+# ==============================================================================
+value/multifactor.constant = %value_lr
+value/multifactor.factors = 'constant'
+value/multifactor.warmup_steps = 100
+exploration_rate/multifactor.constant = %initial_exploration_rate
+exploration_rate/multifactor.decay_factor = %exploration_decay_factor
+exploration_rate/multifactor.minimum = %minimum_exploration
+exploration_rate/multifactor.steps_per_decay = %steps_per_decay
+exploration_rate/multifactor.factors = 'constant * decay_every'
+
+# Parameters for RLTask:
+# ==============================================================================
+RLTask.env = "CartPole-v0"
+RLTask.initial_trajectories = 0
+RLTask.gamma = 0.999
+RLTask.max_steps = 200
+
+# Parameters for DQN:
+# ==============================================================================
+DQN.value_optimizer = @trax.optimizers.Adam
+DQN.value_body = @trax.models.PureMLP
+DQN.value_batch_size = 32
+DQN.value_train_steps_per_epoch = 100
+DQN.value_evals_per_epoch = 1
+DQN.value_eval_steps = 1
+DQN.exploration_rate = @exploration_rate/multifactor
+DQN.value_lr_schedule = @value/multifactor
+DQN.n_eval_episodes = 1
+DQN.only_eval = False
+DQN.n_replay_epochs = 500
+DQN.max_slice_length = 2
+DQN.sync_freq = 1000
+DQN.scale_value_targets = True
+DQN.n_interactions_per_epoch = 200
+DQN.advantage_estimator = @trax.rl.advantages.td_k
+DQN.double_dqn = True
+
+# Parameters for train_rl:
+# ==============================================================================
+train_rl.light_rl = True
+train_rl.light_rl_trainer = @trax.rl.DQN
+train_rl.n_epochs = 500
