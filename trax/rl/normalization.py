@@ -111,3 +111,15 @@ class Normalize(tl.Layer):
     norm_observations = (observations - mean) / (var ** 0.5 + self._epsilon)
     self.state = state
     return norm_observations
+
+
+@gin.configurable(blacklist=['mode'])
+def LayerNormSquash(mode, width=128):  # pylint: disable=invalid-name
+  """Dense-LayerNorm-Tanh normalizer inspired by ACME."""
+  # https://github.com/deepmind/acme/blob/master/acme/jax/networks/continuous.py#L34
+  del mode
+  return tl.Serial([
+      tl.Dense(width),
+      tl.LayerNorm(),
+      tl.Tanh(),
+  ])

@@ -78,15 +78,13 @@ def Value(
   def ActionInjector(mode):
     if inject_actions:
       if is_discrete:
-        encode_layer = tl.Parallel(
-            tl.Dense(inject_actions_dim),
-            tl.Embedding(vocab_size, inject_actions_dim)
-        )
+        action_encoder = tl.Embedding(vocab_size, inject_actions_dim)
       else:
-        encode_layer = tl.Parallel(
-            tl.Dense(inject_actions_dim),
-            tl.Dense(inject_actions_dim),
-        )
+        action_encoder = tl.Dense(inject_actions_dim)
+      encoders = tl.Parallel(
+          tl.Dense(inject_actions_dim),
+          action_encoder,
+      )
       if multiplicative_action_injection:
         action_injector = tl.Serial(
             tl.Fn('TanhMulGate', lambda x, a: x * jnp.tanh(a)),
@@ -96,7 +94,7 @@ def Value(
         action_injector = tl.Add()
       return tl.Serial(
           # Input: (body output, actions).
-          encode_layer,
+          encoders,
           action_injector,
           models.PureMLP(
               layer_widths=(inject_actions_dim,) * inject_actions_n_layers,

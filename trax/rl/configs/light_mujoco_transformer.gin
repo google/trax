@@ -101,7 +101,7 @@ AWR.scale_value_targets = True
 AWR.n_shared_layers = 1
 AWR.q_value = False
 AWR.q_value_n_samples = 128
-AWR.q_value_aggregate_max = True
+AWR.q_value_aggregate = 'max'
 
 # Parameters for SamplingAWR:
 # ==============================================================================
@@ -132,7 +132,7 @@ SamplingAWR.n_replay_epochs = 25
 SamplingAWR.scale_value_targets = True
 SamplingAWR.n_shared_layers = 1
 SamplingAWR.q_value_n_samples = 128
-SamplingAWR.q_value_aggregate_max = True
+SamplingAWR.q_value_aggregate = 'max'
 SamplingAWR.reweight = False
 
 # Parameters for train_rl:

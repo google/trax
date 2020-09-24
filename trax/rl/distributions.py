@@ -109,7 +109,8 @@ class Categorical(Distribution):
         axis=[-a for a in range(1, len(self._shape) + 2)],
     )
 
-  def entropy(self, log_probs):
+  def entropy(self, inputs):
+    log_probs = inputs
     probs = jnp.exp(log_probs)
     return -jnp.sum(probs * log_probs, axis=-1)
 
@@ -118,46 +119,75 @@ class Categorical(Distribution):
 class Gaussian(Distribution):
   """Independent multivariate Gaussian distribution parametrized by mean."""
 
-  def __init__(self, shape=(), std=1.0):
+  def __init__(self, shape=(), std=1.0, learn_std=None):
     """Initializes Gaussian distribution.
 
     Args:
       shape (tuple): Shape of the sample.
       std (float): Standard deviation, shared across the whole sample.
+      learn_std (str or None): How to learn the standard deviation - 'shared'
+        to have a single, shared std parameter, or 'separate' to have separate
+        parameters for each dimension.
     """
     self._shape = shape
     self._std = std
+    self._learn_std = learn_std
+
+  @property
+  def _n_dims(self):
+    return np.prod(self._shape, dtype=jnp.int32)
+
+  def _params(self, inputs):
+    """Extracts the mean and std parameters from the inputs."""
+    assert inputs.shape[-1] == self.n_inputs
+    n_dims = self._n_dims
+    # Split the distribution inputs into two parts: mean and std.
+    mean = inputs[..., :n_dims]
+    if self._learn_std is not None:
+      std = inputs[..., n_dims:]
+      # Std is non-negative, so let's softplus it.
+      std = tl.Softplus()(std + self._std)
+    else:
+      std = self._std
+    # In case of constant or shared std, upsample it to the same dimensionality
+    # as the means.
+    std = jnp.broadcast_to(std, mean.shape)
+    return (mean, std)
 
   @property
   def n_inputs(self):
-    return np.prod(self._shape, dtype=jnp.int32)
+    n_dims = self._n_dims
+    return {
+        None: n_dims,
+        'shared': n_dims + 1,
+        'separate': n_dims * 2,
+    }[self._learn_std]
 
   def sample(self, inputs, temperature=1.0):
+    (mean, std) = self._params(inputs)
+    mean = jnp.reshape(mean, mean.shape[:-1] + self._shape)
+    std = jnp.reshape(std, std.shape[:-1] + self._shape)
     if temperature == 0:
       # this seemingly strange if solves the problem
       # of calling np/jnp.random in the metric PreferredMove
-      return inputs
+      return mean
     else:
-      return np.random.normal(
-          loc=jnp.reshape(inputs, inputs.shape[:-1] + self._shape),
-          scale=self._std * temperature,
-      )
+      return np.random.normal(loc=mean, scale=(std * temperature))
 
   def log_prob(self, inputs, point):
     point = point.reshape(inputs.shape[:-1] + (-1,))
-    return (
-        # L2 term.
-        -jnp.sum((point - inputs) ** 2, axis=-1) / (2 * self._std ** 2) -
+    (mean, std) = self._params(inputs)
+    return -jnp.sum(
+        # Scaled distance.
+        (point - mean) ** 2 / (2 * std ** 2) +
         # Normalizing constant.
-        ((jnp.log(self._std) + jnp.log(jnp.sqrt(2 * jnp.pi)))
-         * np.prod(self._shape))
+        (jnp.log(std) + jnp.log(jnp.sqrt(2 * jnp.pi))),
+        axis=-1,
     )
 
-  # At that point self._std is not learnable, hence
-  # we return a constant
-  def entropy(self, log_probs):
-    del log_probs  # would be helpful if self._std was learnable
-    return jnp.exp(self._std) + .5 * jnp.log(2.0 * jnp.pi * jnp.e)
+  def entropy(self, inputs):
+    (_, std) = self._params(inputs)
+    return jnp.sum(jnp.exp(std) + .5 * jnp.log(2.0 * jnp.pi * jnp.e), axis=-1)
 
 
 # TODO(pkozakowski): Implement GaussianMixture.

@@ -57,7 +57,8 @@ class ActorCriticAgent(rl_training.PolicyAgent):
                n_replay_epochs=1,
                scale_value_targets=False,
                q_value=False,
-               q_value_aggregate_max=True,
+               q_value_aggregate='max',
+               q_value_temperature=1.0,
                q_value_n_samples=1,
                **kwargs):  # Arguments of PolicyAgent come here.
     """Configures the actor-critic trainer.
@@ -70,8 +71,9 @@ class ActorCriticAgent(rl_training.PolicyAgent):
       value_batch_size: Batch size for value model training.
       value_train_steps_per_epoch: Number of steps are we using to train the
           value model in each epoch.
-      value_evals_per_epoch: Number of value trainer evaluations per RL epoch;
-          only affects metric reporting.
+      value_evals_per_epoch: Number of value trainer evaluations per RL epoch.
+          Every evaluation, we also synchronize the weights of the target
+          network.
       value_eval_steps: Number of value trainer steps per evaluation; only
           affects metric reporting.
       n_shared_layers: Number of layers to share between value and policy
@@ -86,7 +88,10 @@ class ActorCriticAgent(rl_training.PolicyAgent):
       scale_value_targets: If `True`, scale value function targets by
           `1 / (1 - gamma)`.
       q_value: If `True`, use Q-values as baselines.
-      q_value_aggregate_max: If `True`, aggregate Q-values with max (or mean).
+      q_value_aggregate: How to aggregate Q-values. Options: 'mean', 'max',
+        'softmax', 'logsumexp'.
+      q_value_temperature: Temperature parameter for the 'softmax' and
+        'logsumexp' aggregation methods.
       q_value_n_samples: Number of samples to average over when calculating
           baselines based on Q-values.
       **kwargs: Arguments for `PolicyAgent` superclass.
@@ -112,7 +117,8 @@ class ActorCriticAgent(rl_training.PolicyAgent):
       self._value_network_scale = 1
 
     self._q_value = q_value
-    self._q_value_aggregate_max = q_value_aggregate_max
+    self._q_value_aggregate = q_value_aggregate
+    self._q_value_temperature = q_value_temperature
     self._q_value_n_samples = q_value_n_samples
 
     is_discrete = isinstance(self._task.action_space, gym.spaces.Discrete)
@@ -230,14 +236,31 @@ class ActorCriticAgent(rl_training.PolicyAgent):
     values = jnp.squeeze(values, axis=-1)  # Remove the singleton depth dim.
     return (values, actions, log_probs)
 
-  def _aggregate_values(self, values, aggregate_max, act_log_probs):
+  def _aggregate_values(self, values, aggregate, act_log_probs):
+    temp = self._q_value_temperature
     if self._q_value:
-      if aggregate_max:
+      assert values.shape[:2] == (
+          self._value_batch_size, self._q_value_n_samples
+      )
+      if aggregate == 'max':
+        # max_a Q(s, a)
         values = jnp.max(values, axis=1)
-      elif self._sample_all_discrete_actions:
-        values = jnp.sum(values * jnp.exp(act_log_probs), axis=1)
+      elif aggregate == 'softmax':
+        # sum_a (Q(s, a) * w(s, a))
+        # where w(s, .) = softmax (Q(s, .) / T)
+        weights = tl.Softmax(axis=1)(values / temp)
+        values = jnp.sum(values * weights, axis=1)
+      elif aggregate == 'logsumexp':
+        # log(mean_a exp(Q(s, a) / T)) * T
+        n = values.shape[1]
+        values = (fastmath.logsumexp(values / temp, axis=1) - jnp.log(n)) * temp
       else:
-        values = jnp.mean(values, axis=1)
+        assert aggregate == 'mean'
+        # mean_a Q(s, a)
+        if self._sample_all_discrete_actions:
+          values = jnp.sum(values * jnp.exp(act_log_probs), axis=1)
+        else:
+          values = jnp.mean(values, axis=1)
     return np.array(values)  # Move the values to CPU.
 
   def value_batches_stream(self):
@@ -254,7 +277,7 @@ class ActorCriticAgent(rl_training.PolicyAgent):
           np_trajectory.observations, np_trajectory.dist_inputs
       )
       values = self._aggregate_values(
-          values, self._q_value_aggregate_max, act_log_probs)
+          values, self._q_value_aggregate, act_log_probs)
 
       # TODO(pkozakowski): Add some shape assertions and docs.
       # Calculate targets based on the advantages over the target network - this
@@ -311,7 +334,7 @@ class ActorCriticAgent(rl_training.PolicyAgent):
         include_final_state=False):
       (values, _, act_log_probs) = self._run_value_model(
           np_trajectory.observations, np_trajectory.dist_inputs)
-      values = self._aggregate_values(values, False, act_log_probs)
+      values = self._aggregate_values(values, 'mean', act_log_probs)
       if len(values.shape) != 2:
         raise ValueError('Values are expected to have shape ' +
                          '[batch_size, length], got: %s' % str(values.shape))
@@ -345,6 +368,9 @@ class ActorCriticAgent(rl_training.PolicyAgent):
           self._value_train_steps_per_epoch // self._value_evals_per_epoch,
           self._value_eval_steps,
       )
+      # Update the target value network.
+      self._value_eval_model.weights = self._value_trainer.model_weights
+      self._value_eval_model.state = self._value_trainer.model_state
 
     # Copy value weights and state to policy trainer.
     if self._n_shared_layers > 0:

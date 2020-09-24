@@ -14,10 +14,11 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Tests for initializers."""
+"""Tests for trax.rl.distributions."""
 
 from absl.testing import absltest
 from absl.testing import parameterized
+import gin
 import gym
 import numpy as np
 
@@ -27,11 +28,25 @@ from trax.rl import distributions
 class DistributionsTest(parameterized.TestCase):
 
   @parameterized.named_parameters(
-      ('discrete', gym.spaces.Discrete(n=4)),
-      ('multi_discrete', gym.spaces.MultiDiscrete(nvec=[5, 5])),
-      ('gaussian', gym.spaces.Box(low=-np.inf, high=+np.inf, shape=(4, 5))),
+      ('discrete', gym.spaces.Discrete(n=4), ''),
+      ('multi_discrete', gym.spaces.MultiDiscrete(nvec=[5, 5]), ''),
+      (
+          'gaussian_const_std',
+          gym.spaces.Box(low=-np.inf, high=+np.inf, shape=(4, 5)),
+          'Gaussian.learn_std = None',
+      ), (
+          'gaussian_shared_std',
+          gym.spaces.Box(low=-np.inf, high=+np.inf, shape=(4, 5)),
+          'Gaussian.learn_std = "shared"',
+      ), (
+          'gaussian_separate_std',
+          gym.spaces.Box(low=-np.inf, high=+np.inf, shape=(4, 5)),
+          'Gaussian.learn_std = "separate"',
+      ),
   )
-  def test_shapes(self, space):
+  def test_shapes(self, space, gin_config):
+    gin.parse_config(gin_config)
+
     batch_shape = (2, 3)
     distribution = distributions.create_distribution(space)
     inputs = np.random.random(batch_shape + (distribution.n_inputs,))

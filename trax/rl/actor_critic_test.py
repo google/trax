@@ -196,7 +196,7 @@ class ActorCriticTest(absltest.TestCase):
         advantage_estimator=advantages.monte_carlo,
         advantage_normalization=False,
         q_value_n_samples=3,
-        q_value_aggregate_max=True,
+        q_value_aggregate='max',
         reweight=False,
     )
     trainer.run(1)
@@ -229,7 +229,7 @@ class ActorCriticTest(absltest.TestCase):
         advantage_estimator=advantages.monte_carlo,
         advantage_normalization=False,
         q_value_n_samples=2,
-        q_value_aggregate_max=True,
+        q_value_aggregate='max',
         reweight=False,
     )
     trainer.run(1)
