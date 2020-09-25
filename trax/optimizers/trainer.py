@@ -597,12 +597,15 @@ def _is_empty_tuple(x):
   return True
 
 
-def extract_reversible_blocks(layers):
+def extract_reversible_blocks(layers, loss_chunk_size=0):
   """Extracts blocks and loss layer for use with ReversibleSerialTrainer.
 
   Args:
     layers: a list of layers of a single layer to extract blocks from;
       should end with a loss, e.g., [model, loss] or tl.Serial(model, loss).
+    loss_chunk_size: int, if > 0 creates a chunked loss layer to save memory
+      in models with larger vocabulary; requires the last sublayers of loss
+      are [Dense, LogSoftmax, _CrossEntropy, _WeightedMean] in that order.
 
   Returns:
     a pair (blocks, loss_layer) to use with ReversibleSerialTrainer.
@@ -629,7 +632,36 @@ def extract_reversible_blocks(layers):
       std_layers.append(layer)
   if rev_layers:
     raise ValueError('The final layer must be a standard loss, not reversible.')
-  loss_layer = tl.Serial(std_layers)
+  if loss_chunk_size > 0:
+    # For now we only do chunking of [Dense, LogSoftmax, CrossEntopy, Mean]
+    # Let's check that these are the last 4 layers.
+    if len(std_layers) < 4:
+      raise ValueError('Too short loss layer for chunking')
+    # To check for Dense, remove the n_units part from name.
+    name4 = std_layers[-4].name[:5]  # Just 'Dense' not e.g., 'Dense_32000'.
+    last_4_names = ' '.join([name4] + [l.name for l in std_layers[-3:]])
+    if last_4_names != 'Dense LogSoftmax _CrossEntropy _WeightedMean':
+      raise ValueError('Loss chunking only works with last layers being "Dense'
+                       ' LogSoftmax, _CrossEntropy, _WeightedMean" but got: ' +
+                       last_4_names)
+    # Create chunked dense+logsoftmax+cross-entropy-loss.
+    chunked_xent = tl.Chunk(tl.Serial(std_layers[-4:-1]), loss_chunk_size)
+    # The chunked loss should operate on a merged batch dimension, e.g.,
+    # including both length and batch size. Need to merge and un-merge later.
+    def _reshape_to_batch_and_copy_targets(preds, targets):
+      batched_preds = jnp.reshape(preds, [-1, preds.shape[-1]])
+      batched_targets = jnp.reshape(targets, [-1])
+      return batched_preds, batched_targets, targets
+    def _reshape_xent_back(xent, targets):
+      return jnp.reshape(xent, targets.shape)
+    batched_xent = tl.Serial(
+        tl.Fn('pre_xent_rebatch', _reshape_to_batch_and_copy_targets, n_out=3),
+        chunked_xent,
+        tl.Fn('after_xent_rebatch', _reshape_xent_back)
+    )
+    loss_layer = tl.Serial(std_layers[:-4] + [batched_xent], std_layers[-1])
+  else:
+    loss_layer = tl.Serial(std_layers)
   return blocks, loss_layer
 
 

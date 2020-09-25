@@ -746,7 +746,7 @@ class BatchLeadingAxesTest(absltest.TestCase):
     def f(x):
       assert len(x.shape) == 3
       return x
-    return tl.Fn('Id3Dim', f, n_out=2)
+    return tl.Fn('Id3Dim', f, n_out=1)
 
   def test_2axes(self):
     layer = tl.BatchLeadingAxes(self._Id3Dim(), n_last_axes_to_keep=2)

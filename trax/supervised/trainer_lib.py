@@ -519,6 +519,7 @@ def train(output_dir,
           checkpoint_highest=None,
           checkpoint_lowest=None,
           use_loop=True,
+          loss_chunk_size=0,
           use_memory_efficient_trainer=False):
   """Train the model on the inputs.
 
@@ -545,6 +546,7 @@ def train(output_dir,
     checkpoint_highest: save the checkpoint highest at this metric.
     checkpoint_lowest: save the checkpoint lowest at this metric.
     use_loop: whether to use training.Loop instead of Trainer.
+    loss_chunk_size: int, if > 0 chunk loss into these sizes to save memory.
     use_memory_efficient_trainer: whether to use memory-efficient trainer.
 
   Returns:
@@ -584,6 +586,7 @@ def train(output_dir,
         output_dir=output_dir,
         checkpoint_at=checkpoint_at,
         n_devices=n_devices,
+        loss_chunk_size=loss_chunk_size,
         use_memory_efficient_trainer=use_memory_efficient_trainer,
         random_seed=random_seed)
 

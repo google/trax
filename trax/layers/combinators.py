@@ -592,13 +592,19 @@ def Chunk(layer, chunk_size):
                        f'size {chunk_batch}')
     n_chunks = chunk_batch // chunk_size
     return jnp.reshape(x, [n_chunks, chunk_size] + list(x.shape[1:]))
+  reshape_to_chunks_layer = base.PureLayer(
+      lambda xs: fastmath.nested_map(reshape_to_chunks, xs),
+      n_in=layer.n_in, n_out=layer.n_in, name='ReshapeToChunks')
   def reshape_from_chunks(x):
     batch_size = x.shape[0] * x.shape[1]
     return jnp.reshape(x, [batch_size] + list(x.shape[2:]))
+  reshape_from_chunks_layer = base.PureLayer(
+      lambda xs: fastmath.nested_map(reshape_from_chunks, xs),
+      n_in=layer.n_out, n_out=layer.n_out, name='ReshapeFromChunks')
   return Serial(
-      base.Fn('ReshapeToChunks', reshape_to_chunks),
+      reshape_to_chunks_layer,
       Scan(layer, axis=0, n_carry=0, remat=True),
-      base.Fn('ReshapeFromChunks', reshape_from_chunks),
+      reshape_from_chunks_layer,
   )
 
 
@@ -859,6 +865,9 @@ class BatchLeadingAxes(base.Layer):
   """
 
   def __init__(self, layer, n_last_axes_to_keep=1):
+    if layer.n_in != 1 or layer.n_out != 1:
+      raise ValueError('BatchLeadingAxes currently only works for layers with '
+                       f'n_in = n_out = 1, got {(layer.n_in, layer.n_out)}.')
     super().__init__(n_in=layer.n_in, n_out=layer.n_out)
     self._sublayers = [layer]
     self._n_last_axes_to_keep = n_last_axes_to_keep

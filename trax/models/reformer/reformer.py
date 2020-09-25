@@ -54,8 +54,7 @@ def ChunkedFeedForward(d_model, d_ff, dropout, activation, act_dropout,
   ff = FeedForward(d_model, d_ff, dropout, activation, act_dropout, mode)
   if chunk_size < 1:
     return ff
-  return tl.BatchLeadingAxes(tl.Chunk(tl.Serial(ff), chunk_size),
-                             n_last_axes_to_keep=1)
+  return tl.BatchLeadingAxes(tl.Chunk(tl.Serial(ff), chunk_size))
 
 
 def FeedForwardWithOptions(d_model, d_ff, dropout, ff_activation, ff_dropout,

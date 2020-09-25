@@ -190,7 +190,7 @@ class TrainerTest(absltest.TestCase):
     loss = tl.CrossEntropyLoss()
     optimizer_fn = optimizers.SGD  # Adafactor
     blocks, loss_layer = optimizers.trainer.extract_reversible_blocks(
-        [model, loss])
+        [model, loss], loss_chunk_size=4)
     blocks_serial = [(tl.Serial(std), rev) for (std, rev) in blocks]
     model_with_loss = tl.Serial(blocks_serial + [loss_layer])
     rng_init = fastmath.random.get_prng(12)

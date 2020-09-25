@@ -107,6 +107,7 @@ class Loop:
       which_task=None,
       n_devices=None,
       random_seed=None,
+      loss_chunk_size=0,
       use_memory_efficient_trainer=False,
   ):
     """Configures a training `Loop`, including a random initialization.
@@ -141,8 +142,10 @@ class Loop:
           training.
       n_devices: integer or None, the number of devices for this computation.
       random_seed: the random seed to use; time/os dependent if None (default).
+      loss_chunk_size: int, if > 0 use chunks of this size to make loss
+        computation more more memory-efficient.
       use_memory_efficient_trainer: whether to use a special memory-efficient
-        trainer
+        trainer.
     """
     self._is_chief, self._n_hosts, self._n_devices, self._rng = (
         init_host_and_devices(n_devices, random_seed))
@@ -165,6 +168,7 @@ class Loop:
     self._eval_model = eval_model or model
 
     self._use_memory_efficient_trainer = use_memory_efficient_trainer
+    self._loss_chunk_size = loss_chunk_size
     # TODO(lukaszkaiser): can we have different eval models and save memory?
     if use_memory_efficient_trainer:
       assert len(tasks) == 1, 'only single task supported for now'
@@ -257,7 +261,7 @@ class Loop:
       return optimizers.Trainer(model_in_training, task.optimizer)
     # In the memory-efficient path, we initialize the model here.
     blocks, loss_layer = optimizers.trainer.extract_reversible_blocks(
-        [self._model, task.loss_layer])
+        [self._model, task.loss_layer], loss_chunk_size=self._loss_chunk_size)
     rng = self._model.rng
     sig = shapes.signature(task.sample_batch)
     optimizers.trainer.init_reversible_blocks(blocks, loss_layer, sig, rng)
