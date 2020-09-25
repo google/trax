@@ -277,6 +277,32 @@ class RandomUniformTest(absltest.TestCase):
     self.assertBetween(1.5, min(y.tolist()), max(y.tolist()))
 
 
+class LocallyConnected1dTest(absltest.TestCase):
+
+  def test_shape_kernel1(self):
+    for padding in ['WRAP', 'SAME', 'VALID']:
+      layer = tl.LocallyConnected1d(6, 1, padding=padding)
+      x = np.array([[0, 1], [2, 3], [4, 5]])
+      layer.init(shapes.signature(x))
+      y = layer(x)
+      self.assertEqual(y.shape, (3, 6))
+
+  def test_shape_kernel3(self):
+    for padding in ['WRAP', 'SAME']:
+      layer = tl.LocallyConnected1d(6, 3, padding=padding)
+      x = np.array([[0, 1], [2, 3], [4, 5]])
+      layer.init(shapes.signature(x))
+      y = layer(x)
+      self.assertEqual(y.shape, (3, 6))
+
+    for padding in ['VALID']:
+      layer = tl.LocallyConnected1d(6, 3, padding=padding)
+      x = np.array([[0, 1], [2, 3], [4, 5]])
+      layer.init(shapes.signature(x))
+      y = layer(x)
+      self.assertEqual(y.shape, (1, 6))
+
+
 class FlattenTest(absltest.TestCase):
 
   def test_keep_default(self):

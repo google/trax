@@ -24,7 +24,7 @@ from trax.fastmath import numpy as jnp
 from trax.fastmath import random
 
 
-def _GetFans(shape, out_dim=-1, in_dim=-2):
+def _GetFans(shape, out_dim=-1, in_dim=-2, nonreceptive_dims=None):
   """Get the fan-in and fan-out sizes for the given shape and dims."""
   # Temporary fix until numpy.delete supports negative indices.
   if out_dim < 0:
@@ -32,7 +32,13 @@ def _GetFans(shape, out_dim=-1, in_dim=-2):
   if in_dim < 0:
     in_dim += len(shape)
 
-  receptive_field = jnp.prod(np.delete(shape, [in_dim, out_dim]))
+  if nonreceptive_dims is None:
+    nonreceptive_dims = []
+  if not isinstance(nonreceptive_dims, (list, tuple)):
+    nonreceptive_dims = [nonreceptive_dims]
+
+  receptive_field = jnp.prod(np.delete(shape, [in_dim, out_dim,
+                                               *nonreceptive_dims]))
   if len(shape) >= 2:
     fan_in, fan_out = shape[in_dim], shape[out_dim]
   elif len(shape) == 1:
@@ -88,10 +94,10 @@ def ScaledInitializer(out_dim, in_dim, scale, mode, distribution):
         'Invalid mode argument:, {}, must be either fan_in, fan_out or fan_avg'
         .format(mode))
 
-  def Init(shape, rng):
+  def Init(shape, rng, nonreceptive_dims=None):
     """Returns random values for initializing weights of the given `shape`."""
     shape = _PureShape(shape)
-    fan_in, fan_out = _GetFans(shape, out_dim, in_dim)
+    fan_in, fan_out = _GetFans(shape, out_dim, in_dim, nonreceptive_dims)
     gain = scale
     if mode == 'fan_in':
       gain /= fan_in

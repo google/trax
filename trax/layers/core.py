@@ -363,6 +363,151 @@ class RandomUniform(base.Layer):
       return self.rng
 
 
+class LocallyConnected1d(base.Layer):
+  """Locally-connected layer for 1D inputs.
+
+  The LocallyConnected1d layer applies a different set of filters to each patch
+  of the input. This is similar to applying a convolution layer, except that
+  locally-connected layer uses a different set of weights for each patch.
+
+  The size of patch is determined by the kernel size. The stride is currently
+  not modifiable and set to one. This means for the input of shape (..., L, D)
+  the output shape for paddings 'SAME' and 'WRAP' will be (..., L, filters) and
+  for padding 'VALID' (..., L-kernel_size+1, filters); where L is the number of
+  "pixels" or "steps" in the input, D is the size of the embedding.
+
+  Note that, since the weights for different patches are not shared, the number
+  of "pixels" or "steps" cannot change after calling init_weights_and_state.
+  This is because each "pixel" is assigned its own set of weights.
+  """
+
+  def __init__(self, filters, kernel_size,
+               kernel_initializer=init.GlorotUniformInitializer(),
+               bias_initializer=init.RandomNormalInitializer(1e-6),
+               use_bias=True, padding='VALID'):
+    """Returns a locally-connected conv-like layer.
+
+    Args:
+      filters: Number of output filters in the convolution.
+      kernel_size: A length of the convolution window. Must be an odd number.
+      kernel_initializer: Function that creates a matrix of (random) initial
+          connection weights `W` for the layer.
+      bias_initializer: Function that creates a vector of (random) initial
+          bias weights `b` for the layer.
+      use_bias: If `True`, the layer uses a bias vector.
+      padding: The type of padding to use; must be 'VALID', 'SAME', or 'WRAP'.
+    """
+    super().__init__(name=f'LocallyConnected1d_{filters}_{kernel_size}')
+    self._filters = filters
+    self._kernel_size = kernel_size
+    assert self._kernel_size % 2 == 1  # kernel size has to be odd
+    self._kernel_initializer = kernel_initializer
+    self._bias_initializer = bias_initializer
+    self._use_bias = use_bias
+    self._padding = padding
+
+  def forward(self, x):
+    """Executes this layer as part of a forward pass through the model.
+
+    Args:
+      x: Tensor of same shape and dtype as the input signature used to
+          initialize this layer.
+
+    Returns:
+      Tensor of same shape and dtype as the input, except the final dimension
+      is the layer's `filters` value, and the second to last dimension is
+      shrinked if 'VALID' padding is used with kernel_size bigger than one.
+    """
+    if self._use_bias:
+      if not isinstance(self.weights, (tuple, list)):
+        raise ValueError(f'Weights should be a (w, b) tuple or list; '
+                         f'instead got: {self.weights}')
+      w, b = self.weights
+    else:
+      w = self.weights
+
+    linear_results_before_shifting = jnp.einsum(
+        '...lp,lkpd->...lkd', x, w)
+    # TODO(jaszczur): this could be run after padding for better efficiency
+
+    if self._kernel_size == 1:
+      # With kernel size 1 we don't have to split or shift anything.
+      linear_result = jnp.squeeze(linear_results_before_shifting, axis=-2)
+    else:
+      # We computed a result for every "pixel", but each direction from the
+      # receptive field (there are 'self._kernel_size' such directions) must be
+      # shifted by a different amount. The easiest way to do it is to split
+      # the tensor to 'self._kernel_size' smaller tensors, shift each one
+      # appropriately, and then sum them together.
+      split_shifting_linear_results = jnp.split(
+          linear_results_before_shifting, self._kernel_size, axis=-2)
+
+      for i in range(self._kernel_size):
+        # Each tensor has to be shifted a different amount.
+        if self._padding == 'WRAP':
+          # We can shift by padding and cutting. With 'wrap' padding we
+          # essentially have a torus.
+          padding = [(0, 0) for i in split_shifting_linear_results[i].shape]
+          padding[-3] = ((self._kernel_size - 1) - i, i)
+          split_shifting_linear_results[i] = jnp.pad(
+              split_shifting_linear_results[i], padding, mode='wrap')
+          split_shifting_linear_results[i] = split_shifting_linear_results[i][
+              ..., (self._kernel_size-1)//2:-(self._kernel_size-1)//2, :, :]
+        elif self._padding == 'SAME':
+          # We can shift by padding and cutting.
+          padding = [(0, 0) for i in split_shifting_linear_results[i].shape]
+          padding[-3] = ((self._kernel_size - 1) - i, i)
+          split_shifting_linear_results[i] = jnp.pad(
+              split_shifting_linear_results[i], padding)
+          split_shifting_linear_results[i] = split_shifting_linear_results[i][
+              ..., (self._kernel_size-1)//2:-(self._kernel_size-1)//2, :, :]
+          # TODO(jaszczur): improve efficiency by not padding things to cut
+        elif self._padding == 'VALID':
+          # We don't need to shift - just cut the leftmost and rightmost values.
+          cut_left = (self._kernel_size - 1) - i
+          cut_right = split_shifting_linear_results[i].shape[-3] - i
+          split_shifting_linear_results[i] = split_shifting_linear_results[i][
+              ..., cut_left:cut_right, :, :]
+        else:
+          raise ValueError(f'Invalid padding {self._padding}')
+      # After shifting.
+      shifted_linear_results = jnp.concatenate(split_shifting_linear_results,
+                                               axis=-2)
+      linear_result = jnp.sum(shifted_linear_results, axis=-2)
+
+    if self._use_bias:
+      return linear_result + b
+    else:
+      return linear_result
+
+  def init_weights_and_state(self, input_signature):
+    """Randomly initializes this layer's weights.
+
+    Weights are a `(w, b)` tuple for layers created with `use_bias=True` (the
+    default case), or a `w` tensor for layers created with `use_bias=False`.
+
+    Args:
+      input_signature: `ShapeDtype` instance characterizing the input this layer
+          should compute on.
+    """
+    shape_w = (input_signature.shape[-2], self._kernel_size,
+               input_signature.shape[-1], self._filters)
+    if self._padding == 'VALID':
+      shape_b = (input_signature.shape[-2] - self._kernel_size + 1,
+                 self._filters,)
+    else:
+      shape_b = (input_signature.shape[-2], self._filters,)
+
+    rng_w, rng_b = fastmath.random.split(self.rng, 2)
+    w = self._kernel_initializer(shape_w, rng_w, nonreceptive_dims=[0])
+
+    if self._use_bias:
+      b = self._bias_initializer(shape_b, rng_b)
+      self.weights = (w, b)
+    else:
+      self.weights = w
+
+
 def Flatten(n_axes_to_keep=1):
   """Returns a layer that combines one or more trailing axes of a tensor.
 
