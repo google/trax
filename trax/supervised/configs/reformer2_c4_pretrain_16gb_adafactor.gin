@@ -145,9 +145,17 @@ Reformer2.n_layers_forget = 12
 
 # Parameters for unsupervised:
 # ==============================================================================
+
+# This is what T5 uses.
+# unsupervised.preprocessors = \
+#     [@preprocessors.select_random_chunk,
+#      @preprocessors.reduce_concat_tokens,
+#      @preprocessors.split_tokens,
+#      @preprocessors.denoise]
+
+# We.delete out reduce_concat_tokens since we don't want to do sequence packing
 unsupervised.preprocessors = \
     [@preprocessors.select_random_chunk,
-     @preprocessors.reduce_concat_tokens,
      @preprocessors.split_tokens,
      @preprocessors.denoise]
 
