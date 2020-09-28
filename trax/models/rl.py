@@ -67,7 +67,8 @@ def Value(
     mode='train',
     is_discrete=False,
     vocab_size=2,
-    multiplicative_action_injection=False
+    multiplicative_action_injection=False,
+    head_init_range=None,
 ):
   """Attaches a value head to a model body."""
   if body is None:
@@ -106,11 +107,17 @@ def Value(
     else:
       return []
 
+  head_kwargs = {}
+  if head_init_range is not None:
+    head_kwargs['kernel_initializer'] = tl.RandomUniformInitializer(
+        lim=head_init_range
+    )
+
   return tl.Serial(
       _Batch(normalizer(mode=mode), batch_axes),
       _Batch(body(mode=mode), batch_axes),
       ActionInjector(mode=mode),
-      tl.Dense(1),
+      tl.Dense(1, **head_kwargs),
   )
 
 
@@ -150,7 +157,8 @@ def Quality(
     normalizer=None,
     batch_axes=None,
     mode='train',
-    n_actions=2
+    n_actions=2,
+    head_init_range=None,
 ):
   """The network takes as input an observation and outputs values of actions."""
 
@@ -159,8 +167,14 @@ def Quality(
   if normalizer is None:
     normalizer = lambda mode: []
 
+  head_kwargs = {}
+  if head_init_range is not None:
+    head_kwargs['kernel_initializer'] = tl.RandomUniformInitializer(
+        lim=head_init_range
+    )
+
   return tl.Serial(
       _Batch(normalizer(mode=mode), batch_axes),
       _Batch(body(mode=mode), batch_axes),
-      tl.Dense(n_actions),
+      tl.Dense(n_actions, **head_kwargs),
   )

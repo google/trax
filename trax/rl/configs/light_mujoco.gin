@@ -19,6 +19,16 @@ import trax.rl
 import trax.rl.distributions
 import trax.rl.normalization
 
+batch_size = 256
+train_steps = 1000
+policy_train_steps = %train_steps
+value_train_steps = %train_steps
+policy_lr = 0.0001
+value_lr = 0.001
+margin = 3
+q_value_n_samples = 4
+normalizer = @trax.rl.normalization.Normalize
+
 # Parameters for Gaussian:
 # ==============================================================================
 Gaussian.std = 0.4
@@ -27,14 +37,15 @@ Gaussian.std = 0.4
 # ==============================================================================
 Policy.body = @trax.models.PureMLP
 Policy.head_init_range = 0.01
-Policy.normalizer = @trax.rl.normalization.Normalize
+Policy.normalizer = %normalizer
 
 # Parameters for Value:
 # ==============================================================================
 Value.body = @trax.models.PureMLP
-Value.normalizer = @trax.rl.normalization.Normalize
+Value.normalizer = %normalizer
 Value.inject_actions_dim = 256
-Value.multiplicative_action_injection = False
+Value.multiplicative_action_injection = True
+Value.head_init_range = 0.01
 
 # Parameters for Normalize:
 # ==============================================================================
@@ -46,15 +57,6 @@ Normalize.epsilon = 1e-5
 PureMLP.flatten = False
 PureMLP.layer_widths = (256, 256)
 PureMLP.out_activation = True
-
-batch_size = 256
-train_steps = 1000
-policy_train_steps = %train_steps
-value_train_steps = %train_steps
-policy_lr = 0.0001
-value_lr = 0.001
-added_policy_slice_length = 3
-q_value_n_samples = 4
 
 # Parameters for Adam:
 # ==============================================================================
@@ -107,7 +109,7 @@ AWR.advantage_estimator = @trax.rl.advantages.td_lambda
 AWR.beta = 1.0
 AWR.w_max = 20
 AWR.max_slice_length = 1
-AWR.added_policy_slice_length = %added_policy_slice_length
+AWR.added_policy_slice_length = %margin
 AWR.n_replay_epochs = 50
 AWR.scale_value_targets = True
 AWR.n_shared_layers = 1
@@ -122,7 +124,7 @@ SamplingAWR.value_optimizer = @trax.optimizers.Adam
 SamplingAWR.value_batch_size = %batch_size
 SamplingAWR.value_train_steps_per_epoch = %value_train_steps
 SamplingAWR.value_lr_schedule = @value/multifactor
-SamplingAWR.value_evals_per_epoch = 1
+SamplingAWR.value_evals_per_epoch = 10
 SamplingAWR.value_eval_steps = 10
 SamplingAWR.policy_model = @trax.models.Policy
 SamplingAWR.policy_optimizer = @trax.optimizers.Adam
@@ -139,18 +141,19 @@ SamplingAWR.advantage_estimator = @trax.rl.advantages.td_lambda
 SamplingAWR.beta = 1.0
 SamplingAWR.w_max = 20
 SamplingAWR.max_slice_length = 1
-SamplingAWR.added_policy_slice_length = %added_policy_slice_length
+SamplingAWR.added_policy_slice_length = %margin
 SamplingAWR.n_replay_epochs = 50
 SamplingAWR.scale_value_targets = True
 SamplingAWR.n_shared_layers = 1
 SamplingAWR.q_value_n_samples = %q_value_n_samples
-SamplingAWR.q_value_aggregate = 'max'
+SamplingAWR.q_value_aggregate = 'logsumexp'
+SamplingAWR.q_value_temperature = 1.0
 SamplingAWR.reweight = False
 
 # Parameters for train_rl:
 # ==============================================================================
 train_rl.light_rl = True
-train_rl.light_rl_trainer = @trax.rl.AWR
+train_rl.light_rl_trainer = @trax.rl.SamplingAWR
 train_rl.n_epochs = 10000
 
 # TODO(pkozakowski): Add PPO config here once we get it to work on MuJoCo.
