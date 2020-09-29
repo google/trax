@@ -310,13 +310,21 @@ class RLTask:
                 'interleaved_pixels': True,
                 'zero_indexed_actions': True
             })
+        eval_env = atari_wrapper.AtariWrapper(
+            environment=env,
+            max_abs_reward=None,
+            num_stacked_frames=num_stacked_frames)
         env = atari_wrapper.AtariWrapper(environment=env,
                                          num_stacked_frames=num_stacked_frames)
+
       else:
         env = gym.make(env)
+        eval_env = env
     else:
       self._env_name = type(env).__name__
+      eval_env = env
     self._env = env
+    self._eval_env = eval_env
     self._dm_suite = dm_suite
     self._max_steps = max_steps
     self._gamma = gamma
@@ -463,11 +471,14 @@ class RLTask:
                   'all_epochs': list(self._trajectories.keys())}
     training.pickle_to_file(dictionary, file_name, gzip=False)
 
-  def play(self, policy, max_steps=None):
+  def play(self, policy, max_steps=None, only_eval=False):
     """Play an episode in env taking actions according to the given policy."""
     if max_steps is None:
       max_steps = self._max_steps
-    cur_trajectory = play(self._env, policy, self._dm_suite, max_steps)
+    if only_eval:
+      cur_trajectory = play(self._eval_env, policy, self._dm_suite, max_steps)
+    else:
+      cur_trajectory = play(self._env, policy, self._dm_suite, max_steps)
     cur_trajectory.calculate_returns(self._gamma)
     return cur_trajectory
 
@@ -482,7 +493,8 @@ class RLTask:
     """Collect experience in env playing the given policy."""
     max_steps = max_steps or self.max_steps
     if n_trajectories:
-      new_trajectories = [self.play(policy, max_steps=max_steps)
+      new_trajectories = [self.play(policy, max_steps=max_steps,
+                                    only_eval=only_eval)
                           for _ in range(n_trajectories)]
     elif n_interactions:
       # TODO(pkozakowski): Test this mode of experience collection.
