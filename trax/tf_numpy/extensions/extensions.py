@@ -1510,9 +1510,10 @@ def _get_pmap_impl(f, devices, has_tpu):
   """
   if has_tpu:
     # Workaround b/121383831
+    output_is_list = [False]  # Use list for mutability
     def recorder(args, kwargs, res):
       del args, kwargs
-      _orig_result_is_list.val = isinstance(res, list)
+      output_is_list[0] = isinstance(res, list)
       return res
     f = _record_result_type(recorder, f)
 
@@ -1528,7 +1529,12 @@ def _get_pmap_impl(f, devices, has_tpu):
     def fn(inputs):
       # TODO(wangpeng): Supply the `device_assignment` argument to
       # tpu.replicate, calculated from `devices`.
-      return tf.compat.v1.tpu.replicate(tf_f, inputs)
+      res = tf.compat.v1.tpu.replicate(tf_f, inputs)
+      # Workaround b/121383831
+      if (res and isinstance(res[0], list) and len(res[0]) == 1 and
+          not output_is_list[0]):
+        res = [x[0] for x in res]
+      return res
 
     return fn
   else:
@@ -1642,14 +1648,7 @@ def pmap(f, axis_name=None, devices=None):
         tensors.append(flattened_results[j][i])
       final_tree.append(ShardedNdArray(tensors))
 
-    final_actual_result = tf.nest.pack_sequence_as(results[0], final_tree)
-
-    # Workaround b/121383831
-    if (has_tpu and isinstance(final_actual_result, list) and
-        len(final_actual_result) == 1) and not _orig_result_is_list.val:
-      return final_actual_result[0]
-    else:
-      return final_actual_result
+    return tf.nest.pack_sequence_as(results[0], final_tree)
 
   return wrapper
 
