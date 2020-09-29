@@ -60,6 +60,7 @@ LSTMCell = layer_configure(LSTMCell)
 GRUCell = layer_configure(GRUCell)
 
 BatchNorm = layer_configure(BatchNorm)
+LayerNorm = layer_configure(LayerNorm)
 FilterResponseNorm = layer_configure(FilterResponseNorm)
 ThresholdedLinearUnit = layer_configure(ThresholdedLinearUnit)
 

@@ -20,13 +20,13 @@ import trax.rl.distributions
 import trax.rl.normalization
 
 batch_size = 256
-train_steps = 1000
+train_steps = 3000
 policy_train_steps = %train_steps
 value_train_steps = %train_steps
 policy_lr = 0.0001
-value_lr = 0.001
+value_lr = 0.0005
 margin = 3
-q_value_n_samples = 4
+q_value_n_samples = 8
 normalizer = @trax.rl.normalization.Normalize
 
 # Parameters for Gaussian:
@@ -45,7 +45,7 @@ Value.body = @trax.models.PureMLP
 Value.normalizer = %normalizer
 Value.inject_actions_dim = 256
 Value.multiplicative_action_injection = True
-Value.head_init_range = 0.01
+Value.head_init_range = 0.000001
 
 # Parameters for Normalize:
 # ==============================================================================
@@ -61,6 +61,7 @@ PureMLP.out_activation = True
 # Parameters for Adam:
 # ==============================================================================
 Adam.weight_decay_rate = 0.0
+Adam.clip_grad_norm = 50.0
 
 # Parameters for multifactor:
 # ==============================================================================
@@ -92,8 +93,8 @@ AWR.value_optimizer = @trax.optimizers.Adam
 AWR.value_batch_size = %batch_size
 AWR.value_train_steps_per_epoch = %value_train_steps
 AWR.value_lr_schedule = @value/multifactor
-AWR.value_evals_per_epoch = 1
-AWR.value_eval_steps = 10
+AWR.value_evals_per_epoch = 30
+AWR.value_eval_steps = 1
 AWR.policy_model = @trax.models.Policy
 AWR.policy_optimizer = @trax.optimizers.Adam
 AWR.policy_batch_size = %batch_size
@@ -124,8 +125,8 @@ SamplingAWR.value_optimizer = @trax.optimizers.Adam
 SamplingAWR.value_batch_size = %batch_size
 SamplingAWR.value_train_steps_per_epoch = %value_train_steps
 SamplingAWR.value_lr_schedule = @value/multifactor
-SamplingAWR.value_evals_per_epoch = 10
-SamplingAWR.value_eval_steps = 10
+SamplingAWR.value_evals_per_epoch = 30
+SamplingAWR.value_eval_steps = 1
 SamplingAWR.policy_model = @trax.models.Policy
 SamplingAWR.policy_optimizer = @trax.optimizers.Adam
 SamplingAWR.policy_batch_size = %batch_size
@@ -144,7 +145,7 @@ SamplingAWR.max_slice_length = 1
 SamplingAWR.added_policy_slice_length = %margin
 SamplingAWR.n_replay_epochs = 50
 SamplingAWR.scale_value_targets = True
-SamplingAWR.n_shared_layers = 1
+SamplingAWR.n_shared_layers = 1  # normalizer
 SamplingAWR.q_value_n_samples = %q_value_n_samples
 SamplingAWR.q_value_aggregate = 'logsumexp'
 SamplingAWR.q_value_temperature = 1.0

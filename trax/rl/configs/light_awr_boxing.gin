@@ -19,6 +19,15 @@ import trax.rl
 import trax.rl.distributions
 import trax.rl.normalization
 
+batch_size = 256
+train_steps = 3000
+policy_train_steps = %train_steps
+value_train_steps = %train_steps
+policy_lr = 0.0001
+value_lr = 0.0005
+margin = 3
+q_value_n_samples = 8
+
 # Parameters for the AtariCnnBody:
 # ==============================================================================
 AtariCnnBody.kernel_initializer = @trax.layers.AtariConvInit
@@ -32,17 +41,10 @@ Policy.body = @trax.models.AtariCnnBody
 # Parameters for Value:
 # ==============================================================================
 Value.body = @trax.models.AtariCnnBody
-Value.inject_actions_dim = 128
+Value.inject_actions_dim = 256
 Value.batch_axes = 4
-
-batch_size = 256
-train_steps = 1000
-policy_train_steps = %train_steps
-value_train_steps = %train_steps
-policy_lr = 0.0001
-value_lr = 0.001
-added_policy_slice_length = 1
-q_value_n_samples = 18
+Value.multiplicative_action_injection = True
+Value.head_init_range = 0.000001
 
 # Parameters for Adam:
 # ==============================================================================
@@ -81,8 +83,8 @@ AWR.value_optimizer = @trax.optimizers.Adam
 AWR.value_batch_size = %batch_size
 AWR.value_train_steps_per_epoch = %value_train_steps
 AWR.value_lr_schedule = @value/multifactor
-AWR.value_evals_per_epoch = 1
-AWR.value_eval_steps = 10
+AWR.value_evals_per_epoch = 30
+AWR.value_eval_steps = 1
 AWR.policy_model = @trax.models.Policy
 AWR.policy_optimizer = @trax.optimizers.Adam
 AWR.policy_batch_size = %batch_size
@@ -90,16 +92,16 @@ AWR.policy_train_steps_per_epoch = %policy_train_steps
 AWR.policy_lr_schedule = @policy/multifactor
 AWR.policy_evals_per_epoch = 1
 AWR.policy_eval_steps = 10
-AWR.n_trajectories_per_epoch = None
-AWR.n_interactions_per_epoch = 10000
+AWR.n_trajectories_per_epoch = 1
+AWR.n_interactions_per_epoch = None
 AWR.n_eval_episodes = 1
 AWR.eval_steps = [2000]
 AWR.advantage_estimator = @trax.rl.advantages.td_lambda
 AWR.beta = 1.0
-AWR.w_max = 100
+AWR.w_max = 20
 AWR.max_slice_length = 1
-AWR.added_policy_slice_length = %added_policy_slice_length
-AWR.n_replay_epochs = 2
+AWR.added_policy_slice_length = %margin
+AWR.n_replay_epochs = 50
 AWR.scale_value_targets = True
 AWR.n_shared_layers = 0
 AWR.q_value = True
@@ -113,29 +115,30 @@ SamplingAWR.value_optimizer = @trax.optimizers.Adam
 SamplingAWR.value_batch_size = %batch_size
 SamplingAWR.value_train_steps_per_epoch = %value_train_steps
 SamplingAWR.value_lr_schedule = @value/multifactor
-SamplingAWR.value_evals_per_epoch = 2
+SamplingAWR.value_evals_per_epoch = 30
 SamplingAWR.value_eval_steps = 1
 SamplingAWR.policy_model = @trax.models.Policy
 SamplingAWR.policy_optimizer = @trax.optimizers.Adam
 SamplingAWR.policy_batch_size = %batch_size
 SamplingAWR.policy_train_steps_per_epoch = %policy_train_steps
 SamplingAWR.policy_lr_schedule = @policy/multifactor
-SamplingAWR.policy_evals_per_epoch = 2
-SamplingAWR.policy_eval_steps = 1
-SamplingAWR.n_trajectories_per_epoch = None
-SamplingAWR.n_interactions_per_epoch = 10000
+SamplingAWR.policy_evals_per_epoch = 1
+SamplingAWR.policy_eval_steps = 10
+SamplingAWR.n_trajectories_per_epoch = 1
+SamplingAWR.n_interactions_per_epoch = None
 SamplingAWR.n_eval_episodes = 1
 SamplingAWR.eval_steps = [2000]
 SamplingAWR.advantage_estimator = @trax.rl.advantages.td_lambda
 SamplingAWR.beta = 1.0
-SamplingAWR.w_max = 100
+SamplingAWR.w_max = 20
 SamplingAWR.max_slice_length = 1
-SamplingAWR.added_policy_slice_length = %added_policy_slice_length
-SamplingAWR.n_replay_epochs = 2
+SamplingAWR.added_policy_slice_length = %margin
+SamplingAWR.n_replay_epochs = 50
 SamplingAWR.scale_value_targets = True
 SamplingAWR.n_shared_layers = 0
 SamplingAWR.q_value_n_samples = %q_value_n_samples
 SamplingAWR.q_value_aggregate = 'max'
+SamplingAWR.q_value_temperature = 1.0
 SamplingAWR.reweight = False
 
 # Parameters for train_rl:
