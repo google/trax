@@ -20,6 +20,7 @@ Like in https://arxiv.org/pdf/1909.11556.pdf
 """
 
 from trax import layers as tl
+from trax.layers.assert_shape import assert_shape
 from trax.models import transformer
 
 
@@ -28,6 +29,7 @@ def LargerThan(val):
   return tl.Fn('LargerThan', lambda x: x > val)
 
 
+@assert_shape('...s->...sv')
 def SkippingTransformerLM(vocab_size,
                           d_model=512,
                           d_ff=2048,
@@ -65,6 +67,7 @@ def SkippingTransformerLM(vocab_size,
       tl.PositionalEncoding(max_len=max_len, mode=mode),
   ]
 
+  @assert_shape('...sd,->...sd,')
   def ConditionedBlock(current_layer_num):
     return tl.Serial(
         # stack: embedding, n_layers_to_keep
@@ -101,13 +104,16 @@ def SkippingTransformerLM(vocab_size,
       # stack: embedding, n_layers_to_keep
       [ConditionedBlock(i) for i in range(n_layers)],
       # stack: embedding, n_layers_to_keep
+      tl.AssertShape('...sd,'),
       tl.Select([0], n_in=2),  # stack: embedding
+      tl.AssertShape('...sd'),
       tl.LayerNorm(),
       tl.Dense(vocab_size),
       tl.LogSoftmax(),
   )
 
 
+@assert_shape('...s->...sv')
 def EveryOtherLayerDropTransformerLM(vocab_size,
                                      d_model=512,
                                      d_ff=2048,
@@ -166,6 +172,7 @@ def EveryOtherLayerDropTransformerLM(vocab_size,
 
   skip_mode_fun = skip_mode_funs[skip_mode]
 
+  @assert_shape('...sd,->...sd,')
   def ConditionedBlock(current_layer_num):
     return tl.Serial(
         # stack: embedding, n_layers_to_keep
@@ -199,6 +206,7 @@ def EveryOtherLayerDropTransformerLM(vocab_size,
   )
 
 
+@assert_shape('...s->...sv')
 def LayerDropTransformerLM(vocab_size,
                            d_model=512,
                            d_ff=2048,
@@ -268,6 +276,7 @@ def LayerDropTransformerLM(vocab_size,
         'n_layers ({}) must be equal to len(eval_skip_fraction) ({})'
         .format(n_layers, len(eval_skip_fraction)))
 
+  @assert_shape('...sd->...sd')
   def ConditionedBlock(current_layer_num):
     return tl.Serial(
         # stack: embedding

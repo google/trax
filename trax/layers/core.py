@@ -24,9 +24,13 @@ from trax import fastmath
 from trax.fastmath import numpy as jnp
 from trax.layers import base
 from trax.layers import initializers as init
+from trax.layers.assert_shape import assert_shape
 from trax.layers.base import Fn
 
 
+# The output tensor has the same shape as the input tensor, except for the size
+# of the last dimension.
+@assert_shape('...a->...b')
 class Dense(base.Layer):
   """A dense (a.k.a. fully-connected, affine) layer.
 
@@ -112,6 +116,9 @@ class Dense(base.Layer):
       self.weights = w
 
 
+# The output tensor has the same shape as the input tensor, but with added
+# dimension at the end. This dimension size corresponds to embedding depth.
+@assert_shape('...->...d')
 class Embedding(base.Layer):
   """Trainable layer that maps discrete tokens/ids to vectors."""
 
@@ -164,6 +171,7 @@ class Embedding(base.Layer):
     self.weights = w
 
 
+@assert_shape('...->...')  # The output and input shapes are the same.
 class Dropout(base.Layer):
   """A layer that stochastically ignores a subset of inputs each training step.
 
@@ -530,6 +538,7 @@ def Flatten(n_axes_to_keep=1):
   return Fn(layer_name, f)
 
 
+@assert_shape('...->...')  # The output and input shapes are the same.
 def Exp():
   """Returns a layer that computes the element-wise exponential of a tensor."""
   return Fn('Exp', lambda x: jnp.exp(x))  # pylint: disable=unnecessary-lambda
@@ -625,11 +634,13 @@ def Sum(axis=-1, keepdims=False):
   return Fn('Sum', lambda x: jnp.sum(x, axis=axis, keepdims=keepdims))
 
 
+@assert_shape('...->...')  # The output and input shapes are the same.
 def Negate():
   """Returns a layer that computes the element-wise negation of a tensor."""
   return Fn('Negate', lambda x: -x)
 
 
+@assert_shape('...->...')  # The output and input shapes are the same.
 def StopGradient():
   """Returns an identity layer with a stop gradient."""
   return Fn('StopGradient', lambda x: fastmath.stop_gradient(x))  # pylint: disable=unnecessary-lambda

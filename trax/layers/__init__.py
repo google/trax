@@ -22,6 +22,7 @@ import gin
 # pylint: disable=wildcard-import
 from trax.layers.acceleration import *
 from trax.layers.activation_fns import *
+from trax.layers.assert_shape import *
 from trax.layers.attention import *
 from trax.layers.base import *
 from trax.layers.combinators import *
