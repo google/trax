@@ -149,7 +149,9 @@ JAX_ONE_TO_ONE_OP_RECORDS = [
     op_record("cos", 1, number_dtypes, all_shapes, jtu.rand_default, ["rev"],
               inexact=True),
     op_record("tan", 1, number_dtypes, all_shapes,
-              partial(jtu.rand_uniform, -1.5, 1.5), ["rev"], inexact=True),
+              partial(jtu.rand_uniform, -1.5, 1.5), ["rev"],
+              tolerance={onp.complex64: 3e-5, onp.complex128: 4e-14},
+              inexact=True),
     # TODO(wangpeng): Add float16 support
     op_record("sinh", 1, minus(number_dtypes, [onp.float16]), all_shapes, jtu.rand_default, ["rev"],
               inexact=True),
@@ -209,7 +211,7 @@ JAX_COMPOUND_OP_RECORDS = [
               inexact=True),
     op_record("hypot", 2, default_dtypes, all_shapes, jtu.rand_default, [],
               inexact=True),
-    op_record("kron", 2, number_dtypes, nonempty_shapes, jtu.rand_default, [], 
+    op_record("kron", 2, number_dtypes, nonempty_shapes, jtu.rand_default, [],
               check_incomplete_shape=False),
     op_record("outer", 2, number_dtypes, all_shapes, jtu.rand_default, []),
     op_record("imag", 1, number_dtypes, all_shapes, jtu.rand_some_inf, []),
@@ -241,7 +243,7 @@ JAX_COMPOUND_OP_RECORDS = [
               tolerance={onp.float16: 1e-2}, inexact=True),
     op_record("polyval", 2, number_dtypes, nonempty_nonscalar_array_shapes,
               jtu.rand_default, [], check_dtypes=False,
-              tolerance={onp.float16: 1e-2, onp.float64: 1e-12}, 
+              tolerance={onp.float16: 1e-2, onp.float64: 1e-12},
               check_incomplete_shape=False),
     op_record("positive", 1, number_dtypes, all_shapes, jtu.rand_default, ["rev"]),
     op_record("power", 2, number_dtypes, all_shapes, jtu.rand_positive, ["rev"],
@@ -265,7 +267,7 @@ JAX_COMPOUND_OP_RECORDS = [
               check_dtypes=False),
     op_record("true_divide", 2, all_dtypes, all_shapes, jtu.rand_nonzero,
               ["rev"], inexact=True),
-    op_record("diff", 1, number_dtypes, nonzerodim_shapes, jtu.rand_default, 
+    op_record("diff", 1, number_dtypes, nonzerodim_shapes, jtu.rand_default,
               ["rev"], check_incomplete_shape=False),
 ]
 
@@ -508,9 +510,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
                            [tolerance, tol, jtu.default_tolerance()])
     self._CheckAgainstNumpy(_promote_like_lnp(onp_op, inexact), lnp_op,
                             args_maker, check_dtypes=check_dtypes, tol=tol)
+    # tf.math.pow doesn't support int32/int64 on XLA (b/169191476).
+    check_xla = not (lnp_op.__name__ == "power" and set(dtypes).intersection(
+        (onp.int32, onp.int64)))
     self._CompileAndCheck(lnp_op, args_maker, check_dtypes=check_dtypes,
                           atol=tol, rtol=tol,
-                          check_incomplete_shape=check_incomplete_shape)
+                          check_incomplete_shape=check_incomplete_shape,
+                          check_experimental_compile=check_xla,
+                          check_xla_forced_compile=check_xla)
 
   @named_parameters(itertools.chain.from_iterable(
       jtu.cases_from_list(
@@ -679,9 +686,12 @@ class LaxBackedNumpyTests(jtu.TestCase):
     # The shapes of `nonzero`'s results are value-dependent, so `eval_on_shapes`
     # won't return concrete shapes.
     # Also, `nonzero` requires a known rank.
+    # Turns off XLA check because there are no XLA kernels for `Where`, which
+    # XLA can't support because it's output shape is dynamic.
     self._CompileAndCheck(
         lnp_fun, args_maker, check_dtypes=True, check_eval_on_shapes=False,
-        check_incomplete_shape=True, check_unknown_rank=False)
+        check_incomplete_shape=True, check_unknown_rank=False,
+        check_experimental_compile=False, check_xla_forced_compile=False)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "{}_inshape={}_axis={}".format(
@@ -793,8 +803,13 @@ class LaxBackedNumpyTests(jtu.TestCase):
     # We disable dtype check in the following cases because `np.dot` does
     # value-dependent type promotion in those cases.
     check_dtypes = () not in (lhs_shape, rhs_shape)
+    # XLA lacks int32/int64 MatMul kernels (b/168657656).
+    check_xla = not set((lhs_dtype, rhs_dtype)).intersection(
+        (onp.int32, onp.int64))
     self._CompileAndCheck(lnp.dot, args_maker, check_dtypes=check_dtypes,
-                          atol=tol, rtol=tol, check_incomplete_shape=True)
+                          atol=tol, rtol=tol, check_incomplete_shape=True,
+                          check_experimental_compile=check_xla,
+                          check_xla_forced_compile=check_xla)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_{}_{}_{}".format(
@@ -835,8 +850,13 @@ class LaxBackedNumpyTests(jtu.TestCase):
       tol[onp.float32] = tol[onp.complex64] = 4e-2
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker,
                             check_dtypes=True, tol=tol)
+    # XLA lacks int32/int64 MatMul kernels (b/168657656).
+    check_xla = not set((lhs_dtype, rhs_dtype)).intersection(
+        (onp.int32, onp.int64))
     self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True, atol=tol,
-                          rtol=tol, check_incomplete_shape=True)
+                          rtol=tol, check_incomplete_shape=True,
+                          check_experimental_compile=check_xla,
+                          check_xla_forced_compile=check_xla)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_{}_{}_{}".format(
@@ -861,8 +881,13 @@ class LaxBackedNumpyTests(jtu.TestCase):
            onp.complex128: 1e-12}
     self._CheckAgainstNumpy(onp.vdot, lnp.vdot, args_maker,
                             check_dtypes=True, tol=tol)
+    # XLA lacks int32/int64 MatMul kernels (b/168657656).
+    check_xla = not set((lhs_dtype, rhs_dtype)).intersection(
+        (onp.int32, onp.int64))
     self._CompileAndCheck(lnp.vdot, args_maker, check_dtypes=True, atol=tol,
-                          rtol=tol, check_incomplete_shape=True)
+                          rtol=tol, check_incomplete_shape=True,
+                          check_experimental_compile=check_xla,
+                          check_xla_forced_compile=check_xla)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_{}_{}_{}".format(
@@ -896,8 +921,13 @@ class LaxBackedNumpyTests(jtu.TestCase):
       tol[onp.float32] = tol[onp.complex64] = 2e-1
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True,
                             tol=tol)
+    # XLA lacks int32/int64 MatMul kernels (b/168657656).
+    check_xla = not set((lhs_dtype, rhs_dtype)).intersection(
+        (onp.int32, onp.int64))
     self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True,
-                          check_incomplete_shape=True)
+                          check_incomplete_shape=True,
+                          check_experimental_compile=check_xla,
+                          check_xla_forced_compile=check_xla)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_{}_{}".format(
@@ -1220,8 +1250,11 @@ class LaxBackedNumpyTests(jtu.TestCase):
       self.assertAllClose(lax_ans, numpy_ans, check_dtypes=True, rtol=tol, atol=tol)
 
       lnp_fun = lambda arg: lnp.repeat(arg, repeats = repeats, axis=axis)
+      # Turns off XLA check because there are no XLA kernels for `Where` used by
+      # tf.repeat (b/169192730).
       self._CompileAndCheck(
-          lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=False)
+          lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=False,
+          check_experimental_compile=False, check_xla_forced_compile=False)
 
     m = lnp.array([1,2,3,4,5,6])
     args_maker = lambda: [m]
@@ -1259,8 +1292,12 @@ class LaxBackedNumpyTests(jtu.TestCase):
     tol = max(jtu.tolerance(dtype), jtu.tolerance(out_dtype))
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True,
                             tol=tol)
+    # XLA lacks int64 Cumsum/Cumprod kernels (b/168841378).
+    check_xla = out_dtype != onp.int64
     self._CompileAndCheck(
-        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=True)
+        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=True,
+        check_experimental_compile=check_xla,
+        check_xla_forced_compile=check_xla)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_dtype={}_m={}_n={}_k={}".format(
@@ -2147,7 +2184,8 @@ class LaxBackedNumpyTests(jtu.TestCase):
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=False,
                             tol={onp.float32: 1e-3})
     self._CompileAndCheck(
-        lnp_fun, args_maker, check_dtypes=False, check_incomplete_shape=True)
+        lnp_fun, args_maker, check_dtypes=False, check_incomplete_shape=True,
+        rtol={onp.complex128: 2e-15})
 
   @named_parameters(jtu.cases_from_list(
         {"testcase_name": jtu.format_test_name_suffix("nan_to_num", [shape],
@@ -2256,13 +2294,16 @@ class LaxBackedNumpyTests(jtu.TestCase):
     lnp_fun = lambda x: lnp.where(x)
     args_maker = lambda: [rng(shape, dtype)]
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=False)
+    # Turns off XLA check because there are no XLA kernels for `Where`, which
+    # XLA can't support because it's output shape is dynamic.
     self._CompileAndCheck(
         lnp.where,
         args_maker,
         check_dtypes=True,
         check_eval_on_shapes=False,
         check_incomplete_shape=True,
-        check_unknown_rank=False)
+        check_unknown_rank=False,
+        check_experimental_compile=False, check_xla_forced_compile=False)
 
 
   @named_parameters(jtu.cases_from_list(
@@ -2595,7 +2636,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
           {
               "testcase_name":
                   "_shapes={}_dtype={}_indexing={}_sparse={}".format(
-                      shapes, dtype, indexing, sparse),
+                      shapes, jtu.dtype_str(dtype), indexing, sparse),
               "shapes":
                   shapes,
               "dtype":
@@ -2942,9 +2983,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
     op = partial(npe.sort_key_val, dimension=dimension)
     self._CheckAgainstNumpy(onp_ref, op, args_maker,
                             check_dtypes=True)
-    # sort_key_val requires known rank
+    # sort_key_val requires known rank.
+    # XLA only has TopKV2 (used by tf.argsort) kernels on those dtypes
+    # (b/169194137).
+    check_xla = key_dtype in (onp.uint32, onp.int32, onp.float32, lnp.bfloat16)
     self._CompileAndCheck(op, args_maker, check_dtypes=True,
-                          check_incomplete_shape=True, check_unknown_rank=False)
+                          check_incomplete_shape=True, check_unknown_rank=False,
+                          check_experimental_compile=check_xla,
+                          check_xla_forced_compile=check_xla)
 
 
 # Most grad tests are at the lax level (see lax_test.py), but we add some here

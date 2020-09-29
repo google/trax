@@ -38,6 +38,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 
 import numpy as onp
+import tensorflow.compat.v2 as tf
 
 import trax.tf_numpy.extensions as npe
 import trax.tf_numpy.numpy as jnp
@@ -475,9 +476,13 @@ class IndexingTest(jtu.TestCase):
 
     args_maker = lambda: [rng(shape, dtype), unpacked_indexer]
     self._CheckAgainstNumpy(onp_fun, jnp_fun, args_maker, check_dtypes=True)
+    # TODO(wangpeng): check_xla_forced_compile is turned off because some
+    # compile-time-constant requirements are violated. Investigate and turn it
+    # on.
     self._CompileAndCheck(jnp_fun, args_maker, check_dtypes=True,
                           check_eval_on_shapes=False,
-                          check_incomplete_shape=True)
+                          check_incomplete_shape=True,
+                          check_xla_forced_compile=False)
 
   @parameterized.named_parameters(
       {"testcase_name": "{}_inshape={}_indexer={}"
@@ -518,32 +523,42 @@ class IndexingTest(jtu.TestCase):
                           check_incomplete_shape=True)
 
   @parameterized.named_parameters(
-      {"testcase_name": "{}_inshape={}_indexer={}"
+      {"testcase_name": "_{}_inshape={}_indexer={}"  # pylint: disable=g-complex-comprehension
        .format(name, jtu.format_shape_dtype_string(shape, dtype), indexer),
-       "shape": shape, "dtype": dtype, "rng_factory": rng_factory, "indexer": indexer}
+       "name": name, "shape": shape, "dtype": dtype, "rng_factory": rng_factory,
+       "indexer": indexer}
       for name, index_specs in ADVANCED_INDEXING_TESTS
       for shape, indexer in index_specs
       for dtype in all_dtypes
       for rng_factory in [jtu.rand_default])
-  def testAdvancedIntegerIndexing(self, shape, dtype, rng_factory, indexer):
+  def testAdvancedIntegerIndexing(self, name, shape, dtype, rng_factory,
+                                  indexer):
     rng = rng_factory()
     args_maker = lambda: [rng(shape, dtype), indexer]
     onp_fun = lambda x, idx: x[idx]
     jnp_fun = lambda x, idx: onp_fun(jnp.asarray(x), idx)
 
     self._CheckAgainstNumpy(onp_fun, jnp_fun, args_maker, check_dtypes=True)
+    # TODO(wangpeng): check_xla_forced_compile is turned off for
+    # ListOfPythonIntsAndIntArrays because it throws "The number of output
+    # elements has to equal to number of input elements that are sliced when
+    # input indices are not constant". Investigate and turn it on.
+    check_xla = (name != "ListOfPythonIntsAndIntArrays")
     self._CompileAndCheck(jnp_fun, args_maker, check_dtypes=True,
-                          check_incomplete_shape=True)
+                          check_incomplete_shape=True,
+                          check_xla_forced_compile=check_xla)
 
   @parameterized.named_parameters(
-      {"testcase_name": "{}_inshape={}_indexer={}"
+      {"testcase_name": "_{}_inshape={}_indexer={}"  # pylint: disable=g-complex-comprehension
        .format(name, jtu.format_shape_dtype_string(shape, dtype), indexer),
-       "shape": shape, "dtype": dtype, "rng_factory": rng_factory, "indexer": indexer}
+       "name": name, "shape": shape, "dtype": dtype, "rng_factory": rng_factory,
+       "indexer": indexer}
       for name, index_specs in MIXED_ADVANCED_INDEXING_TESTS
       for shape, indexer in index_specs
       for dtype in all_dtypes
       for rng_factory in [jtu.rand_default])
-  def testMixedAdvancedIntegerIndexing(self, shape, dtype, rng_factory, indexer):
+  def testMixedAdvancedIntegerIndexing(self, name, shape, dtype, rng_factory,
+                                       indexer):
     rng = rng_factory()
     indexer_with_dummies = [e if isinstance(e, onp.ndarray) else ()
                             for e in indexer]
@@ -558,8 +573,14 @@ class IndexingTest(jtu.TestCase):
     jnp_fun = lambda x, idx: np_fun(jnp.asarray(x), idx)
 
     self._CheckAgainstNumpy(np_fun, jnp_fun, args_maker, check_dtypes=True)
+    # TODO(wangpeng): check_xla_forced_compile is turned off for
+    # IntArrayWithInt32Type because it throws "The number of output elements has
+    # to equal to number of input elements that are sliced when input indices
+    # are not constant". Investigate and turn it on.
+    check_xla = (name != "IntArrayWithInt32Type")
     self._CompileAndCheck(jnp_fun, args_maker, check_dtypes=True,
-                          check_incomplete_shape=True)
+                          check_incomplete_shape=True,
+                          check_xla_forced_compile=check_xla)
 
   def testAdvancedIndexingManually(self):
     x = onp.random.RandomState(0).randn(3, 4, 5)
@@ -748,6 +769,13 @@ class UpdateOps(enum.Enum):
     }[op](x, indexer, y)
 
 
+# a test to workaround b/123559667
+def has_non_trivial_stride(indexer):
+  def has(idx):
+    return isinstance(idx, slice) and idx.step not in (1, -1, None)
+  return any(has(idx) for idx in tf.nest.flatten(indexer))
+
+
 class IndexedUpdateTest(jtu.TestCase):
 
   @parameterized.named_parameters(jtu.cases_from_list({  # pylint: disable=g-complex-comprehension
@@ -771,7 +799,14 @@ class IndexedUpdateTest(jtu.TestCase):
     np_fn = lambda x, y: UpdateOps.np_fn(op, indexer, x, y)
     tfnp_fn = lambda x, y: UpdateOps.tfnp_fn(op, indexer, x, y)
     self._CheckAgainstNumpy(np_fn, tfnp_fn, args_maker)
-    self._CompileAndCheck(tfnp_fn, args_maker, check_incomplete_shape=True)
+    # TODO(wangpeng): When indexer is slice(_, 8, -1), XLA throws error "Missing
+    # xla_context 0-th output from". Investigate.
+    check_xla = (not has_non_trivial_stride(indexer) and  # b/123559667
+                 not (isinstance(indexer, slice) and indexer.stop == 8 and
+                      indexer.step == -1))
+    self._CompileAndCheck(tfnp_fn, args_maker, check_incomplete_shape=True,
+                          check_experimental_compile=check_xla,
+                          check_xla_forced_compile=check_xla)
 
   @parameterized.named_parameters(jtu.cases_from_list({  # pylint: disable=g-complex-comprehension
       "testcase_name": "_{}_{}_{}_{}".format(
@@ -817,7 +852,10 @@ class IndexedUpdateTest(jtu.TestCase):
     np_fn = lambda x, y: UpdateOps.np_fn(op, indexer, x, y)
     tfnp_fn = lambda x, y: UpdateOps.tfnp_fn(op, indexer, x, y)
     self._CheckAgainstNumpy(np_fn, tfnp_fn, args_maker)
-    self._CompileAndCheck(tfnp_fn, args_maker, check_incomplete_shape=True)
+    check_xla = not has_non_trivial_stride(indexer)  # b/123559667
+    self._CompileAndCheck(tfnp_fn, args_maker, check_incomplete_shape=True,
+                          check_experimental_compile=check_xla,
+                          check_xla_forced_compile=check_xla)
 
   @parameterized.named_parameters(jtu.cases_from_list({  # pylint: disable=g-complex-comprehension
       "testcase_name": "_{}_{}_{}_{}".format(
@@ -843,4 +881,5 @@ class IndexedUpdateTest(jtu.TestCase):
 
 
 if __name__ == "__main__":
+  tf.config.set_soft_device_placement(False)
   absltest.main()

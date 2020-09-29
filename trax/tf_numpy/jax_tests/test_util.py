@@ -780,7 +780,9 @@ class TestCase(parameterized.TestCase):
                        check_eval_on_shapes=True,
                        check_incomplete_shape=True,
                        check_unknown_rank=True,
-                       static_argnums=()):
+                       static_argnums=(),
+                       check_experimental_compile=True,
+                       check_xla_forced_compile=True):
     """Compiles the function and checks the results.
 
     Args:
@@ -799,6 +801,13 @@ class TestCase(parameterized.TestCase):
         whether to check that the function can handle unknown ranks.
       static_argnums: indices of arguments to be treated as static arguments for
         `jit` and `eval_on_shapes`.
+      check_experimental_compile: whether to check compilation with
+        experimental_compile=True (in addition to compilation without the flag).
+      check_xla_forced_compile: whether to check compilation with
+        forced_compile=True (in addition to compilation without the flag). This
+        flag is different from experimental_compile because it enforces
+        whole-function compilation while the latter doesn't. TPU requires
+        whole-function compilation.
     """
     args = args_maker()
 
@@ -809,13 +818,6 @@ class TestCase(parameterized.TestCase):
         # skip the dtype check.
         check_dtypes = False
 
-    # `wrapped_fun` and `python_should_be_executing` are used to check that when
-    # the jitted function is called the second time, the original Python
-    # function won't be executed.
-    def wrapped_fun(*args):
-      self.assertTrue(python_should_be_executing)
-      return fun(*args)
-
     python_ans = fun(*args)
 
     python_shapes = tf.nest.map_structure(lambda x: onp.shape(x), python_ans)
@@ -823,36 +825,50 @@ class TestCase(parameterized.TestCase):
                                        python_ans)
     self.assertEqual(python_shapes, onp_shapes)
 
-    cfun = npe.jit(wrapped_fun, static_argnums=static_argnums)
-    python_should_be_executing = True
-    monitored_ans = cfun(*args)
+    def check_compile(**kwargs):
+      # `wrapped_fun` and `python_should_be_executing` are used to check that
+      # when the jitted function is called the second time, the original Python
+      # function won't be executed.
+      def wrapped_fun(*args):
+        self.assertTrue(python_should_be_executing)
+        return fun(*args)
 
-    python_should_be_executing = False
-    compiled_ans = cfun(*args)
-
-    self.assertAllClose(python_ans, monitored_ans, check_dtypes, atol, rtol)
-    self.assertAllClose(python_ans, compiled_ans, check_dtypes, atol, rtol)
-
-    # Run `cfun` with a different set of arguments to check that changing
-    # arguments won't cause recompilation.
-
-    new_args = args_maker()
-
-    skip_retracing_test = False
-    for old, new in zip(args, new_args):
-      if npe.most_precise_int_dtype(old) != npe.most_precise_int_dtype(new):
-        # If the old and new arguments result in different dtypes (because they
-        # fall into different value ranges), tf-numpy will retrace, so we skip
-        # the no-retrace test.
-        skip_retracing_test = True
-
-    if not skip_retracing_test:
+      cfun = npe.jit(wrapped_fun, static_argnums=static_argnums, **kwargs)
       python_should_be_executing = True
-      new_python_ans = fun(*new_args)
+      monitored_ans = cfun(*args)
+
       python_should_be_executing = False
-      compiled_ans = cfun(*new_args)
-      self.assertAllClose(new_python_ans, compiled_ans, check_dtypes, atol,
-                          rtol)
+      compiled_ans = cfun(*args)
+
+      self.assertAllClose(python_ans, monitored_ans, check_dtypes, atol, rtol)
+      self.assertAllClose(python_ans, compiled_ans, check_dtypes, atol, rtol)
+
+      # Run `cfun` with a different set of arguments to check that changing
+      # arguments won't cause recompilation.
+
+      new_args = args_maker()
+
+      skip_retracing_test = False
+      for old, new in zip(tf.nest.flatten(args), tf.nest.flatten(new_args)):
+        if npe.most_precise_int_dtype(old) != npe.most_precise_int_dtype(new):
+          # If the old and new arguments result in different dtypes (because
+          # they fall into different value ranges), tf-numpy will retrace, so we
+          # skip the no-retrace test.
+          skip_retracing_test = True
+
+      if not skip_retracing_test:
+        python_should_be_executing = True
+        new_python_ans = fun(*new_args)
+        python_should_be_executing = False
+        compiled_ans = cfun(*new_args)
+        self.assertAllClose(new_python_ans, compiled_ans, check_dtypes, atol,
+                            rtol)
+
+    check_compile()
+    if check_experimental_compile:
+      check_compile(experimental_compile=True)
+    if check_xla_forced_compile:
+      check_compile(xla_forced_compile=True)
 
     if check_eval_on_shapes:
       # Check that npe.eval_on_shapes can get complete output shapes given

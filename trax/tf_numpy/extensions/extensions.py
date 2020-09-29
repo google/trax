@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import bisect
 import contextlib
+import copy
 import string
 import sys
 import threading
@@ -269,11 +270,17 @@ def grad(f, has_aux=False):
   return _f
 
 
-# A workaround for b/121383831
-_orig_result_is_list = threading.local()
-
-
 def _record_result_type(recorder, f):
+  """A decorator that records some information about the function.
+
+  Args:
+    recorder: a function of signature `(args, kwargs, res) -> res`.
+    f: the original function.
+
+  Returns:
+    A transformed function that calls the original function and then the
+    recorder afterwards.
+  """
   def wrapper(*args, **kwargs):
     res = f(*args, **kwargs)
     res = recorder(args, kwargs, res)
@@ -286,7 +293,8 @@ def jit(f,
         static_argnums=(),
         xla_forced_compile=False,
         input_signature=None,
-        autograph=False):
+        autograph=False,
+        experimental_compile=False):
   """Returns a function that runs a trace-compiled version of `f`.
 
   A trace-compiled version of a function `f` has the same behavior as `f` (when
@@ -313,7 +321,8 @@ def jit(f,
       static arguments. Note that as aforementioned, any arguments that were not
       convertible to tensor will also be static.
     xla_forced_compile: if true, it will use XLA to force-compile the graph.
-      This requires that the function only contain ops that are XLA compatible.
+      This requires that the function only contain ops that are XLA
+      compatible. It will compile the entire function into a single XLA op.
     input_signature: a list of `tf.TensorSpec`, as the input signature to
       control tracing behavior. See the
       [doc](https://www.tensorflow.org/api_docs/python/tf/function]) of
@@ -322,27 +331,49 @@ def jit(f,
       `if` and `while` to their TensorFlow counterparts. See the
       [doc](https://www.tensorflow.org/api_docs/python/tf/function]) of
         `tf.function` for details.
+    experimental_compile: the `experimental_compile` flag for `tf.function`. See
+      the [doc](https://www.tensorflow.org/api_docs/python/tf/function]) of
+      `tf.function` for details. This is the recommended way to turn on XLA for
+      tf.function, but unlike xla_forced_compile, it doesn't force-compile the
+      entire function into a single XLA op.
 
   Returns:
     A trace-compiled version of f.
   """
 
-  @tf.function(input_signature=input_signature, autograph=autograph)
+  @tf.function(input_signature=input_signature, autograph=autograph,
+               experimental_compile=experimental_compile)
   def _tf_f(*args, **kwargs):
     """Accelerated function with tensor inputs/outputs."""
     np_args = _tf_to_np(args)
     kwargs = {k: _tf_to_np(v) for k, v in kwargs.items()}
     if xla_forced_compile:
-      # Workaround b/121383831
+      # Use list for mutability
+      output_is_list = [False]
+      output_is_empty = [False]
+      output_structure = [None]
       def recorder(args, kwargs, res):
         del args, kwargs
-        _orig_result_is_list.val = isinstance(res, list)
+        # Workaround b/121383831
+        output_is_list[0] = isinstance(res, list)
+        # If outputs are empty, xla.compile returns an `Operation`, which we
+        # don't want.
+        if tf.nest.flatten(res):
+          output_is_empty[0] = False
+          output_structure[0] = None
+        else:
+          output_is_empty[0] = True
+          # Without deepcopy, xla.compile will change output_structure[0] to a
+          # list of `Operation`.
+          output_structure[0] = copy.deepcopy(res)
         return res
       f_ = _record_result_type(recorder, f)
       np_out = tf.xla.experimental.compile(lambda: f_(*np_args, **kwargs))
       # Workaround b/121383831
-      if (isinstance(np_out, list) and len(np_out) == 1 and
-          not _orig_result_is_list.val):
+      if output_is_empty[0]:
+        np_out = output_structure[0]
+      elif (isinstance(np_out, list) and len(np_out) == 1 and
+            not output_is_list[0]):
         np_out = np_out[0]
     else:
       np_out = f(*np_args, **kwargs)
