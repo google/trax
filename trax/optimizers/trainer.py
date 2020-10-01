@@ -17,7 +17,6 @@
 """Trainer class that accelerates running optimizers on layers."""
 import functools
 from absl import logging
-import jax
 from trax import fastmath
 from trax import layers as tl
 from trax.fastmath import numpy as jnp
@@ -250,9 +249,6 @@ class ReversibleSerialTrainer(object):
       n_devices: An optional integer, number of accelerator devices to use;
         by default, all available accelerators will be used.
     """
-    # TODO(lukaszkaiser): remove these 2 lines once PR #4039 lands for JAX.
-    if fastmath.is_backend(fastmath.Backend.JAX):
-      jax.api._check_inexact_input_vjp = lambda x: None  # pylint: disable=protected-access
     self._blocks = [(tl.Serial(std), rev) for (std, rev) in blocks]
     self._loss_layer = loss_layer
     self._optimizer_fn = optimizer_fn

@@ -290,8 +290,8 @@ class ReversibleHalfResidual(ReversibleLayer):
     if not isinstance(stack_ct, (tuple, list)):
       stack_ct = (stack_ct,)
     stack_ct = (accumulator_output_ct,) + fastmath.nested_map_multiarg(
-        lambda x, y: x+y, context_ct[:len(stack_ct)], stack_ct
-        ) + context_ct[len(stack_ct):]
+        lambda x, y: x+y if x.dtype != jax.float0 else y,
+        context_ct[:len(stack_ct)], stack_ct) + context_ct[len(stack_ct):]
 
     reconstructed_x = accumulator_output - residual
     stack = (reconstructed_x,) + context
@@ -325,9 +325,6 @@ class ReversibleHalfResidual(ReversibleLayer):
 
 def _forward_and_or_backward(layer):
   """Create forward_and_or_backward for layers that don't define it."""
-  # TODO(lukaszkaiser): remove these 2 lines once PR #4039 lands for JAX.
-  if fastmath.is_backend(fastmath.Backend.JAX):
-    jax.api._check_inexact_input_vjp = lambda x: None  # pylint: disable=protected-access
 
   def forward_and_or_backward(inputs, weights, state, rng, output_grad=None,
                               compute_output=True, update_state=True):
