@@ -111,6 +111,36 @@ class ReformerTest(absltest.TestCase):
         x, weights, state, fastmath.random.get_prng(0))
     self.assertEqual(logits.shape, (1, 65536, 256))
 
+  def test_reformer2_quick(self):
+    vocab_size = 2
+    max_len = 2
+
+    model = reformer.Reformer2(
+        vocab_size,
+        d_model=4,
+        d_ff=4,
+        n_encoder_layers=1,
+        n_decoder_layers=1,
+        n_heads=2,
+        dropout=0.05,
+        max_len=max_len,
+        axial_pos_shape=None,
+        d_axial_pos_embs=None,
+        ff_activation=tl.Relu,
+        ff_use_sru=0,
+        ff_chunk_size=2,
+        mode='train',
+    )
+
+    x = [np.ones((1, max_len)).astype(np.int32),
+         np.ones((1, max_len)).astype(np.int32)]
+    model.init(shapes.signature(x))
+
+    logits, dec_toks = model(x)
+    del dec_toks
+
+    self.assertEqual(logits.shape, (1, max_len, vocab_size))
+
   def test_reformer2_one_step(self):
     vocab_size = 256
     max_len = 65536
