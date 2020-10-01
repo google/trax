@@ -1781,7 +1781,7 @@ class LSHFF(base.Layer):
 class SparseFF(base.Layer):
   """Feed-forward block with sparsity.
 
-  The original (non-LSH) feed-forward block is a triple Dense(d_ff)-Relu-Dense
+  The original (non-sparse) FF block is a triple Dense(d_ff)-Relu-Dense
   that takes an input, makes it of size d_ff (usually larger than it was) and
   then brings it back to the original size after Relu. It is commonly used in
   Transformer models where it often accounts for most of the trainable weights.
@@ -1911,3 +1911,117 @@ class SparseFF(base.Layer):
     w1 = np.reshape(w1.T, (self._d1, self._d2, -1))
     w2 = np.reshape(w2, (self._d1, self._d2, -1))
     self.weights = (m1, m2, mb, w1, w2, b2)
+
+
+class BlockSparseFF(base.Layer):
+  """Feed-forward block with block sparsity.
+
+  The original (non-sparse) FF block is a triple Dense(d_ff)-Relu-Dense
+  that takes an input, makes it of size d_ff (usually larger than it was) and
+  then brings it back to the original size after Relu. It is commonly used in
+  Transformer models where it often accounts for most of the trainable weights.
+
+  This block sparse layer mimics mixture of experts architecture.
+  It divides the dimension of d_ff in each weight matrix to # of blocks equal to
+  num_experts and activates only one non-zero block from the weights matrix.
+  This is trained with straight-through Gumbel softmax trick.
+  """
+
+  def __init__(self,
+               d_ff,
+               num_experts=64,
+               temperature=0.7,
+               mode='train',
+               kernel_initializer=init.GlorotUniformInitializer(),
+               bias_initializer=init.RandomNormalInitializer(1e-6)):
+    """Returns a block sparse feed-forward block."""
+    super().__init__(name=f'BlockSparseFF_{d_ff}')
+    self._mode = mode
+    self._d_ff = d_ff
+    self._num_experts = num_experts
+    self._temperature = temperature if mode == 'train' else 0.0
+    self._n_elements_in_block = d_ff // num_experts
+    self._kernel_initializer = kernel_initializer
+    self._bias_initializer = bias_initializer
+    assert self._d_ff % self._num_experts == 0
+
+  def forward(self, x):
+    """Executes this layer as part of a forward pass through the model.
+
+    Args:
+      x: Tensor of same shape and dtype as the input signature used to
+        initialize this layer.
+
+    Returns:
+      Tensor of same shape and dtype as the input.
+    """
+    m1, w1, w2, b2 = self.weights
+    x_shape = x.shape
+    x = np.reshape(x, [-1, x_shape[-1]])  # Easier to operate on flattened x.
+
+    # Q: check if we need bias and/or put relu after the m1 dot?
+    mask_logits = np.dot(x, m1)
+    # Softmax.
+    mask_logsumexp = fastmath.logsumexp(mask_logits, axis=-1, keepdims=True)
+    log_mask = mask_logits - mask_logsumexp
+    mask = np.exp(log_mask)
+    # Gumbel-softmax with straight-through discretization.
+    # TODO(lukaszkaiser, chowdhery): Extract this block and share
+    rng1, rng2 = fastmath.random.split(self.rng, 2)
+    u = fastmath.random.uniform(rng1, mask.shape, np.float32, 1e-6, 1.0 - 1e-6)
+    g = -np.log(-np.log(u))
+    selected_experts = np.argmax(log_mask + g * self._temperature, axis=-1)
+    if self._mode == 'train':
+      # Tricks from Section 2.1 in https://arxiv.org/abs/1801.09797
+      quant_mask = metrics.one_hot(selected_experts, self._num_experts)
+      quant_mask = fastmath.stop_gradient(quant_mask)
+      quant_mask += mask - fastmath.stop_gradient(mask)  # straight-through
+      # We will sometimes (50% of the batches) use the soft-mask instead of
+      # the quantized mask to improve training stability (see the paper above).
+      # Q: is selecting 50% of batches the best? Other %? Mixed in-batch?
+      select = fastmath.random.uniform(rng2, (), np.float32, -1.0, 1.0)
+      quant_mask = np.where(select > 0.0, quant_mask, mask)
+    else:
+      quant_mask = metrics.one_hot(selected_experts, self._num_experts)
+    quant_mask = np.reshape(quant_mask, [-1, self._num_experts, 1])
+    quant_mask_shape = quant_mask.shape
+    batch_size = quant_mask.shape[0]
+
+    if self._mode == 'predict' and batch_size == 1:
+      # This implementation mimicks inference for batch_size 1.
+      start_idx = selected_experts[0] * self._n_elements_in_block
+      end_idx = start_idx + self._n_elements_in_block
+      # w1 is [d_model, d_ff], w is [d_model, n_elements_in_block]
+      w = w1[:, start_idx:end_idx]
+      mid = np.dot(x, w)
+      relu = np.where(mid <= 0, np.zeros_like(mid), mid)
+      # w2 is [d_ff, d_model], v is [n_elements_in_block, d_model]
+      v = w2[start_idx:end_idx, :]
+      v = np.reshape(v, [self._n_elements_in_block, -1])
+      res = np.dot(relu, v) + b2
+    else:
+      expanded_mask = np.broadcast_to(
+          quant_mask,
+          (quant_mask_shape[0], quant_mask.shape[1], self._n_elements_in_block))
+      expanded_mask = np.reshape(expanded_mask, (-1, self._d_ff))
+      mid = np.dot(x, w1) * expanded_mask  # [joint_batch, d_ff]
+      relu = np.where(mid <= 0, np.zeros_like(mid), mid)
+      res = np.dot(relu, w2) + b2
+
+    return np.reshape(res, x_shape)  # un-flatten if needed
+
+  def init_weights_and_state(self, input_signature):
+    """Randomly initializes this layer's weights."""
+    d_model = input_signature.shape[-1]
+    shape_m1 = (d_model, self._num_experts)
+    shape_w1 = (d_model, self._d_ff)
+    shape_w2 = (self._d_ff, d_model)
+    shape_b2 = (d_model,)
+
+    rng_m1, rng_w1, rng_w2, rng_b2 = fastmath.random.split(self.rng, 4)
+    m1 = self._kernel_initializer(shape_m1, rng_m1)
+    w1 = self._kernel_initializer(shape_w1, rng_w1)
+    w2 = self._kernel_initializer(shape_w2, rng_w2)
+    b2 = self._bias_initializer(shape_b2, rng_b2)
+
+    self.weights = (m1, w1, w2, b2)
