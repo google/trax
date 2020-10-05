@@ -210,7 +210,7 @@ def main(argv):
   del argv
   logging.info('Starting RL training.')
 
-  gin_configs = FLAGS.config or []
+  gin_configs = FLAGS.config if FLAGS.config is not None else []
   gin.parse_config_files_and_bindings(FLAGS.config_file, gin_configs)
 
   logging.info('Gin config:')

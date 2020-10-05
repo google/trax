@@ -69,7 +69,7 @@ def train(batch_size, learning_rate, num_training_iters, validation_steps):
   for i in range(num_training_iters):
     train_x, train_y = next(train_iter)
     model.train(train_x, train_y, learning_rate)
-    if not (i + 1) % validation_steps:
+    if (i + 1) % validation_steps == 0:
       validation_iter = build_iterator(validation_data, infinite=False)
       correct_predictions = 0
       for valid_x, valid_y in validation_iter:

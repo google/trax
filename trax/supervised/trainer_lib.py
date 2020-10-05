@@ -86,7 +86,7 @@ class Trainer(object):
     self._is_chief, _, self._n_devices, rng = (
         training.init_host_and_devices(n_devices, random_seed))
     self._should_save_checkpoints = should_save_checkpoints and self._is_chief
-    self._checkpoints_at = checkpoints_at or []
+    self._checkpoints_at = checkpoints_at if checkpoints_at is not None else []
     self._should_write_summaries = should_write_summaries
     if not output_dir:
       self._should_save_checkpoints = False

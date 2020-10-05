@@ -292,7 +292,7 @@ def SRU(n_units, activation=None):
       cb.Parallel([], [], cb.Branch(MakeZeroState(), [])),
       cb.Scan(InnerSRUCell(), axis=1),
       cb.Select([0], n_in=2),                               # act(c), r, x
-      activation or [],
+      activation if activation is not None else [],
       base.Fn('FinalSRUGate', lambda c, r, x: c * r + x * (1 - r) * (3**0.5)),
       # Set the name to SRU and don't print sublayers.
       name=f'SRU_{n_units}', sublayers_to_print=[]

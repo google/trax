@@ -62,7 +62,7 @@ def _gin_parse_configs():
   from trax import optimizers as _trax_opt
   # pylint: disable=g-import-not-at-top,unused-import,g-bad-import-order,reimported,unused-variable
 
-  configs = FLAGS.config or []
+  configs = FLAGS.config if FLAGS.config is not None else []
   # Override with --dataset and --model
   if FLAGS.dataset:
     configs.append("data_streams.dataset_name='%s'" % FLAGS.dataset)
