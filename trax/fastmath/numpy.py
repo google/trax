@@ -136,7 +136,7 @@ def nested_map_multiarg(f, *objs, ignore_nones=True):
                   for i in range(len(objs[0]))])
   if isinstance(objs[0], dict):
     return {k: nested_map_multiarg(f, *[o[k] for o in objs])
-            for k in objs[0].keys()}
+            for k in objs[0]}
   if ignore_nones and _is_made_of_nones(objs):
     return None
   return f(*objs)
@@ -165,7 +165,7 @@ def nested_zip(objs):
   if isinstance(objs[0], tuple):
     return nested_zip(list(map(list, objs)))
   if isinstance(objs[0], dict):
-    return {k: nested_zip([obj[k] for obj in objs]) for k in objs[0].keys()}
+    return {k: nested_zip([obj[k] for obj in objs]) for k in objs[0]}
 
   raise ValueError('Non-exhaustive pattern match for {}.'.format(objs[0]))
 

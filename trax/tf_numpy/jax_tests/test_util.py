@@ -160,7 +160,7 @@ def _normalize_tolerance(tol):
   if isinstance(tol, dict):
     return {onp.dtype(k): v for k, v in tol.items()}
   else:
-    return {k: tol for k in _default_tolerance.keys()}
+    return {k: tol for k in _default_tolerance}
 
 def join_tolerance(tol1, tol2):
   tol1 = _normalize_tolerance(tol1)
@@ -736,7 +736,7 @@ class TestCase(parameterized.TestCase):
     if isinstance(x, dict):
       self.assertIsInstance(y, dict)
       self.assertEqual(set(x.keys()), set(y.keys()))
-      for k in x.keys():
+      for k in x:
         self.assertAllClose(x[k], y[k], check_dtypes, atol=atol, rtol=rtol)
     elif is_sequence(x) and not hasattr(x, '__array__'):
       self.assertTrue(is_sequence(y) and not hasattr(y, '__array__'))

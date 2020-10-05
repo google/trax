@@ -1738,7 +1738,7 @@ def _tree_broadcast(to, s):
       new_s = tuple(new_s)
     return new_s
   elif isinstance(to, dict):
-    return {k: _tree_broadcast(to[k], s[k]) for k in to.keys()}
+    return {k: _tree_broadcast(to[k], s[k]) for k in to}
   else:
     raise TypeError("Unsupported type %s" % type(to))
 

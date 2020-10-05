@@ -456,7 +456,7 @@ class RLTask:
   def save_to_file(self, file_name):
     """Save this task to file."""
     # Save trajectories from new epochs first.
-    epochs_to_save = [e for e in self._trajectories.keys()
+    epochs_to_save = [e for e in self._trajectories
                       if e not in self._saved_epochs_unchanged]
     for epoch in epochs_to_save:
       training.pickle_to_file(self._trajectories[epoch],
@@ -550,7 +550,7 @@ class RLTask:
 
   def remove_epoch(self, epoch):
     """Useful when we need to remove an unwanted trajectory."""
-    if epoch in self._trajectories.keys():
+    if epoch in self._trajectories:
       self._trajectories.pop(epoch)
 
   def trajectory_stream(self, epochs=None, max_slice_length=None,

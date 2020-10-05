@@ -324,7 +324,7 @@ def tokenize(stream, keys=None, vocab_type='subword',
       yield tuple(new_example)
     elif isinstance(example, dict):
       new_example = {}
-      for k in example.keys():
+      for k in example:
         if keys is None or k in keys:
           new_example[k] = np.array(vocab.encode(example[k])) + n_reserved_ids
         else:
