@@ -73,6 +73,12 @@ class InputsTest(parameterized.TestCase):
     self.assertLen(batch, 2)
     self.assertEqual(batch[0].shape, (10,))
 
+  def test_batch_exception_size(self):
+    dataset = ((i, i + 1) for i in range(10))
+    with self.assertRaises(ValueError):
+      batches = data.batch(dataset, 0)
+      next(batches)
+
   def test_serial(self):
     dataset = lambda _: ((i, i+1) for i in range(10))
     batches = data.Serial(dataset, data.Shuffle(3), data.Batch(10))

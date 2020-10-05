@@ -153,9 +153,9 @@ def Shuffle(queue_size=1024):  # pylint: disable=invalid-name
 
 def batch(generator, batch_size):
   """Batch and pad generator as in tf.data.Dataset.padded_batch."""
+  if batch_size <= 0:
+    raise ValueError(f'Batch size must be positive, but is {batch_size}.')
   buf = []
-  # TODO(lukaszkaiser): convert to ValueError
-  assert batch_size > 0, f'Batch size must be positive, but is {batch_size}'
   for example in generator:
     buf.append(example)  # Examples are tuples of tensors.
     if len(buf) == batch_size:
