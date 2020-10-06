@@ -45,7 +45,6 @@ setup(
         'scipy',
         'six',
         't5',
-        'tensor2tensor',
         'tensorflow-datasets',
         'tensorflow-text',
     ],
@@ -62,6 +61,7 @@ setup(
             'pytest',
             'wrapt==1.11.*',
         ],
+        't2t': ['tensor2tensor',],
     },
     classifiers=[
         'Development Status :: 4 - Beta',
