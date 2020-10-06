@@ -232,6 +232,8 @@ def DotProductAttention(queries, keys, values, mask, dropout, mode, rng):
     keep = fastmath.random.bernoulli(rng, 1.0 - dropout, dots.shape)
     dots = jnp.where(keep, dots / (1.0 - dropout), jnp.zeros_like(dots))
   out = jnp.matmul(dots, values)
+  out = out.astype(jnp.float32)
+  dots = dots.astype(jnp.float32)
   return out, dots
 
 

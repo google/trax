@@ -45,6 +45,15 @@ class RNNTest(parameterized.TestCase):
       y = model(x)
       self.assertEqual(y.shape, (3, 28, 20))
 
+  def test_lstmseq2seqattn_forward_shape(self, backend):
+    with fastmath.use_backend(backend):
+      model = rnn.LSTMSeq2SeqAttn(
+          input_vocab_size=20, target_vocab_size=20, d_model=16)
+      x = np.ones((3, 28)).astype(np.int32)
+      _, _ = model.init([shapes.signature(x), shapes.signature(x)])
+      ys = model([x, x])
+      self.assertEqual([y.shape for y in ys], [(3, 28, 20), (3, 28)])
+
 
 if __name__ == '__main__':
   absltest.main()

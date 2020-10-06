@@ -209,6 +209,7 @@ def LSTMSeq2SeqAttn(input_vocab_size=256,
       mask = jnp.reshape(mask, (mask.shape[0], 1, 1, mask.shape[1]))
       # Broadcast so mask is [batch, 1 for heads, decoder-len, encoder-len].
       mask = mask + jnp.zeros((1, 1, decoder_activations.shape[1], 1))
+      mask = mask.astype(jnp.float32)
       return queries, keys, values, mask
     return tl.Fn('PrepareAttentionInputs', F, n_out=4)
 
