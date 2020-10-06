@@ -28,7 +28,7 @@ We welcome **contributions** to Trax! We welcome PRs with code for new models an
 Execute the following cell (once) before running any of the code samples.
 
 
-```
+```python
 import os
 import numpy as np
 
@@ -49,7 +49,7 @@ Here is how you create an English-German translator in a few lines of code:
 
 
 
-```
+```python
 # Create a Transformer model.
 # Pre-trained model config in gs://trax-ml/models/translation/ende_wmt32k.gin
 model = trax.models.Transformer(
@@ -113,7 +113,7 @@ The basic units flowing through Trax models are *tensors* - multi-dimensional ar
 In Trax we want numpy operations to run very fast, making use of GPUs and TPUs to accelerate them. We also want to automatically compute gradients of functions on tensors. This is done in the `trax.fastmath` package thanks to its backends -- [JAX](https://github.com/google/jax) and [TensorFlow numpy](https://tensorflow.org).
 
 
-```
+```python
 from trax.fastmath import numpy as fastnp
 trax.fastmath.use_backend('jax')  # Can be 'jax' or 'tensorflow-numpy'.
 
@@ -139,7 +139,7 @@ print(f'tanh(product) = {tanh}')
 Gradients can be calculated using `trax.fastmath.grad`.
 
 
-```
+```python
 def f(x):
   return 2.0 * x * x
 
@@ -155,7 +155,7 @@ print(f'grad(2x^2) at 1 = {grad_f(1.0)}')
 
 Layers are basic building blocks of Trax models. You will learn all about them in the [layers intro](https://trax-ml.readthedocs.io/en/latest/notebooks/layers_intro.html) but for now, just take a look at the implementation of one core Trax layer, `Embedding`:
 
-```
+```python
 class Embedding(base.Layer):
   """Trainable layer that maps discrete tokens/ids to vectors."""
 
@@ -200,7 +200,7 @@ Layers with trainable weights like `Embedding` need to be initialized with the s
 
 
 
-```
+```python
 from trax import layers as tl
 
 # Create an input tensor x.
@@ -226,7 +226,7 @@ Models in Trax are built from layers most often using the `Serial` and `Branch` 
 see the code for many models in `trax/models/`, e.g., this is how the [Transformer Language Model](https://github.com/google/trax/blob/master/trax/models/transformer.py#L167) is implemented. Below is an example of how to build a sentiment classification model.
 
 
-```
+```python
 model = tl.Serial(
     tl.Embedding(vocab_size=8192, d_feature=256),
     tl.Mean(axis=1),  # Average on axis 1 (length of sentence).
@@ -251,7 +251,7 @@ print(model)
 To train your model, you need data. In Trax, data streams are represented as python iterators, so you can call `next(data_stream)` and get a tuple, e.g., `(inputs, targets)`. Trax allows you to use [TensorFlow Datasets](https://www.tensorflow.org/datasets) easily and you can also get an iterator from your own text file using the standard `open('my_file.txt')`.
 
 
-```
+```python
 train_stream = trax.data.TFDS('imdb_reviews', keys=('text', 'label'), train=True)()
 eval_stream = trax.data.TFDS('imdb_reviews', keys=('text', 'label'), train=False)()
 print(next(train_stream))  # See one example.
@@ -263,7 +263,7 @@ print(next(train_stream))  # See one example.
 Using the `trax.data` module you can create input processing pipelines, e.g., to tokenize and shuffle your data. You create data pipelines using `trax.data.Serial` and they are functions that you apply to streams to create processed streams.
 
 
-```
+```python
 data_pipeline = trax.data.Serial(
     trax.data.Tokenize(vocab_file='en_8k.subword', keys=[0]),
     trax.data.Shuffle(),
@@ -287,7 +287,7 @@ print(f'shapes = {[x.shape for x in example_batch]}')  # Check the shapes.
 When you have the model and the data, use `trax.supervised.training` to define training and eval tasks and create a training loop. The Trax training loop optimizes training and will create TensorBoard logs and model checkpoints for you.
 
 
-```
+```python
 from trax.supervised import training
 
 # Training task.
@@ -347,7 +347,7 @@ training_loop.run(2000)
 After training the model, run it like any layer to get results.
 
 
-```
+```python
 example_input = next(eval_batches_stream)[0][0]
 example_input_str = trax.data.detokenize(example_input, vocab_file='en_8k.subword')
 print(f'example input_str: {example_input_str}')
