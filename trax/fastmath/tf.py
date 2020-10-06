@@ -162,4 +162,5 @@ TF_BACKEND = {
     'device_count': lambda: max(len(tf_np_extensions.accelerators()), 1),
     'pmap': _tf_pmap,
     'psum': tf_np_extensions.psum,
+    'vmap': tf_np_extensions.vmap,
 }
