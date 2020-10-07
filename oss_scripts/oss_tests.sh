@@ -45,8 +45,8 @@ fi
 python -c "import trax"
 set_status
 
-# Run pytest with coverage.
-alias pytest='coverage run -m pytest'
+# # Run pytest with coverage.
+# alias pytest='coverage run -m pytest'
 
 # Check tests, separate out directories for easy triage.
 
@@ -129,15 +129,15 @@ set_status
 
 # TODO(traxers): Test tf-numpy separately.
 
-# Check notebooks.
+# # Check notebooks.
 
-# TODO(afrozm): Add more.
-jupyter nbconvert --ExecutePreprocessor.kernel_name=python3 \
-  --ExecutePreprocessor.timeout=600 --to notebook --execute \
-  trax/intro.ipynb;
-set_status
+# # TODO(afrozm): Add more.
+# jupyter nbconvert --ExecutePreprocessor.kernel_name=python3 \
+#   --ExecutePreprocessor.timeout=600 --to notebook --execute \
+#   trax/intro.ipynb;
+# set_status
 
-# Print coverage report.
-coverage report -m
+# # Print coverage report.
+# coverage report -m
 
 exit $STATUS

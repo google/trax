@@ -17,5 +17,5 @@ install:
   - ./oss_scripts/oss_pip_install.sh
 script:
   - ./oss_scripts/oss_tests.sh
-after_success:
-  - coveralls
+# after_success:
+#   - coveralls
