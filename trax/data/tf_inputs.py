@@ -697,9 +697,25 @@ def c4_bare_preprocess_fn(dataset,
   output_features = {'targets': feature, 'inputs': feature}
 
   # Tokenize the targets.
-  dataset = t5_utils.encode_string_features(
-      dataset, output_features, keys=output_features,
-      copy_plaintext=copy_plaintext)
+  keys = output_features
+  def encode_string_features_fn(features):
+    """Encode all specified feature that are strings and return a dictionary.
+
+    Args:
+      features: a dictionary
+    Returns:
+      a dictionary
+    """
+    ret = {}
+    for k, v in features.items():
+      if k in keys and v.dtype == tf.string:
+        if copy_plaintext:
+          ret['%s_plaintext' % k] = v
+        v = tf.cast(output_features[k].vocabulary.encode_tf(v), tf.int64)
+      ret[k] = v
+    return ret
+  dataset = dataset.map(encode_string_features_fn,
+                        num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
   # Preprocess the tokens - the exact preprocessors are set via gin.
   dataset = t5_processors.unsupervised(dataset,
