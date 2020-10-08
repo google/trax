@@ -70,6 +70,8 @@ CausalFavor = layer_configure(CausalFavor, blacklist=['mode'])
 DotProductCausalAttention = layer_configure(
     DotProductCausalAttention, blacklist=['mode'])
 SelfAttention = layer_configure(SelfAttention, blacklist=['mode'])
+ModularCausalAttention = layer_configure(ModularCausalAttention,
+                                         blacklist=['mode'])
 LSHSelfAttention = layer_configure(LSHSelfAttention, blacklist=['mode'])
 EncDecAttention = layer_configure(EncDecAttention, blacklist=['mode'])
 

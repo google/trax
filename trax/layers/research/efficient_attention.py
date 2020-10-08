@@ -36,15 +36,19 @@ revealed several limitations, which this code attempts to address:
 """
 import functools
 import math
+import random as pyrandom
 import jax
 
 from trax import fastmath
+from trax import layers as tl
 from trax.fastmath import numpy as np
 from trax.layers import base
 from trax.layers import combinators as cb
 from trax.layers import core
 from trax.layers import initializers as init
 from trax.layers import metrics
+from trax.layers import reversible
+from trax.layers.assert_shape import assert_shape
 
 
 ####################################################### Functions
@@ -930,6 +934,226 @@ class EfficientAttentionBase(base.Layer):
       return (o_all, s_all, i_ct_all[0], w_ct_all)
     else:
       return (o_all, s_all, i_ct_all, w_ct_all)
+
+
+@assert_shape('...->...')
+class ReversibleReshapePermute(reversible.ReversibleLayer):
+  """Simple and fast, reversible, random-looking permutation layer.
+
+  This layer permutates the last dimension (usually the embedding dimension)
+  with simple reshapes. It uses the same permutation for every embedding, and
+  permutation never changes.
+  The layer works only when the last dimension is a power of 2. The
+  permutation is not truly random, as it just uses reshapes to get a fast
+  random-looking permutation. It has, however, a permutation cycle length
+  of just log2(dimension_size).
+  """
+
+  def forward(self, x):
+    shape = x.shape
+    x = x.reshape(shape[:-1]+(-1, self._get_multiplier(x)))
+    t_x = np.einsum('...ab->...ba', x)  # transpose
+    return t_x.reshape(shape)
+
+  def reverse(self, x, weights=(), state=(), new_state=(), rng=None):
+    del state, new_state, rng
+    shape = x.shape
+    x = x.reshape(shape[:-1]+(self._get_multiplier(x), -1))
+    t_x = np.einsum('...ab->...ba', x)  # transpose
+    return t_x.reshape(shape)
+
+  def _get_multiplier(self, x):
+    """Return a size of the new dimension for reshaping.
+
+    We want to split the last dimension into two using approximately equal
+    dimensions, we could split a dimension of size 512 into 16 * 32.
+    However, not all numbers will work equally well, because we have a different
+    cycle length for permutations for different numbers. For example, for
+    dimension size 1024 and multiplier 32 we would get the same permutation
+    already after applying permutation twice (cycle length is 2), but with
+    multiplier 8 we would get the same permutation after appling permutation 10
+    times (cycle length is 10).
+
+    For powers of two the cycle length is limited by log2(dimension_size).
+    This function returns the biggest multiplier smaller than
+    sqrt(dimension_size) that keeps the longest possible cycle lenght of the
+    permutation.
+
+    Args:
+        x: The input tensor.
+
+    Returns:
+        An appropriate multiplier for the permutation reshape.
+    """
+    last_dim = x.shape[-1]
+
+    def big_relatively_prime(n):
+      # The longest possible cycle is achieved iff log2(multiplier) and
+      # log2(dimension_size) are relatively prime. We choose the biggest such
+      # number smaller than sqrt(dimension_size).
+      for i in range(n//2, 0, -1):
+        if n%i != 0:
+          return  i
+      return 1
+
+    max_cycle_len = int(math.log(last_dim, 2))
+    assert 2 ** max_cycle_len == last_dim
+
+    return 2 ** big_relatively_prime(max_cycle_len)
+
+
+@assert_shape('...->...')
+class ReversibleRandomPermute(reversible.ReversibleLayer):
+  """Reversible, random permutation layer.
+
+  This layer permutates the last dimension (usually the embedding dimension)
+  by indexing and slicing. It uses the same random permutation for every
+  embedding, and this permutation never changes.
+  """
+
+  def forward(self, x):
+    permutation, _ = self._get_permutation_and_reverse_permutation(x)
+    return x[..., permutation]
+
+  def reverse(self, x, weights=(), state=(), new_state=(), rng=None):
+    _, rev_permutation = self._get_permutation_and_reverse_permutation(x)
+    return x[..., rev_permutation]
+
+  def _get_permutation_and_reverse_permutation(self, x):
+    # TODO(jaszczur): random seed should be stored in state.
+    # Currently there is no way of doing it reliably.
+    last_dim = x.shape[-1]
+    permutation = list(range(last_dim))
+    rand = pyrandom.Random(42)
+    rand.shuffle(permutation)
+    rev_permutation = [permutation.index(i) for i in range(last_dim)]
+    return permutation, rev_permutation
+
+
+@assert_shape('...a->...bc')
+def SplitLastAxis(num_splits):  # pylint: disable=invalid-name
+  return tl.Fn(f'SplitLastAxis_{num_splits}',
+               lambda x: np.reshape(x, x.shape[:-1] + (num_splits, -1)))
+
+
+@assert_shape('...ab->...c')
+def MergeLastTwoAxes():  # pylint: disable=invalid-name
+  return tl.Fn('SplitLastAxis',
+               lambda x: np.reshape(x, x.shape[:-2] + (-1,)))
+
+
+@assert_shape('...a->...b')
+def LocallyConnectedDense(n_modules, n_units, kernel_size=1,  # pylint: disable=invalid-name
+                          kernel_initializer=init.GlorotUniformInitializer(),
+                          bias_initializer=init.RandomNormalInitializer(1e-6),
+                          use_bias=True):
+  """Layer using LocallyConnected1d for approximation of Dense layer.
+
+  The layer splits the last axis of a tensor into `n_modules`, then runs
+  LocallyConnected1d (grouped convolution) on all those modules, and
+  concatenates their results. It is essentially a locally-sensitive
+  approximation of Dense layer, with number of parameters smaller by the factor
+  of `n_modules / kernel_size`.
+
+  Args:
+    n_modules: Indicates how many modules (pixels) should be input and output
+        split into for processing.
+    n_units: how many outputs (filters) should each module generate.
+    kernel_size: The size of the kernel to be used.
+    kernel_initializer: Function that creates a matrix of (random) initial
+        connection weights `W` for the layer.
+    bias_initializer: Function that creates a vector of (random) initial
+        bias weights `b` for the layer.
+    use_bias: If `True`, compute an affine map `y = Wx + b`; else compute
+        a linear map `y = Wx`.
+
+  Returns:
+      LocallyConnectedDense base.Layer.
+  """
+  if n_modules == 1:
+    return tl.Dense(n_units, kernel_initializer=kernel_initializer,
+                    bias_initializer=bias_initializer, use_bias=use_bias)
+  return tl.Serial(
+      tl.SplitLastAxis(n_modules),
+      tl.LocallyConnected1d(
+          n_units, kernel_size, kernel_initializer=kernel_initializer,
+          bias_initializer=bias_initializer, use_bias=use_bias, padding='WRAP'),
+      tl.MergeLastTwoAxes())
+
+
+@assert_shape('bld->bld')
+def ModularCausalAttention(d_feature, n_heads=1, dropout=0.0,  # pylint: disable=invalid-name
+                           max_inference_length=2048, n_modules=1,
+                           mode='train'):
+  """Returns a layer that maps activations to activations, with causal masking.
+
+  Like `CausalAttention`, this layer type represents one pass of multi-head
+  self-attention with causal masking rather than padding-based masking. However,
+  it uses LocallyConnectedDense instead of Dense layer for computing K/Q/V.
+
+  Args:
+    d_feature: Depth/dimensionality of feature embedding.
+    n_heads: Number of attention heads.
+    dropout: Probababilistic rate for internal dropout applied to attention
+        activations (based on query-key pairs) before dotting them with values.
+    max_inference_length: maximum length for inference.
+    n_modules: Number of modules used in LocallyConnectedDense.
+    mode: One of `'train'`, `'eval'`, or `'predict'`.
+  """
+  if d_feature % n_heads != 0:
+    raise ValueError(
+        f'Dimensionality of feature embedding ({d_feature}) is not a multiple '
+        f'of the requested number of attention heads ({n_heads}).')
+
+  d_head = d_feature // n_heads
+
+  @assert_shape('bld->hlx')
+  def _split_into_heads():
+    """Returns a layer that reshapes tensors for multi-headed computation."""
+    def f(x):
+      batch_size = x.shape[0]
+      seq_len = x.shape[1]
+
+      # (b_size, seq_len, d_feature) --> (b_size*n_heads, seq_len, d_head)
+      x = x.reshape((batch_size, seq_len, n_heads, d_head))
+      x = x.transpose((0, 2, 1, 3))
+      x = x.reshape((batch_size * n_heads, seq_len, d_head))
+      return x
+    return tl.Fn('SplitIntoHeads', f)
+
+  @assert_shape('hlx->bld')
+  def _merge_heads():
+    """Returns a layer that undoes splitting, after multi-head computation."""
+    def f(x):
+      seq_len = x.shape[1]
+
+      # (b_size*n_heads, seq_len, d_head) --> (b_size, seq_len, d_feature)
+      x = x.reshape((-1, n_heads, seq_len, d_head))
+      x = x.transpose((0, 2, 1, 3))
+      x = x.reshape((-1, seq_len, d_head * n_heads))
+      return x
+    return tl.Fn('MergeHeads', f)
+
+  @assert_shape('...a->...b')
+  def ProcessingLayer():  # pylint: disable=invalid-name
+    if n_modules == 1:
+      return tl.Dense(d_feature)
+    else:
+      assert d_feature % n_modules == 0
+      return LocallyConnectedDense(n_modules, d_feature // n_modules)
+
+  return cb.Serial(
+      cb.Branch(
+          [ProcessingLayer(), _split_into_heads()],
+          [ProcessingLayer(), _split_into_heads()],
+          [ProcessingLayer(), _split_into_heads()],
+      ),
+      tl.DotProductCausalAttention(
+          dropout=dropout, max_inference_length=max_inference_length,
+          mode=mode),
+      _merge_heads(),
+      ProcessingLayer()
+  )
 
 
 class SelfAttention(EfficientAttentionBase):
