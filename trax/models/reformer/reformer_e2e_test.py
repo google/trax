@@ -20,10 +20,10 @@ import os
 from absl.testing import absltest
 import gin
 
-import trax
 from trax import test_utils
 from trax.models.reformer import reformer  # pylint: disable=unused-import
 from trax.supervised import trainer_lib
+from trax.tf_numpy import numpy as tf_np  # pylint: disable=unused-import
 
 pkg_dir, _ = os.path.split(__file__)
 _TESTDATA = os.path.join(pkg_dir, 'testdata')
@@ -39,8 +39,6 @@ class ReformerE2ETest(absltest.TestCase):
     test_utils.ensure_flag('test_tmpdir')
 
   def test_reformer_wmt_ende(self):
-    trax.fastmath.disable_jit()
-
     batch_size_per_device = 2
     steps = 1
     n_layers = 2
@@ -59,9 +57,7 @@ class ReformerE2ETest(absltest.TestCase):
     _ = trainer_lib.train(output_dir=output_dir)
 
   def test_reformer2_wmt_ende(self):
-    trax.fastmath.disable_jit()
-
-    batch_size_per_device = 1  # Ignored, but needs to be set.
+    batch_size_per_device = 2
     steps = 1
     n_layers = 2
     d_ff = 32
@@ -70,7 +66,8 @@ class ReformerE2ETest(absltest.TestCase):
 
     gin.bind_parameter('data_streams.data_dir', _TESTDATA)
     gin.bind_parameter('batcher.batch_size_per_device', batch_size_per_device)
-    gin.bind_parameter('batcher.buckets', ([512], [1, 1]))  # batch size 1.
+    gin.bind_parameter('batcher.buckets',
+                       ([512], [batch_size_per_device, batch_size_per_device]))
     gin.bind_parameter('train.steps', steps)
     gin.bind_parameter('Reformer2.n_encoder_layers', n_layers)
     gin.bind_parameter('Reformer2.n_decoder_layers', n_layers)
@@ -80,9 +77,7 @@ class ReformerE2ETest(absltest.TestCase):
     _ = trainer_lib.train(output_dir=output_dir)
 
   def test_reformer2_copy(self):
-    trax.fastmath.disable_jit()
-
-    batch_size_per_device = 1  # Ignored, but needs to be set.
+    batch_size_per_device = 2
     steps = 1
     n_layers = 2
     d_ff = 32
@@ -98,6 +93,26 @@ class ReformerE2ETest(absltest.TestCase):
 
     output_dir = self.create_tempdir().full_path
     _ = trainer_lib.train(output_dir=output_dir)
+
+  def test_reformer_copy(self):
+    batch_size_per_device = 2
+    steps = 1
+    n_layers = 2
+    d_ff = 32
+    d_model = 32
+
+    gin.parse_config_file('reformer_copy.gin')
+
+    gin.bind_parameter('data_streams.data_dir', _TESTDATA)
+    gin.bind_parameter('batcher.batch_size_per_device', batch_size_per_device)
+    gin.bind_parameter('train.steps', steps)
+    gin.bind_parameter('ReformerLM.n_layers', n_layers)
+    gin.bind_parameter('ReformerLM.d_ff', d_ff)
+    gin.bind_parameter('ReformerLM.d_model', d_model)
+
+    output_dir = self.create_tempdir().full_path
+    _ = trainer_lib.train(output_dir=output_dir)
+
 
 if __name__ == '__main__':
   absltest.main()

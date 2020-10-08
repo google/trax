@@ -826,7 +826,7 @@ class EfficientAttentionBase(base.Layer):
           o_mh, new_s_mh = fastmath.vmap(
               forward_unbatched_h, in_axes=(None, 0, 0), out_axes=0)(
                   i_mh, w_mh, s_mh)
-          o_mh = o_mh.sum(0)
+          o_mh = np.sum(o_mh, axis=0)
           return o_mh, new_s_mh
 
         if compute_grad:
@@ -853,7 +853,7 @@ class EfficientAttentionBase(base.Layer):
         o_x, s_x = fastmath.vmap(
             forward_unbatched_h, in_axes=(None, 0, 0), out_axes=(0, 0))(
                 i_x, w_all, s_x)
-        o_x = o_x.sum(0)
+        o_x = np.sum(o_x, axis=0)
         return o_x, s_x
       def run_inner(idx, loop_val):
         """Runs one slice of attention (all heads for one or more examples)."""
