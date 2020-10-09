@@ -75,7 +75,11 @@ then
   pytest trax/data
   set_status
 
-  pytest trax/layers
+  # Ignoring acceleration_test's test_chunk_grad_memory since it is taking a
+  # lot of time on OSS.
+  pytest \
+    --deselect=trax/layers/acceleration_test.py::AccelerationTest::test_chunk_grad_memory \
+    trax/layers
   set_status
 
   pytest trax/fastmath
