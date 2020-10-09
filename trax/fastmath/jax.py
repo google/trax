@@ -15,6 +15,7 @@
 
 """Trax fast math: JAX backend."""
 
+import functools
 import jax
 from jax import lax
 from jax import random as jax_random
@@ -160,6 +161,14 @@ def _custom_grad(f_vjp, f_original):
   return f_
 
 
+def _custom_vjp(f, f_fwd, f_bwd, nondiff_argnums=()):
+  @functools.partial(jax.custom_vjp, nondiff_argnums=nondiff_argnums)
+  def _f(*args, **kwargs):
+    return f(*args, **kwargs)
+  _f.defvjp(f_fwd, f_bwd)
+  return _f
+
+
 JAX_BACKEND = {
     'name': 'jax',
     'np': jnp,
@@ -167,6 +176,7 @@ JAX_BACKEND = {
     'avg_pool': jax_avg_pool,
     'cond': lax.cond,
     'conv': jax_conv,
+    'custom_vjp': _custom_vjp,
     'custom_grad': _custom_grad,
     'dataset_as_numpy': _dataset_as_numpy,
     'device_count': jax.local_device_count,

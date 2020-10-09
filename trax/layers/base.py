@@ -509,7 +509,7 @@ class Layer:
         outputs = self.forward(x)
         s = self.state
       else:
-        outputs, s = self._do_custom_gradients(x, weights, state, rng=rng)
+        outputs, s = self._do_custom_gradients(x)
         self.state = s
       self._rng = old_rng
       if not use_cache:
@@ -561,35 +561,36 @@ class Layer:
                        trace) from None
 
   # pylint: disable=protected-access
-  def _do_custom_gradients(self, x, weights, state, rng):
+  def _do_custom_gradients(self, x):
     """Calls this layer for a forward pass, but with custom gradients."""
 
-    def _do_forward(y, weights):
+    def _f(state, rng, y, weights):
       old_weights, old_state, old_rng = self.weights, self.state, self._rng
-      self.weights = weights
+      self.weights, self.state, self._rng = weights, state, rng
       res = self.forward(y)
       s = self.state
       self.weights, self.state, self._rng = old_weights, old_state, old_rng
       return res, s
 
-    def do_forward_vjp(y, weights):
-      """Custom gradient (vjp) function."""
+    def _f_fwd(state, rng, y, weights):
       old_weights, old_state, old_rng = self.weights, self.state, self._rng
-      self.weights = weights
-      output = self.forward(y)
-      new_state = self.state
+      self.weights, self.state, self._rng = weights, state, rng
+      res = self.forward(y)
+      s = self.state
       self.weights, self.state, self._rng = old_weights, old_state, old_rng
-      def vjpfun(grad):
-        grad = grad[0]  # Ignore dummy gradient wrt state.
-        res = self.backward(y, output, grad, weights, state, new_state, rng)
-        return res
-      return (output, new_state), vjpfun
+      return (res, s), (y, res, weights, s)
 
-    do_forward = fastmath.custom_grad(do_forward_vjp, _do_forward)
+    def _f_bwd(state, rng, residual, grad):
+      """Custom gradient function."""
+      y, output, weights, new_state = residual
+      grad = grad[0]  # Ignore dummy gradient wrt state.
+      return self.backward(y, output, grad, weights, state, new_state, rng)
 
-    output, state = do_forward(x, weights)
+    do_forward = fastmath.custom_vjp(_f, _f_fwd, _f_bwd, nondiff_argnums=(0, 1))
+
+    output, state = do_forward(self.state, self._rng, x, self.weights)
     # TODO(lukaszkaiser): Investigate why we need this stop_gradient
-    state = fastmath.stop_gradient(state)
+    # state = fastmath.stop_gradient(state)
     return output, state
 
 

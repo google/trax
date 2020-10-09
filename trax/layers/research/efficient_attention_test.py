@@ -88,7 +88,7 @@ class EfficientAttentionTest(test.TestCase):
       return model.pure_fn(
           inp, weights, state, rng=jax.random.PRNGKey(0))
     out, vjpfun, new_state = jax.vjp(forward, inp, weights, has_aux=True)
-    inp_grad, weights_grad = vjpfun(np.ones_like(inp))
+    inp_grad, weights_grad = vjpfun(fastmath.numpy.ones_like(inp))
     return out, new_state, inp_grad, weights_grad
 
   def _test_equivalence_to_reference_code(

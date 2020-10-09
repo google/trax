@@ -260,6 +260,50 @@ def custom_grad(*args, **kwargs):
   return backend()['custom_grad'](*args, **kwargs)
 
 
+def custom_vjp(f, f_fwd, f_bwd, nondiff_argnums=()):
+  """Set a custom vjp computation (override the default) for a function."""
+  # Check that nondiff_argnums is (0, 1, ..., N) for some N.
+  # Currently we only support nondiff_argnums at the front.
+  counter = -1
+  for i in nondiff_argnums:
+    counter += 1
+    if i != counter:
+      raise ValueError('Currently we only support custom_vjps with all nondiff'
+                       '_argnums up front, like (0,) or (0, 1) but not (1,) or'
+                       ' (1, 2). Found: %s' % str(nondiff_argnums))
+  # Call backend custom_vjp if it exists.
+  if 'custom_vjp' in backend():
+    return backend()['custom_vjp'](f, f_fwd, f_bwd,
+                                   nondiff_argnums=nondiff_argnums)
+  else:  # Use custom_grad otherwise.
+    if counter == -1:  # no non-diff args
+      def f_vjp(*args):
+        out, residual = f_fwd(*args)
+        def vjpfn(g):
+          return f_bwd(residual, g)
+        return out, vjpfn
+      return backend()['custom_grad'](f_vjp, f)
+    # Handle non-diff args by closure.
+    def f_joint(*args):
+      """This function takes all args, first counter+1 are non-diff ones."""
+      nondiff_args = list(args[:counter+1])
+      def f_diff(*diff_args):  # Takes only diff args, will define custom grad.
+        args = nondiff_args + list(diff_args)
+        return f(*args)
+      def f_vjp(*diff_args):  # Custom VJP for diff args.
+        args = nondiff_args + list(diff_args)
+        out, residual = f_fwd(*args)
+        def vjpfn(g):
+          bwd_args = nondiff_args + [residual, g]
+          return f_bwd(*bwd_args)
+        return out, vjpfn
+      # This is the function taking only diff args with custom vjp.
+      f_diff_vjp = backend()['custom_grad'](f_vjp, f_diff)
+      # Call it on the diff args.
+      return f_diff_vjp(*args[counter+1:])
+    return f_joint
+
+
 def pmap(*args, **kwargs):
   """Parallel-map to apply a function on multiple accelerators in parallel."""
   return backend()['pmap'](*args, **kwargs)

@@ -289,9 +289,14 @@ class ReversibleHalfResidual(ReversibleLayer):
         compute_residual_inputs_ct, stack_ct, self.compute_residual.n_out)
     if not isinstance(stack_ct, (tuple, list)):
       stack_ct = (stack_ct,)
+    def _add(x, y):
+      if x.dtype == jax.float0:
+        return y
+      if y.dtype == jax.float0:
+        return x
+      return x + y
     stack_ct = (accumulator_output_ct,) + fastmath.nested_map_multiarg(
-        lambda x, y: x+y if x.dtype != jax.float0 else y,
-        context_ct[:len(stack_ct)], stack_ct) + context_ct[len(stack_ct):]
+        _add, context_ct[:len(stack_ct)], stack_ct) + context_ct[len(stack_ct):]
 
     reconstructed_x = accumulator_output - residual
     stack = (reconstructed_x,) + context
