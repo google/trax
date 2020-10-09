@@ -25,6 +25,7 @@ from trax.models import rnn
 from trax.models import transformer
 from trax.models.reformer import reformer
 from trax.models.research import bert
+from trax.models.research import configurable_transformer
 from trax.models.research import layerdrop_transformer
 from trax.models.research import rezero
 from trax.models.research import transformer_no_enc_dec_attention
@@ -43,6 +44,12 @@ FrameStackMLP = model_configure(atari_cnn.FrameStackMLP)
 BERT = model_configure(bert.BERT)
 BERTClassifierHead = model_configure(bert.BERTClassifierHead)
 BERTRegressionHead = model_configure(bert.BERTRegressionHead)
+ConfigurableTransformer = model_configure(
+    configurable_transformer.ConfigurableTransformer)
+ConfigurableTransformerEncoder = model_configure(
+    configurable_transformer.ConfigurableTransformerEncoder)
+ConfigurableTransformerLM = model_configure(
+    configurable_transformer.ConfigurableTransformerLM)
 MLP = model_configure(mlp.MLP)
 PureMLP = model_configure(mlp.PureMLP)
 NeuralGPU = model_configure(neural_gpu.NeuralGPU)
