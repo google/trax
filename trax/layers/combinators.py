@@ -581,17 +581,22 @@ class Cond(base.Layer):
 
 
 # pylint: disable=invalid-name
-def Chunk(layer, chunk_size):
+def Chunk(layer, chunk_size, pass_unchunkable=True):
   """Executes `layer` using batch chunks of size `chunk_size` to save memory."""
   if chunk_size < 1:
     return layer
   def reshape_to_chunks(x):
     chunk_batch = x.shape[0]
-    if chunk_batch % chunk_size != 0:
-      raise ValueError(f'Chunk size {chunk_size} must divide batch '
-                       f'size {chunk_batch}')
-    n_chunks = chunk_batch // chunk_size
-    return jnp.reshape(x, [n_chunks, chunk_size] + list(x.shape[1:]))
+    size = chunk_size
+    n_chunks = chunk_batch // size
+    if chunk_batch % size != 0:
+      if pass_unchunkable:
+        n_chunks = 1
+        size = chunk_batch
+      else:
+        raise ValueError(f'Chunk size {size} must divide batch '
+                         f'size {chunk_batch}')
+    return jnp.reshape(x, [n_chunks, size] + list(x.shape[1:]))
   reshape_to_chunks_layer = base.PureLayer(
       lambda xs: fastmath.nested_map(reshape_to_chunks, xs),
       n_in=layer.n_in, n_out=layer.n_in, name='ReshapeToChunks')

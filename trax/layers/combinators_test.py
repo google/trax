@@ -494,6 +494,16 @@ class ChunkTest(absltest.TestCase):
     z = tl.Chunk(layer, 1)(x)
     self.assertLess(np.sum((y - z)**2), 1e-5)  # y == z upto numerics
 
+  def test_chunk_uneven_numbers(self):
+    layer = tl.Dense(4)
+    x = np.array([[1, 2, 3], [4, 5, 6]])
+    layer.init(x)
+    y = layer(x)
+    z = tl.Chunk(layer, 3)(x)  # By default it should just pass
+    self.assertLess(np.sum((y - z)**2), 1e-5)  # y == z upto numerics
+    chunk_with_test = tl.Chunk(layer, 3, pass_unchunkable=False)
+    self.assertRaises(tl.LayerError, lambda: chunk_with_test(x))
+
 
 class SerialWithSideOutputsTest(absltest.TestCase):
 
