@@ -4,18 +4,15 @@ cache: pip
 git:
   depth: 3
   quiet: true
-services:
-  - docker
 python:
   - "3.6"
 env:
   global:
-    - TF_LATEST="2.2.*"
+    - TF_VERSION="2.3.*"
   matrix:
-    - TF_VERSION="2.2.*"
+    - TRAX_TEST="lib"
+    - TRAX_TEST="research"
 install:
   - ./oss_scripts/oss_pip_install.sh
 script:
   - ./oss_scripts/oss_tests.sh
-# after_success:
-#   - coveralls

@@ -33,7 +33,7 @@ function set_status() {
 
 # Check env vars set
 echo "${TF_VERSION:?}" && \
-echo "${TF_LATEST:?}" && \
+echo "${TRAX_TEST:?}" && \
 echo "${TRAVIS_PYTHON_VERSION:?}"
 set_status
 if [[ $STATUS -ne 0 ]]
@@ -50,94 +50,81 @@ set_status
 
 # Check tests, separate out directories for easy triage.
 
-## Core Trax and Supervised Learning
+if [[ "${TRAX_TEST}" == "lib" ]]
+then
+  ## Core Trax and Supervised Learning
 
-# Disabled test fails with "disable-warnings", tested separately. These tests
-# parse flags, so it is important that no other flags be given to pytest for
-# these.
+  # Disabled the decoding test for now, since it OOMs.
+  # TODO(afrozm): Add the decoding_test.py back again.
 
-# Disabled the decoding test for now, since it OOMs.
+  # training_test and trainer_lib_test parse flags, so can't use with --ignore
+  pytest \
+    --ignore=trax/supervised/trainer_lib_test.py \
+    --ignore=trax/supervised/training_test.py \
+    --ignore=trax/supervised/decoding_test.py \
+    --ignore=trax/supervised/decoding_timing_test.py \
+    trax/supervised
+  set_status
 
-pytest --disable-warnings \
-  --ignore=trax/supervised/trainer_lib_test.py \
-  --ignore=trax/supervised/training_test.py \
-  --ignore=trax/supervised/decoding_test.py \
-  --ignore=trax/supervised/decoding_timing_test.py \
-  trax/supervised
-set_status
+  # Testing these separately here.
+  pytest \
+    trax/supervised/trainer_lib_test.py \
+    trax/supervised/training_test.py
+  set_status
 
-# TODO(afrozm): Add the decoding_test.py back again.
+  pytest trax/data
+  set_status
 
-pytest \
-  trax/supervised/trainer_lib_test.py \
-  trax/supervised/training_test.py
-set_status
+  pytest trax/layers
+  set_status
 
-pytest --disable-warnings \
-  --ignore=trax/layers/initializers_test.py \
-  trax/layers
-set_status
+  pytest trax/fastmath
+  set_status
 
-pytest trax/layers/initializers_test.py
-set_status
+  pytest trax/optimizers
+  set_status
 
-pytest --disable-warnings trax/fastmath
-set_status
+  # Catch-all for futureproofing.
+  pytest \
+    --ignore=trax/trax2keras_test.py \
+    --ignore=trax/data \
+    --ignore=trax/fastmath \
+    --ignore=trax/layers \
+    --ignore=trax/models \
+    --ignore=trax/optimizers \
+    --ignore=trax/rl \
+    --ignore=trax/supervised \
+    --ignore=trax/tf_numpy
+  set_status
+else
+  # Models, RL and misc right now.
 
-# Disabled tests are quasi integration tests.
-pytest --disable-warnings \
-  --ignore=trax/models/reformer/reformer_e2e_test.py \
-  --ignore=trax/models/reformer/reformer_memory_test.py \
-  --ignore=trax/models/reformer/reformer_oom_test.py \
-  trax/models
-set_status
+  ## Models
+  # Disabled tests are quasi integration tests.
+  pytest \
+    --ignore=trax/models/reformer/reformer_e2e_test.py \
+    --ignore=trax/models/reformer/reformer_memory_test.py \
+    --ignore=trax/models/reformer/reformer_oom_test.py \
+    trax/models
+  set_status
 
-pytest --disable-warnings trax/optimizers
-set_status
+  ## RL Trax
+  pytest trax/rl
+  set_status
 
-## RL Trax
+  ## Trax2Keras
+  pytest trax/trax2keras_test.py
+  set_status
 
-# Disabled tests fail with "disable-warnings", tested separately.
-pytest --disable-warnings \
-  --ignore=trax/rl/actor_critic_joint_test.py \
-  --ignore=trax/rl/actor_critic_test.py \
-  --ignore=trax/rl/serialization_utils_test.py \
-  --ignore=trax/rl/task_test.py \
-  --ignore=trax/rl/training_test.py \
-  trax/rl
-set_status
+  # Check notebooks.
 
-pytest \
-  trax/rl/actor_critic_joint_test.py \
-  trax/rl/actor_critic_test.py \
-  trax/rl/serialization_utils_test.py \
-  trax/rl/task_test.py \
-  trax/rl/training_test.py
-set_status
-
-# Catch-all for futureproofing.
-
-pytest --disable-warnings \
-  --ignore=trax/fastmath \
-  --ignore=trax/layers \
-  --ignore=trax/models \
-  --ignore=trax/optimizers \
-  --ignore=trax/rl \
-  --ignore=trax/supervised \
-  --ignore=trax/tf_numpy
-set_status
+  # TODO(afrozm): Add more.
+  jupyter nbconvert --ExecutePreprocessor.kernel_name=python3 \
+    --ExecutePreprocessor.timeout=600 --to notebook --execute \
+    trax/intro.ipynb;
+  set_status
+fi
 
 # TODO(traxers): Test tf-numpy separately.
-
-# # Check notebooks.
-
-# # TODO(afrozm): Add more.
-# jupyter nbconvert --ExecutePreprocessor.kernel_name=python3 \
-#   --ExecutePreprocessor.timeout=600 --to notebook --execute \
-#   trax/intro.ipynb;
-# set_status
-
-# # Print coverage report.
-# coverage report -m
 
 exit $STATUS
