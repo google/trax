@@ -30,9 +30,6 @@ noise_density = 0.15
 # ==============================================================================
 batcher.data_streams = @tf_inputs.data_streams
 batcher.bucket_length = 512
-# With 64, we get an average of weights_per_core = 450, so 450*8 = 3600 tokens
-# per batch on a 2x2 TPU on average per step. T5's batch is ~65k tokens/batch.
-# i.e. 18x bigger than ours.
 batcher.batch_size_per_device = 4
 batcher.eval_batch_size = 64
 batcher.max_eval_length = %max_length
@@ -71,8 +68,7 @@ c4_bare_preprocess_fn.sequence_length = %sequence_length
 # ==============================================================================
 train.eval_frequency = 1000
 train.eval_steps = 10
-train.model = @trax.models.Transformer  # NoEncDecAttention
-# T5 pretrains on C4 for 2^19 steps. Our batches are ~ 1/9th the size.
+train.model = @trax.models.Transformer
 train.steps = 524288
 train.optimizer = @trax.optimizers.Adafactor
 train.checkpoint_highest = 'accuracy'
@@ -83,30 +79,45 @@ d_model = 1024
 d_ff = 4096
 n_layers = 24
 n_heads = 16
+vocab_size = 32000
+dropout = 0.1
 
 # Parameters for Transformer:
 # ==============================================================================
 Transformer.d_model = %d_model
 Transformer.d_ff = %d_ff
-Transformer.dropout = 0.1
-Transformer.max_len = 2048
+Transformer.dropout = %dropout
+Transformer.max_len = %max_length
 Transformer.mode = 'train'
 Transformer.n_heads = %n_heads
 Transformer.n_encoder_layers = %n_layers
 Transformer.n_decoder_layers = %n_layers
-Transformer.input_vocab_size = 32000
+Transformer.input_vocab_size = %vocab_size
 
 # Parameters for TransformerNoEncDecAttention:
 # ==============================================================================
 TransformerNoEncDecAttention.d_model = %d_model
 TransformerNoEncDecAttention.d_ff = %d_ff
-TransformerNoEncDecAttention.dropout = 0.1
-TransformerNoEncDecAttention.max_len = 2048
+TransformerNoEncDecAttention.dropout = %dropout
+TransformerNoEncDecAttention.max_len = %max_length
 TransformerNoEncDecAttention.mode = 'train'
 TransformerNoEncDecAttention.n_heads = %n_heads
 TransformerNoEncDecAttention.n_encoder_layers = %n_layers
 TransformerNoEncDecAttention.n_decoder_layers = %n_layers
-TransformerNoEncDecAttention.input_vocab_size = 32000
+TransformerNoEncDecAttention.input_vocab_size = %vocab_size
+
+# Parameters for ConfigurableTransformer:
+# ==============================================================================
+ConfigurableTransformer.d_model = %d_model
+ConfigurableTransformer.d_ff = %d_ff
+ConfigurableTransformer.dropout = %dropout
+ConfigurableTransformer.ff_dropout = %dropout
+ConfigurableTransformer.max_len = %max_length
+ConfigurableTransformer.mode = 'train'
+ConfigurableTransformer.n_heads = %n_heads
+ConfigurableTransformer.n_encoder_layers = %n_layers
+ConfigurableTransformer.n_decoder_layers = %n_layers
+ConfigurableTransformer.input_vocab_size = %vocab_size
 
 # Parameters for T5
 
