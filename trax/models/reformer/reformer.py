@@ -17,59 +17,15 @@
 """Reformer Models."""
 
 import jax
-
 from trax import fastmath
 from trax import layers as tl
 from trax.fastmath import numpy as jnp
-from trax.models.research import transformer_no_enc_dec_attention
-
-
-StripFromConcatenateWithPadding = (
-    transformer_no_enc_dec_attention.StripFromConcatenateWithPadding
-)
-ConcatWithPadding = transformer_no_enc_dec_attention.ConcatWithPadding
+from trax.models.research import configurable_transformer
+from trax.models.research import transformer_no_enc_dec_attention as t2
 
 
 # Layers are always CamelCase, but functions in general are snake_case
 # pylint: disable=invalid-name
-
-
-def FeedForward(d_model, d_ff, dropout, activation, act_dropout, mode):
-  """Feed-forward block with layer normalization at start."""
-  if act_dropout is None:
-    act_dropout = dropout
-  return [
-      tl.LayerNorm(),
-      tl.Dense(d_ff),
-      tl.Dropout(rate=act_dropout, shared_axes=[-2], mode=mode),
-      activation(),
-      tl.Dense(d_model),
-      tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),
-  ]
-
-
-def ChunkedFeedForward(d_model, d_ff, dropout, activation, act_dropout,
-                       chunk_size, mode):
-  """Chunked feed-forward block with layer normalization at start."""
-  ff = FeedForward(d_model, d_ff, dropout, activation, act_dropout, mode)
-  if chunk_size < 1:
-    return ff
-  return tl.BatchLeadingAxes(tl.Chunk(tl.Serial(ff), chunk_size))
-
-
-def FeedForwardWithOptions(d_model, d_ff, dropout, ff_activation, ff_dropout,
-                           ff_chunk_size, ff_use_sru, ff_sparsity, mode):
-  """Feed-Forward block with all the options."""
-  if ff_use_sru:
-    return [tl.SRU(d_model) for _ in range(ff_use_sru)]
-  elif ff_sparsity:
-    return [tl.LayerNorm(),
-            tl.SparseFF(d_ff, n_elements_in_block=ff_sparsity,
-                        d_lowrank=d_ff // ff_sparsity, mode=mode),
-            tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode)]
-  else:
-    return [ChunkedFeedForward(d_model, d_ff, dropout, ff_activation,
-                               ff_dropout, ff_chunk_size, mode)]
 
 
 def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
@@ -95,21 +51,16 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
   Returns:
     the layer.
   """
-  # TODO(lukaszkaiser): unify attention layers API and remove this branch
-  try:
-    attention = attention_type(
-        n_heads=n_heads, d_qk=d_attention_key, d_v=d_attention_value,
-        causal=True, output_dropout=dropout, mode=mode)
-  except TypeError:  # No d_qk arguments in less advanced layers.
-    attention = attention_type(d_model, n_heads=n_heads,
-                               dropout=dropout, mode=mode)
+  attention = configurable_transformer.ApplyAttentionLayer(
+      attention_type, d_model, n_heads, d_attention_key, d_attention_value,
+      True, False, dropout, dropout, mode)
   attention_half_residual = tl.ReversibleHalfResidual(
       tl.LayerNorm(),
       attention_layer=attention,
   )
 
-  feed_forward = FeedForwardWithOptions(
-      d_model, d_ff, dropout, ff_activation, ff_dropout,
+  feed_forward = configurable_transformer.FeedForwardWithOptions(
+      d_model, d_ff, dropout, [-2], ff_activation, ff_dropout,
       ff_chunk_size, ff_use_sru, ff_sparsity, mode)
 
   return [
@@ -393,18 +344,17 @@ def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
     # to 'eval' mode instead.
     mode = 'eval'
 
-  attention = attention_type(
-      n_heads=n_heads, d_qk=d_model//n_heads, d_v=d_model//n_heads,
-      masked=True, causal=False,
-      attention_dropout=dropout, output_dropout=dropout,
-      mode=mode)
+  attention = configurable_transformer.ApplyAttentionLayer(
+      attention_type=attention_type, d_model=d_model, n_heads=n_heads,
+      d_qk=d_model//n_heads, d_v=d_model//n_heads, masked=True, causal=False,
+      attention_dropout=dropout, output_dropout=dropout, mode=mode)
   attention_half_residual = tl.ReversibleHalfResidual(
       tl.LayerNorm(),
       attention_layer=attention,
   )
 
-  feed_forward = FeedForwardWithOptions(
-      d_model, d_ff, dropout, ff_activation, ff_dropout,
+  feed_forward = configurable_transformer.FeedForwardWithOptions(
+      d_model, d_ff, dropout, [-2], ff_activation, ff_dropout,
       ff_chunk_size, ff_use_sru, ff_sparsity, mode)
 
   return [
@@ -450,7 +400,7 @@ def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, ff_activation,
       attention_layer=causal_attention,
   )
 
-  feed_forward = FeedForward(
+  feed_forward = configurable_transformer.FeedForward(
       d_model, d_ff, dropout, ff_activation, ff_dropout, mode)
 
   return [                             # vec_d1 vec_d2 vec_e masks
@@ -754,7 +704,7 @@ def Reformer2(input_vocab_size,
 
       # Concat encoder and decoder, given encoder mask.
       tl.Select([1, 0]),                       # vec_e vec_d mask_e tok_e tok_d
-      ConcatWithPadding(mode=mode),            # vec_ed tok_e tok_d
+      t2.ConcatWithPadding(mode=mode),         # vec_ed tok_e tok_d
 
       # Run (encoder and) decoder blocks.
       tl.Dup(),                                    # vec_ed1 vec_ed2 tok_e tok_d
@@ -765,8 +715,8 @@ def Reformer2(input_vocab_size,
       tl.LayerNorm(),                              # vec_ed tok_e tok_d
 
       # Separate out the encoder part from the concatenated vector.
-      tl.Select([0, 1, 2, 2]),                     # vec_ed tok_e tok_d tok_d
-      StripFromConcatenateWithPadding(mode=mode),  # vec_d tok_d
+      tl.Select([0, 1, 2, 2]),                        # vec_ed tok_e tok_d tok_d
+      t2.StripFromConcatenateWithPadding(mode=mode),  # vec_d tok_d
 
       # Map to output vocab.
       tl.Dense(output_vocab_size),                 # vec_d tok_d
