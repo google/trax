@@ -23,7 +23,6 @@ from tensorflow import test
 from trax import fastmath
 from trax import shapes
 from trax.fastmath import numpy as jnp
-import trax.layers as tl
 from trax.layers.research import efficient_attention
 
 
@@ -293,109 +292,6 @@ class EfficientAttentionTest(test.TestCase):
         self.assertGreater(
             np.mean(np.abs(y[i, rngs[i]:] - y2[i, rngs[i]:])), 1e-5)
 
-
-class EfficientFeedForwardTest(test.TestCase):
-
-  def test_blocksparse_ff_train(self):
-    d_model = 1024
-    num_experts = 64
-    d_ff = d_model * 8
-    x_shape = (3, 7, d_model)
-    with fastmath.use_backend(fastmath.Backend.JAX):
-      layer = efficient_attention.BlockSparseFF(
-          d_ff=d_ff, num_experts=num_experts, temperature=0.7, mode='train')
-      x = np.ones(x_shape).astype(np.float32)
-      _, _ = layer.init(shapes.signature(x))
-      y = layer(x)
-      self.assertEqual(y.shape, x.shape)
-
-  def test_blocksparse_ff_predict_equals_eval(self):
-    d_model = 1024
-    num_experts = 64
-    d_ff = d_model * 8
-    x_shape = (1, 1, d_model)
-    temperature = 0.7
-    with fastmath.use_backend(fastmath.Backend.JAX):
-      x = np.ones(x_shape).astype(np.float32)
-      input_signature = shapes.signature(x)
-      common_kwargs = dict(
-          d_ff=d_ff,
-          num_experts=num_experts,
-          temperature=temperature,
-      )
-      eval_model = efficient_attention.BlockSparseFF(
-          mode='eval', **common_kwargs)
-      weights, state = eval_model.init(input_signature)
-      eval_out, _ = eval_model.pure_fn(
-          x, weights, state, rng=jax.random.PRNGKey(0))
-      pred_model = efficient_attention.BlockSparseFF(
-          mode='predict', **common_kwargs)
-      _, _ = pred_model.init(input_signature)
-      pred_out, _ = pred_model.pure_fn(
-          x, weights, state, rng=jax.random.PRNGKey(0))
-      self.assertEqual(eval_out.shape, x.shape)
-      # eval_out and pred_out should be identical.
-      np.testing.assert_array_almost_equal(eval_out[0, 0, :], pred_out[0, 0, :])
-
-
-class ReversibleReshapePermuteTest(test.TestCase):
-
-  def test_reversible_permute(self):
-    layer = efficient_attention.ReversibleReshapePermute()
-    x = np.array([[1, 2, 3, 4, 5, 6, 7, 8],
-                  [0, 1, 2, 3, 4, 5, 6, 7]])
-    layer.init(shapes.signature(x))
-    ys = layer(x)
-    self.assertEqual(tl.to_list(ys), [
-        [1, 3, 5, 7, 2, 4, 6, 8],
-        [0, 2, 4, 6, 1, 3, 5, 7]])
-    rev_x = layer.reverse(ys, weights=layer.weights)
-    self.assertEqual(tl.to_list(x), tl.to_list(rev_x))
-
-
-class ReversibleRandomPermuteTest(test.TestCase):
-
-  def test_reversible_permute(self):
-    layer = efficient_attention.ReversibleRandomPermute()
-    x = np.array([[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
-                  [0, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 11, 12, 13],
-                  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
-                  ])
-    layer.init(shapes.signature(x))
-    ys = layer(x)
-    # this assert will fail once per ~87B runs, but it's okay
-    self.assertNotEqual(tl.to_list(ys), tl.to_list(x))
-
-    self.assertEqual(tl.to_list(ys[0]), tl.to_list(ys[2]))
-    self.assertNotEqual(tl.to_list(ys[0]), tl.to_list(ys[1]))
-    rev_x = layer.reverse(ys, weights=layer.weights)
-    self.assertEqual(tl.to_list(x), tl.to_list(rev_x))
-
-
-class LocallyConnectedDenseTest(test.TestCase):
-
-  def test_simple_call(self):
-    layer = efficient_attention.LocallyConnectedDense(2, 8)
-    x = np.array([[2, 5, 3, 4],
-                  [0, 1, 2, 3]])
-    _, _ = layer.init(shapes.signature(x))
-
-    y = layer(x)
-    self.assertEqual(y.shape, (2, 16))
-
-
-class ModularCausalAttentionTest(test.TestCase):
-
-  def test_simple_call(self):
-    layer = efficient_attention.ModularCausalAttention(
-        d_feature=4, n_heads=2, n_modules=2)
-    x = np.array([[[2, 5, 3, 4],
-                   [0, 1, 2, 3],
-                   [0, 1, 2, 3],]])
-    _, _ = layer.init(shapes.signature(x))
-
-    y = layer(x)
-    self.assertEqual(y.shape, (1, 3, 4))
 
 if __name__ == '__main__':
   test.main()
