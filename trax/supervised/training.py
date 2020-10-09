@@ -331,7 +331,7 @@ class Loop:
       loss_acc, step_acc = 0.0, 0
       start_time = time.time()
       optimizer_metrics_acc = collections.defaultdict(float)
-      for _ in range(n_steps):
+      for i in range(n_steps):
         prev_task_index = self._which_task(self._step)
         self._step += 1
         task_index = self._which_task(self._step)

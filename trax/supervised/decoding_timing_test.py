@@ -43,22 +43,23 @@ class DecodingTimingTest(test.TestCase):
 
     def _causal_attention_fn():
       return functools.partial(
-          layers.CausalAttention,
+          layers.ModularCausalAttention,
+          n_modules=64,
           max_inference_length=2 * max_len)
 
     pred_model = models.Reformer2(
         mode='predict',
-        d_model=4*1024,
-        d_ff=32*1024,
+        d_model=8*1024,
+        d_ff=64*1024,
         dropout=0.05,
         max_len=max_len,
-        n_heads=16,
-        n_encoder_layers=3,
-        n_decoder_layers=3,
+        n_heads=64,
+        n_encoder_layers=2,
+        n_decoder_layers=2,
         encoder_attention_type=_self_attention_fn(),
         encoder_decoder_attention_type=_causal_attention_fn(),
-        input_vocab_size=32,
-        ff_sparsity=128,
+        input_vocab_size=4,
+        ff_sparsity=256,
         axial_pos_shape=None,
     )
 
@@ -80,7 +81,8 @@ class DecodingTimingTest(test.TestCase):
       if counter >= 14:
         break
 
-    print('\n\n\nTotal time (10 tokens): %.4fs\n\n\n' % total_time)
+    # We print 5* time for 10 tokens, @2 layers this is ~1 token @ 100 layers.
+    print('\n\nTime for 5x10 tokens (~1tok @100): %.4fs\n\n\n' % (5*total_time))
     self.assertLess(total_time, 20.0)  # If it's > 20s, it's some bug.
     # Check resulting shapes.
     s = np.concatenate(result, axis=1)
