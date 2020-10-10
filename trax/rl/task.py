@@ -310,8 +310,16 @@ class RLTask:
                 'interleaved_pixels': True,
                 'zero_indexed_actions': True
             })
+        eval_env = environments.load_from_settings(
+            platform='atari',
+            settings={
+                'levelName': env,
+                'interleaved_pixels': True,
+                'zero_indexed_actions': True,
+                'random_noops_range': 30,
+            })
         eval_env = atari_wrapper.AtariWrapper(
-            environment=env,
+            environment=eval_env,
             max_abs_reward=None,
             num_stacked_frames=num_stacked_frames)
         env = atari_wrapper.AtariWrapper(environment=env,
