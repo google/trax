@@ -79,7 +79,11 @@ then
   # lot of time on OSS.
   pytest \
     --deselect=trax/layers/acceleration_test.py::AccelerationTest::test_chunk_grad_memory \
+    --ignore=trax/layers/initializers_test.py \
     trax/layers
+  set_status
+
+  pytest trax/layers/initializers_test.py
   set_status
 
   pytest trax/fastmath
