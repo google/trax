@@ -63,7 +63,7 @@ class AccelerationTest(absltest.TestCase):
 
   def test_chunk_grad_memory(self):
     """Test chunking gradient here to exercise accelerator memory usage."""
-    layer = tl.Serial(tl.Dense(1024*1024), tl.Dense(128))
+    layer = tl.Serial(tl.Dense(1024*1024), tl.Dense(24))
     chunked = tl.Chunk(layer, 256)
 
     @fastmath.jit
@@ -78,11 +78,11 @@ class AccelerationTest(absltest.TestCase):
           lambda w, g: w - 1e-4 * g, weights, gradients)
       return new_weights, new_state, logits
 
-    x = np.random.uniform(size=(16*1024, 16))
+    x = np.random.uniform(size=(32*1024, 16))
     chunked.init(shapes.signature(x))
     weights, _, logits = mock_training_step(
         x, chunked.weights, chunked.state, fastmath.random.get_prng(0))
-    self.assertEqual(logits.shape, (16*1024, 128))
+    self.assertEqual(logits.shape, (32*1024, 24))
     self.assertEqual(weights[1][0][0][0].shape, (16, 1024*1024))
 
 

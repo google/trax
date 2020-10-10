@@ -387,22 +387,23 @@ class Scan(base.Layer):
       inputs = tuple(inputs)  # so that inputs structure matches outputs
     n_carry = self._n_carry
     def scannable_fn(x, carry_and_state):  # pylint: disable=invalid-name
-      carry, state = carry_and_state
+      carry, state, i = carry_and_state
       x_and_carry = x + carry if n_carry > 0 else x
+      rng = fastmath.random.fold_in(self.rng, i)
       res, new_state = self.sublayer.pure_fn(
-          x_and_carry, weights, state, self.rng, use_cache=True)
+          x_and_carry, weights, state, rng, use_cache=True)
       if n_carry > 0:
-        return (res[:-n_carry], (res[-n_carry:], new_state))
+        return (res[:-n_carry], (res[-n_carry:], new_state, i+1))
       else:
-        return (res, ([], new_state))
+        return (res, ([], new_state, i+1))
 
     if n_carry > 0:
       xs = inputs[:-n_carry]  # Split input stack into inputs and carry.
-      init = (inputs[-n_carry:], self.state[0])
+      init = (inputs[-n_carry:], self.state[0], jnp.array(0, dtype=jnp.int32))
     else:
-      xs, init = inputs, ([], self.state[0])
-    ys, (carry, new_state) = _scan(scannable_fn, xs, init,
-                                   axis=self._axis, remat=self._remat)
+      xs, init = inputs, ([], self.state[0], jnp.array(0, dtype=jnp.int32))
+    ys, (carry, new_state, _) = _scan(scannable_fn, xs, init,
+                                      axis=self._axis, remat=self._remat)
     res = ys + carry if n_carry > 0 else ys
     self.state = (new_state,)
     return res  # Put outputs and carry back on stack.

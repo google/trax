@@ -70,6 +70,9 @@ class RandomBackend(object):
   def split(self, prng, num=2):
     return backend()['random_split'](prng, num)
 
+  def fold_in(self, rng, data):
+    return backend()['random_fold_in'](rng, data)
+
   def uniform(self, *args, **kwargs):
     return backend()['random_uniform'](*args, **kwargs)
 

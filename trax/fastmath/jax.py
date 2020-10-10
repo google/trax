@@ -200,6 +200,7 @@ JAX_BACKEND = {
     'random_normal': jax_random.normal,
     'random_randint': jax_randint,
     'random_split': jax_random.split,
+    'random_fold_in': jax_random.fold_in,
     'random_uniform': jax_random.uniform,
     'remat': jax.remat,
     'scan': lax.scan,
