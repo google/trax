@@ -120,7 +120,7 @@ def TransformerDecoder(vocab_size=None,
       (batch_size, sequence_length). The tensor elements are integers in
       `range(vocab_size)`, and `0` values mark padding positions.
 
-    - input if `vocab_size` is None: rank 2 tensor representing a batch
+    - input if `vocab_size` is None: rank 3 tensor representing a batch
       of activation vectors; shape is (batch_size, sequence_length, `d_model`).
 
     - output: rank 3 tensor with shape (batch_size, sequence_length, `d_model`).
