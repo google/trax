@@ -25,6 +25,7 @@ from absl import logging
 import gin
 import numpy as np
 
+from t5 import data as t5_data
 from t5.data import preprocessors as t5_processors
 from t5.data import sentencepiece_vocabulary as t5_spc_vocab
 from t5.data import utils as t5_utils
@@ -693,7 +694,7 @@ def c4_bare_preprocess_fn(dataset,
   # Vocabulary for tokenization.
   vocab = t5_spc_vocab.SentencePieceVocabulary(
       sentencepiece_model_file=spm_path or t5_utils.DEFAULT_SPM_PATH)
-  feature = t5_utils.Feature(vocab)
+  feature = t5_data.Feature(vocab)
   output_features = {'targets': feature, 'inputs': feature}
 
   # Tokenize the targets.
@@ -883,7 +884,7 @@ def generic_text_dataset_preprocess_fn(dataset,
   # Vocabulary for tokenization.
   vocab = t5_spc_vocab.SentencePieceVocabulary(
       sentencepiece_model_file=spm_path or t5_utils.DEFAULT_SPM_PATH)
-  feature = t5_utils.Feature(vocab)
+  feature = t5_data.Feature(vocab)
   output_features = {'targets': feature, 'inputs': feature}
 
   # Tokenize the inputs and targets.
