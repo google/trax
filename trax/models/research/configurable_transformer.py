@@ -88,13 +88,17 @@ def FeedForwardWithOptions(d_model,
   if ff_use_sru:
     return [tl.SRU(d_model) for _ in range(ff_use_sru)]
   elif ff_sparsity and ff_sparsity_type == '1inN':
+    ff = tl.SparseFF(
+        d_ff,
+        n_elements_in_block=ff_sparsity,
+        d_lowrank=d_ff // ff_sparsity,
+        mode=mode)
+    if ff_chunk_size < 1:
+      chunked_ff = ff
+    else:
+      chunked_ff = tl.BatchLeadingAxes(tl.Chunk(tl.Serial(ff), ff_chunk_size))
     return [
-        tl.LayerNorm(),
-        tl.SparseFF(
-            d_ff,
-            n_elements_in_block=ff_sparsity,
-            d_lowrank=d_ff // ff_sparsity,
-            mode=mode),
+        tl.LayerNorm(), chunked_ff,
         tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
     ]
   elif ff_sparsity and ff_sparsity_type == 'Block':
