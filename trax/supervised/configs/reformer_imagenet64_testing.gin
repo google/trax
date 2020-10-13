@@ -30,6 +30,7 @@ n_layers = 2
 batcher.data_streams = @tf_inputs.data_streams
 batcher.batch_size_per_device = 4
 batcher.eval_batch_size = 4
+batcher.buckets = ([12288,], [4, 4])
 batcher.max_eval_length = 12288  # 64 * 64 * 3
 
 # Parameters for data_streams:
