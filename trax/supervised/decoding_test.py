@@ -286,95 +286,47 @@ class DecodingTest(test.TestCase):
     self.assertEqual(s.shape[0], 1)
     self.assertEqual(s.shape[1], 10)
 
-  #
-  # TODO(afrozm, lukaszkaiser): Commented out because this doesn't work yet, but
-  #   should be made to.
-#   def test_autoregressive_sample_reformerlm_lsh_quality(self):
-#     max_len = 32
+  def test_autoregressive_sample_reformerlm_lsh_quality(self):
+    max_len = 32
 
-#     pred_model = models.ReformerLM(
-#         mode='predict',
-#         d_model=256,
-#         d_ff=512,
-#         dropout=0.05,
-#         max_len=2 * max_len,
-#         n_heads=4,
-#         n_layers=3,
-#         ff_use_sru=0,
-#         d_attention_key=64,
-#         d_attention_value=64,
-#         attention_type=functools.partial(tl.LSHSelfAttention,
-#                                          chunk_len=16,
-#                                          n_hashes=2,
-#                                          n_buckets=[32, 32],
-#                                          predict_drop_len=max_len,
-#                                          predict_mem_len=max_len,
-#                                          max_length_for_buckets=1024),
-#         vocab_size=13,
-#         axial_pos_shape='fixed-base',
-#         d_axial_pos_embs=None,
-#     )
+    pred_model = models.ReformerLM(
+        mode='predict',
+        d_model=256,
+        d_ff=512,
+        dropout=0.05,
+        max_len=2 * max_len,
+        n_heads=4,
+        n_layers=3,
+        ff_use_sru=0,
+        d_attention_key=64,
+        d_attention_value=64,
+        attention_type=functools.partial(tl.LSHSelfAttention,
+                                         chunk_len=16,
+                                         n_hashes=2,
+                                         n_buckets=[32, 32],
+                                         predict_drop_len=max_len,
+                                         predict_mem_len=max_len,
+                                         max_length_for_buckets=1024),
+        vocab_size=13,
+        axial_pos_shape='fixed-base',
+        d_axial_pos_embs=None,
+    )
 
-#     shape11 = shapes.ShapeDtype((1, 1), dtype=np.int32)
+    shape11 = shapes.ShapeDtype((1, 1), dtype=np.int32)
 
-#     model_path = os.path.join(
-#         _TESTDATA, 'reformerlm_copy_lsh_attn.pkl.gz')
-#     pred_model.init_from_file(model_path, weights_only=True,
-#                               input_signature=shape11)
+    model_path = os.path.join(
+        _TESTDATA, 'reformerlm_copy_lsh_attn.pkl.gz')
+    pred_model.init_from_file(model_path, weights_only=True,
+                              input_signature=shape11)
 
-#     # 0w0
-#     inputs = np.array([[0, 3, 7, 5, 3, 2, 0]], dtype=np.int32)
-#     inp_len = inputs.shape[1]
-#     inputs = np.pad(inputs, [(0, 0), (0, max_len - inp_len)],
-#                     mode='constant', constant_values=0)
-#     s = decoding.autoregressive_sample(
-#         pred_model, inputs=inputs, eos_id=-1, max_length=inp_len,
-#         temperature=0.0)
+    # 0w0
+    inputs = np.array([[0, 3, 7, 5, 3, 2, 0]], dtype=np.int32)
+    inp_len = inputs.shape[1]
+    s = decoding.autoregressive_sample(
+        pred_model, inputs=inputs, eos_id=-1, max_length=inp_len-2,
+        temperature=0.0)
 
-#     np.testing.assert_equal(s[0], inputs[0, :inp_len])
-
-  # TODO(afrozm, lukaszkaiser): Commented out because this doesn't work yet, but
-  #   should be made to.
-#   def test_autoregressive_sample_reformerlm_trained_lsh_predict_self_attn_quality(self):  # pylint: disable=line-too-long
-#     # Model has been trained with LSHSelfAttention as in
-#     # test_autoregressive_sample_reformerlm_lsh_quality but we will do inference
-#     # on it with SelfAttention instead.
-#     max_len = 32
-
-#     pred_model = models.ReformerLM(
-#         mode='predict',
-#         d_model=256,
-#         d_ff=512,
-#         dropout=0.05,
-#         max_len=2 * max_len,
-#         n_heads=4,
-#         n_layers=3,
-#         ff_use_sru=0,
-#         d_attention_key=64,
-#         d_attention_value=64,
-#         attention_type=self._timebin_self_attention_fn(),
-#         vocab_size=13,
-#         axial_pos_shape='fixed-base',
-#         d_axial_pos_embs=None,
-#     )
-
-#     shape11 = shapes.ShapeDtype((1, 1), dtype=np.int32)
-
-#     model_path = os.path.join(
-#         _TESTDATA, 'reformerlm_copy_lsh_attn.pkl.gz')
-#     pred_model.init_from_file(model_path, weights_only=True,
-#                               input_signature=shape11)
-
-#     # 0w0
-#     inputs = np.array([[0, 3, 7, 5, 3, 2, 0]], dtype=np.int32)
-#     inp_len = inputs.shape[1]
-#     inputs = np.pad(inputs, [(0, 0), (0, max_len - inp_len)],
-#                     mode='constant', constant_values=0)
-#     s = decoding.autoregressive_sample(
-#         pred_model, inputs=inputs, eos_id=-1, max_length=inp_len,
-#         temperature=0.0)
-
-#     np.testing.assert_equal(s[0], inputs[0, :inp_len])
+    np.testing.assert_equal(s[0], inputs[0, 1:inp_len-1])
 
 
 if __name__ == '__main__':

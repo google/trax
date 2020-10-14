@@ -1367,7 +1367,9 @@ class LSHSelfAttention(SelfAttention):
                                     weights, state, rng, update_state):
     assert update_state, (
         'This setting not supported (e.g. no backprop for fast inference)')
-    if isinstance(q_start, int) and q_start == 0 and q_len > 1:
+    if q_len > 1:
+      if isinstance(q_start, int):
+        assert q_start == 0, 'Chunks larger than 1 only work at start for now.'
       if x.shape[0] % self.chunk_len == 0:
         x_padded = x
       else:
