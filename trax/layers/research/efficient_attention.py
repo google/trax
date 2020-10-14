@@ -281,7 +281,7 @@ def apply_broadcasted_dropout(vecs, dropout_rate, rng):
     return vecs
 
 
-def permute_via_gather(val, permutation, inverse_permutation, axis=0):
+def permute_via_gather_old(val, permutation, inverse_permutation, axis=0):
   """Permutation helper for LSH attention."""
   def permute_impl(val):
     return np.take(val, permutation, axis=axis)
@@ -297,7 +297,7 @@ def permute_via_gather(val, permutation, inverse_permutation, axis=0):
   return permute(val)
 
 
-def permute_via_sort(val, keys, inverse_keys, axis=0):
+def permute_via_sort_old(val, keys, inverse_keys, axis=0):
   """Permutation helper for LSH attention."""
   def permute_impl(val):
     # On TPU, sorting scalars by key is faster than a gather.
@@ -318,7 +318,7 @@ def permute_via_sort(val, keys, inverse_keys, axis=0):
 # do cause Tracer errors, so we don't use them for now.
 
 
-def permute_via_gather_new(val, permutation, inverse_permutation, axis=0):
+def permute_via_gather(val, permutation, inverse_permutation, axis=0):
   """Permutation helper for LSH attention."""
   def permute_impl(p, unused_ip, val):
     return np.take(val, p, axis=axis)
@@ -334,7 +334,7 @@ def permute_via_gather_new(val, permutation, inverse_permutation, axis=0):
   return permute(permutation, inverse_permutation, val)
 
 
-def permute_via_sort_new(val, keys, inverse_keys, axis=0):
+def permute_via_sort(val, keys, inverse_keys, axis=0):
   """Permutation helper for LSH attention."""
   def permute_impl(k, unused_ik, val):
     # On TPU, sorting scalars by key is faster than a gather.
