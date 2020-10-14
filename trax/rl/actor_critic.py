@@ -60,6 +60,7 @@ class ActorCriticAgent(rl_training.PolicyAgent):
                q_value_aggregate='max',
                q_value_temperature=1.0,
                q_value_n_samples=1,
+               q_value_normalization=False,
                **kwargs):  # Arguments of PolicyAgent come here.
     """Configures the actor-critic trainer.
 
@@ -94,6 +95,8 @@ class ActorCriticAgent(rl_training.PolicyAgent):
         'logsumexp' aggregation methods.
       q_value_n_samples: Number of samples to average over when calculating
           baselines based on Q-values.
+      q_value_normalization: How to normalize Q-values before aggregation.
+          Allowed values: 'std', 'abs', `None`. If `None`, don't normalize.
       **kwargs: Arguments for `PolicyAgent` superclass.
     """
     self._n_shared_layers = n_shared_layers
@@ -120,6 +123,7 @@ class ActorCriticAgent(rl_training.PolicyAgent):
     self._q_value_aggregate = q_value_aggregate
     self._q_value_temperature = q_value_temperature
     self._q_value_n_samples = q_value_n_samples
+    self._q_value_normalization = q_value_normalization
 
     is_discrete = isinstance(self._task.action_space, gym.spaces.Discrete)
     self._is_discrete = is_discrete
@@ -237,6 +241,16 @@ class ActorCriticAgent(rl_training.PolicyAgent):
     return (values, actions, log_probs)
 
   def _aggregate_values(self, values, aggregate, act_log_probs):
+    # Normalize the Q-values before aggragetion, so it can adapt to the scale
+    # of the returns. This does not affect mean and max aggregation.
+    scale = 1
+    epsilon = 1e-5
+    if self._q_value_normalization == 'std':
+      scale = jnp.std(values) + epsilon
+    elif self._q_value_normalization == 'abs':
+      scale = jnp.mean(jnp.abs(values - jnp.mean(values))) + epsilon
+    values /= scale
+
     temp = self._q_value_temperature
     if self._q_value:
       assert values.shape[:2] == (
@@ -261,6 +275,9 @@ class ActorCriticAgent(rl_training.PolicyAgent):
           values = jnp.sum(values * jnp.exp(act_log_probs), axis=1)
         else:
           values = jnp.mean(values, axis=1)
+
+    # Re-scale the Q-values after aggregation.
+    values *= scale
     return np.array(values)  # Move the values to CPU.
 
   def value_batches_stream(self):
