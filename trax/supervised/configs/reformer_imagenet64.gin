@@ -21,7 +21,7 @@ import trax.supervised.trainer_lib
 # Parameters that will vary between experiments:
 # ==============================================================================
 train.model = @trax.models.ReformerLM  # ShortenLM
-attn_type = @LSHSelfAttention
+attn_type = @LSHSelfAttention  # @CausalFavor
 attn_kv = 64
 n_layers = 6
 

@@ -405,8 +405,7 @@ def CausalFavor(d_feature, n_heads=1, dropout=0.0,  # pylint: disable=invalid-na
                           np.moveaxis(key_prime, 1, 0))
     w = np.moveaxis(w, 0, 1)
     r = np.moveaxis(r, 0, 1)
-
-    r = r + 2 * numerical_stabilizer * (np.abs(r) <= numerical_stabilizer)
+    # r = r + 2 * numerical_stabilizer * (np.abs(r) <= numerical_stabilizer)
     r = np.reciprocal(r)
     r = np.expand_dims(r, len(r.shape))
     renormalized_attention = w * r
