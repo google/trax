@@ -209,14 +209,14 @@ class TrainingTest(absltest.TestCase):
 
   def test_train_memory_efficient(self):
     """Trains a large network in a memory-efficient way."""
-    # This test requires > 20GB RAM, only run on TPUs. It does pass on GPU
+    # This test requires > 16GB RAM, only run on TPUs. It does pass on GPU
     # and CPU when you run it locally, but it's too big for unit-testing.
     ram_limited = True  # Set to False to run this test locally.
     if fastmath.device_count() == 1 and ram_limited:
       return
 
     # Create the model.
-    n_layers = 20  # 20 layers each 16K x 16K = 256M weights ~= 1GB, 20GB ram
+    n_layers = 16  # 16 layers each 16K x 16K = 256M weights ~= 1GB, 16GB ram
     model = tl.Serial(
         tl.Embedding(9, 16*1024),
         tl.Dup(),
