@@ -148,11 +148,13 @@ def look_adjacent(x, n_chunks_before, n_chunks_after):
 def mask_self_attention(
     dots, q_info, kv_info, causal=True, exclude_self=True, masked=False):
   """Performs masking for self-attention."""
+  q_info = q_info.astype(np.float32)
+  kv_info = kv_info.astype(np.float32)
   if causal:
-    mask = fastmath.lt(q_info, kv_info).astype(np.float32)
+    mask = fastmath.lt(q_info, kv_info)
     dots = dots - 1e9 * mask
   if exclude_self:
-    mask = np.equal(q_info, kv_info).astype(np.float32)
+    mask = np.equal(q_info, kv_info)
     dots = dots - 1e5 * mask
   if masked:
     zeros_like_kv_info = tie_in(kv_info, np.zeros_like(kv_info))
