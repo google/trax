@@ -728,8 +728,8 @@ def simple_sequence_copy_inputs(
       loss_weights = _pad_to_multiple_of(loss_weights, pad_to_multiple, 1)
       yield (x, x, loss_weights)  # Here inputs and targets are the same.
 
-  train_lengths = list(range(train_length - 1))
-  eval_lengths = list(range(eval_min_length, eval_max_length))
+  train_lengths = list(range(1, train_length + 1))
+  eval_lengths = list(range(eval_min_length, eval_max_length + 1))
   return Inputs(
       train_stream=lambda _: random_minibatches(train_lengths),
       eval_stream=lambda _: random_minibatches(eval_lengths)
