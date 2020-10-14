@@ -39,7 +39,6 @@ The possible modes are:
     - `'eval'`:  in evals -- dropouts inactive, position shifts active
     - `'predict'`: in prediction -- dropouts and position shifts inactive
 """
-
 import jax
 import numpy as np
 
@@ -87,6 +86,7 @@ def Attention(d_feature, n_heads=1, dropout=0.0, mode='train'):
   )
 
 
+#  Hello
 @assert_shape('bSq,blk,blv,b1xl->bSd,b1xl')
 def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train'):
   """Returns a layer that maps (q, k, v, mask) to (activations, mask).
