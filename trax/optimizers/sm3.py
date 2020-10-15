@@ -21,7 +21,7 @@ from trax.optimizers import base as opt_base
 
 
 class SM3(opt_base.Optimizer):
-  """SM3 optimizer."""
+  """SM3 optimizer, as described in https://arxiv.org/abs/1901.11150."""
 
   def __init__(self, learning_rate=0.01, momentum=0.9):  # pylint: disable=useless-super-delegation
     """Create the SM3 optimizer.

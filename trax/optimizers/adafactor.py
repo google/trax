@@ -21,7 +21,7 @@ from trax.optimizers import base as opt_base
 
 
 class Adafactor(opt_base.Optimizer):
-  """Adafactor optimizer."""
+  """Adafactor optimizer, as described in https://arxiv.org/abs/1804.04235."""
 
   def __init__(self,
                learning_rate=0.05,

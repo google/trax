@@ -120,7 +120,17 @@ class Dense(base.Layer):
 # dimension at the end. This dimension size corresponds to embedding depth.
 @assert_shape('...->...d')
 class Embedding(base.Layer):
-  """Trainable layer that maps discrete tokens/ids to vectors."""
+  """Trainable layer that maps discrete tokens/ids to vectors.
+
+  Embedding layers are commonly used to map discrete data, like words in NLP,
+  into vectors. Here is a canonical example::
+
+      vocab_size = 5
+      word_ids = np.array([1, 2, 3, 4], dtype=np.int32)  # word_ids < vocab_size
+      embedding_layer = tl.Embedding(vocab_size, 32)
+      embedding_layer.init(trax.shapes.signature(word_ids))
+      embedded = embedding_layer(word_ids)  # embedded.shape = (4, 32)
+  """
 
   def __init__(self,
                vocab_size,
@@ -184,6 +194,10 @@ class Dropout(base.Layer):
 
   This layer is active only during training (`mode='train'`). In other
   circumstances it is a no-op.
+
+  Originally introduced in the paper "Dropout: A Simple Way to Prevent Neural
+  Networks from Overfitting" available under the following link:
+  https://www.cs.toronto.edu/~hinton/absps/JMLRdropout.pdf
   """
 
   def __init__(self, rate=0.0, shared_axes=None, mode='train'):
@@ -360,6 +374,14 @@ class RandomUniform(base.Layer):
     self._sync = sync
 
   def forward(self, xs):
+    """Executes this layer as part of a forward pass through the model.
+
+    Args:
+      xs: Unused tensors.
+
+    Returns:
+      Random uniform tensor of the shape and type specified in constructor.
+    """
     rng = self._get_conditionally_synced_rng()
     result = fastmath.random.uniform(
         rng, self._shape, self._dtype, self._min_val, self._max_val)
