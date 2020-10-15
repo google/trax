@@ -204,33 +204,38 @@ class DecodingTest(test.TestCase):
     self.assertEqual(s.shape[1], 10)
 
   def test_autoregressive_sample_reformer2_lsh_attn_quality(self):
-    gin.clear_config()
     gin.add_config_file_search_path(_CONFIG_DIR)
+    # 32 is the max length we trained the checkpoint for.
+    test_lengths = [8, 16, 32]
+    vocab_size = 13
+    np.random.seed(0)
+    for max_len in test_lengths:
+      gin.clear_config()
+      gin.parse_config_file('reformer2_copy.gin')
+      gin.bind_parameter('LSHSelfAttention.predict_mem_len', 2 * max_len)
+      gin.bind_parameter('LSHSelfAttention.predict_drop_len', max_len // 4)
 
-    gin.parse_config_file('reformer2_copy.gin')
-    max_len = 32  # same as in the .gin file above.
+      pred_model = models.Reformer2(mode='predict')
 
-    gin.bind_parameter('LSHSelfAttention.predict_mem_len', 2 * max_len)
-    gin.bind_parameter('LSHSelfAttention.predict_drop_len', max_len // 4)
+      shape11 = shapes.ShapeDtype((1, 1), dtype=np.int32)
+      shape1l = shapes.ShapeDtype((1, max_len), dtype=np.int32)
 
-    pred_model = models.Reformer2(mode='predict')
+      model_path = os.path.join(_TESTDATA, 'reformer2_copy_lsh_attn.pkl.gz')
+      pred_model.init_from_file(model_path, weights_only=True,
+                                input_signature=(shape1l, shape11))
+      initial_state = pred_model.state
 
-    shape11 = shapes.ShapeDtype((1, 1), dtype=np.int32)
-    shape1l = shapes.ShapeDtype((1, max_len), dtype=np.int32)
-
-    model_path = os.path.join(_TESTDATA, 'reformer2_copy_lsh_attn.pkl.gz')
-    pred_model.init_from_file(model_path, weights_only=True,
-                              input_signature=(shape1l, shape11))
-
-    inputs = np.array([[6, 5, 1, 2, 6, 5, 8, 6, 2, 4]], dtype=np.int32)
-    inp_len = inputs.shape[1]
-    inputs = np.pad(inputs, [(0, 0), (0, max_len - inp_len)],
-                    mode='constant', constant_values=0)
-    s = decoding.autoregressive_sample(
-        pred_model, inputs=inputs, eos_id=-1, max_length=inp_len,
-        temperature=0.0)
-
-    np.testing.assert_equal(s[0], inputs[0, :inp_len])
+      for _ in range(3):
+        # pick a length in [1, max_len]
+        inp_len = np.random.randint(low=1, high=max_len + 1)
+        inputs = np.random.randint(low=1, high=vocab_size-1, size=(1, inp_len))
+        inputs = np.pad(inputs, [(0, 0), (0, max_len - inp_len)],
+                        mode='constant', constant_values=0)
+        s = decoding.autoregressive_sample(
+            pred_model, inputs=inputs, eos_id=-1, max_length=inp_len,
+            temperature=0.0)
+        np.testing.assert_equal(s[0], inputs[0, :inp_len])
+        pred_model.state = initial_state
 
   def test_autoregressive_sample_reformer2_copy_self_attn_quality(self):
     max_len = 32
