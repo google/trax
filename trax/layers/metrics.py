@@ -50,9 +50,6 @@ In deriving a single scalar for the batch, there is flexibility to use reducing
 functions other than mean, for instance sum or a specialized sequence mean.
 """
 
-import jax
-
-from trax import fastmath
 from trax import shapes
 from trax.fastmath import numpy as jnp
 from trax.layers import combinators as cb
@@ -237,7 +234,4 @@ def _WeightedSequenceMean():
 def one_hot(x, n_categories, dtype=jnp.float32):  # pylint: disable=invalid-name
   """Makes a one-hot array (n+1 dims) from an int-categorical array (n dims)."""
   indices_less_than_n = jnp.arange(n_categories)
-  if fastmath.is_backend(fastmath.Backend.JAX):
-    # Work around a jax broadcasting issue.
-    indices_less_than_n = jax.lax.tie_in(x, indices_less_than_n)
   return jnp.array(x[..., jnp.newaxis] == indices_less_than_n, dtype)

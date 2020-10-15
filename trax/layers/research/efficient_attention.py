@@ -47,12 +47,6 @@ from trax.layers import initializers as init
 ####################################################### Functions
 
 
-def tie_in(x, y):
-  if fastmath.is_backend(fastmath.Backend.JAX):
-    return jax.lax.tie_in(x, y)
-  return y
-
-
 def length_normalized(x, epsilon=1e-6):
   variance = np.mean(x**2, axis=-1, keepdims=True)
   norm_inputs = x / np.sqrt(variance + epsilon)
@@ -91,7 +85,6 @@ def hash_vecs(vecs, n_buckets_in, n_hashes, rng):
       n_buckets *= factor
 
   rotations_shape = (vecs.shape[-1], n_hashes, rot_size // 2)
-  rng = fastmath.stop_gradient(tie_in(vecs, rng))
   random_rotations = fastmath.random.normal(rng, rotations_shape).astype(
       np.float32)
   if fastmath.is_backend(fastmath.Backend.JAX):
@@ -157,7 +150,7 @@ def mask_self_attention(
     mask = np.equal(q_info, kv_info)
     dots = dots - 1e5 * mask
   if masked:
-    zeros_like_kv_info = tie_in(kv_info, np.zeros_like(kv_info))
+    zeros_like_kv_info = np.zeros_like(kv_info)
     mask = fastmath.lt(kv_info, zeros_like_kv_info).astype(np.float32)
     dots = dots - 1e9 * mask
   return dots
@@ -259,9 +252,9 @@ def attend(
     # Dropout is broadcast across the bin dimension
     dropout_shape = (dots.shape[-2], dots.shape[-1])
     # TODO(kitaev): verify that tie-in is safe to remove (in light of jax fix)
-    keep_prob = tie_in(dots, 1.0 - dropout)
+    keep_prob = 1.0 - dropout
     keep = fastmath.random.bernoulli(rng, keep_prob, dropout_shape)
-    multiplier = keep.astype(dots.dtype) / tie_in(keep, keep_prob)
+    multiplier = keep.astype(dots.dtype) / keep_prob
     dots = dots * multiplier
 
   # The softmax normalizer (dots_logsumexp) is used by multi-round LSH attn.
@@ -275,9 +268,9 @@ def apply_broadcasted_dropout(vecs, dropout_rate, rng):
   """Apply dropout, broadcasted across all but the last dimension of `vecs`."""
   if dropout_rate > 0.0:
     assert rng is not None
-    keep_prob = tie_in(vecs, 1.0 - dropout_rate)
+    keep_prob = 1.0 - dropout_rate
     keep = fastmath.random.bernoulli(rng, keep_prob, (vecs.shape[-1],))
-    multiplier = keep.astype(vecs.dtype) / tie_in(keep, keep_prob)
+    multiplier = keep.astype(vecs.dtype) / keep_prob
     return vecs * multiplier
   else:
     return vecs
@@ -1117,12 +1110,12 @@ class SelfAttention(EfficientAttentionBase):
     mask_fn = functools.partial(
         mask_self_attention,
         causal=self.causal, exclude_self=self.share_qk, masked=self.masked)
-    q_info = kv_info = tie_in(x, np.arange(q.shape[-2], dtype=np.int32))
+    q_info = kv_info = np.arange(q.shape[-2], dtype=np.int32)
 
     assert (mask is not None) == self.masked
     if self.masked:
       # mask is a boolean array (True means "is valid token")
-      ones_like_mask = tie_in(x, np.ones_like(mask, dtype=np.int32))
+      ones_like_mask = np.ones_like(mask, dtype=np.int32)
       kv_info = kv_info * np.where(mask, ones_like_mask, -ones_like_mask)
 
     o, _ = attend(
@@ -1149,7 +1142,7 @@ class SelfAttention(EfficientAttentionBase):
     else:
       w_q, w_k, w_v, w_o = weights
 
-    q_range = q_start + tie_in(x, np.arange(q_len, dtype=np.int32))
+    q_range = q_start + np.arange(q_len, dtype=np.int32)
     if q_len == 1:
       # On TPU, np.matmul(a[:1], b) and np.matmul(a, b)[:1] are not
       # floating-point equivalent, at least in non-jitted code. We correct the
@@ -1169,7 +1162,7 @@ class SelfAttention(EfficientAttentionBase):
         mask_self_attention,
         causal=self.causal, exclude_self=self.share_qk, masked=self.masked)
     q_info = q_range
-    kv_info = tie_in(x, np.arange(k.shape[-2], dtype=np.int32))
+    kv_info = np.arange(k.shape[-2], dtype=np.int32)
 
     if self.chunk_len is not None and q_len > self.chunk_len:
       assert q_start == 0
@@ -1278,7 +1271,7 @@ class LSHSelfAttention(SelfAttention):
 
     # buckets is now (n_hashes, seqlen). Next we add offsets so that
     # bucket numbers from different hashing rounds don't overlap.
-    offsets = tie_in(buckets, np.arange(self.n_hashes, dtype=np.int32))
+    offsets = np.arange(self.n_hashes, dtype=np.int32)
     offsets = np.reshape(offsets * n_buckets, (-1, 1))
     buckets = np.reshape(buckets + offsets, (-1,))
     return buckets
@@ -1311,7 +1304,7 @@ class LSHSelfAttention(SelfAttention):
     seqlen = x.shape[0]
     assert int(buckets.shape[0]) == self.n_hashes * seqlen
 
-    ticker = tie_in(x, np.arange(self.n_hashes * seqlen, dtype=np.int32))
+    ticker = np.arange(self.n_hashes * seqlen, dtype=np.int32)
     buckets_and_t = seqlen * buckets + (ticker % seqlen)
     buckets_and_t = fastmath.stop_gradient(buckets_and_t)
 
@@ -1336,7 +1329,7 @@ class LSHSelfAttention(SelfAttention):
     if self.masked:
       # mask is a boolean array (True means "is valid token")
       smask = np.take(mask, st, axis=0)
-      ones_like_mask = tie_in(x, np.ones_like(smask, dtype=np.int32))
+      ones_like_mask = np.ones_like(smask, dtype=np.int32)
       kv_info = q_info * np.where(smask, ones_like_mask, -ones_like_mask)
 
     so, slogits = attend(
@@ -1423,7 +1416,7 @@ class LSHSelfAttention(SelfAttention):
     attend_rng, output_rng = fastmath.random.split(rng)
     w_q, w_v, w_o = weights
 
-    q_range = q_start + tie_in(x, np.arange(q_len, dtype=np.int32))
+    q_range = q_start + np.arange(q_len, dtype=np.int32)
     # On TPU, np.matmul(a[:1], b) and np.matmul(a, b)[:1] are not
     # floating-point equivalent, at least in non-jitted code. We correct the
     # discrepancy by duplicating the slice. Floating-point noise may not be

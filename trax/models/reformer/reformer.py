@@ -16,8 +16,6 @@
 # Lint as: python3
 """Reformer Models."""
 
-import jax
-from trax import fastmath
 from trax import layers as tl
 from trax.fastmath import numpy as jnp
 from trax.models.research import configurable_transformer
@@ -452,14 +450,6 @@ def Reformer(input_vocab_size,
     A Reformer model as a layer that maps from a target, source pair to
     activations over a vocab set.
   """
-  # The current API for custom gradients assumes that a layer must be
-  # differentiable wrt all of its inputs, but the Transformer puts bool-dtype
-  # masks on the stack. This causes jax to error, even though the so-called
-  # "gradient" wrt the masks is never actually computed.
-  # TODO(kitaev): remove this hack.
-  if fastmath.is_backend(fastmath.Backend.JAX):
-    jax.api._check_inexact_input_vjp = lambda x: None  # pylint: disable=protected-access
-
   def PositionalEncoder(vocab_size, mode):  # tokens --> vectors
     # TODO(kitaev): axial positional encoding is better for very long sequences.
     positional_encoding = tl.PositionalEncoding(
@@ -594,14 +584,6 @@ def Reformer2(input_vocab_size,
     A Reformer model as a layer that maps from a target, source pair to
     activations over a vocab set.
   """
-  # The current API for custom gradients assumes that a layer must be
-  # differentiable wrt all of its inputs, but the Transformer puts bool-dtype
-  # masks on the stack. This causes jax to error, even though the so-called
-  # "gradient" wrt the masks is never actually computed.
-  # TODO(kitaev): remove this hack.
-  if fastmath.is_backend(fastmath.Backend.JAX):
-    jax.api._check_inexact_input_vjp = lambda x: None  # pylint: disable=protected-access
-
   # Set default dimensions for attention head key and value sizes.
   if d_attention_key is None:
     if d_model % n_heads != 0:

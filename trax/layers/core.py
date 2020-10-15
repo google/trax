@@ -17,7 +17,6 @@
 """Core layer types, such as `Dense`, `Embedding`, and `Dropout`."""
 
 from absl import logging
-import jax
 import numpy as np
 
 from trax import fastmath
@@ -238,13 +237,8 @@ class Dropout(base.Layer):
     mask_shape = list(x.shape)
     for axis in self._shared_axes:
       mask_shape[axis] = 1
-    if fastmath.is_backend(fastmath.Backend.JAX):
-      keep_prob = jax.lax.tie_in(self.rng, 1.0 - rate)
-    else:
-      keep_prob = 1.0 - rate
+    keep_prob = 1.0 - rate
     keep = fastmath.random.bernoulli(rng, keep_prob, tuple(mask_shape))
-    if fastmath.is_backend(fastmath.Backend.JAX):
-      keep_prob = jax.lax.tie_in(keep, keep_prob)
     mask = keep.astype(x.dtype) / keep_prob
     return x * mask
 
@@ -730,7 +724,7 @@ def logsoftmax_sample(log_probs, temperature=1.0):  # pylint: disable=invalid-na
   """Returns a sample from a log-softmax output, with temperature.
 
   Args:
-    log_probs: Logarithms of probabilities (often coming from LogSofmax)
+    log_probs: Logarithms of probabilities (often coming from LogSoftmax)
     temperature: For scaling before sampling (1.0 = default, 0.0 = pick argmax)
   """
   # This is equivalent to sampling from a softmax with temperature.

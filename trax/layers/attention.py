@@ -200,13 +200,6 @@ def DotProductAttention(queries, keys, values, mask, dropout, mode, rng):
   d_feature = queries.shape[-1]
   dots = jnp.matmul(queries, jnp.swapaxes(keys, -1, -2)) / jnp.sqrt(d_feature)
   if mask is not None:
-    # TODO(kitaev): workaround for https://github.com/google/jax/issues/850
-    # We must ensure that both mask and the -1e9 constant have a data dependency
-    # on the input. Broadcasted copies of these use a lot of memory, so they
-    # should be computed at runtime (rather than being global constants).
-    if fastmath.is_backend(fastmath.Backend.JAX):
-      mask = jax.lax.tie_in(dots, mask)
-    # JAX's `full_like` already ties in -1e9 to dots.
     dots = jnp.where(mask, dots, jnp.full_like(dots, -1e9))
   # Softmax.
   dots = jnp.exp(dots - fastmath.logsumexp(dots, axis=-1, keepdims=True))
@@ -491,8 +484,6 @@ class PositionalEncoding(base.Layer):
         for dim in self._dropout_broadcast_dims:
           noise_shape[dim] = 1
         keep_prob = 1.0 - self._dropout
-        if fastmath.is_backend(fastmath.Backend.JAX):
-          keep_prob = jax.lax.tie_in(x, jnp.full((), keep_prob, dtype=x.dtype))
         keep = fastmath.random.bernoulli(self.rng, keep_prob,
                                          tuple(noise_shape))
         multiplier = keep.astype(x.dtype) / keep_prob
