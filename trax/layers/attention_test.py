@@ -19,10 +19,24 @@
 from absl.testing import absltest
 import numpy as np
 
+from trax import shapes
+
 import trax.layers as tl
 
 
 class AttentionTest(absltest.TestCase):
+
+  def test_simple_call(self):
+    layer = tl.CausalAttention(d_feature=4, n_heads=2)
+    x = [np.array([[[2, 5, 3, 4],
+                    [0, 1, 2, 3],
+                    [0, 1, 2, 3],]]),
+         np.array([[[[1, 0, 1]]]])]
+    _, _ = layer.init(shapes.signature(x))
+
+    y, mask = layer(x)
+    self.assertEqual(y.shape, (1, 3, 4))
+    self.assertEqual(mask.shape, (1, 1, 1, 3))
 
   def test_shift_right(self):
     # Test shifts right on axis=1
@@ -83,6 +97,19 @@ class AttentionTest(absltest.TestCase):
     np.testing.assert_equal(y, [[[[True, True, True, True, False]]],
                                 [[[True, True, True, False, False]]],
                                 [[[True, True, False, False, False]]]])
+
+
+class CausalAttentionTest(absltest.TestCase):
+
+  def test_simple_call(self):
+    layer = tl.CausalAttention(d_feature=4, n_heads=2)
+    x = np.array([[[2, 5, 3, 4],
+                   [0, 1, 2, 3],
+                   [0, 1, 2, 3],]])
+    _, _ = layer.init(shapes.signature(x))
+
+    y = layer(x)
+    self.assertEqual(y.shape, (1, 3, 4))
 
 
 if __name__ == '__main__':
