@@ -305,6 +305,18 @@ class RLTask:
     if isinstance(env, str):
       self._env_name = env
       if dm_suite:
+        eval_env = environments.load_from_settings(
+            platform='atari',
+            settings={
+                'levelName': env,
+                'interleaved_pixels': True,
+                'zero_indexed_actions': True,
+                'phase': 'testing',
+            })
+        eval_env = atari_wrapper.AtariWrapper(
+            environment=eval_env,
+            max_abs_reward=None,
+            num_stacked_frames=num_stacked_frames)
         if random_starts:
           env = environments.load_from_settings(
               platform='atari',
@@ -326,18 +338,6 @@ class RLTask:
               })
         env = atari_wrapper.AtariWrapper(
             environment=env,
-            num_stacked_frames=num_stacked_frames)
-        eval_env = environments.load_from_settings(
-            platform='atari',
-            settings={
-                'levelName': env,
-                'interleaved_pixels': True,
-                'zero_indexed_actions': True,
-                'phase': 'testing',
-            })
-        eval_env = atari_wrapper.AtariWrapper(
-            environment=eval_env,
-            max_abs_reward=None,
             num_stacked_frames=num_stacked_frames)
       else:
         env = gym.make(env)
