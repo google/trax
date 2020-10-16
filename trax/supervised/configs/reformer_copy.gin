@@ -105,6 +105,6 @@ train.inputs = @trax.data.inputs.sequence_copy_inputs
 train.eval_frequency = 100
 train.eval_steps = 10
 train.optimizer = @trax.optimizers.Adam
-train.steps = 50000
+train.steps = 100000
 # train.model = @trax.models.TransformerLM
 train.model = @trax.models.ReformerLM
