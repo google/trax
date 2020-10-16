@@ -129,5 +129,28 @@ class ModularCausalAttentionTest(test.TestCase):
     y = layer(x)
     self.assertEqual(y.shape, (1, 3, 4))
 
+
+class CausalFavorTest(test.TestCase):
+
+  def test_call_and_grad(self):
+    layer = tl.Serial(
+        tl.Dense(4),
+        sparsity.CausalFavor(d_feature=4, n_heads=2),
+        tl.L2Loss()
+    )
+    x = np.random.uniform(size=(1, 2, 4)).astype(np.float32)
+    w = np.ones_like(x)
+    x_sig = shapes.signature(x)
+    w_sig = shapes.signature(w)
+    layer.init((x_sig, x_sig, w_sig))
+    y = layer((x, x, w))
+    self.assertEqual(y.shape, ())
+    state = layer.state
+    rng = fastmath.random.get_prng(0)
+    fwd = lambda weights, inp: layer.pure_fn(inp, weights, state, rng=rng)[0]
+    g = fastmath.grad(fwd)(layer.weights, (x, x, w))
+    self.assertEqual(g[0][0].shape, (4, 4))
+
+
 if __name__ == '__main__':
   test.main()

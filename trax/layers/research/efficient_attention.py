@@ -276,39 +276,6 @@ def apply_broadcasted_dropout(vecs, dropout_rate, rng):
     return vecs
 
 
-def permute_via_gather_old(val, permutation, inverse_permutation, axis=0):
-  """Permutation helper for LSH attention."""
-  def permute_impl(val):
-    return np.take(val, permutation, axis=axis)
-  def permute_vjp(val):
-    permuted = permute_impl(fastmath.stop_gradient(val))
-    def vjpfun(permuted_grad):
-      # JAX autodiff would synthesize a scatter operation because it doesn't
-      # know that the indices are a permutation. However on TPU, gathers are
-      # faster than scatters (at least in the regime the LSH attention uses).
-      return (np.take(permuted_grad, inverse_permutation, axis=axis),)
-    return permuted, vjpfun
-  permute = fastmath.custom_grad(permute_vjp, permute_impl)
-  return permute(val)
-
-
-def permute_via_sort_old(val, keys, inverse_keys, axis=0):
-  """Permutation helper for LSH attention."""
-  def permute_impl(val):
-    # On TPU, sorting scalars by key is faster than a gather.
-    _, permuted = fastmath.sort_key_val(keys, val, dimension=axis)
-    return permuted
-  def permute_vjp(val):
-    permuted = permute_impl(fastmath.stop_gradient(val))
-    def vjpfun(permuted_grad):
-      _, val_grad = fastmath.sort_key_val(
-          inverse_keys, permuted_grad, dimension=axis)
-      return (val_grad,)
-    return permuted, vjpfun
-  permute = fastmath.custom_grad(permute_vjp, permute_impl)
-  return permute(val)
-
-
 # The new implementations below don't use custom_transforms in JAX but
 # do cause Tracer errors, so we don't use them for now.
 

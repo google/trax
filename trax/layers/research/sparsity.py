@@ -240,10 +240,10 @@ def CausalFavor(d_feature, n_heads=1, dropout=0.0,  # pylint: disable=invalid-na
       return p, x_slice
     p, w = fastmath.scan(body, init_prefix_sum_value,
                          (query_prime, key_prime, value))
-    return w, (p, query_prime, key_prime, value)
+    return w, (precision, p, query_prime, key_prime, value)
 
-  def favor_numerator_bwd(init_prefix_sum_value, precision, pqkv, w_ct):
-    del init_prefix_sum_value
+  def favor_numerator_bwd(pqkv, w_ct):
+    precision, p, qs, ks, vs = pqkv
 
     def body(carry, qkv_xct):
       p, p_ct = carry
@@ -255,10 +255,9 @@ def CausalFavor(d_feature, n_heads=1, dropout=0.0,  # pylint: disable=invalid-na
       p -= np.einsum('...m,...d->...md', k, v, precision=precision)
       return (p, p_ct), (q_ct, k_ct, v_ct)
 
-    p, qs, ks, vs = pqkv
     _, (qs_ct, ks_ct, vs_ct) = fastmath.scan(
         body, (p, np.zeros_like(p)), (qs, ks, vs, w_ct), reverse=True)
-    return qs_ct, ks_ct, vs_ct
+    return (None, None, qs_ct, ks_ct, vs_ct)
 
   def favor_numerator(init_prefix_sum_value, precision, query_prime,
                       key_prime, value):
@@ -267,8 +266,7 @@ def CausalFavor(d_feature, n_heads=1, dropout=0.0,  # pylint: disable=invalid-na
     return w
 
   favor_numerator = fastmath.custom_vjp(
-      favor_numerator, favor_numerator_fwd, favor_numerator_bwd,
-      nondiff_argnums=(0, 1))
+      favor_numerator, favor_numerator_fwd, favor_numerator_bwd)
 
   def favor_denominator_fwd(init_prefix_sum_value, precision,
                             query_prime, key_prime):
@@ -279,10 +277,10 @@ def CausalFavor(d_feature, n_heads=1, dropout=0.0,  # pylint: disable=invalid-na
       return p, x
 
     p, r = fastmath.scan(body, init_prefix_sum_value, (query_prime, key_prime))
-    return r, (query_prime, key_prime, p)
+    return r, (precision, query_prime, key_prime, p)
 
-  def favor_denominator_bwd(init_prefix_sum_value, precision, qkp, r_ct):
-    del init_prefix_sum_value
+  def favor_denominator_bwd(qkp, r_ct):
+    precision, qs, ks, p = qkp
 
     def body(carry, qkx):
       p, p_ct = carry
@@ -293,10 +291,9 @@ def CausalFavor(d_feature, n_heads=1, dropout=0.0,  # pylint: disable=invalid-na
       p -= k
       return (p, p_ct), (q_ct, k_ct)
 
-    qs, ks, p = qkp
     _, (qs_ct, ks_ct) = fastmath.scan(
         body, (p, np.zeros_like(p)), (qs, ks, r_ct), reverse=True)
-    return (qs_ct, ks_ct)
+    return (None, None, qs_ct, ks_ct)
 
   def favor_denominator(init_prefix_sum_value, precision, query_prime,
                         key_prime):
@@ -305,8 +302,7 @@ def CausalFavor(d_feature, n_heads=1, dropout=0.0,  # pylint: disable=invalid-na
     return r
 
   favor_denominator = fastmath.custom_vjp(
-      favor_denominator, favor_denominator_fwd, favor_denominator_bwd,
-      nondiff_argnums=(0, 1))
+      favor_denominator, favor_denominator_fwd, favor_denominator_bwd)
 
   favor_denominator.defvjp(favor_denominator_fwd, favor_denominator_bwd)
 
