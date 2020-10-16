@@ -276,7 +276,7 @@ def apply_broadcasted_dropout(vecs, dropout_rate, rng):
     return vecs
 
 
-def permute_via_gather(val, permutation, inverse_permutation, axis=0):
+def permute_via_gather_old(val, permutation, inverse_permutation, axis=0):
   """Permutation helper for LSH attention."""
   def permute_impl(val):
     return np.take(val, permutation, axis=axis)
@@ -292,7 +292,7 @@ def permute_via_gather(val, permutation, inverse_permutation, axis=0):
   return permute(val)
 
 
-def permute_via_sort(val, keys, inverse_keys, axis=0):
+def permute_via_sort_old(val, keys, inverse_keys, axis=0):
   """Permutation helper for LSH attention."""
   def permute_impl(val):
     # On TPU, sorting scalars by key is faster than a gather.
@@ -313,38 +313,36 @@ def permute_via_sort(val, keys, inverse_keys, axis=0):
 # do cause Tracer errors, so we don't use them for now.
 
 
-def permute_via_gather_new(val, permutation, inverse_permutation, axis=0):
+def permute_via_gather(val, permutation, inverse_permutation, axis=0):
   """Permutation helper for LSH attention."""
   def permute_impl(p, unused_ip, val):
     return np.take(val, p, axis=axis)
-  def permute_fwd(p, unused_ip, val):
-    return np.take(val, p, axis=axis), None
-  def permute_bwd(unused_p, ip, _, permuted_grad):
+  def permute_fwd(p, ip, val):
+    return np.take(val, p, axis=axis), ip
+  def permute_bwd(ip, permuted_grad):
     # JAX autodiff would synthesize a scatter operation because it doesn't
     # know that the indices are a permutation. However on TPU, gathers are
     # faster than scatters (at least in the regime the LSH attention uses).
-    return (np.take(permuted_grad, ip, axis=axis),)
-  permute = fastmath.custom_vjp(permute_impl, permute_fwd, permute_bwd,
-                                nondiff_argnums=(0, 1))
+    return (None, None, np.take(permuted_grad, ip, axis=axis))
+  permute = fastmath.custom_vjp(permute_impl, permute_fwd, permute_bwd)
   return permute(permutation, inverse_permutation, val)
 
 
-def permute_via_sort_new(val, keys, inverse_keys, axis=0):
+def permute_via_sort(val, keys, inverse_keys, axis=0):
   """Permutation helper for LSH attention."""
   def permute_impl(k, unused_ik, val):
     # On TPU, sorting scalars by key is faster than a gather.
     _, permuted = fastmath.sort_key_val(k, val, dimension=axis)
     return permuted
-  def permute_fwd(k, unused_ik, val):
+  def permute_fwd(k, ik, val):
     # On TPU, sorting scalars by key is faster than a gather.
     _, permuted = fastmath.sort_key_val(k, val, dimension=axis)
-    return permuted, None
-  def permute_bwd(unused_k, ik, _, permuted_grad):
+    return permuted, ik
+  def permute_bwd(ik, permuted_grad):
     _, val_grad = fastmath.sort_key_val(
         ik, permuted_grad, dimension=axis)
-    return (val_grad,)
-  permute = fastmath.custom_vjp(permute_impl, permute_fwd, permute_bwd,
-                                nondiff_argnums=(0, 1))
+    return (None, None, val_grad)
+  permute = fastmath.custom_vjp(permute_impl, permute_fwd, permute_bwd)
   return permute(keys, inverse_keys, val)
 
 
