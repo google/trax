@@ -138,6 +138,33 @@ class Accelerate(base.Layer):
     self.sublayer.state = self._unreplicate(state)
 
 
+def mean_or_pmean(n_devices, x, axis=None):
+  """jnp.mean or pmean.
+
+  `x` is a distributed value. Directly calling jnp.mean on `x` means stacking
+  x's components together to form a large array and then doing jnp.mean on
+  it. In TF, stacking `x` will introduce D2H copy, so we use a collective
+  (pmean) here instead of directly calling jnp.mean for TF.
+
+  Args:
+    n_devices: number of devices.
+    x: a distributed array.
+    axis: the axis to reduce. Can only be 0 or None.
+
+  Returns:
+    A local array.
+  """
+  if fastmath.backend_name() == 'tensorflow-numpy' and n_devices > 1:
+    if axis not in (None, 0):
+      raise ValueError('axis can only be None or 0')
+    x = fastmath.pmap(fastmath.psum)(x)[0] / n_devices
+    if axis is None:
+      x = jnp.mean(x)
+    return x
+  else:
+    return jnp.mean(x, axis=axis)
+
+
 def jit_forward(forward, n_devices, do_mean=True):
   """Returns a JIT-compiled forward function running on `n_devices`."""
   model_predict = _accelerate(forward, n_devices)
@@ -154,7 +181,8 @@ def jit_forward(forward, n_devices, do_mean=True):
         jnp.stack(fastmath.random.split(rng, n_devices)))
     res = _combine_devices(res)
     if do_mean:
-      return fastmath.nested_map(lambda y: jnp.mean(y, axis=0), res), state
+      return fastmath.nested_map(
+          lambda y: mean_or_pmean(n_devices, y, axis=0), res), state
     else:
       return res, state
 
@@ -202,7 +230,7 @@ def for_n_devices(x, n_devices):
     if n_devices > 1 and fastmath.is_backend(fastmath.Backend.JAX):
       return _multi_device_put(x)
     elif n_devices > 1:
-      return jnp.broadcast_to(x, (n_devices,) + x.shape)
+      return jnp.broadcast_to(x, (n_devices,) + jnp.asarray(x).shape)
     else:
       return x
   return fastmath.nested_map(f, x)

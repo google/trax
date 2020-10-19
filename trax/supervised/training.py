@@ -348,7 +348,8 @@ class Loop:
         # implies the loss here is averaged from this hosts' devices and not
         # across all hosts.
         optimizer_metrics, loss = fastmath.nested_map(
-            jnp.mean, (optimizer_metrics, loss))
+            functools.partial(tl.mean_or_pmean, self._n_devices),
+            (optimizer_metrics, loss))
 
         loss_acc += loss
         step_acc += 1
