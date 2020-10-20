@@ -40,6 +40,7 @@ python -c 'import tensorflow as tf; print(tf.__version__)'
 
 # First ensure that the base dependencies are sufficient for a full import
 pip install -q -e .
+pip install -q -U git+https://github.com/google/jax.git
 
 # Then install the test dependencies
 pip install -q -e .[tests]
