@@ -284,12 +284,13 @@ class ReversibleSerialTrainer(object):
       rev_and_fbos = []
       for layer, opt in zip(rev_layers, rev_opts):
         rev_and_fbos.append(self._pjit(_reverse_and_fbo_with_layer_and_opt(
-            layer, opt, self._n_devices)))
-      self._fbos.append((self._pjit(std_fbo), rev_and_fbos))
+            layer, opt, self._n_devices), donate_argnums=(1,)))
+      self._fbos.append(
+          (self._pjit(std_fbo, donate_argnums=(1,)), rev_and_fbos))
 
     loss_fbo = _fbo_with_layer_and_opt(
         self._loss_layer, self._loss_opt, self._n_devices, 'loss')
-    self._loss_fbo = self._pjit(loss_fbo)
+    self._loss_fbo = self._pjit(loss_fbo, donate_argnums=(1,))
 
   @property
   def loss_layer(self):
@@ -313,12 +314,12 @@ class ReversibleSerialTrainer(object):
       for (opt, slot) in zip([s_opt] + r_opts, [s_slots] + r_slots):
         opt.slots = slot
 
-  def _pjit(self, f):
+  def _pjit(self, f, donate_argnums=()):
     """JIT f if 1 device is available and pmap if more are available."""
     if self._n_devices == 1:
-      return fastmath.jit(f)
+      return fastmath.jit(f, donate_argnums=donate_argnums)
     else:
-      return fastmath.pmap(f, axis_name='batch')
+      return fastmath.pmap(f, axis_name='batch', donate_argnums=donate_argnums)
 
   def _replicate(self, x):
     if self._n_devices > 1:

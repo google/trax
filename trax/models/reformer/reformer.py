@@ -28,7 +28,8 @@ from trax.models.research import transformer_no_enc_dec_attention as t2
 
 def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
                  n_heads, attention_type, dropout, ff_activation,
-                 ff_dropout, ff_use_sru, ff_chunk_size, ff_sparsity, mode):
+                 ff_dropout, ff_use_sru, ff_chunk_size, ff_sparsity,
+                 attention_chunk_size, mode):
   """Reversible transformer decoder layer.
 
   Args:
@@ -44,14 +45,16 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
     ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
     ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
+    attention_chunk_size: int, if > 0 run attention chunked at this size
     mode: str: 'train' or 'eval'
+
 
   Returns:
     the layer.
   """
   attention = configurable_transformer.ApplyAttentionLayer(
       attention_type, d_model, n_heads, d_attention_key, d_attention_value,
-      True, False, dropout, dropout, mode)
+      True, False, dropout, dropout, attention_chunk_size, mode)
   attention_half_residual = tl.ReversibleHalfResidual(
       tl.LayerNorm(),
       attention_layer=attention,
@@ -110,6 +113,7 @@ def ReformerLM(vocab_size,
                ff_use_sru=0,
                ff_chunk_size=0,
                ff_sparsity=0,
+               attention_chunk_size=0,
                mode='train'):
   """Reversible transformer language model (only uses a decoder, no encoder).
 
@@ -132,6 +136,7 @@ def ReformerLM(vocab_size,
     ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
     ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
+    attention_chunk_size: int, if > 0 run attention chunked at this size
     mode: str: 'train', 'eval', or 'predict'
 
   Returns:
@@ -163,6 +168,7 @@ def ReformerLM(vocab_size,
         ff_use_sru=ff_use_sru,
         ff_chunk_size=ff_chunk_size,
         ff_sparsity=ff_sparsity,
+        attention_chunk_size=attention_chunk_size,
         mode=mode)
     decoder_blocks.append(decoder_block)
 
@@ -199,6 +205,7 @@ def ReformerShortenLM(vocab_size,
                       ff_use_sru=0,
                       ff_chunk_size=0,
                       ff_sparsity=0,
+                      attention_chunk_size=0,
                       mode='train'):
   """Reversible transformer language model with shortening.
 
@@ -233,6 +240,7 @@ def ReformerShortenLM(vocab_size,
     ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
     ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
+    attention_chunk_size: int, if > 0 run attention chunked at this size
     mode: str: 'train' or 'eval'
 
   Returns:
@@ -273,6 +281,7 @@ def ReformerShortenLM(vocab_size,
         ff_use_sru=ff_use_sru,
         ff_chunk_size=ff_chunk_size,
         ff_sparsity=ff_sparsity,
+        attention_chunk_size=attention_chunk_size,
         mode=mode)
     decoder_blocks.append(decoder_block)
 
@@ -313,7 +322,7 @@ def ReformerShortenLM(vocab_size,
 
 def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
                  ff_dropout, ff_use_sru=0, ff_chunk_size=0, ff_sparsity=0,
-                 mode='train'):
+                 attention_chunk_size=0, mode='train'):
   """Returns a list of layers that implements a Reformer encoder block.
 
   The input to the layer is a pair, (activations, mask), where the mask was
@@ -331,6 +340,7 @@ def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
     ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
     ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
+    attention_chunk_size: int, if > 0 run attention chunked at this size
     mode: str: 'train' or 'eval'
 
   Returns:
@@ -345,7 +355,8 @@ def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
   attention = configurable_transformer.ApplyAttentionLayer(
       attention_type=attention_type, d_model=d_model, n_heads=n_heads,
       d_qk=d_model//n_heads, d_v=d_model//n_heads, masked=True, causal=False,
-      attention_dropout=dropout, output_dropout=dropout, mode=mode)
+      attention_dropout=dropout, output_dropout=dropout,
+      attention_chunk_size=attention_chunk_size, mode=mode)
   attention_half_residual = tl.ReversibleHalfResidual(
       tl.LayerNorm(),
       attention_layer=attention,
@@ -542,6 +553,7 @@ def Reformer2(input_vocab_size,
               ff_chunk_size=0,
               ff_dropout=None,
               ff_sparsity=0,
+              attention_chunk_size=0,
               n_layers_forget=0,
               mode='train'):
   """Reversible transformer encoder-decoder model.
@@ -577,6 +589,7 @@ def Reformer2(input_vocab_size,
     ff_dropout: float: (optional) separate dropout rate at feed-forward
       nonlinearity. This is called relu_dropout in T2T.
     ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
+    attention_chunk_size: int, if > 0 run attention chunked at this size
     n_layers_forget: how often to have a forgetting block between layers
     mode: str: 'train' or 'eval'
 
@@ -628,6 +641,7 @@ def Reformer2(input_vocab_size,
           ff_use_sru=ff_use_sru,
           ff_chunk_size=ff_chunk_size,
           ff_sparsity=ff_sparsity,
+          attention_chunk_size=attention_chunk_size,
           mode=mode)
       for _ in range(n_encoder_layers)]
   # pylint: enable=g-complex-comprehension
@@ -660,6 +674,7 @@ def Reformer2(input_vocab_size,
         ff_use_sru=ff_use_sru,
         ff_chunk_size=ff_chunk_size,
         ff_sparsity=ff_sparsity,
+        attention_chunk_size=attention_chunk_size,
         mode=mode)
     decoder_blocks.append(decoder_block)
 

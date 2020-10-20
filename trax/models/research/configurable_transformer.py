@@ -116,7 +116,8 @@ def FeedForwardWithOptions(d_model,
 
 # TODO(lukaszkaiser): unify attention layers API and remove this branch
 def ApplyAttentionLayer(attention_type, d_model, n_heads, d_qk, d_v, causal,
-                        masked, attention_dropout, output_dropout, mode):
+                        masked, attention_dropout, output_dropout,
+                        attention_chunk_size, mode):
   """Runs the supplied attention layer."""
   try:
     attention = attention_type(
@@ -131,7 +132,7 @@ def ApplyAttentionLayer(attention_type, d_model, n_heads, d_qk, d_v, causal,
   except TypeError:  # No d_qk arguments in less advanced layers.
     attention = attention_type(
         d_model, n_heads=n_heads, dropout=attention_dropout, mode=mode)
-  return attention
+  return tl.Chunk(attention, attention_chunk_size)
 
 
 def ConfigurableTransformerEncoder(vocab_size,
@@ -150,6 +151,7 @@ def ConfigurableTransformerEncoder(vocab_size,
                                    ff_use_sru=0,
                                    ff_sparsity=0,
                                    ff_sparsity_type='1inN',
+                                   attention_chunk_size=0,
                                    attention_type=tl.Attention):
   """Returns a Transformer encoder merged with an N-way categorization head.
 
@@ -195,6 +197,7 @@ def ConfigurableTransformerEncoder(vocab_size,
     ff_sparsity_type: string, if ff_sparsity >0,
       use SparseFF if ff_sparsity_type=`'1inN'` and
       use BlockSparseFF if ff_sparsity_type=`'Block'`
+    attention_chunk_size: int, if > 0 run attention chunked at this size
     attention_type: The attention layer to use for the encoder part.
 
   Returns:
@@ -211,7 +214,8 @@ def ConfigurableTransformerEncoder(vocab_size,
   encoder_blocks = [
       _EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
                     ff_activation, ff_dropout, ff_chunk_size, ff_use_sru,
-                    ff_sparsity, ff_sparsity_type, attention_type)
+                    ff_sparsity, ff_sparsity_type,
+                    attention_chunk_size, attention_type)
       for i in range(n_layers)
   ]
   # pylint: enable=g-complex-comprehension
@@ -247,6 +251,7 @@ def ConfigurableTransformerLM(vocab_size,
                               ff_use_sru=0,
                               ff_sparsity=0,
                               ff_sparsity_type='1inN',
+                              attention_chunk_size=0,
                               attention_type=tl.CausalAttention):
   """Returns a Transformer language model.
 
@@ -293,6 +298,7 @@ def ConfigurableTransformerLM(vocab_size,
     ff_sparsity_type: string, if ff_sparsity >0,
       use SparseFF if ff_sparsity_type=`'1inN'` and
       use BlockSparseFF if ff_sparsity_type=`'Block'`
+    attention_chunk_size: int, if > 0 run attention chunked at this size
     attention_type: The attention layer to use for the decoder part.
 
   Returns:
@@ -309,7 +315,8 @@ def ConfigurableTransformerLM(vocab_size,
   decoder_blocks = [
       _DecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
                     ff_activation, ff_dropout, ff_chunk_size, ff_use_sru,
-                    ff_sparsity, ff_sparsity_type, attention_type)
+                    ff_sparsity, ff_sparsity_type,
+                    attention_chunk_size, attention_type)
       for i in range(n_layers)
   ]
   # pylint: enable=g-complex-comprehension
@@ -342,6 +349,7 @@ def ConfigurableTransformer(input_vocab_size,
                             ff_use_sru=0,
                             ff_sparsity=0,
                             ff_sparsity_type='1inN',
+                            attention_chunk_size=0,
                             encoder_attention_type=tl.Attention,
                             encoder_decoder_attention_type=tl.CausalAttention):
   """Returns a full Transformer model.
@@ -402,6 +410,7 @@ def ConfigurableTransformer(input_vocab_size,
     ff_sparsity_type: string, if ff_sparsity >0,
       use SparseFF if ff_sparsity_type=`'1inN'` and
       use BlockSparseFF if ff_sparsity_type=`'Block'`
+    attention_chunk_size: int, if > 0 run attention chunked at this size
     encoder_attention_type: The attention layer to use for the encoder part.
     encoder_decoder_attention_type: The attention layer to use for the
       encoder-decoder attention.
@@ -438,7 +447,8 @@ def ConfigurableTransformer(input_vocab_size,
   encoder_blocks = [
       _EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
                     ff_activation, ff_dropout, ff_chunk_size, ff_use_sru,
-                    ff_sparsity, ff_sparsity_type, encoder_attention_type)
+                    ff_sparsity, ff_sparsity_type,
+                    attention_chunk_size, encoder_attention_type)
       for i in range(n_encoder_layers)
   ]
   # pylint: enable=g-complex-comprehension
@@ -452,7 +462,7 @@ def ConfigurableTransformer(input_vocab_size,
       _EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
                            mode, ff_activation, ff_dropout, ff_chunk_size,
                            ff_use_sru, ff_sparsity, ff_sparsity_type,
-                           encoder_decoder_attention_type)
+                           attention_chunk_size, encoder_decoder_attention_type)
       for i in range(n_decoder_layers)
   ]
   # pylint: enable=g-complex-comprehension
@@ -485,7 +495,8 @@ def ConfigurableTransformer(input_vocab_size,
 
 def _EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
                   ff_activation, ff_dropout, ff_chunk_size, ff_use_sru,
-                  ff_sparsity, ff_sparsity_type, attention_type):
+                  ff_sparsity, ff_sparsity_type,
+                  attention_chunk_size, attention_type):
   """Returns a list of layers that implements a Transformer encoder block.
 
   The input to the block is a pair, (activations, mask), where the mask was
@@ -515,6 +526,7 @@ def _EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
     ff_sparsity_type: string, if ff_sparsity >0,
       use SparseFF if ff_sparsity_type=`'1inN'` and
       use BlockSparseFF if ff_sparsity_type=`'Block'`
+    attention_chunk_size: int, if > 0 run attention chunked at this size
     attention_type: The attention layer to use.
 
   Returns:
@@ -530,6 +542,7 @@ def _EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
       masked=True,
       attention_dropout=dropout,
       output_dropout=dropout,
+      attention_chunk_size=attention_chunk_size,
       mode=mode)
 
   feed_forward = FeedForwardWithOptions(d_model, d_ff, dropout,
@@ -552,7 +565,8 @@ def _EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
 
 def _DecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
                   ff_activation, ff_dropout, ff_chunk_size, ff_use_sru,
-                  ff_sparsity, ff_sparsity_type, attention_type):
+                  ff_sparsity, ff_sparsity_type,
+                  attention_chunk_size, attention_type):
   """Returns a list of layers that implements a Transformer decoder block.
 
   The input is an activation tensor.
@@ -580,6 +594,7 @@ def _DecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
     ff_sparsity_type: string, if ff_sparsity >0,
       use SparseFF if ff_sparsity_type=`'1inN'` and
       use BlockSparseFF if ff_sparsity_type=`'Block'`
+    attention_chunk_size: int, if > 0 run attention chunked at this size
     attention_type: The attention layer to use.
 
   Returns:
@@ -595,6 +610,7 @@ def _DecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
       masked=False,
       attention_dropout=dropout,
       output_dropout=dropout,
+      attention_chunk_size=attention_chunk_size,
       mode=mode)
 
   feed_forward = FeedForwardWithOptions(d_model, d_ff, dropout,
@@ -618,7 +634,7 @@ def _DecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
 def _EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
                          mode, ff_activation, ff_dropout, ff_chunk_size,
                          ff_use_sru, ff_sparsity, ff_sparsity_type,
-                         attention_type):
+                         attention_chunk_size, attention_type):
   """Returns a list of layers implementing a Transformer encoder-decoder block.
 
   The input is a triple (decoder_activations, mask, encoder_activiations) where
@@ -648,6 +664,7 @@ def _EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
      ff_sparsity_type: string, if ff_sparsity >0,
       use SparseFF if ff_sparsity_type=`'1inN'` and
       use BlockSparseFF if ff_sparsity_type=`'Block'`
+    attention_chunk_size: int, if > 0 run attention chunked at this size
     attention_type: The attention layer to use.
 
   Returns:
@@ -677,6 +694,7 @@ def _EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
       masked=True,
       attention_dropout=dropout,
       output_dropout=dropout,
+      attention_chunk_size=attention_chunk_size,
       mode=mode)
 
   feed_forward = FeedForwardWithOptions(d_model, d_ff, dropout,
