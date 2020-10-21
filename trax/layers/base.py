@@ -54,7 +54,7 @@ class Layer:
     `init_weights_and_state(self, input_signature)`:
       Initializes weights and state for inputs with the given signature.
 
-  A small subset of layer types are combinators -- they organize the computation
+  A small number of layer types are combinators -- they organize the computation
   of their sublayers, e.g., applying their sublayers in series or in parallel.
 
   All layers have the following properties, with default values implemented
@@ -96,7 +96,7 @@ class Layer:
       n_out: Number of outputs promised by this layer.
       name: Class-like name for this layer; for use when printing this layer.
       sublayers_to_print: Sublayers to display when printing out this layer;
-        By default (when None) we display all sublayers.
+        if None (the default), display all sublayers.
     """
     self._n_in = n_in
     self._n_out = n_out
@@ -111,7 +111,7 @@ class Layer:
     # The private fields _weights and _state store the private part of
     # layer weights and state. When a layer has no sublayers, these are
     # the same as layer.weights and layer.state. For layers with sublayers
-    # (ie., combinators), these just mark which weights are cached -- see
+    # (i.e., combinators), these just mark which weights are cached -- see
     # the getter and setter for weights and state for details.
     # There is no need to use these fields in most user-implemented classes.
     self._weights = EMPTY_WEIGHTS  # By default no trainable weights.
@@ -126,18 +126,29 @@ class Layer:
     self._jit_cache = {}
 
   def __repr__(self):
+    """Renders this layer as a medium-detailed string, to help in debugging.
+
+    Subclasses should aim for high-signal/low-noise when overriding this
+    method.
+
+    Returns:
+      A high signal-to-noise string representing this layer.
+    """
     def indent_string(x):
       return '  ' + x.replace('\n', '\n  ')
+
     name_str = self._name
     n_in, n_out = self.n_in, self.n_out
     if n_in != 1: name_str += f'_in{n_in}'
     if n_out != 1: name_str += f'_out{n_out}'
-    objs = self.sublayers
+
     if self._sublayers_to_print is not None:
-      objs = self._sublayers_to_print
-    if objs:
-      objs_str = '\n'.join(indent_string(str(x)) for x in objs)
-      return f'{name_str}[\n{objs_str}\n]'
+      substructure = self._sublayers_to_print
+    else:
+      substructure = self.sublayers
+    if substructure:
+      substructure_str = '\n'.join(indent_string(str(x)) for x in substructure)
+      return f'{name_str}[\n{substructure_str}\n]'
     else:
       return name_str
 
