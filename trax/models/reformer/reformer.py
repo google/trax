@@ -19,7 +19,7 @@
 from trax import layers as tl
 from trax.fastmath import numpy as jnp
 from trax.models.research import configurable_transformer
-from trax.models.research import transformer_no_enc_dec_attention as t2
+from trax.models.research import transformer2 as t2
 
 
 # Layers are always CamelCase, but functions in general are snake_case

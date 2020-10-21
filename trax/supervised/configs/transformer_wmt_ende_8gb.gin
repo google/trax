@@ -85,14 +85,14 @@ Transformer.n_encoder_layers = %n_encoder_layers
 Transformer.n_decoder_layers = %n_decoder_layers
 Transformer.input_vocab_size = %input_vocab_size
 
-# Parameters for TransformerNoEncDecAttention:
+# Parameters for Transformer2:
 # ==============================================================================
-TransformerNoEncDecAttention.d_model = %d_model
-TransformerNoEncDecAttention.d_ff = %d_ff
-TransformerNoEncDecAttention.dropout = %dropout
-TransformerNoEncDecAttention.max_len = %max_len
-TransformerNoEncDecAttention.mode = %mode
-TransformerNoEncDecAttention.n_heads = %n_heads
-TransformerNoEncDecAttention.n_encoder_layers = %n_encoder_layers
-TransformerNoEncDecAttention.n_decoder_layers = %n_decoder_layers
-TransformerNoEncDecAttention.input_vocab_size = %input_vocab_size
+Transformer2.d_model = %d_model
+Transformer2.d_ff = %d_ff
+Transformer2.dropout = %dropout
+Transformer2.max_len = %max_len
+Transformer2.mode = %mode
+Transformer2.n_heads = %n_heads
+Transformer2.n_encoder_layers = %n_encoder_layers
+Transformer2.n_decoder_layers = %n_decoder_layers
+Transformer2.input_vocab_size = %input_vocab_size

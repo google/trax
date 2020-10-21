@@ -20,10 +20,10 @@ from absl.testing import absltest
 import numpy as np
 
 from trax import shapes
-from trax.models.research import transformer_no_enc_dec_attention
+from trax.models.research import transformer2
 
 
-class TransformerNoEncDecAttentionTest(absltest.TestCase):
+class Transformer2Test(absltest.TestCase):
 
   def test_concat_with_padding(self):
     vec_e = np.array(
@@ -58,7 +58,7 @@ class TransformerNoEncDecAttentionTest(absltest.TestCase):
           [0, 0, 0, 0, 0, 0, 0, 0]]]
     )
 
-    layer = transformer_no_enc_dec_attention.ConcatWithPadding(mode='train')
+    layer = transformer2.ConcatWithPadding(mode='train')
     inp = (vec_e, vec_d, mask_e)
     _, _ = layer.init(shapes.signature(inp))
     y = layer(inp)
@@ -123,7 +123,7 @@ class TransformerNoEncDecAttentionTest(absltest.TestCase):
           [0, 0, 0, 0, 0, 0, 0, 0]]]
     )
 
-    layer = transformer_no_enc_dec_attention.ConcatWithPadding(mode='predict')
+    layer = transformer2.ConcatWithPadding(mode='predict')
     inp = (vec_e, vec_d, mask_e)
     _, _ = layer.init(shapes.signature(inp))
     y = layer(inp)
@@ -188,7 +188,7 @@ class TransformerNoEncDecAttentionTest(absltest.TestCase):
     tok_e = np.array([[7, 8, 0, 0, 0, 0], [4, 6, 3, 0, 0, 0]])
     tok_d = np.array([[4, 6, 0, 0], [3, 4, 1, 0]])
 
-    layer = transformer_no_enc_dec_attention.StripFromConcatenateWithPadding(
+    layer = transformer2.StripFromConcatenateWithPadding(
         mode='train')
     inp = (enc_dec, tok_e, tok_d)
     _, _ = layer.init(shapes.signature(inp))
@@ -233,7 +233,7 @@ class TransformerNoEncDecAttentionTest(absltest.TestCase):
     tok_e = np.array([[7, 8, 0, 0, 0, 0], [4, 6, 3, 0, 0, 0]])
     tok_d = np.array([[4, 6, 0, 0], [3, 4, 1, 0]])
 
-    layer = transformer_no_enc_dec_attention.StripFromConcatenateWithPadding(
+    layer = transformer2.StripFromConcatenateWithPadding(
         mode='predict')
     inp = (enc_dec, tok_e, tok_d)
     _, _ = layer.init(shapes.signature(inp))
@@ -259,7 +259,7 @@ class TransformerNoEncDecAttentionTest(absltest.TestCase):
     input_vocab_size = 16
     output_vocab_size = 16
 
-    model = transformer_no_enc_dec_attention.TransformerNoEncDecAttention(
+    model = transformer2.Transformer2(
         input_vocab_size, output_vocab_size, d_model=32, d_ff=64,
         n_encoder_layers=2, n_decoder_layers=2, n_heads=2)
 

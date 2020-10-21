@@ -22,18 +22,18 @@ from trax.fastmath import numpy as jnp
 from trax.models import transformer
 
 
-def TransformerNoEncDecAttention(input_vocab_size,
-                                 output_vocab_size=None,
-                                 d_model=512,
-                                 d_ff=2048,
-                                 n_encoder_layers=6,
-                                 n_decoder_layers=6,
-                                 n_heads=8,
-                                 dropout=0.1,
-                                 dropout_shared_axes=None,
-                                 max_len=2048,
-                                 mode='train',
-                                 ff_activation=tl.Relu):
+def Transformer2(input_vocab_size,
+                 output_vocab_size=None,
+                 d_model=512,
+                 d_ff=2048,
+                 n_encoder_layers=6,
+                 n_decoder_layers=6,
+                 n_heads=8,
+                 dropout=0.1,
+                 dropout_shared_axes=None,
+                 max_len=2048,
+                 mode='train',
+                 ff_activation=tl.Relu):
   """Returns a Transformer model.
 
   This model expects an input pair: target, source.
