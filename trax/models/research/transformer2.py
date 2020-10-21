@@ -57,16 +57,26 @@ def Transformer2(input_vocab_size,
     A Transformer model as a layer that maps from a target, source pair to
     activations over a vocab set.
   """
-  def PositionalEncoder(vocab_size):  # tokens --> vectors
+  def Embedder(vocab_size):  # tokens --> vectors
     return [
         tl.Embedding(vocab_size, d_model),
         tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode),
-        tl.PositionalEncoding(max_len=max_len),
     ]
 
-  in_encoder = PositionalEncoder(input_vocab_size)
-  out_encoder = (in_encoder if output_vocab_size is None
-                 else PositionalEncoder(output_vocab_size))
+  in_embedder = Embedder(input_vocab_size)
+  out_embedder = (in_embedder if output_vocab_size is None
+                  else Embedder(output_vocab_size))
+
+  # Positional encodings are not shared between encoder and decoder.
+  # Since encoder doesn't run stepwise, we do not use predict mode there.
+  encoder_mode = 'eval' if mode == 'predict' else mode
+  in_encoder = in_embedder + [
+      tl.PositionalEncoding(max_len=max_len, mode=encoder_mode)
+  ]
+  out_encoder = out_embedder + [
+      tl.PositionalEncoding(max_len=max_len, mode=mode)
+  ]
+
   if output_vocab_size is None:
     output_vocab_size = input_vocab_size
 
