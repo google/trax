@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Base layer class."""
+"""The key layer abstraction (Layer class) and supporting machinery."""
 
 import copy
 import gzip
@@ -42,17 +42,20 @@ GET_STATE_FROM_CACHE = {'__marker_for_cached_state_': ()}
 class Layer:
   """Base class for composable layers in a deep learning network.
 
-  Layers are the basic building blocks for deep learning models. A Trax layer
+  Layers are the basic building blocks for deep learning models. A layer
   computes a function from zero or more inputs to zero or more outputs,
   optionally using trainable weights (common) and non-parameter state (not
-  common). Authors of new layer subclasses typically override at most two
-  methods of the base `Layer` class:
+  common).
+
+  Layer subclasses typically override at most two methods of the base `Layer`
+  class:
 
     `forward(inputs)`:
-      Computes this layer's output as part of a forward pass through the model.
+      Computes the layer's output as part of a forward pass through the model.
 
     `init_weights_and_state(self, input_signature)`:
-      Initializes weights and state for inputs with the given signature.
+      Initializes the layer's weights and state to handle input with the given
+      signature (number, shapes and dtypes of input arguments).
 
   A small number of layer types are combinators -- they organize the computation
   of their sublayers, e.g., applying their sublayers in series or in parallel.
@@ -189,11 +192,11 @@ class Layer:
   def forward(self, inputs):
     """Computes this layer's output as part of a forward pass through the model.
 
-    Authors of new layer subclasses should override this method to define the
-    forward computation that their layer performs. Use `self.weights` to access
-    trainable weights of this layer. If you need to use local non-trainable
-    state or randomness, use `self.rng` for the random seed (no need to set it)
-    and use `self.state` for non-trainable state (and set it to the new value).
+    A layer subclass overrides this method to define how the layer computes
+    outputs from inputs. If the layer depends on weights, state, or randomness
+    as part of the computation, the needed information can be accessed as
+    properties of the layer object: `self.weights`, `self.state`, and
+    `self.rng`. (See numerous examples in `trax.layers.core`.)
 
     Args:
       inputs: Zero or more input tensors, packaged as described in the `Layer`
@@ -206,16 +209,16 @@ class Layer:
     raise NotImplementedError
 
   def init_weights_and_state(self, input_signature):
-    """Initializes weights and state for inputs with the given signature.
+    """Initializes weights and state, to handle input with the given signature.
 
-    Authors of new layer subclasses should override this method if their layer
-    uses trainable weights or non-trainable state. To initialize trainable
-    weights, set `self.weights` and to initialize non-trainable state,
-    set `self.state` to the intended value.
+    A layer subclass must override this method if the layer uses weights or
+    state. To initialize weights, set `self.weights` to desired (typically
+    random) values. To initialize state (uncommon), set `self.state` to desired
+    starting values.
 
     Args:
       input_signature: A `ShapeDtype` instance (if this layer takes one input)
-          or a list/tuple of `ShapeDtype` instances; signatures of inputs.
+          or a list/tuple of `ShapeDtype` instances.
     """
     del input_signature
 
@@ -665,9 +668,6 @@ class PureLayer(Layer):
     Returns:
       Zero or more output tensors, packaged as described in the `Layer` class
       docstring.
-
-    Raises:
-      ValueError: If weights is other than an empty tuple/list.
     """
     _validate_forward_input(inputs, self.n_in)
     raw_output = self._forward_fn(inputs)
@@ -700,7 +700,6 @@ def Fn(name, f, n_out=1):  # pylint: disable=invalid-name
   Returns:
     Layer executing the function `f`.
   """
-  # Inspect the function f to restrict to no-defaults and no-kwargs functions.
   argspec = inspect.getfullargspec(f)
   if argspec.defaults is not None:
     raise ValueError('Function has default arguments (not allowed).')
@@ -761,7 +760,7 @@ def flatten_weights_and_state(weights, state):
 
 def unflatten_weights_and_state(
     flat_weights, flat_state, weights_and_state_signature, weights_only=False):
-  """Un-flatten weights and state given their signatures."""
+  """Unflatten weights and state given their signatures."""
   weights_tree, state_tree = weights_and_state_signature
   weights_to_copy = [EMPTY_WEIGHTS, GET_WEIGHTS_FROM_CACHE]
   weights, _ = fastmath.tree_unflatten(flat_weights, weights_tree,

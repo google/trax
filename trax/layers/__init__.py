@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Layers defined in trax."""
+"""Layers: trainable functions as neural network building blocks."""
 
 import gin
 # We create a flat layers.* namespace for uniform calling conventions as we
