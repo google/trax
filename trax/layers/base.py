@@ -609,34 +609,6 @@ class Layer:
     return output, state
 
 
-def layer(n_in=1, n_out=1, name=None):
-  """Decorator for creating simple layers.  DEPRECATED; use base.Fn instead."""
-
-  def _build_layer_class(raw_fn):
-    """Returns a layer class whose callable instances execute the function."""
-
-    def _init(self, **kwargs):
-      self._kwargs = kwargs  # pylint: disable=protected-access
-      Layer.__init__(self, n_in=n_in, n_out=n_out, name=name)
-
-    def _forward(self, inputs):
-      """Uses this layer as part of a forward pass through the model."""
-      _validate_forward_input(inputs, n_in)
-      raw_output = raw_fn(inputs, **self._kwargs)  # pylint: disable=protected-access
-      output = () if _is_empty(raw_output) else raw_output
-      return output
-
-    # Set docstrings and create the class.
-    _forward.__doc__ = raw_fn.__doc__
-    # Note: None.__doc__ is None
-    cls = type(raw_fn.__name__, (Layer,),
-               {'__init__': _init,
-                'forward': _forward})
-    return cls
-
-  return _build_layer_class
-
-
 class PureLayer(Layer):
   """Pure function from inputs to outputs, packaged as neural network layer.
 
