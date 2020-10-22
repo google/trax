@@ -73,6 +73,10 @@ DotProductCausalAttention = layer_configure(
 SelfAttention = layer_configure(SelfAttention, blacklist=['mode'])
 ModularCausalAttention = layer_configure(ModularCausalAttention,
                                          blacklist=['mode'])
+LowRankCausalAttention = layer_configure(LowRankCausalAttention,
+                                         blacklist=['mode'])
+MultiplicativeCausalAttention = layer_configure(MultiplicativeCausalAttention,
+                                                blacklist=['mode'])
 LSHSelfAttention = layer_configure(LSHSelfAttention, blacklist=['mode'])
 EncDecAttention = layer_configure(EncDecAttention, blacklist=['mode'])
 

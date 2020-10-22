@@ -130,6 +130,34 @@ class ModularCausalAttentionTest(test.TestCase):
     self.assertEqual(y.shape, (1, 3, 4))
 
 
+class LowRankCausalAttentionTest(test.TestCase):
+
+  def test_simple_call(self):
+    layer = sparsity.LowRankCausalAttention(
+        d_feature=4, n_heads=2, lowrank=2)
+    x = np.array([[[2, 5, 3, 4],
+                   [0, 1, 2, 3],
+                   [0, 1, 2, 3],]])
+    _, _ = layer.init(shapes.signature(x))
+
+    y = layer(x)
+    self.assertEqual(y.shape, (1, 3, 4))
+
+
+class MultiplicativeCausalAttentionTest(test.TestCase):
+
+  def test_simple_call(self):
+    layer = sparsity.MultiplicativeCausalAttention(
+        d_feature=4, n_heads=2, sparsity=2)
+    x = np.array([[[2, 5, 3, 4],
+                   [0, 1, 2, 3],
+                   [0, 1, 2, 3],]])
+    _, _ = layer.init(shapes.signature(x))
+
+    y = layer(x)
+    self.assertEqual(y.shape, (1, 3, 4))
+
+
 class CausalFavorTest(test.TestCase):
 
   def test_call_and_grad(self):

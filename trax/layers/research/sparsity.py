@@ -179,12 +179,12 @@ def LocallyConnectedDense(n_modules, n_units, kernel_size=1,  # pylint: disable=
 @assert_shape('bld->bld')
 def ModularCausalAttention(d_feature, n_heads=1, dropout=0.0,  # pylint: disable=invalid-name
                            max_inference_length=2048, n_modules=1,
-                           mode='train'):
+                           kernel_size=1, mode='train'):
   """Returns a layer that maps activations to activations, with causal masking.
 
   Like `CausalAttention`, this layer type represents one pass of multi-head
   self-attention with causal masking rather than padding-based masking. However,
-  it uses LocallyConnectedDense instead of Dense layer for computing K/Q/V.
+  it uses LocallyConnectedDense instead of Dense layer for computing Q/K/V.
 
   Args:
     d_feature: Depth/dimensionality of feature embedding.
@@ -193,6 +193,7 @@ def ModularCausalAttention(d_feature, n_heads=1, dropout=0.0,  # pylint: disable
         activations (based on query-key pairs) before dotting them with values.
     max_inference_length: maximum length for inference.
     n_modules: Number of modules used in LocallyConnectedDense.
+    kernel_size: Kernel size used in LocallyConnectedDense.
     mode: One of `'train'`, `'eval'`, or `'predict'`.
   """
 
@@ -202,7 +203,94 @@ def ModularCausalAttention(d_feature, n_heads=1, dropout=0.0,  # pylint: disable
       return tl.Dense(d_feature)
     else:
       assert d_feature % n_modules == 0
-      return LocallyConnectedDense(n_modules, d_feature // n_modules)
+      return LocallyConnectedDense(n_modules, d_feature // n_modules,
+                                   kernel_size=kernel_size)
+
+  return tl.ConfigurableAttention(
+      ProcessingLayer(), ProcessingLayer(), ProcessingLayer(),
+      ProcessingLayer(), n_heads=n_heads,
+      qkv_attention_layer=tl.DotProductCausalAttention(
+          dropout=dropout, max_inference_length=max_inference_length,
+          mode=mode))
+
+
+@assert_shape('bld->bld')
+def LowRankCausalAttention(d_feature, n_heads=1, dropout=0.0,  # pylint: disable=invalid-name
+                           max_inference_length=2048, lowrank=64,
+                           mode='train'):
+  """Returns a layer that maps activations to activations, with causal masking.
+
+  Like `CausalAttention`, this layer type represents one pass of multi-head
+  self-attention with causal masking rather than padding-based masking. However,
+  it uses low-rank approximation of kernel in Dense layer for computing Q/K/V.
+
+  Args:
+    d_feature: Depth/dimensionality of feature embedding.
+    n_heads: Number of attention heads.
+    dropout: Probababilistic rate for internal dropout applied to attention
+        activations (based on query-key pairs) before dotting them with values.
+    max_inference_length: maximum length for inference.
+    lowrank: The rank of low-rank approximation.
+    mode: One of `'train'`, `'eval'`, or `'predict'`.
+  """
+  @assert_shape('...a->...a')
+  def ProcessingLayer():  # pylint: disable=invalid-name
+    return tl.Serial(
+        tl.Dense(lowrank),
+        tl.Dense(d_feature)
+        )
+
+  return tl.ConfigurableAttention(
+      ProcessingLayer(), ProcessingLayer(), ProcessingLayer(),
+      ProcessingLayer(), n_heads=n_heads,
+      qkv_attention_layer=tl.DotProductCausalAttention(
+          dropout=dropout, max_inference_length=max_inference_length,
+          mode=mode))
+
+
+@assert_shape('bld->bld')
+def MultiplicativeCausalAttention(d_feature, sparsity=1, n_heads=1, dropout=0.0,  # pylint: disable=invalid-name
+                                  max_inference_length=2048, mode='train'):
+  """Returns a layer that maps activations to activations, with causal masking.
+
+  Like `CausalAttention`, this layer type represents one pass of multi-head
+  self-attention with causal masking rather than padding-based masking. However,
+  for computing Q/K/V instead of a Dense layer it multiplies each embedding
+  dimension by a scalar specific to each dimension and each head; then it
+  produces Q/K/V by applying the same dense layer to each head. In comparison
+  to standard dense layer for computing Q/K/V, this layer uses less parameters
+  while still being able to express many functions, like a permutation.
+
+  Args:
+    d_feature: Depth/dimensionality of feature embedding.
+    sparsity: The sparsity of the layer; usually it should be equal to n_heads.
+    n_heads: Number of attention heads.
+    dropout: Probababilistic rate for internal dropout applied to attention
+        activations (based on query-key pairs) before dotting them with values.
+    max_inference_length: maximum length for inference.
+    mode: One of `'train'`, `'eval'`, or `'predict'`.
+  """
+  assert d_feature % sparsity == 0
+  d_module = d_feature // sparsity
+
+  @assert_shape('...a->...a')
+  def ProcessingLayer():  # pylint: disable=invalid-name
+    return tl.Serial(
+        # Weight below is used for per-head preprocessing of an embedding.
+        tl.Weights(init.RandomNormalInitializer(stddev=0.5),
+                   shape=[sparsity, d_feature]),
+        # Weight below is dense kernel, shared across heads.
+        tl.Weights(init.GlorotUniformInitializer(), [d_feature, d_module]),
+        # To save memory the per-head preprocessing and multiplying by the
+        # kernel is done in the same einsum.
+        tl.Fn('AttentionEinsum',
+              (lambda kernel, multiplier, embeds:  # pylint: disable=g-long-lambda
+               np.einsum('dx,hd,bld->blhx', kernel, multiplier, embeds))),
+        MergeLastTwoAxes(),
+        # Weight below is bias after dense, per-head.
+        tl.Weights(init.RandomNormalInitializer(1e-6), [d_feature]),
+        tl.Add(),
+        )
 
   return tl.ConfigurableAttention(
       ProcessingLayer(), ProcessingLayer(), ProcessingLayer(),
