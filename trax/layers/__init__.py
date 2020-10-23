@@ -77,6 +77,8 @@ LowRankCausalAttention = layer_configure(LowRankCausalAttention,
                                          blacklist=['mode'])
 MultiplicativeCausalAttention = layer_configure(MultiplicativeCausalAttention,
                                                 blacklist=['mode'])
+MultiplicativeModularCausalAttention = layer_configure(
+    MultiplicativeModularCausalAttention, blacklist=['mode'])
 LSHSelfAttention = layer_configure(LSHSelfAttention, blacklist=['mode'])
 EncDecAttention = layer_configure(EncDecAttention, blacklist=['mode'])
 
