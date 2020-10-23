@@ -32,7 +32,7 @@ data_streams.dataset_name = 'copy'
 sequence_copy_inputs.vocab_size = %vocab_size
 sequence_copy_inputs.batch_size = 128
 sequence_copy_inputs.train_length = 64
-sequence_copy_inputs.eval_min_length = 32
+sequence_copy_inputs.eval_min_length = 4
 sequence_copy_inputs.eval_max_length = 64
 sequence_copy_inputs.reverse = False
 sequence_copy_inputs.pad_to_multiple = %max_len
@@ -42,7 +42,7 @@ sequence_copy_inputs.pad_to_multiple = %max_len
 simple_sequence_copy_inputs.vocab_size = %vocab_size
 simple_sequence_copy_inputs.batch_size = 128
 simple_sequence_copy_inputs.train_length = %max_len
-simple_sequence_copy_inputs.eval_min_length = 32
+simple_sequence_copy_inputs.eval_min_length = 4
 simple_sequence_copy_inputs.eval_max_length = %max_len
 simple_sequence_copy_inputs.pad_to_multiple = %max_len
 

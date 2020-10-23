@@ -120,11 +120,15 @@ class FixedBasePositionalEncoding(layer_base.Layer):
 
   def forward(self, x):
     rng = self.rng
+    base_weights, start_vec = self.weights
     batch_size, length = x.shape[0], x.shape[1]
     max_pos = min(self._bases)**self._n_digits
     rng1, rng2, rng3 = fastmath.random.split(rng, 3)
     assert length < max_pos, 'length (%d) >= max_pos (%d)' % (length, max_pos)
     positions = jnp.arange(0, length)[None, :]
+    # In training we'll randomize starts for better generalization.
+    # We use the trainable start_vec to compensate and give model a way
+    # to learn what is the starting position in a sequence.
     if self._mode == 'train':
       # In 1% of training cases still start from 0 to be exactly as in eval.
       start_from_nonzero = fastmath.random.randint(
@@ -134,6 +138,8 @@ class FixedBasePositionalEncoding(layer_base.Layer):
           rng2, (batch_size,), 0, max_pos-length)
       random_start *= start_from_nonzero
       positions += random_start[:, None]
+    if self._mode == 'predict':
+      positions += self.state
     res = []
     for bn, base in enumerate(self._bases):
       pos_embeddings = []
@@ -141,7 +147,7 @@ class FixedBasePositionalEncoding(layer_base.Layer):
       for i in range(self._n_digits):
         cur_indices = jnp.mod(cur_positions, base)
         cur_positions = cur_positions // base
-        s = self.weights[bn][i]
+        s = base_weights[bn][i]
         pos_embeddings.append(cur_indices.astype(jnp.float32)[:, :, None] * s)
       embeddings = jnp.concatenate(pos_embeddings, axis=-1)
       if self._mode == 'train':
@@ -150,16 +156,29 @@ class FixedBasePositionalEncoding(layer_base.Layer):
         base_dropout = jnp.minimum(1, base_dropout).astype(jnp.float32)
         embeddings *= base_dropout[:, None, None]
       res.append(embeddings)
-    res = sum(res) + jnp.zeros_like(x)
+    res = sum(res)  # Sum embeddings from all bases.
+    # Add start_vec to the first position only to mark it as starting.
+    res0 = res[:, 0, :][:, None, :]
+    start_pos = res0 + start_vec
+    if self._mode == 'predict':
+      start_pos = jnp.where(jnp.equal(self.state, 0), start_pos, res0)
+      self.state += length  # Add input length to state.
+    res = jnp.concatenate([start_pos, res[:, 1:, :]], axis=1)
     return x + res
 
   def init_weights_and_state(self, input_signature):
     d_feature = input_signature.shape[-1]
     assert d_feature % self._n_digits == 0
     d_weight = d_feature // self._n_digits
-    self.weights = [[self._initializer((1, d_weight), rng)
-                     for rng in fastmath.random.split(self.rng, self._n_digits)]
+    rng1, rng2 = fastmath.random.split(self.rng, 2)
+    base_weights = [[self._initializer((1, d_weight), rng)
+                     for rng in fastmath.random.split(rng1, self._n_digits)]
                     for _ in self._bases]
+    # Special vector to mark the starting position.
+    start_vec = self._initializer((1, 1, d_feature), rng2)
+    self.weights = (base_weights, start_vec)
+    if self._mode == 'predict':
+      self.state = jnp.zeros((), dtype=jnp.int32)
 
 
 def threefry_2x32_prf(key, x: jnp.ndarray) -> jnp.ndarray:

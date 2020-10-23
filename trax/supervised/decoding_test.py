@@ -137,21 +137,6 @@ class DecodingTest(test.TestCase):
                                        max_length=6, temperature=0.0)
     self.assertEqual(str(s[0]), '[3 7 5 3 2 4]')
 
-  def test_autoregressive_sample_reformerlm_quality(self):
-    timebin_self_attention = self._timebin_self_attention_fn()
-    pred_model = models.ReformerLM(
-        d_model=64, d_ff=128, dropout=0.05, max_len=256, n_heads=2,
-        attention_type=timebin_self_attention,
-        n_layers=2, vocab_size=13, mode='predict')
-    shape11 = shapes.ShapeDtype((1, 1), dtype=np.int32)
-    model_path = os.path.join(_TESTDATA, 'reformerlm_copy.pkl.gz')
-    pred_model.init_from_file(model_path, weights_only=True,
-                              input_signature=(shape11, shape11))
-    inputs = np.array([[0, 3, 7, 5, 3, 2, 4, 0]], dtype=np.int32)
-    s = decoding.autoregressive_sample(pred_model, inputs,
-                                       max_length=6, temperature=0.0)
-    self.assertEqual(str(s[0]), '[3 7 5 3 2 4]')
-
   def test_autoregressive_sample_transformer_quality(self):
     pred_model = models.Transformer(
         d_model=64, d_ff=128, dropout=0.05, max_len=256, n_heads=2,
@@ -205,15 +190,16 @@ class DecodingTest(test.TestCase):
 
   def test_autoregressive_sample_reformer2_lsh_attn_quality(self):
     gin.add_config_file_search_path(_CONFIG_DIR)
-    # 32 is the max length we trained the checkpoint for.
+    max_len = 32  # 32 is the max length we trained the checkpoint for.
     test_lengths = [8, 16, 32]
     vocab_size = 13
+    # The checkpoint is correct on ~90% sequences, set random seed to deflake.
     np.random.seed(0)
-    for max_len in test_lengths:
+    for test_len in test_lengths:
       gin.clear_config()
       gin.parse_config_file('reformer2_copy.gin')
       gin.bind_parameter('LSHSelfAttention.predict_mem_len', 2 * max_len)
-      gin.bind_parameter('LSHSelfAttention.predict_drop_len', max_len // 4)
+      gin.bind_parameter('LSHSelfAttention.predict_drop_len', 2 * max_len)
 
       pred_model = models.Reformer2(mode='predict')
 
@@ -225,9 +211,9 @@ class DecodingTest(test.TestCase):
                                 input_signature=(shape1l, shape11))
       initial_state = pred_model.state
 
-      for _ in range(3):
-        # pick a length in [1, max_len]
-        inp_len = np.random.randint(low=1, high=max_len + 1)
+      for _ in range(2):  # Set low to make the test run reasonably fast.
+        # Pick a length in [1, test_len] at random.
+        inp_len = np.random.randint(low=1, high=test_len + 1)
         inputs = np.random.randint(low=1, high=vocab_size-1, size=(1, inp_len))
         inputs = np.pad(inputs, [(0, 0), (0, max_len - inp_len)],
                         mode='constant', constant_values=0)
