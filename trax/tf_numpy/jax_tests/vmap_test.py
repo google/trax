@@ -26,6 +26,8 @@ import tensorflow.compat.v2 as tf
 from trax.tf_numpy import extensions
 import trax.tf_numpy.numpy as tf_np
 
+from tensorflow.python.ops.numpy_ops import np_math_ops  # pylint: disable=g-direct-tensorflow-import
+
 
 class VmapTest(tf.test.TestCase, parameterized.TestCase):
 
@@ -165,4 +167,5 @@ class VmapTest(tf.test.TestCase, parameterized.TestCase):
 
 if __name__ == '__main__':
   tf.compat.v1.enable_eager_execution()
+  np_math_ops.enable_numpy_methods_on_tensor()
   tf.test.main()

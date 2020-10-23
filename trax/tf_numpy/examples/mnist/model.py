@@ -106,11 +106,11 @@ class Model(object):
       diff = x - y
       return np.sum(diff * diff) / len(x)
 
-    wb_tensors = [p.data for p in self.weights + self.biases]
+    wb_tensors = self.weights + self.biases
     with tf.GradientTape() as g:
       g.watch(wb_tensors)
       loss = mean_squared_error(self.forward(x), y)
-    gradients = g.gradient(loss.data, wb_tensors)
+    gradients = g.gradient(loss, wb_tensors)
     gradients = [np.asarray(grad) for grad in gradients]
 
     new_weights_and_biases = []

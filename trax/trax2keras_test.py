@@ -150,7 +150,7 @@ class Trax2KerasTest(tf.test.TestCase, parameterized.TestCase):
       for _ in range(3):
         inputs = get_inputs()
         with tf.GradientTape() as trax_tape:
-          trax_tape.watch([x.data for x in tf.nest.flatten(weights)])
+          trax_tape.watch(tf.nest.flatten(weights))
           trax_outputs, state = trax_layer.pure_fn(
               to_arrays(inputs), weights=weights, state=state, rng=rng)
         trax_grads = trax_tape.gradient(*to_tensors([trax_outputs, weights]))

@@ -73,16 +73,12 @@ def uniform(rng, shape, dtype):
   return tf_np.asarray(rng.uniform(shape=shape, dtype=dtype, minval=minval))
 
 
-def to_tf(a):
-  return tf.nest.map_structure(lambda x: x.data, a)
-
-
 def to_np(a):
   return tf.nest.map_structure(tf_np.asarray, a)
 
 
 def to_tf_fn(f):
-  return lambda *args: to_tf(f(*to_np(args)))
+  return lambda *args: f(*to_np(args))
 
 
 def scan_reference(f, init, xs):
@@ -144,8 +140,8 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
     expected_dx = (dy * scale1 * x[0], dy * scale2 * x[1])
     y, vjp = extensions.vjp(f, *x)
     dx = vjp(dy)
-    self.assertAllClose(to_tf(expected_y), to_tf(y))
-    self.assertAllClose(to_tf(expected_dx), to_tf(dx))
+    self.assertAllClose(expected_y, y)
+    self.assertAllClose(expected_dx, dx)
 
   @parameterized.named_parameters([
       (  # pylint: disable=g-complex-comprehension
@@ -204,7 +200,7 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
     rng = tf.random.Generator.from_seed(1234)
     x, dy_list = tf.nest.map_structure(lambda shape: uniform(rng, shape, dtype),
                                        [x_shape, [y_shape] * 2])
-    tf_x = to_tf(x)
+    tf_x = x
     outputs = extensions.vjp(f, *x, has_aux=has_aux)
     if has_aux:
       y, vjp, aux = outputs
@@ -215,14 +211,14 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
       outputs = f(*x)
       if has_aux:
         expected_y, expected_aux = outputs
-        self.assertAllClose(to_tf(expected_aux), to_tf(aux))
+        self.assertAllClose(expected_aux, aux)
       else:
         expected_y = outputs
-    self.assertAllClose(to_tf(expected_y), to_tf(y))
+    self.assertAllClose(expected_y, y)
     for dy in dy_list:
       expected_dx = tape.gradient(
-          to_tf(expected_y), tf_x, output_gradients=to_tf(dy))
-      self.assertAllClose(expected_dx, to_tf(vjp(dy)))
+          expected_y, tf_x, output_gradients=dy)
+      self.assertAllClose(expected_dx, vjp(dy))
 
   def testGrad(self):
 
@@ -233,9 +229,9 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
 
     def compare(a, b):
       with tf.GradientTape() as tape:
-        tape.watch(a.data)
+        tape.watch(a)
         r = f(a, b)
-      expected = tape.gradient(r.data, a.data)
+      expected = tape.gradient(r, a)
       self.assertAllEqual(expected, g(a, b))
 
     shape = [10]

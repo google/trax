@@ -39,6 +39,10 @@ import trax.tf_numpy.extensions as npe
 from trax.tf_numpy.jax_tests.config import config, FLAGS
 import trax.tf_numpy.jax_tests.test_util as jtu
 
+
+from tensorflow.python.framework import ops
+from tensorflow.python.ops.numpy_ops import np_config
+
 config.parse_flags_with_absl()
 
 
@@ -82,7 +86,7 @@ def _shape_and_dtypes(shapes, dtypes):
 OpRecord = collections.namedtuple(
   "OpRecord",
   ["name", "nargs", "dtypes", "shapes", "rng_factory", "diff_modes",
-   "test_name", "check_dtypes", "tolerance", "inexact", 
+   "test_name", "check_dtypes", "tolerance", "inexact",
    "check_incomplete_shape"])
 
 def op_record(name, nargs, dtypes, shapes, rng_factory, diff_modes,
@@ -90,7 +94,7 @@ def op_record(name, nargs, dtypes, shapes, rng_factory, diff_modes,
               check_incomplete_shape=True):
   test_name = test_name or name
   return OpRecord(name, nargs, dtypes, shapes, rng_factory, diff_modes,
-                  test_name, check_dtypes, tolerance, inexact, 
+                  test_name, check_dtypes, tolerance, inexact,
                   check_incomplete_shape)
 
 
@@ -432,11 +436,13 @@ def _promote_like_lnp(fun, inexact=False):
   """
   def wrapper(*args, **kw):
     flat_args = tf.nest.flatten(args)
-    if inexact and not any(lnp.issubdtype(lnp.result_type(x), lnp.inexact)
-                           for x in flat_args):
+    if inexact and not any(
+        lnp.issubdtype(lnp.result_type(x).as_numpy_dtype, lnp.inexact)
+        for x in flat_args):
       dtype = lnp.result_type(lnp.float_, *flat_args)
     else:
       dtype = lnp.result_type(*flat_args)
+    dtype = dtype.as_numpy_dtype
     args = tf.nest.map_structure(lambda a: onp.asarray(a, dtype), args)
     return fun(*args, **kw)
   return wrapper
@@ -2350,7 +2356,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
     def onp_fun(condlist, choicelist, default):
       choicelist = [x if lnp.bfloat16 != lnp.result_type(x)
                     else x.astype(onp.float32) for x in choicelist]
-      dtype = lnp.result_type(default, *choicelist)
+      dtype = lnp.result_type(default, *choicelist).as_numpy_dtype
       return onp.select(condlist,
                         [onp.asarray(x, dtype=dtype) for x in choicelist],
                         onp.asarray(default, dtype=dtype))
@@ -3070,4 +3076,5 @@ class NumpyGradTests(jtu.TestCase):
 
 if __name__ == "__main__":
   tf.enable_v2_behavior()
+  lnp.enable_numpy_behavior()
   absltest.main()

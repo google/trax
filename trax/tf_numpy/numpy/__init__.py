@@ -62,3 +62,11 @@ except ImportError:
     max = amax  # pylint: disable=redefined-builtin,undefined-variable
     min = amin  # pylint: disable=redefined-builtin,undefined-variable
     round = around  # pylint: disable=redefined-builtin,undefined-variable
+
+try:
+  from tensorflow.python.ops.numpy_ops.np_config import enable_numpy_behavior
+  # TODO(b/171429739): This should be moved to every individual file/test.
+  enable_numpy_behavior()
+
+except ImportError:
+  pass
