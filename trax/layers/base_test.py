@@ -51,19 +51,20 @@ class BaseLayerTest(parameterized.TestCase):
     self.assertEmpty(weights)
     self.assertEmpty(state)
 
-  def test_output_signature(self):
-    input_signature = (shapes.ShapeDtype((2, 3, 5)), shapes.ShapeDtype(
-        (2, 3, 5)))
+  def test_output_signature_no_weights(self):
+    shape_2_3_5 = shapes.ShapeDtype((2, 3, 5))
+    input_signature = (shape_2_3_5, shape_2_3_5)
     layer = tl.Fn('2in1out', lambda x, y: x + y)
     output_signature = layer.output_signature(input_signature)
-    self.assertEqual(output_signature, shapes.ShapeDtype((2, 3, 5)))
+    self.assertEqual(output_signature, shape_2_3_5)
 
-    input_signature = shapes.ShapeDtype((5, 7))
+    shape_5_7 = shapes.ShapeDtype((5, 7))
+    input_signature = shape_5_7
     layer = tl.Fn('1in3out', lambda x: (x, 2 * x, 3 * x), n_out=3)
     output_signature = layer.output_signature(input_signature)
-    self.assertEqual(output_signature, (shapes.ShapeDtype((5, 7)),) * 3)
-    self.assertNotEqual(output_signature, (shapes.ShapeDtype((4, 7)),) * 3)
-    self.assertNotEqual(output_signature, (shapes.ShapeDtype((5, 7)),) * 2)
+    self.assertEqual(output_signature, (shape_5_7, shape_5_7, shape_5_7))
+
+  # TODO(jonni): Define/test behavior of output signature for layers w/weights.
 
   @parameterized.named_parameters(
       [('_' + b.value, b) for b in CUSTOM_GRAD_BACKENDS])
