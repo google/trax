@@ -57,39 +57,40 @@ def most_precise_int_dtype(x):
 
 def _canonicalize_jit_arg(x):
   if isinstance(x, tf_np.ndarray):
-    return x
-  try:
-    # We need to convert `int` to the most precise dtype, otherwise the dtype
-    # of the result may be different from numpy's. For example, when a binary
-    # op takes in a Python integer 5 and an array of uint32, numpy will pick
-    # uint32 as 5's dtype, while tf.convert_to_tensor will choose int32 which
-    # will cause the two arguments to be promoted to int64. We pick uint8
-    # here, which will be promoted to uint32 by the binary op.
-    # Note that we prefer unsigned int to signed int when both are equally
-    # precise. For example, for 5, we pick uint8 instead of int8. There is no
-    # reason to prefer one to the other, because for each there is a case
-    # where the behavior diverges from numpy. If we prefer signed int,
-    # consider the case where the first operand is 5 and the second is
-    # 2**64-1. Numpy picks uint64 as the result dtype, but because we choose a
-    # signed type for 5 such as int8, the result type will be float64. On the
-    # other hand, if we prefer unsigned int, consider the case where the first
-    # operand is 2**31-1 and the second is -1. Numpy will pick int32, but
-    # because we choose uint32 for 2*32-1, the result will be int64. The root
-    # of the problem is that `jit` converts `int` to tensors (hence committing
-    # to a dtype) too early, when we don't have enough information about the
-    # jitted function (e.g. which subset of the arguments should be promoted
-    # together using np.result_type). tf.function doesn't have this problem
-    # because it doesn't convert `int` to tensors. jax.jit doesn't have this
-    # problem because it converts `int` to "int tracer" which doesn't commit
-    # to a dtype.
-    # TODO(wangpeng): Revisit this design and see whether we can improve `jit`
-    #   and tf.function.
-    dtype = most_precise_int_dtype(x)
-    if dtype is None and isinstance(x, float):
-      dtype = tf_np.default_float_type()
-    return tf.convert_to_tensor(value=x, dtype=dtype)
-  except (TypeError, ValueError):
-    return x
+    return x.data
+  else:
+    try:
+      # We need to convert `int` to the most precise dtype, otherwise the dtype
+      # of the result may be different from numpy's. For example, when a binary
+      # op takes in a Python integer 5 and an array of uint32, numpy will pick
+      # uint32 as 5's dtype, while tf.convert_to_tensor will choose int32 which
+      # will cause the two arguments to be promoted to int64. We pick uint8
+      # here, which will be promoted to uint32 by the binary op.
+      # Note that we prefer unsigned int to signed int when both are equally
+      # precise. For example, for 5, we pick uint8 instead of int8. There is no
+      # reason to prefer one to the other, because for each there is a case
+      # where the behavior diverges from numpy. If we prefer signed int,
+      # consider the case where the first operand is 5 and the second is
+      # 2**64-1. Numpy picks uint64 as the result dtype, but because we choose a
+      # signed type for 5 such as int8, the result type will be float64. On the
+      # other hand, if we prefer unsigned int, consider the case where the first
+      # operand is 2**31-1 and the second is -1. Numpy will pick int32, but
+      # because we choose uint32 for 2*32-1, the result will be int64. The root
+      # of the problem is that `jit` converts `int` to tensors (hence committing
+      # to a dtype) too early, when we don't have enough information about the
+      # jitted function (e.g. which subset of the arguments should be promoted
+      # together using np.result_type). tf.function doesn't have this problem
+      # because it doesn't convert `int` to tensors. jax.jit doesn't have this
+      # problem because it converts `int` to "int tracer" which doesn't commit
+      # to a dtype.
+      # TODO(wangpeng): Revisit this design and see whether we can improve `jit`
+      #   and tf.function.
+      dtype = most_precise_int_dtype(x)
+      if dtype is None and isinstance(x, float):
+        dtype = tf_np.default_float_type()
+      return tf.convert_to_tensor(value=x, dtype=dtype)
+    except (TypeError, ValueError):
+      return x
 
 
 def _canonicalize_jit_arguments(inp):
@@ -106,10 +107,21 @@ def _canonicalize_jit_arguments(inp):
   return tf.nest.map_structure(_canonicalize_jit_arg, inp)
 
 
+def _np_to_tf(inp):
+
+  def f(x):
+    if isinstance(x, tf_np.ndarray):
+      return x.data
+    else:
+      return x
+
+  return tf.nest.map_structure(f, inp)
+
+
 def _tf_to_np(inp):
 
   def f(x):
-    if isinstance(x, tf.IndexedSlices):
+    if isinstance(x, (tf.Tensor, tf.IndexedSlices)):
       return tf_np.asarray(x)
     else:
       return x
@@ -118,7 +130,7 @@ def _tf_to_np(inp):
 
 
 def stop_gradient(x):
-  return _tf_to_np(tf.nest.map_structure(tf.stop_gradient, x))
+  return _tf_to_np(tf.nest.map_structure(tf.stop_gradient, _np_to_tf(x)))
 
 
 def custom_grad(f_vjp, f_original=None):
@@ -150,18 +162,18 @@ def custom_grad(f_vjp, f_original=None):
     np_args = _tf_to_np(tf_args)
     np_kwargs = _tf_to_np(tf_kwargs)
     np_y, np_vjp = f_vjp(*np_args, **np_kwargs)
-    tf_y = np_y
+    tf_y = _np_to_tf(np_y)
 
     def tf_vjp(*flat_tf_dy):
       tf_dy = tf.nest.pack_sequence_as(tf_y, flat_tf_dy)
       np_dy = _tf_to_np(tf_dy)
       np_dx = np_vjp(np_dy)
-      return tf.nest.flatten(np_dx)
+      return tf.nest.flatten(_np_to_tf(np_dx))
 
     return tf_y, tf_vjp
 
   def np_f(*args, **kwargs):
-    return _tf_to_np(tf_f(*args), **kwargs)
+    return _tf_to_np(tf_f(*_np_to_tf(args), **_np_to_tf(kwargs)))
 
   return np_f
 
@@ -188,16 +200,19 @@ def vjp(f, *primals, has_aux=False):
     `y`. `dx` is the cotengents of `x`, having the same structures, shapes and
     dtypes as `x`.
   """
+  tf_primals = _np_to_tf(primals)
   with tf.GradientTape(persistent=True) as tape:
-    tape.watch(tf.nest.flatten(primals))
+    tape.watch(tf.nest.flatten(tf_primals))
     outputs = f(*primals)
     if has_aux:
       np_out, aux = outputs
     else:
       np_out = outputs
+    tf_out = _np_to_tf(np_out)
 
     def _vjp(dy):
-      tf_dx = tape.gradient(np_out, primals, output_gradients=dy)
+      tf_dy = _np_to_tf(dy)
+      tf_dx = tape.gradient(tf_out, tf_primals, output_gradients=tf_dy)
       return _tf_to_np(tf_dx)
 
   if has_aux:
@@ -231,21 +246,22 @@ def grad(f, has_aux=False):
     if not isinstance(np_loss, tf_np.ndarray):
       raise ValueError(
           "The result of the function to take gradient must be an ndarray.")
-    if not np_loss.shape.is_compatible_with([]):
+    if not np_loss.data.shape.is_compatible_with([]):
       raise ValueError(
           "The result of the function to take gradient must be a scalar.")
 
   def _f(params, *args):
     """The gradient function to be returned."""
+    tf_params = _np_to_tf(params)
     with tf.GradientTape() as g:
-      g.watch(tf.nest.flatten(params))
+      g.watch(tf.nest.flatten(tf_params))
       outputs = f(params, *args)
       if has_aux:
         np_loss, aux = outputs
       else:
         np_loss = outputs
       check_loss_shape(np_loss)
-      tf_grads = g.gradient(np_loss, params)
+      tf_grads = g.gradient(np_loss.data, tf_params)
       if has_aux:
         res = (tf_grads, aux)
       else:
@@ -362,7 +378,7 @@ def jit(f,
         np_out = np_out[0]
     else:
       np_out = f(*np_args, **kwargs)
-    return np_out
+    return _np_to_tf(np_out)
 
   def _f(*args, **kwargs):
     args = [
@@ -484,7 +500,7 @@ def _index_update_helper(updater, x, idx, y):
   # TODO(b/164251540): Remove this expensive manual broadcasting once
   #   tf.raw_ops.tensor_strided_slice_update and tf.tensor_scatter_nd_update
   #   support broadcasting.
-  y = tf.broadcast_to(y, tf.shape(x[idx]))
+  y = tf.broadcast_to(y.data, tf.shape(x[idx].data))
   return updater(x, idx, y)
 
 
@@ -594,17 +610,17 @@ def logsumexp(x, axis=None, keepdims=None):
   """
   return tf_np.asarray(
       tf.math.reduce_logsumexp(
-          input_tensor=x, axis=axis, keepdims=keepdims))
+          input_tensor=x.data, axis=axis, keepdims=keepdims))
 
 
 def expit(x):
   """Compute 1 / (1 + exp(-x))."""
-  return tf_np.asarray(tf.math.sigmoid(x))
+  return tf_np.asarray(tf.math.sigmoid(x.data))
 
 
 def erf(x):
   """Computes the Gauss error function of x element-wise."""
-  return tf_np.asarray(tf.math.erf(x))
+  return tf_np.asarray(tf.math.erf(x.data))
 
 
 def _minus(a, b):
@@ -895,8 +911,8 @@ def conv(inp,
   fltr = tf_np.asarray(fltr, dtype)
   return tf_np.asarray(
       tf.nn.convolution(
-          input=inp,
-          filters=fltr,
+          input=inp.data,
+          filters=fltr.data,
           padding=padding,
           strides=window_strides,
           dilations=filter_dilation,
@@ -976,9 +992,9 @@ def sort_key_val(keys, values, dimension=-1):
   """
   keys = tf_np.asarray(keys)
   values = tf_np.asarray(values)
-  rank = keys.shape.ndims
+  rank = keys.data.shape.ndims
   if rank is None:
-    rank = values.shape.ndims
+    rank = values.data.shape.ndims
   if rank is None:
     # We need to know the rank because tf.gather requires batch_dims to be `int`
     raise ValueError("The rank of either keys or values must be known, but "
@@ -998,10 +1014,11 @@ def sort_key_val(keys, values, dimension=-1):
   keys = maybe_swapaxes(keys)
   values = maybe_swapaxes(values)
   idxs = tf_np.argsort(keys)
+  idxs = idxs.data
 
   # Using tf.gather rather than np.take because the former supports batch_dims
   def gather(a):
-    return tf_np.asarray(tf.gather(a, idxs, batch_dims=rank - 1))
+    return tf_np.asarray(tf.gather(a.data, idxs, batch_dims=rank - 1))
 
   keys = gather(keys)
   values = gather(values)
@@ -1045,6 +1062,7 @@ def scan(f, init, xs, length=None, reverse=False):
   """
   init, xs = tf.nest.map_structure(
       lambda x: tf_np.asarray(x) if x is not None else None, (init, xs))
+  init, xs = _np_to_tf((init, xs))
   def get_length(x):
     if x is None:
       return None
@@ -1082,7 +1100,7 @@ def scan(f, init, xs, length=None, reverse=False):
       i_ = i
     xs = tf.nest.map_structure(
         lambda x_ta: x_ta.read(i_) if x_ta is not None else None, xs_ta)
-    carry, ys = f(*_tf_to_np((carry, xs)))
+    carry, ys = _np_to_tf(f(*_tf_to_np((carry, xs))))
     ys_ta = tf.nest.map_structure(
         lambda y_ta, y: (y_ta.write(i_, y) if y is not None else y_ta),
         ys_ta, ys)
@@ -1138,7 +1156,7 @@ def _key2seed(a):
     a = tf.stack(a)
     return a
 
-  return int64_to_int32s(a)
+  return int64_to_int32s(a.data)
 
 
 def _seed2key(a):
@@ -1249,8 +1267,6 @@ def uniform(key,
     An ndarray with shape `shape` and dtype `dtype`. Each value in the ndarray
     is sampled uniformly randomly in range [`minval`, `maxval`).
   """
-  minval = tf.cast(minval, dtype)
-  maxval = tf.cast(maxval, dtype)
   key = tf_np.asarray(key, dtype=_RNG_KEY_DTYPE)
   return tf_np.asarray(
       tf.random.stateless_uniform(
@@ -1486,7 +1502,7 @@ def _psum(tensor, axis_name=None):
       tensor = tf.cast(tensor, tf.float64)
   else:
     tensor = tf.raw_ops.CollectiveReduce(
-        input=tensor,
+        input=tensor.data,
         group_size=len(devices),
         group_key=_GROUP_KEY,
         instance_key=_get_instance_key(),
@@ -1525,7 +1541,7 @@ def pmean(tensor, axis_name=None):
     raise ValueError("pmean for TPU is not supported yet.")
   else:
     return tf.raw_ops.CollectiveReduce(
-        input=tensor,
+        input=tensor.data,
         group_size=len(devices),
         group_key=_GROUP_KEY,
         instance_key=_get_instance_key(),
@@ -1558,7 +1574,7 @@ def _get_pmap_impl(f, devices, has_tpu):
     """A wrapper for `f` that takes/returns tensors."""
     np_args = _tf_to_np(tf_args)
     np_out = f(*np_args)
-    return np_out
+    return _np_to_tf(np_out)
 
   if has_tpu:
 
@@ -1631,6 +1647,7 @@ def pmap(f, axis_name=None, devices=None):
                        "yet.")
     # TODO(wangpeng): Maybe we should use `asarray` to convert everything
     # to ndarray first.
+    args = _np_to_tf(args)
 
     flattened_input_args = tf.nest.flatten(args)
     flattened_per_device_args = [[] for _ in devices]
