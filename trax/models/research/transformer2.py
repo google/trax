@@ -20,6 +20,7 @@ import jax
 from trax import layers as tl
 from trax.fastmath import numpy as jnp
 from trax.models import transformer
+from trax.models.research import configurable_transformer as ct
 
 
 def Transformer2(input_vocab_size,
@@ -33,7 +34,9 @@ def Transformer2(input_vocab_size,
                  dropout_shared_axes=None,
                  max_len=2048,
                  mode='train',
-                 ff_activation=tl.Relu):
+                 ff_activation=tl.Relu,
+                 axial_pos_shape=None,
+                 d_axial_pos_embs=None):
   """Returns a Transformer model.
 
   This model expects an input pair: target, source.
@@ -52,33 +55,27 @@ def Transformer2(input_vocab_size,
     max_len: int: maximum symbol length for positional encoding
     mode: str: 'train' or 'eval'
     ff_activation: the non-linearity in feed-forward layer
+    axial_pos_shape: tuple of ints: input shape to use for the axial position
+      encoding. If unset, axial position encoding is disabled.
+    d_axial_pos_embs: tuple of ints: depth of position embedding for each axis.
+      Tuple length must match axial_pos_shape, and values must sum to d_model.
 
   Returns:
     A Transformer model as a layer that maps from a target, source pair to
     activations over a vocab set.
   """
-  def Embedder(vocab_size):  # tokens --> vectors
-    return [
-        tl.Embedding(vocab_size, d_model),
-        tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode),
-    ]
-
-  in_embedder = Embedder(input_vocab_size)
-  out_embedder = (in_embedder if output_vocab_size is None
-                  else Embedder(output_vocab_size))
-
-  # Positional encodings are not shared between encoder and decoder.
-  # Since encoder doesn't run stepwise, we do not use predict mode there.
-  encoder_mode = 'eval' if mode == 'predict' else mode
-  in_encoder = in_embedder + [
-      tl.PositionalEncoding(max_len=max_len, mode=encoder_mode)
-  ]
-  out_encoder = out_embedder + [
-      tl.PositionalEncoding(max_len=max_len, mode=mode)
-  ]
-
-  if output_vocab_size is None:
-    output_vocab_size = input_vocab_size
+  in_encoder, out_encoder, output_vocab_size = (
+      ct.EmbeddingAndPositionalEncodings(
+          input_vocab_size,
+          d_model,
+          mode,
+          dropout,
+          dropout_shared_axes,
+          max_len,
+          output_vocab_size=output_vocab_size,
+          axial_pos_shape=axial_pos_shape,
+          d_axial_pos_embs=d_axial_pos_embs)
+  )
 
   encoder_blocks = [
       transformer._EncoderBlock(d_model, d_ff, n_heads, dropout,  # pylint: disable=protected-access

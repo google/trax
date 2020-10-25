@@ -168,7 +168,9 @@ class FixedBasePositionalEncoding(layer_base.Layer):
 
   def init_weights_and_state(self, input_signature):
     d_feature = input_signature.shape[-1]
-    assert d_feature % self._n_digits == 0
+    if d_feature % self._n_digits != 0:
+      raise ValueError(
+          f'd_feature({d_feature}) % self._n_digits({self._n_digits}) != 0')
     d_weight = d_feature // self._n_digits
     rng1, rng2 = fastmath.random.split(self.rng, 2)
     base_weights = [[self._initializer((1, d_weight), rng)

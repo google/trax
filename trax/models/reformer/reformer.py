@@ -18,7 +18,7 @@
 
 from trax import layers as tl
 from trax.fastmath import numpy as jnp
-from trax.models.research import configurable_transformer
+from trax.models.research import configurable_transformer as ct
 from trax.models.research import transformer2 as t2
 
 
@@ -52,7 +52,7 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
   Returns:
     the layer.
   """
-  attention = configurable_transformer.ApplyAttentionLayer(
+  attention = ct.ApplyAttentionLayer(
       attention_type, d_model, n_heads, d_attention_key, d_attention_value,
       True, False, dropout, dropout, attention_chunk_size, mode)
   attention_half_residual = tl.ReversibleHalfResidual(
@@ -60,7 +60,7 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
       attention_layer=attention,
   )
 
-  feed_forward = configurable_transformer.FeedForwardWithOptions(
+  feed_forward = ct.FeedForwardWithOptions(
       d_model, d_ff, dropout, [-2], ff_activation, ff_dropout,
       ff_chunk_size, ff_use_sru, ff_sparsity, mode)
 
@@ -70,31 +70,6 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
       tl.ReversibleHalfResidual(feed_forward),
       tl.ReversibleSwap(),
   ]
-
-
-def PositionalEncoding(mode, dropout=None, max_len=None,
-                       axial_pos_shape=None, d_axial_pos_embs=None):
-  """Returns the positional encoding layer depending on the arguments."""
-  if not axial_pos_shape:
-    positional_encoding = tl.PositionalEncoding(
-        max_len=max_len, dropout=dropout, mode=mode)
-  elif axial_pos_shape == 'fixed-base':  # TODO(lukaszkaiser): remove this HACK
-    positional_encoding = tl.FixedBasePositionalEncoding(mode=mode)
-  elif axial_pos_shape == 'infinite':  # TODO(lukaszkaiser): remove this HACK
-    positional_encoding = tl.InfinitePositionalEncoding(affine=False)
-  elif axial_pos_shape == 'infinite-affine':
-    # TODO(lukaszkaiser): remove this HACK
-    positional_encoding = tl.InfinitePositionalEncoding()
-  elif axial_pos_shape == 'time-bin':  # TODO(lukaszkaiser): remove this HACK
-    positional_encoding = tl.TimeBinPositionalEncoding()
-  else:
-    assert d_axial_pos_embs is not None
-    positional_encoding = tl.AxialPositionalEncoding(
-        shape=axial_pos_shape, d_embs=d_axial_pos_embs,
-        dropout_broadcast_dims=tuple(range(1, len(axial_pos_shape) + 1)),
-        dropout=dropout, mode=mode)
-
-  return positional_encoding
 
 
 def ReformerLM(vocab_size,
@@ -142,7 +117,7 @@ def ReformerLM(vocab_size,
   Returns:
     the layer.
   """
-  positional_encoding = PositionalEncoding(
+  positional_encoding = ct.PositionalEncoder(
       mode, dropout, max_len, axial_pos_shape, d_axial_pos_embs)
 
   positional_embedder = [
@@ -248,15 +223,8 @@ def ReformerShortenLM(vocab_size,
   """
   assert mode != 'predict'  # TODO(lukaszkaiser,kitaev): fast inference
 
-  if not axial_pos_shape:
-    positional_encoding = tl.PositionalEncoding(
-        max_len=max_len, dropout=dropout, mode=mode)
-  else:
-    assert d_axial_pos_embs is not None
-    positional_encoding = tl.AxialPositionalEncoding(
-        shape=axial_pos_shape, d_embs=d_axial_pos_embs,
-        dropout_broadcast_dims=tuple(range(1, len(axial_pos_shape) + 1)),
-        dropout=dropout, mode=mode)
+  positional_encoding = ct.PositionalEncoder(
+      mode, dropout, max_len, axial_pos_shape, d_axial_pos_embs)
 
   positional_embedder = [
       tl.Embedding(vocab_size, d_embedding),
@@ -352,7 +320,7 @@ def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
     # to 'eval' mode instead.
     mode = 'eval'
 
-  attention = configurable_transformer.ApplyAttentionLayer(
+  attention = ct.ApplyAttentionLayer(
       attention_type=attention_type, d_model=d_model, n_heads=n_heads,
       d_qk=d_model//n_heads, d_v=d_model//n_heads, masked=True, causal=False,
       attention_dropout=dropout, output_dropout=dropout,
@@ -362,7 +330,7 @@ def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
       attention_layer=attention,
   )
 
-  feed_forward = configurable_transformer.FeedForwardWithOptions(
+  feed_forward = ct.FeedForwardWithOptions(
       d_model, d_ff, dropout, [-2], ff_activation, ff_dropout,
       ff_chunk_size, ff_use_sru, ff_sparsity, mode)
 
@@ -375,7 +343,8 @@ def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
 
 
 def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, ff_activation,
-                        ff_dropout, mode):
+                        ff_dropout, mode, ff_use_sru=0, ff_chunk_size=0,
+                        ff_sparsity=0):
   """Reversible transformer decoder layer.
 
   Args:
@@ -386,6 +355,9 @@ def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, ff_activation,
     ff_activation: the non-linearity in feed-forward layer
     ff_dropout: float: (optional) separate dropout rate for feed-forward layer
     mode: str: 'train' or 'eval'
+    ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
+    ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
+    ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
 
   Returns:
     the layer.
@@ -409,8 +381,9 @@ def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, ff_activation,
       attention_layer=causal_attention,
   )
 
-  feed_forward = configurable_transformer.FeedForward(
-      d_model, d_ff, dropout, ff_activation, ff_dropout, mode)
+  feed_forward = ct.FeedForwardWithOptions(
+      d_model, d_ff, dropout, [-2], ff_activation, ff_dropout,
+      ff_chunk_size, ff_use_sru, ff_sparsity, mode)
 
   return [                             # vec_d1 vec_d2 vec_e masks
       causal_attention_half_residual,
@@ -433,7 +406,12 @@ def Reformer(input_vocab_size,
              max_len=2048,
              ff_activation=tl.Relu,
              ff_dropout=None,
-             mode='train'):
+             mode='train',
+             axial_pos_shape=None,
+             d_axial_pos_embs=None,
+             ff_use_sru=0,
+             ff_chunk_size=0,
+             ff_sparsity=0):
   """Reversible transformer encoder-decoder model.
 
   This model expects an input pair: target, source.
@@ -456,35 +434,37 @@ def Reformer(input_vocab_size,
     ff_dropout: float: (optional) separate dropout rate at feed-forward
       nonlinearity. This is called relu_dropout in T2T.
     mode: str: 'train' or 'eval'
+    axial_pos_shape: tuple of ints: input shape to use for the axial position
+      encoding. If unset, axial position encoding is disabled.
+    d_axial_pos_embs: tuple of ints: depth of position embedding for each axis.
+      Tuple length must match axial_pos_shape, and values must sum to d_model.
+    ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
+    ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
+    ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
 
   Returns:
     A Reformer model as a layer that maps from a target, source pair to
     activations over a vocab set.
   """
-  def PositionalEncoder(vocab_size, mode):  # tokens --> vectors
-    # TODO(kitaev): axial positional encoding is better for very long sequences.
-    positional_encoding = tl.PositionalEncoding(
-        max_len=max_len, dropout=dropout, mode=mode)
-    return [
-        tl.Embedding(vocab_size, d_model),
-        tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),
-        positional_encoding,
-    ]
-
-  # Mode 'predict' means that the decoder should be run one token at a time.
-  # The encoder only ever runs over full sequences, which is why it's switched
-  # to 'eval' mode instead.
-  in_encoder = PositionalEncoder(
-      input_vocab_size, mode='eval' if mode == 'predict' else mode)
-  if output_vocab_size is None:
-    output_vocab_size = input_vocab_size
-  out_encoder = PositionalEncoder(output_vocab_size, mode)
+  in_encoder, out_encoder, output_vocab_size = (
+      ct.EmbeddingAndPositionalEncodings(
+          input_vocab_size,
+          d_model,
+          mode,
+          dropout,
+          [-2],  # dropout_shared_axes
+          max_len,
+          output_vocab_size=output_vocab_size,
+          axial_pos_shape=axial_pos_shape,
+          d_axial_pos_embs=d_axial_pos_embs)
+  )
 
   # pylint: disable=g-complex-comprehension
   encoder_blocks = [
       EncoderBlock(
           d_model, d_ff, n_heads, tl.SelfAttention, dropout, ff_activation,
-          ff_dropout, mode=mode)
+          ff_dropout, mode=mode, ff_use_sru=ff_use_sru,
+          ff_chunk_size=ff_chunk_size, ff_sparsity=ff_sparsity)
       for _ in range(n_encoder_layers)]
   # pylint: enable=g-complex-comprehension
 
@@ -498,10 +478,14 @@ def Reformer(input_vocab_size,
   if mode == 'predict':
     encoder = tl.Cache(encoder)
 
+  # pylint: disable=g-complex-comprehension
   encoder_decoder_blocks = [
       EncoderDecoderBlock(
-          d_model, d_ff, n_heads, dropout, ff_activation, ff_dropout, mode)
+          d_model, d_ff, n_heads, dropout, ff_activation, ff_dropout, mode,
+          ff_use_sru=ff_use_sru, ff_chunk_size=ff_chunk_size,
+          ff_sparsity=ff_sparsity)
       for _ in range(n_decoder_layers)]
+  # pylint: enable=g-complex-comprehension
 
   # Assemble and return the model.
   return tl.Serial(
@@ -608,28 +592,18 @@ def Reformer2(input_vocab_size,
     d_attention_value = d_model // n_heads
 
   # Vector embeddings.
-  def Embedder(vocab_size):  # tokens --> vectors
-    return [
-        tl.Embedding(vocab_size, d_model),
-        tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),
-    ]
-
-  in_embedder = Embedder(input_vocab_size)
-  out_embedder = (in_embedder if output_vocab_size is None
-                  else Embedder(output_vocab_size))
-
-  def PositionalEnc(mode):
-    return PositionalEncoding(
-        mode, dropout, max_len, axial_pos_shape, d_axial_pos_embs)
-
-  # Mode 'predict' means that the decoder should be run one token at a time.
-  # The encoder only ever runs over full sequences, which is why it's switched
-  # to 'eval' mode instead.
-  encoder_mode = 'eval' if mode == 'predict' else mode
-  in_encoder = in_embedder + [PositionalEnc(encoder_mode)]
-  out_encoder = out_embedder + [PositionalEnc(mode)]
-  if output_vocab_size is None:
-    output_vocab_size = input_vocab_size
+  in_encoder, out_encoder, output_vocab_size = (
+      ct.EmbeddingAndPositionalEncodings(
+          input_vocab_size,
+          d_model,
+          mode,
+          dropout,
+          [-2],  # dropout_shared_axes
+          max_len,
+          output_vocab_size=output_vocab_size,
+          axial_pos_shape=axial_pos_shape,
+          d_axial_pos_embs=d_axial_pos_embs)
+  )
 
   # pylint: disable=g-complex-comprehension
   encoder_blocks = [
