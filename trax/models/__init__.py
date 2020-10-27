@@ -31,6 +31,7 @@ from trax.models.research import rezero
 from trax.models.research import transformer2
 from trax.models.research import funnel_transformer
 
+
 # Ginify
 def model_configure(*args, **kwargs):
   kwargs['module'] = 'trax.models'
@@ -86,4 +87,5 @@ Quality = model_configure(rl.Quality)
 RNNLM = model_configure(rnn.RNNLM)
 GRULM = model_configure(rnn.GRULM)
 LSTMSeq2SeqAttn = model_configure(rnn.LSTMSeq2SeqAttn)
-_FunnelEncoder = model_configure(funnel_transformer._FunnelEncoder)
+FunnelTransformerEncoder = model_configure(
+    funnel_transformer.FunnelTransformerEncoder)
