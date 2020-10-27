@@ -1011,4 +1011,5 @@ class IndexedUpdateTest(jtu.TestCase):
 
 if __name__ == "__main__":
   tf.config.set_soft_device_placement(False)
+  jnp.enable_numpy_behavior()
   absltest.main()

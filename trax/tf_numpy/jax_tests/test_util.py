@@ -95,6 +95,8 @@ python_scalar_dtypes = {
 
 
 def _dtype(x):
+  if isinstance(x, tf.Tensor):
+    return x.dtype.as_numpy_dtype
   return (getattr(x, 'dtype', None) or
           onp.dtype(python_scalar_dtypes.get(type(x), None)) or
           onp.asarray(x).dtype)
@@ -687,16 +689,12 @@ def cases_from_gens(*gens):
       yield ('_{}_{}'.format(size, i),) + tuple(gen(size) for gen in gens)
 
 
-def to_tf(a):
-  return tf.nest.map_structure(lambda x: x.data, a)
-
-
 def to_np(a):
   return tf.nest.map_structure(tf_np.asarray, a)
 
 
 def to_tf_fn(f):
-  return lambda *args: to_tf(f(*to_np(args)))
+  return lambda *args: f(*to_np(args))
 
 
 class TestCase(parameterized.TestCase):

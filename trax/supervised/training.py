@@ -686,7 +686,7 @@ class Loop:
     should_write_summaries = self.is_chief and summary_writer is not None
     for name, value in values.items():
       full_name = value_prefix + name
-      s = jnp.shape(value)
+      s = tuple(jnp.shape(value))
       if not s:
         self._log_step(
             '%s %s | % .8f' %

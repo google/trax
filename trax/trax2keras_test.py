@@ -150,7 +150,7 @@ class Trax2KerasTest(tf.test.TestCase, parameterized.TestCase):
       for _ in range(3):
         inputs = get_inputs()
         with tf.GradientTape() as trax_tape:
-          trax_tape.watch([x.data for x in tf.nest.flatten(weights)])
+          trax_tape.watch(tf.nest.flatten(weights))
           trax_outputs, state = trax_layer.pure_fn(
               to_arrays(inputs), weights=weights, state=state, rng=rng)
         trax_grads = trax_tape.gradient(*to_tensors([trax_outputs, weights]))
@@ -176,7 +176,7 @@ class Trax2KerasTest(tf.test.TestCase, parameterized.TestCase):
             keras_layer.trainable_variables, keras_grads)
         self.assertAllClose(
             to_tensors(weights), read_values(keras_layer._weights),
-            rtol=2e-6, atol=3.5e-4 if has_gpu() else 1e-6)
+            rtol=2e-6, atol=4.5e-4 if has_gpu() else 1e-6)
         self.assertAllClose(to_tensors(state), read_values(keras_layer._state))
         self.assertAllClose(to_tensors(rng), read_values(keras_layer._rng))
       if use_model:

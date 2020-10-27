@@ -323,7 +323,9 @@ class TraxTest(parameterized.TestCase):
       # Assert total train steps
       self.assertEqual(loop.step, steps)
 
-  @parameterized.parameters(BACKENDS)
+  @parameterized.named_parameters(
+      ('_%s' % short_name(backend), backend)
+      for backend in BACKENDS)
   def test_train_with_weights(self, backend):
     with fastmath.use_backend(backend):
       # Prepare model and inputs
