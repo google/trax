@@ -151,7 +151,7 @@ class Parallel(base.Layer):
   Then Parallel(F, G, H) will take 6 inputs and give 4 outputs:
 
     - inputs: a, b, c, d, e, f
-    - outputs: F(a), G(b, c, d), h1, h2
+    - outputs: F(a), G(b, c, d), h1, h2     where h1, h2 = H(a, b)
 
   As an important special case, a None argument to Parallel acts as if it takes
   one argument, which it leaves unchanged. (It acts as a one-arg no-op.) For
