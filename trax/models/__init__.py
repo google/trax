@@ -89,3 +89,5 @@ GRULM = model_configure(rnn.GRULM)
 LSTMSeq2SeqAttn = model_configure(rnn.LSTMSeq2SeqAttn)
 FunnelTransformerEncoder = model_configure(
     funnel_transformer.FunnelTransformerEncoder)
+FunnelTransformer = model_configure(
+    funnel_transformer.FunnelTransformer)

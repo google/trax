@@ -47,6 +47,17 @@ def PoolLayer(pool_layer=tl.AvgPool,
   ) if separate_cls else pool_layer(pool_size, strides)
 
 
+def _upsample(short, masks, long):
+  factor = -(-long.shape[1] // short.shape[1])  # ceil division
+  new_vecs = long + short.repeat(factor, axis=1)[:, :long.shape[1], :]
+  new_masks = masks.repeat(factor, axis=-1)[:, :, :, :long.shape[1]]
+  return new_vecs, new_masks
+
+
+def _Upsampler():
+  return tl.Fn('Upsampler', _upsample, n_out=2)
+
+
 def _FunnelBlock(d_model, d_ff, n_heads,
                  dropout, dropout_shared_axes, mode, ff_activation,
                  pool_layer, pool_size, strides, separate_cls):
@@ -83,19 +94,20 @@ def _FunnelBlock(d_model, d_ff, n_heads,
       d_model, d_ff, dropout, dropout_shared_axes, mode, ff_activation)
   pooling = PoolLayer(pool_layer, pool_size, strides, separate_cls)
 
-  return tl.Serial(                                   # h, mask
-      tl.Branch(pooling, None, None),                 # h', h, h, mask
-      tl.Dup(),                                       # h', h', h, h, mask
+  return tl.Serial(                     # h, mask
+      tl.Branch(pooling, None, None),   # h', h, h, mask
+      tl.Dup(),                         # h', h', h, h, mask
       tl.Parallel(
           None,
           attention
-      ),                                              # h', attention(...), mask
-      tl.Add(),                                       # h'+attention(...), mask
-      tl.LayerNorm(),                                 # funnel_activations, mask
+      ),                                # h', attention(...), mask
+      tl.Add(),                         # h'+attention(...), mask
+      tl.LayerNorm(),                   # funnel_activations, mask
       tl.Parallel(
           None,
-          tl.Fn('max pool experiment', _InternalMaxPool),
-      ),                                             # funnel_activations, mask'
+          tl.Fn('max pool experiment',
+                _InternalMaxPool),
+      ),                                # funnel_activations, mask'
       feed_forward
   )
 
@@ -187,3 +199,75 @@ def _FunnelResidualBlock(d_model, d_ff, n_heads,
           feed_forward
       )
   ]
+
+
+def FunnelTransformer(vocab_size,
+                      d_model=512,  # start
+                      d_ff=2048,
+                      encoder_segment_lengths=(2, 2, 2),
+                      n_decoder_blocks=2,
+                      n_heads=8,
+                      max_len=2048,
+                      dropout=0.1,
+                      dropout_shared_axes=None,
+                      mode='train',
+                      ff_activation=tl.Relu,
+                      pool_layer=tl.AvgPool,
+                      pool_size=(2,),
+                      strides=(2,),
+                      separate_cls=True):
+  """Returns a Full Funnel Transformer.
+  """
+  segments = len(encoder_segment_lengths)
+  funnels = segments - 1
+  assert (funnels >= 0)
+
+  positional_encoder = [
+      tl.Embedding(vocab_size, d_model),
+      tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode),
+      tl.PositionalEncoding(max_len=max_len)]
+
+  n_encoder_segments = len(encoder_segment_lengths)
+
+  encoder_blocks_before_first_pooling = [
+      _EncoderBlock(d_model, d_ff, n_heads, dropout,
+                    dropout_shared_axes, mode, ff_activation)
+      for _ in range(encoder_segment_lengths[0])]
+  encoder_blocks_from_first_pooling = []
+
+  for i in range(1, n_encoder_segments):
+    # Building i'th segment
+
+    # add funnel block between segments
+    encoder_blocks_from_first_pooling.append(
+        _FunnelBlock(d_model, d_ff, n_heads, dropout,
+                     dropout_shared_axes, mode,
+                     ff_activation, pool_layer, pool_size,
+                     strides, separate_cls))
+
+    for _ in range(encoder_segment_lengths[i]):
+      # segment_size encoder blocks
+      encoder_blocks_from_first_pooling.append(
+          _EncoderBlock(d_model, d_ff, n_heads, dropout,
+                        dropout_shared_axes, mode, ff_activation))
+
+  decoder_blocks = [_EncoderBlock(d_model, d_ff, n_heads, dropout,
+                                  dropout_shared_axes, mode, ff_activation)
+                    for _ in range(n_decoder_blocks)]
+
+  # Assemble and return the model.
+  return tl.Serial(                               # toks
+      tl.Branch(
+          positional_encoder, tl.PaddingMask()),  # vecs masks
+      encoder_blocks_before_first_pooling,        # vecs masks
+      tl.Select([0, 1, 0]),                       # vecs masks residual = vecs
+      encoder_blocks_from_first_pooling,          # vecs masks residual
+      tl.Parallel(
+          # residual from first segment is taken before
+          # normalization, so apply it now
+          None, None, tl.LayerNorm()),            # vecs masks norm(residual)
+      _Upsampler(),                               # vecs masks
+      decoder_blocks,
+      tl.Select([0], n_in=2),                     # vecs
+      tl.LayerNorm(),
+  )
