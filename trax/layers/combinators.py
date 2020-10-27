@@ -67,11 +67,11 @@ class Serial(base.Layer):
   def forward(self, xs):
     """Executes this layer as part of a forward pass through the model."""
     self._validate_forward_inputs(xs)
-    state, weights = self.state, self.weights
-    rngs = _split_rngs(self.rng, self._n_layers)
-    if not self.sublayers:  # No-op: leave args unchanged.
+    if not self.sublayers:  # No-op: outputs = inputs
       return xs
 
+    state, weights = self.state, self.weights
+    rngs = _split_rngs(self.rng, self._n_layers)
     stack = xs
     new_state = []
     n_layers = self._n_layers
