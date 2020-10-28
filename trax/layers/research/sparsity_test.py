@@ -158,10 +158,10 @@ class MultiplicativeCausalAttentionTest(test.TestCase):
     self.assertEqual(y.shape, (1, 3, 4))
 
 
-class MultiplicativeModularCausalAttention(test.TestCase):
+class MultiplicativeModularCausalAttentionTest(test.TestCase):
 
   def test_simple_call(self):
-    layer = sparsity.MultiplicativeCausalAttention(
+    layer = sparsity.MultiplicativeModularCausalAttention(
         d_feature=4, n_heads=2, sparsity=2)
     x = np.array([[[2, 5, 3, 4],
                    [0, 1, 2, 3],
