@@ -344,10 +344,10 @@ def ConfigurableTransformerEncoder(vocab_size,
 
   # pylint: disable=g-complex-comprehension
   encoder_blocks = [
-      _EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
-                    ff_activation, ff_dropout, ff_chunk_size, ff_use_sru,
-                    ff_sparsity, ff_sparsity_type,
-                    attention_chunk_size, attention_type)
+      EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
+                   ff_activation, ff_dropout, ff_chunk_size, ff_use_sru,
+                   ff_sparsity, ff_sparsity_type,
+                   attention_chunk_size, attention_type)
       for i in range(n_layers)
   ]
   # pylint: enable=g-complex-comprehension
@@ -452,10 +452,10 @@ def ConfigurableTransformerLM(vocab_size,
 
   # pylint: disable=g-complex-comprehension
   decoder_blocks = [
-      _DecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
-                    ff_activation, ff_dropout, ff_chunk_size, ff_use_sru,
-                    ff_sparsity, ff_sparsity_type,
-                    attention_chunk_size, attention_type)
+      DecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
+                   ff_activation, ff_dropout, ff_chunk_size, ff_use_sru,
+                   ff_sparsity, ff_sparsity_type,
+                   attention_chunk_size, attention_type)
       for i in range(n_layers)
   ]
   # pylint: enable=g-complex-comprehension
@@ -579,10 +579,10 @@ def ConfigurableTransformer(input_vocab_size,
 
   # pylint: disable=g-complex-comprehension
   encoder_blocks = [
-      _EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
-                    ff_activation, ff_dropout, ff_chunk_size, ff_use_sru,
-                    ff_sparsity, ff_sparsity_type,
-                    attention_chunk_size, encoder_attention_type)
+      EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
+                   ff_activation, ff_dropout, ff_chunk_size, ff_use_sru,
+                   ff_sparsity, ff_sparsity_type,
+                   attention_chunk_size, encoder_attention_type)
       for i in range(n_encoder_layers)
   ]
   # pylint: enable=g-complex-comprehension
@@ -593,10 +593,10 @@ def ConfigurableTransformer(input_vocab_size,
 
   # pylint: disable=g-complex-comprehension
   encoder_decoder_blocks = [
-      _EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
-                           mode, ff_activation, ff_dropout, ff_chunk_size,
-                           ff_use_sru, ff_sparsity, ff_sparsity_type,
-                           attention_chunk_size, encoder_decoder_attention_type)
+      EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
+                          mode, ff_activation, ff_dropout, ff_chunk_size,
+                          ff_use_sru, ff_sparsity, ff_sparsity_type,
+                          attention_chunk_size, encoder_decoder_attention_type)
       for i in range(n_decoder_layers)
   ]
   # pylint: enable=g-complex-comprehension
@@ -627,10 +627,10 @@ def ConfigurableTransformer(input_vocab_size,
   )
 
 
-def _EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
-                  ff_activation, ff_dropout, ff_chunk_size, ff_use_sru,
-                  ff_sparsity, ff_sparsity_type,
-                  attention_chunk_size, attention_type):
+def EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
+                 ff_activation, ff_dropout, ff_chunk_size, ff_use_sru,
+                 ff_sparsity, ff_sparsity_type,
+                 attention_chunk_size, attention_type):
   """Returns a list of layers that implements a Transformer encoder block.
 
   The input to the block is a pair, (activations, mask), where the mask was
@@ -697,10 +697,10 @@ def _EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
   ]
 
 
-def _DecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
-                  ff_activation, ff_dropout, ff_chunk_size, ff_use_sru,
-                  ff_sparsity, ff_sparsity_type,
-                  attention_chunk_size, attention_type):
+def DecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
+                 ff_activation, ff_dropout, ff_chunk_size, ff_use_sru,
+                 ff_sparsity, ff_sparsity_type, attention_chunk_size,
+                 attention_type):
   """Returns a list of layers that implements a Transformer decoder block.
 
   The input is an activation tensor.
@@ -765,10 +765,10 @@ def _DecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
   ]
 
 
-def _EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
-                         mode, ff_activation, ff_dropout, ff_chunk_size,
-                         ff_use_sru, ff_sparsity, ff_sparsity_type,
-                         attention_chunk_size, attention_type):
+def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
+                        mode, ff_activation, ff_dropout, ff_chunk_size,
+                        ff_use_sru, ff_sparsity, ff_sparsity_type,
+                        attention_chunk_size, attention_type):
   """Returns a list of layers implementing a Transformer encoder-decoder block.
 
   The input is a triple (decoder_activations, mask, encoder_activiations) where
