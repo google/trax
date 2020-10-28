@@ -700,7 +700,7 @@ def EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
 def DecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
                  ff_activation, ff_dropout, ff_chunk_size, ff_use_sru,
                  ff_sparsity, ff_sparsity_type, attention_chunk_size,
-                 attention_type):
+                 attention_type, n_attention_layers=1):
   """Returns a list of layers that implements a Transformer decoder block.
 
   The input is an activation tensor.
@@ -730,11 +730,14 @@ def DecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
       use BlockSparseFF if ff_sparsity_type=`'Block'`
     attention_chunk_size: int, if > 0 run attention chunked at this size
     attention_type: The attention layer to use.
+    n_attention_layers: how many residual causal attention layers should we
+      have before the feed-forward block (default: 1, the standard block)
 
   Returns:
     A list of layers that maps an activation tensor to an activation tensor.
   """
-  causal_attention = ApplyAttentionLayer(
+  # pylint: disable=g-complex-comprehension
+  causal_attentions = [ApplyAttentionLayer(
       attention_type,
       d_model,
       n_heads,
@@ -745,24 +748,22 @@ def DecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
       attention_dropout=dropout,
       output_dropout=dropout,
       attention_chunk_size=attention_chunk_size,
-      mode=mode)
+      mode=mode) for _ in range(n_attention_layers)]
 
+  residual_attentions = [
+      tl.Residual(
+          tl.LayerNorm(),
+          causal_attentions[i],
+          tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
+      ) for i in range(n_attention_layers)]
+
+  # pylint: enable=g-complex-comprehension
   feed_forward = FeedForwardWithOptions(d_model, d_ff, dropout,
                                         dropout_shared_axes, ff_activation,
                                         ff_dropout, ff_chunk_size, ff_use_sru,
                                         ff_sparsity, mode, ff_sparsity_type)
 
-  dropout_ = tl.Dropout(
-      rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
-
-  return [
-      tl.Residual(
-          tl.LayerNorm(),
-          causal_attention,
-          dropout_,
-      ),
-      tl.Residual(feed_forward),
-  ]
+  return residual_attentions + [tl.Residual(feed_forward)]
 
 
 def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
