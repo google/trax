@@ -627,10 +627,21 @@ def ConfigurableTransformer(input_vocab_size,
   )
 
 
-def EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
-                 ff_activation, ff_dropout, ff_chunk_size, ff_use_sru,
-                 ff_sparsity, ff_sparsity_type,
-                 attention_chunk_size, attention_type):
+def EncoderBlock(d_model,
+                 d_ff,
+                 n_heads,
+                 dropout,
+                 dropout_shared_axes,
+                 mode,
+                 ff_activation,
+                 ff_dropout,
+                 ff_chunk_size,
+                 ff_use_sru,
+                 ff_sparsity,
+                 ff_sparsity_type,
+                 attention_chunk_size,
+                 attention_type,
+                 n_attention_layers=1):
   """Returns a list of layers that implements a Transformer encoder block.
 
   The input to the block is a pair, (activations, mask), where the mask was
@@ -662,45 +673,58 @@ def EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
       use BlockSparseFF if ff_sparsity_type=`'Block'`
     attention_chunk_size: int, if > 0 run attention chunked at this size
     attention_type: The attention layer to use.
+    n_attention_layers: how many residual causal attention layers should we
+      have before the feed-forward block (default: 1, the standard block)
 
   Returns:
     A list of layers that maps (activations, mask) to (activations, mask).
   """
-  attention = ApplyAttentionLayer(
-      attention_type,
-      d_model,
-      n_heads,
-      d_model // n_heads,
-      d_model // n_heads,
-      causal=False,
-      masked=True,
-      attention_dropout=dropout,
-      output_dropout=dropout,
-      attention_chunk_size=attention_chunk_size,
-      mode=mode)
+  # `n_attention_layers` number of residuals of attention layer + dropout.
+  # pylint: disable=g-complex-comprehension
+  residuals_attention = [
+      tl.Residual(tl.LayerNorm(),
+                  ApplyAttentionLayer(attention_type,
+                                      d_model,
+                                      n_heads,
+                                      d_model // n_heads,
+                                      d_model // n_heads,
+                                      causal=False,
+                                      masked=True,
+                                      attention_dropout=dropout,
+                                      output_dropout=dropout,
+                                      attention_chunk_size=attention_chunk_size,
+                                      mode=mode),
+                  tl.Dropout(rate=dropout,
+                             shared_axes=dropout_shared_axes,
+                             mode=mode)
+                  )
+      for _ in range(n_attention_layers)
+  ]
+  # pylint: enable=g-complex-comprehension
 
   feed_forward = FeedForwardWithOptions(d_model, d_ff, dropout,
                                         dropout_shared_axes, ff_activation,
                                         ff_dropout, ff_chunk_size, ff_use_sru,
                                         ff_sparsity, mode, ff_sparsity_type)
 
-  dropout_ = tl.Dropout(
-      rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
-
-  return [
-      tl.Residual(
-          tl.LayerNorm(),
-          attention,
-          dropout_,
-      ),
-      tl.Residual(feed_forward),
-  ]
+  return residuals_attention + [tl.Residual(feed_forward)]
 
 
-def DecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
-                 ff_activation, ff_dropout, ff_chunk_size, ff_use_sru,
-                 ff_sparsity, ff_sparsity_type, attention_chunk_size,
-                 attention_type, n_attention_layers=1):
+def DecoderBlock(d_model,
+                 d_ff,
+                 n_heads,
+                 dropout,
+                 dropout_shared_axes,
+                 mode,
+                 ff_activation,
+                 ff_dropout,
+                 ff_chunk_size,
+                 ff_use_sru,
+                 ff_sparsity,
+                 ff_sparsity_type,
+                 attention_chunk_size,
+                 attention_type,
+                 n_attention_layers=1):
   """Returns a list of layers that implements a Transformer decoder block.
 
   The input is an activation tensor.

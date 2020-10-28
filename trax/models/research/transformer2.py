@@ -19,7 +19,6 @@
 import jax
 from trax import layers as tl
 from trax.fastmath import numpy as jnp
-from trax.models import transformer
 from trax.models.research import configurable_transformer as ct
 
 
@@ -35,6 +34,16 @@ def Transformer2(input_vocab_size,
                  max_len=2048,
                  mode='train',
                  ff_activation=tl.Relu,
+                 ff_dropout=0.1,
+                 ff_chunk_size=0,
+                 ff_use_sru=0,
+                 ff_sparsity=0,
+                 ff_sparsity_type='1inN',
+                 attention_chunk_size=0,
+                 encoder_attention_type=tl.Attention,
+                 n_encoder_attention_layers=1,
+                 decoder_attention_type=tl.CausalAttention,
+                 n_decoder_attention_layers=1,
                  axial_pos_shape=None,
                  d_axial_pos_embs=None):
   """Returns a Transformer model.
@@ -55,6 +64,22 @@ def Transformer2(input_vocab_size,
     max_len: int: maximum symbol length for positional encoding
     mode: str: 'train' or 'eval'
     ff_activation: the non-linearity in feed-forward layer
+    ff_dropout: Stochastic rate (probability) for dropping an activation value
+      when applying dropout after the FF dense layer.
+    ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
+    ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
+    ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
+    ff_sparsity_type: string, if ff_sparsity >0,
+      use SparseFF if ff_sparsity_type=`'1inN'` and
+      use BlockSparseFF if ff_sparsity_type=`'Block'`
+    attention_chunk_size: int, if > 0 run attention chunked at this size
+    encoder_attention_type: The attention layer to use for the encoder part.
+    n_encoder_attention_layers: int, within each encoder block, how many
+      attention layers to have.
+    decoder_attention_type: The attention layer to use for the
+      encoder-decoder attention.
+    n_decoder_attention_layers: int, within each decoder block, how many
+      attention layers to have.
     axial_pos_shape: tuple of ints: input shape to use for the axial position
       encoding. If unset, axial position encoding is disabled.
     d_axial_pos_embs: tuple of ints: depth of position embedding for each axis.
@@ -77,10 +102,15 @@ def Transformer2(input_vocab_size,
           d_axial_pos_embs=d_axial_pos_embs)
   )
 
+  # pylint: disable=g-complex-comprehension
   encoder_blocks = [
-      transformer._EncoderBlock(d_model, d_ff, n_heads, dropout,  # pylint: disable=protected-access
-                                dropout_shared_axes, mode, ff_activation)
+      ct.EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
+                      mode, ff_activation, ff_dropout, ff_chunk_size,
+                      ff_use_sru, ff_sparsity, ff_sparsity_type,
+                      attention_chunk_size, encoder_attention_type,
+                      n_encoder_attention_layers)
       for i in range(n_encoder_layers)]
+  # pylint: enable=g-complex-comprehension
 
   encoder = tl.Serial(
       in_encoder,
@@ -90,17 +120,21 @@ def Transformer2(input_vocab_size,
   if mode == 'predict':
     encoder = tl.Cache(encoder)
 
+  # pylint: disable=g-complex-comprehension
   decoder_blocks = [
-      transformer._DecoderBlock(d_model, d_ff, n_heads, dropout,  # pylint: disable=protected-access
-                                dropout_shared_axes, mode, ff_activation)
+      ct.DecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
+                      mode, ff_activation, ff_dropout, ff_chunk_size,
+                      ff_use_sru, ff_sparsity, ff_sparsity_type,
+                      attention_chunk_size, decoder_attention_type,
+                      n_decoder_attention_layers)
       for i in range(n_decoder_layers)]
+  # pylint: enable=g-complex-comprehension
 
   decoder_blocks_sans_ff = [
       DecoderBlock2(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
                     ff_activation)
       for i in range(n_decoder_layers)]
 
-  # pylint: disable=protected-access
   # Assemble and return the model.
   return tl.Serial(
       # Input: encoder_side_tokens, decoder_side_tokens
