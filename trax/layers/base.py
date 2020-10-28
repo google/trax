@@ -121,12 +121,14 @@ class Layer:
     # There is no need to use these fields in most user-implemented classes.
     self._weights = EMPTY_WEIGHTS  # By default no trainable weights.
     self._state = EMPTY_STATE  # By default no non-trainable state.
-    # Record root call site for custom error messages.
+
+    # Record layer creation site for use in LayerError messages.
+    # The frame can mutate, so copy relevant values out of it.
     frame = _find_frame(inspect.currentframe())
-    # Turns out that frame can mutate in time, so we just copy what we need.
     self._caller = {'filename': copy.copy(frame.f_code.co_filename),
                     'lineno': int(frame.f_lineno)}
     del frame  # Just in case.
+
     self._init_cached = False
     self._jit_cache = {}
 
