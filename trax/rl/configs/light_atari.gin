@@ -17,12 +17,22 @@ import trax.models
 import trax.optimizers
 import trax.rl
 
+batch_size = 256
+train_steps = 3000
+policy_train_steps = %train_steps
+value_train_steps = %train_steps
+policy_lr = 0.0001
+value_lr = 0.0005
+margin = 3
+q_value_n_samples = 8
+
 # Parameters for RMSProp:
 # ==============================================================================
 RMSProp.clip_grad_norm = 0.5
 
 # Parameters for Adam:
 # ==============================================================================
+Adam.weight_decay_rate = 0.0
 Adam.clip_grad_norm = 0.5
 
 # Parameters for the AtariCnnBody:
@@ -38,23 +48,27 @@ Policy.body = @trax.models.AtariCnnBody
 # Parameters for Value:
 # ==============================================================================
 Value.body = @trax.models.AtariCnnBody
+Value.inject_actions_dim = 256
+Value.batch_axes = 4
+Value.multiplicative_action_injection = True
+Value.head_init_range = 0.000001
 
 # Parameters for Value:
 # ==============================================================================
 Quality.body = @trax.models.AtariCnnBody
 
-value_lr = 0.00025
+# DQN exploration parameters:
+# ==============================================================================
 initial_exploration_rate = 1.
 exploration_decay_factor = 0.998
 minimum_exploration = 0.1
 steps_per_decay = 1
 
-
 # Parameters for multifactor:
 # ==============================================================================
-value/multifactor.constant = 0.0001
+value/multifactor.constant = %value_lr
 value/multifactor.factors = 'constant'
-policy/multifactor.constant = 0.0001
+policy/multifactor.constant = %policy_lr
 policy/multifactor.factors = 'constant'
 exploration_rate/multifactor.constant = %initial_exploration_rate
 exploration_rate/multifactor.decay_factor = %exploration_decay_factor
@@ -65,11 +79,13 @@ exploration_rate/multifactor.factors = 'constant * decay_every'
 # Parameters for RLTask:
 # ==============================================================================
 RLTask.env = "pong"
-RLTask.initial_trajectories = 10
+RLTask.initial_trajectories = 0
 RLTask.gamma = 0.99
 RLTask.max_steps = 2000
+RLTask.time_limit = 10000
 RLTask.dm_suite = True
 RLTask.num_stacked_frames = 4
+RLTask.random_starts = False
 
 # Parameters for td_lambda:
 # ==============================================================================
@@ -116,9 +132,43 @@ AWR.beta = 1.0
 AWR.w_max = 20
 AWR.max_slice_length = 1
 
+# Parameters for SamplingAWR:
+# ==============================================================================
+SamplingAWR.value_model = @trax.models.Value
+SamplingAWR.value_optimizer = @trax.optimizers.Adam
+SamplingAWR.value_batch_size = %batch_size
+SamplingAWR.value_train_steps_per_epoch = %value_train_steps
+SamplingAWR.value_lr_schedule = @value/multifactor
+SamplingAWR.value_evals_per_epoch = 10
+SamplingAWR.value_eval_steps = 1
+SamplingAWR.policy_model = @trax.models.Policy
+SamplingAWR.policy_optimizer = @trax.optimizers.Adam
+SamplingAWR.policy_batch_size = %batch_size
+SamplingAWR.policy_train_steps_per_epoch = %policy_train_steps
+SamplingAWR.policy_lr_schedule = @policy/multifactor
+SamplingAWR.policy_evals_per_epoch = 1
+SamplingAWR.policy_eval_steps = 10
+SamplingAWR.n_trajectories_per_epoch = None
+SamplingAWR.n_interactions_per_epoch = 2000
+SamplingAWR.n_eval_episodes = 10
+SamplingAWR.eval_steps = [2000]
+SamplingAWR.advantage_estimator = @trax.rl.advantages.td_lambda
+SamplingAWR.beta = 1.0
+SamplingAWR.w_max = 20
+SamplingAWR.max_slice_length = 1
+SamplingAWR.added_policy_slice_length = %margin
+SamplingAWR.n_replay_epochs = 50
+SamplingAWR.scale_value_targets = True
+SamplingAWR.n_shared_layers = 0
+SamplingAWR.q_value_n_samples = %q_value_n_samples
+SamplingAWR.q_value_aggregate = 'logsumexp'
+SamplingAWR.q_value_temperature = 0.3
+SamplingAWR.q_value_normalization = 'abs'
+SamplingAWR.reweight = False
+
 # Parameters for PPO:
 # ==============================================================================
-PPO.n_shared_layers=0
+PPO.n_shared_layers = 0
 PPO.value_model = @trax.models.Value
 PPO.value_optimizer = @trax.optimizers.Adam
 PPO.value_batch_size = 32
@@ -139,5 +189,5 @@ PPO.n_trajectories_per_epoch = 10
 # Parameters for train_rl:
 # ==============================================================================
 train_rl.light_rl = True
-train_rl.light_rl_trainer = @trax.rl.AWR
-train_rl.n_epochs = 50000
+train_rl.light_rl_trainer = @trax.rl.SamplingAWR
+train_rl.n_epochs = 10000000

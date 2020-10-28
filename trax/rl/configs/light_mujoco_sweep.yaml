@@ -13,9 +13,18 @@
 # limitations under the License.
 
 RLTask.env: [
-    "DM-Ant-v2",
     "DM-HalfCheetah-v2",
     "DM-Hopper-v2",
     "DM-Humanoid-v2",
     "DM-Walker2d-v2",
 ]
+
+# Sweep 1:
+train_steps: [100, 300, 1000, 3000]
+SamplingAWR.n_interactions_per_epoch: [200, 500, 1000, 2000]
+SamplingAWR.n_replay_epochs: [50, 100, 200, 500, 1000]
+
+# Sweep 2:
+SamplingAWR.q_value_temperature: [0.3, 1.0]
+policy_lr: [0.00003, 0.0001, 0.0003]
+value_lr: [0.001, 0.0005, 0.0001]
