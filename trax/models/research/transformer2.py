@@ -128,12 +128,16 @@ def Transformer2(input_vocab_size,
                       attention_chunk_size, decoder_attention_type,
                       n_decoder_attention_layers)
       for i in range(n_decoder_layers)]
-  # pylint: enable=g-complex-comprehension
 
+  # Dont want FFNN in this block -- `n_feedforward_layers = 0`
   decoder_blocks_sans_ff = [
-      DecoderBlock2(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
-                    ff_activation)
+      ct.DecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
+                      mode, ff_activation, ff_dropout, ff_chunk_size,
+                      ff_use_sru, ff_sparsity, ff_sparsity_type,
+                      attention_chunk_size, decoder_attention_type,
+                      n_decoder_attention_layers, n_feedforward_layers=0)
       for i in range(n_decoder_layers)]
+  # pylint: enable=g-complex-comprehension
 
   # Assemble and return the model.
   return tl.Serial(
@@ -287,43 +291,3 @@ class StripFromConcatenateWithPadding(tl.Layer):
     # In predict mode and on subsequent steps (i.e. after the first step) vec_ed
     # is actually vec_d, since no concatenation happened at all.
     return vec_ed
-
-
-def DecoderBlock2(d_model, d_ff, n_heads,
-                  dropout, dropout_shared_axes, mode, ff_activation):
-  """Almost like a decoder block, but without FFNN block. Subject to changes.
-
-  The input is an activation tensor.
-
-  Args:
-    d_model: Final dimension of tensors at most points in the model, including
-        the initial embedding output.
-    d_ff: Size of special dense layer in the feed-forward part of each block.
-    n_heads: Number of attention heads.
-    dropout: Stochastic rate (probability) for dropping an activation value
-        when applying dropout within a block.
-    dropout_shared_axes: Tensor axes on which to share a dropout mask.
-        Sharing along batch and sequence axes (`dropout_shared_axes=(0,1)`) is
-        a useful way to save memory and apply consistent masks to activation
-        vectors at different sequence positions.
-    mode: If `'train'`, each block will include dropout; else, it will
-        pass all values through unaltered.
-    ff_activation: Type of activation function at the end of each block; must
-        be an activation-type subclass of `Layer`.
-
-  Returns:
-    A list of layers that maps an activation tensor to an activation tensor.
-  """
-  del d_ff, ff_activation
-
-  causal_attention = tl.CausalAttention(
-      d_model, n_heads=n_heads, dropout=dropout, mode=mode),
-
-  dropout_ = tl.Dropout(
-      rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
-
-  return tl.Residual(
-      tl.LayerNorm(),
-      causal_attention,
-      dropout_,
-  )
