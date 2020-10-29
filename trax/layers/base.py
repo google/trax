@@ -103,7 +103,7 @@ class Layer:
     """
     self._n_in = n_in
     self._n_out = n_out
-    self._name = name or self.__class__.__name__
+    self._name = self.__class__.__name__ if name is None else name
     self._sublayers_to_print = sublayers_to_print
     self._sublayers = ()  # Default is no sublayers.
 
@@ -154,7 +154,8 @@ class Layer:
     else:
       substructure = self.sublayers
     if substructure:
-      substructure_str = '\n'.join(indent_string(str(x)) for x in substructure)
+      substructure_strs = [str(x) for x in substructure if str(x)]
+      substructure_str = '\n'.join(indent_string(s) for s in substructure_strs)
       return f'{name_str}[\n{substructure_str}\n]'
     else:
       return name_str

@@ -114,7 +114,7 @@ train.checkpoint_lowest = 'loss'
 
 # enc_attn_type = @LSHSelfAttention
 # dec_attn_type = @ref2_encoder/LSHSelfAttention
-enc_attn_type = @SelfAttention
+enc_attn_type = @Attention
 dec_attn_type = @CausalAttention
 
 

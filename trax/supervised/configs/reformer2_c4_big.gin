@@ -28,11 +28,11 @@ noise_density = 0.15
 
 dropout = 0.1
 d_axial_pos_embs = (512, 512)  # should sum out to d_model
-ff_chunk_size = 512
+ff_chunk_size = 1024
 
-# Corresponds roughly to ~12B params.
+# Corresponds roughly to ~16B params.
 d_model = 8192
-d_ff = 8192
+d_ff = 16384
 n_heads = 64
 attn_kv = 128
 n_layers = 24
@@ -68,7 +68,7 @@ batcher.bucket_length = 512
 # per batch on a 2x2 TPU on average per step. T5's batch is ~65k tokens/batch.
 # i.e. 18x bigger than ours.
 batcher.batch_size_per_device = 4
-batcher.eval_batch_size = 16
+batcher.eval_batch_size = 4
 batcher.max_eval_length = %max_length
 batcher.buckets_include_inputs_in_length=True
 batcher.id_to_mask = 0
@@ -116,7 +116,7 @@ train.loss_chunk_size = 512
 
 # enc_attn_type = @LSHSelfAttention
 # dec_attn_type = @ref2_encoder/LSHSelfAttention
-enc_attn_type = @SelfAttention
+enc_attn_type = @Attention
 dec_attn_type = @CausalAttention
 
 

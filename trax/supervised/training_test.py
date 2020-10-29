@@ -149,6 +149,20 @@ class TrainingTest(absltest.TestCase):
     loop2 = training.Loop(model, [task], output_dir=tmp_dir)
     self.assertEqual(4, loop2.step)
 
+  def test_restores_step_sharded(self):
+    """Training restores step from directory where it saved it, sharded."""
+    model = tl.Serial(tl.Dense(1))
+    task = training.TrainTask(
+        _very_simple_data(), tl.L2Loss(), optimizers.SGD)
+    tmp_dir = self.create_tempdir().full_path
+    loop = training.Loop(model, [task],
+                         checkpoint_at=lambda step_n: step_n % 2 == 0,
+                         output_dir=tmp_dir, use_memory_efficient_trainer=True)
+    loop.run(4)
+    loop2 = training.Loop(model, [task],
+                          output_dir=tmp_dir, use_memory_efficient_trainer=True)
+    self.assertEqual(4, loop2.step)
+
   def test_trains_on_two_tasks(self):
     """Trains a very simple network on two very simple tasks."""
     model = tl.Serial(tl.Dense(3), tl.Dense(1))

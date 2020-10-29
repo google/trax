@@ -48,6 +48,7 @@ from absl import logging
 import gin
 import jax
 import numpy as np
+import psutil
 import tensorflow as tf
 
 from trax import fastmath
@@ -209,7 +210,9 @@ class Loop:
     # NOTE: Averaging the weights across devices can screw up the initial weight
     # statistics.
     # TODO(pkozakowski): Broadcast from one of the devices instead?
-    if random_seed is None and self._n_hosts > 1:
+    # TODO(lukaszkaiser): make it work for the memory-efficient trainer too.
+    if (random_seed is None and self._n_hosts > 1 and
+        not use_memory_efficient_trainer):
       logging.info('Syncing weights/state across %d hosts.', self._n_hosts)
       self._sync_weights_and_state_across_hosts()
 
@@ -328,6 +331,7 @@ class Loop:
     """
     with self._open_summary_writers() as (
         train_summary_writers, eval_summary_writers):
+      process = psutil.Process(os.getpid())
       loss_acc, step_acc = 0.0, 0
       start_time = time.time()
       optimizer_metrics_acc = collections.defaultdict(float)
@@ -359,6 +363,8 @@ class Loop:
         if self._checkpoint_at(self.step):
           self.save_checkpoint()
         if self._eval_at(self.step):
+          logging.info('cpu memory use (MB): %.2f',
+                       process.memory_info().rss / float(1024*1024))
           elapsed_time = time.time() - start_time
           self._eval_model.weights = self._model.weights
           self._log_training_progress(
@@ -627,17 +633,49 @@ class Loop:
     flat_weights, flat_state = tl.flatten_weights_and_state(weights, state)
     _, flat_eval_state = tl.flatten_weights_and_state(
         weights, self._eval_model.state)
+    ckpt_file = os.path.join(self._output_dir, 'model.pkl.gz')
+    if self._use_memory_efficient_trainer:
+      sharded_weights = self._save_weights_sharded(flat_weights, ckpt_file)
+      # In the main dict we just save the number of shards in place of weights.
+      weights_in_dict = len(sharded_weights)
+    else:
+      weights_in_dict = flat_weights
     d = {
         'step': self.step,
-        'flat_weights': flat_weights,
+        'flat_weights': weights_in_dict,
         'flat_state': flat_state,
         'flat_eval_state': flat_eval_state,
         'slots_per_task': slots_per_task,
         'input_signature': input_signature,
-        'version_timestamp': 'Sep-17-2020'  # To update in the future if needed.
+        'version_timestamp': 'Oct-28-2020'  # To update in the future if needed.
     }
     ckpt_file = os.path.join(self._output_dir, 'model.pkl.gz')
     pickle_to_file(d, ckpt_file, gzip=True)
+    # Move sharded files to non-tmp files after all is saved.
+    if self._use_memory_efficient_trainer:
+      for i in range(weights_in_dict):
+        fname = ckpt_file + '.shard%d' % i
+        tf.io.gfile.rename(fname + '.tmp', fname, overwrite=True)
+
+  def _save_weights_sharded(self, flat_weights, ckpt_file):
+    """Saves flat_weights in a sharded way to ckpt_file.shardN.tmp."""
+    # In large models, we shard weights into multiple files.
+    # Otherwise using pickle can lead to running out of RAM.
+    # We shard weights into parts of over 4M floats to avoid tiny files.
+    max_shard_size = 4 * 1024 * 1024
+    sharded_weights, current_shard, current_shard_size = [], [], 0
+    for w in flat_weights:
+      current_shard.append(w)
+      current_shard_size += int(np.prod(w.shape))
+      if current_shard_size > max_shard_size:
+        sharded_weights.append(current_shard)
+        current_shard, current_shard_size = [], 0
+    if current_shard:  # Append the last shard if it's not empty.
+      sharded_weights.append(current_shard)
+    # Save weight shards to files (tmp first to be resilient to failure).
+    for i, w in enumerate(sharded_weights):
+      pickle_to_file(w, ckpt_file + '.shard%d.tmp' % i, gzip=True)
+    return sharded_weights
 
   def load_checkpoint(self, directory=None, filename=None):
     """Loads model weights and step from a checkpoint on disk.
@@ -658,6 +696,14 @@ class Loop:
            stdout=False)
       return
     d = unpickle_from_file(path, gzip=True)
+    # For large models, load weights from sharded files.
+    if self._use_memory_efficient_trainer:
+      weights = []
+      n_shards = d['flat_weights']  # We store the number of shards in d here.
+      for i in range(n_shards):
+        w = unpickle_from_file(path + '.shard%d' % i, gzip=True)
+        weights.extend(w)
+      d['flat_weights'] = weights
     self._step = d['step']
     if 'slots' in d:
       if len(self._tasks) != 1:

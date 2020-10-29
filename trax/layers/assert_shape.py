@@ -176,7 +176,7 @@ class AssertShape(base.Layer):
   the arrow '->' special character, as the input tensors are the same as output.
   """
 
-  def __init__(self, spec, message=None):
+  def __init__(self, spec, message=None, visible_layer=False):
     """Creates AssertShape layer.
 
     Args:
@@ -184,8 +184,10 @@ class AssertShape(base.Layer):
           full documentation.
       message: An optional message to include when assert fails. By default it
           includes the filename and line number where this function was called.
+      visible_layer: If true, print this layer inside the model (default: False)
     """
-    super().__init__(name='AssertShape')
+    name = 'AssertShape' if visible_layer else ''
+    super().__init__(name=name)
     spec = spec.replace('...', '.')
     for letter in spec:
       assert letter in string.ascii_letters + string.digits + '.' + ','

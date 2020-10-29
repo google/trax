@@ -325,6 +325,18 @@ def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
       d_qk=d_model//n_heads, d_v=d_model//n_heads, masked=True, causal=False,
       attention_dropout=dropout, output_dropout=dropout,
       attention_chunk_size=attention_chunk_size, mode=mode)
+  # TODO(lukaszkaiser): refactor efficient attention layers to unify the API
+  # If we're using standard attention, we need to pass reshaped mask and not
+  # return the mask to be compatible with the EfficientAttention API.
+  if attention.n_out == 2:
+    def reshape_mask(mask):
+      return jnp.reshape(mask, (mask.shape[0], 1, 1, mask.shape[1]))
+    attention = tl.Serial(
+        tl.Fn('ReshapeMask', lambda x, y: (x, reshape_mask(y)), n_out=2),
+        attention,
+        tl.Select([0], n_in=2)
+    )
+
   attention_half_residual = tl.ReversibleHalfResidual(
       tl.LayerNorm(),
       attention_layer=attention,

@@ -15,8 +15,12 @@
 
 # Lint as: python3
 """Trainer class that accelerates running optimizers on layers."""
+
 import functools
+import os
 from absl import logging
+import psutil
+
 from trax import fastmath
 from trax import layers as tl
 from trax.fastmath import numpy as jnp
@@ -254,6 +258,7 @@ class ReversibleSerialTrainer(object):
     self._optimizer_fn = optimizer_fn
     self._n_devices = n_devices or fastmath.device_count()
     self._n_layers = 1 + sum([len(revs) + 1 for (_, revs) in self._blocks])
+    self._n_steps_per_log = 100  # Log layers and stats every 100 steps.
 
     # Create accelerated versions of layers as pmaped/jited pure_fn.
     self._accelerated_layer_fns = fastmath.nested_map(
@@ -359,6 +364,7 @@ class ReversibleSerialTrainer(object):
     # between _for_n_devices and _reshape_by_device is that the latter splits
     # the batch dim to batch // n_devices, vs _for_n_devices
     # broadcasts/replicates to n_devices dimension.
+    step_int = step
     if self._n_devices > 1:
       batch = tl.reshape_by_device(batch, self._n_devices)
       step = jnp.repeat(step, self._n_devices)
@@ -381,6 +387,10 @@ class ReversibleSerialTrainer(object):
       rng_i += l + 1
 
     # Run the layers forward upto the loss layer.
+    process = psutil.Process(os.getpid())
+    if step_int % self._n_steps_per_log == 1:
+      logging.info('run fwd: cpu memory use (MB): %.2f',
+                   process.memory_info().rss / float(1024 * 1024))
     stack = batch
     block_inputs_states = []
     for i, (std_layer, rev_layers) in enumerate(self._blocks):
@@ -388,15 +398,18 @@ class ReversibleSerialTrainer(object):
       std_rng, rev_rngs = rng_blocks[i]
       # Run the standard layer.
       stack, std_inputs, std_state = self._run_forward_standard(
-          stack, std_layer, acc_std_layer_fn, std_rng)
+          stack, std_layer, acc_std_layer_fn, std_rng, step_int)
 
       # Run the reversible layers and collect old and new states.
       stack, rev_old_states, rev_new_states = self._run_forward_reversible(
-          stack, rev_layers, acc_rev_layer_fns, rev_rngs)
+          stack, rev_layers, acc_rev_layer_fns, rev_rngs, step_int)
       block_inputs_states.append(
           ((std_inputs, std_state), (rev_old_states, rev_new_states)))
 
     # Run the loss layer forward and backward with optimizer update.
+    if step_int % self._n_steps_per_log == 1:
+      logging.info('run loss: cpu memory use (MB): %.2f',
+                   process.memory_info().rss / float(1024 * 1024))
     loss_state = self._replicate(self._loss_layer.state)
     loss_inputs = cb.inputs_from_stack(stack, self._loss_layer.n_in)
     loss_stats, grad_stack = self._run_backward_standard(
@@ -406,6 +419,9 @@ class ReversibleSerialTrainer(object):
     stats = [loss_stats]
 
     # Run the layers backward and run optimizer updates.
+    if step_int % self._n_steps_per_log == 1:
+      logging.info('run bwd: cpu memory use (MB): %.2f',
+                   process.memory_info().rss / float(1024 * 1024))
     for i in range(len(self._blocks) - 1, -1, -1):
       std_layer, rev_layers = self._blocks[i]
       (std_inputs, std_state), (rev_old_states,
@@ -436,8 +452,10 @@ class ReversibleSerialTrainer(object):
         joint_stats[f'layer{i}/' + k] = v
     return stats[0]['loss'], joint_stats
 
-  def _run_forward_standard(self, stack, layer, accelerated_fn, rng):
+  def _run_forward_standard(self, stack, layer, accelerated_fn, rng, step):
     """Run standard layer forward."""
+    if step % self._n_steps_per_log == 1:
+      logging.info('running forward standard layer %s', str(layer))
     layer_inputs = cb.inputs_from_stack(stack, layer.n_in)
     layer_weights = self._replicate(layer.weights)
     layer_state = self._replicate(layer.state)
@@ -446,10 +464,13 @@ class ReversibleSerialTrainer(object):
     stack = cb.outputs_onto_stack(outputs, stack, layer.n_in)
     return stack, layer_inputs, layer_new_state
 
-  def _run_forward_reversible(self, stack, rev_layers, accelerated_fns, rngs):
+  def _run_forward_reversible(self, stack, rev_layers, accelerated_fns,
+                              rngs, step):
     """Run reversible layers forward, collect states for backwards pass."""
     old_states, new_states = [], []
     for i, layer in enumerate(rev_layers):
+      if step % self._n_steps_per_log == 1:
+        logging.info('running forward reversible layer %s', str(layer))
       weights = self._replicate(layer.weights)  # also copies cpu -> accelerator
       state = self._replicate(layer.state)
       old_states.append(state)
@@ -463,6 +484,9 @@ class ReversibleSerialTrainer(object):
   def _run_backward_standard(self, grad_stack, step, layer, inp, state,
                              fbo_fn, rng, optimizer, replicated_opt_params):
     """Run reversible layers backwards."""
+    step_int = int(step) if self._n_devices < 2 else int(step[0])
+    if step_int % self._n_steps_per_log == 1:
+      logging.info('running backward standard layer %s', str(layer))
     if grad_stack is not None:
       grads = cb.inputs_from_stack(grad_stack, layer.n_out)
     else:
@@ -487,9 +511,12 @@ class ReversibleSerialTrainer(object):
     """Run reversible layers backwards."""
     counter = 0
     stats = []
+    step_int = int(step) if self._n_devices < 2 else int(step[0])
     for layer, reverse_and_fbo, old_state, new_state, rng in reversed(list(zip(
         rev_layers, rev_and_fbos,
         old_states, new_states, rngs))):
+      if step_int % self._n_steps_per_log == 1:
+        logging.info('running backward reversible layer %s', str(layer))
       counter -= 1
       # We are running backwards and reversing, so we get *outputs* from stack.
       outputs = cb.inputs_from_stack(stack, layer.n_out)
@@ -672,6 +699,8 @@ def init_reversible_blocks(blocks, loss_layer, input_signature, rng):
     rng: Random key used to initialize the layers.
   """
   sig_stack = input_signature
+  process = psutil.Process(os.getpid())
+  mem_use = process.memory_info().rss
   for (std_layers, rev_layers) in blocks:
     rngs = fastmath.random.split(rng, len(std_layers) + len(rev_layers) + 1)
     rng = rngs[0]
@@ -679,6 +708,11 @@ def init_reversible_blocks(blocks, loss_layer, input_signature, rng):
       sig = cb.inputs_from_stack(sig_stack, layer.n_in)
       layer.init(sig, rng=layer_rng)
       layer.weights = tl.on_cpu(layer.weights)  # store weights in cpu memory
+      logging.info('init: layer %s\nadded cpu memory (MB): %.2f', str(layer),
+                   (process.memory_info().rss - mem_use) / float(1024 * 1024))
+      mem_use = process.memory_info().rss
+      logging.info('init: cpu memory use (MB): %.2f',
+                   mem_use / float(1024 * 1024))
       out_sig = layer.output_signature(sig)
       sig_stack = cb.outputs_onto_stack(out_sig, sig_stack, layer.n_in)
   loss_layer.init(cb.inputs_from_stack(sig_stack, loss_layer.n_in), rng=rng)

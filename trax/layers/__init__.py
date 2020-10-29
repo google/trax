@@ -66,6 +66,7 @@ LayerNorm = layer_configure(LayerNorm)
 FilterResponseNorm = layer_configure(FilterResponseNorm)
 ThresholdedLinearUnit = layer_configure(ThresholdedLinearUnit)
 
+Attention = layer_configure(Attention, blacklist=['mode'])
 CausalAttention = layer_configure(CausalAttention, blacklist=['mode'])
 CausalFavor = layer_configure(CausalFavor, blacklist=['mode'])
 DotProductCausalAttention = layer_configure(
