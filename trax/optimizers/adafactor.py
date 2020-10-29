@@ -33,7 +33,7 @@ class Adafactor(opt_base.Optimizer):
                decay_rate=0.8,
                clipping_threshold=1.0,
                weight_decay_rate=1e-5,
-               epsilon1=1e-30,
+               epsilon1=1e-16,
                epsilon2=1e-3):
     """Create the Adafactor optimizer.
 
@@ -109,7 +109,7 @@ class Adafactor(opt_base.Optimizer):
           jnp.sqrt(jnp.mean(weights * weights)), epsilon2)
     mixing_rate = 1.0 - decay_rate
 
-    grads_sqr = grads * grads + epsilon1
+    grads_sqr = grads * grads
     if self._factored and len(weights.shape) >= 2:
       v_row = slots.pop(0)
       v_col = slots.pop(0)
@@ -118,9 +118,9 @@ class Adafactor(opt_base.Optimizer):
       new_v_col = (
           decay_rate * v_col + mixing_rate * jnp.mean(grads_sqr, axis=-2))
       updates.extend([new_v_row, new_v_col])
-      row_col_mean = jnp.mean(new_v_row, axis=-1, keepdims=True)
-      row_factor = (new_v_row / row_col_mean)**-0.5
-      col_factor = (new_v_col)**-0.5
+      row_mean = jnp.mean(new_v_row, axis=-1, keepdims=True)
+      row_factor = (row_mean / (new_v_row + epsilon1))**0.5
+      col_factor = (new_v_col + epsilon1)**-0.5
       y = (
           grads * jnp.expand_dims(row_factor, axis=-1) *
           jnp.expand_dims(col_factor, axis=-2))
@@ -128,7 +128,7 @@ class Adafactor(opt_base.Optimizer):
       v = slots.pop(0)
       new_v = decay_rate * v + mixing_rate * grads_sqr
       updates.append(new_v)
-      y = grads * (new_v)**-0.5
+      y = grads * (new_v + epsilon1)**-0.5
 
     if self._do_clipping:
       clipping_denom = (
