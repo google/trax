@@ -37,6 +37,7 @@ Reformer2.d_attention_key = 64
 Reformer2.d_attention_value = 64
 Reformer2.encoder_attention_type = @LSHSelfAttention
 Reformer2.encoder_decoder_attention_type = @LSHSelfAttention
+Reformer2.n_decoder_attention_layers = 1
 Reformer2.input_vocab_size = %vocab_size
 Reformer2.axial_pos_shape  = 'fixed-base'
 

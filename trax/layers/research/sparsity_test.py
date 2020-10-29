@@ -120,7 +120,7 @@ class ModularCausalAttentionTest(test.TestCase):
 
   def test_simple_call(self):
     layer = sparsity.ModularCausalAttention(
-        d_feature=4, n_heads=2, n_modules=2)
+        d_feature=4, n_heads=2, sparsity=2)
     x = np.array([[[2, 5, 3, 4],
                    [0, 1, 2, 3],
                    [0, 1, 2, 3],]])

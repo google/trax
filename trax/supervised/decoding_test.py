@@ -248,6 +248,7 @@ class DecodingTest(test.TestCase):
         d_attention_value=64,
         encoder_attention_type=_self_attention_fn(),
         encoder_decoder_attention_type=_self_attention_fn(),
+        n_decoder_attention_layers=1,
         input_vocab_size=13,
         axial_pos_shape=None,
     )

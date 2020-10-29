@@ -24,7 +24,7 @@ from jax.config import config
 import numpy as np
 from tensorflow.compat.v2 import test
 
-from trax import layers
+from trax import layers as tl
 from trax import models
 from trax import shapes
 from trax.supervised import decoding
@@ -35,7 +35,14 @@ class DecodingTimingTest(test.TestCase):
   def test_autoregressive_sample_reformer2_timing(self):
     max_len = 16
     all_settings = [
-        {'n_modules': 64, 'ff_sparsity': 256},
+        {'attn_sparsity': 64, 'ff_sparsity': (256, 32),
+         'attn': tl.MultiplicativeCausalAttention},
+        {'attn_sparsity': 64, 'ff_sparsity': (256, 32),
+         'attn': tl.ModularCausalAttention},
+        {'attn_sparsity': 64, 'ff_sparsity': (256, 32),
+         'attn': tl.ConvCausalAttention},
+        {'attn_sparsity': 64, 'ff_sparsity': (256, 32),
+         'attn': tl.MultiplicativeConvCausalAttention},
     ]
     messages = []
 
@@ -43,19 +50,19 @@ class DecodingTimingTest(test.TestCase):
 
       def _self_attention_fn():
         return functools.partial(
-            layers.SelfAttention,
+            tl.SelfAttention,
             predict_drop_len=2 * max_len,
             predict_mem_len=2 * max_len)
 
       def _causal_attention_fn():
         return functools.partial(
-            layers.ModularCausalAttention,
-            n_modules=settings['n_modules'],  # pylint: disable=cell-var-from-loop
+            settings['attn'],  # pylint: disable=cell-var-from-loop
+            sparsity=settings['attn_sparsity'],  # pylint: disable=cell-var-from-loop
             max_inference_length=2 * max_len)
 
       pred_model = models.Reformer2(
           mode='predict',
-          d_model=8*1024,
+          d_model=96*96,
           d_ff=64*1024,
           dropout=0.05,
           max_len=max_len,

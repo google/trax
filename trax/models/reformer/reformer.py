@@ -29,7 +29,8 @@ from trax.models.research import transformer2 as t2
 def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
                  n_heads, attention_type, dropout, ff_activation,
                  ff_dropout, ff_use_sru, ff_chunk_size, ff_sparsity,
-                 attention_chunk_size, mode):
+                 attention_chunk_size, n_attention_layers=1,
+                 n_feedforward_layers=1, mode='train'):
   """Reversible transformer decoder layer.
 
   Args:
@@ -46,30 +47,34 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
     ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
     attention_chunk_size: int, if > 0 run attention chunked at this size
+    n_attention_layers: how many residual causal attention layers should we
+      have before the feed-forward block (default: 1, the standard block)
+    n_feedforward_layers: how many FFNN layers should we have (default 1).
     mode: str: 'train' or 'eval'
 
 
   Returns:
     the layer.
   """
-  attention = ct.ApplyAttentionLayer(
-      attention_type, d_model, n_heads, d_attention_key, d_attention_value,
-      True, False, dropout, dropout, attention_chunk_size, mode)
-  attention_half_residual = tl.ReversibleHalfResidual(
-      tl.LayerNorm(),
-      attention_layer=attention,
-  )
+  # pylint: disable=g-complex-comprehension
+  attention_half_residuals = [
+      [tl.ReversibleHalfResidual(
+          tl.LayerNorm(),
+          attention_layer=ct.ApplyAttentionLayer(
+              attention_type, d_model, n_heads, d_attention_key,
+              d_attention_value, True, False, dropout, dropout,
+              attention_chunk_size, mode)),
+       tl.ReversibleSwap()
+      ] for _ in range(n_attention_layers)]
 
-  feed_forward = ct.FeedForwardWithOptions(
-      d_model, d_ff, dropout, [-2], ff_activation, ff_dropout,
-      ff_chunk_size, ff_use_sru, ff_sparsity, mode)
-
-  return [
-      attention_half_residual,
-      tl.ReversibleSwap(),
-      tl.ReversibleHalfResidual(feed_forward),
-      tl.ReversibleSwap(),
-  ]
+  feed_forwards = [
+      [tl.ReversibleHalfResidual(ct.FeedForwardWithOptions(
+          d_model, d_ff, dropout, [-2], ff_activation, ff_dropout,
+          ff_chunk_size, ff_use_sru, ff_sparsity, mode)),
+       tl.ReversibleSwap()
+      ] for _ in range(n_feedforward_layers)]
+  # pylint: enable=g-complex-comprehension
+  return attention_half_residuals + feed_forwards
 
 
 def ReformerLM(vocab_size,
@@ -551,6 +556,7 @@ def Reformer2(input_vocab_size,
               ff_sparsity=0,
               attention_chunk_size=0,
               n_layers_forget=0,
+              n_decoder_attention_layers=2,
               mode='train'):
   """Reversible transformer encoder-decoder model.
 
@@ -587,6 +593,7 @@ def Reformer2(input_vocab_size,
     ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
     attention_chunk_size: int, if > 0 run attention chunked at this size
     n_layers_forget: how often to have a forgetting block between layers
+    n_decoder_attention_layers: how many attention layers in a decoder block
     mode: str: 'train' or 'eval'
 
   Returns:
@@ -661,6 +668,7 @@ def Reformer2(input_vocab_size,
         ff_chunk_size=ff_chunk_size,
         ff_sparsity=ff_sparsity,
         attention_chunk_size=attention_chunk_size,
+        n_attention_layers=n_decoder_attention_layers,
         mode=mode)
     decoder_blocks.append(decoder_block)
 

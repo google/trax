@@ -88,10 +88,15 @@ def FeedForwardWithOptions(d_model,
   if ff_use_sru:
     return [tl.SRU(d_model) for _ in range(ff_use_sru)]
   elif ff_sparsity and ff_sparsity_type == '1inN':
+    if isinstance(ff_sparsity, tuple):
+      n_elements_in_block, d_lowrank = ff_sparsity
+    else:
+      assert isinstance(ff_sparsity, int)
+      n_elements_in_block, d_lowrank = ff_sparsity, d_ff // ff_sparsity
     ff = tl.SparseFF(
         d_ff,
-        n_elements_in_block=ff_sparsity,
-        d_lowrank=d_ff // ff_sparsity,
+        n_elements_in_block=n_elements_in_block,
+        d_lowrank=d_lowrank,
         mode=mode)
     if ff_chunk_size < 1:
       chunked_ff = ff
