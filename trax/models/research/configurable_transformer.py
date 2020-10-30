@@ -23,24 +23,26 @@ The "Transformer" name and network architecture were introduced in the paper
 from trax import layers as tl
 
 
-def FeedForward(d_model, d_ff, dropout, activation, act_dropout, mode):
+def FeedForward(d_model, d_ff, dropout, activation, act_dropout,
+                use_bfloat16, mode):
   """Feed-forward block with layer normalization at start."""
   if act_dropout is None:
     act_dropout = dropout
   return [
       tl.LayerNorm(),
-      tl.Dense(d_ff),
+      tl.Dense(d_ff, use_bfloat16=use_bfloat16),
       tl.Dropout(rate=act_dropout, shared_axes=[-2], mode=mode),
       activation(),
-      tl.Dense(d_model),
+      tl.Dense(d_model, use_bfloat16=use_bfloat16),
       tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),
   ]
 
 
 def ChunkedFeedForward(d_model, d_ff, dropout, activation, act_dropout,
-                       chunk_size, mode):
+                       chunk_size, use_bfloat16, mode):
   """Chunked feed-forward block with layer normalization at start."""
-  ff = FeedForward(d_model, d_ff, dropout, activation, act_dropout, mode)
+  ff = FeedForward(d_model, d_ff, dropout, activation, act_dropout,
+                   use_bfloat16, mode)
   if chunk_size < 1:
     return ff
   return tl.BatchLeadingAxes(tl.Chunk(tl.Serial(ff), chunk_size))
@@ -56,6 +58,7 @@ def FeedForwardWithOptions(d_model,
                            ff_use_sru,
                            ff_sparsity,
                            mode,
+                           use_bfloat16=False,
                            ff_sparsity_type='1inN'):
   """Feed-Forward block with all the options.
 
@@ -78,6 +81,7 @@ def FeedForwardWithOptions(d_model,
     ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
     mode: If `'train'`, each block will include dropout; else, it will pass all
       values through unaltered.
+    use_bfloat16: whether to use bfloat16 for weights (default: False).
     ff_sparsity_type: string, if ff_sparsity >0,
       use SparseFF if ff_sparsity_type=`'1inN'` and
       use BlockSparseFF if ff_sparsity_type=`'Block'`
@@ -115,7 +119,7 @@ def FeedForwardWithOptions(d_model,
   else:
     return [
         ChunkedFeedForward(d_model, d_ff, dropout, ff_activation, ff_dropout,
-                           ff_chunk_size, mode)
+                           ff_chunk_size, use_bfloat16, mode)
     ]
 
 
@@ -713,7 +717,7 @@ def EncoderBlock(d_model,
           FeedForwardWithOptions(d_model, d_ff, dropout,
                                  dropout_shared_axes, ff_activation,
                                  ff_dropout, ff_chunk_size, ff_use_sru,
-                                 ff_sparsity, mode, ff_sparsity_type)
+                                 ff_sparsity, mode, False, ff_sparsity_type)
       )
       for _ in range(n_feedforward_layers)
   ]
@@ -800,7 +804,7 @@ def DecoderBlock(d_model,
           FeedForwardWithOptions(d_model, d_ff, dropout,
                                  dropout_shared_axes, ff_activation,
                                  ff_dropout, ff_chunk_size, ff_use_sru,
-                                 ff_sparsity, mode, ff_sparsity_type)
+                                 ff_sparsity, mode, False, ff_sparsity_type)
       )
       for _ in range(n_feedforward_layers)
   ]
@@ -878,7 +882,8 @@ def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
   feed_forward = FeedForwardWithOptions(d_model, d_ff, dropout,
                                         dropout_shared_axes, ff_activation,
                                         ff_dropout, ff_chunk_size, ff_use_sru,
-                                        ff_sparsity, mode, ff_sparsity_type)
+                                        ff_sparsity, mode, False,
+                                        ff_sparsity_type)
 
   return [                             # vec_d masks vec_e
       tl.Residual(

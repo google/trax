@@ -635,11 +635,11 @@ class Loop:
         weights, self._eval_model.state)
     ckpt_file = os.path.join(self._output_dir, 'model.pkl.gz')
     if self._use_memory_efficient_trainer:
-      sharded_weights = self._save_weights_sharded(flat_weights, ckpt_file)
+      sharded_weights_len = self._save_weights_sharded(flat_weights, ckpt_file)
       # In the main dict we just save the number of shards in place of weights.
-      weights_in_dict = len(sharded_weights)
+      weights_in_dict = sharded_weights_len
     else:
-      weights_in_dict = flat_weights
+      weights_in_dict = self._to_bits(flat_weights)
     d = {
         'step': self.step,
         'flat_weights': weights_in_dict,
@@ -674,8 +674,40 @@ class Loop:
       sharded_weights.append(current_shard)
     # Save weight shards to files (tmp first to be resilient to failure).
     for i, w in enumerate(sharded_weights):
-      pickle_to_file(w, ckpt_file + '.shard%d.tmp' % i, gzip=True)
-    return sharded_weights
+      pickle_to_file(self._to_bits(w), ckpt_file + '.shard%d.tmp' % i,
+                     gzip=True)
+    return len(sharded_weights)
+
+  def _to_bits(self, weights):
+    """Converts a list of weights to bit-cast weights and their types."""
+    # This is currently needed to pickle bfloat16 arrays from JAX.
+    # TODO(lukaszkaiser): remove once it is not needed (the following unit test
+    #   checks it: training_test/test_restores_step_bfloat16).
+    if not fastmath.is_backend(fastmath.Backend.JAX):
+      return weights
+    bits = []
+    for w in weights:
+      if w.dtype == jnp.bfloat16:
+        bits.append((jax.lax.bitcast_convert_type(w, np.uint16), 'bfloat16'))
+      else:  # for non-bfloat16 weights, be compatible with earlier checkpoints
+        bits.append(w)
+    return bits
+
+  def _from_bits(self, bits_and_types):
+    """Converts a list of bit-cast weights and their types back to weights."""
+    # This is the reverse of _to_bits, see above for explanation.
+    if not fastmath.is_backend(fastmath.Backend.JAX):
+      return bits_and_types
+    weights = []
+    for bits_and_dtype in bits_and_types:
+      if isinstance(bits_and_dtype, tuple):
+        bits, dtype = bits_and_dtype
+        assert dtype == 'bfloat16'
+        w = jax.lax.bitcast_convert_type(bits, jnp.bfloat16)
+        weights.append(w)
+      else:
+        weights.append(bits_and_dtype)
+    return weights
 
   def load_checkpoint(self, directory=None, filename=None):
     """Loads model weights and step from a checkpoint on disk.
@@ -702,8 +734,11 @@ class Loop:
       n_shards = d['flat_weights']  # We store the number of shards in d here.
       for i in range(n_shards):
         w = unpickle_from_file(path + '.shard%d' % i, gzip=True)
-        weights.extend(w)
+        w = self._from_bits(w)  # bit-casting may put w on accelerator, go back
+        weights.extend([tl.on_cpu(x) for x in w])
       d['flat_weights'] = weights
+    else:
+      d['flat_weights'] = self._from_bits(d['flat_weights'])
     self._step = d['step']
     if 'slots' in d:
       if len(self._tasks) != 1:

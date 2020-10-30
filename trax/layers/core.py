@@ -49,7 +49,8 @@ class Dense(base.Layer):
                n_units,
                kernel_initializer=init.GlorotUniformInitializer(),
                bias_initializer=init.RandomNormalInitializer(1e-6),
-               use_bias=True):
+               use_bias=True,
+               use_bfloat16=False):
     """Returns a dense (fully connected) layer of width `n_units`.
 
     A dense layer maps collections of `R^m` vectors to `R^n`, where `n`
@@ -65,12 +66,15 @@ class Dense(base.Layer):
           bias weights `b` for the layer.
       use_bias: If `True`, compute an affine map `y = Wx + b`; else compute
           a linear map `y = Wx`.
+      use_bfloat16: If `True`, use bfloat16 weights instead of the default
+        float32; this can save memory but may (rarely) lead to numerical issues.
     """
     super().__init__(name=f'Dense_{n_units}')
     self._n_units = n_units
     self._kernel_initializer = kernel_initializer
     self._bias_initializer = bias_initializer
     self._use_bias = use_bias
+    self._use_bfloat16 = use_bfloat16
 
   def forward(self, x):
     """Executes this layer as part of a forward pass through the model.
@@ -107,6 +111,8 @@ class Dense(base.Layer):
     shape_b = (self._n_units,)
     rng_w, rng_b = fastmath.random.split(self.rng, 2)
     w = self._kernel_initializer(shape_w, rng_w)
+    if self._use_bfloat16:
+      w = w.astype(jnp.bfloat16)
 
     if self._use_bias:
       b = self._bias_initializer(shape_b, rng_b)

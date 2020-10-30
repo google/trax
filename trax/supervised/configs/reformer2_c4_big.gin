@@ -30,11 +30,11 @@ dropout = 0.1
 d_axial_pos_embs = (512, 512)  # should sum out to d_model
 ff_chunk_size = 1024
 
-# Corresponds roughly to ~16B params.
-d_model = 8192
-d_ff = 16384
-n_heads = 64
-attn_kv = 128
+# Corresponds roughly to ~55B params.
+d_model = 9216
+d_ff = 65536
+n_heads = 96
+attn_kv = 96
 n_layers = 24
 
 # We are using T5's 32k SPM model by default.
@@ -142,6 +142,7 @@ Reformer2.encoder_decoder_attention_type = %dec_attn_type
 Reformer2.d_axial_pos_embs = %d_axial_pos_embs
 Reformer2.n_layers_forget = 12
 Reformer2.attention_chunk_size = 8
+Reformer2.use_bfloat16 = True
 
 # Parameters for T5
 
