@@ -119,7 +119,7 @@ class Dense(base.Layer):
 # dimension at the end. This dimension size corresponds to embedding depth.
 @assert_shape('...->...d')
 class Embedding(base.Layer):
-  """Trainable layer that maps discrete tokens/ids to vectors.
+  """Trainable layer that maps discrete tokens/IDs to vectors.
 
   Embedding layers are commonly used to map discrete data, like words in NLP,
   into vectors. Here is a canonical example::
@@ -142,9 +142,9 @@ class Embedding(base.Layer):
                                       distribution='uniform')):
     """Returns an embedding layer with given vocabulary size and vector size.
 
-    The layer clips input values (token ids) to the range `[0, vocab_size)`.
-    That is, negative token ids all clip to `0` before being mapped to a
-    vector, and token ids with value `vocab_size` or greater all clip to
+    The layer clips input values (token IDs) to the range `[0, vocab_size)`.
+    That is, negative token IDs all clip to `0` before being mapped to a
+    vector, and token IDs with value `vocab_size` or greater all clip to
     `vocab_size - 1` before being mapped to a vector.
 
     Args:
@@ -161,10 +161,10 @@ class Embedding(base.Layer):
     self._kernel_initializer = kernel_initializer
 
   def forward(self, x):
-    """Returns embedding vectors corresponding to input token id's.
+    """Returns embedding vectors corresponding to input token IDs.
 
     Args:
-      x: Tensor of token id's.
+      x: Tensor of token IDs.
 
     Returns:
       Tensor of embedding vectors.

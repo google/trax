@@ -65,7 +65,7 @@ def hash_vecs(vecs, n_buckets_in, n_hashes, rng):
 
   Returns:
     A pair (buckets, n_buckets) where buckets is a tensor of shape
-    [n_hashes, batch_size] of integers -- the hash bucket ids, and
+    [n_hashes, batch_size] of integers -- the hash bucket IDs, and
     n_buckets is an int, the total number of hash buckets, equal to
     the product of all items in n_buckets_in.
   """

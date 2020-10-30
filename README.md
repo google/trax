@@ -157,7 +157,7 @@ Layers are basic building blocks of Trax models. You will learn all about them i
 
 ```python
 class Embedding(base.Layer):
-  """Trainable layer that maps discrete tokens/ids to vectors."""
+  """Trainable layer that maps discrete tokens/IDs to vectors."""
 
   def __init__(self,
                vocab_size,
@@ -167,7 +167,7 @@ class Embedding(base.Layer):
 
     Args:
       vocab_size: Size of the input vocabulary. The layer will assign a unique
-          vector to each id in `range(vocab_size)`.
+          vector to each ID in `range(vocab_size)`.
       d_feature: Dimensionality/depth of the output vectors.
       kernel_initializer: Function that creates (random) initial vectors for
           the embedding.
@@ -178,10 +178,10 @@ class Embedding(base.Layer):
     self._kernel_initializer = kernel_initializer
 
   def forward(self, x):
-    """Returns embedding vectors corresponding to input token id's.
+    """Returns embedding vectors corresponding to input token IDs.
 
     Args:
-      x: Tensor of token id's.
+      x: Tensor of token IDs.
 
     Returns:
       Tensor of embedding vectors.

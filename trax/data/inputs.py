@@ -388,7 +388,7 @@ def add_loss_weights(generator, id_to_mask=None):
   Args:
     generator: Stream of tuples.
     id_to_mask: If not None, int-valued id that represents padding, as opposed
-        to true target id's.
+        to true target IDs.
 
   Yields:
     Examples from the augmented stream.

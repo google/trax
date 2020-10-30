@@ -25,7 +25,7 @@ files-output=no
 # Tells whether to display a full report or only the messages.
 reports=no
 
-# Disable the report(s) with the given id(s).
+# Disable the report(s) with the given ID(s).
 disable-report=R0001,R0002,R0003,R0004,R0101,R0102,R0201,R0202,R0220,R0401,R0402,R0701,R0801,R0901,R0902,R0903,R0904,R0911,R0912,R0913,R0914,R0915,R0921,R0922,R0923
 
 # Error message template (continued on second line)

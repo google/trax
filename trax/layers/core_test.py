@@ -122,7 +122,7 @@ class EmbeddingTest(absltest.TestCase):
     y = layer(x)
     self.assertEqual(y.shape, (5, 3))
 
-    # For distinct in-domain token ids, resulting vectors should be distinct.
+    # For distinct in-domain token IDs, resulting vectors should be distinct.
     self.assertNotEqual(y[0].tolist(), y[1].tolist())
     self.assertNotEqual(y[0].tolist(), y[2].tolist())
     self.assertNotEqual(y[1].tolist(), y[2].tolist())

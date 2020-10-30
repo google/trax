@@ -377,7 +377,7 @@ def vocab_size(vocab_type='subword', vocab_file=None, vocab_dir=None,
   This function can be used to set the size of the final layers of a model that
   needs to predict symbols from a given vocabulary. More precisely, if this
   function returns N then the last layer size should be set to at least N (it
-  can be more). Note that this function does take reserved ids into account.
+  can be more). Note that this function does take reserved IDs into account.
 
   Args:
     vocab_type: Type of vocabulary, one of: 'subword', 'sentencepiece', 'char'.
@@ -386,7 +386,7 @@ def vocab_size(vocab_type='subword', vocab_file=None, vocab_dir=None,
     n_reserved_ids: An int, offset added so 0, ..., n_reserved_ids-1 are unused.
 
   Returns:
-    An integer, the number of symbols used (including reserved ids).
+    An integer, the number of symbols used (including reserved IDs).
   """
   vocab = _get_vocab(vocab_type, vocab_file, vocab_dir)
   return vocab.vocab_size + n_reserved_ids
