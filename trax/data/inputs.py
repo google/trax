@@ -374,6 +374,53 @@ def FilterByLength(max_length,  # pylint: disable=invalid-name
   return filtered
 
 
+def _append_value(generator, val=None):
+  for example in generator:
+    if val is not None:
+      for key, value in val.items():
+        example[key] = np.append(example[key], value, -1)
+    yield example
+
+
+def AppendValue(val=None):  # pylint: disable=invalid-name
+  """Appends values provided in 'val` to inputs.
+
+  val are keyed by example keys, its values contain appended tensors.
+
+  Args:
+    val: dict of int to tensors. Specific keys get the tensors specified in
+      values appended.
+  Returns:
+    Funtion to append tensors to examples.
+  """
+  return lambda g: _append_value(g, val)
+
+
+def _truncate_to_length(generator, len_map=None):
+  for example in generator:
+    if len_map is not None:
+      for key, max_len in len_map.items():
+        example_len = example[key].shape
+        if example_len > max_len:
+          example[key] = np.resize(example[key], max_len)
+    yield example
+
+
+def TruncateToLength(len_map=None):  # pylint: disable=invalid-name
+  """Truncates features in an example to lengths given in `len_map`.
+
+  len_map contains a dictionary of example keys to tuples of dimension sizes.
+
+  Args:
+    len_map: dict of int to int tuples (shapes), we truncate examples
+      where a feature's size is beyond the max. Ex: {0: (1, 512), 1: 64}
+      will truncate examples to be within those bounds.
+  Returns:
+    Function to truncate length of examples.
+  """
+  return lambda g: _truncate_to_length(g, len_map)
+
+
 def add_loss_weights(generator, id_to_mask=None):
   """Add weights to inputs without weights and masks by id if requested.
 

@@ -127,6 +127,38 @@ class InputsTest(parameterized.TestCase):
     padded4 = data.inputs.pad_to_max_dims(tensors4, 12)
     self.assertEqual(padded4.shape, (2, 4, 12))
 
+  def test_truncate_to_length(self):
+    tensors1 = [[np.zeros((1, 5)), np.ones((1, 5))]]
+
+    truncate_to_length_function1 = data.inputs.TruncateToLength()
+    truncated1 = next(truncate_to_length_function1(tensors1))
+    self.assertEqual(truncated1[0].shape, (1, 5))
+    self.assertEqual(truncated1[1].shape, (1, 5))
+
+    truncate_to_length_function2 = data.inputs.TruncateToLength({0: (1, 3),
+                                                                 1: (1, 2)})
+    truncated2 = next(truncate_to_length_function2(tensors1))
+    self.assertEqual(truncated2[0].shape, (1, 3))
+    self.assertEqual(truncated2[1].shape, (1, 2))
+
+  def test_append_value(self):
+    tensors1 = [[np.zeros((1, 5)), np.ones((1, 5))]]
+
+    append_value_function1 = data.inputs.AppendValue()
+    unmodified = next(append_value_function1(tensors1))
+    self.assertEqual(unmodified[0].shape, (1, 5))
+    self.assertEqual(unmodified[1].shape, (1, 5))
+
+    append_value_function2 = data.inputs.AppendValue({0: [[5]],
+                                                      1: [[4]]})
+    appended = next(append_value_function2(tensors1))
+    self.assertEqual(appended[0].shape, (1, 6))
+    self.assertEqual(appended[0].all(),
+                     np.array([[0., 0., 0., 0., 0., 5.]]).all())
+    self.assertEqual(appended[1].shape, (1, 6))
+    self.assertEqual(appended[1].all(),
+                     np.array([[1., 1., 1., 1., 1., 4.]]).all())
+
   def test_pad_to_max_dims_boundary_list(self):
     tensors = [np.zeros((1, 15, 31)), np.ones((2, 10, 35)), np.ones((4, 2, 3))]
     padded_tensors = data.inputs.pad_to_max_dims(
