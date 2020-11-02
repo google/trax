@@ -888,9 +888,8 @@ def generic_text_dataset_preprocess_fn(dataset,
   output_features = {'targets': feature, 'inputs': feature}
 
   # Tokenize the inputs and targets.
-  dataset = t5_utils.encode_string_features(
-      dataset, output_features, keys=output_features,
-      copy_plaintext=copy_plaintext)
+  dataset = t5_processors.tokenize(
+      dataset, output_features, copy_plaintext=copy_plaintext)
 
   # Apply the token-preprocessors.
   if token_preprocess_fns is not None:
