@@ -154,7 +154,7 @@ class Optimizer(object):
         self._update_and_check(step, grad, weight, slot, opt_params)
         for (grad, weight, slot) in zip(grads_flat, weights_flat, slots)
     ]
-    new_weights_flat, self.slots = zip(*updated_pairs)
+    new_weights_flat, self.slots = map(list, zip(*updated_pairs))
     new_weights, _ = fastmath.tree_unflatten(new_weights_flat, weight_tree)
     metrics = {'gradients_l2': grads_norm, 'weights_l2': weights_norm}
     return new_weights, self.slots, metrics
