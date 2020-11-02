@@ -43,7 +43,7 @@ def Transformer2(input_vocab_size,
                  encoder_attention_type=tl.Attention,
                  n_encoder_attention_layers=1,
                  decoder_attention_type=tl.CausalAttention,
-                 n_decoder_attention_layers=1,
+                 n_decoder_attention_layers=2,
                  axial_pos_shape=None,
                  d_axial_pos_embs=None):
   """Returns a Transformer model.
@@ -128,15 +128,6 @@ def Transformer2(input_vocab_size,
                       attention_chunk_size, decoder_attention_type,
                       n_decoder_attention_layers)
       for i in range(n_decoder_layers)]
-
-  # Dont want FFNN in this block -- `n_feedforward_layers = 0`
-  decoder_blocks_sans_ff = [
-      ct.DecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
-                      mode, ff_activation, ff_dropout, ff_chunk_size,
-                      ff_use_sru, ff_sparsity, ff_sparsity_type,
-                      attention_chunk_size, decoder_attention_type,
-                      n_decoder_attention_layers, n_feedforward_layers=0)
-      for i in range(n_decoder_layers)]
   # pylint: enable=g-complex-comprehension
 
   # Assemble and return the model.
@@ -158,10 +149,6 @@ def Transformer2(input_vocab_size,
       tl.Select([3, 1, 0, 2]),          #  tok_d vec_e mask_e tok_e tok_d
       tl.ShiftRight(mode=mode),         # stok_d vec_e mask_e tok_e tok_d
       out_encoder,                      # svec_d vec_e mask_e tok_e tok_d
-
-      # Causal attention and LN only on the decoder tokens.
-      decoder_blocks_sans_ff,           # svec_d vec_e mask_e tok_e tok_d
-      tl.LayerNorm(),                   # svec_d vec_e mask_e tok_e tok_d
 
       # Concat encoder and decoder.
       tl.Select([1, 0]),                # vec_e svec_d mask_e tok_e tok_d
