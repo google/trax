@@ -46,13 +46,13 @@ from trax.supervised import lr_schedules as lr
 class Agent:
   """Abstract class for RL agents, presenting the required API."""
 
-  def __init__(self,  # pylint: disable=dangerous-default-value
+  def __init__(self,
                task: rl_task.RLTask,
                n_trajectories_per_epoch=None,
                n_interactions_per_epoch=None,
                n_eval_episodes=0,
                eval_steps=None,
-               eval_temperatures=[0.0],
+               eval_temperatures=(0.0,),
                only_eval=False,
                output_dir=None,
                timestep_to_np=None):
