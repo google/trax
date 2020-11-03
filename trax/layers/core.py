@@ -257,7 +257,7 @@ class Weights(base.Layer):
       initializer: Function taking shape and rng as arguments.
       shape: Shape of the learnable weights.
     """
-    super().__init__(name=f'Weights_{shape}', n_in=0, n_out=1)
+    super().__init__(name=f'Weights_{shape}', n_in=1, n_out=1)
     self._shape = shape
     self._initializer = initializer
 
