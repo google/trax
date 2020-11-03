@@ -16,3 +16,4 @@ install:
   - ./oss_scripts/oss_pip_install.sh
 script:
   - ./oss_scripts/oss_tests.sh
+  - pylint --disable=C,R,W trax;

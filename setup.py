@@ -42,6 +42,7 @@ setup(
         'jax',
         'jaxlib',
         'numpy',
+        'psutil',
         'scipy',
         'six',
         't5',
