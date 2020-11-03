@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Trainer class that accelerates running optimizers on layers."""
+"""Multi-device accelerated optimization."""
 
 import functools
 import os
@@ -28,19 +28,18 @@ from trax.layers import combinators as cb
 
 
 class Trainer(object):
-  """Accelerates running an optimizer on a Trax layer returning a scalar loss.
+  """Multi-device accelerated trainer.
 
-  By default it uses all available accelerators, runs an accelerated version
-  of the loss layer forward and then updates its weights using the optimizer.
-  If only one accelerator is available, this JIT-compiles the underlying
-  computation and in this way makes it run faster.
+  Given an optimizer and a composite layer containing model+loss, this class
+  creates a multi-device accelerated function with which it can compute one step
+  of updates to the model's weights/state and the optimizer slots. By default
+  it uses all available accelerators, via JIT compilation and parallel mapping.
 
-  We assume that both the loss layer (usually model with loss) and the optimizer
-  have already been initialized.
+  The optimizer and model must be initialized prior to use by this class.
 
-  The output after running the `one_step` function is just the loss from the
-  loss layer and optimizer statistics but, as a side effect, it also updates
-  the weights of the loss layer and the slots of the optimizer.
+  The key `one_step` function runs one forward-backward pass through the model,
+  and returns the resulting loss value and updated optimizer statistics. As a
+  side effect, the function also modifies the model weights and optimizer slots.
   """
 
   def __init__(self, loss_layer, optimizer, n_devices=None):
@@ -78,46 +77,41 @@ class Trainer(object):
 
   @property
   def loss_layer(self):
-    """Returns the loss layer used to initialize this class."""
+    """Returns the composite model+loss layer for this instance."""
     return self._loss_layer
 
   @property
   def accelerated_loss_layer(self):
-    """Returns the accelerated loss layer managed by this class."""
+    """Returns the accelerated composite model+loss layer by this instance."""
     return self._accelerated_loss_layer
 
   @property
   def optimizer(self):
-    """Returns the optimizer used to initialize this class."""
+    """Returns the optimizer for this instance."""
     return self._optimizer
 
   def one_step(self, batch, rng, step=0, learning_rate=None):
-    """Updates loss layer weights/state and optimizer slots by running one step.
+    """Runs one training step, to update model and optimizer parameters.
 
     Args:
-      batch: Batch of data to use for optimization.
-      rng: Random number generator to use for running this step.
-      step: Which step of the training are we running.
-      learning_rate: Learning rate to use instead of the default one.
+      batch: Batch of labeled training data.
+      rng: Single-use random number generator (JAX PRNG key).
+      step: Training step number.
+      learning_rate: Learning rate for the optimizer; if None, use optimizer's
+          default learning rate.
 
     Returns:
-      Tuple (loss, stats) with new values from one step
-      of training, where stats are current optimizer statistics.
+      Tuple of (loss, optimizer_stats), with the newly computed loss and
+      updated stats as reported by the optimizer.
     """
-    # Update the learning rate if needed.
     if learning_rate is not None:
       self._opt_params['learning_rate'] = tl.for_n_devices(
           learning_rate, self._n_devices)
 
-    # batch needs to be split across the local devices -- the difference
-    # between _for_n_devices and _reshape_by_device is that the latter splits
-    # the batch dim to batch // n_devices, vs _for_n_devices
-    # broadcasts/replicates to n_devices dimension.
+    # Split the batch across devices (batch_dim --> batch_dim // n_devices)
+    # and create new rng's 1-1 with devices.
     if self._n_devices > 1:
       batch = tl.reshape_by_device(batch, self._n_devices)
-
-    # separate rng needs to be created for each device
-    if self._n_devices > 1:
       rng = jnp.stack(fastmath.random.split(rng, self._n_devices))
 
     weights = self._accelerated_loss_layer.weights
@@ -152,14 +146,9 @@ class Trainer(object):
 
 def _average_multidevice_gradients(gradients):
   """Averages gradients over all the devices across different hosts."""
-  # Sum gradients over all devices across all hosts.
-  gradients = fastmath.psum(gradients, 'batch')
-  # Calculate the total number of devices.
-  # Note: the usual n_devices is only the number of devices at this host,
-  # here we are calculating the number of all devices across all hosts.
+  gradients_psum = fastmath.psum(gradients, 'batch')  # sum over all devices
   n_devices_total = fastmath.psum(jnp.array(1.0), 'batch')
-  # Average across hosts.
-  return fastmath.nested_map(lambda g: g / n_devices_total, gradients)
+  return fastmath.nested_map(lambda g: g / n_devices_total, gradients_psum)
 
 
 # Returns a function with the following signature:
@@ -169,7 +158,7 @@ def _accelerate_update_fn(forward_and_backward_fn,
                           optimizer,
                           n_devices,
                           accelerate=True):
-  """Accelerate the given forward_and_backward_fn function."""
+  """Accelerates the given forward_and_backward_fn function."""
   if n_devices == 1:
     def single_device_update_fn(
         weights_and_slots, step, opt_params, batch, state, rng):
@@ -193,17 +182,13 @@ def _accelerate_update_fn(forward_and_backward_fn,
   @functools.partial(fastmath.pmap, axis_name='batch', donate_argnums=(0,))
   def _multi_device_update_fn(
       weights_and_slots, step, opt_params, batch, state, rng):
-    # We assume all tensors have the first dimension = n_devices.
+    # All tensors should have the first dimension = n_devices.
     weights, slots = weights_and_slots
-    (loss, state), gradients = forward_and_backward_fn(
-        batch, weights, state, rng)
-
-    # Average gradients from multiple devices.
+    (loss, state), gradients = (
+        forward_and_backward_fn(batch, weights, state, rng))
     gradients = _average_multidevice_gradients(gradients)
-
-    # Run the optimizer.
-    weights, slots, stats = optimizer.tree_update(
-        step, gradients, weights, slots, opt_params)
+    weights, slots, stats = (
+        optimizer.tree_update(step, gradients, weights, slots, opt_params))
     stats['loss'] = loss
     return (weights, slots), state, stats
 
