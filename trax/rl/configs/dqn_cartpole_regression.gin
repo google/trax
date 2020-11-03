@@ -28,7 +28,6 @@ Quality.body = @trax.models.PureMLP
 PureMLP.flatten = False
 PureMLP.layer_widths = (32,32,)
 PureMLP.out_activation = True
-PureMLP.layer_norm = True
 
 value_lr = 0.0001
 initial_exploration_rate = 1

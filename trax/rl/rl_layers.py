@@ -53,11 +53,9 @@ def NewLogProbs(dist_inputs, actions, log_prob_fun):
 
 
 # TODO(henrykm): Clarify how jnp.mean is applied.
-def EntropyLoss(dist_inputs, actions, log_prob_fun,
-                entropy_coeff, entropy_fun):
+def EntropyLoss(dist_inputs, distribution, coeff):
   """Definition of the Entropy Layer."""
-  new_log_probs = NewLogProbs(dist_inputs, actions, log_prob_fun)
-  entropy_loss = entropy_fun(new_log_probs) * entropy_coeff
+  entropy_loss = distribution.entropy(dist_inputs) * coeff
   return jnp.mean(entropy_loss)
 
 

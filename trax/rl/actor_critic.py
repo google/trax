@@ -57,7 +57,7 @@ class ActorCriticAgent(rl_training.PolicyAgent):
                n_replay_epochs=1,
                scale_value_targets=False,
                q_value=False,
-               q_value_aggregate='max',
+               q_value_aggregate='logsumexp',
                q_value_temperature=1.0,
                q_value_n_samples=1,
                q_value_normalization=False,
