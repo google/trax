@@ -24,31 +24,36 @@ class Optimizer(object):
   """Base class for optimizers that work hand in hand with Trax layers.
 
   To define an optimizer subclass, specify its behavior with respect to a
-  single level/node in the network (e.g., a single dense layer):
+  single node in the network (e.g., a single dense layer):
 
-    - `init`: how to create/initialize optimizer-internal weights ("slots")
-        whose shape matches the node's weight shape.
+    - `init`: how to create/initialize optimizer-internal parameters ("slots"),
+        as a function of the node's weights.
     - `update`: how to use gradient information to update node weights and
         optimizer slots.
 
-  The Trax runtime combines these node-local computations into weight updates
-  and slot updates for the whole tree of layers in the model.
+  The Trax runtime combines these node-local computations into layer weight
+  updates and optimizer slot updates for the whole tree of layers in the model.
   """
 
   def __init__(self, learning_rate=0.01, clip_grad_norm=None,
                **init_opt_params):
     """Sets initial hyperparameter values for this optimizer.
 
-    Takes initial optimizer parameters as keyword arguments. These values can
-    be changed between training steps, e.g., for learning rate schedules.
+    Takes optimizer hyperparameters as keyword arguments. These values can
+    change over time (training steps), e.g., for learning rate schedules.
 
-    If you want your subclass to expose hyperparameters for gin configuration,
-    override this constructor and use explicitly named keyword arguments. See
+    To expose subclass hyperparameters for gin configuration, override this
+    constructor and use explicitly named keyword arguments. See
     `momentum.Momentum.__init__` for one such example.
 
     Args:
-      learning_rate: The initial learning rate.
-      clip_grad_norm: float; the value to which gradients will be clipped.
+      learning_rate: Learning rate for the optimizer. This can change during
+          training by means of a training rate schedule.
+      clip_grad_norm: If specified, this scalar value is used to limit gradient
+          size -- all gradient elements in a training step are treated as if
+          they belonged to a single vector and then scaled back if needed so
+          that such a vector's L2 norm does not exceed `clip_grad_norm`. If
+          None, no clipping happens.
       **init_opt_params: Initial values of any additional optimizer parameters.
     """
     init_opt_params['learning_rate'] = learning_rate
@@ -62,7 +67,7 @@ class Optimizer(object):
     self._clip_grad_norm = clip_grad_norm
 
   def init(self, weights):
-    """Creates optimizer slots for the given parameters.
+    """Creates optimizer slots that fit the given weights.
 
     Args:
       weights: Trainable weights for one layer. Optimizer slots typically match
@@ -71,20 +76,20 @@ class Optimizer(object):
     raise NotImplementedError
 
   def update(self, step, grads, weights, slots, opt_params):
-    """Computes one step's worth of updates.
-
-    The update computes both new weights for the layer/node and new slot values
-    for the optimizer.
+    """Computes updated layer weights and optimizer slots for one training step.
 
     Args:
-      step: Current step number in the training process.
-      grads: Gradients for the weights of the sublayer.
-      weights: Current weights for the sublayer.
-      slots: Optimizer slots.
-      opt_params: Optimizer hyperparameters (e.g. learning rate, momentum).
+      step: Training step number.
+      grads: Gradient values for this node (from back-propagation during a
+          training step).
+      weights: Current weight values for this node (i.e., layer weights).
+      slots: Current slot values for this node.
+      opt_params: Optimizer hyperparameters (e.g. learning rate, momentum),
+          same across all nodes in the model.
 
     Returns:
-      Tuple of (new_weights, new_slots).
+      Tuple of (new_weights, new_slots), which the Trax runtime will use to
+      update the model and optimizer within each training step.
     """
     raise NotImplementedError
 
@@ -160,7 +165,17 @@ class Optimizer(object):
     return new_weights, self.slots, metrics
 
   def _l2_norm(self, flat_list):
-    """Returns the aggregate L2 norm of a list of tensors."""
+    """Returns an L2-like norm of all elements of all tensors in `flat_list`.
+
+    Args:
+      flat_list: Collection of tensors as a flat list (rather than, e.g., a
+          tree).
+
+    Returns:
+      A scalar value computed as if all the tensors in `flat_list` were joined
+      and flattened into a single vector, and then the L2 norm of that vector
+      was calculated.
+    """
     if fastmath.is_backend(fastmath.Backend.JAX):
       norm = jnp.sqrt(sum(jnp.vdot(x, x) for x in flat_list))
     else:  # TODO(lukaszkaiser): add vdot to TF-numpy
@@ -184,10 +199,7 @@ class Optimizer(object):
 
 
 class SGD(Optimizer):
-  """Stochastic gradient descent (SGD) optimizer.
-
-  A simple optimizer with no weights ("slots") of its own.
-  """
+  """Stochastic gradient descent (SGD) optimizer."""
 
   def init(self, weights):
     return None
@@ -203,13 +215,37 @@ class SGD(Optimizer):
 
 
 def l2_norm(tree):
-  """Compute the l2 norm of a pytree of arrays. Useful for weight decay."""
+  """Returns an L2 norm computed over all elements of all tensors in `tree`.
+
+  Args:
+    tree: Tree-structured collection of tensors, e.g., model weights matching
+        the model's layer structure.
+
+  Returns:
+    A scalar value computed as if all the tensors in `tree` were combined
+    and flattened into a single vector, and then the L2 norm of that vector
+    was calculated.
+  """
   leaves = fastmath.tree_flatten(tree)
   return jnp.sqrt(sum(jnp.vdot(x, x) for x in leaves))
 
 
 def clip_grads(grad_tree, max_norm):
-  """Clip gradients stored as a pytree of arrays to maximum norm `max_norm`."""
+  """Proportionally reduces each gradient value to respect an aggregate limit.
+
+  Args:
+    grad_tree: Gradient values structured as a tree of tensors matching the
+        model's layer structure.
+    max_norm: The aggregate limit on gradient values. All gradient elements in
+        `grad_tree` are treated as if they belonged to a single vector and
+        that vector is shortened if needed so that its L2 norm does not exceed
+        `clip_grad_norm`.
+
+  Returns:
+    A new tree of tensors matching the structure of `grad_tree`, but with
+    element values proportionally rescaled as needed to respect the `max_norm`
+    limit.
+  """
   norm = l2_norm(grad_tree)
   normalize = lambda g: jnp.where(norm < max_norm, g, g * (max_norm / norm))
   return fastmath.nested_map(grad_tree, normalize)
