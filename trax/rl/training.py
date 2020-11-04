@@ -255,7 +255,7 @@ class Agent:
             for steps in self._eval_steps:
               for eval_t in self._eval_temperatures:
                 sw.scalar(
-                    'rl/avg_return_temperature_%d_steps%d' % (steps, eval_t),
+                    'rl/avg_return_temperature%d_steps%d' % (eval_t, steps),
                     self._avg_returns_temperatures[eval_t][steps][-1],
                     step=self._epoch)
           sw.scalar('rl/n_interactions', self.task.n_interactions(),
