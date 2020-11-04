@@ -376,10 +376,11 @@ def FilterByLength(max_length,  # pylint: disable=invalid-name
 
 def _append_value(generator, val=None):
   for example in generator:
+    example = list(example)
     if val is not None:
       for key, value in val.items():
         example[key] = np.append(example[key], value, -1)
-    yield example
+    yield tuple(example)
 
 
 def AppendValue(val=None):  # pylint: disable=invalid-name
@@ -398,12 +399,13 @@ def AppendValue(val=None):  # pylint: disable=invalid-name
 
 def _truncate_to_length(generator, len_map=None):
   for example in generator:
+    example = list(example)
     if len_map is not None:
       for key, max_len in len_map.items():
         example_len = example[key].shape
         if example_len > max_len:
           example[key] = np.resize(example[key], max_len)
-    yield example
+    yield tuple(example)
 
 
 def TruncateToLength(len_map=None):  # pylint: disable=invalid-name
