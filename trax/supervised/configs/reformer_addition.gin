@@ -27,7 +27,6 @@ data_streams.dataset_name = 'addition'
 
 # Parameters for sequence_copy_inputs:
 # ==============================================================================
-# batcher.id_to_mask = 0
 sequence_copy_inputs.vocab_size = %vocab_size
 sequence_copy_inputs.batch_size = 128
 sequence_copy_inputs.train_length = 64
@@ -40,16 +39,25 @@ sequence_copy_inputs.pad_to_multiple = 32
 # ==============================================================================
 addition_inputs.vocab_size = %vocab_size
 addition_inputs.batch_size = 128
-addition_inputs.train_length = 64
-addition_inputs.eval_min_length = 128
-addition_inputs.eval_max_length = 160
+addition_inputs.train_length = 129
+addition_inputs.eval_min_length = 257
+addition_inputs.eval_max_length = 301
 addition_inputs.pad_to_multiple = 32
+addition_inputs.encdec = True
 
 # Parameters for multifactor:
 # ==============================================================================
-multifactor.constant = 0.05
+multifactor.constant = 0.5
 multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
 multifactor.warmup_steps = 4000
+
+# Parameters for Adam:
+# ==============================================================================
+Adam.weight_decay_rate = 0.0
+
+# Parameters for Adafactor:
+# ==============================================================================
+Adafactor.weight_decay_rate = 0.0
 
 # Parameters for LSHSelfAttention:
 # ==============================================================================
@@ -65,21 +73,36 @@ LSHSelfAttention.max_length_for_buckets = 1024
 # ==============================================================================
 ReformerLM.d_model = 256
 ReformerLM.d_ff = 512
-ReformerLM.dropout = 0.05
+ReformerLM.dropout = 0.2
 ReformerLM.max_len = 256
 ReformerLM.n_heads = 4
-ReformerLM.n_layers = 3
-ReformerLM.ff_use_sru = 1
+ReformerLM.n_layers = 8
+ReformerLM.ff_use_sru = 2
 ReformerLM.axial_pos_shape = 'fixed-base'
-ReformerLM.attention_type = @LSHSelfAttention
+ReformerLM.attention_type = @CausalAttention  # @LSHSelfAttention
 ReformerLM.vocab_size = %vocab_size
+
+# Parameters for Reformer2:
+# ==============================================================================
+Reformer2.d_model = 256
+Reformer2.d_ff = 512
+Reformer2.dropout = 0.3
+Reformer2.max_len = 256
+Reformer2.n_heads = 4
+Reformer2.n_encoder_layers = 12
+Reformer2.n_decoder_layers = 4
+Reformer2.ff_use_sru = 2
+Reformer2.encoder_attention_type = @Attention
+Reformer2.encoder_decoder_attention_type = @CausalAttention
+Reformer2.input_vocab_size = %vocab_size
+Reformer2.axial_pos_shape  = 'fixed-base'
 
 # Parameters for train:
 # ==============================================================================
 # train.inputs = @trax.data.inputs.sequence_copy_inputs
 train.inputs = @trax.data.inputs.addition_inputs
 train.eval_frequency = 1000
-train.eval_steps = 10
-train.optimizer = @trax.optimizers.Adam
-train.steps = 30000
-train.model = @trax.models.ReformerLM
+train.eval_steps = 50
+train.optimizer = @trax.optimizers.Adafactor
+train.steps = 100000
+train.model = @trax.models.Reformer2

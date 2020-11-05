@@ -809,7 +809,7 @@ def random_number_lower_endian(length, base):
 def addition_inputs(
     vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, train_length=gin.REQUIRED,
     eval_min_length=gin.REQUIRED, eval_max_length=gin.REQUIRED,
-    pad_to_multiple=32):
+    pad_to_multiple=32, encdec=False):
   """Inputs for the add problem: <S>x+y<S>(x+y).
 
   Args:
@@ -819,6 +819,7 @@ def addition_inputs(
     eval_min_length: minimal length of w for eval.
     eval_max_length: maximal length of w for eval.
     pad_to_multiple: int, pad length to be multiple of this number.
+    encdec: bool, if True return encoder-decoder style inputs (default: False)
 
   Returns:
     trax.inputs.Inputs
@@ -835,23 +836,26 @@ def addition_inputs(
         n2, base)
     inp = n1 + [base] + n2
     tgt = number_to_lower_endian(result, base)
-    x = [base+2] + [i+1 for i in inp] + [base+2] + [i+1 for i in tgt]
-    weights = ([0] * (len(inp) + 2)) + ([1] * len(tgt))
-    return (x, weights)
+    if encdec:
+      x = [i + 1 for i in inp]
+      y = [i + 1 for i in tgt]
+      weights = [1] * len(tgt)
+      return (np.array(x), np.array(y), np.array(weights))
+    else:
+      x = [base+2] + [i+1 for i in inp] + [base+2] + [i+1 for i in tgt]
+      weights = ([0] * (len(inp) + 2)) + ([1] * len(tgt))
+      return (np.array(x), np.array(x), np.array(weights))
 
   def batches(max_length, min_length):
     """Batches of examples."""
     if max_length < 3:
       raise ValueError('Maximum length must be at least 3.')
     while True:
-      res = [single_example(max_length, min_length) for _ in range(batch_size)]
-      l = max([len(x[0]) for x in res])
-      xs = np.array([x[0] + [0] * (l - len(x[0])) for x in res])
-      ws = np.array([x[1] + [0] * (l - len(x[1])) for x in res],
-                    dtype=np.float32)
-      xs = _pad_to_multiple_of(xs, pad_to_multiple, 1)
-      ws = _pad_to_multiple_of(ws, pad_to_multiple, 1)
-      yield (xs, xs, ws)
+      ex = [single_example(max_length, min_length) for _ in range(batch_size)]
+      padded_batch = [pad_to_max_dims(x, boundary=pad_to_multiple,
+                                      strict_pad_on_len=True)
+                      for x in zip(*ex)]
+      yield tuple(padded_batch)
 
   return Inputs(
       train_stream=lambda _: batches(train_length, 3),

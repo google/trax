@@ -23,29 +23,17 @@ The "Transformer" name and network architecture were introduced in the paper
 from trax import layers as tl
 
 
-def FeedForward(d_model, d_ff, dropout, activation, act_dropout,
-                use_bfloat16, mode):
+def _FeedForward(d_model, d_ff, dropout, activation, act_dropout,
+                 use_bfloat16, mode):
   """Feed-forward block with layer normalization at start."""
   if act_dropout is None:
     act_dropout = dropout
   return [
-      tl.LayerNorm(),
       tl.Dense(d_ff, use_bfloat16=use_bfloat16),
       tl.Dropout(rate=act_dropout, shared_axes=[-2], mode=mode),
       activation(),
       tl.Dense(d_model, use_bfloat16=use_bfloat16),
-      tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),
   ]
-
-
-def ChunkedFeedForward(d_model, d_ff, dropout, activation, act_dropout,
-                       chunk_size, use_bfloat16, mode):
-  """Chunked feed-forward block with layer normalization at start."""
-  ff = FeedForward(d_model, d_ff, dropout, activation, act_dropout,
-                   use_bfloat16, mode)
-  if chunk_size < 1:
-    return ff
-  return tl.BatchLeadingAxes(tl.Chunk(tl.Serial(ff), chunk_size))
 
 
 def FeedForwardWithOptions(d_model,
@@ -89,9 +77,7 @@ def FeedForwardWithOptions(d_model,
   Returns:
     A list of layers which maps vectors to vectors.
   """
-  if ff_use_sru:
-    return [tl.SRU(d_model) for _ in range(ff_use_sru)]
-  elif ff_sparsity and ff_sparsity_type == '1inN':
+  if ff_sparsity and ff_sparsity_type == '1inN':
     if isinstance(ff_sparsity, tuple):
       n_elements_in_block, d_lowrank = ff_sparsity
     else:
@@ -102,25 +88,20 @@ def FeedForwardWithOptions(d_model,
         n_elements_in_block=n_elements_in_block,
         d_lowrank=d_lowrank,
         mode=mode)
-    if ff_chunk_size < 1:
-      chunked_ff = ff
-    else:
-      chunked_ff = tl.BatchLeadingAxes(tl.Chunk(tl.Serial(ff), ff_chunk_size))
-    return [
-        tl.LayerNorm(), chunked_ff,
-        tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
-    ]
   elif ff_sparsity and ff_sparsity_type == 'Block':
-    return [
-        tl.LayerNorm(),
-        tl.BlockSparseFF(d_ff, num_experts=ff_sparsity, mode=mode),
-        tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
-    ]
+    ff = tl.BlockSparseFF(d_ff, num_experts=ff_sparsity, mode=mode),
   else:
-    return [
-        ChunkedFeedForward(d_model, d_ff, dropout, ff_activation, ff_dropout,
-                           ff_chunk_size, use_bfloat16, mode)
-    ]
+    ff = _FeedForward(d_model, d_ff, dropout, ff_activation, ff_dropout,
+                      use_bfloat16, mode)
+  res = [tl.LayerNorm(),
+         ff,
+         tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)]
+  if ff_chunk_size > 0:
+    res = tl.BatchLeadingAxes(tl.Chunk(tl.Serial(res), ff_chunk_size))
+  if ff_use_sru:
+    sru = [tl.Dense(32)] + [tl.SRU(32) for _ in range(ff_use_sru)]
+    res = tl.Residual(sru + [tl.Dense(d_model)], res)
+  return [res]
 
 
 # TODO(lukaszkaiser): unify attention layers API and remove this branch
