@@ -47,7 +47,7 @@ def PoolLayer(pool_layer=tl.AvgPool,
   ) if separate_cls else pool_layer(pool_size, strides)
 
 
-def _upsample(short, masks, long):
+def _Upsample(short, masks, long):
   factor = -(-long.shape[1] // short.shape[1])  # ceil division
   new_vecs = long + short.repeat(factor, axis=1)[:, :long.shape[1], :]
   new_masks = masks.repeat(factor, axis=-1)[:, :, :, :long.shape[1]]
@@ -55,7 +55,7 @@ def _upsample(short, masks, long):
 
 
 def _Upsampler():
-  return tl.Fn('Upsampler', _upsample, n_out=2)
+  return tl.Fn('Upsampler', _Upsample, n_out=2)
 
 
 def _FunnelBlock(d_model, d_ff, n_heads,
@@ -105,7 +105,7 @@ def _FunnelBlock(d_model, d_ff, n_heads,
       tl.LayerNorm(),                   # funnel_activations, mask
       tl.Parallel(
           None,
-          tl.Fn('max pool experiment',
+          tl.Fn('mask_max_pool',
                 _InternalMaxPool),
       ),                                # funnel_activations, mask'
       feed_forward
@@ -114,7 +114,7 @@ def _FunnelBlock(d_model, d_ff, n_heads,
 
 def FunnelTransformerEncoder(vocab_size,
                              n_classes=10,
-                             d_model=512,  # start
+                             d_model=512,
                              d_ff=2048,
                              encoder_segment_lengths=(2, 2, 2),
                              n_heads=8,
@@ -129,9 +129,7 @@ def FunnelTransformerEncoder(vocab_size,
                              separate_cls=True):
   """Returns a Funnel Encoder.
   """
-  segments = len(encoder_segment_lengths)
-  funnels = segments - 1
-  assert funnels >= 0
+  assert encoder_segment_lengths
 
   positional_encoder = [
       tl.Embedding(vocab_size, d_model),
@@ -144,12 +142,12 @@ def FunnelTransformerEncoder(vocab_size,
   for i in range(n_encoder_segments):
     # Building i'th segment
     for _ in range(encoder_segment_lengths[i]):
-      # segment_size encoder blocks
+      # Create segment_size encoder blocks
       encoder_blocks.append(
           _EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
                         mode, ff_activation))
 
-    # if not last segment, add funnel block
+    # If not last segment, add funnel block
     if i != n_encoder_segments - 1:
       encoder_blocks.append(_FunnelBlock(d_model, d_ff, n_heads, dropout,
                                          dropout_shared_axes, mode,
@@ -192,7 +190,7 @@ def _FunnelResidualBlock(d_model, d_ff, n_heads,
           tl.Select([0, 1, 1, 2]),
           attn_,
           tl.Parallel(None, tl.Fn(
-              'max pool experiment', _InternalMaxPool)),
+              'mask_max_pool', _InternalMaxPool)),
           dropout_
       ),
       tl.Residual(
@@ -202,7 +200,7 @@ def _FunnelResidualBlock(d_model, d_ff, n_heads,
 
 
 def FunnelTransformer(vocab_size,
-                      d_model=512,  # start
+                      d_model=512,
                       d_ff=2048,
                       encoder_segment_lengths=(2, 2, 2),
                       n_decoder_blocks=2,
@@ -218,9 +216,7 @@ def FunnelTransformer(vocab_size,
                       separate_cls=True):
   """Returns a Full Funnel Transformer.
   """
-  segments = len(encoder_segment_lengths)
-  funnels = segments - 1
-  assert (funnels >= 0)
+  assert encoder_segment_lengths
 
   positional_encoder = [
       tl.Embedding(vocab_size, d_model),
@@ -238,7 +234,7 @@ def FunnelTransformer(vocab_size,
   for i in range(1, n_encoder_segments):
     # Building i'th segment
 
-    # add funnel block between segments
+    # Add funnel block between segments
     encoder_blocks_from_first_pooling.append(
         _FunnelBlock(d_model, d_ff, n_heads, dropout,
                      dropout_shared_axes, mode,
@@ -246,7 +242,7 @@ def FunnelTransformer(vocab_size,
                      strides, separate_cls))
 
     for _ in range(encoder_segment_lengths[i]):
-      # segment_size encoder blocks
+      # Create segment_size encoder blocks
       encoder_blocks_from_first_pooling.append(
           _EncoderBlock(d_model, d_ff, n_heads, dropout,
                         dropout_shared_axes, mode, ff_activation))
