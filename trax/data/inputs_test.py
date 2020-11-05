@@ -141,6 +141,12 @@ class InputsTest(parameterized.TestCase):
     self.assertEqual(truncated2[0].shape, (1, 3))
     self.assertEqual(truncated2[1].shape, (1, 2))
 
+    truncate_to_length_function3 = data.inputs.TruncateToLength({0: (1, 77),
+                                                                 1: (1, 88)})
+    truncated3 = next(truncate_to_length_function3(tensors1))
+    self.assertEqual(truncated3[0].shape, (1, 5))
+    self.assertEqual(truncated3[1].shape, (1, 5))
+
   def test_append_value(self):
     tensors1 = [(np.zeros((1, 5)), np.ones((1, 5)))]
 
