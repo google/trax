@@ -22,6 +22,17 @@ import t5.data.preprocessors
 import t5.data.sentencepiece_vocabulary
 
 # Corresponds roughly to T5 'large' ~ 770m params, i.e. T5's `bi_v1_large.gin`.
+ff_chunk_size = 0
+
+enc_attn_type = @Attention
+
+MultiplicativeModularCausalAttention.sparsity = 16
+MultiplicativeConvCausalAttention.sparsity = 16
+
+dec_attn_type = @CausalAttention
+
+ff_sparsity = 0
+
 d_model = 1024
 d_ff = 4096
 n_heads = 16
@@ -73,7 +84,7 @@ c4_bare_preprocess_fn.sequence_length = %sequence_length
 # ==============================================================================
 train.eval_frequency = 1000
 train.eval_steps = 10
-train.model = @trax.models.Transformer
+train.model = @trax.models.ConfigurableTransformer
 train.steps = 524288
 train.optimizer = @trax.optimizers.Adafactor
 train.checkpoint_highest = 'accuracy'
@@ -109,12 +120,16 @@ ConfigurableTransformer.d_model = %d_model
 ConfigurableTransformer.d_ff = %d_ff
 ConfigurableTransformer.dropout = %dropout
 ConfigurableTransformer.ff_dropout = %dropout
+ConfigurableTransformer.ff_chunk_size = %ff_chunk_size
+ConfigurableTransformer.ff_sparsity = %ff_sparsity
 ConfigurableTransformer.max_len = %max_length
 ConfigurableTransformer.mode = 'train'
 ConfigurableTransformer.n_heads = %n_heads
 ConfigurableTransformer.n_encoder_layers = %n_layers
 ConfigurableTransformer.n_decoder_layers = %n_layers
 ConfigurableTransformer.input_vocab_size = %vocab_size
+ConfigurableTransformer.encoder_attention_type = %enc_attn_type
+ConfigurableTransformer.encoder_decoder_attention_type = %dec_attn_type
 
 # Parameters for SelfAttention:
 # ==============================================================================
@@ -137,18 +152,13 @@ ref2_encoder/LSHSelfAttention.n_chunks_after = 1
 
 # Parameters for Reformer2:
 # ==============================================================================
-ff_chunk_size = 0
-# enc_attn_type = @LSHSelfAttention
-# dec_attn_type = @ref2_encoder/LSHSelfAttention
-enc_attn_type = @Attention
-dec_attn_type = @CausalAttention
 Reformer2.d_model = %d_model  # was  512
 Reformer2.d_ff = %d_ff        # was 2048
 Reformer2.dropout = %dropout  # was  0.1
 Reformer2.ff_activation = @trax.layers.Relu
 Reformer2.ff_dropout = 0.1
 Reformer2.ff_chunk_size = %ff_chunk_size
-Reformer2.ff_sparsity = 0
+Reformer2.ff_sparsity = %ff_sparsity
 Reformer2.max_len = %max_length
 Reformer2.mode = 'train'
 Reformer2.n_heads = %n_heads

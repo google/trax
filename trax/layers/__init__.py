@@ -80,6 +80,8 @@ MultiplicativeCausalAttention = layer_configure(MultiplicativeCausalAttention,
                                                 blacklist=['mode'])
 MultiplicativeModularCausalAttention = layer_configure(
     MultiplicativeModularCausalAttention, blacklist=['mode'])
+MultiplicativeConvCausalAttention = layer_configure(
+    MultiplicativeConvCausalAttention, blacklist=['mode'])
 LSHSelfAttention = layer_configure(LSHSelfAttention, blacklist=['mode'])
 EncDecAttention = layer_configure(EncDecAttention, blacklist=['mode'])
 

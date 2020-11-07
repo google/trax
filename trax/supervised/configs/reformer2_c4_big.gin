@@ -27,7 +27,6 @@ mean_noise_span_length = 3.0
 noise_density = 0.15
 
 dropout = 0.1
-d_axial_pos_embs = (512, 512)  # should sum out to d_model
 ff_chunk_size = 1024
 
 # Corresponds roughly to ~55B params.
@@ -140,7 +139,6 @@ Reformer2.d_attention_key = %attn_kv    # d_model // n_heads
 Reformer2.d_attention_value = %attn_kv  # d_model // n_heads
 Reformer2.encoder_attention_type = %enc_attn_type
 Reformer2.encoder_decoder_attention_type = %dec_attn_type
-Reformer2.d_axial_pos_embs = %d_axial_pos_embs
 Reformer2.n_layers_forget = 12
 Reformer2.attention_chunk_size = 8
 Reformer2.use_bfloat16 = True
