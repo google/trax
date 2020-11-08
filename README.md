@@ -15,13 +15,16 @@ welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)](CO
 [Trax](https://trax-ml.readthedocs.io/en/latest/) is an end-to-end library for deep learning that focuses on clear code and speed. It is actively used and maintained in the [Google Brain team](https://research.google.com/teams/brain/). This notebook ([run it in colab](https://colab.research.google.com/github/google/trax/blob/master/trax/intro.ipynb)) shows how to use Trax and where you can find more information.
 
   1. **Run a pre-trained Transformer**: create a translator in a few lines of code
-  1. **Features and resources**: [API docs](https://trax-ml.readthedocs.io/en/latest/), where to [talk to us](https://gitter.im/trax-ml/community), how to [open an issue](https://github.com/google/trax/issues) and more
-  1. **Walkthrough**: how Trax works, how to make new models and train on your own data
+  2. **Features and resources**: [API docs](https://trax-ml.readthedocs.io/en/latest/), where to [talk to us](https://gitter.im/trax-ml/community), how to [open an issue](https://github.com/google/trax/issues) and more
+  3. **Walkthrough**: how Trax works, how to make new models and train on your own data
 
 We welcome **contributions** to Trax! We welcome PRs with code for new models and layers as well as improvements to our code and documentation. We especially love **notebooks** that explain how models work and show how to use them to solve problems!
 
+Here are a few example notebooks:-
 
-
+* [**trax.data API explained**](https://github.com/SauravMaheshkar/Trax-Examples/blob/main/backend/trax-data-explained.ipynb) : Explains some of the major functions in the `trax.data` API 
+* [**Named Entity Recognition using Reformer**](https://github.com/SauravMaheshkar/Trax-Examples/blob/main/NLP/NER%20using%20Reformer.ipynb) : Uses a [Kaggle dataset](https://www.kaggle.com/abhinavwalia95/entity-annotated-corpus) for implementing Named Entity Recognition using the [Reformer](https://arxiv.org/abs/2001.04451) architecture.
+* [**Deep N-Gram models**](https://github.com/SauravMaheshkar/Trax-Examples/blob/main/NLP/Deep%20N-Gram.ipynb) : Implementation of deep n-gram models trained on Shakespeares works
 
 **General Setup**
 
