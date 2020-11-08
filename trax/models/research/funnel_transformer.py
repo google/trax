@@ -24,7 +24,10 @@ from trax.fastmath import numpy as jnp
 from trax.fastmath.ops import index_add
 from trax.layers.assert_shape import assert_shape
 from trax.models.transformer import _EncoderBlock
+from trax.models.transformer import _DecoderBlock
 from trax.models.transformer import _FeedForwardBlock
+from trax.models.research.funnel_attention import \
+  FunnelCausalAttention
 
 
 @assert_shape('bld->bSd')
