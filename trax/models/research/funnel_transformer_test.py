@@ -22,9 +22,7 @@ from absl.testing import parameterized
 
 from trax import layers as tl, shapes
 from trax.models.research.funnel_transformer import PoolLayer, \
-  _FunnelResidualBlock, \
-  FunnelTransformerEncoder, \
-  FunnelTransformer
+  _FunnelResidualBlock, FunnelTransformerEncoder, FunnelTransformer, MaskPool
 
 
 class FunnelTransformerTest(parameterized.TestCase):
@@ -39,9 +37,23 @@ class FunnelTransformerTest(parameterized.TestCase):
     self.assertEqual(y.shape, (1, 2, 1))
     self.assertEqual(y.tolist(), [[[5.], [3.]]])
 
+  def test_mask_pool(self):
+    x = np.array([1, 0, 0, 1], dtype=bool).reshape((1, 1, 1, 4))
+    pooling_cls = MaskPool((2,), (2,))
+    y1 = pooling_cls(x)
+
+    self.assertEqual(y1.shape, (1, 1, 1, 2))
+    self.assertEqual(y1.squeeze().tolist(), [True, False])
+
+    pooling_without_cls = MaskPool((2,), (2,), separate_cls=False)
+    y2 = pooling_without_cls(x)
+
+    self.assertEqual(y2.shape, (1, 1, 1, 2))
+    self.assertEqual(y2.squeeze().tolist(), [True, True])
+
   def test_funnel_block_forward_shape(self):
     n_even = 4
-    d_model = 32
+    d_model = 8
 
     x = np.ones((1, n_even, d_model), dtype=np.float)
     mask = np.ones((1, n_even), dtype=np.int32)
@@ -50,8 +62,8 @@ class FunnelTransformerTest(parameterized.TestCase):
     mask = masker(mask)
 
     block = tl.Serial(
-      *_FunnelResidualBlock(d_model, 64, 1, 0.1, None, 'train', tl.Relu,
-                            tl.AvgPool, (2,), (2,)))
+        _FunnelResidualBlock(d_model, 8, 2, 0.1, None, 'train', tl.Relu,
+                             tl.AvgPool, (2,), (2,)))
 
     xs = [x, mask]
     _, _ = block.init(shapes.signature(xs))
@@ -61,23 +73,33 @@ class FunnelTransformerTest(parameterized.TestCase):
     self.assertEqual(y.shape, (1, n_even // 2, d_model))
 
   def test_funnel_transformer_encoder_forward_shape(self):
-    n_classes = 2
-    model = FunnelTransformerEncoder(10, n_classes)
+    n_classes = 5
+    model = FunnelTransformerEncoder(2, n_classes=n_classes, d_model=8,
+                                     d_ff=8, encoder_segment_lengths=(1, 1),
+                                     n_heads=2, max_len=8)
 
-    x = np.ones((3, 2048), dtype=np.int32)
+    batch_size = 2
+    n_tokens = 4
+    x = np.ones((batch_size, n_tokens), dtype=np.int32)
     _ = model.init(shapes.signature(x))
     y = model(x)
 
-    self.assertEqual(y.shape, (3, n_classes))
+    self.assertEqual(y.shape, (batch_size, n_classes))
 
   def test_funnel_transformer_forward_shape(self):
-    model = FunnelTransformer(10)
+    d_model = 8
+    model = FunnelTransformer(2, d_model=d_model, d_ff=8,
+                              encoder_segment_lengths=(1, 1),
+                              n_decoder_blocks=1, n_heads=2, max_len=8)
 
-    x = np.ones((3, 64), dtype=np.int32)
+    batch_size = 2
+    n_tokens = 4
+    x = np.ones((batch_size, n_tokens), dtype=np.int32)
     _ = model.init(shapes.signature(x))
     y = model(x)
 
-    self.assertEqual(y.shape, (3, 64, 512))
+    self.assertEqual(y.shape, (batch_size, n_tokens, d_model))
+
 
 if __name__ == '__main__':
   absltest.main()

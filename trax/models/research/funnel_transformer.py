@@ -23,28 +23,41 @@ from trax.layers.assert_shape import assert_shape
 from trax.models.transformer import _EncoderBlock, _FeedForwardBlock
 
 
-def _InternalMaxPool(arr):
-  shape = arr.shape
-  arr = arr.reshape((*shape[:-1], int(shape[-1] / 2), 2))
-  arr = arr.max(axis=-1, keepdims=False)
-  return arr
-
-
 @assert_shape('bld->bSd')
 def PoolLayer(pool_layer=tl.AvgPool,
               pool_size=(2,),
               strides=(2,),
               separate_cls=True):
+  if separate_cls:
+    cls_selection = tl.Fn('select_cls_token', lambda x: x[:, :1, :])
+    tokens_after_cls = tl.Fn('rest_tokens', lambda x: x[:, 1:, :])
+
+    return tl.Serial(
+        tl.Branch(
+            cls_selection,
+            tl.Serial(
+                tokens_after_cls,
+                pool_layer(pool_size, strides)
+            )
+        ),
+        tl.Concatenate(axis=1)
+    )
+  else:
+    return pool_layer(pool_size, strides)
+
+
+@assert_shape('b11l->b11S')
+def MaskPool(pool_size=(2,), strides=(2,), separate_cls=True):
   return tl.Serial(
-      tl.Branch(
-          tl.Fn('select_cls_token', lambda x: x[:, :1, :]),
-          tl.Serial(
-              tl.Fn('rest_tokens', lambda x: x[:, 1:, :]),
-              pool_layer(pool_size, strides)
-          )
-      ),
-      tl.Concatenate(axis=1)
-  ) if separate_cls else pool_layer(pool_size, strides)
+      tl.Fn('reshape', lambda x: x.swapaxes(1, -1).squeeze(axis=-1)),
+      PoolLayer(tl.MaxPool, pool_size, strides, separate_cls),
+      tl.Fn('reshape_back', lambda x: x[..., None].swapaxes(1, -1))
+  )
+
+
+@assert_shape('bld->bd')
+def SelectFirst():
+  return tl.Fn('select_first', lambda x: x[:, 0, :])
 
 
 def _Upsample(short, masks, long):
@@ -93,6 +106,7 @@ def _FunnelBlock(d_model, d_ff, n_heads,
   feed_forward = _FeedForwardBlock(
       d_model, d_ff, dropout, dropout_shared_axes, mode, ff_activation)
   pooling = PoolLayer(pool_layer, pool_size, strides, separate_cls)
+  mask_pooling = MaskPool(pool_size, strides, separate_cls)
 
   return tl.Serial(                     # h, mask
       tl.Branch(pooling, None, None),   # h', h, h, mask
@@ -105,8 +119,7 @@ def _FunnelBlock(d_model, d_ff, n_heads,
       tl.LayerNorm(),                   # funnel_activations, mask
       tl.Parallel(
           None,
-          tl.Fn('mask_max_pool',
-                _InternalMaxPool),
+          mask_pooling
       ),                                # funnel_activations, mask'
       feed_forward
   )
@@ -154,6 +167,8 @@ def FunnelTransformerEncoder(vocab_size,
                                          ff_activation, pool_layer, pool_size,
                                          strides, separate_cls))
 
+  cls_pooling = SelectFirst() if separate_cls else tl.Mean(axis=1)
+
   # Assemble and return the model.
   return tl.Serial(                               # toks
       # Encode.
@@ -164,9 +179,9 @@ def FunnelTransformerEncoder(vocab_size,
       tl.LayerNorm(),                             # vecs
 
       # Map to output categories.
-      tl.Mean(axis=1),                            # vecs
-      tl.Dense(n_classes),                        # vecs
-      tl.LogSoftmax(),                            # vecs
+      cls_pooling,                                # cls
+      tl.Dense(n_classes),                        # cls
+      tl.LogSoftmax(),                            # cls
   )
 
 
@@ -189,8 +204,7 @@ def _FunnelResidualBlock(d_model, d_ff, n_heads,
           tl.Parallel(tl.LayerNorm(), tl.LayerNorm()),
           tl.Select([0, 1, 1, 2]),
           attn_,
-          tl.Parallel(None, tl.Fn(
-              'mask_max_pool', _InternalMaxPool)),
+          tl.Parallel(None, MaskPool()),
           dropout_
       ),
       tl.Residual(
@@ -212,7 +226,6 @@ def FunnelTransformer(vocab_size,
                       ff_activation=tl.Relu,
                       pool_layer=tl.AvgPool,
                       pool_size=(2,),
-                      strides=(2,),
                       separate_cls=True):
   """Returns a Full Funnel Transformer.
   """
@@ -238,8 +251,9 @@ def FunnelTransformer(vocab_size,
     encoder_blocks_from_first_pooling.append(
         _FunnelBlock(d_model, d_ff, n_heads, dropout,
                      dropout_shared_axes, mode,
-                     ff_activation, pool_layer, pool_size,
-                     strides, separate_cls))
+                     ff_activation, pool_layer,
+                     pool_size=pool_size, strides=pool_size,
+                     separate_cls=separate_cls))
 
     for _ in range(encoder_segment_lengths[i]):
       # Create segment_size encoder blocks
