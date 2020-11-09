@@ -36,6 +36,7 @@ bucket_by_length = inputs.bucket_by_length
 FilterByLength = data_configure(inputs.FilterByLength)
 TruncateToLength = data_configure(inputs.TruncateToLength)
 AppendValue = data_configure(inputs.AppendValue)
+PadToLength = data_configure(inputs.PadToLength)
 Log = data_configure(inputs.Log)
 Serial = data_configure(inputs.Serial)
 Shuffle = data_configure(inputs.Shuffle)
