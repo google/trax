@@ -640,7 +640,7 @@ def Max(axis=-1, keepdims=False):
   return Fn('Max', lambda x: jnp.max(x, axis, keepdims=keepdims))
 
 
-def Sum(axis=-1, keepdims=False):
+def Sum(axis=None, keepdims=False):
   """Returns a layer that computes sums using one tensor axis.
 
   `Sum` uses one tensor axis to form groups of values and replaces each group
@@ -650,7 +650,8 @@ def Sum(axis=-1, keepdims=False):
   one.
 
   Args:
-    axis: Axis along which values are grouped for computing a sum.
+    axis: Axis along which values are grouped for computing a sum; if None,
+        compute sum over all elements in tensor.
     keepdims: If `True`, keep the resulting size 1 axis as a separate tensor
         axis; else, remove that axis.
   """

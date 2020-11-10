@@ -66,7 +66,7 @@ _DEFAULT_METRICS = {
     'accuracy': tl.Accuracy(),
     'sequence_accuracy': tl.SequenceAccuracy(),
     'neg_log_perplexity': tl.Serial(tl.CrossEntropyLoss(), tl.Negate()),
-    'weights_per_batch_per_core': tl.SumOfWeights(),
+    'weights_per_batch_per_core': tl.Serial(tl.Drop(), tl.Drop(), tl.Sum()),
 }
 
 
