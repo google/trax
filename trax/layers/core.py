@@ -658,6 +658,22 @@ def Sum(axis=None, keepdims=False):
   return Fn('Sum', lambda x: jnp.sum(x, axis=axis, keepdims=keepdims))
 
 
+def BinaryClassifier(threshold=0.5):
+  """Returns a layer that performs binary classification."""
+  def f(model_output):  # pylint: disable=invalid-name
+    predicted_category = (model_output > threshold).astype(jnp.int32)
+    return predicted_category
+  return Fn('BinaryClassifier', f)
+
+
+def MulticlassClassifier(axis=-1):
+  """Returns a layer that performs multiclass classification."""
+  def f(model_output):  # pylint: disable=invalid-name
+    predicted_category = jnp.argmax(model_output, axis=axis)
+    return predicted_category
+  return Fn('MulticlassClassifier', f)
+
+
 @assert_shape('...->...')  # The output and input shapes are the same.
 def Negate():
   """Returns a layer that computes the element-wise negation of a tensor."""

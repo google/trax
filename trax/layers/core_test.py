@@ -417,5 +417,21 @@ class MinMaxTest(absltest.TestCase):
     self.assertEqual(y.shape, (1, 2))
     self.assertEqual(y.tolist(), [[3., 6.]])
 
+
+class ClassifiersTest(absltest.TestCase):
+
+  def test_binary_classifier(self):
+    layer = tl.BinaryClassifier()
+    xs = [np.ones((9, 1))]
+    y = layer(xs)
+    self.assertEqual(y.shape, (9, 1))
+
+  def test_multiclass_classifier(self):
+    layer = tl.MulticlassClassifier()
+    xs = [np.ones((9, 4, 4, 20))]
+    y = layer(xs)
+    self.assertEqual(y.shape, (9, 4, 4))
+
+
 if __name__ == '__main__':
   absltest.main()

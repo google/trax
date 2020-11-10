@@ -48,7 +48,42 @@ functions other than mean, for instance sum or a specialized sequence mean.
 from trax import shapes
 from trax.fastmath import numpy as jnp
 from trax.layers import combinators as cb
+from trax.layers import core
 from trax.layers.base import Fn
+
+
+def Accuracy(classifier=core.MulticlassClassifier()):
+  """Returns a layer that computes mean category prediction accuracy."""
+  return cb.Serial(classifier,
+                   _Accuracy(),
+                   _WeightedMean(),
+                   name='Accuracy',
+                   sublayers_to_print=[])
+
+
+def SequenceAccuracy(classifier=core.MulticlassClassifier()):
+  """Returns a layer that computes mean sequence prediction accuracy."""
+  return cb.Serial(classifier,
+                   _Accuracy(),
+                   _WeightedSequenceMean(),
+                   name='SequenceAccuracy',
+                   sublayers_to_print=[])
+
+
+def CrossEntropyLoss():
+  """Mean prediction-target cross entropy for multiclass classification."""
+  return cb.Serial(_CrossEntropy(),
+                   _WeightedMean(),
+                   name='CrossEntropyLoss',
+                   sublayers_to_print=[])
+
+
+def BinaryCrossEntropyLoss():
+  """Mean prediction-target cross entropy for binary classification."""
+  return cb.Serial(_BinaryCrossEntropy(),
+                   _WeightedMean(),
+                   name='BinaryCrossEntropyLoss',
+                   sublayers_to_print=[])
 
 
 def L2Loss():
@@ -103,71 +138,11 @@ def SmoothL1Loss():
   return Fn('SmoothL1Loss', smoothl1loss)
 
 
-def BinaryClassifier(threshold=0.5):
-  """Returns a layer that performs binary classification of the model output."""
-  def f(model_output):  # pylint: disable=invalid-name
-    predicted_category = (model_output > threshold).astype(jnp.int32)
-    return predicted_category
-  return Fn('BinaryClassifier', f)
-
-
-def MulticlassClassifier(axis=-1):
-  """Multiclass classification of the model output."""
-  def f(model_output):  # pylint: disable=invalid-name
-    predicted_category = jnp.argmax(model_output, axis=axis)
-    return predicted_category
-  return Fn('MulticlassClassifier', f)
-
-
-def Accuracy(classifier=MulticlassClassifier()):
-  """Returns a layer that computes mean category prediction accuracy."""
-  return cb.Serial(classifier,
-                   _Accuracy(),
-                   _WeightedMean(),
-                   name='Accuracy',
-                   sublayers_to_print=[])
-
-
-def SequenceAccuracy(classifier=MulticlassClassifier()):
-  """Returns a layer that computes mean sequence prediction accuracy."""
-  return cb.Serial(classifier,
-                   _Accuracy(),
-                   _WeightedSequenceMean(),
-                   name='SequenceAccuracy',
-                   sublayers_to_print=[])
-
-
-def BinaryCrossEntropyLoss():
-  """Mean prediction-target cross entropy for binary classification."""
-  return cb.Serial(_BinaryCrossEntropy(),
-                   _WeightedMean(),
-                   name='BinaryCrossEntropyLoss',
-                   sublayers_to_print=[])
-
-
-def CrossEntropyLoss():
-  """Mean prediction-target cross entropy for multiclass classification."""
-  return cb.Serial(_CrossEntropy(),
-                   _WeightedMean(),
-                   name='CrossEntropyLoss',
-                   sublayers_to_print=[])
-
-
-def BinaryCrossEntropySum():
-  """Sum of prediction-target cross entropies for binary classification."""
-  return cb.Serial(_BinaryCrossEntropy(),
-                   WeightedSum(),
-                   name='BinaryCrossEntropySum',
-                   sublayers_to_print=[])
-
-
-def CrossEntropySum():
-  """Sum of prediction-target cross entropies for multiclass classification."""
-  return cb.Serial(_CrossEntropy(),
-                   WeightedSum(),
-                   name='CrossEntropySum',
-                   sublayers_to_print=[])
-# pylint: enable=no-value-for-parameter
+def WeightedSum():
+  """Returns a layer that computes a weighted sum of the given values."""
+  def f(values, weights):  # pylint: disable=invalid-name
+    return jnp.sum(values * weights)
+  return Fn('WeightedSum', f)
 
 
 def _Accuracy():
@@ -177,6 +152,16 @@ def _Accuracy():
     # shapes.assert_same_shape(predicted_category, target_category)
     return jnp.equal(predicted_category, target_category).astype(jnp.float32)
   return Fn('_Accuracy', f)
+
+
+def _CrossEntropy():
+  """Returns a layer that computes prediction-target cross entropies."""
+  def f(model_output, target_category):  # pylint: disable=invalid-name
+    # TODO(pkozakowski): This assertion breaks some tests. Fix and uncomment.
+    # shapes.assert_shape_equals(target_category, model_output.shape[:-1])
+    target_distribution = one_hot(target_category, model_output.shape[-1])
+    return -1.0 * jnp.sum(model_output * target_distribution, axis=-1)
+  return Fn('_CrossEntropy', f)
 
 
 def _BinaryCrossEntropy():
@@ -191,14 +176,21 @@ def _BinaryCrossEntropy():
   return Fn('_BinaryCrossEntropy', f)
 
 
-def _CrossEntropy():
-  """Returns a layer that computes prediction-target cross entropies."""
-  def f(model_output, target_category):  # pylint: disable=invalid-name
-    # TODO(pkozakowski): This assertion breaks some tests. Fix and uncomment.
-    # shapes.assert_shape_equals(target_category, model_output.shape[:-1])
-    target_distribution = one_hot(target_category, model_output.shape[-1])
-    return -1.0 * jnp.sum(model_output * target_distribution, axis=-1)
-  return Fn('_CrossEntropy', f)
+def CrossEntropySum():
+  """Sum of prediction-target cross entropies for multiclass classification."""
+  return cb.Serial(_CrossEntropy(),
+                   WeightedSum(),
+                   name='CrossEntropySum',
+                   sublayers_to_print=[])
+
+
+def BinaryCrossEntropySum():
+  """Sum of prediction-target cross entropies for binary classification."""
+  return cb.Serial(_BinaryCrossEntropy(),
+                   WeightedSum(),
+                   name='BinaryCrossEntropySum',
+                   sublayers_to_print=[])
+# pylint: enable=no-value-for-parameter
 
 
 def _WeightedMean():
@@ -206,13 +198,6 @@ def _WeightedMean():
   def f(values, weights):  # pylint: disable=invalid-name
     return jnp.sum(values * weights) / jnp.sum(weights)
   return Fn('_WeightedMean', f)
-
-
-def WeightedSum():
-  """Returns a layer that computes a weighted sum of the given values."""
-  def f(values, weights):  # pylint: disable=invalid-name
-    return jnp.sum(values * weights)
-  return Fn('WeightedSum', f)
 
 
 def _WeightedSequenceMean():

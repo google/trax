@@ -98,18 +98,6 @@ class MetricsTest(absltest.TestCase):
     y = layer(xs)
     self.assertEqual(y.shape, ())
 
-  def test_binary_classifier(self):
-    layer = metrics.BinaryClassifier()
-    xs = [np.ones((9, 1))]
-    y = layer(xs)
-    self.assertEqual(y.shape, (9, 1))
-
-  def test_multiclass_classifier(self):
-    layer = metrics.MulticlassClassifier()
-    xs = [np.ones((9, 4, 4, 20))]
-    y = layer(xs)
-    self.assertEqual(y.shape, (9, 4, 4))
-
   def test_accuracy_binary_scalar(self):
     layer = tl.Accuracy(classifier=tl.BinaryClassifier())
     xs = [np.ones((9, 1)),
