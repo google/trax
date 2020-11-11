@@ -590,8 +590,13 @@ def train(output_dir,
         use_memory_efficient_trainer=use_memory_efficient_trainer,
         random_seed=random_seed)
 
+    steps_to_go = steps - loop.step
+    if steps_to_go <= 0:
+      log('Stop training, already reached the total training steps %d' % steps)
+      return loop
+
     # Train and return the loop.
-    loop.run(steps)
+    loop.run(steps_to_go)
     return loop
 
   n_devices = num_devices()

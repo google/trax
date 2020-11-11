@@ -234,9 +234,41 @@ class TraxTest(parameterized.TestCase):
           eval_steps=eval_steps,
           eval_frequency=1)
 
-      # Assert total train steps - with loop we don't resume, but train for as
-      # many steps as given, so: steps + 2*steps = 3*steps.
-      self.assertEqual(loop.step, 3 * steps)
+      # Assert total train steps
+      self.assertEqual(loop.step, 2 * steps)
+
+  @parameterized.parameters(BACKENDS)
+  def test_train_restart_with_same_steps(self, backend):
+    with fastmath.use_backend(backend):
+      # Prepare model and inputs
+      n_classes = 4
+      steps = 2
+      eval_steps = 2
+      model_fn = functools.partial(
+          models.MLP, d_hidden=16, n_output_classes=n_classes)
+      inputs = _test_inputs(n_classes)
+
+      # Train and evaluate
+      output_dir = self.create_tempdir().full_path
+      trainer_lib.train(
+          output_dir,
+          model=model_fn,
+          inputs=inputs,
+          steps=steps,
+          eval_steps=eval_steps,
+          eval_frequency=1)
+
+      # Restart training
+      loop = trainer_lib.train(
+          output_dir,
+          model=model_fn,
+          inputs=inputs,
+          steps=steps,
+          eval_steps=eval_steps,
+          eval_frequency=1)
+
+      # Assert total train steps
+      self.assertEqual(loop.step, steps)
 
   @parameterized.parameters(BACKENDS)
   def test_train_with_weights(self, backend):
