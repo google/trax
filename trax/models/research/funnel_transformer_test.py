@@ -22,7 +22,7 @@ from absl.testing import parameterized
 
 from trax import layers as tl, shapes
 from trax.models.research.funnel_transformer import PoolLayer, \
-  _FunnelResidualBlock, FunnelTransformerEncoder, FunnelTransformer, MaskPool
+  _FunnelBlock, FunnelTransformerEncoder, FunnelTransformer, MaskPool
 
 
 class FunnelTransformerTest(parameterized.TestCase):
@@ -62,8 +62,8 @@ class FunnelTransformerTest(parameterized.TestCase):
     mask = masker(mask)
 
     block = tl.Serial(
-        _FunnelResidualBlock(d_model, 8, 2, 0.1, None, 'train', tl.Relu,
-                             tl.AvgPool, (2,), (2,)))
+        _FunnelBlock(d_model, 8, 2, 0.1, None, 'train', tl.Relu,
+                     tl.AvgPool, (2,), (2,), separate_cls=True))
 
     xs = [x, mask]
     _, _ = block.init(shapes.signature(xs))
@@ -88,7 +88,8 @@ class FunnelTransformerTest(parameterized.TestCase):
 
   def test_funnel_transformer_forward_shape(self):
     d_model = 8
-    model = FunnelTransformer(2, d_model=d_model, d_ff=8,
+    vocab_size = 7
+    model = FunnelTransformer(7, d_model=d_model, d_ff=8,
                               encoder_segment_lengths=(1, 1),
                               n_decoder_blocks=1, n_heads=2, max_len=8)
 
@@ -98,7 +99,7 @@ class FunnelTransformerTest(parameterized.TestCase):
     _ = model.init(shapes.signature(x))
     y = model(x)
 
-    self.assertEqual(y.shape, (batch_size, n_tokens, d_model))
+    self.assertEqual(y.shape, (batch_size, n_tokens, vocab_size))
 
 
 if __name__ == '__main__':
