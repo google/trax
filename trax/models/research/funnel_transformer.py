@@ -60,15 +60,14 @@ def SelectFirst():
   return tl.Fn('select_first', lambda x: x[:, 0, :])
 
 
-def _Upsample(short, masks, long):
+def _Upsample(short, long):
   factor = -(-long.shape[1] // short.shape[1])  # ceil division
   new_vecs = long + short.repeat(factor, axis=1)[:, :long.shape[1], :]
-  new_masks = masks.repeat(factor, axis=-1)[:, :, :, :long.shape[1]]
-  return new_vecs, new_masks
+  return new_vecs
 
 
 def _Upsampler():
-  return tl.Fn('Upsampler', _Upsample, n_out=2)
+  return tl.Fn('Upsampler', _Upsample)
 
 
 def _FunnelBlock(d_model, d_ff, n_heads,
@@ -270,12 +269,14 @@ def FunnelTransformer(vocab_size,
       tl.Branch(
           positional_encoder, tl.PaddingMask()),  # vecs masks
       encoder_blocks_before_first_pooling,        # vecs masks
-      tl.Select([0, 1, 0]),                       # vecs masks residual = vecs
-      encoder_blocks_from_first_pooling,          # vecs masks residual
+      tl.Select([0, 1, 0, 1]),
+      # vecs masks residual = vecs old_masks
+      encoder_blocks_from_first_pooling,          # vecs masks residual masks
+      tl.Select([0, 2, 3]),                       # vecs residual masks
       tl.Parallel(
           # residual from first segment is taken before
           # normalization, so apply it now
-          None, None, tl.LayerNorm()),            # vecs masks norm(residual)
+          None, tl.LayerNorm(), None),            # vecs norm(residual) masks
       _Upsampler(),                               # vecs masks
       decoder_blocks,
       tl.Select([0], n_in=2),                     # vecs
