@@ -301,13 +301,11 @@ class TFInputsTest(tf.test.TestCase):
     # WHP inputs will have the bulk of the text.
     self.assertGreater(len(_inputs), len(targets))
 
-    # WHP there will be two sentinel tokens in the inputs and targets.
+    # WHP there will be one sentinel token in the inputs and targets.
     inputs_counter = collections.Counter(_inputs.tolist())
     targets_counter = collections.Counter(targets.tolist())
     self.assertEqual(1, inputs_counter[31999])
-    self.assertEqual(1, inputs_counter[31998])
     self.assertEqual(1, targets_counter[31999])
-    self.assertEqual(1, targets_counter[31998])
 
   def test_c4_pretrain(self):
     _t5_gin_config()
