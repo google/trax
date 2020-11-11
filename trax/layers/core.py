@@ -658,20 +658,18 @@ def Sum(axis=None, keepdims=False):
   return Fn('Sum', lambda x: jnp.sum(x, axis=axis, keepdims=keepdims))
 
 
-def BinaryClassifier(threshold=0.5):
-  """Returns a layer that performs binary classification."""
+def ThresholdToBinary(threshold=.5):
+  """Returns a layer that thresholds inputs to yield outputs in {0, 1}."""
   def f(model_output):  # pylint: disable=invalid-name
-    predicted_category = (model_output > threshold).astype(jnp.int32)
-    return predicted_category
-  return Fn('BinaryClassifier', f)
+    return (model_output > threshold).astype(jnp.int32)
+  return Fn('ThresholdToBinary', f)
 
 
-def MulticlassClassifier(axis=-1):
-  """Returns a layer that performs multiclass classification."""
+def ArgMax(axis=-1):
+  """Returns a layer that calculates argmax along the given axis."""
   def f(model_output):  # pylint: disable=invalid-name
-    predicted_category = jnp.argmax(model_output, axis=axis)
-    return predicted_category
-  return Fn('MulticlassClassifier', f)
+    return jnp.argmax(model_output, axis=axis)
+  return Fn('ArgMax', f)
 
 
 @assert_shape('...->...')  # The output and input shapes are the same.

@@ -52,7 +52,7 @@ from trax.layers import core
 from trax.layers.base import Fn
 
 
-def Accuracy(classifier=core.MulticlassClassifier()):
+def Accuracy(classifier=core.ArgMax()):
   """Returns a layer that computes mean category prediction accuracy."""
   return cb.Serial(classifier,
                    _Accuracy(),
@@ -61,7 +61,7 @@ def Accuracy(classifier=core.MulticlassClassifier()):
                    sublayers_to_print=[])
 
 
-def SequenceAccuracy(classifier=core.MulticlassClassifier()):
+def SequenceAccuracy(classifier=core.ArgMax()):
   """Returns a layer that computes mean sequence prediction accuracy."""
   return cb.Serial(classifier,
                    _Accuracy(),
