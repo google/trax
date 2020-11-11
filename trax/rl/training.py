@@ -580,7 +580,7 @@ def network_policy(
   # Copying weights from loop.model should work, because the raw model's
   # weights should be updated automatically during training, but it doesn't.
   # TODO(pkozakowski): Debug.
-  acc = loop._trainer_per_task[0].accelerated_loss_layer  # pylint: disable=protected-access
+  acc = loop._trainer_per_task[0].accelerated_model_with_loss  # pylint: disable=protected-access
   model.weights = acc._unreplicate(acc.weights[0])  # pylint: disable=protected-access
   # Add batch dimension to trajectory_np and run the model.
   pred = model(trajectory_np.observations[None, ...])

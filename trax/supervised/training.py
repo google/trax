@@ -452,9 +452,9 @@ class Loop:
     trainer = self._trainer_per_task[task_index]
     if task_changed:
       # Re-replicate weights and state to synchronize them between tasks.
-      model = trainer.loss_layer
-      trainer.accelerated_loss_layer.replicate_weights(model.weights)
-      trainer.accelerated_loss_layer.replicate_state(model.state)
+      model = trainer.model_with_loss
+      trainer.accelerated_model_with_loss.replicate_weights(model.weights)
+      trainer.accelerated_model_with_loss.replicate_state(model.state)
     return trainer.one_step(batch, rng, step=step, learning_rate=learning_rate)
 
   def _log_training_progress(self, task, total_loss, n_steps, elapsed_time,
@@ -560,8 +560,8 @@ class Loop:
       if self._use_memory_efficient_trainer:
         model_weights, model_state = self._model.weights, self._model.state
       else:
-        model_weights = trainer.accelerated_loss_layer.weights[0]
-        model_state = trainer.accelerated_loss_layer.state[0]
+        model_weights = trainer.accelerated_model_with_loss.weights[0]
+        model_state = trainer.accelerated_model_with_loss.state[0]
 
       for (eval_task, evaluator) in zip(
           self._eval_tasks, self._evaluator_per_task):

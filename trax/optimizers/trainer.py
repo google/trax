@@ -42,8 +42,8 @@ class Trainer(object):
   side effect, the function also modifies the model weights and optimizer slots.
   """
 
-  def __init__(self, loss_layer, optimizer, n_devices=None):
-    self._loss_layer = loss_layer
+  def __init__(self, model_with_loss, optimizer, n_devices=None):
+    self._model_with_loss = model_with_loss
     self._optimizer = optimizer
     self._n_devices = n_devices or fastmath.device_count()
 
@@ -51,15 +51,15 @@ class Trainer(object):
     self._slots, self._opt_params = tl.for_n_devices(
         (self._optimizer.slots, self._optimizer.opt_params), self._n_devices)
 
-    # accelerated version of loss layer to replicate weights and state
-    self._accelerated_loss_layer = tl.Accelerate(
-        loss_layer, n_devices=n_devices)
+    # accelerated version of model+loss to replicate weights and state
+    self._accelerated_model_with_loss = tl.Accelerate(
+        model_with_loss, n_devices=n_devices)
 
     # Signature:
     # (batch, weights, state, rng) -> ((loss, state), gradients)
     self._forward_and_backward_fn = (
         fastmath.value_and_grad(
-            loss_layer.pure_fn,
+            model_with_loss.pure_fn,
             argnums=1,  # arg1 of pure_fn: weights
             has_aux=True))  # return (loss, state), gradients
 
@@ -76,14 +76,14 @@ class Trainer(object):
     )
 
   @property
-  def loss_layer(self):
-    """Returns the composite model+loss layer for this instance."""
-    return self._loss_layer
+  def model_with_loss(self):
+    """Returns the composite model+loss for this instance."""
+    return self._model_with_loss
 
   @property
-  def accelerated_loss_layer(self):
-    """Returns the accelerated composite model+loss layer by this instance."""
-    return self._accelerated_loss_layer
+  def accelerated_model_with_loss(self):
+    """Returns the accelerated composite model+loss for this instance."""
+    return self._accelerated_model_with_loss
 
   @property
   def optimizer(self):
@@ -114,8 +114,8 @@ class Trainer(object):
       batch = tl.reshape_by_device(batch, self._n_devices)
       rng = jnp.stack(fastmath.random.split(rng, self._n_devices))
 
-    weights = self._accelerated_loss_layer.weights
-    state = self._accelerated_loss_layer.state
+    weights = self._accelerated_model_with_loss.weights
+    state = self._accelerated_model_with_loss.state
     if logging.vlog_is_on(1) and ((step & step - 1) == 0):
       # Prints every power of two, if debugging is enabled.
       logging.info('step[%d]', step)
@@ -132,8 +132,8 @@ class Trainer(object):
       logging.info('updated weights[%s]', new_weights)
       logging.info('stats[%s]', stats)
 
-    self._accelerated_loss_layer.weights = new_weights
-    self._accelerated_loss_layer.state = new_state
+    self._accelerated_model_with_loss.weights = new_weights
+    self._accelerated_model_with_loss.state = new_state
     self._slots = new_slots
     self._optimizer.slots = self._unreplicate(self._slots)
     return stats['loss'], stats
