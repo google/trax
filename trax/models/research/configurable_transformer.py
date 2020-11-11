@@ -20,7 +20,48 @@ The "Transformer" name and network architecture were introduced in the paper
 [Attention Is All You Need](https://arxiv.org/abs/1706.03762).
 """
 
+import copy
 from trax import layers as tl
+
+
+class LayerDuplicate(tl.Layer):
+  """Creates a duplicate of a layer which shares weights with the original.
+
+  The original layer must be used in a model as well for proper initialization.
+  """
+
+  def __init__(self, original, own_rng=False, own_state=True):
+    if isinstance(original, (list, tuple)):
+      # Automatic conversion to Serial should work here fine, but I am not
+      # completely sure about that weights/state/rng will be shared properly.
+      raise ValueError('Input to LayerDuplicate must be a Layer, not a list. '
+                       'Convert to Serial before passing.')
+    #   original = tl.Serial(original)
+    original_name = original.name
+    super().__init__(name=f'DuplicateOf_{original_name}',
+                     n_in=original.n_in, n_out=original.n_out)
+    self._original = original
+    self._own_rng = own_rng
+    self._own_state = own_state
+
+  def forward(self, x):
+    rng = self.rng if self._own_rng else self._original.rng
+    state = self.state if self._own_state else self._original.state
+    y, new_state = self._original.pure_fn(
+        x=x, weights=self._original.weights, state=state,
+        rng=rng, use_cache=False)
+    if self._own_state:
+      self.state = new_state
+    else:
+      self._original.state = new_state
+    return y
+
+  def init_weights_and_state(self, input_signature):
+    # TODO(jaszczur): We assume here that the original layer was already
+    # initialized. Either check if this assumption is true, or don't rewrite
+    # code for it not to be required.
+    if self._own_state:
+      self.state = copy.deepcopy(self._original.state)
 
 
 def _FeedForward(d_model, d_ff, dropout, activation, act_dropout,
@@ -386,6 +427,8 @@ def ConfigurableTransformerLM(vocab_size,
                               ff_sparsity_type='1inN',
                               attention_chunk_size=0,
                               attention_type=tl.CausalAttention,
+                              duplicates=0,
+                              duplicates_type='block',
                               axial_pos_shape=None,
                               d_axial_pos_embs=None):
   """Returns a Transformer language model.
@@ -435,6 +478,8 @@ def ConfigurableTransformerLM(vocab_size,
       use BlockSparseFF if ff_sparsity_type=`'Block'`
     attention_chunk_size: int, if > 0 run attention chunked at this size
     attention_type: The attention layer to use for the decoder part.
+    duplicates: Number of duplicates to use.
+    duplicates_type: Type of duplicates to use. Either 'block' or 'model'.
     axial_pos_shape: tuple of ints: input shape to use for the axial position
       encoding. If unset, axial position encoding is disabled.
     d_axial_pos_embs: tuple of ints: depth of position embedding for each axis.
@@ -451,15 +496,24 @@ def ConfigurableTransformerLM(vocab_size,
           mode, dropout, max_len, axial_pos_shape, d_axial_pos_embs)
   ]
 
-  # pylint: disable=g-complex-comprehension
-  decoder_blocks = [
-      DecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
-                   ff_activation, ff_dropout, ff_chunk_size, ff_use_sru,
-                   ff_sparsity, ff_sparsity_type,
-                   attention_chunk_size, attention_type)
-      for i in range(n_layers)
-  ]
-  # pylint: enable=g-complex-comprehension
+  decoder_blocks = []
+  for _ in range(n_layers):
+    decoder_block = tl.Serial(DecoderBlock(
+        d_model, d_ff, n_heads, dropout, dropout_shared_axes, mode,
+        ff_activation, ff_dropout, ff_chunk_size, ff_use_sru, ff_sparsity,
+        ff_sparsity_type, attention_chunk_size, attention_type))
+    decoder_blocks.append(decoder_block)
+    if duplicates_type == 'block':
+      for _ in range(duplicates):
+        duplicate = LayerDuplicate(decoder_block)
+        decoder_blocks.append(duplicate)
+
+  if duplicates_type == 'model':
+    all_blocks = tl.Serial(decoder_blocks)
+    decoder_blocks = [all_blocks]
+    for _ in range(duplicates):
+      duplicate = LayerDuplicate(all_blocks)
+      decoder_blocks.append(duplicate)
 
   # Assemble and return the model.
   return tl.Serial(              # tokens (or chunked tuple of tokens)

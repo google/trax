@@ -24,8 +24,41 @@ import numpy as np
 
 from trax import fastmath
 from trax import layers as tl
+from trax import optimizers
 from trax import shapes
 from trax.models.research import configurable_transformer as ct
+from trax.supervised import training
+
+
+class LayerDuplicateTest(parameterized.TestCase):
+
+  def test_duplicate_dense(self):
+    layer = tl.Serial(tl.Serial(), tl.Dense(8))
+    layer_duplicate = ct.LayerDuplicate(layer)
+    model = tl.Serial(tl.Branch(layer,
+                                layer_duplicate),
+                      tl.SubtractTop())
+    x = np.ones((3, 5))
+    _, _ = model.init(shapes.signature(x))
+    y = model(x)
+    self.assertEqual(y.shape, (3, 8))
+    self.assertAlmostEqual(np.sum(y), 0.0)
+
+  def test_duplicate_state(self):
+    layer = tl.Serial(tl.Serial(), tl.SummaryScalar(name='Avg'))
+    layer_duplicate1 = ct.LayerDuplicate(layer, own_state=True)
+    layer_duplicate2 = ct.LayerDuplicate(layer, own_state=True)
+    model = tl.Serial(layer,
+                      layer_duplicate1,
+                      tl.Fn('Mult2', lambda x: x*2),
+                      layer_duplicate2,
+                      )
+    x = np.ones((3, 5))
+    _, _ = model.init(shapes.signature(x))
+    y = model(x)
+    self.assertEqual(y.shape, (3, 5))
+    self.assertEqual(layer.state, layer_duplicate1.state)
+    self.assertNotEqual(layer.state, layer_duplicate2.state)
 
 
 class ConfigurableTransformerTest(parameterized.TestCase):
@@ -38,6 +71,138 @@ class ConfigurableTransformerTest(parameterized.TestCase):
     _, _ = model.init(shapes.signature(x))
     y = model(x)
     self.assertEqual(y.shape, (3, 5, vocab_size))
+
+  def test_transformer_duplicates_lm_forward_shape(self):
+    vocab_size = 16
+    x = np.ones((3, 5)).astype(np.int32)
+
+    # Testing duplicates type: block
+    model = ct.ConfigurableTransformerLM(
+        vocab_size, duplicates=2, d_model=32, d_ff=64, n_layers=2,
+        n_heads=2, duplicates_type='block')
+    _, _ = model.init(shapes.signature(x))
+    y = model(x)
+    self.assertEqual(y.shape, (3, 5, vocab_size))
+
+    # Testing duplicates type: model
+    model = ct.ConfigurableTransformerLM(
+        vocab_size, duplicates=2, d_model=32, d_ff=64, n_layers=2,
+        n_heads=2, duplicates_type='model')
+    _, _ = model.init(shapes.signature(x))
+    y = model(x)
+    self.assertEqual(y.shape, (3, 5, vocab_size))
+
+  def test_train_save_restore_duplicated_block_transformer(self):
+    """Saves and restores a checkpoint to check for equivalence."""
+    vocab_size = 8
+    task = training.TrainTask(
+        _very_simple_transformer_data(), tl.L2Loss(), optimizers.SGD(.01))
+    eval_task = training.EvalTask(
+        _very_simple_transformer_data(),  # deliberately re-using training data
+        [tl.L2Loss()],
+        metric_names=['SGD.L2Loss'])
+    tmp_dir = self.create_tempdir().full_path
+
+    def _make_model_and_session():
+      m = ct.ConfigurableTransformerLM(
+          vocab_size, d_model=4, d_ff=4, n_layers=1, n_heads=2, dropout=0.,
+          ff_dropout=0., duplicates=1, duplicates_type='block')
+      ts = training.Loop(m, [task], eval_tasks=[eval_task],
+                         eval_at=lambda step_n: step_n % 2 == 0,
+                         output_dir=tmp_dir)
+      return m, ts
+
+    model, training_session = _make_model_and_session()
+    self.assertEqual(0, training_session.step)
+    training_session.run(n_steps=1)
+    training_session.save_checkpoint()
+    model2, training_session2 = _make_model_and_session()
+
+    x = np.ones((2, 2)).astype(np.int32)
+    y1 = model(x, rng=fastmath.random.get_prng(0))
+    y2 = model2(x, rng=fastmath.random.get_prng(0))
+    self.assertEqual(str(y1), str(y2))
+
+    training_session2.run(n_steps=1)
+    y1 = model(x, rng=fastmath.random.get_prng(0))
+    y2 = model2(x, rng=fastmath.random.get_prng(0))
+    self.assertNotEqual(str(y1), str(y2))
+
+  def test_train_save_restore_duplicated_model_transformer(self):
+    """Saves and restores a checkpoint to check for equivalence."""
+    vocab_size = 8
+    task = training.TrainTask(
+        _very_simple_transformer_data(), tl.L2Loss(), optimizers.SGD(.01))
+    eval_task = training.EvalTask(
+        _very_simple_transformer_data(),  # deliberately re-using training data
+        [tl.L2Loss()],
+        metric_names=['SGD.L2Loss'])
+    tmp_dir = self.create_tempdir().full_path
+
+    def _make_model_and_session():
+      m = ct.ConfigurableTransformerLM(
+          vocab_size, d_model=4, d_ff=4, n_layers=1, n_heads=2, dropout=0.,
+          ff_dropout=0., duplicates=1, duplicates_type='block')
+      ts = training.Loop(m, [task], eval_tasks=[eval_task],
+                         eval_at=lambda step_n: step_n % 2 == 0,
+                         output_dir=tmp_dir)
+      return m, ts
+
+    model, training_session = _make_model_and_session()
+    self.assertEqual(0, training_session.step)
+    training_session.run(n_steps=1)
+    training_session.save_checkpoint()
+    model2, training_session2 = _make_model_and_session()
+
+    x = np.ones((2, 2)).astype(np.int32)
+    y1 = model(x, rng=fastmath.random.get_prng(0))
+    y2 = model2(x, rng=fastmath.random.get_prng(0))
+    self.assertEqual(str(y1), str(y2))
+
+    training_session2.run(n_steps=1)
+    y1 = model(x, rng=fastmath.random.get_prng(0))
+    y2 = model2(x, rng=fastmath.random.get_prng(0))
+    self.assertNotEqual(str(y1), str(y2))
+
+  def test_train_save_standard_restore_duplicated(self):
+    """Saves non-duplicated model and restores weights into duplicated model."""
+    vocab_size = 8
+    task = training.TrainTask(
+        _very_simple_transformer_data(), tl.L2Loss(), optimizers.SGD(.01))
+    eval_task = training.EvalTask(
+        _very_simple_transformer_data(),  # deliberately re-using training data
+        [tl.L2Loss()],
+        metric_names=['SGD.L2Loss'])
+    tmp_dir = self.create_tempdir().full_path
+
+    def _make_model_and_session(duplicates):
+      m = ct.ConfigurableTransformerLM(
+          vocab_size, d_model=4, d_ff=4, n_layers=1, n_heads=2, dropout=0.,
+          ff_dropout=0., duplicates=duplicates)
+      ts = training.Loop(m, [task], eval_tasks=[eval_task],
+                         eval_at=lambda step_n: step_n % 2 == 0,
+                         output_dir=tmp_dir)
+      return m, ts
+
+    # standard model without repeating layers
+    model, training_session = _make_model_and_session(0)
+    self.assertEqual(0, training_session.step)
+    training_session.run(n_steps=1)
+    training_session.save_checkpoint()
+
+    # model with repeating blocks
+    model2, training_session2 = _make_model_and_session(1)
+    x = np.ones((2, 2)).astype(np.int32)
+    y1 = model(x, rng=fastmath.random.get_prng(0))
+    y2 = model2(x, rng=fastmath.random.get_prng(0))
+    # Outputs shouldn't be equal!
+    self.assertNotEqual(str(y1), str(y2))
+
+    # Training should work.
+    training_session2.run(n_steps=1)
+    y1 = model(x, rng=fastmath.random.get_prng(0))
+    y2 = model2(x, rng=fastmath.random.get_prng(0))
+    self.assertNotEqual(str(y1), str(y2))
 
   def _test_transformer_forward_shape(self, input_vocab_size,
                                       output_vocab_size):
@@ -156,6 +321,15 @@ class ConfigurableTransformerTest(parameterized.TestCase):
 
     y = model_in(x)
     self.assertEqual(y.shape, input_shape + (d_model,))
+
+
+def _very_simple_transformer_data():
+  """"Returns stream of labeled data that maps small integers to constant pi."""
+  inputs_batch = np.ones((2, 2)).astype(np.int32)
+  targets_batch = np.ones((2, 2, 8)).astype(np.int32)
+  labeled_batch = (inputs_batch, targets_batch, np.ones_like(targets_batch))
+  while True:
+    yield labeled_batch
 
 
 if __name__ == '__main__':
