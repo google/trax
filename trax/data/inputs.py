@@ -374,6 +374,38 @@ def FilterByLength(max_length,  # pylint: disable=invalid-name
   return filtered
 
 
+def ConcatenateToLMInput(pad_to_length=None):  # pylint: disable=invalid-name
+  """Prepares the input needed for training of Language Models.
+
+  Each example needs to contain two elements (input and target).
+  Input is concatenated to target and, if pad_to_length is given, padded to
+  length provided.
+  The loss_weights indicates only the target, without input nor padding.
+
+  Args:
+    pad_to_length: int, total length of padding of input and target arrays.
+  Returns:
+    Function to return input for a LM.
+  """
+  def _concatenate_to_lm_input(generator, pad_to_length=None):
+    for example in generator:
+      if len(example) != 2:
+        raise ValueError('Examples must have exactly 2 elements.')
+      concatenated = np.concatenate((example[0], example[1]), axis=-1)
+      loss_weights = np.concatenate((np.zeros_like(example[0]),
+                                     np.ones_like(example[1])))
+      if pad_to_length is not None:
+        padding_len = pad_to_length-(example[0].shape[0] + example[1].shape[0])
+        if padding_len < 0:
+          raise ValueError(
+              f'Example lengths ({example[0].shape[0]}, {example[1].shape[0]}) '
+              f'longer than pad_to_length ({pad_to_length}).')
+        loss_weights = np.pad(loss_weights, (0, padding_len), 'constant')
+        concatenated = np.pad(concatenated, (0, padding_len), 'constant')
+      yield (concatenated, concatenated, loss_weights)
+  return lambda g: _concatenate_to_lm_input(g, pad_to_length)
+
+
 def PadToLength(  # pylint: disable=invalid-name
     len_map=None, pad_value=0, multiple=False):
   """Pads the values to lengths given in `len_map'.
