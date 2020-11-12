@@ -116,6 +116,15 @@ class FunnelTransformerTest(parameterized.TestCase):
 
     self.assertEqual(y.shape, (batch_size, n_tokens, vocab_size))
 
+  def test_transformer_lm_forward_shape(self):
+    vocab_size = 16
+    model = ft.FunnelTransformerLM(
+        vocab_size, d_model=32, d_ff=64, n_heads=2)
+    x = np.ones((3, 6)).astype(np.int32)
+    _, _ = model.init(shapes.signature(x))
+    y = model(x)
+    self.assertEqual(y.shape, (3, 6, vocab_size))
+
 
 if __name__ == '__main__':
   absltest.main()
