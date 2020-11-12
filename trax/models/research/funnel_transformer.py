@@ -111,6 +111,13 @@ def _Upsampler(total_pool_size, separate_cls):
   return tl.Fn('Upsampler', _Upsample)
 
 
+def _UpsamplerLM(shorten_factor):
+  def _upsample(short):
+    new_vecs = short.repeat(shorten_factor, axis=1)
+    return new_vecs
+  return tl.Fn('UpsamplerLM', _upsample)
+
+
 def _FunnelBlock(d_model, d_ff, n_heads,
                  dropout, dropout_shared_axes, mode, ff_activation,
                  pool_layer, pool_size, strides, separate_cls):
@@ -439,7 +446,7 @@ def _FunnelDecoderBlock(shorten_factor, d_model, d_ff, n_heads,
   Returns:
     A list of layers that maps an activation tensor to an activation tensor.
   """
-  pooling = PoolLayer(tl.AvgPool, shorten_factor, shorten_factor,
+  pooling = PoolLayer(tl.AvgPool, (shorten_factor,), (shorten_factor,),
                       separate_cls=False)
 
   causal_attention = FunnelCausalAttention(
@@ -456,7 +463,6 @@ def _FunnelDecoderBlock(shorten_factor, d_model, d_ff, n_heads,
       tl.Branch(pooling, None),                     # h', h
       tl.Residual(
           tl.Select([0, 1, 1]),                     # h', h, h
-          tl.LayerNorm(),
           causal_attention,
           dropout_,
       ),
@@ -535,7 +541,7 @@ def FunnelTransformerLM(vocab_size,
   pre_decoder_blocks = create_decoder_blocks(n_pre_decoder_blocks)
   post_decoder_blocks = create_decoder_blocks(n_post_decoder_blocks)
 
-  total_shorten_factor = functools.reduce(lambda x, y: x*y, shorten_factors) - 1
+  total_shorten_factor = functools.reduce(lambda x, y: x*y, shorten_factors)
 
   funnel_blocks = [[_FunnelDecoderBlock(
       shorten_factor, d_model, d_ff, n_heads, dropout, dropout_shared_axes,
@@ -550,8 +556,8 @@ def FunnelTransformerLM(vocab_size,
       pre_decoder_blocks,            # vecs
       tl.Residual(
           tl.ShiftRight(n_positions=total_shorten_factor - 1),
-          # funnel_blocks,
-          _Upsampler()  # TODO: upsampling without depending on masks
+          funnel_blocks,
+          _UpsamplerLM(total_shorten_factor)
       ),
       post_decoder_blocks,
       tl.LayerNorm(),            # vecs
