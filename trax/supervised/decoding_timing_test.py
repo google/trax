@@ -36,13 +36,17 @@ class DecodingTimingTest(test.TestCase):
     max_len = 16
     all_settings = [
         {'attn_sparsity': 64, 'ff_sparsity': (256, 32),
-         'attn': tl.MultiplicativeCausalAttention},
+         'attn': (tl.MultiplicativeCausalAttention, {})},
         {'attn_sparsity': 64, 'ff_sparsity': (256, 32),
-         'attn': tl.ModularCausalAttention},
+         'attn': (tl.ModularCausalAttention, {})},
         {'attn_sparsity': 64, 'ff_sparsity': (256, 32),
-         'attn': tl.ConvCausalAttention},
+         'attn': (tl.ConvCausalAttention, {})},
         {'attn_sparsity': 64, 'ff_sparsity': (256, 32),
-         'attn': tl.MultiplicativeConvCausalAttention},
+         'attn': (tl.MultiplicativeConvCausalAttention,
+                  {'length_kernel_size': 1})},
+        {'attn_sparsity': 64, 'ff_sparsity': (256, 32),
+         'attn': (tl.MultiplicativeConvCausalAttention,
+                  {'length_kernel_size': 3})},
     ]
     messages = []
 
@@ -55,10 +59,11 @@ class DecodingTimingTest(test.TestCase):
             predict_mem_len=2 * max_len)
 
       def _causal_attention_fn():
+        attn_layer, attn_kwargs = settings['attn']  # pylint: disable=cell-var-from-loop
         return functools.partial(
-            settings['attn'],  # pylint: disable=cell-var-from-loop
+            attn_layer,
             sparsity=settings['attn_sparsity'],  # pylint: disable=cell-var-from-loop
-            max_inference_length=2 * max_len)
+            max_inference_length=2 * max_len, **attn_kwargs)
 
       pred_model = models.Reformer2(
           mode='predict',

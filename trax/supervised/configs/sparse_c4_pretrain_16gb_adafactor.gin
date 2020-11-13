@@ -28,6 +28,7 @@ enc_attn_type = @Attention
 
 MultiplicativeModularCausalAttention.sparsity = 16
 MultiplicativeConvCausalAttention.sparsity = 16
+MultiplicativeConvCausalAttention.length_kernel_size = 3
 
 dec_attn_type = @CausalAttention
 
