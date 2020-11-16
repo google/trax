@@ -34,7 +34,7 @@ class OptimizersTest(absltest.TestCase):
     opt_1 = optimizers.SGD(.01)
     self.assertIsNone(opt_1.slots)
     opt_1.tree_init(weight_tree)
-    self.assertIsInstance(opt_1.slots, list)
+    self.assertIsInstance(opt_1.slots, tuple)
     self.assertLen(opt_1.slots, 1)
     self.assertIsNone(opt_1.slots[0])
 
@@ -42,7 +42,7 @@ class OptimizersTest(absltest.TestCase):
     opt_2 = momentum.Momentum(.01)
     self.assertIsNone(opt_2.slots)
     opt_2.tree_init(weight_tree)
-    self.assertIsInstance(opt_2.slots, list)
+    self.assertIsInstance(opt_2.slots, tuple)
     self.assertLen(opt_2.slots, 1)
     self.assertEqual(weights_shape, opt_2.slots[0].shape)
 

@@ -121,14 +121,12 @@ class Optimizer(object):
       slot values and `opt_params` are optimizer hyperparameters (e.g.,
       learning rate, momentum).
     """
-    self._slots = [self.init(weight)
-                   for weight in fastmath.tree_flatten(weight_tree)]
-    return (
-        self._slots,
-        self._init_opt_params,
-    )
+    self._slots = tuple(self.init(weight)
+                        for weight in fastmath.tree_flatten(weight_tree))
+    return (self._slots, self._init_opt_params)
 
-  def tree_update(self, step, grad_tree, weight_tree, slots, opt_params):
+  def tree_update(self, step, grad_tree, weight_tree, slots, opt_params,
+                  store_slots=True):
     """Assembles node-local weight and slot updates for the full layer tree.
 
     Args:
@@ -139,6 +137,8 @@ class Optimizer(object):
           the model's layer structure.
       slots: Optimizer slots.
       opt_params: Optimizer hyperparameters (e.g. learning rate, momentum).
+      store_slots: Boolean; if True, stores resulting slots in this object;
+        when set to False, this becomes a pure function.
 
     Returns:
       Tuple `(weights, slots)`, where `weights` are the optimizer-updated
@@ -159,10 +159,13 @@ class Optimizer(object):
         self._update_and_check(step, grad, weight, slot, opt_params)
         for (grad, weight, slot) in zip(grads_flat, weights_flat, slots)
     ]
-    new_weights_flat, self.slots = map(list, zip(*updated_pairs))
+    new_weights_flat, slots = zip(*updated_pairs)
     new_weights, _ = fastmath.tree_unflatten(new_weights_flat, weight_tree)
     metrics = {'gradients_l2': grads_norm, 'weights_l2': weights_norm}
-    return new_weights, self.slots, metrics
+    slots = tuple(slots)
+    if store_slots:
+      self.slots = slots
+    return new_weights, slots, metrics
 
   def _l2_norm(self, flat_list):
     """Returns an L2-like norm of all elements of all tensors in `flat_list`.

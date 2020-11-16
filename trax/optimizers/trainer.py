@@ -16,9 +16,13 @@
 # Lint as: python3
 """Multi-device accelerated optimization."""
 
+from concurrent import futures
 import functools
 import os
+import time
+
 from absl import logging
+import jax
 import psutil
 
 from trax import fastmath
@@ -167,7 +171,7 @@ def _accelerate_update_fn(forward_and_backward_fn,
       (loss, state), gradients = forward_and_backward_fn(
           batch, weights, state, rng)
       weights, slots, stats = optimizer.tree_update(
-          step, gradients, weights, slots, opt_params)
+          step, gradients, weights, slots, opt_params, store_slots=False)
       stats['loss'] = loss
       return (weights, slots), state, stats
     if accelerate:
@@ -187,8 +191,8 @@ def _accelerate_update_fn(forward_and_backward_fn,
     (loss, state), gradients = (
         forward_and_backward_fn(batch, weights, state, rng))
     gradients = _average_multidevice_gradients(gradients)
-    weights, slots, stats = (
-        optimizer.tree_update(step, gradients, weights, slots, opt_params))
+    weights, slots, stats = optimizer.tree_update(
+        step, gradients, weights, slots, opt_params, store_slots=False)
     stats['loss'] = loss
     return (weights, slots), state, stats
 
@@ -218,7 +222,8 @@ class ReversibleSerialTrainer(object):
   Note: we do not allow sharing weights between blocks for now.
   """
 
-  def __init__(self, blocks, loss_layer, optimizer_fn, n_devices=None):
+  def __init__(self, blocks, loss_layer, optimizer_fn, n_devices=None,
+               memoize_jit=True):
     """Creates a ReversibleSerialTrainer and the needed optimizers.
 
     This trainer performs updates equivalent to using the default Trainer on::
@@ -237,6 +242,12 @@ class ReversibleSerialTrainer(object):
       optimizer_fn: A function to create the optimizer, e.g., `optimizers.Adam`.
       n_devices: An optional integer, number of accelerator devices to use;
         by default, all available accelerators will be used.
+      memoize_jit: Whether to memoize JITed functions; this significantly speeds
+        up XLA compilation of larger models, but it uses `repr(layer)` as keys
+        to memoize so it could fail if two layers with different functionality
+        had the same string representaion. We have not encountered such case
+        yet so this is turned on by default, but consider turning it off or
+        reviewing your model if you use custom layers and encounter a problem.
     """
     self._blocks = [(tl.Serial(std), rev) for (std, rev) in blocks]
     self._loss_layer = loss_layer
@@ -244,10 +255,12 @@ class ReversibleSerialTrainer(object):
     self._n_devices = n_devices or fastmath.device_count()
     self._n_layers = 1 + sum([len(revs) + 1 for (_, revs) in self._blocks])
     self._n_steps_per_log = 100  # Log layers and stats every 100 steps.
+    self._jit_memory = {} if memoize_jit else None
 
     # Create accelerated versions of layers as pmaped/jited pure_fn.
     self._accelerated_layer_fns = fastmath.nested_map(
-        lambda layer: self._pjit(layer.pure_fn), self._blocks)
+        lambda layer: self._pjit(layer.pure_fn, f'fwd {repr(layer)}'),
+        self._blocks)
 
     # Create per-layer optimizers and replicate opt_params.
     def _make_optimizer(layer):
@@ -273,10 +286,13 @@ class ReversibleSerialTrainer(object):
       std_fbo = _fbo_with_layer_and_opt(std_layer, std_opt, self._n_devices)
       rev_and_fbos = []
       for layer, opt in zip(rev_layers, rev_opts):
-        rev_and_fbos.append(self._pjit(_reverse_and_fbo_with_layer_and_opt(
-            layer, opt, self._n_devices), donate_argnums=(1,)))
-      self._fbos.append(
-          (self._pjit(std_fbo, donate_argnums=(1,)), rev_and_fbos))
+        rev_and_fbo = _reverse_and_fbo_with_layer_and_opt(
+            layer, opt, self._n_devices)
+        rev_and_fbos.append(self._pjit(
+            rev_and_fbo, f'rev+bwd {repr(layer)}', donate_argnums=(1,)))
+      jit_std_fbo = self._pjit(
+          std_fbo, f'bwd {repr(std_layer)}', donate_argnums=(1,))
+      self._fbos.append((jit_std_fbo, rev_and_fbos))
 
     loss_fbo = _fbo_with_layer_and_opt(
         self._loss_layer, self._loss_opt, self._n_devices, 'loss')
@@ -304,12 +320,19 @@ class ReversibleSerialTrainer(object):
       for (opt, slot) in zip([s_opt] + r_opts, [s_slots] + r_slots):
         opt.slots = slot
 
-  def _pjit(self, f, donate_argnums=()):
+  def _pjit(self, f, memory_key=None, donate_argnums=()):
     """JIT f if 1 device is available and pmap if more are available."""
+    should_memoize = self._jit_memory is not None and memory_key is not None
+    if (should_memoize and memory_key in self._jit_memory):
+      logging.info('Found JITed function in memory for: %s', memory_key)
+      return self._jit_memory[memory_key]
     if self._n_devices == 1:
-      return fastmath.jit(f, donate_argnums=donate_argnums)
+      res = fastmath.jit(f, donate_argnums=donate_argnums)
     else:
-      return fastmath.pmap(f, axis_name='batch', donate_argnums=donate_argnums)
+      res = fastmath.pmap(f, axis_name='batch', donate_argnums=donate_argnums)
+    if should_memoize:
+      self._jit_memory[memory_key] = res
+    return res
 
   def _replicate(self, x):
     if self._n_devices > 1:
@@ -557,7 +580,7 @@ def _fbo_with_layer_and_opt(layer, optimizer, n_devices, stats_name=None):
 
     # Run the optimizer.
     new_weights, new_slots, stats = optimizer.tree_update(
-        step, grads_weights, weights, slots, opt_params)
+        step, grads_weights, weights, slots, opt_params, store_slots=False)
     if stats_name is not None:
       stats[stats_name] = activations
     return new_weights, new_state, new_slots, grads_inputs, stats
@@ -589,7 +612,7 @@ def _reverse_and_fbo_with_layer_and_opt(layer, optimizer, n_devices):
 
     # Run the optimizer.
     new_weights, new_slots, stats = optimizer.tree_update(
-        step, grads_weights, weights, slots, opt_params)
+        step, grads_weights, weights, slots, opt_params, store_slots=False)
 
     return new_weights, new_slots, inputs, grads_inputs, stats
 
@@ -702,3 +725,5 @@ def init_reversible_blocks(blocks, loss_layer, input_signature, rng):
       sig_stack = cb.outputs_onto_stack(out_sig, sig_stack, layer.n_in)
   loss_layer.init(cb.inputs_from_stack(sig_stack, loss_layer.n_in), rng=rng)
   loss_layer.weights = tl.on_cpu(loss_layer.weights)
+
+

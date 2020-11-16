@@ -614,8 +614,6 @@ class Layer:
     do_forward = fastmath.custom_vjp(_f, _f_fwd, _f_bwd, nondiff_argnums=(0, 1))
 
     output, state = do_forward(self.state, self._rng, x, self.weights)
-    # TODO(lukaszkaiser): Investigate why we need this stop_gradient
-    # state = fastmath.stop_gradient(state)
     return output, state
 
 
