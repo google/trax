@@ -289,14 +289,14 @@ class ReversibleSerialTrainer(object):
         rev_and_fbo = _reverse_and_fbo_with_layer_and_opt(
             layer, opt, self._n_devices)
         rev_and_fbos.append(self._pjit(
-            rev_and_fbo, f'rev+bwd {repr(layer)}', donate_argnums=(1,)))
+            rev_and_fbo, f'rev+bwd {repr(layer)}', donate_argnums=(1, 2)))
       jit_std_fbo = self._pjit(
-          std_fbo, f'bwd {repr(std_layer)}', donate_argnums=(1,))
+          std_fbo, f'bwd {repr(std_layer)}', donate_argnums=(1, 2))
       self._fbos.append((jit_std_fbo, rev_and_fbos))
 
     loss_fbo = _fbo_with_layer_and_opt(
         self._loss_layer, self._loss_opt, self._n_devices, 'loss')
-    self._loss_fbo = self._pjit(loss_fbo, donate_argnums=(1,))
+    self._loss_fbo = self._pjit(loss_fbo, donate_argnums=(1, 2))
 
   @property
   def loss_layer(self):
@@ -502,7 +502,7 @@ class ReversibleSerialTrainer(object):
     slots = self._replicate(optimizer.slots)
     weights = self._replicate(layer.weights)
     new_weights, new_state, new_slots, new_grads, stats = fbo_fn(
-        inp, weights, state, slots, replicated_opt_params, rng, step, grads)
+        inp, weights, grads, state, slots, replicated_opt_params, rng, step)
     layer.weights = self._unreplicate(new_weights)
     layer.state = self._unreplicate(new_state)
     optimizer.slots = self._unreplicate(new_slots)
@@ -533,8 +533,8 @@ class ReversibleSerialTrainer(object):
       opt_params = replicated_opt_params[counter]
       weights = self._replicate(layer.weights)  # cpu -> accelerator
       new_weights, new_slots, inputs, grads, layer_stats = reverse_and_fbo(
-          outputs, weights, old_state, new_state,
-          slots, opt_params, rng, step, grads)
+          outputs, weights, grads, old_state, new_state,
+          slots, opt_params, rng, step)
       layer.weights = self._unreplicate(new_weights)  # accelerator -> cpu
       layer.state = self._unreplicate(new_state)
       optimizers[counter].slots = self._unreplicate(new_slots)
@@ -550,7 +550,7 @@ class ReversibleSerialTrainer(object):
 
 def _fbo_with_layer_and_opt(layer, optimizer, n_devices, stats_name=None):
   """Create the fbo function for a given layer and optimizer."""
-  def fbo(inputs, weights, state, slots, opt_params, rng, step, grads):
+  def fbo(inputs, weights, grads, state, slots, opt_params, rng, step):
     """FBO of the layer."""
     # We need a layer pure_fn but only for inputs and weights.
     def pure_fn_without_state_and_rng(x, w):
@@ -595,8 +595,8 @@ def _fbo_with_layer_and_opt(layer, optimizer, n_devices, stats_name=None):
 
 def _reverse_and_fbo_with_layer_and_opt(layer, optimizer, n_devices):
   """Create the reverse_and_fbo function for a given layer and optimizer."""
-  def reverse_and_fbo(output, weights, state, new_state,
-                      slots, opt_params, rng, step, grads):
+  def reverse_and_fbo(output, weights, grads, state, new_state,
+                      slots, opt_params, rng, step):
     """Reverse and FBO of the layer."""
     # Call the reverse_and_grad method of the layer.
     inputs, (grads_inputs, grads_weights) = layer.reverse_and_grad(
