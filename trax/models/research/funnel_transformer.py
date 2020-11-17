@@ -21,6 +21,8 @@ Language Processing https://arxiv.org/abs/2006.03236 """
 from trax import layers as tl
 from trax.layers.assert_shape import assert_shape
 from trax.models.transformer import _EncoderBlock, _FeedForwardBlock
+from trax.fastmath import numpy as jnp
+from trax.fastmath.ops import index_add
 
 
 @assert_shape('bld->bSd')
@@ -60,13 +62,23 @@ def SelectFirst():
   return tl.Fn('select_first', lambda x: x[:, 0, :])
 
 
-def _Upsample(short, long):
-  factor = -(-long.shape[1] // short.shape[1])  # ceil division
-  new_vecs = long + short.repeat(factor, axis=1)[:, :long.shape[1], :]
-  return new_vecs
+def _Upsampler(total_pool_size, separate_cls):
+  def _Upsample(short, long):
+    if separate_cls:
+      upsampled_short = jnp.concatenate(
+          (short[:, :1, :],
+           short[:, 1:, :].repeat(total_pool_size, axis=1)),
+          axis=1)
+      return index_add(
+          long,
+          (slice(None),
+           slice(None, upsampled_short.shape[1]),
+           slice(None)),
+          upsampled_short)
+    else:
+      upsampled_short = short.repeat(total_pool_size, axis=1)
+      return long + upsampled_short
 
-
-def _Upsampler():
   return tl.Fn('Upsampler', _Upsample)
 
 
@@ -351,6 +363,8 @@ def FunnelTransformer(vocab_size,
                                   dropout_shared_axes, mode, ff_activation)
                     for _ in range(n_decoder_blocks)]
 
+  total_pool_size = pool_size[0] ** (len(encoder_segment_lengths) - 1)
+
   # Assemble and return the model.
   return tl.Serial(                               # toks
       tl.Branch(
@@ -364,7 +378,7 @@ def FunnelTransformer(vocab_size,
           # residual from first segment is taken before
           # normalization, so apply it now
           None, tl.LayerNorm(), None),            # vecs norm(residual) masks
-      _Upsampler(),                               # vecs masks
+      _Upsampler(total_pool_size, separate_cls),  # vecs masks
       decoder_blocks,
       tl.Select([0], n_in=2),                     # vecs
       tl.LayerNorm(),

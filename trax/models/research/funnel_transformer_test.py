@@ -22,7 +22,8 @@ from absl.testing import parameterized
 
 from trax import layers as tl, shapes
 from trax.models.research.funnel_transformer import PoolLayer, \
-  _FunnelBlock, FunnelTransformerEncoder, FunnelTransformer, MaskPool
+  _FunnelBlock, FunnelTransformerEncoder, FunnelTransformer, MaskPool, \
+  _Upsampler
 
 
 class FunnelTransformerTest(parameterized.TestCase):
@@ -50,6 +51,21 @@ class FunnelTransformerTest(parameterized.TestCase):
 
     self.assertEqual(y2.shape, (1, 1, 1, 2))
     self.assertEqual(y2.squeeze().tolist(), [True, True])
+
+  def test_upsampler(self):
+    long = np.ones((1, 8, 1))
+    short = np.ones((1, 2, 1))
+    total_pool_size = long.shape[1] // short.shape[1]
+    up_cls = _Upsampler(total_pool_size, separate_cls=True)
+    up = _Upsampler(total_pool_size, separate_cls=False)
+
+    y_cls = up_cls([short, long])
+    y = up((short, long))
+    self.assertEqual(y_cls.shape, long.shape)
+    self.assertEqual(y.shape, long.shape)
+
+    self.assertEqual(y_cls.squeeze().tolist(), 5*[2] + 3*[1])
+    self.assertEqual(y.squeeze().tolist(), 8*[2])
 
   def test_funnel_block_forward_shape(self):
     n_even = 4
