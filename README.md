@@ -22,6 +22,11 @@ We welcome **contributions** to Trax! We welcome PRs with code for new models an
 
 
 
+Here are a few example notebooks:-
+
+* [**trax.data API explained**](https://github.com/SauravMaheshkar/Trax-Examples/blob/main/backend/trax-data-explained.ipynb) : Explains some of the major functions in the `trax.data` API
+* [**Named Entity Recognition using Reformer**](https://github.com/SauravMaheshkar/Trax-Examples/blob/main/NLP/NER%20using%20Reformer.ipynb) : Uses a [Kaggle dataset](https://www.kaggle.com/abhinavwalia95/entity-annotated-corpus) for implementing Named Entity Recognition using the [Reformer](https://arxiv.org/abs/2001.04451) architecture.
+* [**Deep N-Gram models**](https://github.com/SauravMaheshkar/Trax-Examples/blob/main/NLP/Deep%20N-Gram.ipynb) : Implementation of deep n-gram models trained on Shakespeares works
 
 **General Setup**
 
