@@ -392,6 +392,9 @@ def Exp():
 
 def LogSoftmax(axis=-1):
   """Returns a layer that applies log softmax along one tensor axis.
+  
+  Note that the implementation actually computes x - LogSumExp(x),
+  which is mathematically equal to LogSoftmax(x).
 
   `LogSoftmax` acts on a group of values and normalizes them to look like a set
   of log probability values. (Probability values must be non-negative, and as
