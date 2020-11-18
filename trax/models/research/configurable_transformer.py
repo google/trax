@@ -66,7 +66,8 @@ def FeedForwardWithOptions(d_model,
       when applying dropout after the FF dense layer.
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
     ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
-    ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
+    ff_sparsity: int, tuple or string; if not 0, use sparse feed-forward block
+      with this sparsity
     mode: If `'train'`, each block will include dropout; else, it will pass all
       values through unaltered.
     use_bfloat16: whether to use bfloat16 for weights (default: False).
