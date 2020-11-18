@@ -25,7 +25,7 @@ MultiplicativeConvCausalAttention.sparsity = 16
 
 attn_type = @CausalAttention
 
-ff_sparsity = 0
+ff_sparsity = 64
 
 d_model = 1024
 d_ff = 4096
@@ -40,7 +40,7 @@ max_length = 2048
 # Parameters for batcher:
 # ==============================================================================
 batcher.data_streams = @tf_inputs.data_streams
-batcher.batch_size_per_device = 8
+batcher.batch_size_per_device = 32
 batcher.eval_batch_size = 64
 batcher.max_eval_length = 2048
 batcher.id_to_mask = 0
@@ -54,9 +54,9 @@ data_streams.preprocess_fn = @trax.data.tf_inputs.lm1b_preprocess
 
 # Parameters for multifactor:
 # ==============================================================================
-multifactor.constant = 0.1
+multifactor.constant = 1.0
 multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
-multifactor.warmup_steps = 10000
+multifactor.warmup_steps = 2500
 
 # Parameters for lm1b_preprocess:
 # ==============================================================================
@@ -68,7 +68,7 @@ lm1b_preprocess.max_eval_target_length = 2048
 train.eval_frequency = 1000
 train.eval_steps = 10
 train.model = @trax.models.ConfigurableTransformerLM
-train.optimizer = @trax.optimizers.Adam
+train.optimizer = @trax.optimizers.Adafactor
 train.steps = 1000000
 
 # Parameters for ConfigurableTransformerLM:
@@ -103,4 +103,3 @@ ReformerLM.vocab_size = %vocab_size
 ReformerLM.d_attention_key = %attn_kv    # d_model // n_heads
 ReformerLM.d_attention_value = %attn_kv  # d_model // n_heads
 ReformerLM.attention_type = %attn_type
-

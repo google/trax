@@ -78,8 +78,16 @@ def FeedForwardWithOptions(d_model,
     A list of layers which maps vectors to vectors.
   """
   if ff_sparsity and ff_sparsity_type == '1inN':
-    if isinstance(ff_sparsity, tuple):
-      n_elements_in_block, d_lowrank = ff_sparsity
+    temperature, quant_prob = 0.1, 0.3
+    if isinstance(ff_sparsity, str):
+      # This is hacky but used to pass ff_sparsity in yaml sweep files.
+      ff_sparsity = [(float(x) if '.' in x else int(x))
+                     for x in ff_sparsity.split()]
+    if isinstance(ff_sparsity, (list, tuple)):
+      if len(ff_sparsity) == 2:
+        n_elements_in_block, d_lowrank = ff_sparsity
+      else:
+        n_elements_in_block, d_lowrank, temperature, quant_prob = ff_sparsity
     else:
       assert isinstance(ff_sparsity, int)
       n_elements_in_block, d_lowrank = ff_sparsity, d_ff // ff_sparsity
@@ -87,6 +95,8 @@ def FeedForwardWithOptions(d_model,
         d_ff,
         n_elements_in_block=n_elements_in_block,
         d_lowrank=d_lowrank,
+        temperature=temperature,
+        quant_prob=quant_prob,
         mode=mode)
   elif ff_sparsity and ff_sparsity_type == 'Block':
     ff = tl.BlockSparseFF(d_ff, num_experts=ff_sparsity, mode=mode),

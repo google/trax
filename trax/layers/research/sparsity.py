@@ -648,8 +648,8 @@ class SparseFF(base.Layer):
   """
 
   def __init__(self, d_ff, n_elements_in_block=32, d_lowrank=64,
-               temperature=0.7, mode='train',
-               kernel_initializer=init.GlorotUniformInitializer(),
+               temperature=0.1, quant_prob=0.3,
+               mode='train', kernel_initializer=init.GlorotUniformInitializer(),
                bias_initializer=init.RandomNormalInitializer(1e-6)):
     """Returns a sparse feed-forward block."""
     super().__init__(name=f'SparseFF_{d_ff}')
@@ -658,6 +658,7 @@ class SparseFF(base.Layer):
     self._d_lowrank = d_lowrank
     # Q: what temperature is actually most useful in training?
     self._temperature = temperature if mode == 'train' else 0.0
+    self._quant_prob = quant_prob
     self._n_elements_in_block = n_elements_in_block
     self._kernel_initializer = kernel_initializer
     self._bias_initializer = bias_initializer
@@ -700,11 +701,10 @@ class SparseFF(base.Layer):
       quant_mask = metrics.one_hot(quant_mask, self._n_elements_in_block)
       quant_mask = fastmath.stop_gradient(quant_mask)
       quant_mask += mask - fastmath.stop_gradient(mask)  # straight-through
-      # We will sometimes (50% of the batches) use the soft-mask instead of
-      # the quantized mask to improve training stability (see the paper above).
-      # Q: is selecting 50% of batches the best? Other %? Mixed in-batch?
-      select = fastmath.random.uniform(rng2, (), np.float32, -1.0, 1.0)
-      quant_mask = np.where(select > 0.0, quant_mask, mask)
+      # We will sometimes (quant_prob of the batches) use the soft-mask instead
+      # of the quantized mask to improve training stability (see paper above).
+      select = fastmath.random.uniform(rng2, (), np.float32, 0.0, 1.0)
+      quant_mask = np.where(select < self._quant_prob, quant_mask, mask)
       quant_mask = np.reshape(quant_mask, [-1, self._d_ff])
 
     if self._mode == 'train':
