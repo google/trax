@@ -31,7 +31,7 @@ from trax.fastmath import numpy as jnp
 from trax.layers import combinators as cb
 
 
-class Trainer(object):
+class Trainer:
   """Multi-device accelerated trainer.
 
   Given an optimizer and a composite layer containing model+loss, this class
@@ -206,7 +206,7 @@ def _accelerate_update_fn(forward_and_backward_fn,
   return multi_device_update_fn
 
 
-class ReversibleSerialTrainer(object):
+class ReversibleSerialTrainer:
   """Runs an optimizer on a series of layers, reversible and not.
 
   We provide layers to this trainer in blocks, each block consisting of

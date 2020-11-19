@@ -19,7 +19,7 @@ import numpy as np
 import tensorflow as tf
 
 
-class ShapeDtype(object):
+class ShapeDtype:
   """A NumPy ndarray-like object abstracted as shape and dtype.
 
   Main use is for representing input and output signatures.
