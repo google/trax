@@ -16,6 +16,7 @@
 # Lint as: python3
 """BERT."""
 
+import gin
 import jax
 import tensorflow as tf
 
@@ -36,6 +37,7 @@ class AddBias(tl.Layer):
     self.weights = np.zeros(input_signature.shape[-1])
 
 
+@gin.configurable()
 def BERTClassifierHead(n_classes):
   return tl.Serial([
       tl.Select([0], n_in=2),
@@ -47,6 +49,7 @@ def BERTClassifierHead(n_classes):
   ])
 
 
+@gin.configurable()
 def BERTRegressionHead():
   return tl.Serial([
       tl.Select([0], n_in=2),
