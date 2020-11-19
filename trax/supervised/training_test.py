@@ -29,6 +29,7 @@ from trax import layers as tl
 from trax import optimizers
 from trax import shapes
 from trax import test_utils
+from trax.supervised import callbacks
 from trax.supervised import training
 
 
@@ -290,6 +291,68 @@ class TrainingTest(absltest.TestCase):
     self.assertEqual(0, loop.step)
     loop.run(n_steps=2)
     self.assertEqual(2, loop.step)
+
+  def test_initializes_step_callbacks_with_loop_instance(self):
+    """Runs a training loop, asserting that callbacks are initialized."""
+
+    class ActualLoop:
+      # Wrapper object to make the Loop reference mutable.
+      loop = None
+
+    class TestCallback(callbacks.TrainingStepCallback):
+
+      def __init__(self, loop):
+        super().__init__(loop)
+        ActualLoop.loop = loop
+
+      def call_at(self, step):
+        return False
+
+      def on_step_begin(self, step):
+        del step
+
+      def on_step_end(self, step):
+        del step
+
+    model = tl.Serial(tl.Dense(1))
+    task = training.TrainTask(
+        _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01)
+    )
+    expected_loop = training.Loop(
+        model, [task], callbacks=[TestCallback]
+    )
+    self.assertIs(ActualLoop.loop, expected_loop)
+
+  def test_calls_step_callbacks(self):
+    """Runs a training loop, asserting that callbacks are called."""
+    call_at_steps = [1, 3, 4]
+    begin_steps = []
+    end_steps = []
+    test_case = self
+
+    class TestCallback(callbacks.TrainingStepCallback):
+
+      def call_at(self, step):
+        return step in call_at_steps
+
+      def on_step_begin(self, step):
+        begin_steps.append(step)
+
+      def on_step_end(self, step):
+        # Assert that on_step_begin() was called before.
+        test_case.assertIn(step, begin_steps)
+        end_steps.append(step)
+
+    model = tl.Serial(tl.Dense(1))
+    task = training.TrainTask(
+        _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01)
+    )
+    loop = training.Loop(model, [task], callbacks=[TestCallback])
+    loop.run(n_steps=5)
+
+    # Assert that the callback has been called at the appropriate steps.
+    self.assertEqual(begin_steps, call_at_steps)
+    self.assertEqual(end_steps, call_at_steps)
 
 
 def _very_simple_data(output_dim=1):

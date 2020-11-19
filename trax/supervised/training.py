@@ -109,6 +109,7 @@ class Loop:
       random_seed=None,
       loss_chunk_size=0,
       use_memory_efficient_trainer=False,
+      callbacks=None,
   ):
     """Configures a training `Loop`, including a random initialization.
 
@@ -146,6 +147,8 @@ class Loop:
         computation more more memory-efficient.
       use_memory_efficient_trainer: whether to use a special memory-efficient
         trainer.
+      callbacks: List of subclasses of StepCallback to call on training
+        steps.
     """
     self._is_chief, self._n_hosts, self._n_devices, self._rng = (
         init_host_and_devices(n_devices, random_seed))
@@ -249,6 +252,11 @@ class Loop:
         task_output_dir(i, eval_tasks) for i in range(len(eval_tasks))]
     self._output_dir_per_train_task = [
         task_output_dir(i, tasks) for i in range(len(tasks))]
+
+    callbacks = callbacks or []
+    self._callbacks = [
+        callback_class(self) for callback_class in callbacks
+    ]
 
   def _init_trainer(self, task):
     """Initializes the per-task trainer."""
@@ -445,6 +453,10 @@ class Loop:
       of training and stats, the current optimizer statistics.
     """
     step = self.step
+    for callback in self._callbacks:
+      if callback.call_at(step):
+        callback.on_step_begin(step)
+
     learning_rate = self._tasks[task_index].learning_rate(step)
     batch = self._tasks[task_index].next_batch()
     rng = self.new_rng()
@@ -454,7 +466,15 @@ class Loop:
       model = trainer.model_with_loss
       trainer.accelerated_model_with_loss.replicate_weights(model.weights)
       trainer.accelerated_model_with_loss.replicate_state(model.state)
-    return trainer.one_step(batch, rng, step=step, learning_rate=learning_rate)
+    (loss, stats) = trainer.one_step(
+        batch, rng, step=step, learning_rate=learning_rate
+    )
+
+    for callback in self._callbacks:
+      if callback.call_at(step):
+        callback.on_step_end(step)
+
+    return (loss, stats)
 
   def _log_training_progress(self, task, total_loss, n_steps, elapsed_time,
                              optimizer_metrics, summary_writer):
