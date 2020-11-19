@@ -21,6 +21,11 @@ welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)](CO
 We welcome **contributions** to Trax! We welcome PRs with code for new models and layers as well as improvements to our code and documentation. We especially love **notebooks** that explain how models work and show how to use them to solve problems!
 
 
+Here are a few example notebooks:-
+
+* [**trax.data API explained**](https://github.com/google/trax/blob/master/examples/trax-data-Explained.ipynb) : Explains some of the major functions in the `trax.data` API 
+* [**Named Entity Recognition using Reformer**](https://github.com/google/trax/blob/master/examples/NER_using_Reformer.ipynb) : Uses a [Kaggle dataset](https://www.kaggle.com/abhinavwalia95/entity-annotated-corpus) for implementing Named Entity Recognition using the [Reformer](https://arxiv.org/abs/2001.04451) architecture.
+* [**Deep N-Gram models**](https://github.com/google/trax/blob/master/examples/Deep_N_Gram_Models.ipynb) : Implementation of deep n-gram models trained on Shakespeares works
 
 
 **General Setup**
