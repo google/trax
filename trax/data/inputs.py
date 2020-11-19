@@ -632,9 +632,9 @@ class Inputs:
 def make_inputs(train_stream=gin.REQUIRED, eval_stream=None):
   """Create Inputs from two streams; mostly for use in gin configs."""
   if isinstance(train_stream, (list, tuple)):
-    train_stream = Serial(train_stream)
+    train_stream = Serial(train_stream)()
   if isinstance(eval_stream, (list, tuple)):
-    eval_stream = Serial(eval_stream)
+    eval_stream = Serial(eval_stream)()
   eval_stream_fn = None if eval_stream is None else lambda _: eval_stream
   return Inputs(train_stream=lambda _: train_stream,
                 eval_stream=eval_stream_fn)
