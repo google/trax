@@ -24,7 +24,7 @@ import collections
 from absl import logging
 
 
-class History(object):
+class History:
   """History of metrics.
 
   History contains the metrics recorded during training and evaluation.

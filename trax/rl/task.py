@@ -27,7 +27,7 @@ from trax import fastmath
 from trax.supervised import training
 
 
-class _TimeStep(object):
+class _TimeStep:
   """A single step of interaction with a RL environment.
 
   TimeStep stores a single step in the trajectory of an RL run:
@@ -79,7 +79,7 @@ TimeStepNp = collections.namedtuple('TimeStepNp', [
 ])
 
 
-class Trajectory(object):
+class Trajectory:
   """A trajectory of interactions with a RL environment.
 
   Trajectories are created when interacting with a RL environment. They can

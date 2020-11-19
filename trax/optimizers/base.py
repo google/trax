@@ -20,7 +20,7 @@ from trax import fastmath
 from trax.fastmath import numpy as jnp
 
 
-class Optimizer(object):
+class Optimizer:
   """Base class for optimizers that work hand in hand with Trax layers.
 
   To define an optimizer subclass, specify its behavior with respect to a

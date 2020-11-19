@@ -70,7 +70,7 @@ _DEFAULT_METRICS = {
 }
 
 
-class Trainer(object):
+class Trainer:
   """Trax trainer.
 
   A trainer allows to make training steps, train for full epochs,

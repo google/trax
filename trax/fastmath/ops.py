@@ -52,7 +52,7 @@ class Backend(enum.Enum):
 
 
 # A class that just forwards attribute accesses to backend's numpy object.
-class NumpyBackend(object):
+class NumpyBackend:
   """Numpy functions accelerated to run on GPUs and TPUs. Use like numpy."""
 
   def __getattr__(self, attr):
@@ -61,7 +61,7 @@ class NumpyBackend(object):
 numpy = NumpyBackend()
 
 
-class RandomBackend(object):
+class RandomBackend:
   """Backend providing random functions."""
 
   def get_prng(self, seed):

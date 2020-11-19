@@ -533,7 +533,7 @@ def AddLossWeights(id_to_mask=None):  # pylint: disable=invalid-name
 # Note: as we move from Trainer to Loop this class may become obsolete.
 
 
-class Inputs(object):
+class Inputs:
   """Inputs bundle.
 
   Inputs bundle holds input streams and shapes for a training run.

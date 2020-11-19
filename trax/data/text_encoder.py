@@ -90,7 +90,7 @@ def strip_ids(ids, ids_to_strip):
   return ids
 
 
-class TextEncoder(object):
+class TextEncoder:
   """Base class for converting from ints to/from human readable strings."""
 
   def __init__(self, num_reserved_ids=NUM_RESERVED_TOKENS):
@@ -929,7 +929,7 @@ class SubwordTextEncoder(TextEncoder):
           f.write(subtoken_string + "\n")
 
 
-class ImageEncoder(object):
+class ImageEncoder:
   """Encoder class for saving and loading images."""
 
   def __init__(self, num_reserved_ids=0, height=None, width=None, channels=3):
@@ -1013,7 +1013,7 @@ class ImageEncoder(object):
     return 256
 
 
-class RealEncoder(object):
+class RealEncoder:
   """Encoder class for saving and loading float values."""
 
   def encode(self, s):
