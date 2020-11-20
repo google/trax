@@ -26,6 +26,7 @@ from trax.models import transformer
 from trax.models.reformer import reformer
 from trax.models.research import bert
 from trax.models.research import configurable_transformer
+from trax.models.research import funnel_transformer
 from trax.models.research import layerdrop_transformer
 from trax.models.research import rezero
 from trax.models.research import transformer2
@@ -85,3 +86,7 @@ Quality = model_configure(rl.Quality)
 RNNLM = model_configure(rnn.RNNLM)
 GRULM = model_configure(rnn.GRULM)
 LSTMSeq2SeqAttn = model_configure(rnn.LSTMSeq2SeqAttn)
+FunnelTransformerEncoder = model_configure(
+    funnel_transformer.FunnelTransformerEncoder)
+FunnelTransformer = model_configure(
+    funnel_transformer.FunnelTransformer)
