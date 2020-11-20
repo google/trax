@@ -374,6 +374,123 @@ def FilterByLength(max_length,  # pylint: disable=invalid-name
   return filtered
 
 
+def ConcatenateToLMInput(pad_to_length=None):  # pylint: disable=invalid-name
+  """Prepares the input needed for training of Language Models.
+
+  Each example needs to contain two elements (input and target).
+  Input is concatenated to target and, if pad_to_length is given, padded to
+  length provided.
+  The loss_weights indicates only the target, without input nor padding.
+
+  Args:
+    pad_to_length: int, total length of padding of input and target arrays.
+  Returns:
+    Function to return input for a LM.
+  """
+  def _concatenate_to_lm_input(generator, pad_to_length=None):
+    for example in generator:
+      if len(example) != 2:
+        raise ValueError('Examples must have exactly 2 elements.')
+      concatenated = np.concatenate((example[0], example[1]), axis=-1)
+      loss_weights = np.concatenate((np.zeros_like(example[0]),
+                                     np.ones_like(example[1])))
+      if pad_to_length is not None:
+        padding_len = pad_to_length-(example[0].shape[0] + example[1].shape[0])
+        if padding_len < 0:
+          raise ValueError(
+              f'Example lengths ({example[0].shape[0]}, {example[1].shape[0]}) '
+              f'longer than pad_to_length ({pad_to_length}).')
+        loss_weights = np.pad(loss_weights, (0, padding_len), 'constant')
+        concatenated = np.pad(concatenated, (0, padding_len), 'constant')
+      yield (concatenated, concatenated, loss_weights)
+  return lambda g: _concatenate_to_lm_input(g, pad_to_length)
+
+
+def PadToLength(  # pylint: disable=invalid-name
+    len_map=None, pad_value=0, multiple=False):
+  """Pads the values to lengths given in `len_map'.
+
+  len_map contains a dictionary of example keys to dimension sizes.
+
+  Args:
+    len_map: dict of int to int, we pad examples to lengths
+      given by the values of the dict. If multiple is True, the dimensions are
+      padded to multiple of this value.
+    pad_value: dict of int to int. The value gets applied to
+      constant_values on numpy.pad per given dimension.
+    multiple: boolean. If False, pads to the value of len_map. If True, pads to
+      closest multiple of value of len_map.
+  Returns:
+    Function to pad examples to given lengths.
+  """
+  def _pad_to_length(generator, len_map=None, pad_value=0, multiple=False):
+    for example in generator:
+      example = list(example)
+      for key, value in len_map.items():
+        array_length = example[key].shape[0]
+        if multiple:
+          padding_len = array_length - ((array_length // value) * value)
+        else:
+          padding_len = max([0, value-example[key].shape[0]])
+        example[key] = np.pad(example[key],
+                              pad_width=(0, padding_len),
+                              mode='constant',
+                              constant_values=pad_value[key])
+      yield tuple(example)
+  if len_map is None:
+    raise ValueError('len_map parameter should be provided.')
+  return lambda g: _pad_to_length(g, len_map, pad_value, multiple)
+
+
+def _append_value(generator, val=None):
+  for example in generator:
+    example = list(example)
+    if val is not None:
+      for key, value in val.items():
+        example[key] = np.append(example[key], value, -1)
+    yield tuple(example)
+
+
+def AppendValue(val=None):  # pylint: disable=invalid-name
+  """Appends values provided in 'val` to inputs.
+
+  val are keyed by example keys, its values contain appended tensors.
+
+  Args:
+    val: dict of int to tensors. Specific keys get the tensors specified in
+      values appended.
+  Returns:
+    Funtion to append tensors to examples.
+  """
+  return lambda g: _append_value(g, val)
+
+
+def _truncate_to_length(generator, len_map=None):
+  for example in generator:
+    example = list(example)
+    if len_map is not None:
+      for key, max_len in len_map.items():
+        example_len = example[key].shape
+        if example_len > max_len:
+          example[key] = np.resize(example[key], max_len)
+    yield tuple(example)
+
+
+def TruncateToLength(len_map=None):  # pylint: disable=invalid-name
+  """Truncates features in an example to lengths given in `len_map`.
+
+  len_map contains a dictionary of example keys to tuples of dimension sizes.
+
+  Args:
+    len_map: dict of int to int tuples (shapes), we truncate examples
+      where a feature's size is beyond the max. Ex: {0: (1, 512), 1: 64}
+      will truncate examples to be within those bounds.
+  Returns:
+    Function to truncate length of examples.
+  """
+  return lambda g: _truncate_to_length(g, len_map)
+
+
 def add_loss_weights(generator, id_to_mask=None):
   """Add weights to inputs without weights and masks by id if requested.
 
@@ -388,7 +505,7 @@ def add_loss_weights(generator, id_to_mask=None):
   Args:
     generator: Stream of tuples.
     id_to_mask: If not None, int-valued id that represents padding, as opposed
-        to true target id's.
+        to true target IDs.
 
   Yields:
     Examples from the augmented stream.
@@ -416,7 +533,7 @@ def AddLossWeights(id_to_mask=None):  # pylint: disable=invalid-name
 # Note: as we move from Trainer to Loop this class may become obsolete.
 
 
-class Inputs(object):
+class Inputs:
   """Inputs bundle.
 
   Inputs bundle holds input streams and shapes for a training run.
@@ -515,9 +632,9 @@ class Inputs(object):
 def make_inputs(train_stream=gin.REQUIRED, eval_stream=None):
   """Create Inputs from two streams; mostly for use in gin configs."""
   if isinstance(train_stream, (list, tuple)):
-    train_stream = Serial(train_stream)
+    train_stream = Serial(train_stream)()
   if isinstance(eval_stream, (list, tuple)):
-    eval_stream = Serial(eval_stream)
+    eval_stream = Serial(eval_stream)()
   eval_stream_fn = None if eval_stream is None else lambda _: eval_stream
   return Inputs(train_stream=lambda _: train_stream,
                 eval_stream=eval_stream_fn)
@@ -728,8 +845,8 @@ def simple_sequence_copy_inputs(
       loss_weights = _pad_to_multiple_of(loss_weights, pad_to_multiple, 1)
       yield (x, x, loss_weights)  # Here inputs and targets are the same.
 
-  train_lengths = list(range(train_length - 1))
-  eval_lengths = list(range(eval_min_length, eval_max_length))
+  train_lengths = list(range(1, train_length + 1))
+  eval_lengths = list(range(eval_min_length, eval_max_length + 1))
   return Inputs(
       train_stream=lambda _: random_minibatches(train_lengths),
       eval_stream=lambda _: random_minibatches(eval_lengths)
@@ -760,7 +877,7 @@ def random_number_lower_endian(length, base):
 def addition_inputs(
     vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, train_length=gin.REQUIRED,
     eval_min_length=gin.REQUIRED, eval_max_length=gin.REQUIRED,
-    pad_to_multiple=32):
+    pad_to_multiple=32, encdec=False):
   """Inputs for the add problem: <S>x+y<S>(x+y).
 
   Args:
@@ -770,6 +887,7 @@ def addition_inputs(
     eval_min_length: minimal length of w for eval.
     eval_max_length: maximal length of w for eval.
     pad_to_multiple: int, pad length to be multiple of this number.
+    encdec: bool, if True return encoder-decoder style inputs (default: False)
 
   Returns:
     trax.inputs.Inputs
@@ -786,23 +904,26 @@ def addition_inputs(
         n2, base)
     inp = n1 + [base] + n2
     tgt = number_to_lower_endian(result, base)
-    x = [base+2] + [i+1 for i in inp] + [base+2] + [i+1 for i in tgt]
-    weights = ([0] * (len(inp) + 2)) + ([1] * len(tgt))
-    return (x, weights)
+    if encdec:
+      x = [i + 1 for i in inp]
+      y = [i + 1 for i in tgt]
+      weights = [1] * len(tgt)
+      return (np.array(x), np.array(y), np.array(weights))
+    else:
+      x = [base+2] + [i+1 for i in inp] + [base+2] + [i+1 for i in tgt]
+      weights = ([0] * (len(inp) + 2)) + ([1] * len(tgt))
+      return (np.array(x), np.array(x), np.array(weights))
 
   def batches(max_length, min_length):
     """Batches of examples."""
     if max_length < 3:
       raise ValueError('Maximum length must be at least 3.')
     while True:
-      res = [single_example(max_length, min_length) for _ in range(batch_size)]
-      l = max([len(x[0]) for x in res])
-      xs = np.array([x[0] + [0] * (l - len(x[0])) for x in res])
-      ws = np.array([x[1] + [0] * (l - len(x[1])) for x in res],
-                    dtype=np.float32)
-      xs = _pad_to_multiple_of(xs, pad_to_multiple, 1)
-      ws = _pad_to_multiple_of(ws, pad_to_multiple, 1)
-      yield (xs, xs, ws)
+      ex = [single_example(max_length, min_length) for _ in range(batch_size)]
+      padded_batch = [pad_to_max_dims(x, boundary=pad_to_multiple,
+                                      strict_pad_on_len=True)
+                      for x in zip(*ex)]
+      yield tuple(padded_batch)
 
   return Inputs(
       train_stream=lambda _: batches(train_length, 3),

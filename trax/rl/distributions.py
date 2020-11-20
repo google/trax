@@ -139,7 +139,13 @@ class Gaussian(Distribution):
 
   def _params(self, inputs):
     """Extracts the mean and std parameters from the inputs."""
-    assert inputs.shape[-1] == self.n_inputs
+    if inputs.shape[-1] != self.n_inputs:
+      raise ValueError(
+          'Invalid distribution parametrization - expected {} parameters, '
+          'got {}. Input shape: {}.'.format(
+              self.n_inputs, inputs.shape[-1], inputs.shape
+          )
+      )
     n_dims = self._n_dims
     # Split the distribution inputs into two parts: mean and std.
     mean = inputs[..., :n_dims]

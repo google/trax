@@ -34,7 +34,6 @@ Key classes:
     training step number.
 """
 import collections
-from concurrent import futures
 import contextlib
 import functools
 import gzip as gzip_lib
@@ -48,6 +47,7 @@ from absl import logging
 import gin
 import jax
 import numpy as np
+import psutil
 import tensorflow as tf
 
 from trax import fastmath
@@ -109,6 +109,7 @@ class Loop:
       random_seed=None,
       loss_chunk_size=0,
       use_memory_efficient_trainer=False,
+      callbacks=None,
   ):
     """Configures a training `Loop`, including a random initialization.
 
@@ -146,6 +147,8 @@ class Loop:
         computation more more memory-efficient.
       use_memory_efficient_trainer: whether to use a special memory-efficient
         trainer.
+      callbacks: List of subclasses of StepCallback to call on training
+        steps.
     """
     self._is_chief, self._n_hosts, self._n_devices, self._rng = (
         init_host_and_devices(n_devices, random_seed))
@@ -209,7 +212,9 @@ class Loop:
     # NOTE: Averaging the weights across devices can screw up the initial weight
     # statistics.
     # TODO(pkozakowski): Broadcast from one of the devices instead?
-    if random_seed is None and self._n_hosts > 1:
+    # TODO(lukaszkaiser): make it work for the memory-efficient trainer too.
+    if (random_seed is None and self._n_hosts > 1 and
+        not use_memory_efficient_trainer):
       logging.info('Syncing weights/state across %d hosts.', self._n_hosts)
       self._sync_weights_and_state_across_hosts()
 
@@ -247,6 +252,11 @@ class Loop:
         task_output_dir(i, eval_tasks) for i in range(len(eval_tasks))]
     self._output_dir_per_train_task = [
         task_output_dir(i, tasks) for i in range(len(tasks))]
+
+    callbacks = callbacks or []
+    self._callbacks = [
+        callback_class(self) for callback_class in callbacks
+    ]
 
   def _init_trainer(self, task):
     """Initializes the per-task trainer."""
@@ -328,6 +338,7 @@ class Loop:
     """
     with self._open_summary_writers() as (
         train_summary_writers, eval_summary_writers):
+      process = psutil.Process(os.getpid())
       loss_acc, step_acc = 0.0, 0
       start_time = time.time()
       optimizer_metrics_acc = collections.defaultdict(float)
@@ -348,7 +359,8 @@ class Loop:
         # implies the loss here is averaged from this hosts' devices and not
         # across all hosts.
         optimizer_metrics, loss = fastmath.nested_map(
-            jnp.mean, (optimizer_metrics, loss))
+            functools.partial(tl.mean_or_pmean, self._n_devices),
+            (optimizer_metrics, loss))
 
         loss_acc += loss
         step_acc += 1
@@ -358,6 +370,8 @@ class Loop:
         if self._checkpoint_at(self.step):
           self.save_checkpoint()
         if self._eval_at(self.step):
+          logging.info('cpu memory use (MB): %.2f',
+                       process.memory_info().rss / float(1024*1024))
           elapsed_time = time.time() - start_time
           self._eval_model.weights = self._model.weights
           self._log_training_progress(
@@ -439,16 +453,28 @@ class Loop:
       of training and stats, the current optimizer statistics.
     """
     step = self.step
+    for callback in self._callbacks:
+      if callback.call_at(step):
+        callback.on_step_begin(step)
+
     learning_rate = self._tasks[task_index].learning_rate(step)
     batch = self._tasks[task_index].next_batch()
     rng = self.new_rng()
     trainer = self._trainer_per_task[task_index]
     if task_changed:
       # Re-replicate weights and state to synchronize them between tasks.
-      model = trainer.loss_layer
-      trainer.accelerated_loss_layer.replicate_weights(model.weights)
-      trainer.accelerated_loss_layer.replicate_state(model.state)
-    return trainer.one_step(batch, rng, step=step, learning_rate=learning_rate)
+      model = trainer.model_with_loss
+      trainer.accelerated_model_with_loss.replicate_weights(model.weights)
+      trainer.accelerated_model_with_loss.replicate_state(model.state)
+    (loss, stats) = trainer.one_step(
+        batch, rng, step=step, learning_rate=learning_rate
+    )
+
+    for callback in self._callbacks:
+      if callback.call_at(step):
+        callback.on_step_end(step)
+
+    return (loss, stats)
 
   def _log_training_progress(self, task, total_loss, n_steps, elapsed_time,
                              optimizer_metrics, summary_writer):
@@ -553,8 +579,8 @@ class Loop:
       if self._use_memory_efficient_trainer:
         model_weights, model_state = self._model.weights, self._model.state
       else:
-        model_weights = trainer.accelerated_loss_layer.weights[0]
-        model_state = trainer.accelerated_loss_layer.state[0]
+        model_weights = trainer.accelerated_model_with_loss.weights[0]
+        model_state = trainer.accelerated_model_with_loss.state[0]
 
       for (eval_task, evaluator) in zip(
           self._eval_tasks, self._evaluator_per_task):
@@ -626,17 +652,81 @@ class Loop:
     flat_weights, flat_state = tl.flatten_weights_and_state(weights, state)
     _, flat_eval_state = tl.flatten_weights_and_state(
         weights, self._eval_model.state)
+    ckpt_file = os.path.join(self._output_dir, 'model.pkl.gz')
+    if self._use_memory_efficient_trainer:
+      sharded_weights_len = self._save_weights_sharded(flat_weights, ckpt_file)
+      # In the main dict we just save the number of shards in place of weights.
+      weights_in_dict = sharded_weights_len
+    else:
+      weights_in_dict = self._to_bits(flat_weights)
     d = {
         'step': self.step,
-        'flat_weights': flat_weights,
+        'flat_weights': weights_in_dict,
         'flat_state': flat_state,
         'flat_eval_state': flat_eval_state,
         'slots_per_task': slots_per_task,
         'input_signature': input_signature,
-        'version_timestamp': 'Sep-17-2020'  # To update in the future if needed.
+        'version_timestamp': 'Oct-28-2020'  # To update in the future if needed.
     }
     ckpt_file = os.path.join(self._output_dir, 'model.pkl.gz')
     pickle_to_file(d, ckpt_file, gzip=True)
+    # Move sharded files to non-tmp files after all is saved.
+    if self._use_memory_efficient_trainer:
+      for i in range(weights_in_dict):
+        fname = ckpt_file + '.shard%d' % i
+        tf.io.gfile.rename(fname + '.tmp', fname, overwrite=True)
+
+  def _save_weights_sharded(self, flat_weights, ckpt_file):
+    """Saves flat_weights in a sharded way to ckpt_file.shardN.tmp."""
+    # In large models, we shard weights into multiple files.
+    # Otherwise using pickle can lead to running out of RAM.
+    # We shard weights into parts of over 4M floats to avoid tiny files.
+    max_shard_size = 4 * 1024 * 1024
+    sharded_weights, current_shard, current_shard_size = [], [], 0
+    for w in flat_weights:
+      current_shard.append(w)
+      current_shard_size += int(np.prod(w.shape))
+      if current_shard_size > max_shard_size:
+        sharded_weights.append(current_shard)
+        current_shard, current_shard_size = [], 0
+    if current_shard:  # Append the last shard if it's not empty.
+      sharded_weights.append(current_shard)
+    # Save weight shards to files (tmp first to be resilient to failure).
+    for i, w in enumerate(sharded_weights):
+      pickle_to_file(self._to_bits(w), ckpt_file + '.shard%d.tmp' % i,
+                     gzip=True)
+    return len(sharded_weights)
+
+  def _to_bits(self, weights):
+    """Converts a list of weights to bit-cast weights and their types."""
+    # This is currently needed to pickle bfloat16 arrays from JAX.
+    # TODO(lukaszkaiser): remove once it is not needed (the following unit test
+    #   checks it: training_test/test_restores_step_bfloat16).
+    if not fastmath.is_backend(fastmath.Backend.JAX):
+      return weights
+    bits = []
+    for w in weights:
+      if w.dtype == jnp.bfloat16:
+        bits.append((jax.lax.bitcast_convert_type(w, np.uint16), 'bfloat16'))
+      else:  # for non-bfloat16 weights, be compatible with earlier checkpoints
+        bits.append(w)
+    return bits
+
+  def _from_bits(self, bits_and_types):
+    """Converts a list of bit-cast weights and their types back to weights."""
+    # This is the reverse of _to_bits, see above for explanation.
+    if not fastmath.is_backend(fastmath.Backend.JAX):
+      return bits_and_types
+    weights = []
+    for bits_and_dtype in bits_and_types:
+      if isinstance(bits_and_dtype, tuple):
+        bits, dtype = bits_and_dtype
+        assert dtype == 'bfloat16'
+        w = jax.lax.bitcast_convert_type(bits, jnp.bfloat16)
+        weights.append(w)
+      else:
+        weights.append(bits_and_dtype)
+    return weights
 
   def load_checkpoint(self, directory=None, filename=None):
     """Loads model weights and step from a checkpoint on disk.
@@ -657,6 +747,17 @@ class Loop:
            stdout=False)
       return
     d = unpickle_from_file(path, gzip=True)
+    # For large models, load weights from sharded files.
+    if self._use_memory_efficient_trainer:
+      weights = []
+      n_shards = d['flat_weights']  # We store the number of shards in d here.
+      for i in range(n_shards):
+        w = unpickle_from_file(path + '.shard%d' % i, gzip=True)
+        w = self._from_bits(w)  # bit-casting may put w on accelerator, go back
+        weights.extend([tl.on_cpu(x) for x in w])
+      d['flat_weights'] = weights
+    else:
+      d['flat_weights'] = self._from_bits(d['flat_weights'])
     self._step = d['step']
     if 'slots' in d:
       if len(self._tasks) != 1:
@@ -1006,5 +1107,3 @@ def _make_weights_and_state_same_across_hosts(weights_and_state):
       lambda ws: ws / n_devices_total, weights_and_state)
 
   return weights_and_state
-
-

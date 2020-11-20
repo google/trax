@@ -122,7 +122,7 @@ class EmbeddingTest(absltest.TestCase):
     y = layer(x)
     self.assertEqual(y.shape, (5, 3))
 
-    # For distinct in-domain token ids, resulting vectors should be distinct.
+    # For distinct in-domain token IDs, resulting vectors should be distinct.
     self.assertNotEqual(y[0].tolist(), y[1].tolist())
     self.assertNotEqual(y[0].tolist(), y[2].tolist())
     self.assertNotEqual(y[1].tolist(), y[2].tolist())
@@ -416,6 +416,23 @@ class MinMaxTest(absltest.TestCase):
     y = layer(x)
     self.assertEqual(y.shape, (1, 2))
     self.assertEqual(y.tolist(), [[3., 6.]])
+
+
+class ClassifierLayersTest(absltest.TestCase):
+
+  def test_threshold_to_binary(self):
+    layer = tl.ThresholdToBinary()
+    x = np.array([.30, .49, .50, .51, .70])
+    y = layer(x)
+    self.assertEqual(y.tolist(), [0, 0, 0, 1, 1])
+
+  def test_arg_max(self):
+    layer = tl.ArgMax()
+    x = np.array([[.10, .90, .20, .80],
+                  [.22, .88, .11, .99]])
+    y = layer(x)
+    self.assertEqual(y.tolist(), [1, 3])
+
 
 if __name__ == '__main__':
   absltest.main()

@@ -68,7 +68,7 @@ def Mod(n):  # pylint: disable=invalid-name
 #   (trax-layer maker, input shapes, input dtype, can handle None batch size?)
 _LAYERS = [
     (lambda: layers.Dense(3), tf.TensorShape([4]), onp.float32, True),
-    (mlp.PureMLP, tf.TensorShape([4]), onp.float32, False),
+    (mlp.MLP, tf.TensorShape([4]), onp.float32, False),
     (lambda: layers.Serial(Mod(8), transformer.TransformerLM(8)),
      tf.TensorShape([4]), onp.int32, False),
 ]

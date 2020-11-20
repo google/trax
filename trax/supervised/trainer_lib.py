@@ -66,11 +66,11 @@ _DEFAULT_METRICS = {
     'accuracy': tl.Accuracy(),
     'sequence_accuracy': tl.SequenceAccuracy(),
     'neg_log_perplexity': tl.Serial(tl.CrossEntropyLoss(), tl.Negate()),
-    'weights_per_batch_per_core': tl.SumOfWeights(),
+    'weights_per_batch_per_core': tl.Serial(tl.Drop(), tl.Drop(), tl.Sum()),
 }
 
 
-class Trainer(object):
+class Trainer:
   """Trax trainer.
 
   A trainer allows to make training steps, train for full epochs,
@@ -590,8 +590,13 @@ def train(output_dir,
         use_memory_efficient_trainer=use_memory_efficient_trainer,
         random_seed=random_seed)
 
+    steps_to_go = steps - loop.step
+    if steps_to_go <= 0:
+      log('Stop training, already reached the total training steps %d' % steps)
+      return loop
+
     # Train and return the loop.
-    loop.run(steps)
+    loop.run(steps_to_go)
     return loop
 
   n_devices = num_devices()

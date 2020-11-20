@@ -21,14 +21,13 @@ import trax.rl.normalization
 
 # Parameters for Quality:
 # ==============================================================================
-Quality.body = @trax.models.PureMLP
+Quality.body = @trax.models.MLP
 
-# Parameters for PureMLP:
+# Parameters for MLP:
 # ==============================================================================
-PureMLP.flatten = False
-PureMLP.layer_widths = (32,32,)
-PureMLP.out_activation = True
-PureMLP.layer_norm = True
+MLP.flatten = False
+MLP.layer_widths = (32,32,)
+MLP.out_activation = True
 
 value_lr = 0.0001
 initial_exploration_rate = 1
@@ -57,7 +56,7 @@ RLTask.max_steps = 200
 # Parameters for DQN:
 # ==============================================================================
 DQN.value_optimizer = @trax.optimizers.Adam
-DQN.value_body = @trax.models.PureMLP
+DQN.value_body = @trax.models.MLP
 DQN.value_batch_size = 32
 DQN.value_train_steps_per_epoch = 100
 DQN.value_evals_per_epoch = 1

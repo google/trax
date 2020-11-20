@@ -19,70 +19,120 @@
 from absl.testing import absltest
 import numpy as np
 
-from trax import shapes
 import trax.layers as tl
-from trax.layers import metrics
 
 
 class MetricsTest(absltest.TestCase):
 
-  def test_cross_entropy(self):
-    layer = metrics._CrossEntropy()
-    xs = [np.ones((9, 4, 4, 20)),
-          np.ones((9, 4, 4))]
-    y = layer(xs)
-    self.assertEqual(y.shape, (9, 4, 4))
-
-  def test_accuracy(self):
-    layer = metrics._Accuracy()
-    xs = [np.ones((9, 4, 4)),
-          np.ones((9, 4, 4))]
-    y = layer(xs)
-    self.assertEqual(y.shape, (9, 4, 4))
-
-  def test_weighted_mean_shape(self):
-    layer = metrics._WeightedMean()
-    xs = [np.ones((9, 4, 4, 20)),
-          np.ones((9, 4, 4, 20))]
-    y = layer(xs)
-    self.assertEqual(y.shape, ())
-
-  def test_weighted_mean_semantics(self):
-    layer = metrics._WeightedMean()
-    sample_input = np.ones((3,))
-    sample_weights = np.ones((3,))
-    layer.init(shapes.signature([sample_input, sample_weights]))
-
-    x = np.array([1., 2., 3.])
+  def test_accuracy_even_weights(self):
+    layer = tl.Accuracy()
     weights = np.array([1., 1., 1.])
-    mean = layer((x, weights))
-    np.testing.assert_allclose(mean, 2.)
+    targets = np.array([0, 1, 2])
 
-    weights = np.array([0., 0., 1.])
-    mean = layer((x, weights))
-    np.testing.assert_allclose(mean, 3.)
+    model_outputs = np.array([[.7, .2, .1, 0.],
+                              [.2, .7, .1, 0.],
+                              [.2, .1, .7, 0.]])
+    accuracy = layer([model_outputs, targets, weights])
+    self.assertEqual(accuracy, 1.0)
 
-    weights = np.array([1., 0., 0.])
-    mean = layer((x, weights))
-    np.testing.assert_allclose(mean, 1.)
+    model_outputs = np.array([[.2, .1, .7, 0.],
+                              [.2, .1, .7, 0.],
+                              [.2, .1, .7, 0.]])
+    accuracy = layer([model_outputs, targets, weights])
+    self.assertEqual(accuracy, 1 / 3)
 
-  def test_weighted_sequence_mean_semantics(self):
-    layer = metrics._WeightedSequenceMean()
-    sample_input = np.ones((2, 3))
-    sample_weights = np.ones((3,))
-    full_signature = shapes.signature([sample_input, sample_weights])
-    layer.init(full_signature)
+  def test_accuracy_uneven_weights(self):
+    layer = tl.Accuracy()
+    weights = np.array([1., 5., 2.])
+    targets = np.array([0, 1, 2])
 
-    x = np.array([[1., 1., 1.], [1., 1., 0.]])
-    weights = np.array([1., 1., 1.])
-    mean = layer((x, weights))
-    np.testing.assert_allclose(mean, 0.5)
+    model_outputs = np.array([[.7, .2, .1, 0.],
+                              [.2, .7, .1, 0.],
+                              [.2, .1, .7, 0.]])
+    accuracy = layer([model_outputs, targets, weights])
+    self.assertEqual(accuracy, 1.0)
 
-    weights = np.array([1., 1., 0.])
-    mean = layer((x, weights))
-    np.testing.assert_allclose(mean, 1.)
+    model_outputs = np.array([[.2, .7, .1, 0.],
+                              [.2, .7, .1, 0.],
+                              [.2, .7, .1, 0.]])
+    accuracy = layer([model_outputs, targets, weights])
+    self.assertEqual(accuracy, .625)
+
+    model_outputs = np.array([[.7, .2, .1, 0.],
+                              [.7, .2, .1, 0.],
+                              [.7, .2, .1, 0.]])
+    accuracy = layer([model_outputs, targets, weights])
+    self.assertEqual(accuracy, .125)
+
+  def test_accuracy_binary_classifier(self):
+    layer = tl.Accuracy(classifier=tl.ThresholdToBinary())
+    targets = np.array([[0, 0, 1, 1],
+                        [1, 1, 1, 0]])
+    weights = np.ones_like(targets)
+
+    model_outputs = np.array([[.499, .500, .501, .502],
+                              [.503, .502, .501, .500]])
+    accuracy = layer([model_outputs, targets, weights])
+    self.assertEqual(accuracy, 1.0)
+
+    model_outputs = np.array([[.498, .499, .500, .501],
+                              [.502, .501, .500, .499]])
+    accuracy = layer([model_outputs, targets, weights])
+    self.assertEqual(accuracy, .75)
+
+  def test_sequence_accuracy_weights_all_ones(self):
+    layer = tl.SequenceAccuracy()
+    targets = np.array([[0, 1, 0, 1],
+                        [1, 0, 1, 1]])
+    weights = np.ones_like(targets)
+
+    # Model gets both sequences right; for each position in each sequence, the
+    # category (integer ID) selected by argmax matches the target category.
+    model_outputs = np.array([[[.9, .1], [.2, .8], [.7, .3], [.4, .6]],
+                              [[.3, .7], [.8, .2], [.1, .9], [.4, .6]]])
+    accuracy = layer([model_outputs, targets, weights])
+    self.assertEqual(accuracy, 1.)
+
+    # Model gets the first element of the first sequence barely wrong.
+    model_outputs = np.array([[[.45, .55], [.2, .8], [.7, .3], [.4, .6]],
+                              [[.3, .7], [.8, .2], [.1, .9], [.4, .6]]])
+    accuracy = layer([model_outputs, targets, weights])
+    self.assertEqual(accuracy, .5)
+
+    # Model gets the last element of each sequence barely wrong.
+    model_outputs = np.array([[[.9, .1], [.2, .8], [.7, .3], [.55, .45]],
+                              [[.3, .7], [.8, .2], [.1, .9], [.52, .48]]])
+    accuracy = layer([model_outputs, targets, weights])
+    self.assertEqual(accuracy, 0.)
+
+  def test_sequence_accuracy_last_position_zero_weight(self):
+    layer = tl.SequenceAccuracy()
+    targets = np.array([[0, 1, 0, 0],
+                        [1, 0, 1, 0]])
+    weights = np.array([[1., 1., 1., 0.],
+                        [1., 1., 1., 0.]])
+
+    # Model gets both sequences right; output in final position would give
+    # wrong category but is ignored.
+    model_outputs = np.array([[[.9, .1], [.2, .8], [.7, .3], [.35, .65]],
+                              [[.3, .7], [.8, .2], [.1, .9], [.35, .65]]])
+    accuracy = layer([model_outputs, targets, weights])
+    self.assertEqual(accuracy, 1.)
+
+    # Model gets the first element of the first sequence barely wrong.
+    model_outputs = np.array([[[.45, .55], [.2, .8], [.7, .3], [.6, .4]],
+                              [[.3, .7], [.8, .2], [.1, .9], [.6, .4]]])
+    accuracy = layer([model_outputs, targets, weights])
+    self.assertEqual(accuracy, .5)
+
+    # Model gets second-to-last element of each sequence barely wrong.
+    model_outputs = np.array([[[.9, .1], [.2, .8], [.48, .52], [.6, .4]],
+                              [[.3, .7], [.8, .2], [.51, .49], [.6, .4]]])
+    accuracy = layer([model_outputs, targets, weights])
+    self.assertEqual(accuracy, 0.)
 
   def test_binary_cross_entropy_loss(self):
+    # TODO(jonni): Clarify desired semantics/naming, then test it.
     layer = tl.BinaryCrossEntropyLoss()
     xs = [np.ones((9, 1)),
           np.ones((9, 1)),
@@ -91,43 +141,8 @@ class MetricsTest(absltest.TestCase):
     self.assertEqual(y.shape, ())
 
   def test_cross_entropy_loss(self):
+    # TODO(jonni): Clarify desired semantics/naming, then test it.
     layer = tl.CrossEntropyLoss()
-    xs = [np.ones((9, 4, 4, 20)),
-          np.ones((9, 4, 4)),
-          np.ones((9, 4, 4))]
-    y = layer(xs)
-    self.assertEqual(y.shape, ())
-
-  def test_binary_classifier(self):
-    layer = metrics.BinaryClassifier()
-    xs = [np.ones((9, 1))]
-    y = layer(xs)
-    self.assertEqual(y.shape, (9, 1))
-
-  def test_multiclass_classifier(self):
-    layer = metrics.MulticlassClassifier()
-    xs = [np.ones((9, 4, 4, 20))]
-    y = layer(xs)
-    self.assertEqual(y.shape, (9, 4, 4))
-
-  def test_accuracy_binary_scalar(self):
-    layer = tl.Accuracy(classifier=tl.BinaryClassifier())
-    xs = [np.ones((9, 1)),
-          np.ones((9, 1)),
-          np.ones((9, 1))]
-    y = layer(xs)
-    self.assertEqual(y.shape, ())
-
-  def test_accuracy_multiclass_scalar(self):
-    layer = tl.Accuracy(classifier=tl.MulticlassClassifier())
-    xs = [np.ones((9, 4, 4, 20)),
-          np.ones((9, 4, 4)),
-          np.ones((9, 4, 4))]
-    y = layer(xs)
-    self.assertEqual(y.shape, ())
-
-  def test_accuracy_scalar(self):
-    layer = tl.Accuracy()
     xs = [np.ones((9, 4, 4, 20)),
           np.ones((9, 4, 4)),
           np.ones((9, 4, 4))]
@@ -136,61 +151,43 @@ class MetricsTest(absltest.TestCase):
 
   def test_l2_loss(self):
     layer = tl.L2Loss()
-    sample_input = np.ones((2, 2))
-    sample_target = np.ones((2, 2))
-    sample_weights = np.ones((2, 2))
-    full_signature = shapes.signature([sample_input,
-                                       sample_target,
-                                       sample_weights])
-    layer.init(full_signature)
 
-    x = np.array([[1., 1.], [1., 1.]])
-    target = np.array([[1., 1.], [1., 0.]])
+    model_outputs = np.array([[1., 1.], [1., 1.]])
+    targets = np.array([[1., 1.], [1., 0.]])
     weights = np.array([[1., 1.], [1., 0.]])
-    loss = layer((x, target, weights))
+    loss = layer([model_outputs, targets, weights])
     np.testing.assert_allclose(loss, 0.0)
 
     weights = np.array([[1., 0.], [0., 1.]])
-    loss = layer((x, target, weights))
+    loss = layer([model_outputs, targets, weights])
     np.testing.assert_allclose(loss, 0.5)
 
   def test_smooth_l1_loss(self):
     layer = tl.SmoothL1Loss()
-    sample_input = np.ones((2, 2))
-    sample_target = np.ones((2, 2))
-    sample_weights = np.ones((2, 2))
-    full_signature = shapes.signature([sample_input,
-                                       sample_target,
-                                       sample_weights])
-    layer.init(full_signature)
 
-    x = np.array([[1., 1.], [1., 2.]])
-    target = np.array([[1., 1.], [1., 0.]])
+    model_outputs = np.array([[1., 1.], [1., 2.]])
+    targets = np.array([[1., 1.], [1., 0.]])
     l1_dist = 2
 
     weights = np.array([[1., 1.], [1., 0.]])
-    loss = layer((x, target, weights))
+    loss = layer([model_outputs, targets, weights])
     np.testing.assert_allclose(loss, 0.0)
 
     weights = np.array([[1., 0.], [0., 1.]])
     sum_weights = 2
 
-    loss = layer((x, target, weights))
-    np.testing.assert_allclose(loss, (l1_dist-0.5)/sum_weights)
+    loss = layer([model_outputs, targets, weights])
+    np.testing.assert_allclose(loss, (l1_dist-0.5) / sum_weights)
 
-    x = np.array([[1., 1.], [1., 1.5]])
-    target = np.array([[1., 1.], [1., 1.]])
+    model_outputs = np.array([[1., 1.], [1., 1.5]])
+    targets = np.array([[1., 1.], [1., 1.]])
     l1_dist = 0.5
-    loss = layer((x, target, weights))
-    np.testing.assert_allclose(loss, 0.5*l1_dist**2/sum_weights)
+    loss = layer([model_outputs, targets, weights])
+    np.testing.assert_allclose(loss, 0.5 * l1_dist**2 / sum_weights)
 
   def test_names(self):
     layer = tl.L2Loss()
     self.assertEqual('L2Loss_in3', str(layer))
-    layer = tl.BinaryClassifier()
-    self.assertEqual('BinaryClassifier', str(layer))
-    layer = tl.MulticlassClassifier()
-    self.assertEqual('MulticlassClassifier', str(layer))
     layer = tl.Accuracy()
     self.assertEqual('Accuracy_in3', str(layer))
     layer = tl.SequenceAccuracy()

@@ -22,13 +22,6 @@ import trax.data.inputs
 import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
-# Sequence copy with len 64 can create inputs/targets this long.
-max_len = 128
-
-# Parameters for sequence_copy_inputs:
-# ==============================================================================
-sequence_copy_inputs.pad_to_multiple = %max_len  # for axial position embedding
-
 # Parameters for Reformer2:
 # ==============================================================================
 Reformer2.d_model = 256
@@ -39,23 +32,16 @@ Reformer2.n_heads = 4
 Reformer2.mode = 'train'
 Reformer2.n_encoder_layers = 3
 Reformer2.n_decoder_layers = 3
-Reformer2.ff_use_sru = 1
+Reformer2.ff_use_sru = 0
 Reformer2.d_attention_key = 64
 Reformer2.d_attention_value = 64
 Reformer2.encoder_attention_type = @LSHSelfAttention
 Reformer2.encoder_decoder_attention_type = @LSHSelfAttention
+Reformer2.n_decoder_attention_layers = 1
 Reformer2.input_vocab_size = %vocab_size
-Reformer2.axial_pos_shape  = None  # Uses tl.PositionalEncoding
-
-
-# Parameters for LSHSelfAttention:
-# ==============================================================================
-# 0 < predict_drop_len <= predict_mem_len
-LSHSelfAttention.predict_mem_len = %max_len
-LSHSelfAttention.predict_drop_len = %max_len
-
+Reformer2.axial_pos_shape  = 'fixed-base'
 
 # Parameters for train:
 # ==============================================================================
-train.inputs = @trax.data.inputs.sequence_copy_inputs
+train.inputs = @trax.data.inputs.simple_sequence_copy_inputs
 train.model = @trax.models.Reformer2

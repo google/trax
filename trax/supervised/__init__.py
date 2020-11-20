@@ -15,8 +15,10 @@
 
 """Supervised learning imports in Trax."""
 
+from trax.supervised import callbacks
 from trax.supervised import decoding
 from trax.supervised import lr_schedules
+from trax.supervised import pretrain_finetune
 from trax.supervised import trainer_lib
 from trax.supervised import training
 from trax.supervised.trainer_lib import train

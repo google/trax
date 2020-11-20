@@ -22,7 +22,6 @@ from trax import layers as tl
 def ConvBlock(kernel_size, filters, strides, norm, non_linearity,
               mode='train'):
   """ResNet convolutional striding block."""
-  # TODO(jonni): Use good defaults so Resnet50 code is cleaner / less redundant.
   ks = kernel_size
   filters1, filters2, filters3 = filters
   main = [
@@ -48,7 +47,6 @@ def ConvBlock(kernel_size, filters, strides, norm, non_linearity,
 def IdentityBlock(kernel_size, filters, norm, non_linearity,
                   mode='train'):
   """ResNet identical size block."""
-  # TODO(jonni): Use good defaults so Resnet50 code is cleaner / less redundant.
   ks = kernel_size
   filters1, filters2, filters3 = filters
   main = [

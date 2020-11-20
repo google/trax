@@ -83,14 +83,14 @@ def to_unicode_utf8(s):
 
 
 def strip_ids(ids, ids_to_strip):
-  """Strip ids_to_strip from the end ids."""
+  """Strip ids_to_strip from the end IDs."""
   ids = list(ids)
   while ids and ids[-1] in ids_to_strip:
     ids.pop()
   return ids
 
 
-class TextEncoder(object):
+class TextEncoder:
   """Base class for converting from ints to/from human readable strings."""
 
   def __init__(self, num_reserved_ids=NUM_RESERVED_TOKENS):
@@ -101,9 +101,9 @@ class TextEncoder(object):
     return self._num_reserved_ids
 
   def encode(self, s):
-    """Transform a human-readable string into a sequence of int ids.
+    """Transform a human-readable string into a sequence of int IDs.
 
-    The ids should be in the range [num_reserved_ids, vocab_size). Ids [0,
+    The IDs should be in the range [num_reserved_ids, vocab_size). IDs [0,
     num_reserved_ids) are reserved.
 
     EOS is not appended.
@@ -117,9 +117,9 @@ class TextEncoder(object):
     return [int(w) + self._num_reserved_ids for w in s.split()]
 
   def decode(self, ids, strip_extraneous=False):
-    """Transform a sequence of int ids into a human-readable string.
+    """Transform a sequence of int IDs into a human-readable string.
 
-    EOS is not expected in ids.
+    EOS is not expected in IDs.
 
     Args:
       ids: list of integers to be converted.
@@ -134,9 +134,9 @@ class TextEncoder(object):
     return " ".join(self.decode_list(ids))
 
   def decode_list(self, ids):
-    """Transform a sequence of int ids into a their string versions.
+    """Transform a sequence of int IDs into a their string versions.
 
-    This method supports transforming individual input/output ids to their
+    This method supports transforming individual input/output IDs to their
     string versions so that sequence to/from text conversions can be visualized
     in a human readable format.
 
@@ -472,7 +472,7 @@ class SubwordTextEncoder(TextEncoder):
     super(SubwordTextEncoder, self).__init__()
 
   def encode(self, s):
-    """Converts a native string to a list of subtoken ids.
+    """Converts a native string to a list of subtoken IDs.
 
     Args:
       s: a native string.
@@ -483,10 +483,10 @@ class SubwordTextEncoder(TextEncoder):
         tokenizer.encode(native_to_unicode(s)))
 
   def encode_without_tokenizing(self, token_text):
-    """Converts string to list of subtoken ids without calling tokenizer.
+    """Converts string to list of subtoken IDs without calling tokenizer.
 
     This treats `token_text` as a single token and directly converts it
-    to subtoken ids. This may be useful when the default tokenizer doesn't
+    to subtoken IDs. This may be useful when the default tokenizer doesn't
     do what we want (e.g., when encoding text with tokens composed of lots of
     nonalphanumeric characters). It is then up to the caller to make sure that
     raw text is consistently converted into tokens. Only use this if you are
@@ -495,12 +495,12 @@ class SubwordTextEncoder(TextEncoder):
     Args:
       token_text: A native string representation of a single token.
     Returns:
-      A list of subword token ids; i.e., integers in the range [0, vocab_size).
+      A list of subword token IDs; i.e., integers in the range [0, vocab_size).
     """
     return self._tokens_to_subtoken_ids([native_to_unicode(token_text)])
 
   def decode(self, ids, strip_extraneous=False):
-    """Converts a sequence of subtoken ids to a native string.
+    """Converts a sequence of subtoken IDs to a native string.
 
     Args:
       ids: a list of integers in the range [0, vocab_size)
@@ -523,7 +523,7 @@ class SubwordTextEncoder(TextEncoder):
     return len(self._all_subtoken_strings)
 
   def _tokens_to_subtoken_ids(self, tokens):
-    """Converts a list of tokens to a list of subtoken ids.
+    """Converts a list of tokens to a list of subtoken IDs.
 
     Args:
       tokens: a list of strings.
@@ -536,7 +536,7 @@ class SubwordTextEncoder(TextEncoder):
     return ret
 
   def _token_to_subtoken_ids(self, token):
-    """Converts token to a list of subtoken ids.
+    """Converts token to a list of subtoken IDs.
 
     Args:
       token: a string.
@@ -553,7 +553,7 @@ class SubwordTextEncoder(TextEncoder):
     return ret
 
   def _subtoken_ids_to_tokens(self, subtokens):
-    """Converts a list of subtoken ids to a list of tokens.
+    """Converts a list of subtoken IDs to a list of tokens.
 
     Args:
       subtokens: a list of integers in the range [0, vocab_size)
@@ -929,7 +929,7 @@ class SubwordTextEncoder(TextEncoder):
           f.write(subtoken_string + "\n")
 
 
-class ImageEncoder(object):
+class ImageEncoder:
   """Encoder class for saving and loading images."""
 
   def __init__(self, num_reserved_ids=0, height=None, width=None, channels=3):
@@ -960,7 +960,7 @@ class ImageEncoder(object):
     return im.imread(s)
 
   def decode(self, ids, strip_extraneous=False):
-    """Transform a sequence of int ids into an image file.
+    """Transform a sequence of int IDs into an image file.
 
     Args:
       ids: list of integers to be converted.
@@ -970,7 +970,7 @@ class ImageEncoder(object):
       Path to the temporary file where the image was saved.
 
     Raises:
-      ValueError: if the ids are not of the appropriate size.
+      ValueError: if the IDs are not of the appropriate size.
     """
     del strip_extraneous
     _, tmp_file_path = tempfile.mkstemp("_decode.png")
@@ -998,7 +998,7 @@ class ImageEncoder(object):
     return tmp_file_path
 
   def decode_list(self, ids):
-    """Transform a sequence of int ids into an image file.
+    """Transform a sequence of int IDs into an image file.
 
     Args:
       ids: list of integers to be converted.
@@ -1013,7 +1013,7 @@ class ImageEncoder(object):
     return 256
 
 
-class RealEncoder(object):
+class RealEncoder:
   """Encoder class for saving and loading float values."""
 
   def encode(self, s):
@@ -1038,7 +1038,7 @@ class RealEncoder(object):
       String having space separated float values.
 
     Raises:
-      ValueError: if the ids are not of the appropriate size.
+      ValueError: if the IDs are not of the appropriate size.
     """
     del strip_extraneous
     return " ".join([str(i) for i in ids])

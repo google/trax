@@ -28,7 +28,7 @@ from trax.models.research import bert
 from trax.models.research import configurable_transformer
 from trax.models.research import layerdrop_transformer
 from trax.models.research import rezero
-from trax.models.research import transformer_no_enc_dec_attention
+from trax.models.research import transformer2
 
 
 # Ginify
@@ -51,7 +51,6 @@ ConfigurableTransformerEncoder = model_configure(
 ConfigurableTransformerLM = model_configure(
     configurable_transformer.ConfigurableTransformerLM)
 MLP = model_configure(mlp.MLP)
-PureMLP = model_configure(mlp.PureMLP)
 NeuralGPU = model_configure(neural_gpu.NeuralGPU)
 Reformer = model_configure(reformer.Reformer)
 ReformerLM = model_configure(reformer.ReformerLM)
@@ -76,8 +75,8 @@ Transformer = model_configure(transformer.Transformer)
 TransformerDecoder = model_configure(transformer.TransformerDecoder)
 TransformerEncoder = model_configure(transformer.TransformerEncoder)
 TransformerLM = model_configure(transformer.TransformerLM)
-TransformerNoEncDecAttention = model_configure(
-    transformer_no_enc_dec_attention.TransformerNoEncDecAttention)
+Transformer2 = model_configure(
+    transformer2.Transformer2)
 WideResnet = model_configure(resnet.WideResnet)
 Policy = model_configure(rl.Policy)
 PolicyAndValue = model_configure(rl.PolicyAndValue)

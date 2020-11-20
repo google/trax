@@ -69,8 +69,10 @@ RLTask.env = "boxing"
 RLTask.initial_trajectories = 0
 RLTask.gamma = 0.99
 RLTask.max_steps = 2000
+RLTask.time_limit = 10000
 RLTask.dm_suite = True
 RLTask.num_stacked_frames = 4
+RLTask.random_starts = False
 
 # Parameters for td_lambda:
 # ==============================================================================
@@ -115,7 +117,7 @@ SamplingAWR.value_optimizer = @trax.optimizers.Adam
 SamplingAWR.value_batch_size = %batch_size
 SamplingAWR.value_train_steps_per_epoch = %value_train_steps
 SamplingAWR.value_lr_schedule = @value/multifactor
-SamplingAWR.value_evals_per_epoch = 30
+SamplingAWR.value_evals_per_epoch = 10
 SamplingAWR.value_eval_steps = 1
 SamplingAWR.policy_model = @trax.models.Policy
 SamplingAWR.policy_optimizer = @trax.optimizers.Adam
@@ -124,9 +126,9 @@ SamplingAWR.policy_train_steps_per_epoch = %policy_train_steps
 SamplingAWR.policy_lr_schedule = @policy/multifactor
 SamplingAWR.policy_evals_per_epoch = 1
 SamplingAWR.policy_eval_steps = 10
-SamplingAWR.n_trajectories_per_epoch = 1
-SamplingAWR.n_interactions_per_epoch = None
-SamplingAWR.n_eval_episodes = 1
+SamplingAWR.n_trajectories_per_epoch = None
+SamplingAWR.n_interactions_per_epoch = 2000
+SamplingAWR.n_eval_episodes = 10
 SamplingAWR.eval_steps = [2000]
 SamplingAWR.advantage_estimator = @trax.rl.advantages.td_lambda
 SamplingAWR.beta = 1.0
@@ -137,14 +139,13 @@ SamplingAWR.n_replay_epochs = 50
 SamplingAWR.scale_value_targets = True
 SamplingAWR.n_shared_layers = 0
 SamplingAWR.q_value_n_samples = %q_value_n_samples
-SamplingAWR.q_value_aggregate = 'max'
-SamplingAWR.q_value_temperature = 1.0
+SamplingAWR.q_value_aggregate = 'logsumexp'
+SamplingAWR.q_value_temperature = 0.3
+SamplingAWR.q_value_normalization = 'abs'
 SamplingAWR.reweight = False
 
 # Parameters for train_rl:
 # ==============================================================================
 train_rl.light_rl = True
 train_rl.light_rl_trainer = @trax.rl.SamplingAWR
-train_rl.n_epochs = 1000
-
-# TODO(pkozakowski): Add PPO config here once we get it to work on MuJoCo.
+train_rl.n_epochs = 10000000

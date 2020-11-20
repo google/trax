@@ -65,12 +65,13 @@ class Serial(base.Layer):
       self._state = tuple(None for l in sublayers)
 
   def forward(self, xs):
+    """Executes this layer as part of a forward pass through the model."""
     self._validate_forward_inputs(xs)
-    state, weights = self.state, self.weights
-    rngs = _split_rngs(self.rng, self._n_layers)
-    if not self.sublayers:  # No-op: leave args unchanged.
+    if not self.sublayers:  # No-op: outputs = inputs
       return xs
 
+    state, weights = self.state, self.weights
+    rngs = _split_rngs(self.rng, self._n_layers)
     stack = xs
     new_state = []
     n_layers = self._n_layers
@@ -93,6 +94,7 @@ class Serial(base.Layer):
 
   # pylint: disable=protected-access
   def init_weights_and_state(self, input_signature):
+    """Initializes weights and state for inputs with the given signature."""
     weights = []
     states = []
     # In the code below, stack, inputs, and outputs are abstract (shapes and
@@ -182,6 +184,7 @@ class Parallel(base.Layer):
     self._state = tuple(None for l in sublayers)
 
   def forward(self, inputs):
+    """Executes this layer as part of a forward pass through the model."""
     n_layers, layers = self._n_layers, self.sublayers
     sublayer_inputs = self._allot_to_sublayers(inputs)
     state, weights = self.state, self.weights
@@ -217,6 +220,7 @@ class Parallel(base.Layer):
     return output
 
   def init_weights_and_state(self, input_signature):
+    """Initializes weights and state for inputs with the given signature."""
     sublayer_signatures = self._allot_to_sublayers(input_signature)
     inits = [layer.init(signature, use_cache=True)
              for layer, signature
@@ -270,7 +274,19 @@ class Parallel(base.Layer):
 
 
 class Concatenate(base.Layer):
-  """Concatenates n tensors into a single tensor."""
+  """Concatenates a number of tensors into a single tensor.
+
+  For example::
+
+      x = np.array([1, 2])
+      y = np.array([3, 4])
+      z = np.array([5, 6])
+      concat3 = tl.Concatenate(n_items=3)
+      z = concat3((x, y, z))  # z = [1, 2, 3, 4, 5, 6]
+
+  Use the `axis` argument to specify on which axis to concatenate the tensors.
+  By default it's the last axis, `axis=-1`, and `n_items=2`.
+  """
 
   def __init__(self, n_items=2, axis=-1):
     name = 'Concatenate' if axis == -1 else f'Concatenate_axis{axis}'
@@ -279,6 +295,7 @@ class Concatenate(base.Layer):
     self._axis = axis
 
   def forward(self, xs):
+    """Executes this layer as part of a forward pass through the model."""
     return jnp.concatenate(xs, self._axis)
 
 
@@ -291,6 +308,7 @@ class Split(base.Layer):
     self._axis = axis
 
   def forward(self, inputs):
+    """Executes this layer as part of a forward pass through the model."""
     return tuple(jnp.split(inputs, self._n_items, self._axis))
 
 
@@ -382,6 +400,7 @@ class Scan(base.Layer):
     return self._sublayers[0]
 
   def forward(self, inputs):
+    """Executes this layer as part of a forward pass through the model."""
     weights = self.weights[0]
     if isinstance(inputs, list):
       inputs = tuple(inputs)  # so that inputs structure matches outputs
@@ -409,6 +428,7 @@ class Scan(base.Layer):
     return res  # Put outputs and carry back on stack.
 
   def init_weights_and_state(self, input_signature):
+    """Initializes weights and state for inputs with the given signature."""
     n_carry = self._n_carry
     if n_carry == 0:
       if isinstance(input_signature, (list, tuple)):
@@ -486,6 +506,7 @@ class Cond(base.Layer):
 
   # pylint: disable=protected-access
   def init_weights_and_state(self, input_signature):
+    """Initializes weights and state for inputs with the given signature."""
     weights = []
     states = []
     # In the code below, stack, inputs, and outputs are abstract (shapes and
@@ -521,6 +542,14 @@ class Cond(base.Layer):
           f'({self.n_in}).')
 
   def forward(self, xs):
+    """Executes this layer as part of a forward pass through the model.
+
+    Args:
+      xs: Tensors of as required by the branches of this conditional.
+
+    Returns:
+      Tensors resulting from running the chosen branch.
+    """
     # TODO(jaszczur): modify; it's a copy from SkippingSerial
     self._validate_forward_inputs(xs)
     layers_state = self.state
@@ -843,11 +872,20 @@ class Cache(base.Layer):
     self.sublayer.state = state[1]
 
   def init_weights_and_state(self, input_signature):
+    """Initializes weights and state for inputs with the given signature."""
     weights, layer_state = self.sublayer.init(input_signature, use_cache=True)
     self.state = ((), layer_state)
     self._weights = (weights,)
 
   def forward(self, inputs):
+    """Executes this layer as part of a forward pass through the model.
+
+    Args:
+      inputs: Tensors required by the sublayer.
+
+    Returns:
+      Tensors resulting from running the sublayer the first time.
+    """
     state, weights = self.state, self.weights[0]
     if state[0] is ():  # pylint: disable=literal-comparison
       res, layer_state = self.sublayer.pure_fn(
@@ -886,6 +924,7 @@ class BatchLeadingAxes(base.Layer):
     return self._sublayers[0]
 
   def forward(self, inputs):
+    """Executes this layer as part of a forward pass through the model."""
     batched_axes_shape = list(inputs.shape[:-self._n_last_axes_to_keep])
     batched_shape = [-1] + list(inputs.shape[-self._n_last_axes_to_keep:])
     inputs = jnp.reshape(inputs, batched_shape)
@@ -895,6 +934,7 @@ class BatchLeadingAxes(base.Layer):
     return jnp.reshape(res, batched_axes_shape + list(res.shape[1:]))
 
   def init_weights_and_state(self, input_signature):
+    """Initializes weights and state for inputs with the given signature."""
     batched_size = 1
     for d in input_signature.shape[:-self._n_last_axes_to_keep]:
       batched_size *= d

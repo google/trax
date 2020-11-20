@@ -19,6 +19,8 @@ import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
 vocab_size = 13  #  For addition, base = vocab_size - 3.
+max_len = 32
+twice_max_len = 64
 
 # Parameters for data_streams:
 # ==============================================================================
@@ -30,10 +32,19 @@ data_streams.dataset_name = 'copy'
 sequence_copy_inputs.vocab_size = %vocab_size
 sequence_copy_inputs.batch_size = 128
 sequence_copy_inputs.train_length = 64
-sequence_copy_inputs.eval_min_length = 32
+sequence_copy_inputs.eval_min_length = 4
 sequence_copy_inputs.eval_max_length = 64
 sequence_copy_inputs.reverse = False
-sequence_copy_inputs.pad_to_multiple = 32
+sequence_copy_inputs.pad_to_multiple = %max_len
+
+# Parameters for simple_sequence_copy_inputs:
+# ==============================================================================
+simple_sequence_copy_inputs.vocab_size = %vocab_size
+simple_sequence_copy_inputs.batch_size = 128
+simple_sequence_copy_inputs.train_length = %max_len
+simple_sequence_copy_inputs.eval_min_length = 4
+simple_sequence_copy_inputs.eval_max_length = %max_len
+simple_sequence_copy_inputs.pad_to_multiple = %max_len
 
 # Parameters for addition_inputs:
 # ==============================================================================
@@ -54,21 +65,25 @@ multifactor.warmup_steps = 4000
 # ==============================================================================
 LSHSelfAttention.attention_dropout = 0.0
 LSHSelfAttention.chunk_len = 16
+LSHSelfAttention.n_buckets = [32, 32]
 LSHSelfAttention.n_chunks_after = 0
 LSHSelfAttention.n_chunks_before = 1
 LSHSelfAttention.n_hashes = 2
 LSHSelfAttention.n_parallel_heads = 1
 LSHSelfAttention.max_length_for_buckets = 1024
+# 0 < predict_drop_len <= predict_mem_len
+LSHSelfAttention.predict_mem_len = %max_len
+LSHSelfAttention.predict_drop_len = %max_len
 
 # Parameters for ReformerLM:
 # ==============================================================================
 ReformerLM.d_model = 256
 ReformerLM.d_ff = 512
 ReformerLM.dropout = 0.05
-ReformerLM.max_len = 256
+ReformerLM.max_len = %twice_max_len
 ReformerLM.n_heads = 4
 ReformerLM.n_layers = 3
-ReformerLM.ff_use_sru = 1
+ReformerLM.ff_use_sru = 0
 ReformerLM.axial_pos_shape = 'fixed-base'
 ReformerLM.attention_type = @LSHSelfAttention  # @CausalFavor
 ReformerLM.vocab_size = %vocab_size
@@ -78,7 +93,7 @@ ReformerLM.vocab_size = %vocab_size
 TransformerLM.d_model = 256
 TransformerLM.d_ff = 512
 TransformerLM.dropout = 0.05
-TransformerLM.max_len = 256
+TransformerLM.max_len = %max_len
 TransformerLM.n_heads = 4
 TransformerLM.n_layers = 3
 TransformerLM.vocab_size = %vocab_size
@@ -90,6 +105,6 @@ train.inputs = @trax.data.inputs.sequence_copy_inputs
 train.eval_frequency = 100
 train.eval_steps = 10
 train.optimizer = @trax.optimizers.Adam
-train.steps = 30000
+train.steps = 100000
 # train.model = @trax.models.TransformerLM
 train.model = @trax.models.ReformerLM

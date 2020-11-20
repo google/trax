@@ -89,8 +89,13 @@ class TrainingTest(absltest.TestCase):
     self.assertEqual(agent2.current_epoch, 3)
     self.assertEqual(agent2.loop.step, 3)
     # Manually set saved epoch to 1.
-    dictionary = {'epoch': 1, 'avg_returns': [0.0],
-                  'avg_returns_temperature0': {200: [0.0]}}
+    dictionary = {
+        'epoch': 1,
+        'avg_returns': [0.0],
+        'avg_returns_temperature_0.0': {
+            200: [0.0]
+        }
+    }
     with tf.io.gfile.GFile(os.path.join(tmp_dir, 'rl.pkl'), 'wb') as f:
       pickle.dump(dictionary, f)
     # Trainer 3 restores from a checkpoint with Agent/Loop step mistmatch,
@@ -121,6 +126,8 @@ class TrainingTest(absltest.TestCase):
           optimizer=opt.Adam,
           lr_schedule=lr,
           batch_size=128,
+          eval_temperatures=[0.0, 0.5],
+          n_eval_episodes=1,
           n_trajectories_per_epoch=2,
       )
       # Assert that we get to 200 at some point and then exit so the test is as
@@ -129,6 +136,10 @@ class TrainingTest(absltest.TestCase):
         agent.run(1)
         self.assertEqual(agent.current_epoch, ep + 1)
         if agent.avg_returns[-1] == 200.0:
+          for eval_t in agent._eval_temperatures:
+            self.assertEqual(
+                len(agent._avg_returns_temperatures[eval_t][200]),
+                len(agent.avg_returns))
           return
       max_avg_returns = max(max_avg_returns, agent.avg_returns[-1])
     self.fail(

@@ -24,23 +24,8 @@ import trax.models
 Reformer2.encoder_attention_type = @SelfAttention
 Reformer2.encoder_decoder_attention_type = @SelfAttention
 
-
 # Parameters for SelfAttention:
 # ==============================================================================
 # 0 < predict_drop_len <= predict_mem_len
 SelfAttention.predict_mem_len = %max_len
 SelfAttention.predict_drop_len = %max_len
-
-# Parameters for simple_sequence_copy_inputs:
-# ==============================================================================
-simple_sequence_copy_inputs.vocab_size = %vocab_size
-simple_sequence_copy_inputs.batch_size = 128
-simple_sequence_copy_inputs.train_length = 64
-simple_sequence_copy_inputs.eval_min_length = 32
-simple_sequence_copy_inputs.eval_max_length = 64
-simple_sequence_copy_inputs.pad_to_multiple = 32
-
-
-# Parameters for train:
-# ==============================================================================
-train.inputs = @trax.data.inputs.simple_sequence_copy_inputs

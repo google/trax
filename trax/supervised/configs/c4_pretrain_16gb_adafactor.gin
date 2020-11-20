@@ -1,0 +1,217 @@
+# Copyright 2020 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.models
+import trax.optimizers
+import trax.data.inputs
+import trax.data.tf_inputs
+import trax.supervised.trainer_lib
+
+import t5.data.preprocessors
+import t5.data.sentencepiece_vocabulary
+
+# Corresponds roughly to T5 'large' ~ 770m params, i.e. T5's `bi_v1_large.gin`.
+d_model = 1024
+d_ff = 4096
+n_heads = 16
+n_layers = 24
+attn_kv = 64
+dropout = 0.1
+vocab_size = 32000
+
+# Parameters for batcher:
+# ==============================================================================
+batcher.data_streams = @tf_inputs.data_streams
+batcher.bucket_length = 512
+batcher.batch_size_per_device = 4  # Reformer/2 can go upto 24
+batcher.eval_batch_size = 64
+batcher.max_eval_length = %max_length
+batcher.buckets_include_inputs_in_length=True
+batcher.id_to_mask = 0
+
+# Parameters for data_streams:
+# ==============================================================================
+data_streams.data_dir = None
+data_streams.dataset_name = 'c4/en:2.3.0'
+data_streams.input_name = 'inputs'
+data_streams.target_name = 'targets'
+data_streams.bare_preprocess_fn=@trax.data.tf_inputs.c4_bare_preprocess_fn
+
+# Parameters for multifactor:
+# ==============================================================================
+multifactor.constant = 1.0
+multifactor.factors = 'constant * rsqrt_decay'
+multifactor.warmup_steps = 10000
+
+# Parameters for Adafactor:
+# ==============================================================================
+Adafactor.weight_decay_rate = 0.0
+Adafactor.beta1 = 0.0
+Adafactor.decay_rate = 0.8
+Adafactor.clipping_threshold = 1.0
+Adafactor.epsilon1 = 1e-16
+Adafactor.epsilon2 = 0.001
+Adafactor.factored = True
+Adafactor.multiply_by_parameter_scale = True
+
+# Parameters for c4_bare_preprocess_fn:
+# ==============================================================================
+c4_bare_preprocess_fn.sequence_length = %sequence_length
+
+# Parameters for train:
+# ==============================================================================
+train.eval_frequency = 1000
+train.eval_steps = 10
+train.model = @trax.models.Transformer
+train.steps = 524288
+train.optimizer = @trax.optimizers.Adafactor
+train.checkpoint_highest = 'accuracy'
+train.checkpoint_lowest = 'loss'
+
+# Parameters for Transformer:
+# ==============================================================================
+Transformer.d_model = %d_model
+Transformer.d_ff = %d_ff
+Transformer.dropout = %dropout
+Transformer.max_len = %max_length
+Transformer.mode = 'train'
+Transformer.n_heads = %n_heads
+Transformer.n_encoder_layers = %n_layers
+Transformer.n_decoder_layers = %n_layers
+Transformer.input_vocab_size = %vocab_size
+
+# Parameters for Transformer2:
+# ==============================================================================
+Transformer2.d_model = %d_model
+Transformer2.d_ff = %d_ff
+Transformer2.dropout = %dropout
+Transformer2.max_len = %max_length
+Transformer2.mode = 'train'
+Transformer2.n_heads = %n_heads
+Transformer2.n_encoder_layers = %n_layers
+Transformer2.n_decoder_layers = %n_layers
+Transformer2.input_vocab_size = %vocab_size
+
+# Parameters for ConfigurableTransformer:
+# ==============================================================================
+ConfigurableTransformer.d_model = %d_model
+ConfigurableTransformer.d_ff = %d_ff
+ConfigurableTransformer.dropout = %dropout
+ConfigurableTransformer.ff_dropout = %dropout
+ConfigurableTransformer.max_len = %max_length
+ConfigurableTransformer.mode = 'train'
+ConfigurableTransformer.n_heads = %n_heads
+ConfigurableTransformer.n_encoder_layers = %n_layers
+ConfigurableTransformer.n_decoder_layers = %n_layers
+ConfigurableTransformer.input_vocab_size = %vocab_size
+
+# Parameters for SelfAttention:
+# ==============================================================================
+SelfAttention.attention_dropout = %dropout
+SelfAttention.chunk_len = None  # full attention
+
+# Parameters for LSHSelfAttention:
+# ==============================================================================
+LSHSelfAttention.attention_dropout = %dropout
+LSHSelfAttention.chunk_len = 128
+LSHSelfAttention.n_buckets = None
+LSHSelfAttention.n_chunks_after = 0
+LSHSelfAttention.n_chunks_before = 1
+LSHSelfAttention.n_hashes = 2
+LSHSelfAttention.n_parallel_heads = 1
+LSHSelfAttention.predict_drop_len = %max_length
+LSHSelfAttention.predict_mem_len = %max_length
+# Reformer2's *encoder* is bidirectional.
+ref2_encoder/LSHSelfAttention.n_chunks_after = 1
+
+# Parameters for Reformer2:
+# ==============================================================================
+ff_chunk_size = 0
+# enc_attn_type = @LSHSelfAttention
+# dec_attn_type = @ref2_encoder/LSHSelfAttention
+enc_attn_type = @Attention
+dec_attn_type = @CausalAttention
+Reformer2.d_model = %d_model  # was  512
+Reformer2.d_ff = %d_ff        # was 2048
+Reformer2.dropout = %dropout  # was  0.1
+Reformer2.ff_activation = @trax.layers.Relu
+Reformer2.ff_dropout = 0.1
+Reformer2.ff_chunk_size = %ff_chunk_size
+Reformer2.ff_sparsity = 0
+Reformer2.max_len = %max_length
+Reformer2.mode = 'train'
+Reformer2.n_heads = %n_heads
+Reformer2.n_encoder_layers = %n_layers
+Reformer2.n_decoder_layers = %n_layers
+Reformer2.input_vocab_size = %vocab_size
+Reformer2.d_attention_key = %attn_kv    # d_model // n_heads
+Reformer2.d_attention_value = %attn_kv  # d_model // n_heads
+Reformer2.encoder_attention_type = %enc_attn_type
+Reformer2.encoder_decoder_attention_type = %dec_attn_type
+Reformer2.n_layers_forget = 0
+Reformer2.axial_pos_shape = None
+
+# Parameters for T5
+# ==============================================================================
+max_length = 512
+sequence_length = {'inputs': 512, 'targets': 512}
+mean_noise_span_length = 3.0
+noise_density = 0.15
+
+# Parameters for unsupervised:
+# ==============================================================================
+
+# This is what T5 uses.
+# unsupervised.preprocessors = \
+#     [@preprocessors.select_random_chunk,
+#      @preprocessors.reduce_concat_tokens,
+#      @preprocessors.split_tokens,
+#      @preprocessors.denoise]
+
+# We.delete out reduce_concat_tokens since we don't want to do sequence packing
+unsupervised.preprocessors = \
+    [@preprocessors.select_random_chunk,
+     @preprocessors.split_tokens,
+     @preprocessors.denoise]
+
+# Parameters for select_random_chunk:
+# ==============================================================================
+select_random_chunk.feature_key = 'targets'
+select_random_chunk.max_length = %max_length
+
+# Parameters for reduce_concat_tokens:
+# ==============================================================================
+reduce_concat_tokens.batch_size = 128
+reduce_concat_tokens.feature_key = 'targets'
+
+# Parameters for random_spans_helper:
+# ==============================================================================
+random_spans_helper.extra_tokens_per_span_inputs = 1
+random_spans_helper.extra_tokens_per_span_targets = 1
+random_spans_helper.inputs_length = %max_length
+random_spans_helper.mean_noise_span_length = %mean_noise_span_length
+random_spans_helper.noise_density = %noise_density
+
+# Parameters for split_tokens:
+# ==============================================================================
+split_tokens.feature_key = 'targets'
+split_tokens.max_tokens_per_segment = @preprocessors.random_spans_tokens_length()
+split_tokens.min_tokens_per_segment = None
+
+# Parameters for denoise:
+# ==============================================================================
+denoise.inputs_fn = @preprocessors.noise_span_to_unique_sentinel
+denoise.noise_density = %noise_density
+denoise.noise_mask_fn = @preprocessors.random_spans_noise_mask
+denoise.targets_fn = @preprocessors.nonnoise_span_to_unique_sentinel

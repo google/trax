@@ -152,7 +152,6 @@ class PureAttention(base.Layer):
     """
     q, k, v, mask = inputs
 
-    batch_size = q.shape[0]
     d_feature = q.shape[-1]
     n_heads = self._n_heads
     if d_feature % n_heads != 0:
@@ -160,33 +159,18 @@ class PureAttention(base.Layer):
           f'Dimensionality of feature embedding ({d_feature}) is not a '
           f'multiple of the requested number of attention heads ({n_heads}).')
 
-    d_head = d_feature // n_heads
-
-    def _split_into_heads(x):
-      """Reshapes tensors to prepare for multi-head computation."""
-      # (b_size, seq_len, d_feature) --> (b_size, n_heads, seq_len, d_head)
-      x = x.reshape((batch_size, -1, n_heads, d_head))
-      x = x.transpose((0, 2, 1, 3))
-      return x
-
-    def _merge_heads(x):
-      """Undoes splitting, after multi-head computation."""
-      # (b_size, n_heads, seq_len, d_head) --> (b_size, seq_len, d_feature)
-      x = x.transpose((0, 2, 1, 3))
-      x = x.reshape((batch_size, -1, n_heads * d_head))
-      return x
-
     per_head_results, dots = DotProductAttention(
-        _split_into_heads(q),
-        _split_into_heads(k),
-        _split_into_heads(v),
+        SplitIntoHeads(n_heads, merged_batch_and_head=False).forward(q),
+        SplitIntoHeads(n_heads, merged_batch_and_head=False).forward(k),
+        SplitIntoHeads(n_heads, merged_batch_and_head=False).forward(v),
         mask,
         dropout=self._dropout,
         mode=self._mode,
         rng=self.rng)
     if self._mode == 'viz':
       self.state = dots
-    merged_results = _merge_heads(per_head_results)
+    merged_results = MergeHeads(n_heads, merged_batch_and_head=False).forward(
+        per_head_results)
     return (merged_results, mask)
 
 
@@ -216,13 +200,6 @@ def DotProductAttention(queries, keys, values, mask, dropout, mode, rng):
   d_feature = queries.shape[-1]
   dots = jnp.matmul(queries, jnp.swapaxes(keys, -1, -2)) / jnp.sqrt(d_feature)
   if mask is not None:
-    # TODO(kitaev): workaround for https://github.com/google/jax/issues/850
-    # We must ensure that both mask and the -1e9 constant have a data dependency
-    # on the input. Broadcasted copies of these use a lot of memory, so they
-    # should be computed at runtime (rather than being global constants).
-    if fastmath.is_backend(fastmath.Backend.JAX):
-      mask = jax.lax.tie_in(dots, mask)
-    # JAX's `full_like` already ties in -1e9 to dots.
     dots = jnp.where(mask, dots, jnp.full_like(dots, -1e9))
   # Softmax.
   dots = jnp.exp(dots - fastmath.logsumexp(dots, axis=-1, keepdims=True))
@@ -235,6 +212,65 @@ def DotProductAttention(queries, keys, values, mask, dropout, mode, rng):
   out = out.astype(jnp.float32)
   dots = dots.astype(jnp.float32)
   return out, dots
+
+
+# (b_size, seq_len, d_feature) --> (b_size*n_heads, seq_len, d_head)
+@assert_shape('bld->...lh')
+def SplitIntoHeads(n_heads, merged_batch_and_head=True):
+  """Returns a layer that reshapes tensors for multi-headed computation."""
+  def f(x):
+    batch_size, seq_len, d_feature = x.shape
+
+    if d_feature % n_heads != 0:
+      raise ValueError(
+          f'Dimensionality of feature embedding ({d_feature}) is not a multiple'
+          f' of the requested number of attention heads ({n_heads}).')
+
+    assert d_feature % n_heads == 0
+    d_head = d_feature // n_heads
+
+    # (b_size, seq_len, d_feature) --> (b_size*n_heads, seq_len, d_head)
+    x = x.reshape((batch_size, seq_len, n_heads, d_head))
+    x = x.transpose((0, 2, 1, 3))
+    if merged_batch_and_head:
+      x = x.reshape((batch_size * n_heads, seq_len, d_head))
+    return x
+  return Fn('SplitIntoHeads', f)
+
+
+# (b_size*n_heads, seq_len, d_head) --> (b_size, seq_len, d_feature)
+@assert_shape('...lh->bld')
+def MergeHeads(n_heads, merged_batch_and_head=True):
+  """Returns a layer that undoes splitting, after multi-head computation."""
+  def f(x):
+    if merged_batch_and_head:
+      batchheads, seq_len, d_head = x.shape
+      assert batchheads % n_heads == 0
+      batch_size = batchheads // n_heads
+      x = x.reshape((batch_size, n_heads, seq_len, d_head))
+    else:
+      batch_size, _, seq_len, d_head = x.shape
+
+    # (b_size, n_heads, seq_len, d_head) --> (b_size, seq_len, d_feature)
+    x = x.transpose((0, 2, 1, 3))
+    x = x.reshape((batch_size, seq_len, n_heads * d_head))
+    return x
+  return Fn('MergeHeads', f)
+
+
+@assert_shape('bld->bld')
+def ConfigurableAttention(q_layer, k_layer, v_layer, final_layer,  # pylint: disable=invalid-name
+                          qkv_attention_layer, n_heads=1):
+  return cb.Serial(
+      cb.Branch(
+          [q_layer, SplitIntoHeads(n_heads)],
+          [k_layer, SplitIntoHeads(n_heads)],
+          [v_layer, SplitIntoHeads(n_heads)],
+      ),
+      qkv_attention_layer,
+      MergeHeads(n_heads),
+      final_layer
+  )
 
 
 @assert_shape('bld->bld')
@@ -258,45 +294,12 @@ def CausalAttention(d_feature, n_heads=1, dropout=0.0,
         f'Dimensionality of feature embedding ({d_feature}) is not a multiple '
         f'of the requested number of attention heads ({n_heads}).')
 
-  d_head = d_feature // n_heads
-
-  def _split_into_heads():
-    """Returns a layer that reshapes tensors for multi-headed computation."""
-    def f(x):
-      batch_size = x.shape[0]
-      seq_len = x.shape[1]
-
-      # (b_size, seq_len, d_feature) --> (b_size*n_heads, seq_len, d_head)
-      x = x.reshape((batch_size, seq_len, n_heads, d_head))
-      x = x.transpose((0, 2, 1, 3))
-      x = x.reshape((-1, seq_len, d_head))
-      return x
-    return Fn('SplitIntoHeads', f)
-
-  def _merge_heads():
-    """Returns a layer that undoes splitting, after multi-head computation."""
-    def f(x):
-      seq_len = x.shape[1]
-
-      # (b_size*n_heads, seq_len, d_head) --> (b_size, seq_len, d_feature)
-      x = x.reshape((-1, n_heads, seq_len, d_head))
-      x = x.transpose((0, 2, 1, 3))
-      x = x.reshape((-1, seq_len, n_heads * d_head))
-      return x
-    return Fn('MergeHeads', f)
-
-  return cb.Serial(
-      cb.Branch(
-          [core.Dense(d_feature), _split_into_heads()],
-          [core.Dense(d_feature), _split_into_heads()],
-          [core.Dense(d_feature), _split_into_heads()],
-      ),
-      DotProductCausalAttention(
+  return ConfigurableAttention(
+      core.Dense(d_feature), core.Dense(d_feature), core.Dense(d_feature),
+      core.Dense(d_feature), n_heads=n_heads,
+      qkv_attention_layer=DotProductCausalAttention(
           dropout=dropout, max_inference_length=max_inference_length,
-          mode=mode),
-      _merge_heads(),
-      core.Dense(d_feature),
-  )
+          mode=mode))
 
 
 @assert_shape('bld,bld,bld->bld')
@@ -481,8 +484,6 @@ class PositionalEncoding(base.Layer):
         for dim in self._dropout_broadcast_dims:
           noise_shape[dim] = 1
         keep_prob = 1.0 - self._dropout
-        if fastmath.is_backend(fastmath.Backend.JAX):
-          keep_prob = jax.lax.tie_in(x, jnp.full((), keep_prob, dtype=x.dtype))
         keep = fastmath.random.bernoulli(self.rng, keep_prob,
                                          tuple(noise_shape))
         multiplier = keep.astype(x.dtype) / keep_prob

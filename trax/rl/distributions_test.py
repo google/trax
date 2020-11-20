@@ -27,6 +27,10 @@ from trax.rl import distributions
 
 class DistributionsTest(parameterized.TestCase):
 
+  def setUp(self):
+    super().setUp()
+    gin.clear_config()
+
   @parameterized.named_parameters(
       ('discrete', gym.spaces.Discrete(n=4), ''),
       ('multi_discrete', gym.spaces.MultiDiscrete(nvec=[5, 5]), ''),

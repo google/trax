@@ -27,7 +27,7 @@ from trax import fastmath
 from trax.supervised import training
 
 
-class _TimeStep(object):
+class _TimeStep:
   """A single step of interaction with a RL environment.
 
   TimeStep stores a single step in the trajectory of an RL run:
@@ -79,7 +79,7 @@ TimeStepNp = collections.namedtuple('TimeStepNp', [
 ])
 
 
-class Trajectory(object):
+class Trajectory:
   """A trajectory of interactions with a RL environment.
 
   Trajectories are created when interacting with a RL environment. They can
@@ -96,11 +96,11 @@ class Trajectory(object):
     return len(self._timesteps)
 
   def __str__(self):
-    return str([(ts.observation, ts.action, ts.reward)
+    return str([(ts.observation, ts.action, ts.reward, ts.done)
                 for ts in self._timesteps])
 
   def __repr__(self):
-    return repr([(ts.observation, ts.action, ts.reward)
+    return repr([(ts.observation, ts.action, ts.reward, ts.done)
                  for ts in self._timesteps])
 
   def __getitem__(self, key):
@@ -123,7 +123,23 @@ class Trajectory(object):
     last_timestep = self._timesteps[-1]
     return last_timestep.observation
 
-  def extend(self, action, dist_inputs, reward, done, new_observation, mask=1):
+  @property
+  def done(self):
+    """Returns whether the trajectory is finished."""
+    if len(self._timesteps) < 2:
+      return False
+    second_last_timestep = self._timesteps[-2]
+    return second_last_timestep.done
+
+  @done.setter
+  def done(self, done):
+    """Sets the `done` flag in the last timestep."""
+    if len(self._timesteps) < 2:
+      raise ValueError('No interactions yet in the trajectory.')
+    last_timestep = self._timesteps[-2]
+    last_timestep.done = done
+
+  def extend(self, action, dist_inputs, new_observation, reward, done, mask=1):
     """Take action in the last state, getting reward and going to new state."""
     last_timestep = self._timesteps[-1]
     last_timestep.action = action
@@ -192,7 +208,7 @@ class Trajectory(object):
     })
 
 
-def play(env, policy, dm_suite=False, max_steps=None):
+def play(env, policy, dm_suite=False, max_steps=None, last_observation=None):
   """Play an episode in env taking actions according to the given policy.
 
   Environment is first reset and an from then on, a game proceeds. At each
@@ -208,30 +224,33 @@ def play(env, policy, dm_suite=False, max_steps=None):
       defined as the log of the probability of taking that action).
     dm_suite: whether we are using the DeepMind suite or the gym interface
     max_steps: for how many steps to play.
+    last_observation: last observation from a previous trajectory slice, used to
+      begin a new one. Controls whether we reset the environment at the
+      beginning - if `None`, resets the env and starts the slice from the
+      observation got from reset().
 
   Returns:
-    a completed trajectory that was just played.
+    a completed trajectory slice that was just played.
   """
-  terminal = False
+  done = False
   cur_step = 0
-  if dm_suite:
-    cur_trajectory = Trajectory(env.reset().observation)
-    while not terminal and (max_steps is None or cur_step < max_steps):
-      action, dist_inputs = policy(cur_trajectory)
-      observation = env.step(action)
-      cur_trajectory.extend(action, dist_inputs,
-                            observation.reward,
-                            observation.step_type.last(),
-                            observation.observation)
-      cur_step += 1
-      terminal = observation.step_type.last()
-  else:
-    cur_trajectory = Trajectory(env.reset())
-    while not terminal and (max_steps is None or cur_step < max_steps):
-      action, dist_inputs = policy(cur_trajectory)
-      observation, reward, terminal, _ = env.step(action)
-      cur_trajectory.extend(action, dist_inputs, reward, terminal, observation)
-      cur_step += 1
+  if last_observation is None:
+    # TODO(pkozakowski): Make a Gym wrapper over DM envs to get rid of branches
+    # like that.
+    last_observation = env.reset().observation if dm_suite else env.reset()
+  cur_trajectory = Trajectory(last_observation)
+  while not done and (max_steps is None or cur_step < max_steps):
+    action, dist_inputs = policy(cur_trajectory)
+    step = env.step(action)
+    if dm_suite:
+      observation_reward_done = (
+          step.observation, step.reward, step.step_type.last()
+      )
+    else:
+      observation_reward_done = step[:3]
+    cur_trajectory.extend(action, dist_inputs, *observation_reward_done)
+    cur_step += 1
+    (_, _, done) = observation_reward_done
   return cur_trajectory
 
 
@@ -276,7 +295,9 @@ class RLTask:
                initial_trajectories=1,
                gamma=0.99,
                dm_suite=False,
+               random_starts=True,
                max_steps=None,
+               time_limit=None,
                timestep_to_np=None,
                num_stacked_frames=1,
                n_replay_epochs=1):
@@ -292,7 +313,11 @@ class RLTask:
         trajectories are stored.
       gamma: float: discount factor for calculating returns.
       dm_suite: whether we are using the DeepMind suite or the gym interface
-      max_steps: Optional int: stop all trajectories at that many steps.
+      random_starts: use random starts for training of Atari agents.
+      max_steps: optional int: cut all trajectory slices at that many steps.
+        The trajectory will be continued in the next epochs, up to `time_limit`.
+      time_limit: optional int: stop all trajectories after that many steps (or
+        after getting "done"). If `None`, use the same value as `max_steps`.
       timestep_to_np: a function that turns a timestep into a numpy array
         (ie., a tensor); if None, we just use the state of the timestep to
         represent it, but other representations (such as embeddings that include
@@ -303,28 +328,40 @@ class RLTask:
     if isinstance(env, str):
       self._env_name = env
       if dm_suite:
-        env = environments.load_from_settings(
-            platform='atari',
-            settings={
-                'levelName': env,
-                'interleaved_pixels': True,
-                'zero_indexed_actions': True
-            })
         eval_env = environments.load_from_settings(
             platform='atari',
             settings={
                 'levelName': env,
                 'interleaved_pixels': True,
                 'zero_indexed_actions': True,
-                'random_noops_range': 30,
+                'phase': 'testing',
             })
         eval_env = atari_wrapper.AtariWrapper(
             environment=eval_env,
             max_abs_reward=None,
             num_stacked_frames=num_stacked_frames)
-        env = atari_wrapper.AtariWrapper(environment=env,
-                                         num_stacked_frames=num_stacked_frames)
-
+        if random_starts:
+          env = environments.load_from_settings(
+              platform='atari',
+              settings={
+                  'levelName': env,
+                  'interleaved_pixels': True,
+                  'zero_indexed_actions': True,
+                  'phase': 'training'
+              })
+        else:
+          # This is the default behavior used so far
+          # in QWR experiments (implicitly 'condition': 'at30').
+          env = environments.load_from_settings(
+              platform='atari',
+              settings={
+                  'levelName': env,
+                  'interleaved_pixels': True,
+                  'zero_indexed_actions': True
+              })
+        env = atari_wrapper.AtariWrapper(
+            environment=env,
+            num_stacked_frames=num_stacked_frames)
       else:
         env = gym.make(env)
         eval_env = env
@@ -335,12 +372,17 @@ class RLTask:
     self._eval_env = eval_env
     self._dm_suite = dm_suite
     self._max_steps = max_steps
+    if time_limit is None:
+      time_limit = max_steps
+    self._time_limit = time_limit
     self._gamma = gamma
     self._initial_trajectories = initial_trajectories
+    self._last_observation = None
+    self._n_steps_left = time_limit
     # TODO(lukaszkaiser): find a better way to pass initial trajectories,
     # whether they are an explicit list, a file, or a number of random ones.
     if isinstance(initial_trajectories, int):
-      if self._initial_trajectories > 0:
+      if initial_trajectories > 0:
         initial_trajectories = [
             self.play(_random_policy(self.action_space))
             for _ in range(initial_trajectories)
@@ -484,9 +526,42 @@ class RLTask:
     if max_steps is None:
       max_steps = self._max_steps
     if only_eval:
-      cur_trajectory = play(self._eval_env, policy, self._dm_suite, max_steps)
+      cur_trajectory = play(
+          self._eval_env, policy, self._dm_suite,
+          # Only step up to the time limit.
+          max_steps=min(max_steps, self._time_limit),
+          # Always reset at the beginning of an eval episode.
+          last_observation=None,
+      )
     else:
-      cur_trajectory = play(self._env, policy, self._dm_suite, max_steps)
+      cur_trajectory = play(
+          self._env, policy, self._dm_suite,
+          # Only step up to the time limit, used up by all slices of the same
+          # trajectory.
+          max_steps=min(max_steps, self._n_steps_left),
+          # Pass the environmnent state between play() calls, so one episode can
+          # span multiple training epochs.
+          # NOTE: Cutting episodes between epochs may hurt e.g. with
+          # Transformers.
+          # TODO(pkozakowski): Join slices together if this becomes a problem.
+          last_observation=self._last_observation,
+      )
+      # Update the number of steps left to reach the time limit.
+      # NOTE: This should really be done as an env wrapper.
+      # TODO(pkozakowski): Do that once we wrap the DM envs in Gym interface.
+      # The initial reset doesn't count.
+      self._n_steps_left -= len(cur_trajectory) - 1
+      assert self._n_steps_left >= 0
+      if self._n_steps_left == 0:
+        cur_trajectory.done = True
+    # Pass the last observation between trajectory slices.
+    if cur_trajectory.done:
+      self._last_observation = None
+      if not only_eval:
+        # Reset the time limit.
+        self._n_steps_left = self._time_limit
+    else:
+      self._last_observation = cur_trajectory.last_observation
     cur_trajectory.calculate_returns(self._gamma)
     return cur_trajectory
 
@@ -505,12 +580,11 @@ class RLTask:
                                     only_eval=only_eval)
                           for _ in range(n_trajectories)]
     elif n_interactions:
-      # TODO(pkozakowski): Test this mode of experience collection.
       new_trajectories = []
       while n_interactions > 0:
-        traj = self.play(policy, max_steps=max_steps)
+        traj = self.play(policy, max_steps=min(n_interactions, max_steps))
         new_trajectories.append(traj)
-        n_interactions -= len(traj)
+        n_interactions -= len(traj) - 1  # The initial reset does not count.
     else:
       raise ValueError(
           'Either n_trajectories or n_interactions must be defined.'

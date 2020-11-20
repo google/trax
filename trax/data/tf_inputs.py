@@ -25,6 +25,7 @@ from absl import logging
 import gin
 import numpy as np
 
+from t5 import data as t5_data
 from t5.data import preprocessors as t5_processors
 from t5.data import sentencepiece_vocabulary as t5_spc_vocab
 from t5.data import utils as t5_utils
@@ -376,7 +377,7 @@ def vocab_size(vocab_type='subword', vocab_file=None, vocab_dir=None,
   This function can be used to set the size of the final layers of a model that
   needs to predict symbols from a given vocabulary. More precisely, if this
   function returns N then the last layer size should be set to at least N (it
-  can be more). Note that this function does take reserved ids into account.
+  can be more). Note that this function does take reserved IDs into account.
 
   Args:
     vocab_type: Type of vocabulary, one of: 'subword', 'sentencepiece', 'char'.
@@ -385,7 +386,7 @@ def vocab_size(vocab_type='subword', vocab_file=None, vocab_dir=None,
     n_reserved_ids: An int, offset added so 0, ..., n_reserved_ids-1 are unused.
 
   Returns:
-    An integer, the number of symbols used (including reserved ids).
+    An integer, the number of symbols used (including reserved IDs).
   """
   vocab = _get_vocab(vocab_type, vocab_file, vocab_dir)
   return vocab.vocab_size + n_reserved_ids
@@ -693,7 +694,7 @@ def c4_bare_preprocess_fn(dataset,
   # Vocabulary for tokenization.
   vocab = t5_spc_vocab.SentencePieceVocabulary(
       sentencepiece_model_file=spm_path or t5_utils.DEFAULT_SPM_PATH)
-  feature = t5_utils.Feature(vocab)
+  feature = t5_data.Feature(vocab)
   output_features = {'targets': feature, 'inputs': feature}
 
   # Tokenize the targets.
@@ -883,13 +884,12 @@ def generic_text_dataset_preprocess_fn(dataset,
   # Vocabulary for tokenization.
   vocab = t5_spc_vocab.SentencePieceVocabulary(
       sentencepiece_model_file=spm_path or t5_utils.DEFAULT_SPM_PATH)
-  feature = t5_utils.Feature(vocab)
+  feature = t5_data.Feature(vocab)
   output_features = {'targets': feature, 'inputs': feature}
 
   # Tokenize the inputs and targets.
-  dataset = t5_utils.encode_string_features(
-      dataset, output_features, keys=output_features,
-      copy_plaintext=copy_plaintext)
+  dataset = t5_processors.tokenize(
+      dataset, output_features, copy_plaintext=copy_plaintext)
 
   # Apply the token-preprocessors.
   if token_preprocess_fns is not None:

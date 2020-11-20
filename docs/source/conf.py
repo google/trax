@@ -221,6 +221,7 @@ autodoc_mock_imports = [
     'matplotlib',
     'cloudpickle',
     't5',
+    'psutil',
     # 'setup',
 ]
 

@@ -861,6 +861,28 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
     self.assertAllClose(result[0], 4)
     self.assertAllClose(result[1], 4)
 
+  def testPsumStruct(self):
+    devices = self._get_two_devices(require_same_type=True)
+
+    def reduce_sum(a):
+      a = extensions.psum(a)
+      tf.nest.map_structure(
+          lambda x: self.assertIsInstance(x, tf_np.ndarray), a)
+      return a
+
+    data = [tf_np.asarray([1, 3]), tf_np.asarray([2, 4], np.int64)]
+    pmapped = extensions.pmap(reduce_sum, devices=devices)
+    result = pmapped(data)
+
+    self.assertIsInstance(result[0][0], tf_np.ndarray)
+    self.assertIsInstance(result[0][1], tf_np.ndarray)
+    self.assertIsInstance(result[1][0], tf_np.ndarray)
+    self.assertIsInstance(result[1][1], tf_np.ndarray)
+    self.assertAllClose(result[0][0], 4)
+    self.assertAllClose(result[0][1], 4)
+    self.assertAllClose(result[1][0], 6)
+    self.assertAllClose(result[1][1], 6)
+
   def testPmean(self):
     if extensions.tpu_devices():
       self.skipTest("pmean for TPU is not supported yet")

@@ -1,0 +1,60 @@
+# Copyright 2020 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.layers
+import trax.models
+import trax.optimizers
+import trax.supervised.lr_schedules
+import trax.supervised.pretrain_finetune
+import trax.supervised.trainer_lib
+import trax.models.research.bert
+import trax.layers.metrics
+
+# See https://www.tensorflow.org/datasets/catalog/glue -- valid dataset_name
+# values are: glue/cola, glue/sst2, glue/mrpc, glue/qqp, glue/stsb, glue/mnli,
+# glue/qnli, glue/rte, glue/wnli. However, training on WNLI with this setup is
+# not recommended and will likely result in lower than baseline accuracy.
+
+
+# Parameters for glue_inputs:
+# ==============================================================================
+glue_inputs.dataset_name = 'glue/mnli'
+glue_inputs.batch_size = 16
+
+
+# Parameters for bert_tokenizer:
+# ==============================================================================
+# Download the model from from https://github.com/google-research/bert, type in path to vocabulary and uncomment
+# bert_tokenizer.vocab_path = 'PATH-TO-VOCAB'
+
+# Parameters for train:
+# ==============================================================================
+train.optimizer = @trax.optimizers.Adam
+train.eval_frequency = 20
+train.eval_steps = 10
+train.inputs = @pretrain_finetune.glue_inputs
+train.model = @trax.models.BERT
+train.steps = 2000
+train.checkpoint_highest = 'accuracy'
+
+# Parameters for BERT:
+# ==============================================================================
+# Download the model from from https://github.com/google-research/bert, type in path to model checkpoint and uncomment
+# BERT.init_checkpoint = 'PATH-TO-MODEL-CHECKPOINT'
+BERT.head = @bert.BERTClassifierHead
+bert.BERTClassifierHead.n_classes = 3
+
+# Parameters for lr_schedules
+# ==============================================================================
+lr_schedules.multifactor.constant = 3e-5

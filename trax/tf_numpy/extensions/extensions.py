@@ -22,6 +22,7 @@ from __future__ import print_function
 import bisect
 import contextlib
 import copy
+import functools
 import string
 import sys
 import threading
@@ -1403,7 +1404,7 @@ class ShardedNdArray(object):
     self.n_devices = len(tensors)
 
   def __getitem__(self, i):
-    return self.tensors[i]
+    return tf_np.asarray(self.tensors[i])
 
   @property
   def shape(self):
@@ -1463,7 +1464,7 @@ def pmap_config(axis_name, devices):
     _pmap_config.set_devices(old_devices)
 
 
-def psum(tensor, axis_name=None):
+def _psum(tensor, axis_name=None):
   """Sum all-reduction.
 
   Args:
@@ -1480,12 +1481,27 @@ def psum(tensor, axis_name=None):
   devices = _pmap_config.devices()
   if devices is None:
     raise ValueError("Can't retrieve the device list from the surrounding pmap")
+  tensor = tf_np.asarray(tensor)
   if tpu_devices(devices):
+    # TODO(b/170895907): Remove this workaround when tpu.cross_replica_sum
+    #   supports int64/float64.
+    is_int64 = False
+    is_float64 = False
+    if tensor.dtype == np.int64:
+      is_int64 = True
+      tensor = tensor.astype(np.int32)
+    elif tensor.dtype == np.float64:
+      is_float64 = True
+      tensor = tensor.astype(np.float32)
     # TODO(wangpeng): Supply the `group_assignment` argument to
-    # tpu.cross_replica_sum, calculated from `devices`.
-    return tf.compat.v1.tpu.cross_replica_sum(tensor)
+    #   tpu.cross_replica_sum, calculated from `devices`.
+    tensor = tf.compat.v1.tpu.cross_replica_sum(tensor)
+    if is_int64:
+      tensor = tf.cast(tensor, tf.int64)
+    elif is_float64:
+      tensor = tf.cast(tensor, tf.float64)
   else:
-    return tf.raw_ops.CollectiveReduce(
+    tensor = tf.raw_ops.CollectiveReduce(
         input=tensor.data,
         group_size=len(devices),
         group_key=_GROUP_KEY,
@@ -1493,6 +1509,12 @@ def psum(tensor, axis_name=None):
         merge_op="Add",
         final_op="Id",
         subdiv_offsets=(0,))
+  return tf_np.asarray(tensor)
+
+
+def psum(tensors, axis_name=None):
+  return tf.nest.map_structure(
+      functools.partial(_psum, axis_name=axis_name), tensors)
 
 
 # Note this is not available in the jax api, but seemed like a reasonable API

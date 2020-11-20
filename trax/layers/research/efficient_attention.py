@@ -47,12 +47,6 @@ from trax.layers import initializers as init
 ####################################################### Functions
 
 
-def tie_in(x, y):
-  if fastmath.is_backend(fastmath.Backend.JAX):
-    return jax.lax.tie_in(x, y)
-  return y
-
-
 def length_normalized(x, epsilon=1e-6):
   variance = np.mean(x**2, axis=-1, keepdims=True)
   norm_inputs = x / np.sqrt(variance + epsilon)
@@ -71,7 +65,7 @@ def hash_vecs(vecs, n_buckets_in, n_hashes, rng):
 
   Returns:
     A pair (buckets, n_buckets) where buckets is a tensor of shape
-    [n_hashes, batch_size] of integers -- the hash bucket ids, and
+    [n_hashes, batch_size] of integers -- the hash bucket IDs, and
     n_buckets is an int, the total number of hash buckets, equal to
     the product of all items in n_buckets_in.
   """
@@ -91,7 +85,6 @@ def hash_vecs(vecs, n_buckets_in, n_hashes, rng):
       n_buckets *= factor
 
   rotations_shape = (vecs.shape[-1], n_hashes, rot_size // 2)
-  rng = fastmath.stop_gradient(tie_in(vecs, rng))
   random_rotations = fastmath.random.normal(rng, rotations_shape).astype(
       np.float32)
   if fastmath.is_backend(fastmath.Backend.JAX):
@@ -148,14 +141,16 @@ def look_adjacent(x, n_chunks_before, n_chunks_after):
 def mask_self_attention(
     dots, q_info, kv_info, causal=True, exclude_self=True, masked=False):
   """Performs masking for self-attention."""
+  q_info = q_info.astype(np.float32)
+  kv_info = kv_info.astype(np.float32)
   if causal:
-    mask = fastmath.lt(q_info, kv_info).astype(np.float32)
+    mask = fastmath.lt(q_info, kv_info)
     dots = dots - 1e9 * mask
   if exclude_self:
-    mask = np.equal(q_info, kv_info).astype(np.float32)
+    mask = np.equal(q_info, kv_info)
     dots = dots - 1e5 * mask
   if masked:
-    zeros_like_kv_info = tie_in(kv_info, np.zeros_like(kv_info))
+    zeros_like_kv_info = np.zeros_like(kv_info)
     mask = fastmath.lt(kv_info, zeros_like_kv_info).astype(np.float32)
     dots = dots - 1e9 * mask
   return dots
@@ -257,9 +252,9 @@ def attend(
     # Dropout is broadcast across the bin dimension
     dropout_shape = (dots.shape[-2], dots.shape[-1])
     # TODO(kitaev): verify that tie-in is safe to remove (in light of jax fix)
-    keep_prob = tie_in(dots, 1.0 - dropout)
+    keep_prob = 1.0 - dropout
     keep = fastmath.random.bernoulli(rng, keep_prob, dropout_shape)
-    multiplier = keep.astype(dots.dtype) / tie_in(keep, keep_prob)
+    multiplier = keep.astype(dots.dtype) / keep_prob
     dots = dots * multiplier
 
   # The softmax normalizer (dots_logsumexp) is used by multi-round LSH attn.
@@ -273,83 +268,48 @@ def apply_broadcasted_dropout(vecs, dropout_rate, rng):
   """Apply dropout, broadcasted across all but the last dimension of `vecs`."""
   if dropout_rate > 0.0:
     assert rng is not None
-    keep_prob = tie_in(vecs, 1.0 - dropout_rate)
+    keep_prob = 1.0 - dropout_rate
     keep = fastmath.random.bernoulli(rng, keep_prob, (vecs.shape[-1],))
-    multiplier = keep.astype(vecs.dtype) / tie_in(keep, keep_prob)
+    multiplier = keep.astype(vecs.dtype) / keep_prob
     return vecs * multiplier
   else:
     return vecs
-
-
-def permute_via_gather(val, permutation, inverse_permutation, axis=0):
-  """Permutation helper for LSH attention."""
-  def permute_impl(val):
-    return np.take(val, permutation, axis=axis)
-  def permute_vjp(val):
-    permuted = permute_impl(fastmath.stop_gradient(val))
-    def vjpfun(permuted_grad):
-      # JAX autodiff would synthesize a scatter operation because it doesn't
-      # know that the indices are a permutation. However on TPU, gathers are
-      # faster than scatters (at least in the regime the LSH attention uses).
-      return (np.take(permuted_grad, inverse_permutation, axis=axis),)
-    return permuted, vjpfun
-  permute = fastmath.custom_grad(permute_vjp, permute_impl)
-  return permute(val)
-
-
-def permute_via_sort(val, keys, inverse_keys, axis=0):
-  """Permutation helper for LSH attention."""
-  def permute_impl(val):
-    # On TPU, sorting scalars by key is faster than a gather.
-    _, permuted = fastmath.sort_key_val(keys, val, dimension=axis)
-    return permuted
-  def permute_vjp(val):
-    permuted = permute_impl(fastmath.stop_gradient(val))
-    def vjpfun(permuted_grad):
-      _, val_grad = fastmath.sort_key_val(
-          inverse_keys, permuted_grad, dimension=axis)
-      return (val_grad,)
-    return permuted, vjpfun
-  permute = fastmath.custom_grad(permute_vjp, permute_impl)
-  return permute(val)
 
 
 # The new implementations below don't use custom_transforms in JAX but
 # do cause Tracer errors, so we don't use them for now.
 
 
-def permute_via_gather_new(val, permutation, inverse_permutation, axis=0):
+def permute_via_gather(val, permutation, inverse_permutation, axis=0):
   """Permutation helper for LSH attention."""
   def permute_impl(p, unused_ip, val):
     return np.take(val, p, axis=axis)
-  def permute_fwd(p, unused_ip, val):
-    return np.take(val, p, axis=axis), None
-  def permute_bwd(unused_p, ip, _, permuted_grad):
+  def permute_fwd(p, ip, val):
+    return np.take(val, p, axis=axis), ip
+  def permute_bwd(ip, permuted_grad):
     # JAX autodiff would synthesize a scatter operation because it doesn't
     # know that the indices are a permutation. However on TPU, gathers are
     # faster than scatters (at least in the regime the LSH attention uses).
-    return (np.take(permuted_grad, ip, axis=axis),)
-  permute = fastmath.custom_vjp(permute_impl, permute_fwd, permute_bwd,
-                                nondiff_argnums=(0, 1))
+    return (None, None, np.take(permuted_grad, ip, axis=axis))
+  permute = fastmath.custom_vjp(permute_impl, permute_fwd, permute_bwd)
   return permute(permutation, inverse_permutation, val)
 
 
-def permute_via_sort_new(val, keys, inverse_keys, axis=0):
+def permute_via_sort(val, keys, inverse_keys, axis=0):
   """Permutation helper for LSH attention."""
   def permute_impl(k, unused_ik, val):
     # On TPU, sorting scalars by key is faster than a gather.
     _, permuted = fastmath.sort_key_val(k, val, dimension=axis)
     return permuted
-  def permute_fwd(k, unused_ik, val):
+  def permute_fwd(k, ik, val):
     # On TPU, sorting scalars by key is faster than a gather.
     _, permuted = fastmath.sort_key_val(k, val, dimension=axis)
-    return permuted, None
-  def permute_bwd(unused_k, ik, _, permuted_grad):
+    return permuted, ik
+  def permute_bwd(ik, permuted_grad):
     _, val_grad = fastmath.sort_key_val(
         ik, permuted_grad, dimension=axis)
-    return (val_grad,)
-  permute = fastmath.custom_vjp(permute_impl, permute_fwd, permute_bwd,
-                                nondiff_argnums=(0, 1))
+    return (None, None, val_grad)
+  permute = fastmath.custom_vjp(permute_impl, permute_fwd, permute_bwd)
   return permute(keys, inverse_keys, val)
 
 
@@ -1115,12 +1075,12 @@ class SelfAttention(EfficientAttentionBase):
     mask_fn = functools.partial(
         mask_self_attention,
         causal=self.causal, exclude_self=self.share_qk, masked=self.masked)
-    q_info = kv_info = tie_in(x, np.arange(q.shape[-2], dtype=np.int32))
+    q_info = kv_info = np.arange(q.shape[-2], dtype=np.int32)
 
     assert (mask is not None) == self.masked
     if self.masked:
       # mask is a boolean array (True means "is valid token")
-      ones_like_mask = tie_in(x, np.ones_like(mask, dtype=np.int32))
+      ones_like_mask = np.ones_like(mask, dtype=np.int32)
       kv_info = kv_info * np.where(mask, ones_like_mask, -ones_like_mask)
 
     o, _ = attend(
@@ -1147,7 +1107,7 @@ class SelfAttention(EfficientAttentionBase):
     else:
       w_q, w_k, w_v, w_o = weights
 
-    q_range = q_start + tie_in(x, np.arange(q_len, dtype=np.int32))
+    q_range = q_start + np.arange(q_len, dtype=np.int32)
     if q_len == 1:
       # On TPU, np.matmul(a[:1], b) and np.matmul(a, b)[:1] are not
       # floating-point equivalent, at least in non-jitted code. We correct the
@@ -1167,7 +1127,7 @@ class SelfAttention(EfficientAttentionBase):
         mask_self_attention,
         causal=self.causal, exclude_self=self.share_qk, masked=self.masked)
     q_info = q_range
-    kv_info = tie_in(x, np.arange(k.shape[-2], dtype=np.int32))
+    kv_info = np.arange(k.shape[-2], dtype=np.int32)
 
     if self.chunk_len is not None and q_len > self.chunk_len:
       assert q_start == 0
@@ -1276,7 +1236,7 @@ class LSHSelfAttention(SelfAttention):
 
     # buckets is now (n_hashes, seqlen). Next we add offsets so that
     # bucket numbers from different hashing rounds don't overlap.
-    offsets = tie_in(buckets, np.arange(self.n_hashes, dtype=np.int32))
+    offsets = np.arange(self.n_hashes, dtype=np.int32)
     offsets = np.reshape(offsets * n_buckets, (-1, 1))
     buckets = np.reshape(buckets + offsets, (-1,))
     return buckets
@@ -1309,7 +1269,7 @@ class LSHSelfAttention(SelfAttention):
     seqlen = x.shape[0]
     assert int(buckets.shape[0]) == self.n_hashes * seqlen
 
-    ticker = tie_in(x, np.arange(self.n_hashes * seqlen, dtype=np.int32))
+    ticker = np.arange(self.n_hashes * seqlen, dtype=np.int32)
     buckets_and_t = seqlen * buckets + (ticker % seqlen)
     buckets_and_t = fastmath.stop_gradient(buckets_and_t)
 
@@ -1334,7 +1294,7 @@ class LSHSelfAttention(SelfAttention):
     if self.masked:
       # mask is a boolean array (True means "is valid token")
       smask = np.take(mask, st, axis=0)
-      ones_like_mask = tie_in(x, np.ones_like(smask, dtype=np.int32))
+      ones_like_mask = np.ones_like(smask, dtype=np.int32)
       kv_info = q_info * np.where(smask, ones_like_mask, -ones_like_mask)
 
     so, slogits = attend(
@@ -1367,7 +1327,9 @@ class LSHSelfAttention(SelfAttention):
                                     weights, state, rng, update_state):
     assert update_state, (
         'This setting not supported (e.g. no backprop for fast inference)')
-    if isinstance(q_start, int) and q_start == 0 and q_len > 1:
+    if q_len > 1:
+      if isinstance(q_start, int):
+        assert q_start == 0, 'Chunks larger than 1 only work at start for now.'
       if x.shape[0] % self.chunk_len == 0:
         x_padded = x
       else:
@@ -1419,7 +1381,7 @@ class LSHSelfAttention(SelfAttention):
     attend_rng, output_rng = fastmath.random.split(rng)
     w_q, w_v, w_o = weights
 
-    q_range = q_start + tie_in(x, np.arange(q_len, dtype=np.int32))
+    q_range = q_start + np.arange(q_len, dtype=np.int32)
     # On TPU, np.matmul(a[:1], b) and np.matmul(a, b)[:1] are not
     # floating-point equivalent, at least in non-jitted code. We correct the
     # discrepancy by duplicating the slice. Floating-point noise may not be

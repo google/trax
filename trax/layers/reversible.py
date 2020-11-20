@@ -32,6 +32,14 @@ class ReversibleLayer(base.Layer):
     """Reverse this layer: compute input given output."""
     raise NotImplementedError
 
+  def _pure_forward(self, x, weights, state, rng):
+    """Call self.forward in a pure way."""
+    old_weights, old_state, old_rng = self.weights, self.state, self._rng
+    self.weights, self.state, self._rng = weights, state, rng
+    res = self.forward(x)
+    self.weights, self.state, self._rng = old_weights, old_state, old_rng
+    return res
+
   def reverse_and_grad(self, output, grad, weights=(), state=(), new_state=(),
                        rng=None):
     """Backward pass: computes the inverse of a layer and propagates gradients.
@@ -54,18 +62,11 @@ class ReversibleLayer(base.Layer):
       x_grad is the gradient signal for the input, and weights_grad is the
       gradient signal for the weights.
     """
-    def _do_forward(x, weights):
-      old_weights, old_state, old_rng = self.weights, self.state, self._rng
-      self.state, self._rng = state, rng
-      self.weights = weights
-      res = self.forward(x)
-      self.weights, self.state, self._rng = old_weights, old_state, old_rng
-      return res
-
     reconstructed_x = self.reverse(output, weights, state, new_state, rng)
-    _, vjpfun = fastmath.vjp(_do_forward, reconstructed_x, weights)
-    x_weights_grad = vjpfun(grad)
-    return reconstructed_x, x_weights_grad
+    _, vjpfun = fastmath.vjp(
+        self._pure_forward, reconstructed_x, weights, state, rng)
+    x_grad, weights_grad, _, _ = vjpfun(grad)
+    return reconstructed_x, (x_grad, weights_grad)
 
   @property
   def has_backward(self):
@@ -354,19 +355,15 @@ def _forward_and_or_backward(layer):
       - new_state is not None iff update_state is True
       - inputs_grad & weights_grad are not None iff output_grad is not None
     """
-    # We need a layer pure_fn but only for inputs and weights.
-    def pure_fn_without_state_and_rng(x, w):
-      return layer.pure_fn(x, w, state, rng)
-
     # Calculate the vector-Jacobian product of the layer pure_fn.
     output, vjp_fn, new_state = fastmath.vjp(
-        pure_fn_without_state_and_rng, inputs, weights, has_aux=True)
+        layer.pure_fn, inputs, weights, state, rng, has_aux=True)
     output = output if compute_output else None
     new_state = new_state if update_state else None
 
     # The vjp function returns gradients with respect to inputs and weights.
     if output_grad is not None:
-      grads_inputs, grads_weights = vjp_fn(output_grad)
+      grads_inputs, grads_weights, _, _ = vjp_fn(output_grad)
     else:
       grads_inputs, grads_weights = None, None
 

@@ -68,13 +68,14 @@ def _t5_gin_config():
   max_input_length = 50
 
   # What preprocessors to apply - we select a random chunk of the document if
-  # it exceeds a certain lengths (`select_random_chunk`), the concat multiple
-  # documents together to reduce padding (`reduce_concat_tokens`), then split
-  # up long examples (`split_tokens`) and finally the denoising objective
-  # (`denoise`).
+  # it exceeds a certain lengths (`select_random_chunk`), then split up long
+  # examples (`split_tokens`) and finally the denoising objective (`denoise`).
+  #
+  # In addition to this T5 concates multiple documents together to reduce
+  # padding (`reduce_concat_tokens`) after `select_random_chunk`, but we skip
+  # that since we don't do sequence packing.
   gin.bind_parameter('unsupervised.preprocessors', [
       t5_processors.select_random_chunk,
-      t5_processors.reduce_concat_tokens,
       t5_processors.split_tokens,
       t5_processors.denoise,
   ])
@@ -300,13 +301,11 @@ class TFInputsTest(tf.test.TestCase):
     # WHP inputs will have the bulk of the text.
     self.assertGreater(len(_inputs), len(targets))
 
-    # WHP there will be two sentinel tokens in the inputs and targets.
+    # WHP there will be one sentinel token in the inputs and targets.
     inputs_counter = collections.Counter(_inputs.tolist())
     targets_counter = collections.Counter(targets.tolist())
     self.assertEqual(1, inputs_counter[31999])
-    self.assertEqual(1, inputs_counter[31998])
     self.assertEqual(1, targets_counter[31999])
-    self.assertEqual(1, targets_counter[31998])
 
   def test_c4_pretrain(self):
     _t5_gin_config()

@@ -1,0 +1,193 @@
+# Copyright 2020 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.models
+import trax.optimizers
+import trax.data.inputs
+import trax.data.tf_inputs
+import trax.supervised.trainer_lib
+
+import t5.data.preprocessors
+import t5.data.sentencepiece_vocabulary
+
+max_length = 512
+sequence_length = {'inputs': 512, 'targets': 512}
+mean_noise_span_length = 3.0
+noise_density = 0.15
+
+dropout = 0.1
+ff_chunk_size = 1024
+
+# Corresponds roughly to ~55B params.
+d_model = 9216
+d_ff = 65536
+n_heads = 96
+attn_kv = 96
+n_layers = 24
+
+# We are using T5's 32k SPM model by default.
+vocab_size = 32000
+
+
+# Parameters for SelfAttention:
+# ==============================================================================
+SelfAttention.attention_dropout = %dropout
+SelfAttention.chunk_len = None  # full attention
+
+# Parameters for LSHSelfAttention:
+# ==============================================================================
+LSHSelfAttention.attention_dropout = %dropout
+LSHSelfAttention.chunk_len = 128
+LSHSelfAttention.n_buckets = None
+LSHSelfAttention.n_chunks_after = 0
+LSHSelfAttention.n_chunks_before = 1
+LSHSelfAttention.n_hashes = 2
+LSHSelfAttention.n_parallel_heads = 1
+LSHSelfAttention.predict_drop_len = %max_length
+LSHSelfAttention.predict_mem_len = %max_length
+# Reformer2's *encoder* is bidirectional.
+ref2_encoder/LSHSelfAttention.n_chunks_after = 1
+
+# Parameters for batcher:
+# ==============================================================================
+batcher.data_streams = @tf_inputs.data_streams
+batcher.bucket_length = 512
+# With 64, we get an average of weights_per_core = 450, so 450*8 = 3600 tokens
+# per batch on a 2x2 TPU on average per step. T5's batch is ~65k tokens/batch.
+# i.e. 18x bigger than ours.
+batcher.batch_size_per_device = 4
+batcher.eval_batch_size = 4
+batcher.max_eval_length = %max_length
+batcher.buckets_include_inputs_in_length=True
+batcher.id_to_mask = 0
+
+# Parameters for data_streams:
+# ==============================================================================
+data_streams.data_dir = None
+data_streams.dataset_name = 'c4/en:2.3.0'
+data_streams.input_name = 'inputs'
+data_streams.target_name = 'targets'
+data_streams.bare_preprocess_fn=@trax.data.tf_inputs.c4_bare_preprocess_fn
+
+# Parameters for multifactor:
+# ==============================================================================
+multifactor.constant = 1.0
+multifactor.factors = 'constant * rsqrt_decay'
+multifactor.warmup_steps = 10000
+
+# Parameters for Adafactor:
+# ==============================================================================
+Adafactor.weight_decay_rate = 0.0
+Adafactor.beta1 = 0.0
+Adafactor.decay_rate = 0.8
+Adafactor.clipping_threshold = 1.0
+Adafactor.epsilon1 = 1e-16
+Adafactor.epsilon2 = 0.001
+Adafactor.factored = True
+Adafactor.multiply_by_parameter_scale = True
+
+# Parameters for c4_bare_preprocess_fn:
+# ==============================================================================
+c4_bare_preprocess_fn.sequence_length = %sequence_length
+
+# Parameters for train:
+# ==============================================================================
+train.eval_frequency = 50
+train.eval_steps = 4
+train.model = @trax.models.Reformer2
+# T5 pretrains on C4 for 2^19 steps. Our batches are ~ 1/9th the size.
+train.steps = 524288
+train.optimizer = @trax.optimizers.Adafactor
+train.checkpoint_highest = 'accuracy'
+train.checkpoint_lowest = 'loss'
+train.use_memory_efficient_trainer = True
+train.loss_chunk_size = 512
+
+# enc_attn_type = @LSHSelfAttention
+# dec_attn_type = @ref2_encoder/LSHSelfAttention
+enc_attn_type = @Attention
+dec_attn_type = @CausalAttention
+
+
+# Parameters for Reformer2:
+# ==============================================================================
+Reformer2.d_model = %d_model  # was  512
+Reformer2.d_ff = %d_ff        # was 2048
+Reformer2.dropout = %dropout  # was  0.1
+Reformer2.ff_activation = @trax.layers.Relu
+Reformer2.ff_dropout = 0.1
+Reformer2.ff_chunk_size = %ff_chunk_size
+Reformer2.ff_sparsity = 0
+Reformer2.max_len = %max_length
+Reformer2.mode = 'train'
+Reformer2.n_heads = %n_heads
+Reformer2.n_encoder_layers = 6
+Reformer2.n_decoder_layers = %n_layers
+Reformer2.input_vocab_size = %vocab_size
+Reformer2.d_attention_key = %attn_kv    # d_model // n_heads
+Reformer2.d_attention_value = %attn_kv  # d_model // n_heads
+Reformer2.encoder_attention_type = %enc_attn_type
+Reformer2.encoder_decoder_attention_type = %dec_attn_type
+Reformer2.n_layers_forget = 12
+Reformer2.attention_chunk_size = 8
+Reformer2.use_bfloat16 = True
+
+# Parameters for T5
+
+# Parameters for unsupervised:
+# ==============================================================================
+
+# This is what T5 uses.
+# unsupervised.preprocessors = \
+#     [@preprocessors.select_random_chunk,
+#      @preprocessors.reduce_concat_tokens,
+#      @preprocessors.split_tokens,
+#      @preprocessors.denoise]
+
+# We.delete out reduce_concat_tokens since we don't want to do sequence packing
+unsupervised.preprocessors = \
+    [@preprocessors.select_random_chunk,
+     @preprocessors.split_tokens,
+     @preprocessors.denoise]
+
+# Parameters for select_random_chunk:
+# ==============================================================================
+select_random_chunk.feature_key = 'targets'
+select_random_chunk.max_length = %max_length
+
+# Parameters for reduce_concat_tokens:
+# ==============================================================================
+reduce_concat_tokens.batch_size = 128
+reduce_concat_tokens.feature_key = 'targets'
+
+# Parameters for random_spans_helper:
+# ==============================================================================
+random_spans_helper.extra_tokens_per_span_inputs = 1
+random_spans_helper.extra_tokens_per_span_targets = 1
+random_spans_helper.inputs_length = %max_length
+random_spans_helper.mean_noise_span_length = %mean_noise_span_length
+random_spans_helper.noise_density = %noise_density
+
+# Parameters for split_tokens:
+# ==============================================================================
+split_tokens.feature_key = 'targets'
+split_tokens.max_tokens_per_segment = @preprocessors.random_spans_tokens_length()
+split_tokens.min_tokens_per_segment = None
+
+# Parameters for denoise:
+# ==============================================================================
+denoise.inputs_fn = @preprocessors.noise_span_to_unique_sentinel
+denoise.noise_density = %noise_density
+denoise.noise_mask_fn = @preprocessors.random_spans_noise_mask
+denoise.targets_fn = @preprocessors.nonnoise_span_to_unique_sentinel

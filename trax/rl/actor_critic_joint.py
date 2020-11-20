@@ -322,10 +322,10 @@ class PPOJoint(ActorCriticJointAgent):
           f'values.shape was {values.shape}')
 
       entropy_loss = rl_layers.EntropyLoss(
-          dist_inputs, actions,
-          log_prob_fun=self._policy_dist.log_prob,
-          entropy_coeff=self._entropy_coeff,
-          entropy_fun=self._policy_dist.entropy)
+          dist_inputs,
+          distribution=self._policy_dist,
+          coeff=self._entropy_coeff,
+      )
 
       assert jnp.ndim(entropy_loss) == 0, f'entropy_loss was {entropy_loss}'
 
@@ -374,11 +374,12 @@ class PPOJoint(ActorCriticJointAgent):
   def entropy_loss(self):
     """Entropy layer."""
     def f(dist_inputs, values, returns, dones, rewards, actions):
-      del values, returns, dones, rewards
+      del values, returns, dones, rewards, actions
       return rl_layers.EntropyLoss(
-          dist_inputs, actions, log_prob_fun=self._policy_dist.log_prob,
-          entropy_coeff=self._entropy_coeff,
-          entropy_fun=self._policy_dist.entropy)
+          dist_inputs,
+          distribution=self._policy_dist,
+          coeff=self._entropy_coeff,
+      )
     return tl.Fn('EntropyLoss', f)
 
   @property
@@ -542,10 +543,10 @@ class A2CJoint(ActorCriticJointAgent):
       assert jnp.ndim(a2c_objective) == 0, f'a2c_objective was {a2c_objective}'
 
       entropy_loss = rl_layers.EntropyLoss(
-          dist_inputs, actions,
-          log_prob_fun=self._policy_dist.log_prob,
-          entropy_coeff=self._entropy_coeff,
-          entropy_fun=self._policy_dist.entropy)
+          dist_inputs,
+          distribution=self._policy_dist,
+          coeff=self._entropy_coeff,
+      )
 
       assert jnp.ndim(entropy_loss) == 0, f'entropy_loss was {entropy_loss}'
 
@@ -564,11 +565,12 @@ class A2CJoint(ActorCriticJointAgent):
   def entropy_loss(self):
     """Entropy layer."""
     def f(dist_inputs, values, returns, dones, rewards, actions):
-      del values, returns, dones, rewards
+      del values, returns, dones, rewards, actions
       return rl_layers.EntropyLoss(
-          dist_inputs, actions, log_prob_fun=self._policy_dist.log_prob,
-          entropy_coeff=self._entropy_coeff,
-          entropy_fun=self._policy_dist.entropy)
+          dist_inputs,
+          distribution=self._policy_dist,
+          coeff=self._entropy_coeff,
+      )
     return tl.Fn('EntropyLoss', f)
 
   @property

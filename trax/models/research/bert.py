@@ -16,6 +16,7 @@
 # Lint as: python3
 """BERT."""
 
+import gin
 import jax
 import tensorflow as tf
 
@@ -36,6 +37,7 @@ class AddBias(tl.Layer):
     self.weights = np.zeros(input_signature.shape[-1])
 
 
+@gin.configurable()
 def BERTClassifierHead(n_classes):
   return tl.Serial([
       tl.Select([0], n_in=2),
@@ -47,6 +49,7 @@ def BERTClassifierHead(n_classes):
   ])
 
 
+@gin.configurable()
 def BERTRegressionHead():
   return tl.Serial([
       tl.Select([0], n_in=2),
@@ -138,10 +141,10 @@ class PretrainedBERT(tl.Serial):
           'Please manually specify the path to bert_model.ckpt')
     self.init_checkpoint = init_checkpoint
 
-  def new_weights(self, input_signature):
-    weights = super().new_weights(input_signature)
+  def init_weights_and_state(self, input_signature):
+    super().init_weights_and_state(input_signature)
     if self.init_checkpoint is None:
-      return weights
+      return
 
     print('Loading pre-trained weights from', self.init_checkpoint)
     ckpt = tf.train.load_checkpoint(self.init_checkpoint)
@@ -192,10 +195,9 @@ class PretrainedBERT(tl.Serial):
         ckpt.get_tensor('bert/pooler/dense/bias'),
     ]
 
-    for a, b in zip(fastmath.tree_leaves(weights), new_w):
+    for a, b in zip(fastmath.tree_leaves(self.weights), new_w):
       assert a.shape == b.shape, (
           f'Expected shape {a.shape}, got shape {b.shape}')
-    weights = jax.tree_unflatten(jax.tree_structure(weights), new_w)
+    self.weights = jax.tree_unflatten(jax.tree_structure(self.weights), new_w)
     move_to_device = jax.jit(lambda x: x)
-    weights = jax.tree_map(move_to_device, weights)
-    return weights
+    self.weights = jax.tree_map(move_to_device, self.weights)

@@ -67,7 +67,7 @@ def _pack_images(images, rows, cols):
   return images
 
 
-class SummaryWriter(object):
+class SummaryWriter:
   """Saves data in event and summary protos for tensorboard."""
 
   def __init__(self, log_dir, enable=True):

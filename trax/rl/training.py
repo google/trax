@@ -46,11 +46,13 @@ from trax.supervised import lr_schedules as lr
 class Agent:
   """Abstract class for RL agents, presenting the required API."""
 
-  def __init__(self, task: rl_task.RLTask,
+  def __init__(self,
+               task: rl_task.RLTask,
                n_trajectories_per_epoch=None,
                n_interactions_per_epoch=None,
                n_eval_episodes=0,
                eval_steps=None,
+               eval_temperatures=(0.0,),
                only_eval=False,
                output_dir=None,
                timestep_to_np=None):
@@ -68,6 +70,9 @@ class Agent:
         temperature 0 in each epoch -- used for evaluation only.
       eval_steps: an optional list of max_steps to use for evaluation
         (defaults to task.max_steps).
+      eval_temperatures: we always train with temperature 1 and evaluate with
+        temperature specified in the eval_temperatures list
+        (defaults to [0.0])
       only_eval: If set to True, then trajectories are collected only for
         for evaluation purposes, but they are not recorded.
       output_dir: Path telling where to save outputs such as checkpoints.
@@ -88,7 +93,11 @@ class Agent:
     self._output_dir = output_dir
     self._avg_returns = []
     self._n_eval_episodes = n_eval_episodes
-    self._avg_returns_temperature0 = {step: [] for step in self._eval_steps}
+    self._eval_temperatures = eval_temperatures
+    self._avg_returns_temperatures = {
+        eval_t: {step: [] for step in self._eval_steps
+                } for eval_t in eval_temperatures
+    }
     if self._output_dir is not None:
       self.init_from_file()
 
@@ -124,9 +133,10 @@ class Agent:
     task_path = os.path.join(self._output_dir, task_file_name)
     self._task.save_to_file(task_path)
     file_path = os.path.join(self._output_dir, file_name)
-    dictionary = {'epoch': self._epoch,
-                  'avg_returns': self._avg_returns,
-                  'avg_returns_temperature0': self._avg_returns_temperature0}
+    dictionary = {'epoch': self._epoch, 'avg_returns': self._avg_returns}
+    for eval_t in self._eval_temperatures:
+      dictionary['avg_returns_temperature_{}'.format(
+          eval_t)] = self._avg_returns_temperatures[eval_t]
     with tf.io.gfile.GFile(file_path, 'wb') as f:
       pickle.dump(dictionary, f)
 
@@ -144,7 +154,9 @@ class Agent:
       dictionary = pickle.load(f)
     self._epoch = dictionary['epoch']
     self._avg_returns = dictionary['avg_returns']
-    self._avg_returns_temperature0 = dictionary['avg_returns_temperature0']
+    for eval_t in self._eval_temperatures:
+      self._avg_returns_temperatures[eval_t] = dictionary[
+          'avg_returns_temperature_{}'.format(eval_t)]
 
   def _collect_trajectories(self):
     return self.task.collect_trajectories(
@@ -226,25 +238,26 @@ class Agent:
             'Average return in epoch %d was %.2f.' % (self._epoch, avg_return))
         if self._n_eval_episodes > 0:
           for steps in self._eval_steps:
-            avg_return_temperature0 = self.task.collect_trajectories(
-                lambda x: self.policy(x, temperature=0.0),
-                n_trajectories=self._n_eval_episodes,
-                max_steps=steps, only_eval=True)
-            self._avg_returns_temperature0[steps].append(
-                avg_return_temperature0
-            )
-            supervised.trainer_lib.log(
-                'Avg return with temperature 0 at %d steps in epoch %d was %.2f.'
-                % (steps, self._epoch, avg_return_temperature0))
+            for eval_t in self._eval_temperatures:
+              avg_return_temperature = self.task.collect_trajectories(
+                  functools.partial(self.policy, temperature=eval_t),
+                  n_trajectories=self._n_eval_episodes,
+                  max_steps=steps,
+                  only_eval=True)
+              self._avg_returns_temperatures[eval_t][steps].append(
+                  avg_return_temperature)
+
         if sw is not None:
           sw.scalar('timing/collect', time.time() - cur_time,
                     step=self._epoch)
           sw.scalar('rl/avg_return', avg_return, step=self._epoch)
           if self._n_eval_episodes > 0:
             for steps in self._eval_steps:
-              sw.scalar('rl/avg_return_temperature0_steps%d' % steps,
-                        self._avg_returns_temperature0[steps][-1],
-                        step=self._epoch)
+              for eval_t in self._eval_temperatures:
+                sw.scalar(
+                    'rl/avg_return_temperature%d_steps%d' % (eval_t, steps),
+                    self._avg_returns_temperatures[eval_t][steps][-1],
+                    step=self._epoch)
           sw.scalar('rl/n_interactions', self.task.n_interactions(),
                     step=self._epoch)
           sw.scalar('rl/n_interactions_per_second',
@@ -567,7 +580,7 @@ def network_policy(
   # Copying weights from loop.model should work, because the raw model's
   # weights should be updated automatically during training, but it doesn't.
   # TODO(pkozakowski): Debug.
-  acc = loop._trainer_per_task[0].accelerated_loss_layer  # pylint: disable=protected-access
+  acc = loop._trainer_per_task[0].accelerated_model_with_loss  # pylint: disable=protected-access
   model.weights = acc._unreplicate(acc.weights[0])  # pylint: disable=protected-access
   # Add batch dimension to trajectory_np and run the model.
   pred = model(trajectory_np.observations[None, ...])

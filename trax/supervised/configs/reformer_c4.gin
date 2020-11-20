@@ -127,4 +127,3 @@ ReformerLM.n_layers = %n_layers
 ReformerLM.vocab_size = 32000  # Includes pad token and unused EOS token
 #ReformerLM.axial_pos_shape = (128, 512)
 ReformerLM.axial_pos_shape = (32, 32)
-ReformerLM.d_axial_pos_embs= (256, 768)

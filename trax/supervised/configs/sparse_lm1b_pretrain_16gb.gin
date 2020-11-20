@@ -1,0 +1,105 @@
+# Copyright 2020 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.models
+import trax.optimizers
+import trax.data.tf_inputs
+import trax.supervised.trainer_lib
+
+
+ff_chunk_size = 0
+
+MultiplicativeModularCausalAttention.sparsity = 16
+MultiplicativeConvCausalAttention.sparsity = 16
+
+attn_type = @CausalAttention
+
+ff_sparsity = 64
+
+d_model = 1024
+d_ff = 4096
+n_heads = 16
+n_layers = 24
+attn_kv = 64
+dropout = 0.1
+vocab_size = 32000
+
+max_length = 2048
+
+# Parameters for batcher:
+# ==============================================================================
+batcher.data_streams = @tf_inputs.data_streams
+batcher.batch_size_per_device = 32
+batcher.eval_batch_size = 64
+batcher.max_eval_length = 2048
+batcher.id_to_mask = 0
+
+# Parameters for data_streams:
+# ==============================================================================
+data_streams.data_dir = None
+data_streams.dataset_name = 't2t_languagemodel_lm1b32k'
+data_streams.input_name = 'targets'
+data_streams.preprocess_fn = @trax.data.tf_inputs.lm1b_preprocess
+
+# Parameters for multifactor:
+# ==============================================================================
+multifactor.constant = 1.0
+multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
+multifactor.warmup_steps = 2500
+
+# Parameters for lm1b_preprocess:
+# ==============================================================================
+lm1b_preprocess.max_target_length = 512
+lm1b_preprocess.max_eval_target_length = 2048
+
+# Parameters for train:
+# ==============================================================================
+train.eval_frequency = 1000
+train.eval_steps = 10
+train.model = @trax.models.ConfigurableTransformerLM
+train.optimizer = @trax.optimizers.Adafactor
+train.steps = 1000000
+
+# Parameters for ConfigurableTransformerLM:
+# ==============================================================================
+ConfigurableTransformerLM.d_model = %d_model
+ConfigurableTransformerLM.d_ff = %d_ff
+ConfigurableTransformerLM.dropout = %dropout
+ConfigurableTransformerLM.ff_dropout = %dropout
+ConfigurableTransformerLM.ff_chunk_size = %ff_chunk_size
+ConfigurableTransformerLM.ff_sparsity = %ff_sparsity
+ConfigurableTransformerLM.max_len = %max_length
+ConfigurableTransformerLM.mode = 'train'
+ConfigurableTransformerLM.n_heads = %n_heads
+ConfigurableTransformerLM.n_layers = %n_layers
+ConfigurableTransformerLM.vocab_size = %vocab_size
+ConfigurableTransformerLM.attention_type = %attn_type
+
+
+# Parameters for Reformer2:
+# ==============================================================================
+ReformerLM.d_model = %d_model  # was  512
+ReformerLM.d_ff = %d_ff        # was 2048
+ReformerLM.dropout = %dropout  # was  0.1
+ReformerLM.ff_activation = @trax.layers.Relu
+ReformerLM.ff_chunk_size = %ff_chunk_size
+ReformerLM.ff_sparsity = %ff_sparsity
+ReformerLM.max_len = %max_length
+ReformerLM.mode = 'train'
+ReformerLM.n_heads = %n_heads
+ReformerLM.n_layers = %n_layers
+ReformerLM.vocab_size = %vocab_size
+ReformerLM.d_attention_key = %attn_kv    # d_model // n_heads
+ReformerLM.d_attention_value = %attn_kv  # d_model // n_heads
+ReformerLM.attention_type = %attn_type
