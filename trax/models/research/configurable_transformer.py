@@ -365,7 +365,6 @@ def ConfigurableTransformerEncoder(vocab_size,
       # Map to output categories.
       tl.Mean(axis=1),                            # vecs
       tl.Dense(n_classes),                        # vecs
-      tl.LogSoftmax(),                            # vecs
   )
 
 
@@ -468,7 +467,6 @@ def ConfigurableTransformerLM(vocab_size,
       decoder_blocks,            # vecs
       tl.LayerNorm(),            # vecs
       tl.Dense(vocab_size),      # vecs
-      tl.LogSoftmax(),           # vecs
   )
 
 
@@ -624,7 +622,6 @@ def ConfigurableTransformer(input_vocab_size,
       # Map to output vocab.
       tl.Select([0], n_in=3),             # vec_d tok_d
       tl.Dense(output_vocab_size),        # vec_d .....
-      tl.LogSoftmax(),                    # vec_d .....
   )
 
 

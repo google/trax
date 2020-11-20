@@ -83,7 +83,6 @@ def RNNLM(vocab_size,
       tl.Scan(MultiRNNCell(), axis=1),
       tl.Select([0], n_in=2),  # Drop RNN state.
       tl.Dense(vocab_size),
-      tl.LogSoftmax()
   )
 
 
@@ -121,7 +120,6 @@ def GRULM(vocab_size=256,
       tl.Embedding(vocab_size, d_model),
       [tl.GRU(d_model) for _ in range(n_layers)],
       tl.Dense(vocab_size),
-      tl.LogSoftmax()
   )
 
 

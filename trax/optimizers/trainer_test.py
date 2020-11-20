@@ -189,7 +189,7 @@ class TrainerTest(absltest.TestCase):
     # We want to test rng propagation too, so adding some dropout layers.
     model = reformer.Reformer2(20, d_model=8, d_ff=16, n_heads=1,
                                n_encoder_layers=1, n_decoder_layers=1)
-    loss = tl.CrossEntropyLoss()
+    loss = tl.Serial(tl.LogSoftmax(), tl.CrossEntropyLoss())
     optimizer_fn = optimizers.SGD  # Adafactor
     blocks, loss_layer = optimizers.trainer.extract_reversible_blocks(
         [model, loss], loss_chunk_size=4)

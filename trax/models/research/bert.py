@@ -45,7 +45,6 @@ def BERTClassifierHead(n_classes):
                kernel_initializer=tl.RandomNormalInitializer(0.02),
                bias_initializer=tl.RandomNormalInitializer(1e-6),
               ),
-      tl.LogSoftmax(),
   ])
 
 

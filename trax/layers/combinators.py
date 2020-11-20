@@ -32,7 +32,6 @@ class Serial(base.Layer):
         tl.Dense(128),
         tl.Relu(),
         tl.Dense(10),
-        tl.LogSoftmax()
       )
 
   A Serial combinator uses stack semantics to manage data for its sublayers.

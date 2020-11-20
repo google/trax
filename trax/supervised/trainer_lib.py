@@ -504,7 +504,8 @@ class Trainer:
 @gin.configurable(blacklist=['output_dir'])
 def train(output_dir,
           model=gin.REQUIRED,
-          loss_fn=tl.CrossEntropyLoss(),
+          loss_fn=tl.Serial(tl.LogSoftmax(), tl.CrossEntropyLoss(),
+                            name='CrossEntropyLoss*'),
           inputs=trax_inputs.batcher,
           optimizer=trax_opt.Adafactor,
           lr_schedule_fn=lr.multifactor,

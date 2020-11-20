@@ -164,7 +164,6 @@ def ReformerLM(vocab_size,
       tl.LayerNorm(),
       tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),  # pylint: disable=no-value-for-parameter
       tl.Dense(vocab_size),
-      tl.LogSoftmax(),
   )
 
 
@@ -289,7 +288,6 @@ def ReformerShortenLM(vocab_size,
       tl.Relu(),
       tl.SRU(d_embedding),  # One RNN layer for conditional dependence.
       tl.Dense(vocab_size),
-      tl.LogSoftmax()
   )
   # pylint: enable=g-long-lambda
 
@@ -532,7 +530,6 @@ def Reformer(input_vocab_size,
       # Map to output vocab.
       tl.Select([0], n_in=3),               # vec_d .....
       tl.Dense(output_vocab_size),          # vec_d .....
-      tl.LogSoftmax(),                      # vec_d .....
   )
 
 
@@ -717,7 +714,6 @@ def Reformer2(input_vocab_size,
 
       # Map to output vocab.
       tl.Dense(output_vocab_size),                 # vec_d tok_d
-      tl.LogSoftmax(),                             # vec_d tok_d
   )
 
 

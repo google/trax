@@ -281,7 +281,6 @@ def FunnelTransformerEncoder(vocab_size,
       # Map to output categories.
       cls_pooling,                                # cls
       tl.Dense(n_classes),                        # cls
-      tl.LogSoftmax(),                            # cls
   )
 
 
@@ -407,5 +406,4 @@ def FunnelTransformer(vocab_size,
       tl.Select([0], n_in=2),                     # vecs
       tl.LayerNorm(),
       tl.Dense(vocab_size),
-      tl.LogSoftmax()
   )

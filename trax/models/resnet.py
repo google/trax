@@ -113,7 +113,6 @@ def Resnet50(d_hidden=64, n_output_classes=1001, mode='train',
       tl.AvgPool(pool_size=(7, 7)),
       tl.Flatten(),
       tl.Dense(n_output_classes),
-      tl.LogSoftmax(),
   )
 
 
@@ -171,5 +170,4 @@ def WideResnet(n_blocks=3, widen_factor=1, n_output_classes=10, bn_momentum=0.9,
       tl.AvgPool(pool_size=(8, 8)),
       tl.Flatten(),
       tl.Dense(n_output_classes),
-      tl.LogSoftmax(),
   )

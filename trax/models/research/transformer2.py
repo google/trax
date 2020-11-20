@@ -164,7 +164,6 @@ def Transformer2(input_vocab_size,
 
       # Map to output vocab.
       tl.Dense(output_vocab_size),      # vec_d tok_d
-      tl.LogSoftmax(),                  # vec_d tok_d
   )
 
 

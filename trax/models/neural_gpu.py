@@ -75,5 +75,4 @@ def NeuralGPU(d_feature=96, steps=16, vocab_size=2, mode='train'):
       tl.Embedding(vocab_size=vocab_size, d_feature=d_feature),
       [core] * steps,
       tl.Dense(vocab_size),
-      tl.LogSoftmax(),
   )
