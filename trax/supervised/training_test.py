@@ -29,6 +29,7 @@ from trax import layers as tl
 from trax import optimizers
 from trax import shapes
 from trax import test_utils
+from trax.models import transformer
 from trax.supervised import callbacks
 from trax.supervised import training
 
@@ -74,6 +75,74 @@ class TrainingTest(absltest.TestCase):
     self.assertEqual(15, training_session.step)
     training_session.run(n_steps=5)
     self.assertEqual(20, training_session.step)
+
+  def test_train_save_restore_dense(self):
+    """Saves and restores a checkpoint to check for equivalence."""
+    task = training.TrainTask(
+        _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01))
+    eval_task = training.EvalTask(
+        _very_simple_data(),  # deliberately re-using training data
+        [tl.L2Loss()],
+        metric_names=['SGD.L2Loss'])
+    tmp_dir = self.create_tempdir().full_path
+
+    def _make_model_and_session():
+      m = tl.Serial(tl.Dense(1))
+      ts = training.Loop(m, [task], eval_tasks=[eval_task],
+                         eval_at=lambda step_n: step_n % 2 == 0,
+                         output_dir=tmp_dir)
+      return m, ts
+
+    model, training_session = _make_model_and_session()
+    self.assertEqual(0, training_session.step)
+    training_session.run(n_steps=1)
+    training_session.save_checkpoint()
+    model2, training_session2 = _make_model_and_session()
+
+    x = np.ones((8, 1))
+    y1 = model(x, rng=fastmath.random.get_prng(0))
+    y2 = model2(x, rng=fastmath.random.get_prng(0))
+    self.assertEqual(str(y1), str(y2))
+
+    training_session2.run(n_steps=1)
+    y1 = model(x, rng=fastmath.random.get_prng(0))
+    y2 = model2(x, rng=fastmath.random.get_prng(0))
+    self.assertNotEqual(str(y1), str(y2))
+
+  def test_train_save_restore_transformer(self):
+    """Saves and restores a checkpoint to check for equivalence."""
+    vocab_size = 8
+    task = training.TrainTask(
+        _very_simple_transformer_data(), tl.L2Loss(), optimizers.SGD(.01))
+    eval_task = training.EvalTask(
+        _very_simple_transformer_data(),  # deliberately re-using training data
+        [tl.L2Loss()],
+        metric_names=['SGD.L2Loss'])
+    tmp_dir = self.create_tempdir().full_path
+
+    def _make_model_and_session():
+      m = transformer.TransformerLM(
+          vocab_size, d_model=4, d_ff=4, n_layers=1, n_heads=2, dropout=0.)
+      ts = training.Loop(m, [task], eval_tasks=[eval_task],
+                         eval_at=lambda step_n: step_n % 2 == 0,
+                         output_dir=tmp_dir)
+      return m, ts
+
+    model, training_session = _make_model_and_session()
+    self.assertEqual(0, training_session.step)
+    training_session.run(n_steps=1)
+    training_session.save_checkpoint()
+    model2, training_session2 = _make_model_and_session()
+
+    x = np.ones((2, 2)).astype(np.int32)
+    y1 = model(x, rng=fastmath.random.get_prng(0))
+    y2 = model2(x, rng=fastmath.random.get_prng(0))
+    self.assertEqual(str(y1), str(y2))
+
+    training_session2.run(n_steps=1)
+    y1 = model(x, rng=fastmath.random.get_prng(0))
+    y2 = model2(x, rng=fastmath.random.get_prng(0))
+    self.assertNotEqual(str(y1), str(y2))
 
   def test_train_dense_layer_with_momentum(self):
     """Trains with an optimizer that has slots / requires initialization."""
@@ -359,6 +428,15 @@ def _very_simple_data(output_dim=1):
   """"Returns stream of labeled data that maps small integers to constant pi."""
   inputs_batch = np.arange(8).reshape((8, 1))  # 8 items per batch
   targets_batch = np.pi * np.ones((8, output_dim))
+  labeled_batch = (inputs_batch, targets_batch, np.ones_like(targets_batch))
+  while True:
+    yield labeled_batch
+
+
+def _very_simple_transformer_data():
+  """"Returns stream of labeled data that maps small integers to constant pi."""
+  inputs_batch = np.ones((2, 2)).astype(np.int32)
+  targets_batch = np.ones((2, 2, 8)).astype(np.int32)
   labeled_batch = (inputs_batch, targets_batch, np.ones_like(targets_batch))
   while True:
     yield labeled_batch
