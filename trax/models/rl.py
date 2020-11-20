@@ -97,7 +97,7 @@ def Value(
           # Input: (body output, actions).
           encoders,
           action_injector,
-          models.PureMLP(
+          models.MLP(
               layer_widths=(inject_actions_dim,) * inject_actions_n_layers,
               out_activation=True,
               flatten=False,

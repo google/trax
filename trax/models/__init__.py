@@ -51,7 +51,6 @@ ConfigurableTransformerEncoder = model_configure(
 ConfigurableTransformerLM = model_configure(
     configurable_transformer.ConfigurableTransformerLM)
 MLP = model_configure(mlp.MLP)
-PureMLP = model_configure(mlp.PureMLP)
 NeuralGPU = model_configure(neural_gpu.NeuralGPU)
 Reformer = model_configure(reformer.Reformer)
 ReformerLM = model_configure(reformer.ReformerLM)

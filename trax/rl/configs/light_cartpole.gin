@@ -21,13 +21,13 @@ import trax.rl.normalization
 
 # Parameters for Policy:
 # ==============================================================================
-Policy.body = @trax.models.PureMLP
+Policy.body = @trax.models.MLP
 Policy.head_init_range = 0.01
 Policy.normalizer = @trax.rl.normalization.Normalize
 
 # Parameters for Value:
 # ==============================================================================
-Value.body = @trax.models.PureMLP
+Value.body = @trax.models.MLP
 Value.normalizer = @trax.rl.normalization.Normalize
 
 # Parameters for Normalize:
@@ -35,11 +35,11 @@ Value.normalizer = @trax.rl.normalization.Normalize
 Normalize.sample_limit = 30000
 Normalize.epsilon = 1e-5
 
-# Parameters for PureMLP:
+# Parameters for MLP:
 # ==============================================================================
-PureMLP.flatten = False
-PureMLP.layer_widths = (64,)
-PureMLP.out_activation = True
+MLP.flatten = False
+MLP.layer_widths = (64,)
+MLP.out_activation = True
 
 batch_size = 32
 train_steps = 200

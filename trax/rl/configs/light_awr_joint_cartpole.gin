@@ -19,13 +19,13 @@ import trax.rl
 
 # Parameters for PolicyAndValue:
 # ==============================================================================
-PolicyAndValue.body = @trax.models.PureMLP
+PolicyAndValue.body = @trax.models.MLP
 
-# Parameters for PureMLP:
+# Parameters for MLP:
 # ==============================================================================
-PureMLP.flatten = False
-PureMLP.layer_widths = (128,)
-PureMLP.out_activation = True
+MLP.flatten = False
+MLP.layer_widths = (128,)
+MLP.out_activation = True
 
 # Parameters for multifactor:
 # ==============================================================================

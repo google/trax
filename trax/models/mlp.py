@@ -19,7 +19,7 @@
 from trax import layers as tl
 
 
-def PureMLP(
+def MLP(
     layer_widths=(128, 64),
     activation_fn=tl.Relu,
     out_activation=False,
@@ -65,24 +65,4 @@ def PureMLP(
   return tl.Serial(
       [tl.Flatten()] if flatten else [],
       layers,
-  )
-
-
-def MLP(d_hidden=512,
-        n_hidden_layers=2,
-        activation_fn=tl.Relu,
-        n_output_classes=10,
-        flatten=True,
-        mode='train'):
-  """An MLP network, with a final layer for n-way classification."""
-  # TODO(jonni): Revisit naming of PureMLP vs. MLP.
-  # TODO(jonni): Redo params for MLP to align with PureMLP?
-
-  return tl.Serial(
-      PureMLP(
-          layer_widths=[d_hidden] * n_hidden_layers + [n_output_classes],
-          activation_fn=activation_fn,
-          flatten=flatten,
-          mode=mode),
-      tl.LogSoftmax(),
   )
