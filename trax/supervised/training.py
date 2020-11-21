@@ -640,6 +640,8 @@ class Loop:
     if self._output_dir is None:
       _log('Did not save checkpoint as output_dir is None')
       return
+    ckpt_file = os.path.join(self._output_dir, 'model.pkl.gz')
+    _log('Saving checkpoint to %s.' % ckpt_file, stdout=False)
     weights = self._model.weights
     state = self._model.state
     if self._use_memory_efficient_trainer:
@@ -652,7 +654,6 @@ class Loop:
     flat_weights, flat_state = tl.flatten_weights_and_state(weights, state)
     _, flat_eval_state = tl.flatten_weights_and_state(
         weights, self._eval_model.state)
-    ckpt_file = os.path.join(self._output_dir, 'model.pkl.gz')
     if self._use_memory_efficient_trainer:
       sharded_weights_len = self._save_weights_sharded(flat_weights, ckpt_file)
       # In the main dict we just save the number of shards in place of weights.
@@ -668,13 +669,13 @@ class Loop:
         'input_signature': input_signature,
         'version_timestamp': 'Oct-28-2020'  # To update in the future if needed.
     }
-    ckpt_file = os.path.join(self._output_dir, 'model.pkl.gz')
     pickle_to_file(d, ckpt_file, gzip=True)
     # Move sharded files to non-tmp files after all is saved.
     if self._use_memory_efficient_trainer:
       for i in range(weights_in_dict):
         fname = ckpt_file + '.shard%d' % i
         tf.io.gfile.rename(fname + '.tmp', fname, overwrite=True)
+    _log('Checkpoint saved in %s.' % ckpt_file, stdout=False)
 
   def _save_weights_sharded(self, flat_weights, ckpt_file):
     """Saves flat_weights in a sharded way to ckpt_file.shardN.tmp."""
@@ -693,8 +694,9 @@ class Loop:
       sharded_weights.append(current_shard)
     # Save weight shards to files (tmp first to be resilient to failure).
     for i, w in enumerate(sharded_weights):
-      pickle_to_file(self._to_bits(w), ckpt_file + '.shard%d.tmp' % i,
-                     gzip=True)
+      path = ckpt_file + '.shard%d.tmp' % i
+      _log('Saving sharded weights to %s.' % path, stdout=False)
+      pickle_to_file(self._to_bits(w), path, gzip=False)
     return len(sharded_weights)
 
   def _to_bits(self, weights):
@@ -746,13 +748,14 @@ class Loop:
       _log(f'Not loading as checkpoint file does not exist: {path}.',
            stdout=False)
       return
+    _log('Loading checkpoint from %s.' % path, stdout=False)
     d = unpickle_from_file(path, gzip=True)
     # For large models, load weights from sharded files.
     if self._use_memory_efficient_trainer:
       weights = []
       n_shards = d['flat_weights']  # We store the number of shards in d here.
       for i in range(n_shards):
-        w = unpickle_from_file(path + '.shard%d' % i, gzip=True)
+        w = unpickle_from_file(path + '.shard%d' % i, gzip=False)
         w = self._from_bits(w)  # bit-casting may put w on accelerator, go back
         weights.extend([tl.on_cpu(x) for x in w])
       d['flat_weights'] = weights
@@ -788,6 +791,7 @@ class Loop:
     _, eval_state = tl.unflatten_weights_and_state(
         d['flat_weights'], flat_eval_state, weights_and_state_sig)
     self._eval_model.state = eval_state
+    _log('Checkpoint loaded from %s.' % path, stdout=False)
 
   @contextlib.contextmanager
   def _open_summary_writers(self):
@@ -1009,10 +1013,10 @@ def pickle_to_file(obj, file_path, gzip=False):
   tmp_file_path = file_path + '._tmp_'
   with tf.io.gfile.GFile(tmp_file_path, 'wb') as f:
     if not gzip:
-      pickle.dump(obj, f)
+      pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
     else:
       with gzip_lib.GzipFile(fileobj=f, compresslevel=2) as gzipf:
-        pickle.dump(obj, gzipf)
+        pickle.dump(obj, gzipf, protocol=pickle.HIGHEST_PROTOCOL)
   # Moving a file is much less error-prone than pickling large files.
   tf.io.gfile.rename(tmp_file_path, file_path, overwrite=True)
 

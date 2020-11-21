@@ -137,7 +137,8 @@ def ApplyAttentionLayer(attention_type, d_model, n_heads, d_qk, d_v, causal,
 
 
 def PositionalEncoder(mode, dropout=None, max_len=None,
-                      axial_pos_shape=None, d_axial_pos_embs=None):
+                      axial_pos_shape=None, d_axial_pos_embs=None,
+                      use_bfloat16=False):
   """Returns the positional encoding layer depending on the arguments.
 
   Args:
@@ -151,6 +152,8 @@ def PositionalEncoder(mode, dropout=None, max_len=None,
       encoding. If unset, axial position encoding is disabled.
     d_axial_pos_embs: tuple of ints: depth of position embedding for each axis.
       Tuple length must match axial_pos_shape, and values must sum to d_model.
+    use_bfloat16: If `True`, use bfloat16 weights instead of the default
+      float32; this can save memory but may (rarely) lead to numerical issues.
 
   Returns:
     A layer that will do the positional encoding.
@@ -158,7 +161,7 @@ def PositionalEncoder(mode, dropout=None, max_len=None,
 
   if not axial_pos_shape:
     positional_encoding = tl.PositionalEncoding(
-        max_len=max_len, dropout=dropout, mode=mode)
+        max_len=max_len, dropout=dropout, mode=mode, use_bfloat16=use_bfloat16)
   elif axial_pos_shape == 'fixed-base':  # TODO(lukaszkaiser): remove this HACK
     positional_encoding = tl.FixedBasePositionalEncoding(mode=mode)
   elif axial_pos_shape == 'infinite':  # TODO(lukaszkaiser): remove this HACK
@@ -186,7 +189,8 @@ def EmbeddingAndPositionalEncodings(input_vocab_size,
                                     max_len,
                                     output_vocab_size=None,
                                     axial_pos_shape=None,
-                                    d_axial_pos_embs=None):
+                                    d_axial_pos_embs=None,
+                                    use_bfloat16=False):
   """Returns the embedder and positional encoder.
 
   Args:
@@ -212,15 +216,20 @@ def EmbeddingAndPositionalEncodings(input_vocab_size,
       encoding. If unset, axial position encoding is disabled.
     d_axial_pos_embs: tuple of ints: depth of position embedding for each axis.
       Tuple length must match axial_pos_shape, and values must sum to d_model.
+    use_bfloat16: If `True`, use bfloat16 weights instead of the default
+      float32; this can save memory but may (rarely) lead to numerical issues.
 
   Returns:
     A tuple of (input encoder, output encoder, output vocab size used).
   """
   # tokens --> vectors
   def Embedder(vocab_size, embedding_mode):
+    if vocab_size is not None:
+      embedding = tl.Embedding(vocab_size, d_model, use_bfloat16=use_bfloat16)
+    else:
+      embedding = tl.Dense(d_model, use_bfloat16=use_bfloat16)
     return [
-        (tl.Embedding(vocab_size, d_model) if vocab_size is not None
-         else tl.Dense(d_model)),
+        embedding,
         tl.Dropout(rate=embedding_dropout,
                    shared_axes=dropout_shared_axes,
                    mode=embedding_mode),
@@ -236,7 +245,8 @@ def EmbeddingAndPositionalEncodings(input_vocab_size,
                         dropout=embedding_dropout,
                         max_len=max_len,
                         axial_pos_shape=axial_pos_shape,
-                        d_axial_pos_embs=d_axial_pos_embs)
+                        d_axial_pos_embs=d_axial_pos_embs,
+                        use_bfloat16=use_bfloat16)
   ]
 
   # If output_vocab_size is None, we reuse the same embedding matrix, otherwise
@@ -251,7 +261,8 @@ def EmbeddingAndPositionalEncodings(input_vocab_size,
                         dropout=embedding_dropout,
                         max_len=max_len,
                         axial_pos_shape=axial_pos_shape,
-                        d_axial_pos_embs=d_axial_pos_embs)
+                        d_axial_pos_embs=d_axial_pos_embs,
+                        use_bfloat16=use_bfloat16)
   ]
 
   # Set this to the value actually used.

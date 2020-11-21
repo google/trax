@@ -140,12 +140,10 @@ class Embedding(base.Layer):
   def __init__(self,
                vocab_size,
                d_feature,
-               kernel_initializer=
-               init.ScaledInitializer(out_dim=-1,
-                                      in_dim=-2,
-                                      scale=1.,
-                                      mode='fan_out',
-                                      distribution='uniform')):
+               use_bfloat16=False,
+               kernel_initializer=init.ScaledInitializer(
+                   out_dim=-1, in_dim=-2, scale=1., mode='fan_out',
+                   distribution='uniform')):
     """Returns an embedding layer with given vocabulary size and vector size.
 
     The layer clips input values (token IDs) to the range `[0, vocab_size)`.
@@ -155,15 +153,18 @@ class Embedding(base.Layer):
 
     Args:
       vocab_size: Size of the input vocabulary. The layer will assign a unique
-          vector to each id in `range(vocab_size)`.
+        vector to each id in `range(vocab_size)`.
       d_feature: Dimensionality/depth of the output vectors.
+      use_bfloat16: If `True`, use bfloat16 weights instead of the default
+        float32; this can save memory but may (rarely) lead to numerical issues.
       kernel_initializer: Function that creates (random) initial vectors for
-          the embedding.
+        the embedding.
     """
     # TODO(jonni): is the clipping behavior what we want going forward?
     super().__init__(name=f'Embedding_{vocab_size}_{d_feature}')
     self._d_feature = d_feature  # feature dimensionality
     self._vocab_size = vocab_size
+    self._use_bfloat16 = use_bfloat16
     self._kernel_initializer = kernel_initializer
 
   def forward(self, x):
@@ -175,7 +176,10 @@ class Embedding(base.Layer):
     Returns:
       Tensor of embedding vectors.
     """
-    return jnp.take(self.weights, x, axis=0)
+    embedded = jnp.take(self.weights, x, axis=0)
+    if self._use_bfloat16:  # Return float32 activations w/ bfloat16 weights.
+      embedded = embedded.astype(jnp.float32)
+    return embedded
 
   def init_weights_and_state(self, input_signature):
     """Randomly initializes this layer's weights."""
@@ -183,6 +187,8 @@ class Embedding(base.Layer):
     shape_w = (self._vocab_size, self._d_feature)
     # TODO(lukaszkaiser): do we split self.rng for consistency? Add a method?
     w = self._kernel_initializer(shape_w, self.rng)
+    if self._use_bfloat16:
+      w = w.astype(jnp.bfloat16)
     self.weights = w
 
 

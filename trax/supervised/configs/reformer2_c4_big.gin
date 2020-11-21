@@ -66,7 +66,7 @@ batcher.bucket_length = 512
 # With 64, we get an average of weights_per_core = 450, so 450*8 = 3600 tokens
 # per batch on a 2x2 TPU on average per step. T5's batch is ~65k tokens/batch.
 # i.e. 18x bigger than ours.
-batcher.batch_size_per_device = 4
+batcher.batch_size_per_device = 16
 batcher.eval_batch_size = 4
 batcher.max_eval_length = %max_length
 batcher.buckets_include_inputs_in_length=True
@@ -139,8 +139,8 @@ Reformer2.d_attention_key = %attn_kv    # d_model // n_heads
 Reformer2.d_attention_value = %attn_kv  # d_model // n_heads
 Reformer2.encoder_attention_type = %enc_attn_type
 Reformer2.encoder_decoder_attention_type = %dec_attn_type
-Reformer2.n_layers_forget = 12
-Reformer2.attention_chunk_size = 8
+Reformer2.n_layers_forget = 0
+Reformer2.attention_chunk_size = 1
 Reformer2.use_bfloat16 = True
 
 # Parameters for T5

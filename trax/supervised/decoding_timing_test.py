@@ -79,6 +79,7 @@ class DecodingTimingTest(test.TestCase):
           input_vocab_size=4,
           ff_sparsity=settings['ff_sparsity'],
           axial_pos_shape=None,
+          use_bfloat16=True,
       )
 
       shape11 = shapes.ShapeDtype((1, 1), dtype=np.int32)
