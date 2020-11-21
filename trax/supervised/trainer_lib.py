@@ -62,10 +62,11 @@ OptState = collections.namedtuple('_OptState', [
 
 
 _DEFAULT_METRICS = {
-    'loss': tl.CrossEntropyLoss(),
+    'loss': tl.Serial(tl.LogSoftmax(), tl.CrossEntropyLoss()),
     'accuracy': tl.Accuracy(),
     'sequence_accuracy': tl.SequenceAccuracy(),
-    'neg_log_perplexity': tl.Serial(tl.CrossEntropyLoss(), tl.Negate()),
+    'neg_log_perplexity': tl.Serial(tl.LogSoftmax(),
+                                    tl.CrossEntropyLoss(), tl.Negate()),
     'weights_per_batch_per_core': tl.Serial(tl.Drop(), tl.Drop(), tl.Sum()),
 }
 
