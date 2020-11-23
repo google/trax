@@ -24,9 +24,11 @@ We welcome **contributions** to Trax! We welcome PRs with code for new models an
 
 Here are a few example notebooks:-
 
-* [**trax.data API explained**](https://github.com/SauravMaheshkar/Trax-Examples/blob/main/backend/trax-data-explained.ipynb) : Explains some of the major functions in the `trax.data` API
-* [**Named Entity Recognition using Reformer**](https://github.com/SauravMaheshkar/Trax-Examples/blob/main/NLP/NER%20using%20Reformer.ipynb) : Uses a [Kaggle dataset](https://www.kaggle.com/abhinavwalia95/entity-annotated-corpus) for implementing Named Entity Recognition using the [Reformer](https://arxiv.org/abs/2001.04451) architecture.
-* [**Deep N-Gram models**](https://github.com/SauravMaheshkar/Trax-Examples/blob/main/NLP/Deep%20N-Gram.ipynb) : Implementation of deep n-gram models trained on Shakespeares works
+* [**trax.data API explained**](https://github.com/google/trax/blob/master/examples/trax-data-Explained.ipynb) : Explains some of the major functions in the `trax.data` API 
+* [**Named Entity Recognition using Reformer**](https://github.com/google/trax/blob/master/examples/NER_using_Reformer.ipynb) : Uses a [Kaggle dataset](https://www.kaggle.com/abhinavwalia95/entity-annotated-corpus) for implementing Named Entity Recognition using the [Reformer](https://arxiv.org/abs/2001.04451) architecture.
+* [**Deep N-Gram models**](https://github.com/google/trax/blob/master/examples/Deep_N_Gram_Models.ipynb) : Implementation of deep n-gram models trained on Shakespeares works
+
+
 
 **General Setup**
 
@@ -362,4 +364,3 @@ print(f'Model returned sentiment probabilities: {np.exp(sentiment_log_probs)}')
 
     example input_str: I first saw this when I was a teen in my last year of Junior High. I was riveted to it! I loved the special effects, the fantastic places and the trial-aspect and flashback method of telling the story.<br /><br />Several years later I read the book and while it was interesting and I could definitely see what Swift was trying to say, I think that while it's not as perfect as the book for social commentary, as a story the movie is better. It makes more sense to have it be one long adventure than having Gulliver return after each voyage and making a profit by selling the tiny Lilliput sheep or whatever.<br /><br />It's much more arresting when everyone thinks he's crazy and the sheep DO make a cameo anyway. As a side note, when I saw Laputa I was stunned. It looks very much like the Kingdom of Zeal from the Chrono Trigger video game (1995) that also made me like this mini-series even more.<br /><br />I saw it again about 4 years ago, and realized that I still enjoyed it just as much. Really high quality stuff and began an excellent run of Sweeps mini-series for NBC who followed it up with the solid Merlin and interesting Alice in Wonderland.<pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad><pad>
     Model returned sentiment probabilities: [[3.984500e-04 9.996014e-01]]
-
