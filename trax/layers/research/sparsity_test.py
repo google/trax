@@ -172,9 +172,30 @@ class MultiplicativeModularCausalAttentionTest(test.TestCase):
     self.assertEqual(y.shape, (1, 3, 4))
 
 
-class CausalFavorTest(test.TestCase):
+class FavorTest(test.TestCase):
 
   def test_call_and_grad(self):
+    layer = tl.Serial(
+        tl.Branch(tl.Embedding(3, 4), tl.PaddingMask()),
+        sparsity.Favor(d_feature=4, n_heads=2),
+        tl.Select([0], n_in=2),
+        tl.LogSoftmax(),
+        tl.CrossEntropyLoss()
+    )
+    x = np.ones((1, 2), dtype=np.int32)
+    w = np.ones_like(x).astype(np.float32)
+    x_sig = shapes.signature(x)
+    w_sig = shapes.signature(w)
+    layer.init((x_sig, x_sig, w_sig))
+    y = layer((x, x, w))
+    self.assertEqual(y.shape, ())
+    state = layer.state
+    rng = fastmath.random.get_prng(0)
+    fwd = lambda weights, inp: layer.pure_fn(inp, weights, state, rng=rng)[0]
+    g = fastmath.grad(fwd)(layer.weights, (x, x, w))
+    self.assertEqual(g[0][1][0].shape, (3, 4))
+
+  def test_causal_call_and_grad(self):
     layer = tl.Serial(
         tl.Dense(4),
         sparsity.CausalFavor(d_feature=4, n_heads=2),
