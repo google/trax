@@ -26,9 +26,11 @@ easier experimentation across different activation functions.
 from trax import fastmath
 from trax.fastmath import numpy as jnp
 from trax.layers import base
+from trax.layers.assert_shape import assert_shape
 from trax.layers.base import Fn
 
 
+@assert_shape('...->...')  # The output and input shapes are the same.
 def Relu():
   r"""Returns a layer that computes the Rectified Linear Unit (ReLU) function.
 
@@ -41,6 +43,7 @@ def Relu():
   return Fn('Relu', lambda x: jnp.where(x <= 0, jnp.zeros_like(x), x))
 
 
+@assert_shape('...->...')  # The output and input shapes are the same.
 def ParametricRelu(a=1.):
   r"""Returns a layer that computes a ReLU function with the given slope.
 
@@ -56,6 +59,7 @@ def ParametricRelu(a=1.):
   return Fn('ParametricRelu', lambda x: jnp.maximum(a * x, jnp.zeros_like(x)))
 
 
+@assert_shape('...->...')  # The output and input shapes are the same.
 def LeakyRelu(a=0.01):
   r"""Returns a ReLU-like layer with linear nonzero outputs for negative inputs.
 
@@ -71,6 +75,7 @@ def LeakyRelu(a=0.01):
   return Fn('LeakyRelu', lambda x: jnp.where(x >= 0, x, a * x))
 
 
+@assert_shape('...->...')  # The output and input shapes are the same.
 def Elu(a=1.):
   r"""Returns a ReLU-like layer with exponential outputs for negative inputs.
 
@@ -88,6 +93,7 @@ def Elu(a=1.):
   return Fn('Elu', lambda x: jnp.where(x > 0, x, a * jnp.expm1(x)))
 
 
+@assert_shape('...->...')  # The output and input shapes are the same.
 def Selu(alpha=1.6732632423543772848170429916717,
          lmbda=1.0507009873554804934193349852946):
   r"""Returns an `Elu`-like layer with an additional scaling/slope parameter.
@@ -105,6 +111,7 @@ def Selu(alpha=1.6732632423543772848170429916717,
   return Fn('Selu', lambda x: lmbda * jnp.where(x > 0, x, alpha * jnp.expm1(x)))
 
 
+@assert_shape('...->...')  # The output and input shapes are the same.
 def Gelu():
   r"""Returns a layer that computes the Gaussian Error Linear Unit function.
 
@@ -114,6 +121,7 @@ def Gelu():
   return Fn('Gelu', lambda x: x * 0.5 * (1.0 + fastmath.erf(x / jnp.sqrt(2.0))))
 
 
+@assert_shape('...->...')  # The output and input shapes are the same.
 def FastGelu():
   r"""Returns a layer that computes a fast approximation to `Gelu`.
 
@@ -128,6 +136,7 @@ def FastGelu():
 
 
 # pylint: disable=unnecessary-lambda
+@assert_shape('...->...')  # The output and input shapes are the same.
 def Sigmoid():
   r"""Returns a layer that computes the sigmoid function.
 
@@ -137,6 +146,7 @@ def Sigmoid():
   return Fn('Sigmoid', lambda x: fastmath.expit(x))
 
 
+@assert_shape('...->...')  # The output and input shapes are the same.
 def Tanh():
   r"""Returns a layer that computes the hyperbolic tangent function.
 
@@ -147,6 +157,7 @@ def Tanh():
 # pylint: enable=unnecessary-lambda
 
 
+@assert_shape('...->...')  # The output and input shapes are the same.
 def HardSigmoid():
   r"""Returns a layer that computes a linear approximation to `Sigmoid`.
 
@@ -160,6 +171,7 @@ def HardSigmoid():
   return Fn('HardSigmoid', lambda x: jnp.maximum(0, jnp.minimum(1, (1 + x))))
 
 
+@assert_shape('...->...')  # The output and input shapes are the same.
 def HardTanh():
   r"""Returns a layer that computes a linear approximation to `Tanh`.
 
@@ -173,6 +185,7 @@ def HardTanh():
   return Fn('HardTanh', lambda x: jnp.maximum(-1, jnp.minimum(1, x)))
 
 
+@assert_shape('...->...')  # The output and input shapes are the same.
 def Softplus():
   r"""Returns a layer that computes the softplus function.
 
@@ -180,6 +193,18 @@ def Softplus():
       f(x) = \ln(e^x + 1)
   """
   return Fn('Softplus', lambda x: jnp.logaddexp(x, 0.))
+
+
+@assert_shape('...->...')  # The output and input shapes are the same.
+def Exp():
+  """Returns a layer that computes the element-wise exponential of a tensor."""
+  return Fn('Exp', lambda x: jnp.exp(x))  # pylint: disable=unnecessary-lambda
+
+
+@assert_shape('...->...')  # The output and input shapes are the same.
+def Log():
+  """Returns a layer that computes the element-wise logarithm of a tensor."""
+  return Fn('Log', lambda x: jnp.log(x))  # pylint: disable=unnecessary-lambda
 
 
 class ThresholdedLinearUnit(base.Layer):

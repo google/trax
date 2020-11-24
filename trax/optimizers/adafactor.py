@@ -33,6 +33,7 @@ class Adafactor(opt_base.Optimizer):
                decay_rate=0.8,
                clipping_threshold=1.0,
                weight_decay_rate=1e-5,
+               weight_decay_n_steps=0,
                epsilon1=1e-16,
                epsilon2=1e-3):
     """Create the Adafactor optimizer.
@@ -53,6 +54,7 @@ class Adafactor(opt_base.Optimizer):
       decay_rate: float: controls second-moment exponential decay schedule.
       clipping_threshold: an optional float >= 1, if None no update clipping.
       weight_decay_rate: rate at which to decay weights.
+      weight_decay_n_steps: for how many steps to decay weights (always if None)
       epsilon1: Regularization constant for squared gradient.
       epsilon2: Regularization constant for parameter scale.
     """
@@ -68,6 +70,7 @@ class Adafactor(opt_base.Optimizer):
         decay_rate=decay_rate,
         clipping_threshold=clipping_threshold,
         weight_decay_rate=weight_decay_rate,
+        weight_decay_n_steps=weight_decay_n_steps,
         epsilon1=epsilon1,
         epsilon2=epsilon2,
     )
@@ -100,6 +103,12 @@ class Adafactor(opt_base.Optimizer):
     decay_rate = opt_params['decay_rate']
     clipping_threshold = opt_params['clipping_threshold']
     weight_decay_rate = opt_params['weight_decay_rate']
+    weight_decay_n_steps = opt_params['weight_decay_n_steps']
+    weight_decay_rate = jnp.where(
+        weight_decay_n_steps < 1,  # if weight_decay_n_steps == 0, ignore it
+        weight_decay_rate,
+        (weight_decay_rate * jnp.maximum(weight_decay_n_steps - step, 0.0) /
+         jnp.maximum(weight_decay_n_steps, 0.0)))
     epsilon1 = opt_params['epsilon1']
     epsilon2 = opt_params['epsilon2']
     decay_rate = self._decay_rate_pow(step, exponent=decay_rate)

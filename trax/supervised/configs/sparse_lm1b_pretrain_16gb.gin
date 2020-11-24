@@ -56,7 +56,12 @@ data_streams.preprocess_fn = @trax.data.tf_inputs.lm1b_preprocess
 # ==============================================================================
 multifactor.constant = 1.0
 multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
-multifactor.warmup_steps = 2500
+multifactor.warmup_steps = 10000
+
+# Parameters for Adafactor:
+# ==============================================================================
+Adafactor.weight_decay_rate = 1e-4
+Adafactor.weight_decay_n_steps = 100000
 
 # Parameters for lm1b_preprocess:
 # ==============================================================================
@@ -85,7 +90,7 @@ ConfigurableTransformerLM.n_heads = %n_heads
 ConfigurableTransformerLM.n_layers = %n_layers
 ConfigurableTransformerLM.vocab_size = %vocab_size
 ConfigurableTransformerLM.attention_type = %attn_type
-
+ConfigurableTransformerLM.ff_use_sru = 0
 
 # Parameters for Reformer2:
 # ==============================================================================

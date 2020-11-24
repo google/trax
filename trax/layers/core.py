@@ -567,12 +567,6 @@ def Flatten(n_axes_to_keep=1):
   return Fn(layer_name, f)
 
 
-@assert_shape('...->...')  # The output and input shapes are the same.
-def Exp():
-  """Returns a layer that computes the element-wise exponential of a tensor."""
-  return Fn('Exp', lambda x: jnp.exp(x))  # pylint: disable=unnecessary-lambda
-
-
 def LogSoftmax(axis=-1):
   """Returns a layer that applies log softmax along one tensor axis.
 
@@ -589,6 +583,16 @@ def LogSoftmax(axis=-1):
   """
   return Fn('LogSoftmax',
             lambda x: x - fastmath.logsumexp(x, axis, keepdims=True))
+
+
+def LogSumExp(axis=-1):
+  """Returns a layer that computes log(sum(exp(x))) along one tensor axis.
+
+  Args:
+    axis: Axis along which values are grouped for computing log-sum-exp.
+  """
+  return Fn('LogSumExp',
+            lambda x: fastmath.logsumexp(x, axis=axis, keepdims=True))
 
 
 def Softmax(axis=-1):

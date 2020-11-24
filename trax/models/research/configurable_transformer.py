@@ -65,7 +65,8 @@ def FeedForwardWithOptions(d_model,
     ff_dropout: Stochastic rate (probability) for dropping an activation value
       when applying dropout after the FF dense layer.
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
-    ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
+    ff_use_sru: int or pair of ints; if > 0, we use this many SRU layers
+      in addition to the feed-forward block (second int specifies sru size)
     ff_sparsity: int, tuple or string; if not 0, use sparse feed-forward block
       with this sparsity
     mode: If `'train'`, each block will include dropout; else, it will pass all
@@ -110,8 +111,12 @@ def FeedForwardWithOptions(d_model,
   if ff_chunk_size > 0:
     res = tl.BatchLeadingAxes(tl.Chunk(tl.Serial(res), ff_chunk_size))
   if ff_use_sru:
-    sru = [tl.Dense(32)] + [tl.SRU(32) for _ in range(ff_use_sru)]
-    res = tl.Residual(sru + [tl.Dense(d_model)], res)
+    if isinstance(ff_use_sru, (list, tuple)):
+      sru_n_layers, sru_n_units = ff_use_sru
+    else:
+      sru_n_layers, sru_n_units = ff_use_sru, 32
+    sru = [tl.SRU(sru_n_units) for _ in range(sru_n_layers)]
+    res = tl.Residual([tl.Dense(sru_n_units)] + sru + [tl.Dense(d_model)], res)
   return [res]
 
 
@@ -331,7 +336,8 @@ def ConfigurableTransformerEncoder(vocab_size,
     ff_dropout: Stochastic rate (probability) for dropping an activation value
       when applying dropout after the FF dense layer.
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
-    ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
+    ff_use_sru: int or pair of ints; if > 0, we use this many SRU layers
+      in addition to the feed-forward block (second int specifies sru size)
     ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
     ff_sparsity_type: string, if ff_sparsity >0,
       use SparseFF if ff_sparsity_type=`'1inN'` and
@@ -438,7 +444,8 @@ def ConfigurableTransformerLM(vocab_size,
     ff_dropout: Stochastic rate (probability) for dropping an activation value
       when applying dropout after the FF dense layer.
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
-    ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
+    ff_use_sru: int or pair of ints; if > 0, we use this many SRU layers
+      in addition to the feed-forward block (second int specifies sru size)
     ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
     ff_sparsity_type: string, if ff_sparsity >0,
       use SparseFF if ff_sparsity_type=`'1inN'` and
@@ -556,7 +563,8 @@ def ConfigurableTransformer(input_vocab_size,
     ff_dropout: Stochastic rate (probability) for dropping an activation value
       when applying dropout after the FF dense layer.
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
-    ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
+    ff_use_sru: int or pair of ints; if > 0, we use this many SRU layers
+      in addition to the feed-forward block (second int specifies sru size)
     ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
     ff_sparsity_type: string, if ff_sparsity >0,
       use SparseFF if ff_sparsity_type=`'1inN'` and
@@ -676,7 +684,8 @@ def EncoderBlock(d_model,
     ff_dropout: Stochastic rate (probability) for dropping an activation value
       when applying dropout after the FF dense layer.
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
-    ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
+    ff_use_sru: int or pair of ints; if > 0, we use this many SRU layers
+      in addition to the feed-forward block (second int specifies sru size)
     ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
     ff_sparsity_type: string, if ff_sparsity >0,
       use SparseFF if ff_sparsity_type=`'1inN'` and
@@ -764,7 +773,8 @@ def DecoderBlock(d_model,
     ff_dropout: Stochastic rate (probability) for dropping an activation value
       when applying dropout after the FF dense layer.
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
-    ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
+    ff_use_sru: int or pair of ints; if > 0, we use this many SRU layers
+      in addition to the feed-forward block (second int specifies sru size)
     ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
     ff_sparsity_type: string, if ff_sparsity >0,
       use SparseFF if ff_sparsity_type=`'1inN'` and
@@ -841,7 +851,8 @@ def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
     ff_dropout: Stochastic rate (probability) for dropping an activation value
       when applying dropout after the FF dense layer.
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
-    ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
+    ff_use_sru: int or pair of ints; if > 0, we use this many SRU layers
+      in addition to the feed-forward block (second int specifies sru size)
     ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
      ff_sparsity_type: string, if ff_sparsity >0,
       use SparseFF if ff_sparsity_type=`'1inN'` and

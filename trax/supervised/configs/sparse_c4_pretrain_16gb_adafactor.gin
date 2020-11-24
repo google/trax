@@ -68,7 +68,8 @@ multifactor.warmup_steps = 10000
 
 # Parameters for Adafactor:
 # ==============================================================================
-Adafactor.weight_decay_rate = 0.0
+Adafactor.weight_decay_rate = 1e-4
+Adafactor.weight_decay_n_steps = 100000
 Adafactor.beta1 = 0.0
 Adafactor.decay_rate = 0.8
 Adafactor.clipping_threshold = 1.0
