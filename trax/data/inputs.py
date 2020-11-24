@@ -362,15 +362,36 @@ def BucketByLength(boundaries, batch_sizes,  # pylint: disable=invalid-name
       g, length_fn, boundaries, batch_sizes, strict_pad_on_len)
 
 
-def FilterByLength(max_length,  # pylint: disable=invalid-name
+def FilterByLength(max_length, min_length=0,  # pylint: disable=invalid-name
                    length_keys=None, length_axis=0):
-  """Returns a function that filters out examples longer than `max_length`."""
+  """Returns a function that filters out examples by length.
+
+  Args:
+    max_length: int. If not None, indicates maximum length.
+    min_length: int. If not None, indicates minimum length.
+    length_keys: (list) which example keys to take into account.
+    length_axis: which shape axis to take into account.
+  Returns:
+    a function that filters out examples by length.
+  """
+
+  assert max_length is not None or min_length is not None
   length_keys = length_keys or [0, 1]
   length_fn = lambda x: _length_fn(x, length_axis, length_keys)
   def filtered(gen):
     for example in gen:
-      if length_fn(example) <= max_length:
-        yield example
+      example_len = length_fn(example)
+
+      # Checking max length boundary.
+      if max_length is not None:
+        if example_len > max_length:
+          continue
+      # Checking min length boundary.
+      if min_length is not None:
+        if example_len < min_length:
+          continue
+      # Within bounds.
+      yield example
   return filtered
 
 
