@@ -24,10 +24,22 @@ from jax.config import config
 import numpy as np
 from tensorflow.compat.v2 import test
 
+from trax import fastmath
 from trax import layers as tl
 from trax import models
 from trax import shapes
 from trax.supervised import decoding
+
+
+def size_of_model(model):
+  def _size(x):
+    try:
+      return x.size
+    except Exception:  # pylint: disable=broad-except
+      return 0
+  sizes = fastmath.nested_map(_size, model.weights)
+  total_size = sum(fastmath.tree_flatten(sizes))
+  return total_size
 
 
 class DecodingTimingTest(test.TestCase):
@@ -102,15 +114,70 @@ class DecodingTimingTest(test.TestCase):
 
       # We print 5* time for 10 tokens, @2 layers this is ~1 token @ 100 layers.
       message = (
-          '\n\nSettings: %s\nTime for 5x10 tokens (~1tok @100): %.4f s\n\n\n'
-          % (settings, 5*total_time))
+          ('\n\nParams: %d Settings: %s\n'
+           'Time for 5x10 tokens (~1tok @100): %.4f s\n\n\n')
+          % (size_of_model(pred_model), settings, 5*total_time))
       messages.append(message)
       print(message)
       # self.assertLess(total_time, 20.0)  # If it's > 20s, it's some bug.
-      # # Check resulting shapes.
-      # s = np.concatenate(result, axis=1)
-      # self.assertEqual(s.shape[0], 1)
-      # self.assertEqual(s.shape[1], 14)
+      # Check resulting shapes.
+      s = np.concatenate(result, axis=1)
+      self.assertEqual(s.shape[0], 1)
+      self.assertEqual(s.shape[1], 14)
+
+    print('Final results (recap):')
+    for message in messages:
+      print(message)
+
+  def test_loss_layer_timing(self):
+    all_settings = [
+        {'output': 32000, 'input': 1024, 'prob': None,
+         'type': None, 'sparsity': 0, 'lowrank': 0, 'use_bias': False},
+        {'output': 32000, 'input': 1024, 'prob': None,
+         'type': None, 'sparsity': 0, 'lowrank': 0, 'use_bias': True},
+
+        {'output': 32000, 'input': 1024, 'prob': None,
+         'type': 'mult', 'sparsity': 2, 'lowrank': 0, 'use_bias': False},
+        {'output': 32000, 'input': 1024, 'prob': None,
+         'type': 'mult', 'sparsity': 4, 'lowrank': 0, 'use_bias': False},
+
+        {'output': 32000, 'input': 1024, 'prob': None,
+         'type': 'mult', 'sparsity': 2, 'lowrank': 0, 'use_bias': True},
+        {'output': 32000, 'input': 1024, 'prob': None,
+         'type': 'mult', 'sparsity': 4, 'lowrank': 0, 'use_bias': True},
+    ]
+
+    messages = []
+    for settings in all_settings:
+      pred_model = tl.SparseDenseWithOptions(
+          n_units=settings['output'],
+          d_input=settings['input'],
+          sparsity_type=settings['type'],
+          sparsity=settings['sparsity'],
+          d_lowrank=settings['lowrank'],
+          prob_sparse=settings['prob'],
+          use_bias=settings['use_bias'],
+          mode='predict',
+          )
+
+      shape1l = shapes.ShapeDtype((1, settings['input']))
+      pred_model.init(input_signature=shape1l)
+      inputs = np.ones((1, settings['input']))
+
+      total_time = time.time()
+      for counter in range(-5, 100):
+        start_time = time.time()
+        y = pred_model(inputs)
+        self.assertEqual(y.shape, (1, settings['output']))
+        elapsed_time = time.time() - start_time
+        if counter >= 0:
+          total_time += elapsed_time
+
+      message = (
+          '\n\nParams: %d Settings: %s\nTime for 100 tokens: %.4f s\n\n\n'
+          % (size_of_model(pred_model), settings, total_time))
+      messages.append(message)
+      print(message)
 
     print('Final results (recap):')
     for message in messages:

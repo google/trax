@@ -553,6 +553,10 @@ def Reformer2(input_vocab_size,
               ff_chunk_size=0,
               ff_dropout=None,
               ff_sparsity=0,
+              loss_sparsity_type=None,
+              loss_sparsity=0,
+              loss_d_lowrank=0,
+              loss_sparsity_prob=None,
               attention_chunk_size=0,
               n_layers_forget=0,
               n_decoder_attention_layers=2,
@@ -591,6 +595,12 @@ def Reformer2(input_vocab_size,
     ff_dropout: float: (optional) separate dropout rate at feed-forward
       nonlinearity. This is called relu_dropout in T2T.
     ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
+    loss_sparsity_type: str, type of sparsity to used in loss layer. See
+      SparseDenseWithOptions for options. None if no sparsity should be used.
+    loss_sparsity: int, the sparsity for loss layer (if used)
+    loss_d_lowrank: int, the dimensions for intermediate layer (if used)
+    loss_sparsity_prob: float, the probability for sparse version of loss to be
+      used. If None, only sparse version is used.
     attention_chunk_size: int, if > 0 run attention chunked at this size
     n_layers_forget: how often to have a forgetting block between layers
     n_decoder_attention_layers: how many attention layers in a decoder block
@@ -676,6 +686,21 @@ def Reformer2(input_vocab_size,
         mode=mode)
     decoder_blocks.append(decoder_block)
 
+  if loss_sparsity_type is None:
+    # While SparseDenseWithOptions supports None sparsity_type, it doesn't
+    # support loss chunking; so we use tl.Dense as a default.
+    dense_loss_layer = tl.Dense(output_vocab_size, use_bfloat16=use_bfloat16)
+  else:
+    dense_loss_layer = tl.SparseDenseWithOptions(
+        output_vocab_size,
+        d_input=d_model,
+        sparsity_type=loss_sparsity_type,
+        sparsity=loss_sparsity,
+        d_lowrank=loss_d_lowrank,
+        prob_sparse=loss_sparsity_prob,
+        use_bfloat16=use_bfloat16,
+        mode=mode)
+
   # Assemble and return the model.
   return tl.Serial(
       # Input: encoder_side_tokens, decoder_side_tokens
@@ -714,7 +739,7 @@ def Reformer2(input_vocab_size,
       t2.StripFromConcatenateWithPadding(mode=mode),  # vec_d tok_d
 
       # Map to output vocab.
-      tl.Dense(output_vocab_size, use_bfloat16=use_bfloat16),  # vec_d tok_d
+      dense_loss_layer,  # vec_d tok_d
   )
 
 

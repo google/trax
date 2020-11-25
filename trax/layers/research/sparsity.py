@@ -284,6 +284,93 @@ def ConvCausalAttention(d_feature, n_heads=1, sparsity=None, dropout=0.0,
           mode=mode))
 
 
+@assert_shape('...a->...b')
+def LowRankDense(n_units, d_lowrank):
+  return tl.Serial(
+      tl.Dense(d_lowrank),
+      tl.Dense(n_units)
+      )
+
+
+@assert_shape('...a->...b')
+def EinsumDense(d_input, d_output, use_bias):
+  """Returns a reimplementation of Dense layer, using einsum.
+
+  While this is an equivalent of a Dense layer, it seems to be faster when used
+  in decoding if used with bias (see decoding_timing_test.py ).
+  This layer can be removed when we understand better the reason for the
+  difference in decoding speed.
+
+  Args:
+    d_input: Dimensionality of the input tensor.
+    d_output: Dimensionality of the output tensor.
+    use_bias: Whether to use bias.
+  """
+  layers = [
+      tl.Weights(init.GlorotUniformInitializer(), [d_output, d_input]),
+      tl.Fn('EinsumDense',
+            (lambda kernel, embeds:  # pylint: disable=g-long-lambda
+             jnp.einsum('xd,...d->...x', kernel, embeds)))
+  ]
+  if use_bias:
+    layers.extend([
+        tl.Weights(init.RandomNormalInitializer(1e-6), [d_output]),
+        tl.Add()
+    ])
+  return tl.Serial(layers)
+
+
+def RandomLayer(layer_a, layer_b, prob_a):
+  """Runs `layer_a` with probability `prob_a`, otherwise runs `layer_b`."""
+  condition = tl.Serial(
+      tl.RandomUniform(),
+      tl.Fn('SmallerThan', lambda x: x < prob_a)
+      )
+  return tl.Cond(condition, layer_a, layer_b)
+
+
+@assert_shape('...a->...b')
+def SparseDenseWithOptions(n_units, d_input=None, sparsity_type=None,
+                           sparsity=0, d_lowrank=None, prob_sparse=None,
+                           mode=None, use_bias=True, use_bfloat16=False):
+  """Configurable sparse version of Dense layer."""
+  if prob_sparse is not None:
+    if mode is not None and mode != 'train':
+      # For non-training modes, we want to use a sparse variant.
+      # This is different than simply prob_sparse being None, as the weights of
+      # the model are different.
+      prob_sparse = 1.0
+    return RandomLayer(
+        SparseDenseWithOptions(n_units, d_input, sparsity_type, sparsity,
+                               d_lowrank, use_bias=use_bias,
+                               use_bfloat16=use_bfloat16),
+        tl.Dense(n_units, use_bias=use_bias, use_bfloat16=use_bfloat16),
+        prob_sparse)
+
+  if sparsity_type is None or sparsity_type == 'None':
+    return tl.Dense(n_units, use_bias=use_bias, use_bfloat16=use_bfloat16)
+
+  assert not use_bfloat16  # use_bfloat16 is unsupported for sparse variants
+  if sparsity_type == 'lowrank':
+    assert use_bias  # use_bias=False is unsupported
+    return LowRankDense(n_units, d_lowrank)
+  if sparsity_type == 'einsum':
+    return EinsumDense(d_input, n_units, use_bias=use_bias)
+  if sparsity_type == 'mult':
+    return MultiplicativeSparseDense(sparsity, d_input, n_units,
+                                     use_bias=use_bias)
+  if sparsity_type == 'local':
+    assert use_bias  # use_bias = False is unsupported
+    assert n_units % sparsity == 0
+    return LocallyConnectedDense(sparsity, n_units/sparsity)
+  if sparsity_type == 'local3':
+    assert use_bias  # use_bias = False is unsupported
+    assert n_units % sparsity == 0
+    return LocallyConnectedDense(sparsity, n_units/sparsity, kernel_size=3)
+
+  raise ValueError('Unknown sparsity type: {}'.format(sparsity_type))
+
+
 @assert_shape('bld->bld')
 def LowRankCausalAttention(d_feature, n_heads=1, dropout=0.0,
                            max_inference_length=2048, lowrank=64,
@@ -303,23 +390,18 @@ def LowRankCausalAttention(d_feature, n_heads=1, dropout=0.0,
     lowrank: The rank of low-rank approximation.
     mode: One of `'train'`, `'eval'`, or `'predict'`.
   """
-  @assert_shape('...a->...a')
-  def ProcessingLayer():
-    return tl.Serial(
-        tl.Dense(lowrank),
-        tl.Dense(d_feature)
-        )
 
   return tl.ConfigurableAttention(
-      ProcessingLayer(), ProcessingLayer(), ProcessingLayer(),
-      ProcessingLayer(), n_heads=n_heads,
-      qkv_attention_layer=tl.DotProductCausalAttention(
+      LowRankDense(d_feature, lowrank), LowRankDense(d_feature, lowrank),
+      LowRankDense(d_feature, lowrank), LowRankDense(d_feature, lowrank),
+      n_heads=n_heads, qkv_attention_layer=tl.DotProductCausalAttention(
           dropout=dropout, max_inference_length=max_inference_length,
           mode=mode))
 
 
 @assert_shape('...a->...b')
-def MultiplicativeSparseDense(sparsity, d_input, d_output=None):
+def MultiplicativeSparseDense(sparsity, d_input, d_output=None,
+                              use_bias=True):
   """Returns a replacement of Dense layer which uses less parameters.
 
   The layer uses number of modules equal to `sparsity`. It multiplies each
@@ -334,12 +416,13 @@ def MultiplicativeSparseDense(sparsity, d_input, d_output=None):
         number of modules.
     d_input: Dimensionality of input tensor.
     d_output: Dimensionality of output tensor; by default equal to d_input.
+    use_bias: Whether to use bias.
   """
 
   assert d_output % sparsity == 0
   d_module = d_output // sparsity
 
-  return tl.Serial(
+  layers = [
       # Weight below is used for per-head preprocessing of an embedding.
       tl.Weights(init.RandomNormalInitializer(stddev=0.5),
                  shape=[sparsity, d_input]),
@@ -351,10 +434,14 @@ def MultiplicativeSparseDense(sparsity, d_input, d_output=None):
             (lambda kernel, multiplier, embeds:  # pylint: disable=g-long-lambda
              jnp.einsum('dx,hd,bld->blhx', kernel, multiplier, embeds))),
       MergeLastTwoAxes(),
-      # Weight below is bias after dense, per-head.
-      tl.Weights(init.RandomNormalInitializer(1e-6), [d_output]),
-      tl.Add(),
-  )
+  ]
+  if use_bias:
+    layers.extend([
+        # Weight below is bias after dense, per-head.
+        tl.Weights(init.RandomNormalInitializer(1e-6), [d_output]),
+        tl.Add(),
+    ])
+  return tl.Serial(layers)
 
 
 @assert_shape('...a->...a')

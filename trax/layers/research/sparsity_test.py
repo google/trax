@@ -116,6 +116,30 @@ class LocallyConnectedDenseTest(test.TestCase):
     self.assertEqual(y.shape, (2, 16))
 
 
+class SparseDenseWithOptionsTest(test.TestCase):
+
+  def test_simple_call(self):
+    d_input, d_output = 16, 32
+    settings = [
+        (None, 0, 0),
+        ('einsum', 0, 0),
+        ('lowrank', 0, 8),
+        ('mult', 2, 0),
+        ('local', 2, 0),
+        ('local3', 2, 0),
+    ]
+    for stype, sparsity_level, d_lowrank in settings:
+      layer = sparsity.SparseDenseWithOptions(
+          d_output, d_input=d_input, sparsity_type=stype,
+          sparsity=sparsity_level, d_lowrank=d_lowrank)
+      x = np.ones((1, 1, d_input))
+      _, _ = layer.init(shapes.signature(x))
+      y = layer(x)
+      self.assertEqual(y.shape, (1, 1, d_output),
+                       msg='[{}->{}] {} - {} - {}'.format(
+                           d_input, d_output, stype, sparsity_level, d_lowrank))
+
+
 class ModularCausalAttentionTest(test.TestCase):
 
   def test_simple_call(self):

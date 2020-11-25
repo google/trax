@@ -400,6 +400,10 @@ def ConfigurableTransformerLM(vocab_size,
                               ff_use_sru=0,
                               ff_sparsity=0,
                               ff_sparsity_type='1inN',
+                              loss_sparsity_type=None,
+                              loss_sparsity=0,
+                              loss_d_lowrank=0,
+                              loss_sparsity_prob=None,
                               attention_chunk_size=0,
                               attention_type=tl.CausalAttention,
                               axial_pos_shape=None,
@@ -450,6 +454,12 @@ def ConfigurableTransformerLM(vocab_size,
     ff_sparsity_type: string, if ff_sparsity >0,
       use SparseFF if ff_sparsity_type=`'1inN'` and
       use BlockSparseFF if ff_sparsity_type=`'Block'`
+    loss_sparsity_type: string, type of sparsity to used in loss layer. See
+      SparseDenseWithOptions for options. None if no sparsity should be used.
+    loss_sparsity: int, the sparsity for loss layer (if used)
+    loss_d_lowrank: int, the dimensions for intermediate layer (if used)
+    loss_sparsity_prob: float, the probability for sparse version of loss to be
+      used. If None, only sparse version is used.
     attention_chunk_size: int, if > 0 run attention chunked at this size
     attention_type: The attention layer to use for the decoder part.
     axial_pos_shape: tuple of ints: input shape to use for the axial position
@@ -479,12 +489,15 @@ def ConfigurableTransformerLM(vocab_size,
   # pylint: enable=g-complex-comprehension
 
   # Assemble and return the model.
-  return tl.Serial(              # tokens (or chunked tuple of tokens)
-      tl.ShiftRight(mode=mode),  # toks
-      positional_encoder,        # vecs
-      decoder_blocks,            # vecs
-      tl.LayerNorm(),            # vecs
-      tl.Dense(vocab_size),      # vecs
+  return tl.Serial(               # tokens (or chunked tuple of tokens)
+      tl.ShiftRight(mode=mode),   # toks
+      positional_encoder,         # vecs
+      decoder_blocks,             # vecs
+      tl.LayerNorm(),             # vecs
+      tl.SparseDenseWithOptions(  # vecs
+          vocab_size, d_input=d_model, sparsity_type=loss_sparsity_type,
+          sparsity=loss_sparsity, d_lowrank=loss_d_lowrank,
+          prob_sparse=loss_sparsity_prob, mode=mode),
   )
 
 
@@ -505,6 +518,10 @@ def ConfigurableTransformer(input_vocab_size,
                             ff_use_sru=0,
                             ff_sparsity=0,
                             ff_sparsity_type='1inN',
+                            loss_sparsity_type=None,
+                            loss_sparsity=0,
+                            loss_d_lowrank=0,
+                            loss_sparsity_prob=None,
                             attention_chunk_size=0,
                             encoder_attention_type=tl.Attention,
                             encoder_decoder_attention_type=tl.CausalAttention,
@@ -569,6 +586,12 @@ def ConfigurableTransformer(input_vocab_size,
     ff_sparsity_type: string, if ff_sparsity >0,
       use SparseFF if ff_sparsity_type=`'1inN'` and
       use BlockSparseFF if ff_sparsity_type=`'Block'`
+    loss_sparsity_type: str, type of sparsity to used in loss layer. See
+      SparseDenseWithOptions for options. None if no sparsity should be used.
+    loss_sparsity: int, the sparsity for loss layer (if used)
+    loss_d_lowrank: int, the dimensions for intermediate layer (if used)
+    loss_sparsity_prob: float, the probability for sparse version of loss to be
+      used. If None, only sparse version is used.
     attention_chunk_size: int, if > 0 run attention chunked at this size
     encoder_attention_type: The attention layer to use for the encoder part.
     encoder_decoder_attention_type: The attention layer to use for the
@@ -640,7 +663,10 @@ def ConfigurableTransformer(input_vocab_size,
 
       # Map to output vocab.
       tl.Select([0], n_in=3),             # vec_d tok_d
-      tl.Dense(output_vocab_size),        # vec_d .....
+      tl.SparseDenseWithOptions(          # vec_d .....
+          output_vocab_size, d_input=d_model, sparsity_type=loss_sparsity_type,
+          sparsity=loss_sparsity, d_lowrank=loss_d_lowrank,
+          prob_sparse=loss_sparsity_prob, mode=mode),
   )
 
 
