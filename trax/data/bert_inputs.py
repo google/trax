@@ -19,39 +19,43 @@ data processing for BERT.
 
 For now, this file only supports fine-tuning bert-base-uncased on GLUE.
 """
+
+import os
+
 import functools
 
 import gin
 import numpy as onp
 
 import tensorflow_datasets as tfds
+
 from trax.data.inputs import Inputs
+from trax.models.research.bert import download_model_if_model_name # needed for downloading tokenizer vocab
 
 
 def _tfds_stream(n_devices, dataset_name, split, batch_size, data_dir,
-                 shuffle_files, shuffle_buffer_size, batch_shuffle_size,
-                 preprocess_fun, repeat=True):
-    """Streams batches of examples from tfds, with pure-python preprocessing."""
-    # TODO(piotrekp1): delete if switched to data_streams
-    if batch_size % n_devices != 0:
-        raise ValueError(f'Batch size ({batch_size}) not divisible'
-                         ' by number of devices ({n_devices})')
-    ds = tfds.load(
-        name=dataset_name, split=split, data_dir=data_dir,
-        shuffle_files=shuffle_files)
-    if repeat:
-        ds = ds.repeat()
-    if shuffle_buffer_size is not None:
-        ds = ds.shuffle(shuffle_buffer_size)
-    ds = ds.batch(batch_size)
-    if batch_shuffle_size is not None:
-        ds = ds.shuffle(batch_shuffle_size)
+               shuffle_files, shuffle_buffer_size, batch_shuffle_size,
+               preprocess_fun, repeat=True):
+  """Streams batches of examples from tfds, with pure-python preprocessing."""
+  # TODO(piotrekp1): delete if switched to data_streams
+  if batch_size % n_devices != 0:
+    raise ValueError(f'Batch size ({batch_size}) not divisible'
+                       ' by number of devices ({n_devices})')
+  ds = tfds.load(name=dataset_name, split=split, data_dir=data_dir,
+                 shuffle_files=shuffle_files)
+  if repeat:
+    ds = ds.repeat()
+  if shuffle_buffer_size is not None:
+    ds = ds.shuffle(shuffle_buffer_size)
+  ds = ds.batch(batch_size)
+  if batch_shuffle_size is not None:
+    ds = ds.shuffle(batch_shuffle_size)
 
-    for batch in tfds.as_numpy(ds):
-        if preprocess_fun is not None:
-            yield preprocess_fun(batch)
-        else:
-            yield batch
+  for batch in tfds.as_numpy(ds):
+    if preprocess_fun is not None:
+      yield preprocess_fun(batch)
+    else:
+      yield batch
 
 
 @gin.configurable()
@@ -66,46 +70,52 @@ def tfds_inputs(
         shuffle_buffer_size=1024,
         batch_shuffle_size=128,
 ):
-    """Tensorflow Datasets input pipeline, with pure-python preprocessing."""
-    if eval_batch_size is None:
-        eval_batch_size = batch_size
-    return Inputs(
-        train_stream=functools.partial(
-            _tfds_stream,
-            dataset_name=dataset_name,
-            split=train_split,
-            batch_size=batch_size,
-            data_dir=data_dir,
-            shuffle_files=True,
-            shuffle_buffer_size=shuffle_buffer_size,
-            batch_shuffle_size=batch_shuffle_size,
-            preprocess_fun=preprocess_fun,
-        ),
-        eval_stream=functools.partial(
-            _tfds_stream,
-            dataset_name=dataset_name,
-            split=eval_split,
-            batch_size=eval_batch_size,
-            data_dir=data_dir,
-            shuffle_files=False,
-            shuffle_buffer_size=None,
-            batch_shuffle_size=None,
-            preprocess_fun=preprocess_fun,
-        ),
-    )
+  """Tensorflow Datasets input pipeline, with pure-python preprocessing."""
+  if eval_batch_size is None:
+    eval_batch_size = batch_size
+  return Inputs(
+    train_stream=functools.partial(
+        _tfds_stream,
+        dataset_name=dataset_name,
+        split=train_split,
+        batch_size=batch_size,
+        data_dir=data_dir,
+        shuffle_files=True,
+        shuffle_buffer_size=shuffle_buffer_size,
+        batch_shuffle_size=batch_shuffle_size,
+        preprocess_fun=preprocess_fun,
+    ),
+    eval_stream=functools.partial(
+        _tfds_stream,
+        dataset_name=dataset_name,
+        split=eval_split,
+        batch_size=eval_batch_size,
+        data_dir=data_dir,
+        shuffle_files=False,
+        shuffle_buffer_size=None,
+        batch_shuffle_size=None,
+        preprocess_fun=preprocess_fun,
+    ),
+  )
 
 
 @gin.configurable()
-def bert_tokenizer(vocab_path=None):
-    """Constructs a BERT tokenizer."""
-    # This import is from https://github.com/google-research/bert which is not
-    # listed as a dependency in trax.
-    # TODO(piotrekp1): using SubwordTextEncoder instead after fixing the differences
-    from bert.tokenization.bert_tokenization import FullTokenizer
-    if vocab_path is None:
-        raise ValueError('vocab_path is required to construct the BERT tokenizer.')
-    tokenizer = FullTokenizer(vocab_path, do_lower_case=True)
-    return tokenizer
+def bert_tokenizer(vocab_path=None, model_name=None):
+  """Constructs a BERT tokenizer."""
+  # This import is from https://github.com/google-research/bert which is not
+  # listed as a dependency in trax.
+  # TODO(piotrekp1): using SubwordTextEncoder instead after fixing the differences
+  from bert.tokenization.bert_tokenization import FullTokenizer
+
+  if vocab_path is None and model_name is None:
+    raise ValueError('either vocab_path or model_name is required to construct the BERT tokenizer.')
+  if vocab_path is None:
+    # get vocab_path from model name
+    model_path, _ = download_model_if_model_name(model_name)
+    vocab_path = os.path.join(model_path, 'vocab.txt')
+
+  tokenizer = FullTokenizer(vocab_path, do_lower_case=True)
+  return tokenizer
 
 
 def bert_preprocess(batch, tokenizer, key_a, key_b=None, max_len=128):
