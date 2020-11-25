@@ -23,6 +23,7 @@ import time
 
 from absl import logging
 import jax
+import numpy as np
 import psutil
 
 from trax import fastmath
@@ -375,18 +376,22 @@ class ReversibleSerialTrainer:
     step_int = step
     if self._n_devices > 1:
       batch = tl.reshape_by_device(batch, self._n_devices)
-      step = jnp.repeat(step, self._n_devices)
+      step = np.repeat(step, self._n_devices)
 
     # Create separate rng for each device and layer.
     if self._n_devices == 1:
       rngs = fastmath.random.split(rng, self._n_layers)
     else:
       # Splitting by device first to be identical with default trainer.
-      per_device_rng = fastmath.random.split(rng, self._n_devices)
-      per_device_rngs = [
-          fastmath.random.split(r, self._n_layers) for r in per_device_rng]
-      rngs = [jnp.stack([r[i] for r in per_device_rngs])
-              for i in range(self._n_layers)]
+      def per_device_rngs(rng):  # A function to JIT to not fragment memory.
+        per_device_rng = fastmath.random.split(rng, self._n_devices)
+        per_device_rngs = [
+            fastmath.random.split(r, self._n_layers) for r in per_device_rng]
+        rngs = [jnp.stack([r[i] for r in per_device_rngs])
+                for i in range(self._n_layers)]
+        return rngs
+      # JIT the function and run it on CPU to avoid memory fragmentation.
+      rngs = fastmath.jit(per_device_rngs, backend='cpu')(tl.on_cpu(rng))
     # Group rngs by layer blocks.
     rng_blocks, rng_i = [], 0
     for _, rev_layers in self._blocks:
@@ -396,6 +401,7 @@ class ReversibleSerialTrainer:
 
     # Run the layers forward upto the loss layer.
     process = psutil.Process(os.getpid())
+    logging.info('running step %d', step_int)
     if step_int % self._n_steps_per_log == 1:
       logging.info('run fwd: cpu memory use (MB): %.2f',
                    process.memory_info().rss / float(1024 * 1024))

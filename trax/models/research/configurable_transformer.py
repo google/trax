@@ -99,6 +99,7 @@ def FeedForwardWithOptions(d_model,
         d_lowrank=d_lowrank,
         temperature=temperature,
         quant_prob=quant_prob,
+        use_bfloat16=use_bfloat16,
         mode=mode)
   elif ff_sparsity and ff_sparsity_type == 'Block':
     ff = tl.BlockSparseFF(d_ff, num_experts=ff_sparsity, mode=mode),

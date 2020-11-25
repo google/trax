@@ -116,6 +116,8 @@ class Dense(base.Layer):
 
     if self._use_bias:
       b = self._bias_initializer(shape_b, rng_b)
+      if self._use_bfloat16:
+        b = b.astype(jnp.bfloat16)
       self.weights = (w, b)
     else:
       self.weights = w
