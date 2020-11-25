@@ -432,7 +432,7 @@ def MultiplicativeSparseDense(sparsity, d_input, d_output=None,
       # kernel is done in the same einsum.
       tl.Fn('AttentionEinsum',
             (lambda kernel, multiplier, embeds:  # pylint: disable=g-long-lambda
-             jnp.einsum('dx,hd,bld->blhx', kernel, multiplier, embeds))),
+             jnp.einsum('dx,hd,...d->...hx', kernel, multiplier, embeds))),
       MergeLastTwoAxes(),
   ]
   if use_bias:
@@ -474,7 +474,8 @@ def MultiplicativeModularSparseDense(sparsity, d_feature):
       # kernels is done in a single einsum.
       tl.Fn('SparseDenseEinsum',
             (lambda kmod, kmult, multiplier, embeds:  # pylint: disable=g-long-lambda
-             jnp.einsum('hxo,dx,hd,bld->blho', kmod, kmult, multiplier, embeds))),
+             jnp.einsum('hxo,dx,hd,...d->...ho', kmod, kmult, multiplier, embeds
+                        ))),
       MergeLastTwoAxes(),
       # Weight below is bias after dense, per-head.
       tl.Weights(init.RandomNormalInitializer(1e-6), [d_feature]),

@@ -131,20 +131,23 @@ class DecodingTimingTest(test.TestCase):
 
   def test_loss_layer_timing(self):
     all_settings = [
-        {'output': 32000, 'input': 1024, 'prob': None,
+        # The first run is sometimes slower, less reliable.
+        {'output': 32000, 'input': 2048, 'prob': None,
          'type': None, 'sparsity': 0, 'lowrank': 0, 'use_bias': False},
-        {'output': 32000, 'input': 1024, 'prob': None,
-         'type': None, 'sparsity': 0, 'lowrank': 0, 'use_bias': True},
 
-        {'output': 32000, 'input': 1024, 'prob': None,
+        {'output': 32000, 'input': 2048, 'prob': None,
+         'type': None, 'sparsity': 0, 'lowrank': 0, 'use_bias': False},
+        {'output': 32000, 'input': 2048, 'prob': None,
+         'type': 'einsum', 'sparsity': 0, 'lowrank': 0, 'use_bias': False},
+        {'output': 32000, 'input': 2048, 'prob': None,
          'type': 'mult', 'sparsity': 2, 'lowrank': 0, 'use_bias': False},
-        {'output': 32000, 'input': 1024, 'prob': None,
-         'type': 'mult', 'sparsity': 4, 'lowrank': 0, 'use_bias': False},
 
-        {'output': 32000, 'input': 1024, 'prob': None,
+        {'output': 32000, 'input': 2048, 'prob': None,
+         'type': None, 'sparsity': 0, 'lowrank': 0, 'use_bias': True},
+        {'output': 32000, 'input': 2048, 'prob': None,
+         'type': 'einsum', 'sparsity': 0, 'lowrank': 0, 'use_bias': True},
+        {'output': 32000, 'input': 2048, 'prob': None,
          'type': 'mult', 'sparsity': 2, 'lowrank': 0, 'use_bias': True},
-        {'output': 32000, 'input': 1024, 'prob': None,
-         'type': 'mult', 'sparsity': 4, 'lowrank': 0, 'use_bias': True},
     ]
 
     messages = []
@@ -159,13 +162,14 @@ class DecodingTimingTest(test.TestCase):
           use_bias=settings['use_bias'],
           mode='predict',
           )
+      pred_model = tl.Accelerate(pred_model)
 
       shape1l = shapes.ShapeDtype((1, settings['input']))
       pred_model.init(input_signature=shape1l)
       inputs = np.ones((1, settings['input']))
 
-      total_time = time.time()
-      for counter in range(-5, 100):
+      total_time = 0.0
+      for counter in range(-50, 100):
         start_time = time.time()
         y = pred_model(inputs)
         self.assertEqual(y.shape, (1, settings['output']))
