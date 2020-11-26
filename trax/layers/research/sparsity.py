@@ -19,7 +19,6 @@
 import functools
 import math
 import random as pyrandom
-import jax
 
 from trax import fastmath
 from trax import layers as tl
@@ -1004,13 +1003,13 @@ class BlockSparseFF(base.Layer):
       # This implementation mimicks inference for batch_size 1.
       start_idx = selected_experts[0] * self._n_elements_in_block
       # w1 is [d_model, d_ff], w is [d_model, n_elements_in_block]
-      w = jax.lax.dynamic_slice(w1, [0, start_idx],
-                                [w1.shape[0], self._n_elements_in_block])
+      w = fastmath.dynamic_slice(w1, [0, start_idx],
+                                 [w1.shape[0], self._n_elements_in_block])
       mid = jnp.dot(x, w)
       relu = jnp.where(mid <= 0, jnp.zeros_like(mid), mid)
       # w2 is [d_ff, d_model], v is [n_elements_in_block, d_model]
-      v = jax.lax.dynamic_slice(w2, [start_idx, 0],
-                                [self._n_elements_in_block, w2.shape[-1]])
+      v = fastmath.dynamic_slice(w2, [start_idx, 0],
+                                 [self._n_elements_in_block, w2.shape[-1]])
       v = jnp.reshape(v, [self._n_elements_in_block, -1])
       res = jnp.dot(relu, v) + b2
     else:

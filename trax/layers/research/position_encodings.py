@@ -60,7 +60,7 @@ class AxialPositionalEncoding(layer_base.Layer):
       assert self._dropout == 0.0
       emb = jnp.concatenate(embs, -1)
       emb = jnp.reshape(emb, (inputs.shape[0], -1, emb.shape[-1]))
-      emb = jax.lax.dynamic_slice_in_dim(emb, state, inputs.shape[1], axis=1)
+      emb = fastmath.dynamic_slice_in_dim(emb, state, inputs.shape[1], axis=1)
       self.state = state + inputs.shape[1]
       return inputs + emb
     elif self._dropout == 0:

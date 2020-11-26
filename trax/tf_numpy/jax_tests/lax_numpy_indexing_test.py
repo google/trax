@@ -402,6 +402,23 @@ MIXED_ADVANCED_INDEXING_TESTS = MIXED_ADVANCED_INDEXING_TESTS_NO_REPEATS + [
      ]),]
 
 
+def dynamic_slice_reference(operand, start_indices, slice_sizes):
+  out = onp.zeros(slice_sizes, dtype=operand.dtype)
+  idx = tuple(slice(start, start+size)
+              for start, size in zip(start_indices, slice_sizes))
+  section = operand[idx]
+  out[tuple(slice(None, stop) for stop in section.shape)] = section
+  return out
+
+
+def dynamic_update_slice_reference(operand, update, start_indices):
+  slices = tuple(map(
+      slice, start_indices, onp.add(start_indices, update.shape)))
+  updated_operand = onp.copy(operand)
+  updated_operand[slices] = update
+  return updated_operand
+
+
 class IndexingTest(jtu.TestCase):
   """Tests for Numpy indexing translation rules."""
 
@@ -722,6 +739,58 @@ class IndexingTest(jtu.TestCase):
     array = jnp.ones(5)
     self.assertAllClose(array, array[:10], check_dtypes=True)
 
+  @parameterized.named_parameters(jtu.cases_from_list(
+      {"testcase_name": "_shape={}_start_indices={}_size_indices={}".format(  # pylint: disable=g-complex-comprehension
+          jtu.format_shape_dtype_string(shape, dtype),
+          start_indices, size_indices),
+       "shape": shape, "dtype": dtype, "start_indices": start_indices,
+       "size_indices": size_indices, "rng_factory": rng_factory}
+      for shape, start_indices, size_indices in [
+        [(3,), onp.array((1,)), (1,)],
+        [(5, 3), (1, 1), (3, 1)],
+        [(5, 3), (1, -2), (3, 1)],
+        [(5, 3), onp.array((1, 1)), (3, 1)],
+        [(7, 5, 3), onp.array((4, 1, 0)), (2, 0, 1)],
+        [(), (), ()],
+      ]
+      for dtype in default_dtypes
+      for rng_factory in [jtu.rand_default]))
+  def testDynamicSlice(self, shape, dtype, start_indices, size_indices,
+                       rng_factory):
+    rng = rng_factory()
+    args_maker = lambda: [rng(shape, dtype), onp.array(start_indices)]
+    op = lambda x, starts: npe.dynamic_slice(x, starts, size_indices)
+    self._CompileAndCheck(op, args_maker)
+
+  @parameterized.named_parameters(jtu.cases_from_list(
+      {"testcase_name": "_shape={}_start_indices={}_size_indices={}".format(  # pylint: disable=g-complex-comprehension
+          jtu.format_shape_dtype_string(shape, dtype),
+          start_indices, size_indices),
+       "shape": shape, "dtype": dtype, "start_indices": start_indices,
+       "size_indices": size_indices, "rng_factory": rng_factory}
+      for shape, start_indices, size_indices in [
+        [(3,), (1,), (1,)],
+        [(5, 3), (1, 1), (3, 1)],
+        [(5, 3), (1, -2), (3, 1)],
+        [(7, 5, 3), (4, 1, 0), (2, 0, 1)],
+        [(), (), ()],
+      ]
+      for dtype in default_dtypes
+      for rng_factory in [jtu.rand_default]))
+  def testDynamicSliceAgainstNumpy(self, shape, dtype, start_indices,
+                                   size_indices, rng_factory):
+    rng = rng_factory()
+    args_maker = lambda: [rng(shape, dtype), onp.array(start_indices)]
+    op = lambda x, s: npe.dynamic_slice(x, s, size_indices)
+    numpy_op = lambda x, s: dynamic_slice_reference(x, s, size_indices)
+    self._CheckAgainstNumpy(numpy_op, op, args_maker)
+
+  def testDynamicSliceInDim(self):
+    rng = jtu.rand_default()
+    x = rng((6, 7), onp.int32)
+    self.assertAllClose(npe.dynamic_slice_in_dim(x, 2, 3), x[2:5],
+                        check_dtypes=True)
+
 
 def _broadcastable_shapes(shape):
   """Returns all shapes that broadcast to `shape`."""
@@ -878,6 +947,66 @@ class IndexedUpdateTest(jtu.TestCase):
     x = rng(shape, dtype)
     y = rng(update_shape, update_dtype)
     self.check_grads(tfnp_fn, (x, y), rtol=1e-3, atol=1e-3, delta=1.)
+
+  @parameterized.named_parameters(jtu.cases_from_list(
+      {"testcase_name": "_shape={}_start_indices={}_update_shape={}".format(  # pylint: disable=g-complex-comprehension
+          jtu.format_shape_dtype_string(shape, dtype),
+          start_indices, update_shape),
+       "shape": shape, "dtype": dtype, "start_indices": start_indices,
+       "update_shape": update_shape, "rng_factory": rng_factory}
+      for shape, start_indices, update_shape in [
+        [(3,), (1,), (1,)],
+        [(5, 3), (1, 1), (3, 1)],
+        [(5, 3), (1, -2), (3, 1)],
+        [(7, 5, 3), (4, 1, 0), (2, 0, 1)],
+        [(), (), ()],
+      ]
+      for dtype in default_dtypes
+      for rng_factory in [jtu.rand_default]))
+  def testDynamicUpdateSlice(self, shape, dtype, start_indices, update_shape,
+                             rng_factory):
+    rng = rng_factory()
+    def args_maker():
+      return [rng(shape, dtype), rng(update_shape, dtype),
+              onp.array(start_indices)]
+    # update's shape must be fully known.
+    # TODO(wangpeng): Support turning off check_incomplete_shape for individual
+    #   arguments.
+    self._CompileAndCheck(npe.dynamic_update_slice, args_maker,
+                          check_incomplete_shape=False)
+
+  @parameterized.named_parameters(jtu.cases_from_list(
+      {"testcase_name": "_shape={}_start_indices={}_update_shape={}".format(  # pylint: disable=g-complex-comprehension
+          jtu.format_shape_dtype_string(shape, dtype),
+          start_indices, update_shape),
+       "shape": shape, "dtype": dtype, "start_indices": start_indices,
+       "update_shape": update_shape, "rng_factory": rng_factory}
+      for shape, start_indices, update_shape in [
+        [(3,), (1,), (1,)],
+        [(5, 3), (1, 1), (3, 1)],
+        [(5, 3), (1, -2), (3, 1)],
+        [(7, 5, 3), (4, 1, 0), (2, 0, 1)],
+        [(), (), ()],
+      ]
+      for dtype in default_dtypes
+      for rng_factory in [jtu.rand_default]))
+  def testDynamicUpdateSliceAgainstNumpy(self, shape, dtype, start_indices,
+                                         update_shape, rng_factory):
+    rng = rng_factory()
+    def args_maker():
+      return [rng(shape, dtype), rng(update_shape, dtype),
+              onp.array(start_indices)]
+    self._CheckAgainstNumpy(dynamic_update_slice_reference,
+                            npe.dynamic_update_slice, args_maker)
+
+  def testDynamicUpdateSliceInDim(self):
+    rng = jtu.rand_default()
+    x = rng((6, 7), onp.int32)
+    y = rng((3, 7), onp.int32)
+    z = x.copy()
+    z[2:5] = y
+    self.assertAllClose(npe.dynamic_update_slice_in_dim(x, y, 2, 0), z,
+                        check_dtypes=True)
 
 
 if __name__ == "__main__":

@@ -1063,6 +1063,8 @@ def scan(f, init, xs, length=None, reverse=False):
   init, xs = tf.nest.map_structure(
       lambda x: tf_np.asarray(x) if x is not None else None, (init, xs))
   init, xs = _np_to_tf((init, xs))
+  if length is not None:
+    length = int(length)
   def get_length(x):
     if x is None:
       return None
@@ -1129,6 +1131,131 @@ def scan(f, init, xs, length=None, reverse=False):
     return a
   ys = tf.nest.map_structure(_stack, ys_ta, ys_spec)
   return _tf_to_np((carry, ys))
+
+
+def _get_dynamic_indices(operand, start_indices, slice_sizes):
+  """Calcuates the indices for `tf.gather_nd` from slices.
+
+  Args:
+    operand: a Tensor to slice.
+    start_indices: a vector Tensor of integers, one per dimension. The starts of
+      the slice. The vector can be dynamic.
+    slice_sizes: a list of integers, one per dimension. The sizes of the slice.
+
+  Returns:
+    An index array suitable for `tf.gather_nd` and `tf.scatter_nd`, or `None` if
+    `operand` is a scalar.
+  """
+  rank = len(slice_sizes)
+  operand_rank = tf.rank(operand)
+  tf.debugging.Assert(operand_rank == rank, [operand_rank, rank])
+  starts_rank = tf.rank(start_indices)
+  tf.debugging.Assert(starts_rank == 1, [starts_rank])
+  num_starts = tf.shape(start_indices)[0]
+  tf.debugging.Assert(num_starts == rank, [num_starts, rank])
+  operand_shape = tf.shape(operand)
+  tf.debugging.Assert(tf.reduce_all(slice_sizes <= operand_shape),
+                      [slice_sizes, operand_shape])
+  if rank == 0:
+    return None
+  start_indices = tf.where(
+      start_indices < 0, start_indices + operand_shape, start_indices)
+  idx_list = []
+  for i in range(rank):
+    start = start_indices[i]
+    size = slice_sizes[i]
+    dim = operand_shape[i]
+    start = tf.clip_by_value(start, 0, dim - size)
+    # XLA requires tf.range's `start` to be compile-time constant, so we can't
+    # do tf.range(start, ...).
+    idx = start + tf.range(size)
+    shape = [1] * rank
+    shape[i] = size
+    idx = tf.reshape(idx, shape)
+    idx_list.append(idx)
+  slice_sizes_tensor = tf.convert_to_tensor(slice_sizes)
+  # tf.stack doesn't support broadcasting, so we need to broadcast manually.
+  # TODO(wangpeng): Reduce peak memory by broadcasting one-by-one instead of
+  #   all-together.
+  idx_list = [tf.broadcast_to(x, slice_sizes_tensor) for x in idx_list]
+  return tf.stack(idx_list, axis=-1)
+
+
+def dynamic_slice(operand, start_indices, slice_sizes):
+  """Slicing operation where the indices can be dynamic vlaues.
+
+  See the docstring of `jax.lax.dynamic_slice`
+  (https://jax.readthedocs.io/en/latest/_autosummary/jax.lax.dynamic_slice.html)
+  for details.
+
+  Args:
+    operand: an array to slice.
+    start_indices: a vector of integers, one per dimension. The starts of the
+      slice. The vector can be dynamic.
+    slice_sizes: a list of integers, one per dimension. The sizes of the slice.
+
+  Returns:
+    An array containing the slice, with shape equal to `slice_sizes`.
+  """
+  # This implementation uses tf.gather_nd to implement dynamic_slice, which is
+  # memory inefficient because the size of `indices` given to gather_nd is
+  # large.
+  operand = tf_np.asarray(operand).data
+  start_indices = tf_np.asarray(start_indices, np.int32).data
+  idx = _get_dynamic_indices(operand, start_indices, slice_sizes)
+  if idx is not None:
+    operand = tf.gather_nd(operand, idx)
+  return tf_np.asarray(operand)
+
+
+def dynamic_update_slice(operand, update, start_indices):
+  """Updates a dynamic slice.
+
+  See the docstring of `jax.lax.dynamic_update_slice`
+  (https://jax.readthedocs.io/en/latest/_autosummary/jax.lax.dynamic_update_slice.html)
+  for details.
+
+  Args:
+    operand: an array to slice.
+    update: an array containing the new values to write onto `operand`.
+    start_indices: a vector of integers, one per dimension. The starts of the
+      slice. The vector can be dynamic.
+
+  Returns:
+    The updated version of `operand`.
+  """
+  operand = tf_np.asarray(operand).data
+  update = tf_np.asarray(update).data
+  start_indices = tf_np.asarray(start_indices, np.int32).data
+  if not update.shape.is_fully_defined():
+    raise ValueError("update's shape must be fully defined")
+  slice_sizes = update.shape
+  idx = _get_dynamic_indices(operand, start_indices, slice_sizes)
+  if idx is None:
+    # `np.zeros([])[()] = 1.0` will result in a scalar array of 1.0
+    return tf_np.asarray(update)
+  operand = tf.tensor_scatter_nd_update(operand, idx, update)
+  return tf_np.asarray(operand)
+
+
+def dynamic_slice_in_dim(operand, start_index, slice_size, axis=0):
+  """Convenience wrapper around dynamic_slice applying to one dimension."""
+  operand = tf_np.asarray(operand)
+  start_indices = [0] * operand.ndim
+  slice_sizes = list(operand.shape)
+  axis = int(axis)
+  start_indices[axis] = start_index
+  slice_sizes[axis] = int(slice_size)
+  return dynamic_slice(operand, start_indices, slice_sizes)
+
+
+def dynamic_update_slice_in_dim(operand, update, start_index, axis):
+  """Convenience wrapper around dynamic_update_slice for one dimension."""
+  operand = tf_np.asarray(operand)
+  axis = int(axis)
+  start_indices = [0] * operand.ndim
+  start_indices[axis] = start_index
+  return dynamic_update_slice(operand, update, start_indices)
 
 
 # Use int64 instead of int32 to avoid TF's "int32 problem"

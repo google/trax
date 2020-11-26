@@ -17,6 +17,7 @@
 """Transformer variant -- no encoder-decoder attention."""
 
 import jax
+from trax import fastmath
 from trax import layers as tl
 from trax.fastmath import numpy as jnp
 from trax.models.research import configurable_transformer as ct
@@ -193,7 +194,7 @@ class ConcatWithPadding(tl.Layer):
       e_idx = jnp.sum(row_mask_e, dtype=jnp.int32)
       # Starting after that index, update with the decoder row.
       zero = jnp.array(0, dtype=e_idx.dtype)  # avoid int32/int64 mismatch
-      return jax.lax.dynamic_update_slice(final_row, row_d, (e_idx, zero))
+      return fastmath.dynamic_update_slice(final_row, row_d, (e_idx, zero))
 
     return jax.lax.map(_UpdateRow, [vec_e, vec_d, mask_e])
 
@@ -251,7 +252,7 @@ class StripFromConcatenateWithPadding(tl.Layer):
       zero = jnp.array(0, dtype=len_e.dtype)  # avoid int32/int64 mismatch
       l2_np = jnp.array(L2, dtype=len_e.dtype)
       h_np = jnp.array(H, dtype=len_e.dtype)
-      return jax.lax.dynamic_slice(row_ed, (len_e, zero), (l2_np, h_np))
+      return fastmath.dynamic_slice(row_ed, (len_e, zero), (l2_np, h_np))
 
     return jax.lax.map(_UpdateRow, [vec_ed, tok_e, tok_d])
 

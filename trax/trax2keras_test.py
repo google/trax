@@ -167,7 +167,7 @@ class Trax2KerasTest(tf.test.TestCase, parameterized.TestCase):
             keras_outputs = keras_layer(inputs)
         if isinstance(keras_outputs, tuple) and len(keras_outputs) == 1:
           keras_outputs = keras_outputs[0]
-        self.assertAllClose(to_tensors(trax_outputs), keras_outputs)
+        self.assertAllClose(to_tensors(trax_outputs), keras_outputs, atol=1e-5)
         keras_grads = keras_tape.gradient(keras_outputs,
                                           keras_layer.trainable_variables)
         tf.nest.map_structure(
@@ -176,7 +176,7 @@ class Trax2KerasTest(tf.test.TestCase, parameterized.TestCase):
             keras_layer.trainable_variables, keras_grads)
         self.assertAllClose(
             to_tensors(weights), read_values(keras_layer._weights),
-            rtol=2e-6, atol=2e-4 if has_gpu() else 1e-6)
+            rtol=2e-6, atol=3.5e-4 if has_gpu() else 1e-6)
         self.assertAllClose(to_tensors(state), read_values(keras_layer._state))
         self.assertAllClose(to_tensors(rng), read_values(keras_layer._rng))
       if use_model:

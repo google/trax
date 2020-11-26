@@ -201,6 +201,22 @@ def index_max(*args, **kwargs):
   return backend()['index_max'](*args, **kwargs)
 
 
+def dynamic_slice(*args, **kwargs):
+  return backend()['dynamic_slice'](*args, **kwargs)
+
+
+def dynamic_slice_in_dim(*args, **kwargs):
+  return backend()['dynamic_slice_in_dim'](*args, **kwargs)
+
+
+def dynamic_update_slice(*args, **kwargs):
+  return backend()['dynamic_update_slice'](*args, **kwargs)
+
+
+def dynamic_update_slice_in_dim(*args, **kwargs):
+  return backend()['dynamic_update_slice_in_dim'](*args, **kwargs)
+
+
 def stop_gradient(*args, **kwargs):
   """Identity on the forward pass but 0 (no gradient) on the backward pass."""
   return backend()['stop_gradient'](*args, **kwargs)

@@ -40,7 +40,6 @@ The possible modes are:
     - `'predict'`: in prediction -- dropouts and position shifts inactive
 """
 
-import jax
 import numpy as np
 
 from trax import fastmath
@@ -508,7 +507,7 @@ class PositionalEncoding(base.Layer):
       else:
         emb = []
         for i in range(inputs.shape[0]):
-          emb.append(jax.lax.dynamic_slice_in_dim(
+          emb.append(fastmath.dynamic_slice_in_dim(
               self.weights[0], state[i], inputs.shape[1], axis=0))
         self.state = state + inputs.shape[1]
         return inputs + jnp.stack(emb, 0)
@@ -590,9 +589,9 @@ def _fast_inference_update_state(inputs, state):
   # TODO(lukaszkaiser): benchmark speed and decide if using a separate code path
   # with index_update when length == 1 is worth it.
   # Keys and values are of shape [batch_size, length, d_kv].
-  ks = jax.lax.dynamic_update_slice_in_dim(ks, new_k, idx, axis=1)
-  vs = jax.lax.dynamic_update_slice_in_dim(vs, new_v, idx, axis=1)
+  ks = fastmath.dynamic_update_slice_in_dim(ks, new_k, idx, axis=1)
+  vs = fastmath.dynamic_update_slice_in_dim(vs, new_v, idx, axis=1)
   # Mask is of shape [batch_size, 1 (for heads), length].
   new_mask = jnp.ones((mask.shape[0], mask.shape[1], length))
-  mask = jax.lax.dynamic_update_slice_in_dim(mask, new_mask, idx, axis=2)
+  mask = fastmath.dynamic_update_slice_in_dim(mask, new_mask, idx, axis=2)
   return (ks, vs, mask, idx + length)
