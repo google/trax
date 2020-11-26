@@ -263,16 +263,19 @@ class Weights(base.Layer):
   It takes no input and returns a single tensor: weights.
   """
 
-  def __init__(self, initializer, shape=tuple()):
+  def __init__(self, initializer, shape=tuple(), use_bfloat16=False):
     """Returns a learnable tensor of shape `shape`.
 
     Args:
       initializer: Function taking shape and rng as arguments.
       shape: Shape of the learnable weights.
+      use_bfloat16: If `True`, use bfloat16 weights instead of the default
+        float32; this can save memory but may (rarely) lead to numerical issues.
     """
     super().__init__(name=f'Weights_{shape}', n_in=0, n_out=1)
     self._shape = shape
     self._initializer = initializer
+    self._use_bfloat16 = use_bfloat16
 
   def forward(self, x):
     """Executes this layer as part of a forward pass through the model.
@@ -298,6 +301,8 @@ class Weights(base.Layer):
     """
     del input_signature  # Unused. There is no input to this layer.
     self.weights = self._initializer(self._shape, self.rng)
+    if self._use_bfloat16:
+      self.weights = self.weights.astype(jnp.bfloat16)
 
 
 def PrintShape(n_in=1, msg=''):

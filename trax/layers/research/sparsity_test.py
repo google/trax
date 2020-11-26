@@ -121,23 +121,27 @@ class SparseDenseWithOptionsTest(test.TestCase):
   def test_simple_call(self):
     d_input, d_output = 16, 32
     settings = [
-        (None, 0, 0),
-        ('einsum', 0, 0),
-        ('lowrank', 0, 8),
-        ('mult', 2, 0),
-        ('local', 2, 0),
-        ('local3', 2, 0),
+        (None, 0, 0, False),
+        (None, 0, 0, True),
+        ('einsum', 0, 0, False),
+        ('lowrank', 0, 8, False),
+        ('mult', 2, 0, False),
+        ('mult', 2, 0, True),
+        ('local', 2, 0, False),
+        ('local3', 2, 0, False),
     ]
-    for stype, sparsity_level, d_lowrank in settings:
+    for stype, sparsity_level, d_lowrank, use_bfloat16 in settings:
       layer = sparsity.SparseDenseWithOptions(
           d_output, d_input=d_input, sparsity_type=stype,
-          sparsity=sparsity_level, d_lowrank=d_lowrank)
+          sparsity=sparsity_level, d_lowrank=d_lowrank,
+          use_bfloat16=use_bfloat16)
       x = np.ones((1, 1, d_input))
       _, _ = layer.init(shapes.signature(x))
       y = layer(x)
       self.assertEqual(y.shape, (1, 1, d_output),
-                       msg='[{}->{}] {} - {} - {}'.format(
-                           d_input, d_output, stype, sparsity_level, d_lowrank))
+                       msg='[{}->{}] {} - {} - {} - {}'.format(
+                           d_input, d_output, stype, sparsity_level, d_lowrank,
+                           use_bfloat16))
 
 
 class ModularCausalAttentionTest(test.TestCase):

@@ -347,18 +347,19 @@ def SparseDenseWithOptions(n_units, d_input=None, sparsity_type=None,
         tl.Dense(n_units, use_bias=use_bias, use_bfloat16=use_bfloat16),
         prob_sparse)
 
-  if sparsity_type is None or sparsity_type == 'None':
+  if sparsity_type is None or sparsity_type == 'None' or sparsity == 0:
     return tl.Dense(n_units, use_bias=use_bias, use_bfloat16=use_bfloat16)
+  if sparsity_type == 'mult':
+    return MultiplicativeSparseDense(
+        sparsity, d_input, n_units, use_bias=use_bias,
+        use_bfloat16=use_bfloat16)
 
-  assert not use_bfloat16  # use_bfloat16 is unsupported for sparse variants
+  assert not use_bfloat16  # use_bfloat16 is unsupported for other variants
   if sparsity_type == 'lowrank':
     assert use_bias  # use_bias=False is unsupported
     return LowRankDense(n_units, d_lowrank)
   if sparsity_type == 'einsum':
     return EinsumDense(d_input, n_units, use_bias=use_bias)
-  if sparsity_type == 'mult':
-    return MultiplicativeSparseDense(sparsity, d_input, n_units,
-                                     use_bias=use_bias)
   if sparsity_type == 'local':
     assert use_bias  # use_bias = False is unsupported
     assert n_units % sparsity == 0
@@ -401,7 +402,7 @@ def LowRankCausalAttention(d_feature, n_heads=1, dropout=0.0,
 
 @assert_shape('...a->...b')
 def MultiplicativeSparseDense(sparsity, d_input, d_output=None,
-                              use_bias=True):
+                              use_bias=True, use_bfloat16=False):
   """Returns a replacement of Dense layer which uses less parameters.
 
   The layer uses number of modules equal to `sparsity`. It multiplies each
@@ -417,6 +418,7 @@ def MultiplicativeSparseDense(sparsity, d_input, d_output=None,
     d_input: Dimensionality of input tensor.
     d_output: Dimensionality of output tensor; by default equal to d_input.
     use_bias: Whether to use bias.
+    use_bfloat16: Whether to use bfloat16 for weights.
   """
 
   assert d_output % sparsity == 0
@@ -425,9 +427,10 @@ def MultiplicativeSparseDense(sparsity, d_input, d_output=None,
   layers = [
       # Weight below is used for per-head preprocessing of an embedding.
       tl.Weights(init.RandomNormalInitializer(stddev=0.5),
-                 shape=[sparsity, d_input]),
+                 shape=[sparsity, d_input], use_bfloat16=use_bfloat16),
       # Weight below is dense kernel, shared across heads.
-      tl.Weights(init.GlorotUniformInitializer(), [d_input, d_module]),
+      tl.Weights(init.GlorotUniformInitializer(), [d_input, d_module],
+                 use_bfloat16=use_bfloat16),
       # To save memory the per-head preprocessing and multiplying by the
       # kernel is done in the same einsum.
       tl.Fn('AttentionEinsum',
@@ -438,7 +441,8 @@ def MultiplicativeSparseDense(sparsity, d_input, d_output=None,
   if use_bias:
     layers.extend([
         # Weight below is bias after dense, per-head.
-        tl.Weights(init.RandomNormalInitializer(1e-6), [d_output]),
+        tl.Weights(init.RandomNormalInitializer(1e-6), [d_output],
+                   use_bfloat16=use_bfloat16),
         tl.Add(),
     ])
   return tl.Serial(layers)

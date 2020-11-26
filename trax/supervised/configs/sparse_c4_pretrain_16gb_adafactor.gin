@@ -33,6 +33,7 @@ MultiplicativeConvCausalAttention.length_kernel_size = 3
 dec_attn_type = @CausalAttention
 
 ff_sparsity = 0
+loss_sparsity = 0
 
 d_model = 1024
 d_ff = 4096
@@ -132,6 +133,7 @@ ConfigurableTransformer.n_decoder_layers = %n_layers
 ConfigurableTransformer.input_vocab_size = %vocab_size
 ConfigurableTransformer.encoder_attention_type = %enc_attn_type
 ConfigurableTransformer.encoder_decoder_attention_type = %dec_attn_type
+ConfigurableTransformer.loss_sparsity = %loss_sparsity
 
 # Parameters for SelfAttention:
 # ==============================================================================
@@ -171,6 +173,7 @@ Reformer2.d_attention_key = %attn_kv    # d_model // n_heads
 Reformer2.d_attention_value = %attn_kv  # d_model // n_heads
 Reformer2.encoder_attention_type = %enc_attn_type
 Reformer2.encoder_decoder_attention_type = %dec_attn_type
+Reformer2.loss_sparsity = %loss_sparsity
 Reformer2.n_layers_forget = 0
 Reformer2.axial_pos_shape = None
 

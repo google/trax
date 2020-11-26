@@ -25,7 +25,8 @@ MultiplicativeConvCausalAttention.sparsity = 16
 
 attn_type = @CausalAttention
 
-ff_sparsity = 64
+ff_sparsity = 0
+loss_sparsity = 0
 
 d_model = 1024
 d_ff = 4096
@@ -91,6 +92,7 @@ ConfigurableTransformerLM.n_layers = %n_layers
 ConfigurableTransformerLM.vocab_size = %vocab_size
 ConfigurableTransformerLM.attention_type = %attn_type
 ConfigurableTransformerLM.ff_use_sru = 0
+ConfigurableTransformerLM.loss_sparsity = %loss_sparsity
 
 # Parameters for Reformer2:
 # ==============================================================================
@@ -108,3 +110,4 @@ ReformerLM.vocab_size = %vocab_size
 ReformerLM.d_attention_key = %attn_kv    # d_model // n_heads
 ReformerLM.d_attention_value = %attn_kv  # d_model // n_heads
 ReformerLM.attention_type = %attn_type
+ReformerLM.loss_sparsity = %loss_sparsity
