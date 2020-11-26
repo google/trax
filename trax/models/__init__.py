@@ -29,6 +29,7 @@ from trax.models.research import configurable_transformer
 from trax.models.research import funnel_transformer
 from trax.models.research import layerdrop_transformer
 from trax.models.research import rezero
+from trax.models.research import rse
 from trax.models.research import transformer2
 
 
@@ -90,3 +91,4 @@ FunnelTransformerEncoder = model_configure(
     funnel_transformer.FunnelTransformerEncoder)
 FunnelTransformer = model_configure(
     funnel_transformer.FunnelTransformer)
+ResidualShuffleExchange = model_configure(rse.ResidualShuffleExchange)

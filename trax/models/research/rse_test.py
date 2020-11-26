@@ -20,7 +20,7 @@ from absl.testing import absltest
 import numpy as np
 
 from trax import shapes
-from trax.models import rse
+from trax.models.research import rse
 
 
 class RSETest(absltest.TestCase):
@@ -42,7 +42,7 @@ class RSETest(absltest.TestCase):
     print(x.shape)
     _, _ = shuffle_layer.init(shapes.signature(x))
     y = shuffle_layer(x)
-    expected_output = np.array([[[0], [4], [1], [5], [2], [6], [3], [7]]])
+    expected_output = np.array([[[0], [2], [4], [6], [1], [3], [5], [7]]])
     self._assert_equal_tensors(y, expected_output)
 
   def test_shuffle_layer_log_times_is_identity(self):
@@ -62,7 +62,7 @@ class RSETest(absltest.TestCase):
     print(x.shape)
     _, _ = reverse_shuffle_layer.init(shapes.signature(x))
     y = reverse_shuffle_layer(x)
-    expected_output = np.array([[[0], [2], [4], [6], [1], [3], [5], [7]]])
+    expected_output = np.array([[[0], [4], [1], [5], [2], [6], [3], [7]]])
     self._assert_equal_tensors(y, expected_output)
 
   def test_reverse_shuffle_layer_log_times_is_identity(self):
@@ -75,6 +75,16 @@ class RSETest(absltest.TestCase):
     for _ in range(np.int(np.log2(seq_len))):
       y = reverse_shuffle_layer(y)
     self._assert_equal_tensors(x, y)
+
+  def test_rse_forward_shape(self):
+    vocab_size = 12
+    seq_len = 32
+    model = rse.ResidualShuffleExchange(
+        vocab_size=vocab_size, d_model=17, dropout=0.1, mode='train')
+    x = np.ones((3, seq_len)).astype(np.int32)
+    _, _ = model.init(shapes.signature(x))
+    y = model(x)
+    self.assertEqual(y.shape, (3, seq_len, vocab_size))
 
   def _assert_equal_tensors(self, x, y):
     self.assertEqual(y.shape, x.shape)
