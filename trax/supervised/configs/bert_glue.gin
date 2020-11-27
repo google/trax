@@ -35,7 +35,8 @@ glue_inputs.batch_size = 16
 
 # Parameters for bert_tokenizer:
 # ==============================================================================
-bert_tokenizer.model_name = 'bert-base-uncased'
+BertLegacyTokenizer.model_name = 'bert-base-uncased'
+BertLegacyTokenizer.do_lower_case = True
 
 # Parameters for train:
 # ==============================================================================

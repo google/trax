@@ -23,11 +23,16 @@ For now, this file only supports fine-tuning bert-base-uncased on GLUE.
 import os
 
 import functools
+import collections
 
 import gin
 import numpy as onp
 
 import tensorflow_datasets as tfds
+import tensorflow as tf
+
+from bert import tokenization
+
 
 from trax.data.inputs import Inputs
 from trax.models.research.bert import download_model_if_model_name # needed for downloading tokenizer vocab
@@ -98,24 +103,73 @@ def tfds_inputs(
     ),
   )
 
-
 @gin.configurable()
-def bert_tokenizer(vocab_path=None, model_name=None):
-  """Constructs a BERT tokenizer."""
-  # This import is from https://github.com/google-research/bert which is not
-  # listed as a dependency in trax.
-  # TODO(piotrekp1): using SubwordTextEncoder instead after fixing the differences
-  from bert.tokenization.bert_tokenization import FullTokenizer
+class BertLegacyTokenizer:
+  # todo (piotrekp1): remove after training bert models from scratch in trax
+  """
+  Wrap up on the methods from bert to work in tf2 environment in order to use with models pretrained in other
+  libraries. For models created from scratch use data.text_encoder.SubwordTextEncoder instead.
+  For example:
+    SubwordTextEncoder will tokenize "trax" into ['tr', 'ax', '_'],
+    whereas original bert will tokenize it into ['tr', '##ax'],
+    another example is '235235', which will be tokenized into ['235', '235', '_'] by subword text encoder
+    and into ['235', '##2', '##35'] by original bert tokenizer
+  It is made for compatibility with bert models trained in other libraries
+  """
+  def __init__(self, vocab_path=None, model_name=None, do_lower_case=True):
+    if vocab_path is None and model_name is None:
+      raise ValueError('either vocab_path or model_name is required to construct the BERT tokenizer.')
+    if vocab_path is None:
+        # get vocab_path from model name
+        model_path, _ = download_model_if_model_name(model_name)
+        vocab_path = os.path.join(model_path, 'vocab.txt')
 
-  if vocab_path is None and model_name is None:
-    raise ValueError('either vocab_path or model_name is required to construct the BERT tokenizer.')
-  if vocab_path is None:
-    # get vocab_path from model name
-    model_path, _ = download_model_if_model_name(model_name)
-    vocab_path = os.path.join(model_path, 'vocab.txt')
+    self.vocab = self.load_vocab(vocab_path)
+    self.inv_vocab = {v: k for k, v in self.vocab.items()}
+    self.basic_tokenizer = tokenization.BasicTokenizer(do_lower_case=do_lower_case)
+    self.wordpiece_tokenizer = tokenization.WordpieceTokenizer(vocab=self.vocab)
 
-  tokenizer = FullTokenizer(vocab_path, do_lower_case=True)
-  return tokenizer
+  @classmethod
+  def load_vocab(cls, vocab_file):
+    """Loads a vocabulary file into a dictionary."""
+    vocab = collections.OrderedDict()
+    index = 0
+    with tf.io.gfile.GFile(vocab_file, "r") as reader:
+      while True:
+        token = cls.convert_to_unicode(reader.readline())
+        if not token:
+          break
+        token = token.strip()
+        vocab[token] = index
+        index += 1
+    return vocab
+
+  @classmethod
+  def convert_to_unicode(cls, text):
+    """Converts `text` to Unicode (if it's not already), assuming utf-8 input."""
+    if isinstance(text, str):
+      return text
+    elif isinstance(text, bytes):
+      return text.decode("utf-8", "ignore")
+    else:
+      raise ValueError("Unsupported string type: %s" % (type(text)))
+
+  def convert_tokens_to_ids(self, tokens):
+    return [self.vocab[token] for token in tokens]
+
+  def convert_ids_to_tokens(self, ids):
+    return [self.inv_vocab[id] for id in ids]
+
+  def tokenize(self, text):
+    split_tokens = []
+    for token in self.basic_tokenizer.tokenize(text):
+      for sub_token in self.wordpiece_tokenizer.tokenize(token):
+        split_tokens.append(sub_token)
+
+    return split_tokens
+
+  def encode(self, text):
+    return self.convert_tokens_to_ids(self.tokenize(text))
 
 
 def bert_preprocess(batch, tokenizer, key_a, key_b=None, max_len=128):
@@ -125,13 +179,11 @@ def bert_preprocess(batch, tokenizer, key_a, key_b=None, max_len=128):
   type_ids = onp.zeros((batch_size, max_len), dtype=onp.int32)
   for i in range(batch_size):
     sentence_a = batch[key_a][i]
-    tokens_a = [101] + tokenizer.convert_tokens_to_ids(
-      tokenizer.tokenize(sentence_a)) + [102]
+    tokens_a = [101] + tokenizer.encode(sentence_a) + [102]
 
     if key_b is not None:
       sentence_b = batch[key_b][i]
-      tokens_b = tokenizer.convert_tokens_to_ids(
-        tokenizer.tokenize(sentence_b)) + [102]
+      tokens_b = tokenizer.encode(sentence_b) + [102]
     else:
       tokens_b = []
 
@@ -145,10 +197,10 @@ def bert_preprocess(batch, tokenizer, key_a, key_b=None, max_len=128):
 
 @gin.configurable()
 def glue_inputs(dataset_name=gin.REQUIRED, batch_size=16, eval_batch_size=None, data_dir=None,
-                max_len=128, tokenizer=bert_tokenizer):
+                max_len=512, tokenizer=BertLegacyTokenizer):
   """Input pipeline for fine-tuning BERT on GLUE tasks."""
   if callable(tokenizer):  # If we pass a function, e.g., through gin, call it.
-    tokenizer = bert_tokenizer()
+    tokenizer = tokenizer()
 
   eval_split = tfds.Split.VALIDATION
   if dataset_name == 'glue/mnli':
