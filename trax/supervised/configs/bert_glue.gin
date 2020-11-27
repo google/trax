@@ -35,8 +35,8 @@ glue_inputs.batch_size = 16
 
 # Parameters for bert_tokenizer:
 # ==============================================================================
-# Download the model from from https://github.com/google-research/bert, type in path to vocabulary and uncomment
-# bert_tokenizer.vocab_path = 'PATH-TO-VOCAB'
+bert_tokenizer.model_name = 'bert-base-uncased'
+bert_tokenizer.do_lower_case = True
 
 # Parameters for train:
 # ==============================================================================
@@ -50,8 +50,7 @@ train.checkpoint_highest = 'accuracy'
 
 # Parameters for BERT:
 # ==============================================================================
-# Download the model from from https://github.com/google-research/bert, type in path to model checkpoint and uncomment
-# BERT.init_checkpoint = 'PATH-TO-MODEL-CHECKPOINT'
+BERT.init_checkpoint = 'bert-base-uncased'
 BERT.head = @bert.BERTClassifierHead
 bert.BERTClassifierHead.n_classes = 3
 

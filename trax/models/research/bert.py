@@ -16,6 +16,8 @@
 # Lint as: python3
 """BERT."""
 
+import os
+
 import gin
 import jax
 import tensorflow as tf
@@ -23,8 +25,13 @@ import tensorflow as tf
 from trax import fastmath
 from trax import layers as tl
 from trax.fastmath import numpy as np
+from trax.models.download_model import download_weights_if_not_downloaded
 
 # pylint: disable=invalid-name
+
+_MODEL_LINKS = {
+    'bert-base-uncased': 'https://storage.googleapis.com/bert_models/2018_10_18/uncased_L-12_H-768_A-12.zip'
+}
 
 
 class AddBias(tl.Layer):
@@ -59,8 +66,8 @@ def BERTRegressionHead():
   ])
 
 
-# TODO(kitaev): regression head, masked LM head
-
+# TODO(kitaev): masked LM head
+# todo(piotrekp1): tests
 
 def BERT(d_model=768,
          vocab_size=30522,
@@ -74,6 +81,8 @@ def BERT(d_model=768,
          mode='eval',
         ):
   """BERT (default hparams are for bert-base-uncased)."""
+  # todo(piotrekp1): loading config from model_name
+
   layer_norm_eps = 1e-12
   d_head = d_model // n_heads
 
@@ -128,17 +137,36 @@ def BERT(d_model=768,
   return bert
 
 
+def download_model_if_model_name(init_checkpoint):
+  """Returns model dir path with model filename.
+  if init_checkpoint is a model name and there is no local model with that name
+  then it downloads it and returns newly created path."""
+  try:
+    model_link = _MODEL_LINKS[init_checkpoint]
+  except KeyError:
+    raise KeyError(f'Not known model name, please make sure the model name'
+                     f' is in the list of available models. If this is a path'
+                     f' to a model it should contain at least one {os.path.sep}')
+  init_checkpoint_dir, checkpoint_filename = download_weights_if_not_downloaded(model_link, init_checkpoint)
+  return init_checkpoint_dir, checkpoint_filename
+
+
 class PretrainedBERT(tl.Serial):
   """Wrapper that always initializes weights from a pre-trained checkpoint."""
 
   def __init__(self, *sublayers, init_checkpoint=None):
     super().__init__(*sublayers)
 
-    # TODO(kitaev): Support shorthand model names in the trax OSS release
-    if init_checkpoint == 'bert-base-uncased':
-      raise NotImplementedError(
-          'Please manually specify the path to bert_model.ckpt')
-    self.init_checkpoint = init_checkpoint
+    if init_checkpoint is None:
+      # initialize model from scratch
+      self.init_checkpoint = None
+    elif os.path.sep not in init_checkpoint:
+      # initialize model from model name
+      init_checkpoint_dir, init_checkpoint_filename = download_model_if_model_name(init_checkpoint)
+      self.init_checkpoint = os.path.join(init_checkpoint_dir, init_checkpoint_filename)
+    else:
+      # initialize model from path
+      self.init_checkpoint = init_checkpoint
 
   def init_weights_and_state(self, input_signature):
     super().init_weights_and_state(input_signature)
