@@ -17,16 +17,21 @@
 """data processing for BERT.
 
 For now, this file only supports fine-tuning bert-base-uncased on GLUE.
-
-TODO(afrozm): Move this into data/
 """
+
+import os
+
 import functools
 
 import gin
 import numpy as onp
 
 import tensorflow_datasets as tfds
+
+from bert.tokenization.bert_tokenization import FullTokenizer
+
 from trax.data.inputs import Inputs
+from trax.models.research.bert import download_model_if_model_name # needed for downloading tokenizer vocab
 
 
 def _tfds_stream(n_devices,
@@ -105,18 +110,14 @@ def tfds_inputs(
   )
 
 
-@gin.configurable()
-def bert_tokenizer(vocab_path=None):
-  """Constructs a BERT tokenizer."""
-  # This import is from https://github.com/google-research/bert which is not
-  # listed as a dependency in trax.
-  # TODO(piotrekp1): using SubwordTextEncoder instead after fixing the
-  # differences
-  from bert.tokenization.bert_tokenization import FullTokenizer  # pylint: disable=g-import-not-at-top
+def bert_tokenizer(vocab_path=None, model_name=None, do_lower_case=True):
+  if vocab_path is None and model_name is None:
+    raise ValueError('either vocab_path or model_name is required to construct the BERT tokenizer.')
   if vocab_path is None:
-    raise ValueError('vocab_path is required to construct the BERT tokenizer.')
-  tokenizer = FullTokenizer(vocab_path, do_lower_case=True)
-  return tokenizer
+    # get vocab_path from model name
+    model_path, _ = download_model_if_model_name(model_name)
+    vocab_path = os.path.join(model_path, 'vocab.txt')
+  return FullTokenizer(vocab_path, do_lower_case=do_lower_case)
 
 
 def bert_preprocess(batch, tokenizer, key_a, key_b=None, max_len=128):
@@ -145,16 +146,15 @@ def bert_preprocess(batch, tokenizer, key_a, key_b=None, max_len=128):
       batch_size)
 
 
-@gin.configurable()
-def glue_inputs(dataset_name=gin.REQUIRED,
-                batch_size=16,
-                eval_batch_size=None,
-                data_dir=None,
-                max_len=128,
-                tokenizer=bert_tokenizer):
+def bert_glue_inputs(dataset_name=gin.REQUIRED,
+                     tokenizer=gin.REQUIRED,
+                     batch_size=16,
+                     eval_batch_size=None,
+                     data_dir=None,
+                     max_len=512):
   """Input pipeline for fine-tuning BERT on GLUE tasks."""
   if callable(tokenizer):  # If we pass a function, e.g., through gin, call it.
-    tokenizer = bert_tokenizer()
+    tokenizer = tokenizer()
 
   eval_split = tfds.Split.VALIDATION
   if dataset_name == 'glue/mnli':

@@ -14,9 +14,9 @@
 
 import trax.layers
 import trax.models
+import trax.data
 import trax.optimizers
 import trax.supervised.lr_schedules
-import trax.supervised.pretrain_finetune
 import trax.supervised.trainer_lib
 import trax.models.research.bert
 import trax.layers.metrics
@@ -27,10 +27,11 @@ import trax.layers.metrics
 # not recommended and will likely result in lower than baseline accuracy.
 
 
-# Parameters for glue_inputs:
+# Parameters for bert_glue_inputs:
 # ==============================================================================
-glue_inputs.dataset_name = 'glue/mnli'
-glue_inputs.batch_size = 16
+bert_glue_inputs.dataset_name = 'glue/mnli'
+bert_glue_inputs.batch_size = 16
+bert_glue_inputs.tokenizer = @trax.data.bert_tokenizer
 
 
 # Parameters for bert_tokenizer:
@@ -43,7 +44,7 @@ bert_tokenizer.do_lower_case = True
 train.optimizer = @trax.optimizers.Adam
 train.eval_frequency = 20
 train.eval_steps = 10
-train.inputs = @pretrain_finetune.glue_inputs
+train.inputs = @trax.data.bert_glue_inputs
 train.model = @trax.models.BERT
 train.steps = 2000
 train.checkpoint_highest = 'accuracy'
