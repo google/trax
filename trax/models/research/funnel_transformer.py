@@ -533,11 +533,16 @@ def FunnelTransformerLM(vocab_size,
   n_pre_decoder_blocks, n_post_decoder_blocks = vanilla_layers
 
   def create_decoder_blocks(n_layers):
-    return [
+    if n_layers == 0:
+      return []
+
+    decoder_blocks = [
         # pylint: disable=g-complex-comprehension
         _DecoderBlock(d_model, d_ff, n_heads,
                       dropout, dropout_shared_axes, mode, ff_activation)
         for _ in range(n_layers)]
+    ln = tl.LayerNorm()
+    return decoder_blocks + [ln]
 
   pre_decoder_blocks = create_decoder_blocks(n_pre_decoder_blocks)
   post_decoder_blocks = create_decoder_blocks(n_post_decoder_blocks)
@@ -559,15 +564,15 @@ def FunnelTransformerLM(vocab_size,
   return tl.Serial(              # tokens (or chunked tuple of tokens)
       tl.ShiftRight(mode=mode),  # toks
       positional_encoder,        # vecs
-      pre_decoder_blocks,            # vecs
+      pre_decoder_blocks,        # vecs
       tl.Residual(
-          conv_layer,
           tl.ShiftRight(n_positions=total_shorten_factor - 1),
           funnel_blocks,
+          tl.LayerNorm(),
           _UpsamplerLM(total_shorten_factor)
       ),
       post_decoder_blocks,
-      tl.LayerNorm(),            # vecs
+      conv_layer,
       tl.Dense(vocab_size),      # vecs
       tl.LogSoftmax(),           # vecs
   )
