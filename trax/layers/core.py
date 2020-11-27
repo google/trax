@@ -116,6 +116,8 @@ class Dense(base.Layer):
 
     if self._use_bias:
       b = self._bias_initializer(shape_b, rng_b)
+      if self._use_bfloat16:
+        b = b.astype(jnp.bfloat16)
       self.weights = (w, b)
     else:
       self.weights = w
@@ -140,12 +142,10 @@ class Embedding(base.Layer):
   def __init__(self,
                vocab_size,
                d_feature,
-               kernel_initializer=
-               init.ScaledInitializer(out_dim=-1,
-                                      in_dim=-2,
-                                      scale=1.,
-                                      mode='fan_out',
-                                      distribution='uniform')):
+               use_bfloat16=False,
+               kernel_initializer=init.ScaledInitializer(
+                   out_dim=-1, in_dim=-2, scale=1., mode='fan_out',
+                   distribution='uniform')):
     """Returns an embedding layer with given vocabulary size and vector size.
 
     The layer clips input values (token IDs) to the range `[0, vocab_size)`.
@@ -155,15 +155,18 @@ class Embedding(base.Layer):
 
     Args:
       vocab_size: Size of the input vocabulary. The layer will assign a unique
-          vector to each id in `range(vocab_size)`.
+        vector to each id in `range(vocab_size)`.
       d_feature: Dimensionality/depth of the output vectors.
+      use_bfloat16: If `True`, use bfloat16 weights instead of the default
+        float32; this can save memory but may (rarely) lead to numerical issues.
       kernel_initializer: Function that creates (random) initial vectors for
-          the embedding.
+        the embedding.
     """
     # TODO(jonni): is the clipping behavior what we want going forward?
     super().__init__(name=f'Embedding_{vocab_size}_{d_feature}')
     self._d_feature = d_feature  # feature dimensionality
     self._vocab_size = vocab_size
+    self._use_bfloat16 = use_bfloat16
     self._kernel_initializer = kernel_initializer
 
   def forward(self, x):
@@ -175,7 +178,10 @@ class Embedding(base.Layer):
     Returns:
       Tensor of embedding vectors.
     """
-    return jnp.take(self.weights, x, axis=0)
+    embedded = jnp.take(self.weights, x, axis=0)
+    if self._use_bfloat16:  # Return float32 activations w/ bfloat16 weights.
+      embedded = embedded.astype(jnp.float32)
+    return embedded
 
   def init_weights_and_state(self, input_signature):
     """Randomly initializes this layer's weights."""
@@ -183,6 +189,8 @@ class Embedding(base.Layer):
     shape_w = (self._vocab_size, self._d_feature)
     # TODO(lukaszkaiser): do we split self.rng for consistency? Add a method?
     w = self._kernel_initializer(shape_w, self.rng)
+    if self._use_bfloat16:
+      w = w.astype(jnp.bfloat16)
     self.weights = w
 
 
@@ -255,16 +263,19 @@ class Weights(base.Layer):
   It takes no input and returns a single tensor: weights.
   """
 
-  def __init__(self, initializer, shape=tuple()):
+  def __init__(self, initializer, shape=tuple(), use_bfloat16=False):
     """Returns a learnable tensor of shape `shape`.
 
     Args:
       initializer: Function taking shape and rng as arguments.
       shape: Shape of the learnable weights.
+      use_bfloat16: If `True`, use bfloat16 weights instead of the default
+        float32; this can save memory but may (rarely) lead to numerical issues.
     """
     super().__init__(name=f'Weights_{shape}', n_in=0, n_out=1)
     self._shape = shape
     self._initializer = initializer
+    self._use_bfloat16 = use_bfloat16
 
   def forward(self, x):
     """Executes this layer as part of a forward pass through the model.
@@ -290,6 +301,8 @@ class Weights(base.Layer):
     """
     del input_signature  # Unused. There is no input to this layer.
     self.weights = self._initializer(self._shape, self.rng)
+    if self._use_bfloat16:
+      self.weights = self.weights.astype(jnp.bfloat16)
 
 
 def PrintShape(n_in=1, msg=''):
@@ -561,14 +574,11 @@ def Flatten(n_axes_to_keep=1):
   return Fn(layer_name, f)
 
 
-@assert_shape('...->...')  # The output and input shapes are the same.
-def Exp():
-  """Returns a layer that computes the element-wise exponential of a tensor."""
-  return Fn('Exp', lambda x: jnp.exp(x))  # pylint: disable=unnecessary-lambda
-
-
 def LogSoftmax(axis=-1):
   """Returns a layer that applies log softmax along one tensor axis.
+
+  Note that the implementation actually computes x - LogSumExp(x),
+  which is mathematically equal to LogSoftmax(x).
 
   `LogSoftmax` acts on a group of values and normalizes them to look like a set
   of log probability values. (Probability values must be non-negative, and as
@@ -580,6 +590,16 @@ def LogSoftmax(axis=-1):
   """
   return Fn('LogSoftmax',
             lambda x: x - fastmath.logsumexp(x, axis, keepdims=True))
+
+
+def LogSumExp(axis=-1):
+  """Returns a layer that computes log(sum(exp(x))) along one tensor axis.
+
+  Args:
+    axis: Axis along which values are grouped for computing log-sum-exp.
+  """
+  return Fn('LogSumExp',
+            lambda x: fastmath.logsumexp(x, axis=axis, keepdims=True))
 
 
 def Softmax(axis=-1):

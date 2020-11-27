@@ -137,8 +137,9 @@ class TraxTest(parameterized.TestCase):
         # Adds Dropout and BatchNorm to test state handling.
         def model_fn(mode='train'):
           return tl.Serial(
-              tl.Dropout(mode=mode, rate=0.1), tl.BatchNorm(mode=mode),
-              models.MLP(d_hidden=16, n_output_classes=n_classes, mode=mode))
+              tl.Dropout(mode=mode, rate=0.1),
+              tl.BatchNorm(mode=mode),
+              models.MLP(layer_widths=(16, 16, n_classes), mode=mode))
         inputs = _test_inputs(n_classes)
         n_in = 1
       elif model_name == 'Resnet50':
@@ -211,8 +212,8 @@ class TraxTest(parameterized.TestCase):
       n_classes = 4
       steps = 2
       eval_steps = 2
-      model_fn = functools.partial(
-          models.MLP, d_hidden=16, n_output_classes=n_classes)
+      model_fn = functools.partial(models.MLP,
+                                   layer_widths=(16, 16, n_classes))
       inputs = _test_inputs(n_classes)
 
       # Train and evaluate
@@ -244,8 +245,8 @@ class TraxTest(parameterized.TestCase):
       n_classes = 4
       steps = 2
       eval_steps = 2
-      model_fn = functools.partial(
-          models.MLP, d_hidden=16, n_output_classes=n_classes)
+      model_fn = functools.partial(models.MLP,
+                                   layer_widths=(16, 16, n_classes))
       inputs = _test_inputs(n_classes)
 
       # Train and evaluate
@@ -277,8 +278,8 @@ class TraxTest(parameterized.TestCase):
       n_classes = 4
       steps = 2
       eval_steps = 2
-      model_fn = functools.partial(
-          models.MLP, d_hidden=16, n_output_classes=n_classes)
+      model_fn = functools.partial(models.MLP,
+                                   layer_widths=(16, 16, n_classes))
       inputs = _test_inputs(n_classes, with_weights=True)
 
       # Train and evaluate
@@ -297,13 +298,13 @@ class TraxTest(parameterized.TestCase):
   def test_reset_twice(self, backend):
     with fastmath.use_backend(backend):
       n_classes = 4
-      model_fn = functools.partial(
-          models.MLP, d_hidden=16, n_output_classes=n_classes)
+      model_fn = functools.partial(models.MLP,
+                                   layer_widths=(16, 16, n_classes))
       inputs = _test_inputs(n_classes)
 
       trainer = trainer_lib.Trainer(
           model=model_fn,
-          loss_fn=tl.CrossEntropyLoss(),
+          loss_fn=tl.Serial(tl.LogSoftmax(), tl.CrossEntropyLoss()),
           optimizer=trax_opt.SM3,
           lr_schedule=lr.multifactor(),
           inputs=inputs,

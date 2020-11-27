@@ -85,7 +85,7 @@ class MnistTest(absltest.TestCase):
 
 
 def _build_model(two_heads):
-  cls_head = tl.Serial(tl.Dense(10), tl.LogSoftmax())
+  cls_head = tl.Dense(10)
   if two_heads:
     reg_head = tl.Dense(1)
     heads = tl.Branch(cls_head, reg_head)
@@ -134,7 +134,7 @@ def _mnist_tasks(head=None):
     A pair (train_task, eval_task) consisting of the MNIST training task and the
     MNIST evaluation task using cross-entropy as loss and accuracy as metric.
   """
-  loss = tl.CrossEntropyLoss()
+  loss = tl.Serial(tl.LogSoftmax(), tl.CrossEntropyLoss())
   accuracy = tl.Accuracy()
   if head is not None:
     loss = tl.Serial(head, loss)

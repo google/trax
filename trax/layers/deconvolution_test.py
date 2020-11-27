@@ -13,14 +13,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Supervised learning imports in Trax."""
+# Lint as: python3
+"""Tests for Deconvolution layers."""
 
-from trax.supervised import callbacks
-from trax.supervised import decoding
-from trax.supervised import lr_schedules
-from trax.supervised import trainer_lib
-from trax.supervised import training
-from trax.supervised.trainer_lib import train
-from trax.supervised.trainer_lib import Trainer
-from trax.supervised.training import EvalTask
-from trax.supervised.training import TrainTask
+from absl.testing import absltest
+import numpy as np
+
+from trax import shapes
+import trax.layers as tl
+
+
+class ConvTransposeTest(absltest.TestCase):
+
+  def test_call(self):
+    layer = tl.ConvTranspose(30, (3, 3))
+    x = np.ones((9, 5, 5, 20))
+    layer.init(shapes.signature(x))
+
+    y = layer(x)
+    self.assertEqual(y.shape, (9, 7, 7, 30))
+
+
+if __name__ == '__main__':
+  absltest.main()

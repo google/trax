@@ -570,7 +570,7 @@ class EfficientAttentionBase(base.Layer):
           return fastmath.index_update(
               mem_element, jax.ops.index[:, mem_end], new_vals[:, 0, ...])
         else:
-          return jax.lax.dynamic_update_slice_in_dim(
+          return fastmath.dynamic_update_slice_in_dim(
               mem_element, new_vals, mem_end, axis=1)
       inputs = fastmath.nested_map_multiarg(update_mem, mem, inputs)
       return inputs, state, mem_end, inputs, mem_end + seqlen
@@ -1349,7 +1349,7 @@ class LSHSelfAttention(SelfAttention):
           buckets_update, (self.n_hashes, -1))[:, :q_len]
       if q_len > self.predict_mem_len:
         buckets_update = buckets_update[:, -self.predict_mem_len:]  # pylint: disable=invalid-unary-operand-type
-      buckets = jax.lax.dynamic_update_slice_in_dim(
+      buckets = fastmath.dynamic_update_slice_in_dim(
           buckets, buckets_update, q_start, axis=1)
       buckets = np.reshape(buckets, (-1,))
 
@@ -1365,7 +1365,7 @@ class LSHSelfAttention(SelfAttention):
           [buckets, np.zeros((self.n_hashes, self.predict_drop_len),
                              dtype=buckets.dtype)
           ], axis=1)
-      new_buckets = jax.lax.dynamic_slice_in_dim(
+      new_buckets = fastmath.dynamic_slice_in_dim(
           new_buckets, buckets_idx - q_start, buckets.shape[-1], axis=1)
       new_buckets = np.reshape(new_buckets, (-1,))
       return new_buckets
@@ -1392,7 +1392,7 @@ class LSHSelfAttention(SelfAttention):
     q_buckets = self.hash_vectors(q, hash_rng)
     q_buckets = np.reshape(q_buckets, (self.n_hashes, 2))[:, :q_len]
 
-    unflattened_buckets = jax.lax.dynamic_update_slice_in_dim(
+    unflattened_buckets = fastmath.dynamic_update_slice_in_dim(
         np.reshape(buckets, (self.n_hashes, -1)),
         q_buckets, q_start, axis=1)
     buckets = np.reshape(unflattened_buckets, (-1,))

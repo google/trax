@@ -28,6 +28,7 @@ from trax.layers.base import *
 from trax.layers.combinators import *
 from trax.layers.convolution import *
 from trax.layers.core import *
+from trax.layers.deconvolution import *
 from trax.layers.initializers import *
 from trax.layers.metrics import *
 from trax.layers.normalization import *
@@ -82,6 +83,7 @@ MultiplicativeModularCausalAttention = layer_configure(
     MultiplicativeModularCausalAttention, blacklist=['mode'])
 MultiplicativeConvCausalAttention = layer_configure(
     MultiplicativeConvCausalAttention, blacklist=['mode'])
+ConvTranspose = layer_configure(ConvTranspose)
 LSHSelfAttention = layer_configure(LSHSelfAttention, blacklist=['mode'])
 EncDecAttention = layer_configure(EncDecAttention, blacklist=['mode'])
 

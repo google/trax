@@ -34,7 +34,6 @@ Key classes:
     training step number.
 """
 import collections
-from concurrent import futures
 import contextlib
 import functools
 import gzip as gzip_lib
@@ -110,6 +109,7 @@ class Loop:
       random_seed=None,
       loss_chunk_size=0,
       use_memory_efficient_trainer=False,
+      callbacks=None,
   ):
     """Configures a training `Loop`, including a random initialization.
 
@@ -147,6 +147,8 @@ class Loop:
         computation more more memory-efficient.
       use_memory_efficient_trainer: whether to use a special memory-efficient
         trainer.
+      callbacks: List of subclasses of StepCallback to call on training
+        steps.
     """
     self._is_chief, self._n_hosts, self._n_devices, self._rng = (
         init_host_and_devices(n_devices, random_seed))
@@ -250,6 +252,11 @@ class Loop:
         task_output_dir(i, eval_tasks) for i in range(len(eval_tasks))]
     self._output_dir_per_train_task = [
         task_output_dir(i, tasks) for i in range(len(tasks))]
+
+    callbacks = callbacks or []
+    self._callbacks = [
+        callback_class(self) for callback_class in callbacks
+    ]
 
   def _init_trainer(self, task):
     """Initializes the per-task trainer."""
@@ -446,6 +453,10 @@ class Loop:
       of training and stats, the current optimizer statistics.
     """
     step = self.step
+    for callback in self._callbacks:
+      if callback.call_at(step):
+        callback.on_step_begin(step)
+
     learning_rate = self._tasks[task_index].learning_rate(step)
     batch = self._tasks[task_index].next_batch()
     rng = self.new_rng()
@@ -455,7 +466,15 @@ class Loop:
       model = trainer.model_with_loss
       trainer.accelerated_model_with_loss.replicate_weights(model.weights)
       trainer.accelerated_model_with_loss.replicate_state(model.state)
-    return trainer.one_step(batch, rng, step=step, learning_rate=learning_rate)
+    (loss, stats) = trainer.one_step(
+        batch, rng, step=step, learning_rate=learning_rate
+    )
+
+    for callback in self._callbacks:
+      if callback.call_at(step):
+        callback.on_step_end(step)
+
+    return (loss, stats)
 
   def _log_training_progress(self, task, total_loss, n_steps, elapsed_time,
                              optimizer_metrics, summary_writer):
@@ -621,6 +640,8 @@ class Loop:
     if self._output_dir is None:
       _log('Did not save checkpoint as output_dir is None')
       return
+    ckpt_file = os.path.join(self._output_dir, 'model.pkl.gz')
+    _log('Saving checkpoint to %s.' % ckpt_file, stdout=False)
     weights = self._model.weights
     state = self._model.state
     if self._use_memory_efficient_trainer:
@@ -633,7 +654,6 @@ class Loop:
     flat_weights, flat_state = tl.flatten_weights_and_state(weights, state)
     _, flat_eval_state = tl.flatten_weights_and_state(
         weights, self._eval_model.state)
-    ckpt_file = os.path.join(self._output_dir, 'model.pkl.gz')
     if self._use_memory_efficient_trainer:
       sharded_weights_len = self._save_weights_sharded(flat_weights, ckpt_file)
       # In the main dict we just save the number of shards in place of weights.
@@ -649,13 +669,13 @@ class Loop:
         'input_signature': input_signature,
         'version_timestamp': 'Oct-28-2020'  # To update in the future if needed.
     }
-    ckpt_file = os.path.join(self._output_dir, 'model.pkl.gz')
     pickle_to_file(d, ckpt_file, gzip=True)
     # Move sharded files to non-tmp files after all is saved.
     if self._use_memory_efficient_trainer:
       for i in range(weights_in_dict):
         fname = ckpt_file + '.shard%d' % i
         tf.io.gfile.rename(fname + '.tmp', fname, overwrite=True)
+    _log('Checkpoint saved in %s.' % ckpt_file, stdout=False)
 
   def _save_weights_sharded(self, flat_weights, ckpt_file):
     """Saves flat_weights in a sharded way to ckpt_file.shardN.tmp."""
@@ -674,8 +694,9 @@ class Loop:
       sharded_weights.append(current_shard)
     # Save weight shards to files (tmp first to be resilient to failure).
     for i, w in enumerate(sharded_weights):
-      pickle_to_file(self._to_bits(w), ckpt_file + '.shard%d.tmp' % i,
-                     gzip=True)
+      path = ckpt_file + '.shard%d.tmp' % i
+      _log('Saving sharded weights to %s.' % path, stdout=False)
+      pickle_to_file(self._to_bits(w), path, gzip=False)
     return len(sharded_weights)
 
   def _to_bits(self, weights):
@@ -727,13 +748,14 @@ class Loop:
       _log(f'Not loading as checkpoint file does not exist: {path}.',
            stdout=False)
       return
+    _log('Loading checkpoint from %s.' % path, stdout=False)
     d = unpickle_from_file(path, gzip=True)
     # For large models, load weights from sharded files.
     if self._use_memory_efficient_trainer:
       weights = []
       n_shards = d['flat_weights']  # We store the number of shards in d here.
       for i in range(n_shards):
-        w = unpickle_from_file(path + '.shard%d' % i, gzip=True)
+        w = unpickle_from_file(path + '.shard%d' % i, gzip=False)
         w = self._from_bits(w)  # bit-casting may put w on accelerator, go back
         weights.extend([tl.on_cpu(x) for x in w])
       d['flat_weights'] = weights
@@ -769,6 +791,7 @@ class Loop:
     _, eval_state = tl.unflatten_weights_and_state(
         d['flat_weights'], flat_eval_state, weights_and_state_sig)
     self._eval_model.state = eval_state
+    _log('Checkpoint loaded from %s.' % path, stdout=False)
 
   @contextlib.contextmanager
   def _open_summary_writers(self):
@@ -990,10 +1013,10 @@ def pickle_to_file(obj, file_path, gzip=False):
   tmp_file_path = file_path + '._tmp_'
   with tf.io.gfile.GFile(tmp_file_path, 'wb') as f:
     if not gzip:
-      pickle.dump(obj, f)
+      pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
     else:
       with gzip_lib.GzipFile(fileobj=f, compresslevel=2) as gzipf:
-        pickle.dump(obj, gzipf)
+        pickle.dump(obj, gzipf, protocol=pickle.HIGHEST_PROTOCOL)
   # Moving a file is much less error-prone than pickling large files.
   tf.io.gfile.rename(tmp_file_path, file_path, overwrite=True)
 
@@ -1088,5 +1111,3 @@ def _make_weights_and_state_same_across_hosts(weights_and_state):
       lambda ws: ws / n_devices_total, weights_and_state)
 
   return weights_and_state
-
-

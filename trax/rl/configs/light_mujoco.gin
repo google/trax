@@ -35,13 +35,13 @@ Gaussian.std = 0.4
 
 # Parameters for Policy:
 # ==============================================================================
-Policy.body = @trax.models.PureMLP
+Policy.body = @trax.models.MLP
 Policy.head_init_range = 0.01
 Policy.normalizer = %normalizer
 
 # Parameters for Value:
 # ==============================================================================
-Value.body = @trax.models.PureMLP
+Value.body = @trax.models.MLP
 Value.normalizer = %normalizer
 Value.inject_actions_dim = 256
 Value.multiplicative_action_injection = True
@@ -52,11 +52,11 @@ Value.head_init_range = 0.01
 Normalize.sample_limit = 300000
 Normalize.epsilon = 1e-5
 
-# Parameters for PureMLP:
+# Parameters for MLP:
 # ==============================================================================
-PureMLP.flatten = False
-PureMLP.layer_widths = (256, 256)
-PureMLP.out_activation = True
+MLP.flatten = False
+MLP.layer_widths = (256, 256)
+MLP.out_activation = True
 
 # Parameters for Adam:
 # ==============================================================================

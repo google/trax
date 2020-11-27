@@ -109,7 +109,6 @@ def SkippingTransformerLM(vocab_size,
       tl.AssertShape('...sd'),
       tl.LayerNorm(),
       tl.Dense(vocab_size),
-      tl.LogSoftmax(),
   )
 
 
@@ -202,7 +201,6 @@ def EveryOtherLayerDropTransformerLM(vocab_size,
       tl.Select([0], n_in=2),  # stack: embedding
       tl.LayerNorm(),
       tl.Dense(vocab_size),
-      tl.LogSoftmax(),
   )
 
 
@@ -301,5 +299,4 @@ def LayerDropTransformerLM(vocab_size,
       [ConditionedBlock(i) for i in range(n_layers)],
       tl.LayerNorm(),
       tl.Dense(vocab_size),
-      tl.LogSoftmax(),
   )

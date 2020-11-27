@@ -29,7 +29,7 @@ Gaussian.std = 0.4
 
 # Parameters for Policy and Value:
 # ==============================================================================
-PolicyAndValue.body = @trax.models.PureMLP
+PolicyAndValue.body = @trax.models.MLP
 PolicyAndValue.head_init_range = 0.01
 PolicyAndValue.normalizer = @trax.rl.normalization.Normalize
 
@@ -38,11 +38,11 @@ PolicyAndValue.normalizer = @trax.rl.normalization.Normalize
 Normalize.sample_limit = 30000
 Normalize.epsilon = 1e-5
 
-# Parameters for PureMLP:
+# Parameters for MLP:
 # ==============================================================================
-PureMLP.flatten = False
-PureMLP.layer_widths = (128, 64)
-PureMLP.out_activation = True
+MLP.flatten = False
+MLP.layer_widths = (128, 64)
+MLP.out_activation = True
 
 # Parameters for multifactor:
 # ==============================================================================

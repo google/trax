@@ -16,9 +16,14 @@
 # Lint as: python3
 """Multi-device accelerated optimization."""
 
+from concurrent import futures
 import functools
 import os
+import time
+
 from absl import logging
+import jax
+import numpy as np
 import psutil
 
 from trax import fastmath
@@ -27,7 +32,7 @@ from trax.fastmath import numpy as jnp
 from trax.layers import combinators as cb
 
 
-class Trainer(object):
+class Trainer:
   """Multi-device accelerated trainer.
 
   Given an optimizer and a composite layer containing model+loss, this class
@@ -167,7 +172,7 @@ def _accelerate_update_fn(forward_and_backward_fn,
       (loss, state), gradients = forward_and_backward_fn(
           batch, weights, state, rng)
       weights, slots, stats = optimizer.tree_update(
-          step, gradients, weights, slots, opt_params)
+          step, gradients, weights, slots, opt_params, store_slots=False)
       stats['loss'] = loss
       return (weights, slots), state, stats
     if accelerate:
@@ -187,8 +192,8 @@ def _accelerate_update_fn(forward_and_backward_fn,
     (loss, state), gradients = (
         forward_and_backward_fn(batch, weights, state, rng))
     gradients = _average_multidevice_gradients(gradients)
-    weights, slots, stats = (
-        optimizer.tree_update(step, gradients, weights, slots, opt_params))
+    weights, slots, stats = optimizer.tree_update(
+        step, gradients, weights, slots, opt_params, store_slots=False)
     stats['loss'] = loss
     return (weights, slots), state, stats
 
@@ -202,7 +207,7 @@ def _accelerate_update_fn(forward_and_backward_fn,
   return multi_device_update_fn
 
 
-class ReversibleSerialTrainer(object):
+class ReversibleSerialTrainer:
   """Runs an optimizer on a series of layers, reversible and not.
 
   We provide layers to this trainer in blocks, each block consisting of
@@ -218,7 +223,8 @@ class ReversibleSerialTrainer(object):
   Note: we do not allow sharing weights between blocks for now.
   """
 
-  def __init__(self, blocks, loss_layer, optimizer_fn, n_devices=None):
+  def __init__(self, blocks, loss_layer, optimizer_fn, n_devices=None,
+               memoize_jit=True):
     """Creates a ReversibleSerialTrainer and the needed optimizers.
 
     This trainer performs updates equivalent to using the default Trainer on::
@@ -237,6 +243,12 @@ class ReversibleSerialTrainer(object):
       optimizer_fn: A function to create the optimizer, e.g., `optimizers.Adam`.
       n_devices: An optional integer, number of accelerator devices to use;
         by default, all available accelerators will be used.
+      memoize_jit: Whether to memoize JITed functions; this significantly speeds
+        up XLA compilation of larger models, but it uses `repr(layer)` as keys
+        to memoize so it could fail if two layers with different functionality
+        had the same string representaion. We have not encountered such case
+        yet so this is turned on by default, but consider turning it off or
+        reviewing your model if you use custom layers and encounter a problem.
     """
     self._blocks = [(tl.Serial(std), rev) for (std, rev) in blocks]
     self._loss_layer = loss_layer
@@ -244,10 +256,12 @@ class ReversibleSerialTrainer(object):
     self._n_devices = n_devices or fastmath.device_count()
     self._n_layers = 1 + sum([len(revs) + 1 for (_, revs) in self._blocks])
     self._n_steps_per_log = 100  # Log layers and stats every 100 steps.
+    self._jit_memory = {} if memoize_jit else None
 
     # Create accelerated versions of layers as pmaped/jited pure_fn.
     self._accelerated_layer_fns = fastmath.nested_map(
-        lambda layer: self._pjit(layer.pure_fn), self._blocks)
+        lambda layer: self._pjit(layer.pure_fn, f'fwd {repr(layer)}'),
+        self._blocks)
 
     # Create per-layer optimizers and replicate opt_params.
     def _make_optimizer(layer):
@@ -273,14 +287,17 @@ class ReversibleSerialTrainer(object):
       std_fbo = _fbo_with_layer_and_opt(std_layer, std_opt, self._n_devices)
       rev_and_fbos = []
       for layer, opt in zip(rev_layers, rev_opts):
-        rev_and_fbos.append(self._pjit(_reverse_and_fbo_with_layer_and_opt(
-            layer, opt, self._n_devices), donate_argnums=(1,)))
-      self._fbos.append(
-          (self._pjit(std_fbo, donate_argnums=(1,)), rev_and_fbos))
+        rev_and_fbo = _reverse_and_fbo_with_layer_and_opt(
+            layer, opt, self._n_devices)
+        rev_and_fbos.append(self._pjit(
+            rev_and_fbo, f'rev+bwd {repr(layer)}', donate_argnums=(1, 2)))
+      jit_std_fbo = self._pjit(
+          std_fbo, f'bwd {repr(std_layer)}', donate_argnums=(1, 2))
+      self._fbos.append((jit_std_fbo, rev_and_fbos))
 
     loss_fbo = _fbo_with_layer_and_opt(
         self._loss_layer, self._loss_opt, self._n_devices, 'loss')
-    self._loss_fbo = self._pjit(loss_fbo, donate_argnums=(1,))
+    self._loss_fbo = self._pjit(loss_fbo, donate_argnums=(1, 2))
 
   @property
   def loss_layer(self):
@@ -304,12 +321,19 @@ class ReversibleSerialTrainer(object):
       for (opt, slot) in zip([s_opt] + r_opts, [s_slots] + r_slots):
         opt.slots = slot
 
-  def _pjit(self, f, donate_argnums=()):
+  def _pjit(self, f, memory_key=None, donate_argnums=()):
     """JIT f if 1 device is available and pmap if more are available."""
+    should_memoize = self._jit_memory is not None and memory_key is not None
+    if (should_memoize and memory_key in self._jit_memory):
+      logging.info('Found JITed function in memory for: %s', memory_key)
+      return self._jit_memory[memory_key]
     if self._n_devices == 1:
-      return fastmath.jit(f, donate_argnums=donate_argnums)
+      res = fastmath.jit(f, donate_argnums=donate_argnums)
     else:
-      return fastmath.pmap(f, axis_name='batch', donate_argnums=donate_argnums)
+      res = fastmath.pmap(f, axis_name='batch', donate_argnums=donate_argnums)
+    if should_memoize:
+      self._jit_memory[memory_key] = res
+    return res
 
   def _replicate(self, x):
     if self._n_devices > 1:
@@ -352,18 +376,22 @@ class ReversibleSerialTrainer(object):
     step_int = step
     if self._n_devices > 1:
       batch = tl.reshape_by_device(batch, self._n_devices)
-      step = jnp.repeat(step, self._n_devices)
+      step = np.repeat(step, self._n_devices)
 
     # Create separate rng for each device and layer.
     if self._n_devices == 1:
       rngs = fastmath.random.split(rng, self._n_layers)
     else:
       # Splitting by device first to be identical with default trainer.
-      per_device_rng = fastmath.random.split(rng, self._n_devices)
-      per_device_rngs = [
-          fastmath.random.split(r, self._n_layers) for r in per_device_rng]
-      rngs = [jnp.stack([r[i] for r in per_device_rngs])
-              for i in range(self._n_layers)]
+      def per_device_rngs(rng):  # A function to JIT to not fragment memory.
+        per_device_rng = fastmath.random.split(rng, self._n_devices)
+        per_device_rngs = [
+            fastmath.random.split(r, self._n_layers) for r in per_device_rng]
+        rngs = [jnp.stack([r[i] for r in per_device_rngs])
+                for i in range(self._n_layers)]
+        return rngs
+      # JIT the function and run it on CPU to avoid memory fragmentation.
+      rngs = fastmath.jit(per_device_rngs, backend='cpu')(tl.on_cpu(rng))
     # Group rngs by layer blocks.
     rng_blocks, rng_i = [], 0
     for _, rev_layers in self._blocks:
@@ -373,6 +401,7 @@ class ReversibleSerialTrainer(object):
 
     # Run the layers forward upto the loss layer.
     process = psutil.Process(os.getpid())
+    logging.info('running step %d', step_int)
     if step_int % self._n_steps_per_log == 1:
       logging.info('run fwd: cpu memory use (MB): %.2f',
                    process.memory_info().rss / float(1024 * 1024))
@@ -479,7 +508,7 @@ class ReversibleSerialTrainer(object):
     slots = self._replicate(optimizer.slots)
     weights = self._replicate(layer.weights)
     new_weights, new_state, new_slots, new_grads, stats = fbo_fn(
-        inp, weights, state, slots, replicated_opt_params, rng, step, grads)
+        inp, weights, grads, state, slots, replicated_opt_params, rng, step)
     layer.weights = self._unreplicate(new_weights)
     layer.state = self._unreplicate(new_state)
     optimizer.slots = self._unreplicate(new_slots)
@@ -510,8 +539,8 @@ class ReversibleSerialTrainer(object):
       opt_params = replicated_opt_params[counter]
       weights = self._replicate(layer.weights)  # cpu -> accelerator
       new_weights, new_slots, inputs, grads, layer_stats = reverse_and_fbo(
-          outputs, weights, old_state, new_state,
-          slots, opt_params, rng, step, grads)
+          outputs, weights, grads, old_state, new_state,
+          slots, opt_params, rng, step)
       layer.weights = self._unreplicate(new_weights)  # accelerator -> cpu
       layer.state = self._unreplicate(new_state)
       optimizers[counter].slots = self._unreplicate(new_slots)
@@ -527,7 +556,7 @@ class ReversibleSerialTrainer(object):
 
 def _fbo_with_layer_and_opt(layer, optimizer, n_devices, stats_name=None):
   """Create the fbo function for a given layer and optimizer."""
-  def fbo(inputs, weights, state, slots, opt_params, rng, step, grads):
+  def fbo(inputs, weights, grads, state, slots, opt_params, rng, step):
     """FBO of the layer."""
     # We need a layer pure_fn but only for inputs and weights.
     def pure_fn_without_state_and_rng(x, w):
@@ -557,7 +586,7 @@ def _fbo_with_layer_and_opt(layer, optimizer, n_devices, stats_name=None):
 
     # Run the optimizer.
     new_weights, new_slots, stats = optimizer.tree_update(
-        step, grads_weights, weights, slots, opt_params)
+        step, grads_weights, weights, slots, opt_params, store_slots=False)
     if stats_name is not None:
       stats[stats_name] = activations
     return new_weights, new_state, new_slots, grads_inputs, stats
@@ -572,8 +601,8 @@ def _fbo_with_layer_and_opt(layer, optimizer, n_devices, stats_name=None):
 
 def _reverse_and_fbo_with_layer_and_opt(layer, optimizer, n_devices):
   """Create the reverse_and_fbo function for a given layer and optimizer."""
-  def reverse_and_fbo(output, weights, state, new_state,
-                      slots, opt_params, rng, step, grads):
+  def reverse_and_fbo(output, weights, grads, state, new_state,
+                      slots, opt_params, rng, step):
     """Reverse and FBO of the layer."""
     # Call the reverse_and_grad method of the layer.
     inputs, (grads_inputs, grads_weights) = layer.reverse_and_grad(
@@ -589,7 +618,7 @@ def _reverse_and_fbo_with_layer_and_opt(layer, optimizer, n_devices):
 
     # Run the optimizer.
     new_weights, new_slots, stats = optimizer.tree_update(
-        step, grads_weights, weights, slots, opt_params)
+        step, grads_weights, weights, slots, opt_params, store_slots=False)
 
     return new_weights, new_slots, inputs, grads_inputs, stats
 
@@ -644,17 +673,26 @@ def extract_reversible_blocks(layers, loss_chunk_size=0):
   if loss_chunk_size > 0:
     # For now we only do chunking of [Dense, LogSoftmax, CrossEntopy, Mean]
     # Let's check that these are the last 4 layers.
-    if len(std_layers) < 4:
+    border_layers = ['StripFromConcatenateWithPadding', 'Select']
+
+    loss_start = None
+    for index, layer in enumerate(std_layers):
+      if layer.name in border_layers:
+        loss_start = index + 1
+    if loss_start is None:
+      raise ValueError('Loss layer should be preceeded by one of {}; got {}'
+                       .format(border_layers, [l.name for l in std_layers]))
+    if len(std_layers) - loss_start < 4:
       raise ValueError('Too short loss layer for chunking')
-    # To check for Dense, remove the n_units part from name.
-    name4 = std_layers[-4].name[:5]  # Just 'Dense' not e.g., 'Dense_32000'.
-    last_4_names = ' '.join([name4] + [l.name for l in std_layers[-3:]])
-    if last_4_names != 'Dense LogSoftmax _CrossEntropy _WeightedMean':
-      raise ValueError('Loss chunking only works with last layers being "Dense'
-                       ' LogSoftmax, _CrossEntropy, _WeightedMean" but got: ' +
-                       last_4_names)
+    last_3_names = ' '.join([l.name for l in std_layers[-3:]])
+    if last_3_names != 'LogSoftmax _CrossEntropy _WeightedMean':
+      raise ValueError('Loss chunking only works with last layers being "'
+                       'LogSoftmax, _CrossEntropy, _WeightedMean" but got: ' +
+                       last_3_names)
+
     # Create chunked dense+logsoftmax+cross-entropy-loss.
-    chunked_xent = tl.Chunk(tl.Serial(std_layers[-4:-1]), loss_chunk_size)
+    chunked_xent = tl.Chunk(tl.Serial(std_layers[loss_start:-1]),
+                            loss_chunk_size)
     # The chunked loss should operate on a merged batch dimension, e.g.,
     # including both length and batch size. Need to merge and un-merge later.
     def _reshape_to_batch_and_copy_targets(preds, targets):
@@ -668,7 +706,8 @@ def extract_reversible_blocks(layers, loss_chunk_size=0):
         chunked_xent,
         tl.Fn('after_xent_rebatch', _reshape_xent_back)
     )
-    loss_layer = tl.Serial(std_layers[:-4] + [batched_xent], std_layers[-1])
+    loss_layer = tl.Serial(std_layers[:loss_start] + [batched_xent],
+                           std_layers[-1])
   else:
     loss_layer = tl.Serial(std_layers)
   return blocks, loss_layer
@@ -702,3 +741,5 @@ def init_reversible_blocks(blocks, loss_layer, input_signature, rng):
       sig_stack = cb.outputs_onto_stack(out_sig, sig_stack, layer.n_in)
   loss_layer.init(cb.inputs_from_stack(sig_stack, loss_layer.n_in), rng=rng)
   loss_layer.weights = tl.on_cpu(loss_layer.weights)
+
+

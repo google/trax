@@ -27,7 +27,7 @@ from trax import fastmath
 from trax.supervised import training
 
 
-class _TimeStep(object):
+class _TimeStep:
   """A single step of interaction with a RL environment.
 
   TimeStep stores a single step in the trajectory of an RL run:
@@ -79,7 +79,7 @@ TimeStepNp = collections.namedtuple('TimeStepNp', [
 ])
 
 
-class Trajectory(object):
+class Trajectory:
   """A trajectory of interactions with a RL environment.
 
   Trajectories are created when interacting with a RL environment. They can
@@ -575,11 +575,11 @@ class RLTask:
   ):
     """Collect experience in env playing the given policy."""
     max_steps = max_steps or self.max_steps
-    if n_trajectories:
+    if n_trajectories is not None:
       new_trajectories = [self.play(policy, max_steps=max_steps,
                                     only_eval=only_eval)
                           for _ in range(n_trajectories)]
-    elif n_interactions:
+    elif n_interactions is not None:
       new_trajectories = []
       while n_interactions > 0:
         traj = self.play(policy, max_steps=min(n_interactions, max_steps))
@@ -592,13 +592,17 @@ class RLTask:
 
     # Calculate returns.
     returns = [t.total_return for t in new_trajectories]
+    if returns:
+      mean_returns = sum(returns) / float(len(returns))
+    else:
+      mean_returns = 0
 
     # If we're only evaluating, we're done, return the average.
     if only_eval:
-      return sum(returns) / float(len(returns))
-
+      return mean_returns
     # Store new trajectories.
-    self._trajectories[epoch_id].extend(new_trajectories)
+    if new_trajectories:
+      self._trajectories[epoch_id].extend(new_trajectories)
 
     # Mark that epoch epoch_id has changed.
     if epoch_id in self._saved_epochs_unchanged:
@@ -616,7 +620,7 @@ class RLTask:
     self._n_trajectories += len(new_trajectories)
     self._n_interactions += sum([len(traj) for traj in new_trajectories])
 
-    return sum(returns) / float(len(returns))
+    return mean_returns
 
   def n_trajectories(self, epochs=None):
     # TODO(henrykm) support selection of epochs if really necessary (will

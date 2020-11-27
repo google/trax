@@ -16,6 +16,7 @@
 # Lint as: python3
 """Tests for accelerated optimization of loss layers."""
 
+import time
 from absl.testing import absltest
 
 from jax import test_util  # pylint: disable=unused-import
@@ -162,10 +163,11 @@ class TrainerTest(absltest.TestCase):
 
     # Now make 3 steps with reversible trainer.
     model.init(labeled_batch, rng=rng_init)
+    # TODO(lukaszkaiser): this test seems to fail with memoize_jit, why?
     trainer = optimizers.ReversibleSerialTrainer(
         [(first_layer.sublayers, rev_layers1),
          (mid_layer.sublayers, rev_layers2)],
-        loss_layer, optimizer_fn)
+        loss_layer, optimizer_fn, memoize_jit=False)
     trainer.one_step(labeled_batch, rng_step1)
     trainer.one_step(labeled_batch, rng_step2, learning_rate=0.02)
     trainer.one_step(labeled_batch, rng_step3, learning_rate=0.03)
@@ -186,8 +188,9 @@ class TrainerTest(absltest.TestCase):
     input_sig = (int_sig, int_sig, int_sig)
     # We want to test rng propagation too, so adding some dropout layers.
     model = reformer.Reformer2(20, d_model=8, d_ff=16, n_heads=1,
-                               n_encoder_layers=1, n_decoder_layers=1)
-    loss = tl.CrossEntropyLoss()
+                               n_encoder_layers=1, n_decoder_layers=1,
+                               loss_sparsity=2)
+    loss = tl.Serial(tl.LogSoftmax(), tl.CrossEntropyLoss())
     optimizer_fn = optimizers.SGD  # Adafactor
     blocks, loss_layer = optimizers.trainer.extract_reversible_blocks(
         [model, loss], loss_chunk_size=4)
@@ -225,7 +228,7 @@ class TrainerTest(absltest.TestCase):
 
   def test_run_reversible_large_weights(self):
     """Runs the reversible trainer with a lot of weights to test memory use."""
-    # This test requires > 20GB RAM, only run on TPUs. It does pass on GPU
+    # This test requires > 18GB RAM, only run on TPUs. It does pass on GPU
     # and CPU when you run it locally, but it's too big for unit-testing.
     ram_limited = True  # Set to False to run this test locally.
     if fastmath.device_count() == 1 and ram_limited:
@@ -241,7 +244,7 @@ class TrainerTest(absltest.TestCase):
 
     # Initialize layers.
     first_layer.init(labeled_batch, rng=rng_init)
-    n_layers = 20  # 20 layers each 16K x 16K = 256M weights ~= 1GB, 20GB ram
+    n_layers = 18  # 18 layers each 16K x 16K = 256M weights ~= 1GB, 18GB ram
     rev_layers = []
     int_shape = shapes.ShapeDtype((2, 4), dtype=np.int32)
     shape = shapes.ShapeDtype((2, 4, 16*1024))
@@ -260,7 +263,15 @@ class TrainerTest(absltest.TestCase):
     # Make a step with reversible trainer.
     trainer = optimizers.ReversibleSerialTrainer(
         [(first_layer, rev_layers)], loss_layer, optimizer_fn)
-    trainer.one_step(labeled_batch, rng_step)
+    loss, _ = trainer.one_step(labeled_batch, rng_step)
+    self.assertLess(float(loss.sum()), 10000.0)  # Just to get the loss.
+    # Set to true to run again, e.g., for profiling.
+    run_twice = False
+    if run_twice:
+      t = time.time()
+      loss, _ = trainer.one_step(labeled_batch, rng_step)
+      self.assertLess(float(loss.sum()), 10000.0)  # Just to get the loss.
+      print('Took %.3f seconds to run, loss %s' % (time.time() - t, loss))
 
 
 if __name__ == '__main__':

@@ -24,7 +24,7 @@ from trax import test_utils
 from trax.rl import task as rl_task
 
 
-class DummyEnv(object):
+class DummyEnv:
   """Dummy Env class for testing."""
 
   observation_space = gym.spaces.Box(-2, 2, shape=(2,))

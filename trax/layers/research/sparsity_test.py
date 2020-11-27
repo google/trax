@@ -116,6 +116,34 @@ class LocallyConnectedDenseTest(test.TestCase):
     self.assertEqual(y.shape, (2, 16))
 
 
+class SparseDenseWithOptionsTest(test.TestCase):
+
+  def test_simple_call(self):
+    d_input, d_output = 16, 32
+    settings = [
+        (None, 0, 0, False),
+        (None, 0, 0, True),
+        ('einsum', 0, 0, False),
+        ('lowrank', 0, 8, False),
+        ('mult', 2, 0, False),
+        ('mult', 2, 0, True),
+        ('local', 2, 0, False),
+        ('local3', 2, 0, False),
+    ]
+    for stype, sparsity_level, d_lowrank, use_bfloat16 in settings:
+      layer = sparsity.SparseDenseWithOptions(
+          d_output, d_input=d_input, sparsity_type=stype,
+          sparsity=sparsity_level, d_lowrank=d_lowrank,
+          use_bfloat16=use_bfloat16)
+      x = np.ones((1, 1, d_input))
+      _, _ = layer.init(shapes.signature(x))
+      y = layer(x)
+      self.assertEqual(y.shape, (1, 1, d_output),
+                       msg='[{}->{}] {} - {} - {} - {}'.format(
+                           d_input, d_output, stype, sparsity_level, d_lowrank,
+                           use_bfloat16))
+
+
 class ModularCausalAttentionTest(test.TestCase):
 
   def test_simple_call(self):
@@ -172,9 +200,30 @@ class MultiplicativeModularCausalAttentionTest(test.TestCase):
     self.assertEqual(y.shape, (1, 3, 4))
 
 
-class CausalFavorTest(test.TestCase):
+class FavorTest(test.TestCase):
 
   def test_call_and_grad(self):
+    layer = tl.Serial(
+        tl.Branch(tl.Embedding(3, 4), tl.PaddingMask()),
+        sparsity.Favor(d_feature=4, n_heads=2),
+        tl.Select([0], n_in=2),
+        tl.LogSoftmax(),
+        tl.CrossEntropyLoss()
+    )
+    x = np.ones((1, 2), dtype=np.int32)
+    w = np.ones_like(x).astype(np.float32)
+    x_sig = shapes.signature(x)
+    w_sig = shapes.signature(w)
+    layer.init((x_sig, x_sig, w_sig))
+    y = layer((x, x, w))
+    self.assertEqual(y.shape, ())
+    state = layer.state
+    rng = fastmath.random.get_prng(0)
+    fwd = lambda weights, inp: layer.pure_fn(inp, weights, state, rng=rng)[0]
+    g = fastmath.grad(fwd)(layer.weights, (x, x, w))
+    self.assertEqual(g[0][1][0].shape, (3, 4))
+
+  def test_causal_call_and_grad(self):
     layer = tl.Serial(
         tl.Dense(4),
         sparsity.CausalFavor(d_feature=4, n_heads=2),

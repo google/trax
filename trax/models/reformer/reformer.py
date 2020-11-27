@@ -94,6 +94,10 @@ def ReformerLM(vocab_size,
                ff_use_sru=0,
                ff_chunk_size=0,
                ff_sparsity=0,
+               loss_sparsity_type='mult',
+               loss_sparsity=0,
+               loss_d_lowrank=0,
+               loss_sparsity_prob=None,
                attention_chunk_size=0,
                mode='train'):
   """Reversible transformer language model (only uses a decoder, no encoder).
@@ -117,6 +121,12 @@ def ReformerLM(vocab_size,
     ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
     ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
+    loss_sparsity_type: str, type of sparsity to used in loss layer. See
+      SparseDenseWithOptions for options. None if no sparsity should be used.
+    loss_sparsity: int, the sparsity for loss layer (if used)
+    loss_d_lowrank: int, the dimensions for intermediate layer (if used)
+    loss_sparsity_prob: float, the probability for sparse version of loss to be
+      used. If None, only sparse version is used.
     attention_chunk_size: int, if > 0 run attention chunked at this size
     mode: str: 'train', 'eval', or 'predict'
 
@@ -153,6 +163,15 @@ def ReformerLM(vocab_size,
         mode=mode)
     decoder_blocks.append(decoder_block)
 
+  dense_loss_layer = tl.SparseDenseWithOptions(
+      vocab_size,
+      d_input=d_model,
+      sparsity_type=loss_sparsity_type,
+      sparsity=loss_sparsity,
+      d_lowrank=loss_d_lowrank,
+      prob_sparse=loss_sparsity_prob,
+      mode=mode)
+
   return tl.Serial(
       tl.ShiftRight(mode=mode),
       positional_embedder,
@@ -163,8 +182,7 @@ def ReformerLM(vocab_size,
       # LayerNorm, and whether dropout broadcasting is needed here.
       tl.LayerNorm(),
       tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),  # pylint: disable=no-value-for-parameter
-      tl.Dense(vocab_size),
-      tl.LogSoftmax(),
+      dense_loss_layer,
   )
 
 
@@ -289,7 +307,6 @@ def ReformerShortenLM(vocab_size,
       tl.Relu(),
       tl.SRU(d_embedding),  # One RNN layer for conditional dependence.
       tl.Dense(vocab_size),
-      tl.LogSoftmax()
   )
   # pylint: enable=g-long-lambda
 
@@ -532,7 +549,6 @@ def Reformer(input_vocab_size,
       # Map to output vocab.
       tl.Select([0], n_in=3),               # vec_d .....
       tl.Dense(output_vocab_size),          # vec_d .....
-      tl.LogSoftmax(),                      # vec_d .....
   )
 
 
@@ -556,6 +572,10 @@ def Reformer2(input_vocab_size,
               ff_chunk_size=0,
               ff_dropout=None,
               ff_sparsity=0,
+              loss_sparsity_type='mult',
+              loss_sparsity=0,
+              loss_d_lowrank=0,
+              loss_sparsity_prob=None,
               attention_chunk_size=0,
               n_layers_forget=0,
               n_decoder_attention_layers=2,
@@ -594,6 +614,12 @@ def Reformer2(input_vocab_size,
     ff_dropout: float: (optional) separate dropout rate at feed-forward
       nonlinearity. This is called relu_dropout in T2T.
     ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
+    loss_sparsity_type: str, type of sparsity to used in loss layer. See
+      SparseDenseWithOptions for options. None if no sparsity should be used.
+    loss_sparsity: int, the sparsity for loss layer (if used)
+    loss_d_lowrank: int, the dimensions for intermediate layer (if used)
+    loss_sparsity_prob: float, the probability for sparse version of loss to be
+      used. If None, only sparse version is used.
     attention_chunk_size: int, if > 0 run attention chunked at this size
     n_layers_forget: how often to have a forgetting block between layers
     n_decoder_attention_layers: how many attention layers in a decoder block
@@ -625,7 +651,8 @@ def Reformer2(input_vocab_size,
           max_len,
           output_vocab_size=output_vocab_size,
           axial_pos_shape=axial_pos_shape,
-          d_axial_pos_embs=d_axial_pos_embs)
+          d_axial_pos_embs=d_axial_pos_embs,
+          use_bfloat16=use_bfloat16)
   )
 
   # pylint: disable=g-complex-comprehension
@@ -648,7 +675,7 @@ def Reformer2(input_vocab_size,
       tl.Dup(),                        # vec_e1 vec_e2 mask_e tok_e tok_d tok_d
       _ReversibleSerialForget(encoder_blocks, d_model, n_layers_forget),
       tl.Fn('XYAvg', lambda x, y: (x + y) / 2.0),
-      tl.Dense(d_model),
+      tl.Dense(d_model, use_bfloat16=use_bfloat16),
       tl.LayerNorm(),
   ])
   if mode == 'predict':
@@ -677,6 +704,16 @@ def Reformer2(input_vocab_size,
         use_bfloat16=use_bfloat16,
         mode=mode)
     decoder_blocks.append(decoder_block)
+
+  dense_loss_layer = tl.SparseDenseWithOptions(
+      output_vocab_size,
+      d_input=d_model,
+      sparsity_type=loss_sparsity_type,
+      sparsity=loss_sparsity,
+      d_lowrank=loss_d_lowrank,
+      prob_sparse=loss_sparsity_prob,
+      use_bfloat16=use_bfloat16,
+      mode=mode)
 
   # Assemble and return the model.
   return tl.Serial(
@@ -716,8 +753,7 @@ def Reformer2(input_vocab_size,
       t2.StripFromConcatenateWithPadding(mode=mode),  # vec_d tok_d
 
       # Map to output vocab.
-      tl.Dense(output_vocab_size),                 # vec_d tok_d
-      tl.LogSoftmax(),                             # vec_d tok_d
+      dense_loss_layer,  # vec_d tok_d
   )
 
 

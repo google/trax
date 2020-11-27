@@ -62,15 +62,16 @@ OptState = collections.namedtuple('_OptState', [
 
 
 _DEFAULT_METRICS = {
-    'loss': tl.CrossEntropyLoss(),
+    'loss': tl.Serial(tl.LogSoftmax(), tl.CrossEntropyLoss()),
     'accuracy': tl.Accuracy(),
     'sequence_accuracy': tl.SequenceAccuracy(),
-    'neg_log_perplexity': tl.Serial(tl.CrossEntropyLoss(), tl.Negate()),
+    'neg_log_perplexity': tl.Serial(tl.LogSoftmax(),
+                                    tl.CrossEntropyLoss(), tl.Negate()),
     'weights_per_batch_per_core': tl.Serial(tl.Drop(), tl.Drop(), tl.Sum()),
 }
 
 
-class Trainer(object):
+class Trainer:
   """Trax trainer.
 
   A trainer allows to make training steps, train for full epochs,
@@ -504,7 +505,8 @@ class Trainer(object):
 @gin.configurable(blacklist=['output_dir'])
 def train(output_dir,
           model=gin.REQUIRED,
-          loss_fn=tl.CrossEntropyLoss(),
+          loss_fn=tl.Serial(tl.LogSoftmax(), tl.CrossEntropyLoss(),
+                            name='CrossEntropyLoss'),
           inputs=trax_inputs.batcher,
           optimizer=trax_opt.Adafactor,
           lr_schedule_fn=lr.multifactor,

@@ -38,9 +38,16 @@ from trax.data.inputs import Inputs
 from trax.models.research.bert import download_model_if_model_name # needed for downloading tokenizer vocab
 
 
-def _tfds_stream(n_devices, dataset_name, split, batch_size, data_dir,
-               shuffle_files, shuffle_buffer_size, batch_shuffle_size,
-               preprocess_fun, repeat=True):
+def _tfds_stream(n_devices,
+                 dataset_name,
+                 split,
+                 batch_size,
+                 data_dir,
+                 shuffle_files,
+                 shuffle_buffer_size,
+                 batch_shuffle_size,
+                 preprocess_fun,
+                 repeat=True):
   """Streams batches of examples from tfds, with pure-python preprocessing."""
   # TODO(piotrekp1): delete if switched to data_streams
   if batch_size % n_devices != 0:
@@ -103,7 +110,7 @@ def tfds_inputs(
     ),
   )
 
-@gin.configurable()
+
 class BertLegacyTokenizer:
   # todo (piotrekp1): remove after training bert models from scratch in trax
   """
@@ -195,9 +202,12 @@ def bert_preprocess(batch, tokenizer, key_a, key_b=None, max_len=128):
   return input_ids, type_ids, input_ids > 0, batch['label'], onp.ones(batch_size)
 
 
-@gin.configurable()
-def glue_inputs(dataset_name=gin.REQUIRED, batch_size=16, eval_batch_size=None, data_dir=None,
-                max_len=512, tokenizer=BertLegacyTokenizer):
+def bert_glue_inputs(dataset_name=gin.REQUIRED,
+                     batch_size=16,
+                     eval_batch_size=None,
+                     data_dir=None,
+                     max_len=512,
+                     tokenizer=BertLegacyTokenizer):
   """Input pipeline for fine-tuning BERT on GLUE tasks."""
   if callable(tokenizer):  # If we pass a function, e.g., through gin, call it.
     tokenizer = tokenizer()

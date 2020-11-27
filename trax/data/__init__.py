@@ -18,6 +18,7 @@ import gin
 
 from trax.data import inputs
 from trax.data import tf_inputs
+from trax.data import bert_inputs
 
 
 # Ginify
@@ -43,6 +44,8 @@ Serial = data_configure(inputs.Serial)
 Shuffle = data_configure(inputs.Shuffle)
 shuffle = inputs.shuffle
 TFDS = data_configure(tf_inputs.TFDS)
+BertLegacyTokenizer = data_configure(bert_inputs.BertLegacyTokenizer)
+bert_glue_inputs = data_configure(bert_inputs.bert_glue_inputs)
 Tokenize = data_configure(tf_inputs.Tokenize)
 tokenize = tf_inputs.tokenize
 detokenize = tf_inputs.detokenize

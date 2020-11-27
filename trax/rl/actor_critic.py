@@ -61,6 +61,7 @@ class ActorCriticAgent(rl_training.PolicyAgent):
                q_value_temperature=1.0,
                q_value_n_samples=1,
                q_value_normalization=False,
+               offline=False,
                **kwargs):  # Arguments of PolicyAgent come here.
     """Configures the actor-critic trainer.
 
@@ -97,6 +98,8 @@ class ActorCriticAgent(rl_training.PolicyAgent):
           baselines based on Q-values.
       q_value_normalization: How to normalize Q-values before aggregation.
           Allowed values: 'std', 'abs', `None`. If `None`, don't normalize.
+      offline: Whether to train in offline mode. This matters for some
+        algorithms, e.g. QWR.
       **kwargs: Arguments for `PolicyAgent` superclass.
     """
     self._n_shared_layers = n_shared_layers
@@ -136,6 +139,12 @@ class ActorCriticAgent(rl_training.PolicyAgent):
       if self._q_value_n_samples == self._vocab_size:
         # TODO(lukaszkaiser): set this explicitly once it's in AWR Trainer.
         self._sample_all_discrete_actions = True
+    if offline and is_discrete:
+      raise NotImplementedError(
+          'Offline training is only supported for continuous action spaces for '
+          'now.'
+      )
+    self._offline = offline
 
     if q_value:
       value_model = functools.partial(value_model,
@@ -280,6 +289,12 @@ class ActorCriticAgent(rl_training.PolicyAgent):
     values *= scale
     return np.array(values)  # Move the values to CPU.
 
+  def _get_dist_inputs(self, trajectory):
+    if not self._offline:
+      return trajectory.dist_inputs
+    else:
+      return trajectory.actions
+
   def value_batches_stream(self):
     """Use the RLTask self._task to create inputs to the value model."""
     max_slice_length = self._max_slice_length + self._added_policy_slice_length
@@ -290,8 +305,9 @@ class ActorCriticAgent(rl_training.PolicyAgent):
         margin=self._added_policy_slice_length,
         epochs=self._replay_epochs,
     ):
+      dist_inputs = self._get_dist_inputs(np_trajectory)
       (values, _, act_log_probs) = self._run_value_model(
-          np_trajectory.observations, np_trajectory.dist_inputs
+          np_trajectory.observations, dist_inputs
       )
       values = self._aggregate_values(
           values, self._q_value_aggregate, act_log_probs)
@@ -349,8 +365,9 @@ class ActorCriticAgent(rl_training.PolicyAgent):
         max_slice_length=max_slice_length,
         margin=self._added_policy_slice_length,
         include_final_state=False):
+      dist_inputs = self._get_dist_inputs(np_trajectory)
       (values, _, act_log_probs) = self._run_value_model(
-          np_trajectory.observations, np_trajectory.dist_inputs)
+          np_trajectory.observations, dist_inputs)
       values = self._aggregate_values(values, 'mean', act_log_probs)
       if len(values.shape) != 2:
         raise ValueError('Values are expected to have shape ' +
@@ -492,7 +509,8 @@ class AdvantageBasedActorCriticAgent(ActorCriticAgent):
     act = trajectory.actions[:, :advantages.shape[1]]
     mask = trajectory.mask[:, :advantages.shape[1]]  # Mask to zero-out padding.
     if trajectory.dist_inputs is not None:
-      dist_inputs = trajectory.dist_inputs[:, :advantages.shape[1]]
+      dist_inputs = self._get_dist_inputs(trajectory)
+      dist_inputs = dist_inputs[:, :advantages.shape[1]]
     else:
       dist_inputs = jnp.zeros(advantages.shape + (self._policy_dist.n_inputs,))
     # Shape checks to help debugging.
@@ -846,8 +864,9 @@ class SamplingAWR(AdvantageBasedActorCriticAgent):
         max_slice_length=self._max_slice_length,
         include_final_state=False,
     ):
+      dist_inputs = self._get_dist_inputs(np_trajectory)
       (q_values, actions, act_log_probs) = self._run_value_model(
-          np_trajectory.observations, np_trajectory.dist_inputs)
+          np_trajectory.observations, dist_inputs)
       shapes.assert_same_shape(q_values, act_log_probs)
 
       # q_values shape: (batch_size, n_samples, length)

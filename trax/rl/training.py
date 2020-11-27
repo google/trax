@@ -78,10 +78,11 @@ class Agent:
       output_dir: Path telling where to save outputs such as checkpoints.
       timestep_to_np: Timestep-to-numpy function to override in the task.
     """
-    assert bool(n_trajectories_per_epoch) != bool(n_interactions_per_epoch), (
-        'Exactly one of n_trajectories_per_epoch or n_interactions_per_epoch '
-        'should be specified.'
-    )
+    if n_trajectories_per_epoch is None == n_interactions_per_epoch is None:
+      raise ValueError(
+          'Exactly one of n_trajectories_per_epoch or '
+          'n_interactions_per_epoch should be specified.'
+      )
     self._epoch = 0
     self._task = task
     self._eval_steps = eval_steps or [task.max_steps]

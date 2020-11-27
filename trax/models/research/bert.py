@@ -18,10 +18,9 @@
 
 import os
 
+import gin
 import jax
 import tensorflow as tf
-
-import gin
 
 from trax import fastmath
 from trax import layers as tl
@@ -44,6 +43,7 @@ class AddBias(tl.Layer):
   def init_weights_and_state(self, input_signature):
     self.weights = np.zeros(input_signature.shape[-1])
 
+
 @gin.configurable()
 def BERTClassifierHead(n_classes):
   return tl.Serial([
@@ -52,8 +52,8 @@ def BERTClassifierHead(n_classes):
                kernel_initializer=tl.RandomNormalInitializer(0.02),
                bias_initializer=tl.RandomNormalInitializer(1e-6),
               ),
-      tl.LogSoftmax(),
   ])
+
 
 @gin.configurable()
 def BERTRegressionHead():

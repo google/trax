@@ -27,7 +27,7 @@ import gym
 from jax import numpy as np
 
 
-class SpaceSerializer(object):
+class SpaceSerializer:
   """Base class for Gym space serializers.
 
   Attrs:

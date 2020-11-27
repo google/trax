@@ -110,7 +110,7 @@ class BertInputsTest(absltest.TestCase):
     # model name is passed to bert_tokenizer through gin, this tests whether bert_preprocess handles function calls
 
     tf.random.set_seed(42)
-    stream = bert_inputs.glue_inputs('glue/cola', tokenizer=tokenizer_fn)
+    stream = bert_inputs.bert_glue_inputs('glue/cola', tokenizer=tokenizer_fn)
     self.assertEqual(exp_example_shape_dtype, stream.example_shape_dtype)
     sample_batch = next(stream.train_stream(1))
     self.assertEqual(2903, sample_batch[0][1, 2])

@@ -22,7 +22,6 @@ from trax import layers as tl
 def ConvBlock(kernel_size, filters, strides, norm, non_linearity,
               mode='train'):
   """ResNet convolutional striding block."""
-  # TODO(jonni): Use good defaults so Resnet50 code is cleaner / less redundant.
   ks = kernel_size
   filters1, filters2, filters3 = filters
   main = [
@@ -48,7 +47,6 @@ def ConvBlock(kernel_size, filters, strides, norm, non_linearity,
 def IdentityBlock(kernel_size, filters, norm, non_linearity,
                   mode='train'):
   """ResNet identical size block."""
-  # TODO(jonni): Use good defaults so Resnet50 code is cleaner / less redundant.
   ks = kernel_size
   filters1, filters2, filters3 = filters
   main = [
@@ -115,7 +113,6 @@ def Resnet50(d_hidden=64, n_output_classes=1001, mode='train',
       tl.AvgPool(pool_size=(7, 7)),
       tl.Flatten(),
       tl.Dense(n_output_classes),
-      tl.LogSoftmax(),
   )
 
 
@@ -173,5 +170,4 @@ def WideResnet(n_blocks=3, widen_factor=1, n_output_classes=10, bn_momentum=0.9,
       tl.AvgPool(pool_size=(8, 8)),
       tl.Flatten(),
       tl.Dense(n_output_classes),
-      tl.LogSoftmax(),
   )
