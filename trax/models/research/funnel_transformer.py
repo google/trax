@@ -111,12 +111,12 @@ def _Upsampler(total_pool_size, separate_cls):
   return tl.Fn('Upsampler', _Upsample)
 
 
-def _UpsamplerLM(shorten_factor):
-  def _upsample(short):
-    new_vecs = short.repeat(shorten_factor, axis=1)
-    return new_vecs
-  return tl.Fn('UpsamplerLM', _upsample)
-
+def _UpsamplerLM(shorten_factor, d_embedding):
+  return tl.Serial(
+      tl.Dense(shorten_factor * d_embedding),
+      tl.Fn('ProlongBack', lambda x: jnp.reshape(  # Prolong back.
+          x, (x.shape[0], x.shape[1] * shorten_factor, -1)), n_out=1),
+  )
 
 def _FunnelBlock(d_model, d_ff, n_heads,
                  dropout, dropout_shared_axes, mode, ff_activation,
@@ -569,7 +569,7 @@ def FunnelTransformerLM(vocab_size,
           tl.ShiftRight(n_positions=total_shorten_factor - 1),
           funnel_blocks,
           tl.LayerNorm(),
-          _UpsamplerLM(total_shorten_factor)
+          _UpsamplerLM(total_shorten_factor, d_model)
       ),
       post_decoder_blocks,
       conv_layer,
