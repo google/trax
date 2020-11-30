@@ -481,6 +481,7 @@ def FunnelTransformerLM(vocab_size,
                         vanilla_layers=(3, 3),
                         shorten_factors=(3,),
                         n_funnel_blocks=(2,),
+                        use_conv=True,
                         n_heads=8,
                         max_len=2048,
                         dropout=0.1,
@@ -556,6 +557,11 @@ def FunnelTransformerLM(vocab_size,
       mode, ff_activation
   )] + create_decoder_blocks(block_len) for shorten_factor, block_len in
                    zip(shorten_factors, n_funnel_blocks)]
+
+  conv_layer = tl.Serial(
+    tl.CausalConv(d_model, shorten_factors[0]),
+    tl.Relu()
+  ) if use_conv else None
 
   # Assemble and return the model.
   return tl.Serial(              # tokens (or chunked tuple of tokens)
