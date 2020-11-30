@@ -67,29 +67,29 @@ LayerNorm = layer_configure(LayerNorm)
 FilterResponseNorm = layer_configure(FilterResponseNorm)
 ThresholdedLinearUnit = layer_configure(ThresholdedLinearUnit)
 
-Attention = layer_configure(Attention, blacklist=['mode'])
-CausalAttention = layer_configure(CausalAttention, blacklist=['mode'])
-CausalFavor = layer_configure(CausalFavor, blacklist=['mode'])
+Attention = layer_configure(Attention, denylist=['mode'])
+CausalAttention = layer_configure(CausalAttention, denylist=['mode'])
+CausalFavor = layer_configure(CausalFavor, denylist=['mode'])
 DotProductCausalAttention = layer_configure(
-    DotProductCausalAttention, blacklist=['mode'])
-SelfAttention = layer_configure(SelfAttention, blacklist=['mode'])
+    DotProductCausalAttention, denylist=['mode'])
+SelfAttention = layer_configure(SelfAttention, denylist=['mode'])
 ModularCausalAttention = layer_configure(ModularCausalAttention,
-                                         blacklist=['mode'])
+                                         denylist=['mode'])
 LowRankCausalAttention = layer_configure(LowRankCausalAttention,
-                                         blacklist=['mode'])
+                                         denylist=['mode'])
 MultiplicativeCausalAttention = layer_configure(MultiplicativeCausalAttention,
-                                                blacklist=['mode'])
+                                                denylist=['mode'])
 MultiplicativeModularCausalAttention = layer_configure(
-    MultiplicativeModularCausalAttention, blacklist=['mode'])
+    MultiplicativeModularCausalAttention, denylist=['mode'])
 MultiplicativeConvCausalAttention = layer_configure(
-    MultiplicativeConvCausalAttention, blacklist=['mode'])
+    MultiplicativeConvCausalAttention, denylist=['mode'])
 ConvTranspose = layer_configure(ConvTranspose)
-LSHSelfAttention = layer_configure(LSHSelfAttention, blacklist=['mode'])
-EncDecAttention = layer_configure(EncDecAttention, blacklist=['mode'])
+LSHSelfAttention = layer_configure(LSHSelfAttention, denylist=['mode'])
+EncDecAttention = layer_configure(EncDecAttention, denylist=['mode'])
 
 InfinitePositionalEncoding = layer_configure(
-    InfinitePositionalEncoding, blacklist=['mode'])
+    InfinitePositionalEncoding, denylist=['mode'])
 TimeBinPositionalEncoding = layer_configure(
-    TimeBinPositionalEncoding, blacklist=['mode'])
+    TimeBinPositionalEncoding, denylist=['mode'])
 
 AtariConvInit = layer_configure(AtariConvInit)

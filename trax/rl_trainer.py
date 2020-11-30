@@ -53,7 +53,7 @@ FLAGS = flags.FLAGS
 
 
 # Not just 'train' to avoid a conflict with trax.train in GIN files.
-@gin.configurable(blacklist=[
+@gin.configurable(denylist=[
     'output_dir', 'train_batch_size', 'eval_batch_size', 'trajectory_dump_dir'
 ])
 def train_rl(

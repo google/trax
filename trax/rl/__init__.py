@@ -24,7 +24,7 @@ from trax.rl import training
 
 def configure_rl(*args, **kwargs):
   kwargs['module'] = 'trax.rl'
-  kwargs['blacklist'] = ['task', 'output_dir']
+  kwargs['denylist'] = ['task', 'output_dir']
   return gin.external_configurable(*args, **kwargs)
 
 

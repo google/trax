@@ -95,7 +95,7 @@ def create(space, vocab_size):
   }[type(space)](space, vocab_size)
 
 
-@gin.configurable(blacklist=['space', 'vocab_size'])
+@gin.configurable(denylist=['space', 'vocab_size'])
 class BoxSpaceSerializer(SpaceSerializer):
   """Serializer for gym.spaces.Box.
 

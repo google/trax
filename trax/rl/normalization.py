@@ -75,7 +75,7 @@ def running_mean_and_variance_get_variance(state):
   return running_mean_get_mean(var_state)
 
 
-@gin.configurable(blacklist=['mode'])
+@gin.configurable(denylist=['mode'])
 class Normalize(tl.Layer):
   """Numerically stable normalization layer."""
 
@@ -113,7 +113,7 @@ class Normalize(tl.Layer):
     return norm_observations
 
 
-@gin.configurable(blacklist=['mode'])
+@gin.configurable(denylist=['mode'])
 def LayerNormSquash(mode, width=128):  # pylint: disable=invalid-name
   """Dense-LayerNorm-Tanh normalizer inspired by ACME."""
   # https://github.com/deepmind/acme/blob/master/acme/jax/networks/continuous.py#L34

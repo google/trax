@@ -24,7 +24,7 @@ from trax import fastmath
 common_args = ['gamma', 'margin']
 
 
-@gin.configurable(blacklist=common_args)
+@gin.configurable(denylist=common_args)
 def monte_carlo(gamma, margin):
   """Calculate Monte Carlo advantage.
 
@@ -49,7 +49,7 @@ def monte_carlo(gamma, margin):
   return estimator
 
 
-@gin.configurable(blacklist=common_args)
+@gin.configurable(denylist=common_args)
 def td_k(gamma, margin):
   """Calculate TD-k advantage.
 
@@ -93,7 +93,7 @@ def td_k(gamma, margin):
   return estimator
 
 
-@gin.configurable(blacklist=common_args)
+@gin.configurable(denylist=common_args)
 def td_lambda(gamma, margin, lambda_=0.95):
   """Calculate TD-lambda advantage.
 
@@ -121,7 +121,7 @@ def td_lambda(gamma, margin, lambda_=0.95):
   return estimator
 
 
-@gin.configurable(blacklist=common_args)
+@gin.configurable(denylist=common_args)
 def gae(gamma, margin, lambda_=0.95):
   """Calculate Generalized Advantage Estimation.
 

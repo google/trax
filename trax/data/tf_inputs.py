@@ -414,8 +414,8 @@ def _get_vocab(vocab_type='subword', vocab_file=None, vocab_dir=None):
   return t5_spc_vocab.SentencePieceVocabulary(sentencepiece_model_file=path)
 
 
-# Makes the function accessible in gin configs, even with all args blacklisted.
-@gin.configurable(blacklist=['dataset', 'training'])
+# Makes the function accessible in gin configs, even with all args denylisted.
+@gin.configurable(denylist=['dataset', 'training'])
 def cifar10_no_augmentation_preprocess(dataset, training):
   del training
 
@@ -443,8 +443,8 @@ def _cifar_augment_image(image):
   return image
 
 
-# Makes the function accessible in gin configs, even with all args blacklisted.
-@gin.configurable(blacklist=['dataset', 'training'])
+# Makes the function accessible in gin configs, even with all args denylisted.
+@gin.configurable(denylist=['dataset', 'training'])
 def cifar10_augmentation_preprocess(dataset, training):
   """Preprocessing for cifar10 with augmentation (see below)."""
 
@@ -462,7 +462,7 @@ def cifar10_augmentation_preprocess(dataset, training):
   return dataset
 
 
-@gin.configurable(blacklist=['dataset', 'training'])
+@gin.configurable(denylist=['dataset', 'training'])
 def cifar10_augmentation_flatten_preprocess(dataset, training,
                                             predict_image_train_weight=0.01):
   """Preprocessing for cifar10 that flattens it and appends targets."""
@@ -493,7 +493,7 @@ def cifar10_augmentation_flatten_preprocess(dataset, training,
   return dataset
 
 
-@gin.configurable(blacklist=['dataset', 'training'])
+@gin.configurable(denylist=['dataset', 'training'])
 def concat_preprocess(dataset, training, pad_symbol=0):
   """Pre-processing function that concatenates input and target for LM."""
   del training
@@ -511,7 +511,7 @@ def concat_preprocess(dataset, training, pad_symbol=0):
   return dataset
 
 
-@gin.configurable(blacklist=['dataset', 'training'])
+@gin.configurable(denylist=['dataset', 'training'])
 def squeeze_targets_preprocess(dataset, training):
   """Pre-processing function that squeezes last axis of targets."""
   del training
@@ -525,7 +525,7 @@ def squeeze_targets_preprocess(dataset, training):
   return dataset
 
 
-@gin.configurable(blacklist=['dataset', 'training'])
+@gin.configurable(denylist=['dataset', 'training'])
 def lm1b_preprocess(dataset, training,
                     max_target_length=-1, max_eval_target_length=-1):
   """Preprocessing for LM1B: filter out targets exceeding maximum length."""
@@ -546,7 +546,7 @@ def lm1b_preprocess(dataset, training,
 
 
 # TODO(lukaszkaiser): find a single more abstract way of text pre-processing.
-@gin.configurable(blacklist=['dataset', 'training'])
+@gin.configurable(denylist=['dataset', 'training'])
 def wmt_preprocess(dataset, training,
                    max_length=-1, max_eval_length=-1):
   """Preprocessing for LM1B: filter out targets exceeding maximum length."""
@@ -568,7 +568,7 @@ def wmt_preprocess(dataset, training,
   return dataset
 
 
-@gin.configurable(blacklist=['dataset', 'training'])
+@gin.configurable(denylist=['dataset', 'training'])
 def wmt_concat_preprocess(dataset, training,
                           max_length=-1, max_eval_length=-1):
   """Preprocessing for WMT: filter exceeding maximum length and concatenate."""
@@ -587,7 +587,7 @@ def wmt_concat_preprocess(dataset, training,
   return dataset
 
 
-@gin.configurable(blacklist=['dataset', 'training'])
+@gin.configurable(denylist=['dataset', 'training'])
 def lm_token_preprocessing(dataset, training):
   """Concatenates inputs, 0, targets, with masking only for targets."""
   del training
@@ -607,7 +607,7 @@ def lm_token_preprocessing(dataset, training):
   return dataset
 
 
-@gin.configurable(blacklist=['hparams'])
+@gin.configurable(denylist=['hparams'])
 def bair_robot_pushing_hparams(
     hparams=None, video_num_input_frames=1, video_num_target_frames=15
     ):
@@ -618,7 +618,7 @@ def bair_robot_pushing_hparams(
     return video_num_input_frames, video_num_target_frames
 
 
-@gin.configurable(blacklist=['dataset', 'training'])
+@gin.configurable(denylist=['dataset', 'training'])
 def bair_robot_pushing_preprocess(dataset, training):
   """Pre-processing function that concatenates input and target frames."""
   del training
@@ -643,7 +643,7 @@ def bair_robot_pushing_preprocess(dataset, training):
 DEFAULT_SPM_PATH = 'gs://t5-data/vocabs/cc_all.32000/sentencepiece.model'  # GCS
 
 
-@gin.configurable(blacklist=['dataset', 'training'])
+@gin.configurable(denylist=['dataset', 'training'])
 def c4_preprocess(dataset, training, max_target_length=-1,
                   tokenization=None, spm_path=None):
   """Pre-processing function for C4 dataset."""
@@ -680,7 +680,7 @@ def c4_preprocess(dataset, training, max_target_length=-1,
   return dataset
 
 
-@gin.configurable(blacklist=['dataset', 'training'])
+@gin.configurable(denylist=['dataset', 'training'])
 def c4_bare_preprocess_fn(dataset,
                           training=True,
                           spm_path=None,
@@ -733,7 +733,7 @@ def c4_bare_preprocess_fn(dataset,
   return dataset
 
 
-@gin.configurable(blacklist=['dataset', 'training'])
+@gin.configurable(denylist=['dataset', 'training'])
 def filter_dataset_on_len(dataset, training, len_map=None,
                           filter_on_eval=False):
   """Filters a dataset of lengths given in `len_map`.
@@ -768,7 +768,7 @@ def filter_dataset_on_len(dataset, training, len_map=None,
   return dataset
 
 
-@gin.configurable(blacklist=['dataset', 'training'])
+@gin.configurable(denylist=['dataset', 'training'])
 def truncate_dataset_on_len(dataset, training, len_map=None,
                             truncate_on_eval=False):
   """Truncates features in an example to lengths given in `len_map`.
@@ -798,7 +798,7 @@ def truncate_dataset_on_len(dataset, training, len_map=None,
   return dataset.map(truncate_example)
 
 
-@gin.configurable(blacklist=['dataset', 'training'])
+@gin.configurable(denylist=['dataset', 'training'])
 def pad_dataset_to_length(dataset, training, len_map=None):
   """Pad features less than specified length to specified length."""
   del training
@@ -816,7 +816,7 @@ def pad_dataset_to_length(dataset, training, len_map=None):
   return dataset.map(pad_to_len)
 
 
-@gin.configurable(blacklist=['dataset', 'training'])
+@gin.configurable(denylist=['dataset', 'training'])
 def add_eos_to_output_features(dataset, training,
                                output_features='targets', eos=1):
   """Adds `EOS` to all features in `output_features`."""
@@ -832,7 +832,7 @@ def add_eos_to_output_features(dataset, training,
   return dataset.map(add_eos)
 
 
-@gin.configurable(blacklist=['dataset', 'training'])
+@gin.configurable(denylist=['dataset', 'training'])
 def generic_text_dataset_preprocess_fn(dataset,
                                        training=True,
                                        text_preprocess_fns=None,

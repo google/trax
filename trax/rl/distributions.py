@@ -69,7 +69,7 @@ class Distribution:
                  lambda inputs, point: self.log_prob(inputs, point))  # pylint: disable=unnecessary-lambda
 
 
-@gin.configurable(blacklist=['n_categories', 'shape'])
+@gin.configurable(denylist=['n_categories', 'shape'])
 class Categorical(Distribution):
   """Categorical distribution parametrized by logits."""
 
@@ -115,7 +115,7 @@ class Categorical(Distribution):
     return -jnp.sum(probs * log_probs, axis=-1)
 
 
-@gin.configurable(blacklist=['shape'])
+@gin.configurable(denylist=['shape'])
 class Gaussian(Distribution):
   """Independent multivariate Gaussian distribution parametrized by mean."""
 

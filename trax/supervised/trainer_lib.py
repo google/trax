@@ -502,7 +502,7 @@ class Trainer:
       self._eval_sw = None
 
 
-@gin.configurable(blacklist=['output_dir'])
+@gin.configurable(denylist=['output_dir'])
 def train(output_dir,
           model=gin.REQUIRED,
           loss_fn=tl.Serial(tl.LogSoftmax(), tl.CrossEntropyLoss(),
