@@ -168,96 +168,73 @@ def Transformer2(input_vocab_size,
   )
 
 
-class ConcatWithPadding(tl.Layer):
-  """Concatenates two length padded (B, L, H) arrays (of different lenghts)."""
+# Arg shapes: (B, L1, H), (B, L2, H), (B, L1).
+def _ConcatWithPadding(vec_e, vec_d, mask_e):
+  """Concatenate with padding: see the ConcatWithPadding layer for details."""
+  # pylint: disable=invalid-name
+  B, L1, H = vec_e.shape
+  L2 = vec_d.shape[1]
+  # pylint: enable=invalid-name
 
-  # Arg shapes: (B, L1, H), (B, L2, H), (B, L1).
-  def _ConcatWithPadding(self, vec_e, vec_d, mask_e):
-    # pylint: disable=invalid-name
-    B, L1, H = vec_e.shape
-    L2 = vec_d.shape[1]
-    # pylint: enable=invalid-name
+  if vec_d.shape != (B, L2, H):
+    raise ValueError(f'Shape of decoder vector, {vec_d.shape}, does not'
+                     f' equal {(B, L2, H)}.')
+  if mask_e.shape != (B, L1):
+    raise ValueError(f'Shape of encoder mask, {mask_e.shape}, does not'
+                     f' equal {(B, L1)}.')
 
-    if vec_d.shape != (B, L2, H):
-      raise ValueError(f'Shape of decoder vector, {vec_d.shape}, does not'
-                       f' equal {(B, L2, H)}.')
-    if mask_e.shape != (B, L1):
-      raise ValueError(f'Shape of encoder mask, {mask_e.shape}, does not'
-                       f' equal {(B, L1)}.')
+  def _UpdateRow(x):
+    # row_e - (L1, H), row_d - (L2, H), row_mask_e - (L1,)
+    row_e, row_d, row_mask_e = x
+    # final_row - (L1+L2, H)
+    final_row = jnp.concatenate([row_e, jnp.zeros_like(row_d)], axis=0)
+    # Find the last real token/vector of the encoder.
+    e_idx = jnp.sum(row_mask_e, dtype=jnp.int32)
+    # Starting after that index, update with the decoder row.
+    zero = jnp.array(0, dtype=e_idx.dtype)  # avoid int32/int64 mismatch
+    return fastmath.dynamic_update_slice(final_row, row_d, (e_idx, zero))
 
-    def _UpdateRow(x):
-      # row_e - (L1, H), row_d - (L2, H), row_mask_e - (L1,)
-      row_e, row_d, row_mask_e = x
-      # final_row - (L1+L2, H)
-      final_row = jnp.concatenate([row_e, jnp.zeros_like(row_d)], axis=0)
-      # Find the last real token/vector of the encoder.
-      e_idx = jnp.sum(row_mask_e, dtype=jnp.int32)
-      # Starting after that index, update with the decoder row.
-      zero = jnp.array(0, dtype=e_idx.dtype)  # avoid int32/int64 mismatch
-      return fastmath.dynamic_update_slice(final_row, row_d, (e_idx, zero))
+  return jax.lax.map(_UpdateRow, [vec_e, vec_d, mask_e])
 
-    return jax.lax.map(_UpdateRow, [vec_e, vec_d, mask_e])
 
-  def __init__(self, n_in=3, n_out=1, mode='train'):
-    super().__init__(n_in=n_in, n_out=n_out)
-    self._mode = mode
+def _StripFromConcatenateWithPadding(vec_ed, tok_e, tok_d):
+  """Strip concatenate with padding: see the layer below for details."""
+  # pylint: disable=invalid-name
+  B, L, H = vec_ed.shape
+  L1 = tok_e.shape[1]
+  L2 = tok_d.shape[1]
+  # pylint: enable=invalid-name
+  if L != L1 + L2:
+    raise ValueError(f'Length from encoder-decoder vectors ({L}) does not'
+                     f' equal sum of lengths from encoder ({L1}) and decoder'
+                     f' ({L2}).')
+  if tok_e.shape != (B, L1):
+    raise ValueError(f'Shape of encoder tokens, {tok_e.shape}, does not'
+                     f' equal {(B, L1)}.')
+  if tok_d.shape != (B, L2):
+    raise ValueError(f'Shape of decoder tokens, {tok_d.shape}, does not'
+                     f' equal {(B, L2)}.')
 
-  def init_weights_and_state(self, input_signature):
-    """Sets layer-specific internal state."""
-    del input_signature
-    self.state = jnp.array(0, dtype=jnp.int32)
+  def _UpdateRow(x):
+    # (L, H), (L1, H) & (L2, H)
+    row_ed, row_e, _ = x
+    mask_e = row_e != 0
+    len_e = jnp.sum(mask_e, dtype=jnp.int32)
+    # In `row_ed` start where encoder tokens/vecs end, i.e. are index `len_e`
+    # and pick up (L2, H) tensor slice from there.
+    zero = jnp.array(0, dtype=len_e.dtype)  # avoid int32/int64 mismatch
+    l2_np = jnp.array(L2, dtype=len_e.dtype)
+    h_np = jnp.array(H, dtype=len_e.dtype)
+    return fastmath.dynamic_slice(row_ed, (len_e, zero), (l2_np, h_np))
 
-  def forward(self, inputs):
-    vec_e, vec_d, mask_e = inputs
-
-    # In training/eval mode or at the first step predict mode i.e. when
-    # state.shape is (), i.e. at first step, we return the concatenated output.
-    if self._mode != 'predict' or not self.state.shape:
-      # Now state.shape will not evaluate to false.
-      self.state = self.state.reshape((1,))
-      return self._ConcatWithPadding(vec_e, vec_d, mask_e)
-
-    # In predict mode and on subsequent steps (i.e. after the first step) we
-    # don't concatenate anymore, but just return the decoder vector.
-    return vec_d
+  return jax.lax.map(_UpdateRow, [vec_ed, tok_e, tok_d])
 
 
 class StripFromConcatenateWithPadding(tl.Layer):
   """Strips out the leading encoder tokens from the concatenated array."""
 
-  def _StripFromConcatenateWithPadding(self, vec_ed, tok_e, tok_d):
-    # pylint: disable=invalid-name
-    B, L, H = vec_ed.shape
-    L1 = tok_e.shape[1]
-    L2 = tok_d.shape[1]
-    # pylint: enable=invalid-name
-    if L != L1 + L2:
-      raise ValueError(f'Length from encoder-decoder vectors ({L}) does not'
-                       f' equal sum of lengths from encoder ({L1}) and decoder'
-                       f' ({L2}).')
-    if tok_e.shape != (B, L1):
-      raise ValueError(f'Shape of encoder tokens, {tok_e.shape}, does not'
-                       f' equal {(B, L1)}.')
-    if tok_d.shape != (B, L2):
-      raise ValueError(f'Shape of decoder tokens, {tok_d.shape}, does not'
-                       f' equal {(B, L2)}.')
-
-    def _UpdateRow(x):
-      # (L, H), (L1, H) & (L2, H)
-      row_ed, row_e, _ = x
-      mask_e = row_e != 0
-      len_e = jnp.sum(mask_e, dtype=jnp.int32)
-      # In `row_ed` start where encoder tokens/vecs end, i.e. are index `len_e`
-      # and pick up (L2, H) tensor slice from there.
-      zero = jnp.array(0, dtype=len_e.dtype)  # avoid int32/int64 mismatch
-      l2_np = jnp.array(L2, dtype=len_e.dtype)
-      h_np = jnp.array(H, dtype=len_e.dtype)
-      return fastmath.dynamic_slice(row_ed, (len_e, zero), (l2_np, h_np))
-
-    return jax.lax.map(_UpdateRow, [vec_ed, tok_e, tok_d])
-
-  def __init__(self, n_in=3, n_out=1, mode='train'):
-    super().__init__(n_in=n_in, n_out=n_out)
+  def __init__(self, mode='train'):
+    super().__init__(n_in=3, n_out=1)
     self._mode = mode
 
   def init_weights_and_state(self, input_signature):
@@ -273,8 +250,86 @@ class StripFromConcatenateWithPadding(tl.Layer):
     if self._mode != 'predict' or not self.state.shape:
       # Now state.shape will not evaluate to false.
       self.state = self.state.reshape((1,))
-      return self._StripFromConcatenateWithPadding(vec_ed, tok_e, tok_d)
+      return _StripFromConcatenateWithPadding(vec_ed, tok_e, tok_d)
 
     # In predict mode and on subsequent steps (i.e. after the first step) vec_ed
     # is actually vec_d, since no concatenation happened at all.
     return vec_ed
+
+
+class ConcatWithPadding(tl.ReversibleLayer):
+  """Concatenates two length padded (B, L, H) arrays (of different lenghts)."""
+
+  def __init__(self, mode='train'):
+    super().__init__(n_in=5, n_out=3)
+    self._mode = mode
+
+  def init_weights_and_state(self, input_signature):
+    """Sets layer-specific internal state."""
+    del input_signature
+    self.state = jnp.array(0, dtype=jnp.int32)
+
+  def forward(self, inputs):
+    vec_e, vec_d, mask_e, tok_e, tok_d = inputs
+
+    # In training/eval mode or at the first step predict mode i.e. when
+    # state.shape is (), i.e. at first step, we return the concatenated output.
+    if self._mode != 'predict' or not self.state.shape:
+      # Now state.shape will not evaluate to false.
+      self.state = self.state.reshape((1,))
+      return _ConcatWithPadding(vec_e, vec_d, mask_e), tok_e, tok_d
+
+    # In predict mode and on subsequent steps (i.e. after the first step) we
+    # don't concatenate anymore, but just return the decoder vector.
+    return vec_d, tok_e, tok_d
+
+  def reverse(self, output, weights=(), state=(), new_state=(), rng=None):
+    del state, new_state, rng, weights
+    assert self._mode != 'predict', 'cannot reverse in predict mode'
+    vecs_ed, toks_e, toks_d = output
+    vecs_d = _StripFromConcatenateWithPadding(vecs_ed, toks_e, toks_d)
+    mask_e = (toks_e != 0)
+    mask_e_float = mask_e.astype(jnp.float32)
+    vecs_e = vecs_ed[:, :toks_e.shape[1], :] * mask_e_float[:, :, None]
+    return vecs_e, vecs_d, mask_e, toks_e, toks_d
+
+
+class ConcatWithPadding2(tl.ReversibleLayer):
+  """Concatenate with padding operating on pairs to combine with rev-nets."""
+
+  def __init__(self, mode='train'):
+    super().__init__(n_in=6, n_out=4)
+    self._mode = mode
+
+  def init_weights_and_state(self, input_signature):
+    """Sets layer-specific internal state."""
+    del input_signature
+    self.state = jnp.array(0, dtype=jnp.int32)
+
+  def forward(self, inputs):
+    vecs_e1, vecs_e2, vecs_d, mask_e, toks_e, toks_d = inputs
+
+    # In training/eval mode or at the first step predict mode i.e. when
+    # state.shape is (), i.e. at first step, we return the concatenated output.
+    if self._mode != 'predict' or not self.state.shape:
+      # Now state.shape will not evaluate to false.
+      self.state = self.state.reshape((1,))
+      # Calculate mask and concat_with_padding on the pairs.
+      vecs_ed1 = _ConcatWithPadding(vecs_e1, vecs_d, mask_e)
+      vecs_ed2 = _ConcatWithPadding(vecs_e2, vecs_d, mask_e)
+      return vecs_ed1, vecs_ed2, toks_e, toks_d
+
+    # In predict mode and on subsequent steps (i.e. after the first step) we
+    # don't concatenate anymore, but just return the decoder vector.
+    return vecs_d, vecs_d, toks_e, toks_d
+
+  def reverse(self, output, weights=(), state=(), new_state=(), rng=None):
+    del state, new_state, rng, weights
+    assert self._mode != 'predict', 'cannot reverse in predict mode'
+    vecs_ed1, vecs_ed2, toks_e, toks_d = output
+    vecs_d = _StripFromConcatenateWithPadding(vecs_ed1, toks_e, toks_d)
+    mask_e = (toks_e != 0)
+    mask_e_float = mask_e.astype(jnp.float32)
+    vecs_e1 = vecs_ed1[:, :toks_e.shape[1], :] * mask_e_float[:, :, None]
+    vecs_e2 = vecs_ed2[:, :toks_e.shape[1], :] * mask_e_float[:, :, None]
+    return vecs_e1, vecs_e2, vecs_d, mask_e, toks_e, toks_d

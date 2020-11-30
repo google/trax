@@ -671,13 +671,13 @@ def Reformer2(input_vocab_size,
       for _ in range(n_encoder_layers)]
   # pylint: enable=g-complex-comprehension
 
-  encoder = tl.Serial([                # vec_e mask_e tok_e tok_d tok_d
-      tl.Dup(),                        # vec_e1 vec_e2 mask_e tok_e tok_d tok_d
+  encoder = tl.Serial(     # vec_e mask_e tok_e tok_d tok_d
+      tl.ReversibleSelect([0, 0]),     # vec_e1 vec_e2 mask_e tok_e tok_d tok_d
       _ReversibleSerialForget(encoder_blocks, d_model, n_layers_forget),
       tl.Fn('XYAvg', lambda x, y: (x + y) / 2.0),
       tl.Dense(d_model, use_bfloat16=use_bfloat16),
       tl.LayerNorm(),
-  ])
+  )
   if mode == 'predict':
     encoder = tl.Cache(encoder)
 
@@ -733,15 +733,12 @@ def Reformer2(input_vocab_size,
       # Encode.
       encoder,                                  # vec_e mask_e tok_e vec_d tok_d
 
-      # Decode.
-      tl.Select([3, 0, 1, 2]),                 #  vec_d vec_e mask_e tok_e tok_d
-
       # Concat encoder and decoder, given encoder mask.
-      tl.Select([1, 0]),                       # vec_e vec_d mask_e tok_e tok_d
-      t2.ConcatWithPadding(mode=mode),         # vec_ed tok_e tok_d
+      tl.ReversibleSelect([0, 3, 1, 2]),        # vec_e vec_d mask_e tok_e tok_d
+      t2.ConcatWithPadding(mode=mode),          # vec_ed tok_e tok_d
+      tl.ReversibleSelect([0, 0]),              # vec_ed vec_ed tok_e tok_d
 
-      # Run (encoder and) decoder blocks.
-      tl.Dup(),                                    # vec_ed1 vec_ed2 tok_e tok_d
+      # Run decoder blocks.
       _ReversibleSerialForget(decoder_blocks, d_model,
                               n_layers_forget),    # vec_ed1 vec_ed2 tok_e tok_d
       tl.Fn('XYAvg',

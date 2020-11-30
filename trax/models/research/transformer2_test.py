@@ -59,9 +59,9 @@ class Transformer2Test(absltest.TestCase):
     )
 
     layer = transformer2.ConcatWithPadding(mode='train')
-    inp = (vec_e, vec_d, mask_e)
-    _, _ = layer.init(shapes.signature(inp))
-    y = layer(inp)
+    inp = (vec_e, vec_d, mask_e, vec_e, vec_d)  # tok_e = vec_e, tok_d = vec_d
+    layer.init(shapes.signature(inp))
+    y, _, _ = layer(inp)
 
     np.testing.assert_equal(
         y,
@@ -124,9 +124,9 @@ class Transformer2Test(absltest.TestCase):
     )
 
     layer = transformer2.ConcatWithPadding(mode='predict')
-    inp = (vec_e, vec_d, mask_e)
+    inp = (vec_e, vec_d, mask_e, vec_e, vec_d)  # tok_e = vec_e, tok_d = vec_d
     _, _ = layer.init(shapes.signature(inp))
-    y = layer(inp)
+    y, _, _ = layer(inp)
 
     np.testing.assert_equal(
         y,
@@ -157,8 +157,99 @@ class Transformer2Test(absltest.TestCase):
 
     # On subsequent runs however, we should get vec_d only.
     for _ in range(2):
-      y = layer(inp)
+      y, _, _ = layer(inp)
       np.testing.assert_equal(y, vec_d)
+
+  def test_concat_with_padding2(self):
+    vec_e = np.array(
+        [[[7, 5, 2, 8, 8, 8, 6, 7],
+          [8, 2, 6, 2, 1, 1, 4, 2],
+          [0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0]],
+
+         [[4, 3, 1, 7, 5, 6, 2, 1],
+          [6, 9, 9, 4, 1, 3, 2, 1],
+          [3, 8, 2, 4, 7, 9, 4, 1],
+          [0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0]]]
+    )
+
+    # vec_e[:,:,0] != 0
+    mask_e = np.array([[True, True, False, False, False, False],
+                       [True, True, True, False, False, False]])
+
+    vec_d = np.array(
+        [[[4, 7, 7, 4, 8, 9, 9, 9],
+          [6, 8, 2, 9, 3, 6, 6, 8],
+          [0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0]],
+
+         [[3, 7, 5, 6, 2, 9, 3, 1],
+          [4, 7, 3, 2, 1, 1, 1, 6],
+          [0, 0, 0, 0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0, 0, 0, 0]]]
+    )
+
+    layer = transformer2.ConcatWithPadding2(mode='train')
+    inp = (vec_e, vec_e, vec_d, mask_e, vec_e, vec_d)
+    layer.init(shapes.signature(inp))
+    y1, y2, _, _ = layer(inp)
+
+    np.testing.assert_equal(
+        y1,
+        np.array(
+            [[[7, 5, 2, 8, 8, 8, 6, 7],
+              [8, 2, 6, 2, 1, 1, 4, 2],
+              [4, 7, 7, 4, 8, 9, 9, 9],
+              [6, 8, 2, 9, 3, 6, 6, 8],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0]],
+
+             [[4, 3, 1, 7, 5, 6, 2, 1],
+              [6, 9, 9, 4, 1, 3, 2, 1],
+              [3, 8, 2, 4, 7, 9, 4, 1],
+              [3, 7, 5, 6, 2, 9, 3, 1],
+              [4, 7, 3, 2, 1, 1, 1, 6],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0]]]
+        )
+    )
+    np.testing.assert_equal(
+        y2,
+        np.array(
+            [[[7, 5, 2, 8, 8, 8, 6, 7],
+              [8, 2, 6, 2, 1, 1, 4, 2],
+              [4, 7, 7, 4, 8, 9, 9, 9],
+              [6, 8, 2, 9, 3, 6, 6, 8],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0]],
+
+             [[4, 3, 1, 7, 5, 6, 2, 1],
+              [6, 9, 9, 4, 1, 3, 2, 1],
+              [3, 8, 2, 4, 7, 9, 4, 1],
+              [3, 7, 5, 6, 2, 9, 3, 1],
+              [4, 7, 3, 2, 1, 1, 1, 6],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0],
+              [0, 0, 0, 0, 0, 0, 0, 0]]]
+        )
+    )
 
   def test_strip_from_concatenate_with_padding(self):
     enc_dec = np.array(
