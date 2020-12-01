@@ -189,6 +189,20 @@ class InputsTest(parameterized.TestCase):
     self.assertEqual(truncated3[0].shape, (1, 5))
     self.assertEqual(truncated3[1].shape, (1, 5))
 
+  def test_filter_empty_examples(self):
+    tensors1 = [(np.zeros((0,)), np.ones((1, 5))),
+                (np.zeros((1, 5)), np.ones((1, 5)))]
+
+    filter_empty_examples_function1 = data.inputs.FilterEmptyExamples()
+    filtered1 = next(filter_empty_examples_function1(tensors1))
+    self.assertEqual(filtered1[0].shape, (1, 5))
+    self.assertEqual(filtered1[1].shape, (1, 5))
+
+    filter_empty_examples_function2 = data.inputs.FilterEmptyExamples(axes=[1])
+    filtered2 = next(filter_empty_examples_function2(tensors1))
+    self.assertEqual(filtered2[0].shape, (0,))
+    self.assertEqual(filtered2[1].shape, (1, 5))
+
   def test_append_value(self):
     tensors1 = [(np.zeros((1, 5)), np.ones((1, 5)))]
 

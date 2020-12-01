@@ -39,7 +39,7 @@ attn_type = @LSHSelfAttention
 make_inputs.train_stream = [
   @train/data.TFDS(),
   @data.Tokenize(),
-  @data.FilterByLength(),
+  @data.FilterEmptyExamples(),
   @data.TruncateToLength(),
   @data.AppendValue(),
   @data.PadToLength(),
@@ -52,8 +52,6 @@ train/data.TFDS.train = True
 data.Tokenize.vocab_file = 'gs://t5-data/vocabs/cc_all.32000/sentencepiece.model'
 data.Tokenize.keys = [0, 1]
 data.Tokenize.vocab_type = 'sentencepiece'
-data.FilterByLength.min_length = 1
-data.FilterByLength.length_keys = [0]
 data.TruncateToLength.len_map = {0: (15359, ), 1: (1023, )}
 data.AppendValue.val = {0:[0], 1:[1]}
 data.PadToLength.len_map = {0: 15360, 1: 1024}
@@ -64,7 +62,7 @@ data.AddLossWeights.id_to_mask = 0
 make_inputs.eval_stream = [
   @eval/data.TFDS(),
   @data.Tokenize(),
-  @data.FilterByLength(),
+  @data.FilterEmptyExamples(),
   @data.TruncateToLength(),
   @data.AppendValue(),
   @data.PadToLength(),
@@ -172,7 +170,7 @@ train.steps = 1000000
 train.optimizer = @trax.optimizers.Adafactor
 train.checkpoint_highest = 'neg_log_perplexity'
 train.checkpoint_lowest = 'loss'
-# train.inputs = @trax.data.inputs.make_inputs
+train.inputs = @trax.data.inputs.make_inputs
 
 
 # We are using T5's 32k SPM model by default.
