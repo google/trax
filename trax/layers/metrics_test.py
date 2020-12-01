@@ -24,6 +24,56 @@ import trax.layers as tl
 
 class MetricsTest(absltest.TestCase):
 
+  def test_category_accuracy(self):
+    layer = tl.CategoryAccuracy()
+    targets = np.array([0, 1, 2])
+
+    model_outputs = np.array([[.7, .2, .1, 0.],
+                              [.2, .7, .1, 0.],
+                              [.2, .1, .7, 0.]])
+    accuracy = layer([model_outputs, targets])
+    self.assertEqual(accuracy, 1.0)
+
+    model_outputs = np.array([[.2, .1, .7, 0.],
+                              [.2, .1, .7, 0.],
+                              [.2, .1, .7, 0.]])
+    accuracy = layer([model_outputs, targets])
+    self.assertEqual(accuracy, 1 / 3)
+
+  def test_weighted_category_accuracy_even_weights(self):
+    layer = tl.WeightedCategoryAccuracy()
+    weights = np.array([1., 1., 1.])
+    targets = np.array([0, 1, 2])
+
+    model_outputs = np.array([[.7, .2, .1, 0.],
+                              [.2, .7, .1, 0.],
+                              [.2, .1, .7, 0.]])
+    accuracy = layer([model_outputs, targets, weights])
+    self.assertEqual(accuracy, 1.0)
+
+    model_outputs = np.array([[.2, .1, .7, 0.],
+                              [.2, .1, .7, 0.],
+                              [.2, .1, .7, 0.]])
+    accuracy = layer([model_outputs, targets, weights])
+    self.assertEqual(accuracy, 1 / 3)
+
+  def test_weighted_category_accuracy_uneven_weights(self):
+    layer = tl.WeightedCategoryAccuracy()
+    weights = np.array([1., 5., 2.])
+    targets = np.array([0, 1, 2])
+
+    model_outputs = np.array([[.7, .2, .1, 0.],
+                              [.2, .7, .1, 0.],
+                              [.2, .1, .7, 0.]])
+    accuracy = layer([model_outputs, targets, weights])
+    self.assertEqual(accuracy, 1.0)
+
+    model_outputs = np.array([[.2, .7, .1, 0.],
+                              [.2, .7, .1, 0.],
+                              [.2, .7, .1, 0.]])
+    accuracy = layer([model_outputs, targets, weights])
+    self.assertEqual(accuracy, .625)
+
   def test_accuracy_even_weights(self):
     layer = tl.Accuracy()
     weights = np.array([1., 1., 1.])
