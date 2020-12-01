@@ -561,7 +561,7 @@ def FunnelTransformerLM(vocab_size,
   conv_layer = tl.Serial(
     tl.CausalConv(d_model, shorten_factors[0]),
     tl.Relu()
-  ) if use_conv else None
+  ) if use_conv else []
 
   # Assemble and return the model.
   return tl.Serial(              # tokens (or chunked tuple of tokens)
