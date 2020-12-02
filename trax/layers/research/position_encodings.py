@@ -108,7 +108,7 @@ class FixedBasePositionalEncoding(layer_base.Layer):
   """Implements fixed-base positional encoding."""
 
   def __init__(self, bases=[11, 13, 14, 15], n_digits=8,  #  pylint: disable=dangerous-default-value
-               start_from_zero_one_in=100, base_dropout_one_in=100,
+               start_from_zero_one_in=2, base_dropout_one_in=100,
                mode='train', initializer=init.RandomUniformInitializer(1e-4)):
     super().__init__()
     self._bases = bases
