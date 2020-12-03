@@ -26,7 +26,6 @@ from trax.fastmath import numpy as jnp
 from trax.layers import base
 from trax.layers import core
 from trax.layers import initializers as init
-from trax.layers import metrics
 from trax.layers import reversible
 from trax.layers.assert_shape import assert_shape
 
@@ -848,7 +847,7 @@ class SparseFF(base.Layer):
     quant_mask = jnp.argmax(log_mask + g * self._temperature, axis=-1)
     if self._mode == 'train':
       # Tricks from Section 2.1 in https://arxiv.org/abs/1801.09797
-      quant_mask = metrics.one_hot(quant_mask, self._n_elements_in_block)
+      quant_mask = tl.one_hot(quant_mask, self._n_elements_in_block)
       quant_mask = fastmath.stop_gradient(quant_mask)
       quant_mask += mask - fastmath.stop_gradient(mask)  # straight-through
       # We will sometimes (quant_prob of the batches) use the soft-mask instead
@@ -886,7 +885,7 @@ class SparseFF(base.Layer):
       v = jnp.reshape(v, [batch_size, self._d1, -1])
       res = jnp.einsum('ai,aij->aj', relu, v) + b2
     else:
-      quant_mask = metrics.one_hot(quant_mask, self._n_elements_in_block)
+      quant_mask = tl.one_hot(quant_mask, self._n_elements_in_block)
       quant_mask = jnp.reshape(quant_mask, [-1, self._d_ff])
       mid = jnp.dot(x, w1) * quant_mask  # [joint_batch, d_ff]
       relu = jnp.where(mid <= 0, jnp.zeros_like(mid), mid)
@@ -985,7 +984,7 @@ class BlockSparseFF(base.Layer):
     selected_experts = jnp.argmax(log_mask + g * self._temperature, axis=-1)
     if self._mode == 'train':
       # Tricks from Section 2.1 in https://arxiv.org/abs/1801.09797
-      quant_mask = metrics.one_hot(selected_experts, self._num_experts)
+      quant_mask = tl.one_hot(selected_experts, self._num_experts)
       quant_mask = fastmath.stop_gradient(quant_mask)
       quant_mask += mask - fastmath.stop_gradient(mask)  # straight-through
       # We will sometimes (50% of the batches) use the soft-mask instead of
@@ -994,7 +993,7 @@ class BlockSparseFF(base.Layer):
       select = fastmath.random.uniform(rng2, (), jnp.float32, -1.0, 1.0)
       quant_mask = jnp.where(select > 0.0, quant_mask, mask)
     else:
-      quant_mask = metrics.one_hot(selected_experts, self._num_experts)
+      quant_mask = tl.one_hot(selected_experts, self._num_experts)
     quant_mask = jnp.reshape(quant_mask, [-1, self._num_experts, 1])
     quant_mask_shape = quant_mask.shape
     batch_size = quant_mask.shape[0]

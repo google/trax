@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Core layer types, such as `Dense`, `Embedding`, and `Dropout`."""
+"""Core layer types and key functions used by various layers."""
 
 from absl import logging
 import numpy as np
@@ -588,8 +588,7 @@ def LogSoftmax(axis=-1):
   Args:
     axis: Axis along which values are grouped for computing log softmax.
   """
-  return Fn('LogSoftmax',
-            lambda x: x - fastmath.logsumexp(x, axis, keepdims=True))
+  return Fn('LogSoftmax', lambda x: log_softmax(x, axis=axis))
 
 
 def LogSumExp(axis=-1):
@@ -613,7 +612,7 @@ def Softmax(axis=-1):
     axis: Axis along which values are grouped for computing softmax.
   """
   return Fn('Softmax',
-            lambda x: jnp.exp(x - fastmath.logsumexp(x, axis, keepdims=True)))
+            lambda x: jnp.exp(log_softmax(x, axis=axis)))
 
 
 def ToFloat():
@@ -704,6 +703,30 @@ def StopGradient():
   return Fn('StopGradient', lambda x: fastmath.stop_gradient(x))  # pylint: disable=unnecessary-lambda
 
 
+def one_hot(x, n_categories, dtype=jnp.float32):  # pylint: disable=invalid-name
+  """Makes a one-hot array (n+1 dims) from an int-categorical array (n dims)."""
+  indices_less_than_n = jnp.arange(n_categories)
+  return jnp.array(x[..., jnp.newaxis] == indices_less_than_n, dtype)
+
+
+def log_softmax(x, axis=-1):  # pylint: disable=invalid-name
+  """Transforms activation vectors to log-probability vectors.
+
+  Log probability vectors are derived by, in effect, applying softmax to raw
+  activation vectors and then applying log element-wise. The actual
+  implementation uses a mathematically valid simplification of this.
+
+  Args:
+    x: An ndarray with activation vectors along the given axis.
+    axis: Axis along which values are grouped for computing log softmax.
+
+  Returns:
+    An ndarray containing log-probability vectors derived from the raw
+    activation vectors in `x`.
+  """
+  return x - fastmath.logsumexp(x, axis=axis, keepdims=True)
+
+
 def log_gaussian_pdf(x, mu, sigma):  # pylint: disable=invalid-name
   """Returns `log N(x | mu, sigma)`.
 
@@ -761,6 +784,7 @@ def multigaussian_loss(preds, targets, ngauss=1):  # pylint: disable=invalid-nam
   return fastmath.logsumexp(loglogits + glogprobs, axis=-1)
 
 
+# TODO(jonni): Rename to log_softmax_sample.
 def logsoftmax_sample(log_probs, temperature=1.0):  # pylint: disable=invalid-name
   """Returns a sample from a log-softmax output, with temperature.
 

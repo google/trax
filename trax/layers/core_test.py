@@ -331,8 +331,51 @@ class FlattenTest(absltest.TestCase):
       _ = layer(x)
 
 
-class LogGaussianTest(absltest.TestCase):
-  # TODO(jonni): Find a more fitting home for this test.
+class LogSoftmaxTest(absltest.TestCase):
+
+  def test_call(self):
+    layer = tl.LogSoftmax()
+    x = np.array([[2., 1., -10.],
+                  [1., 1., -10.]])
+    y = layer(x)
+    np.testing.assert_allclose(y,
+                               [[-0.313, -1.313, -12.313],
+                                [-0.693, -0.693, -11.693]],
+                               atol=.001)
+
+
+class SoftmaxTest(absltest.TestCase):
+
+  def test_call(self):
+    layer = tl.Softmax()
+    x = np.array([[2., 1., -10.],
+                  [1., 1., -10.]])
+    y = layer(x)
+    np.testing.assert_allclose(y,
+                               [[.731, .269, .00000449],
+                                [.500, .500, .00000835]],
+                               atol=.001)
+
+
+class CoreFunctionsTest(absltest.TestCase):
+
+  def test_one_hot(self):
+    targets = np.array([2, 0, 1])
+    n_categories = 5
+    target_distributions = tl.one_hot(targets, n_categories)
+    self.assertEqual(tl.to_list(target_distributions),
+                     [[0., 0., 1., 0., 0.],
+                      [1., 0., 0., 0., 0.],
+                      [0., 1., 0., 0., 0.]])
+
+  def test_log_softmax(self):
+    activations = np.array([[2., 1., -10.],
+                            [1., 1., -10.]])
+    log_probabilities = tl.log_softmax(activations)
+    np.testing.assert_allclose(log_probabilities,
+                               [[-0.313, -1.313, -12.313],
+                                [-0.693, -0.693, -11.693]],
+                               atol=.001)
 
   def test_log_gaussian_pdf(self):
     x = np.zeros((2, 5), dtype=np.float32)
