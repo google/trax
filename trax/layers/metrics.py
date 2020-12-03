@@ -22,11 +22,11 @@ A metric layer computes a scalar value from two or three ndarray inputs:
 
   - targets: Batch of target values (e.g., categories or vectors).
 
-  - weights: Float values that allow for uneven weighting of vector components,
-    sequence positions, categories, or batch items when computing an overall
-    scalar value summarizing the batch.
+  - weights: Float values that allow for uneven weighting of batch items,
+    sequence positions, or vector components when computing an overall scalar
+    value for the batch.
 
-Some metric computations take into account the items that make up a batch. For
+Most metric computations take into account the items that make up a batch. For
 each item in a batch, a raw metric value is computed by comparing (item-wise)
 the model output to the target value. These item-wise values are then combined
 into a single scalar for the batch by a function such as sum, average, or
@@ -42,10 +42,6 @@ weighted-average. For example:
     predicted distribution relative to the (assumed true) target distribution.
     The scalar value for the batch is then the average of the item-wise
     cross-entropy values.
-
-In deriving a single scalar for the batch, there is flexibility to use reducing
-functions other than a cross-item average, for instance sum, weighted/masked
-mean, or a specialized sequence mean.
 """
 
 from trax import shapes
@@ -98,9 +94,9 @@ def WeightedCategoryAccuracy():
       `{0, ..., N-1}`.
 
     - A batch of weights, which matches or can be broadcast to match the shape
-      of the target ndarray. This arg can be used to give uneven weighting to
-      different output categories (axis -1) or different items in the batch
-      (axis 0).
+      of the target ndarray. This arg can give uneven weighting to different
+      items in the batch (depending, for instance, on the item's target
+      category).
 
   The predicted category from each vector is the index of the highest-valued
   vector component. The layer returns a weighted average accuracy of these
