@@ -141,13 +141,51 @@ def CategoryCrossEntropy():
   the batch.
   """
   def f(model_output, targets):  # pylint: disable=invalid-name
-    target_distributions = core.one_hot(targets, model_output.shape[-1])
-    model_log_distributions = core.log_softmax(model_output)
-    cross_entropies = - jnp.sum(target_distributions * model_log_distributions,
-                                axis=-1)
+    cross_entropies = _category_cross_entropy(model_output, targets)
     return jnp.average(cross_entropies)
 
   return base.Fn('CategoryCrossEntropy', f)
+
+
+def WeightedCategoryCrossEntropy():
+  """Returns a layer like `CategoryCrossEntropy`, with weights as third input.
+
+  The layer takes three inputs:
+
+    - A batch of activation vectors. The components in a given vector should
+      be pre-softmax activations (mappable to a probability distribution via
+      softmax). For performance reasons, the softmax and cross entropy
+      computations are combined inside the layer.
+
+    - A batch of target categories; each target is an integer in
+      `{0, ..., N-1}`, where `N` is the activation vector depth/dimensionality.
+
+    - A batch of weights, which matches or can be broadcast to match the shape
+      of the target ndarray. This arg can give uneven weighting to different
+      items in the batch (depending, for instance, on the item's target
+      category).
+
+  To compute cross-entropy, the layer derives probability distributions from
+  its inputs:
+
+    - activation vectors: vector --> SoftMax(vector)
+
+    - target categories: integer --> OneHot(integer)
+
+  (The conversion of integer category targets to one-hot vectors amounts to
+  assigning all the probability mass to the target category.) Cross-entropy
+  per batch item is computed between the resulting distributions; notionally:
+
+      cross_entropy(one_hot(targets), softmax(model_output))
+
+  The layer returns the weighted average of these cross-entropy values over all
+  items in the batch.
+  """
+  def f(model_output, targets, weights):  # pylint: disable=invalid-name
+    cross_entropies = _category_cross_entropy(model_output, targets)
+    return jnp.sum(cross_entropies * weights) / jnp.sum(weights)
+
+  return base.Fn('WeightedCategoryCrossEntropy', f)
 
 
 def Accuracy(classifier=core.ArgMax()):
@@ -312,3 +350,9 @@ def _WeightedSequenceMean():
     correct_seq = 1.0 - jnp.minimum(1.0, not_correct_seq)
     return jnp.mean(correct_seq)  # Mean over batch.
   return base.Fn('_WeightedSequenceMean', f)
+
+
+def _category_cross_entropy(model_output, targets):  # pylint: disable=invalid-name
+  target_distributions = core.one_hot(targets, model_output.shape[-1])
+  model_log_distributions = core.log_softmax(model_output)
+  return - jnp.sum(target_distributions * model_log_distributions, axis=-1)
