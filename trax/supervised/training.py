@@ -1099,7 +1099,7 @@ def _make_weights_and_state_same_across_hosts(weights_and_state):
   # self._n_devices
 
   # This is the total number of devices across all hosts.
-  n_devices_total = fastmath.psum(jnp.array(1.0), 'devices')
+  n_devices_total = fastmath.psum(jnp.array(1.0), 'devices').astype(jnp.int32)
 
   # This sums up the weights and state across all devices.
   # NOTE: There will not be any leading axis remaining because we psum
@@ -1107,7 +1107,8 @@ def _make_weights_and_state_same_across_hosts(weights_and_state):
   weights_and_state = fastmath.psum(weights_and_state, 'devices')
 
   # We finally take the average over all devices.
+  # We also make sure we don't change the type of the weights and state.
   weights_and_state = jax.tree_util.tree_map(
-      lambda ws: ws / n_devices_total, weights_and_state)
+      lambda ws: (ws / n_devices_total).astype(ws.dtype), weights_and_state)
 
   return weights_and_state
