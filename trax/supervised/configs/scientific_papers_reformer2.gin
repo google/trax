@@ -82,7 +82,7 @@ LSHSelfAttention.n_chunks_after = 0
 LSHSelfAttention.n_chunks_before = 1
 LSHSelfAttention.n_hashes = 2
 LSHSelfAttention.n_parallel_heads = 1
-LSHSelfAttention.predict_drop_len = 128
+LSHSelfAttention.predict_drop_len = %max_len
 LSHSelfAttention.predict_mem_len = %max_len
 # Reformer2's *encoder* is bidirectional.
 ref2_encoder/LSHSelfAttention.n_chunks_after = 1
