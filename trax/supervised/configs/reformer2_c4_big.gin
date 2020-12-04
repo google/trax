@@ -85,8 +85,8 @@ multifactor.warmup_steps = 10000
 
 # Parameters for Adafactor:
 # ==============================================================================
-Adafactor.weight_decay_rate = 1e-4
-Adafactor.weight_decay_n_steps = 20000
+Adafactor.weight_decay_rate = 1e-5
+Adafactor.weight_decay_n_steps = 10000
 Adafactor.beta1 = 0.0
 Adafactor.decay_rate = 0.8
 Adafactor.clipping_threshold = 1.0
@@ -142,7 +142,7 @@ Reformer2.encoder_decoder_attention_type = %dec_attn_type
 Reformer2.n_layers_forget = 0
 Reformer2.attention_chunk_size = 1
 Reformer2.use_bfloat16 = True
-Reformer2.loss_sparsity = 0
+Reformer2.loss_sparsity = 4
 
 # Parameters for T5
 

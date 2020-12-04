@@ -18,7 +18,6 @@
 
 from concurrent import futures
 import functools
-import gc
 import os
 import time
 
@@ -258,6 +257,8 @@ class ReversibleSerialTrainer:
     self._n_layers = 1 + sum([len(revs) + 1 for (_, revs) in self._blocks])
     self._n_steps_per_log = 100  # Log layers and stats every 100 steps.
     self._jit_memory = {} if memoize_jit else None
+    self._jit_per_device_rngs = fastmath.jit(
+        self._per_device_rngs, backend='cpu')
 
     # Create accelerated versions of layers as pmaped/jited pure_fn.
     self._accelerated_layer_fns = fastmath.nested_map(
@@ -361,6 +362,16 @@ class ReversibleSerialTrainer:
       return tl.on_cpu(x)
     return tl.on_cpu(fastmath.nested_map(lambda x: x[0], x))
 
+  def _per_device_rngs(self, rng):
+    """Create per-device RNGs from a given rng."""
+    # Splitting by device first to be identical with default trainer.
+    per_device_rng = fastmath.random.split(rng, self._n_devices)
+    per_device_rngs = [
+        fastmath.random.split(r, self._n_layers) for r in per_device_rng]
+    rngs = [jnp.stack([r[i] for r in per_device_rngs])
+            for i in range(self._n_layers)]
+    return rngs
+
   def one_step(self, batch, rng, step=0, learning_rate=None):
     """Updates layers weights/state and optimizers slots by running one step.
 
@@ -396,16 +407,8 @@ class ReversibleSerialTrainer:
     if self._n_devices == 1:
       rngs = fastmath.random.split(rng, self._n_layers)
     else:
-      # Splitting by device first to be identical with default trainer.
-      def per_device_rngs(rng):  # A function to JIT to not fragment memory.
-        per_device_rng = fastmath.random.split(rng, self._n_devices)
-        per_device_rngs = [
-            fastmath.random.split(r, self._n_layers) for r in per_device_rng]
-        rngs = [jnp.stack([r[i] for r in per_device_rngs])
-                for i in range(self._n_layers)]
-        return rngs
       # JIT the function and run it on CPU to avoid memory fragmentation.
-      rngs = fastmath.jit(per_device_rngs, backend='cpu')(tl.on_cpu(rng))
+      rngs = self._jit_per_device_rngs(tl.on_cpu(rng))
     # Group rngs by layer blocks.
     rng_blocks, rng_i = [], 0
     for _, rev_layers in self._blocks:
@@ -414,7 +417,6 @@ class ReversibleSerialTrainer:
       rng_i += l + 1
 
     # Run the layers forward upto the loss layer.
-    gc.collect()  # Make sure we de-allocate memory before starting.
     process = psutil.Process(os.getpid())
     logging.info('running step %d', step_int)
     if step_int % self._n_steps_per_log == 1:
@@ -547,7 +549,6 @@ class ReversibleSerialTrainer:
       if step_int % self._n_steps_per_log == 1:
         logging.info('running backward reversible layer %s', str(layer))
       counter -= 1
-      gc.collect()  # Make sure we de-allocate memory before starting.
       stack, grad_stack, layer_stats = self._run_backward_one_reversible(
           layer, stack, grad_stack, step, rng, optimizers[counter],
           replicated_opt_params[counter], reverse_and_fbo, old_state, new_state)

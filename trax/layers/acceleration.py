@@ -277,10 +277,15 @@ def _multi_device_put(x, devices=None):
     dtype = x.dtype and shape = (n_devices,) + x.shape
     that's backed by replicated device_buffers on each local device.
   """
-  # Convert _FilledConstants that don't have device_buffer, etc.
-  if type(x) != jax.xla.DeviceArray:  # pylint: disable=unidiomatic-typecheck
-    x = jnp.array(x)
   # Calculate the abstract shape of the replicated array.
   if not devices:
     devices = jax.local_devices()
-  return jax.api.device_put_sharded(len(devices) * [x], devices)
+  # The code below is equivalent to:
+  #   jax.api.device_put_sharded(len(devices) * [x], devices)
+  # but it does one PCI transfer and later uses ICI.
+  # TODO(lukaszkaiser): remove once JAX has a core function to do the same.
+  aval = jax.core.unmapped_aval(len(devices), 0,
+                                jax.core.raise_to_shaped(jax.core.get_aval(x)))
+  buf, = jax.xla.device_put(x, devices[0])  # assuming single-buf repr
+  rest_bufs = [buf.copy_to_device(d) for d in devices[1:]]
+  return jax.pxla.ShardedDeviceArray(aval, [buf, *rest_bufs])
