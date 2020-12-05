@@ -350,10 +350,10 @@ class TrainingTest(absltest.TestCase):
         yield labeled_batch
 
     # Run training.
-    cross_entropy_loss = tl.Serial(tl.LogSoftmax(), tl.CrossEntropyLoss())
-    task = training.TrainTask(
-        _data_gen(), cross_entropy_loss, optimizers.Adafactor)
-    eval_task = training.EvalTask(_data_gen(), [tl.CrossEntropyLoss()])
+    loss_layer = tl.WeightedCategoryCrossEntropy()
+    task = training.TrainTask(_data_gen(), loss_layer, optimizers.Adafactor)
+    eval_task = training.EvalTask(_data_gen(),
+                                  [tl.WeightedCategoryCrossEntropy()])
     loop = training.Loop(model, [task], eval_tasks=[eval_task],
                          eval_at=lambda step_n: step_n == 2,
                          use_memory_efficient_trainer=True)

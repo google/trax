@@ -207,8 +207,7 @@ class FavorTest(test.TestCase):
         tl.Branch(tl.Embedding(3, 4), tl.PaddingMask()),
         sparsity.Favor(d_feature=4, n_heads=2),
         tl.Select([0], n_in=2),
-        tl.LogSoftmax(),
-        tl.CrossEntropyLoss()
+        tl.WeightedCategoryCrossEntropy(),
     )
     x = np.ones((1, 2), dtype=np.int32)
     w = np.ones_like(x).astype(np.float32)

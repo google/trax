@@ -304,7 +304,7 @@ class TraxTest(parameterized.TestCase):
 
       trainer = trainer_lib.Trainer(
           model=model_fn,
-          loss_fn=tl.Serial(tl.LogSoftmax(), tl.CrossEntropyLoss()),
+          loss_fn=tl.WeightedCategoryCrossEntropy(),
           optimizer=trax_opt.SM3,
           lr_schedule=lr.multifactor(),
           inputs=inputs,
@@ -339,7 +339,7 @@ class TraxTest(parameterized.TestCase):
       inputs = _test_inputs(n_classes, input_shape=(224, 224, 3))
       trainer = trainer_lib.Trainer(
           model=model_fn,
-          loss_fn=tl.CrossEntropyLoss(),
+          loss_fn=tl.WeightedCategoryCrossEntropy(),
           optimizer=trax_opt.SM3,
           lr_schedule=lr.multifactor(),
           inputs=inputs,

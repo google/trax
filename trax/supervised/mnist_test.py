@@ -134,7 +134,7 @@ def _mnist_tasks(head=None):
     A pair (train_task, eval_task) consisting of the MNIST training task and the
     MNIST evaluation task using cross-entropy as loss and accuracy as metric.
   """
-  loss = tl.Serial(tl.LogSoftmax(), tl.CrossEntropyLoss())
+  loss = tl.WeightedCategoryCrossEntropy()
   accuracy = tl.Accuracy()
   if head is not None:
     loss = tl.Serial(head, loss)
