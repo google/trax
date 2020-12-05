@@ -300,7 +300,7 @@ from trax.supervised import training
 # Training task.
 train_task = training.TrainTask(
     labeled_data=train_batches_stream,
-    loss_layer=tl.CrossEntropyLoss(),
+    loss_layer=tl.WeightedCategoryCrossEntropy(),
     optimizer=trax.optimizers.Adam(0.01),
     n_steps_per_checkpoint=500,
 )
@@ -308,7 +308,7 @@ train_task = training.TrainTask(
 # Evaluaton task.
 eval_task = training.EvalTask(
     labeled_data=eval_batches_stream,
-    metrics=[tl.CrossEntropyLoss(), tl.Accuracy()],
+    metrics=[tl.WeightedCategoryCrossEntropy(), tl.WeightedCategoryAccuracy()],
     n_eval_batches=20  # For less variance in eval numbers.
 )
 
@@ -326,29 +326,29 @@ training_loop.run(2000)
 
     
     Step      1: Ran 1 train steps in 0.78 secs
-    Step      1: train CrossEntropyLoss |  1.33800304
-    Step      1: eval  CrossEntropyLoss |  0.71843582
-    Step      1: eval          Accuracy |  0.56562500
+    Step      1: train WeightedCategoryCrossEntropy |  1.33800304
+    Step      1: eval  WeightedCategoryCrossEntropy |  0.71843582
+    Step      1: eval      WeightedCategoryAccuracy |  0.56562500
     
     Step    500: Ran 499 train steps in 5.77 secs
-    Step    500: train CrossEntropyLoss |  0.62914723
-    Step    500: eval  CrossEntropyLoss |  0.49253047
-    Step    500: eval          Accuracy |  0.74062500
+    Step    500: train WeightedCategoryCrossEntropy |  0.62914723
+    Step    500: eval  WeightedCategoryCrossEntropy |  0.49253047
+    Step    500: eval      WeightedCategoryAccuracy |  0.74062500
     
     Step   1000: Ran 500 train steps in 5.03 secs
-    Step   1000: train CrossEntropyLoss |  0.42949259
-    Step   1000: eval  CrossEntropyLoss |  0.35451687
-    Step   1000: eval          Accuracy |  0.83750000
+    Step   1000: train WeightedCategoryCrossEntropy |  0.42949259
+    Step   1000: eval  WeightedCategoryCrossEntropy |  0.35451687
+    Step   1000: eval      WeightedCategoryAccuracy |  0.83750000
     
     Step   1500: Ran 500 train steps in 4.80 secs
-    Step   1500: train CrossEntropyLoss |  0.41843575
-    Step   1500: eval  CrossEntropyLoss |  0.35207348
-    Step   1500: eval          Accuracy |  0.82109375
+    Step   1500: train WeightedCategoryCrossEntropy |  0.41843575
+    Step   1500: eval  WeightedCategoryCrossEntropy |  0.35207348
+    Step   1500: eval      WeightedCategoryAccuracy |  0.82109375
     
     Step   2000: Ran 500 train steps in 5.35 secs
-    Step   2000: train CrossEntropyLoss |  0.38129005
-    Step   2000: eval  CrossEntropyLoss |  0.33760912
-    Step   2000: eval          Accuracy |  0.85312500
+    Step   2000: train WeightedCategoryCrossEntropy |  0.38129005
+    Step   2000: eval  WeightedCategoryCrossEntropy |  0.33760912
+    Step   2000: eval      WeightedCategoryAccuracy |  0.85312500
 
 
 After training the model, run it like any layer to get results.
