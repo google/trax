@@ -142,6 +142,18 @@ class TFInputsTest(tf.test.TestCase):
         vocab_dir=_TESTDATA, vocab_file='en_8k.subword')
     self.assertEqual(detok, 'I have a cat.')
 
+    # bert-lowercase
+    tok_sbw = list(tf_inputs.tokenize(
+        dataset(), vocab_type='bert-lowercase',
+        vocab_dir=_TESTDATA, vocab_file='bert_uncased_vocab.txt'))
+    self.assertAllEqual(tok_sbw[0], np.array([1045, 2031, 1037, 4937, 1012]))
+    detok = tf_inputs.detokenize(
+        tok_sbw[0], vocab_type='bert-lowercase',
+        vocab_dir=_TESTDATA, vocab_file='bert_uncased_vocab.txt')
+    self.assertEqual(detok, 'i have a cat .')
+    # note: BERT tokenizer is not reversible, therefore difference between original input
+
+
   def test_tokenize_keys_reservedids(self):
     def dataset():
       yield ('Cat.', 'Dog.')
@@ -183,6 +195,11 @@ class TFInputsTest(tf.test.TestCase):
         vocab_type='subword',
         vocab_dir=_TESTDATA, vocab_file='en_8k.subword')
     self.assertEqual(sbw_size, 8183)
+    # Bert_uncased.
+    sbw_size = tf_inputs.vocab_size(
+        vocab_type='bert-lowercase',
+        vocab_dir=_TESTDATA, vocab_file='bert_uncased_vocab.txt')
+    self.assertEqual(sbw_size, 30522)
 
   def test_c4_bare_preprocess_fn(self):
     dataset = _c4_dataset()
@@ -479,6 +496,28 @@ class TFInputsTest(tf.test.TestCase):
     # pylint: enable=bad-whitespace
 
     t5_test_utils.assert_dataset(ds1, expected_ds)
+
+  def test_bert_create_inputs(self):
+    inputs_sentences_1 = [np.array([100, 150, 200])]
+    inputs_sentences_2 = [np.array([300, 500])]
+    labels = [np.array(1)]
+
+    create_inputs_1 = tf_inputs.CreateBertInputs(False)
+    create_inputs_2 = tf_inputs.CreateBertInputs(True)
+    for res in create_inputs_1(zip(inputs_sentences_1, labels)):
+      values, segment_embs, _, label, weight = res
+      self.assertTrue((values == np.array([101, 100, 150, 200, 102])).all())
+      self.assertTrue((segment_embs == np.zeros(5)).all())
+      self.assertEqual(label, np.int64(1))
+      self.assertEqual(weight, np.int64(1))
+
+    for res in create_inputs_2(zip(inputs_sentences_1, inputs_sentences_2, labels)):
+      values, segment_embs, _, label, weight = res
+      self.assertTrue((values == np.array([101, 100, 150, 200, 102, 300, 500, 102])).all())
+      exp_segment = np.concatenate((np.zeros(5), np.ones(3)))
+      self.assertTrue((segment_embs == exp_segment).all())
+      self.assertEqual(label, np.int64(1))
+      self.assertEqual(weight, np.int64(1))
 
 if __name__ == '__main__':
   tf.test.main()

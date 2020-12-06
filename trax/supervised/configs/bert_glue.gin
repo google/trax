@@ -27,34 +27,61 @@ import trax.layers.metrics
 # not recommended and will likely result in lower than baseline accuracy.
 
 
-# Parameters for bert_glue_inputs:
+# Parameters for TFDS data pipeline:
 # ==============================================================================
-bert_glue_inputs.dataset_name = 'glue/mnli'
-bert_glue_inputs.batch_size = 16
-bert_glue_inputs.tokenizer = @trax.data.bert_tokenizer
+make_inputs.train_stream = [
+  @train/data.TFDS(),
+  @data.Tokenize(),
+  @data.CreateBertInputs(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+make_inputs.eval_stream = [
+  @eval/data.TFDS(),
+  @data.Tokenize(),
+  @data.CreateBertInputs(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+train/data.TFDS.dataset_name = 'glue/qnli'
+train/data.TFDS.keys = @trax.data.tf_inputs.get_glue_key()
+train/data.TFDS.train = True
+eval/data.TFDS.dataset_name = 'glue/qnli'
+eval/data.TFDS.keys = @trax.data.tf_inputs.get_glue_key()
+eval/data.TFDS.train = False
+get_glue_key.task_name = 'glue/qnli'
 
-
-# Parameters for bert_tokenizer:
-# ==============================================================================
-bert_tokenizer.model_name = 'bert-base-uncased'
-bert_tokenizer.do_lower_case = True
+data.Tokenize.vocab_file = 'bert_uncased_vocab.txt'
+data.Tokenize.vocab_type = 'bert-lowercase'
+data.Tokenize.vocab_dir = 'trax/data/testdata/'
+data.Tokenize.keys = [0, 1]
+data.CreateBertInputs.double_sentence = True
+data.PadToLength.len_map = {0: 512, 1: 512, 2: 512}
+data.PadToLength.pad_value = {0: 0, 1: 0, 2:0}
+data.TruncateToLength.len_map = {0: (256,), 1: (256,), 2: (256,)}
+data.Batch.batch_size = 32
 
 # Parameters for train:
 # ==============================================================================
 train.optimizer = @trax.optimizers.Adam
 train.eval_frequency = 20
 train.eval_steps = 10
-train.inputs = @trax.data.bert_glue_inputs
+train.inputs = @trax.data.inputs.make_inputs
 train.model = @trax.models.BERT
 train.steps = 2000
+train.lr_schedule_fn = @trax.supervised.lr_schedules.constant
 train.checkpoint_highest = 'accuracy'
 
 # Parameters for BERT:
 # ==============================================================================
 BERT.init_checkpoint = 'bert-base-uncased'
 BERT.head = @bert.BERTClassifierHead
-bert.BERTClassifierHead.n_classes = 3
+bert.BERTClassifierHead.n_classes = 2
 
 # Parameters for lr_schedules
 # ==============================================================================
-lr_schedules.multifactor.constant = 3e-5
+lr_schedules.constant.value = 3e-5

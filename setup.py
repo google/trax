@@ -47,8 +47,7 @@ setup(
         'six',
         't5',
         'tensorflow-datasets',
-        'tensorflow-text',
-        'bert-for-tf2'
+        'tensorflow-text'
     ],
     extras_require={
         'tensorflow': ['tensorflow>=1.15.0'],

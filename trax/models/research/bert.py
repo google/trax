@@ -17,6 +17,9 @@
 """BERT."""
 
 import os
+from pathlib import Path
+import urllib
+import zipfile
 
 import gin
 import jax
@@ -25,7 +28,6 @@ import tensorflow as tf
 from trax import fastmath
 from trax import layers as tl
 from trax.fastmath import numpy as np
-from trax.models.download_model import download_weights_if_not_downloaded
 
 # pylint: disable=invalid-name
 
@@ -137,20 +139,6 @@ def BERT(d_model=768,
   return bert
 
 
-def download_model_if_model_name(init_checkpoint):
-  """Returns model dir path with model filename.
-  if init_checkpoint is a model name and there is no local model with that name
-  then it downloads it and returns newly created path."""
-  try:
-    model_link = _MODEL_LINKS[init_checkpoint]
-  except KeyError:
-    raise KeyError(f'Not known model name, please make sure the model name'
-                     f' is in the list of available models. If this is a path'
-                     f' to a model it should contain at least one {os.path.sep}')
-  init_checkpoint_dir, checkpoint_filename = download_weights_if_not_downloaded(model_link, init_checkpoint)
-  return init_checkpoint_dir, checkpoint_filename
-
-
 class PretrainedBERT(tl.Serial):
   """Wrapper that always initializes weights from a pre-trained checkpoint."""
 
@@ -162,11 +150,72 @@ class PretrainedBERT(tl.Serial):
       self.init_checkpoint = None
     elif os.path.sep not in init_checkpoint:
       # initialize model from model name
-      init_checkpoint_dir, init_checkpoint_filename = download_model_if_model_name(init_checkpoint)
+      init_checkpoint_dir, init_checkpoint_filename = self.download_model(init_checkpoint)
       self.init_checkpoint = os.path.join(init_checkpoint_dir, init_checkpoint_filename)
     else:
       # initialize model from path
       self.init_checkpoint = init_checkpoint
+
+  @classmethod
+  def download_model(cls, model_name):
+      """Returns model dir path with model filename.
+      if init_checkpoint is a model name and there is no local model with that name
+      then it downloads it and returns newly created path."""
+      try:
+        model_link = _MODEL_LINKS[model_name]
+      except KeyError:
+        raise KeyError(f'Not known model name, please make sure the model name'
+                         f' is in the list of available models. If this is a path'
+                         f' to a model it should contain at least one {os.path.sep}')
+
+      def find_ckpt_file_in_dir(dir_path):
+          # todo(piotrekp1): get last checkpoint instead of any
+          for fname in os.listdir(dir_path):
+              if '.ckpt' in fname:
+                  return fname.split('.ckpt')[0] + '.ckpt'
+          raise FileNotFoundError('Selected directory doesn\'t contain a ckpt file')
+
+      def cd_nested_directory(dir_path):
+          while len(os.listdir(dir_path)) == 1:
+              filename = os.listdir(dir_path)[0]
+              new_path = os.path.join(dir_path, filename)
+              if os.path.isdir(new_path):
+                  dir_path = new_path
+          return dir_path
+
+      download_dir = os.path.join('~', 'trax',  model_name)
+      download_dir = os.path.expanduser(download_dir)
+
+      if os.path.exists(download_dir):
+          if os.path.isdir(download_dir) and len(os.listdir(download_dir)) > 0:
+              # model already exists, mdoel directory as input
+              download_dir = cd_nested_directory(download_dir)  # go in if nested single directories inside
+              return download_dir, find_ckpt_file_in_dir(download_dir)
+      with Path(download_dir) as p:
+          p.mkdir(parents=True, exist_ok=True)
+
+      if not model_link.endswith('.zip'):
+          raise NotImplementedError(
+              'Only downloading models packed with zip is implemented')
+
+      # assumes model is packed with zip
+      download_path = os.path.join(download_dir, 'model_temp')
+
+      print(f'Downloading model from {model_link} to {download_dir}')  # todo(piotrekp1) logging to stderr?
+      urllib.request.urlretrieve(model_link, download_path)
+
+      if not zipfile.is_zipfile(download_path):
+          raise NotImplementedError(
+              'Only downloading models packed with zip is implemented')
+
+      # todo(piotrekp1): some locks to handle crashes during unpacking or download
+      with zipfile.ZipFile(download_path, 'r') as zip_ref:
+          zip_ref.extractall(download_dir)
+
+      os.remove(download_path)
+      download_dir = cd_nested_directory(download_dir)
+
+      return download_dir, find_ckpt_file_in_dir(download_dir)
 
   def init_weights_and_state(self, input_signature):
     super().init_weights_and_state(input_signature)

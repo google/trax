@@ -394,8 +394,8 @@ def vocab_size(vocab_type='subword', vocab_file=None, vocab_dir=None,
 
 def _get_vocab(vocab_type='subword', vocab_file=None, vocab_dir=None):
   """Gets the vocabulary object for tokenization; see tokenize for details."""
-  if vocab_type not in ['char', 'subword', 'sentencepiece']:
-    raise ValueError('vocab_type must be "subword", "char", or "sentencepiece" '
+  if vocab_type not in ['char', 'subword', 'sentencepiece', 'bert', 'bert-lowercase']:
+    raise ValueError('vocab_type must be "subword", "char", "sentencepiece", "bert" or "bert-lowercase" '
                      f'but got {vocab_type}')
 
   if vocab_type == 'char':
@@ -409,6 +409,12 @@ def _get_vocab(vocab_type='subword', vocab_file=None, vocab_dir=None):
 
   if vocab_type == 'subword':
     return text_encoder.SubwordTextEncoder(path)
+
+  if vocab_type == 'bert':
+    return text_encoder.BertEncoder(path, do_lower_case=False)
+
+  if vocab_type == 'bert-lowercase':
+    return text_encoder.BertEncoder(path, do_lower_case=True)
 
   assert vocab_type == 'sentencepiece'
   return t5_spc_vocab.SentencePieceVocabulary(sentencepiece_model_file=path)
@@ -969,3 +975,46 @@ def download_and_prepare(dataset_name, data_dir):
   else:
     data_dir = os.path.expanduser(data_dir)
   return data_dir
+
+def bert_single_sentence_preprocess(batch):
+  for sent1, label in batch:
+    value_vector = np.concatenate(([101], sent1, [102]))
+    segment_embs = np.zeros(sent1.shape[0] + 2, dtype=np.int32)
+    yield value_vector, segment_embs, segment_embs, label, np.int64(1)
+
+def bert_double_sentence_preprocess(batch):
+  for sent1, sent2, label in batch:
+    value_vector = np.concatenate(([101], sent1, [102], sent2, [102]))
+
+    segment_embs = np.zeros(sent1.shape[0] + sent2.shape[0] + 3, dtype=np.int32)
+    second_sent_start = sent1.shape[0] + 2
+    segment_embs[second_sent_start:] = 1
+    yield value_vector, segment_embs, segment_embs, label, np.int64(1)
+
+def CreateBertInputs(double_sentence=True):
+  """Prepares inputs for BERT models by adding [SEP] and [CLS] tokens and creating segment embeddings."""
+  if double_sentence:
+    return bert_double_sentence_preprocess
+  else:
+    return bert_single_sentence_preprocess
+
+@gin.configurable()
+def get_glue_key(task_name=gin.REQUIRED):
+  ext_task_name = task_name if task_name.startswith('glue') else f'glue/{task_name}'
+  if task_name == 'glue/mnli': # todo(piotrekp1): remove after handling matchedm/mismatched evaluation in mnli
+    raise NotImplementedError('MNLI task is currently not handled by trax.')
+  try:
+    glue_keys = {
+      'glue/cola': ('sentence',),
+      'glue/sst2': ('sentence',),
+      'glue/mrpc': ('sentence1', 'sentence2'),
+      'glue/qqp': ('question1', 'question2'),
+      'glue/stsb': ('sentence1', 'sentence2'),
+      #'glue/mnli': ('premise', 'hypothesis'),
+      'glue/qnli': ('question', 'sentence'),
+      'glue/rte': ('sentence1', 'sentence2'),
+      'glue/wnli': ('sentence1', 'sentence2'),
+    }
+    return (*glue_keys[ext_task_name], 'label')
+  except KeyError:
+    raise KeyError(f'Wrong task name entered, available glue tasks: {list(glue_keys.keys())}. Entered: {task_name}')
