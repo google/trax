@@ -1077,6 +1077,11 @@ class SelfAttention(EfficientAttentionBase):
         causal=self.causal, exclude_self=self.share_qk, masked=self.masked)
     q_info = kv_info = np.arange(q.shape[-2], dtype=np.int32)
 
+    # pylint: disable=g-inconsistent-quotes,g-import-not-at-top
+    from absl import logging
+    logging.error("@@@ in forward_unbatched self.masked: %r", self.masked)
+    logging.error("@@@ in forward_unbatched mask: %r", mask)
+    # pylint: enable=g-inconsistent-quotes,g-import-not-at-top
     assert (mask is not None) == self.masked
     if self.masked:
       # mask is a boolean array (True means "is valid token")
@@ -1155,7 +1160,7 @@ class SelfAttention(EfficientAttentionBase):
     return out, state
 
 
-class LSHSelfAttention(SelfAttention):
+class LSHSelfAttention(EfficientAttentionBase):
   """LSH self-attention (second implementation)."""
 
   def __init__(self,
@@ -1173,25 +1178,82 @@ class LSHSelfAttention(SelfAttention):
                use_python_loop=False,
                use_reference_code=False,
                max_length_for_buckets=None,
+               bias=False,
               ):
     """Construct an LSH self-attention layer."""
+    if mode == 'predict':
+      assert causal, 'Only causal attention supports fast inference'
+      assert chunk_len is not None or (predict_mem_len and predict_drop_len)
+      predict_mem_len = predict_mem_len or (chunk_len * (1 + n_chunks_before))
+      predict_drop_len = predict_drop_len or chunk_len
     super().__init__(
-        n_heads=n_heads, d_qk=d_qk, d_v=d_v, share_qk=True,
-        causal=causal,
-        masked=masked,
-        chunk_len=chunk_len,
-        n_chunks_before=n_chunks_before, n_chunks_after=n_chunks_after,
-        mode=mode,
-        predict_mem_len=predict_mem_len, predict_drop_len=predict_drop_len,
-        attention_dropout=attention_dropout,
-        output_dropout=output_dropout,
+        n_heads=n_heads,
+        n_in=(2 if masked else 1),
         n_parallel_heads=n_parallel_heads,
+        incremental=(mode == 'predict'),
+        predict_mem_len=predict_mem_len,
+        predict_drop_len=predict_drop_len,
         use_python_loop=use_python_loop,
         use_reference_code=use_reference_code,
         )
+    self.d_qk = d_qk
+    self.d_v = d_v
+    self.share_qk = True
+    self.causal = causal
+    self.masked = masked
+    self.chunk_len = chunk_len
+    self.n_chunks_before = n_chunks_before
+    self.n_chunks_after = n_chunks_after
+    self.bias = bias
+    self.mode = mode
+    if mode == 'train':
+      self.attention_dropout = attention_dropout
+      self.output_dropout = output_dropout
+    else:
+      self.attention_dropout = 0.0
+      self.output_dropout = 0.0
+
     self.n_hashes = n_hashes
     self.n_buckets = n_buckets
     self._max_length_for_buckets = max_length_for_buckets
+    # pylint: disable=g-inconsistent-quotes,g-import-not-at-top
+    from absl import logging
+    logging.error("@@@ init, self.masked: %r", self.masked)
+    # pylint: enable=g-inconsistent-quotes,g-import-not-at-top
+
+  def _kernel_initializer(self, shape, rng):
+    # Attention uses Glorot uniform initalization with respect to the *total*
+    # dimension of queries/key/values across all heads. We initialize one head
+    # at a time in this class, so init.GlorotUniformInitializer won't work.
+    # This initialization type is for parity with previous Trax & tensor2tensor
+    # Transformers; it's not clear if it's strictly needed for model accuracy.
+    lim = np.sqrt(6.0 / (shape[0] + shape[1] * self.n_heads))
+    return fastmath.random.uniform(rng, shape, np.float32, -lim, lim)
+
+  def create_weights_unbatched(self, input_signature, rng):
+    if isinstance(input_signature, (tuple, list)):
+      input_signature = input_signature[0]
+    d_model = input_signature.shape[-1]
+    rng_q, rng_k, rng_v, rng_o = fastmath.random.split(rng, 4)
+    w_q = self._kernel_initializer((d_model, self.d_qk), rng_q)
+    if not self.share_qk:
+      w_k = self._kernel_initializer((d_model, self.d_qk), rng_k)
+    w_v = self._kernel_initializer((d_model, self.d_v), rng_v)
+    w_o = np.transpose(self._kernel_initializer((d_model, self.d_v), rng_o))
+
+    if self.bias:
+      b_q = np.zeros(self.d_qk)
+      b_v = np.zeros(self.d_v)
+      if self.share_qk:
+        return (w_q, w_v, w_o, b_q, b_v)
+      else:
+        b_k = np.zeros(self.d_qk)
+        return (w_q, w_k, w_v, w_o, b_q, b_k, b_v)
+
+    if self.share_qk:
+      return (w_q, w_v, w_o)
+    else:
+      return (w_q, w_k, w_v, w_o)
 
   def create_state_unbatched(self, input_signature, rng):
     if isinstance(input_signature, (tuple, list)):
@@ -1243,6 +1305,11 @@ class LSHSelfAttention(SelfAttention):
 
   def forward_unbatched(self, x, mask=None, *, weights, state, rng,
                         update_state):
+    # pylint: disable=g-inconsistent-quotes,g-import-not-at-top
+    from absl import logging
+    logging.error("@@@ In forward_unbatched: mask: %r", mask)
+    logging.error("@@@ In forward_unbatched: x: %r", x)
+    # pylint: enable=g-inconsistent-quotes,g-import-not-at-top
     attend_rng, output_rng = fastmath.random.split(rng)
     w_q, w_v, w_o = weights
 
