@@ -27,6 +27,7 @@ from trax import fastmath
 from trax.supervised import training
 
 
+
 class _TimeStep:
   """A single step of interaction with a RL environment.
 
@@ -328,43 +329,9 @@ class RLTask:
     if isinstance(env, str):
       self._env_name = env
       if dm_suite:
-        eval_env = environments.load_from_settings(
-            platform='atari',
-            settings={
-                'levelName': env,
-                'interleaved_pixels': True,
-                'zero_indexed_actions': True,
-                'phase': 'testing',
-            })
-        eval_env = atari_wrapper.AtariWrapper(
-            environment=eval_env,
-            max_abs_reward=None,
-            num_stacked_frames=num_stacked_frames)
-        if random_starts:
-          env = environments.load_from_settings(
-              platform='atari',
-              settings={
-                  'levelName': env,
-                  'interleaved_pixels': True,
-                  'zero_indexed_actions': True,
-                  'phase': 'training'
-              })
-        else:
-          # This is the default behavior used so far
-          # in QWR experiments (implicitly 'condition': 'at30').
-          env = environments.load_from_settings(
-              platform='atari',
-              settings={
-                  'levelName': env,
-                  'interleaved_pixels': True,
-                  'zero_indexed_actions': True
-              })
-        env = atari_wrapper.AtariWrapper(
-            environment=env,
-            num_stacked_frames=num_stacked_frames)
       else:
-        env = gym.make(env)
-        eval_env = env
+        env = gym.make(self._env_name)
+        eval_env = gym.make(self._env_name)
     else:
       self._env_name = type(env).__name__
       eval_env = env

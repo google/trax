@@ -18,11 +18,11 @@ import trax.optimizers
 import trax.rl
 
 batch_size = 256
-train_steps = 3000
+train_steps = 1000
 policy_train_steps = %train_steps
 value_train_steps = %train_steps
 policy_lr = 0.0001
-value_lr = 0.0005
+value_lr = 0.001
 margin = 3
 q_value_n_samples = 8
 
@@ -139,7 +139,7 @@ SamplingAWR.value_optimizer = @trax.optimizers.Adam
 SamplingAWR.value_batch_size = %batch_size
 SamplingAWR.value_train_steps_per_epoch = %value_train_steps
 SamplingAWR.value_lr_schedule = @value/multifactor
-SamplingAWR.value_evals_per_epoch = 10
+SamplingAWR.value_evals_per_epoch = 20
 SamplingAWR.value_eval_steps = 1
 SamplingAWR.policy_model = @trax.models.Policy
 SamplingAWR.policy_optimizer = @trax.optimizers.Adam
@@ -149,15 +149,16 @@ SamplingAWR.policy_lr_schedule = @policy/multifactor
 SamplingAWR.policy_evals_per_epoch = 1
 SamplingAWR.policy_eval_steps = 10
 SamplingAWR.n_trajectories_per_epoch = None
-SamplingAWR.n_interactions_per_epoch = 2000
-SamplingAWR.n_eval_episodes = 10
-SamplingAWR.eval_steps = [2000]
+SamplingAWR.n_interactions_per_epoch = 1000
+SamplingAWR.n_eval_episodes = 1
+SamplingAWR.eval_steps = [10000]
+SamplingAWR.eval_temperatures = [0.0, 0.5]
 SamplingAWR.advantage_estimator = @trax.rl.advantages.td_lambda
 SamplingAWR.beta = 1.0
 SamplingAWR.w_max = 20
 SamplingAWR.max_slice_length = 1
 SamplingAWR.added_policy_slice_length = %margin
-SamplingAWR.n_replay_epochs = 50
+SamplingAWR.n_replay_epochs = 100
 SamplingAWR.scale_value_targets = True
 SamplingAWR.n_shared_layers = 0
 SamplingAWR.q_value_n_samples = %q_value_n_samples
