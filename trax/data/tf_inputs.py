@@ -25,10 +25,7 @@ from absl import logging
 import gin
 import numpy as np
 
-from t5 import data as t5_data
-from t5.data import preprocessors as t5_processors
-from t5.data import sentencepiece_vocabulary as t5_spc_vocab
-from t5.data import utils as t5_utils
+import t5.data
 import tensorflow as tf   # pylint: disable=g-explicit-tensorflow-version-import
 import tensorflow_datasets as tfds
 import tensorflow_text as tf_text
@@ -411,7 +408,7 @@ def _get_vocab(vocab_type='subword', vocab_file=None, vocab_dir=None):
     return text_encoder.SubwordTextEncoder(path)
 
   assert vocab_type == 'sentencepiece'
-  return t5_spc_vocab.SentencePieceVocabulary(sentencepiece_model_file=path)
+  return t5.data.SentencePieceVocabulary(sentencepiece_model_file=path)
 
 
 # Makes the function accessible in gin configs, even with all args denylisted.
@@ -663,7 +660,7 @@ def c4_preprocess(dataset, training, max_target_length=-1,
     return features, features['targets']
 
   if tokenization == 'spc':
-    spm_path = spm_path or t5_utils.DEFAULT_SPM_PATH
+    spm_path = spm_path or t5.data.DEFAULT_SPM_PATH
     with tf.compat.v1.gfile.GFile(spm_path, 'rb') as f:
       spc_model = f.read()
     tokenizer = tf_text.SentencepieceTokenizer(model=spc_model)
@@ -688,13 +685,13 @@ def c4_bare_preprocess_fn(dataset,
                           sequence_length=None):
   """Returns a dataset that contains 'inputs' and 'targets' from C4."""
   # Set target key to be equal to the text content.
-  dataset = t5_processors.rekey(
+  dataset = t5.data.preprocessors.rekey(
       dataset, key_map={'targets': 'text', 'inputs': None})
 
   # Vocabulary for tokenization.
-  vocab = t5_spc_vocab.SentencePieceVocabulary(
-      sentencepiece_model_file=spm_path or t5_utils.DEFAULT_SPM_PATH)
-  feature = t5_data.Feature(vocab)
+  vocab = t5.data.SentencePieceVocabulary(
+      sentencepiece_model_file=spm_path or t5.data.DEFAULT_SPM_PATH)
+  feature = t5.data.Feature(vocab)
   output_features = {'targets': feature, 'inputs': feature}
 
   # Tokenize the targets.
@@ -719,9 +716,10 @@ def c4_bare_preprocess_fn(dataset,
                         num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
   # Preprocess the tokens - the exact preprocessors are set via gin.
-  dataset = t5_processors.unsupervised(dataset,
-                                       sequence_length=sequence_length,
-                                       output_features=output_features)
+  dataset = t5.data.preprocessors.unsupervised(
+      dataset,
+      sequence_length=sequence_length,
+      output_features=output_features)
 
   # Add EOS.
   dataset = add_eos_to_output_features(dataset, training)
@@ -882,13 +880,13 @@ def generic_text_dataset_preprocess_fn(dataset,
     dataset = dataset.map(print_examples)
 
   # Vocabulary for tokenization.
-  vocab = t5_spc_vocab.SentencePieceVocabulary(
-      sentencepiece_model_file=spm_path or t5_utils.DEFAULT_SPM_PATH)
-  feature = t5_data.Feature(vocab)
+  vocab = t5.data.SentencePieceVocabulary(
+      sentencepiece_model_file=spm_path or t5.data.DEFAULT_SPM_PATH)
+  feature = t5.data.Feature(vocab)
   output_features = {'targets': feature, 'inputs': feature}
 
   # Tokenize the inputs and targets.
-  dataset = t5_processors.tokenize(
+  dataset = t5.data.preprocessors.tokenize(
       dataset, output_features, copy_plaintext=copy_plaintext)
 
   # Apply the token-preprocessors.
@@ -931,7 +929,7 @@ def get_t5_preprocessor_by_name(name=None, fn_kwargs=None):
   """
 
   assert name is not None
-  f = getattr(t5_processors, name)
+  f = getattr(t5.data.preprocessors, name)
   if fn_kwargs is not None:
     f = functools.partial(f, **fn_kwargs)
   return lambda ds, unused_training: f(ds)

@@ -19,7 +19,6 @@ import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
 import t5.data.preprocessors
-import t5.data.sentencepiece_vocabulary
 
 # Corresponds roughly to T5 'large' ~ 770m params, i.e. T5's `bi_v1_large.gin`.
 d_model = 1024
