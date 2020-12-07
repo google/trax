@@ -111,6 +111,7 @@ train.checkpoint_highest = 'accuracy'
 train.checkpoint_lowest = 'loss'
 train.use_memory_efficient_trainer = True
 train.loss_chunk_size = 512
+train.loss_fn = @CrossEntropyLossWithLogSoftmax()
 
 # enc_attn_type = @LSHSelfAttention
 # dec_attn_type = @ref2_encoder/LSHSelfAttention

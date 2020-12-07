@@ -93,3 +93,4 @@ TimeBinPositionalEncoding = layer_configure(
     TimeBinPositionalEncoding, denylist=['mode'])
 
 AtariConvInit = layer_configure(AtariConvInit)
+CrossEntropyLossWithLogSoftmax = layer_configure(CrossEntropyLossWithLogSoftmax)
