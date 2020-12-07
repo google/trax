@@ -19,7 +19,6 @@ import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
 import t5.data.preprocessors
-import t5.data.sentencepiece_vocabulary
 
 max_length = 512
 sequence_length = {'inputs': 512, 'targets': 512}

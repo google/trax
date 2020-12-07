@@ -27,8 +27,8 @@ import numpy as np
 
 from t5 import data as t5_data
 from t5.data import preprocessors as t5_processors
-from t5.data import sentencepiece_vocabulary as t5_spc_vocab
 from t5.data import utils as t5_utils
+from t5.data import vocabularies as t5_vocab
 import tensorflow as tf   # pylint: disable=g-explicit-tensorflow-version-import
 import tensorflow_datasets as tfds
 import tensorflow_text as tf_text
@@ -411,7 +411,7 @@ def _get_vocab(vocab_type='subword', vocab_file=None, vocab_dir=None):
     return text_encoder.SubwordTextEncoder(path)
 
   assert vocab_type == 'sentencepiece'
-  return t5_spc_vocab.SentencePieceVocabulary(sentencepiece_model_file=path)
+  return t5_vocab.SentencePieceVocabulary(sentencepiece_model_file=path)
 
 
 # Makes the function accessible in gin configs, even with all args denylisted.
@@ -692,7 +692,7 @@ def c4_bare_preprocess_fn(dataset,
       dataset, key_map={'targets': 'text', 'inputs': None})
 
   # Vocabulary for tokenization.
-  vocab = t5_spc_vocab.SentencePieceVocabulary(
+  vocab = t5_vocab.SentencePieceVocabulary(
       sentencepiece_model_file=spm_path or t5_utils.DEFAULT_SPM_PATH)
   feature = t5_data.Feature(vocab)
   output_features = {'targets': feature, 'inputs': feature}
@@ -882,7 +882,7 @@ def generic_text_dataset_preprocess_fn(dataset,
     dataset = dataset.map(print_examples)
 
   # Vocabulary for tokenization.
-  vocab = t5_spc_vocab.SentencePieceVocabulary(
+  vocab = t5_vocab.SentencePieceVocabulary(
       sentencepiece_model_file=spm_path or t5_utils.DEFAULT_SPM_PATH)
   feature = t5_data.Feature(vocab)
   output_features = {'targets': feature, 'inputs': feature}
