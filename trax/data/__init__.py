@@ -45,6 +45,7 @@ Shuffle = data_configure(inputs.Shuffle)
 shuffle = inputs.shuffle
 TFDS = data_configure(tf_inputs.TFDS)
 Tokenize = data_configure(tf_inputs.Tokenize)
+ConvertToUnicode = data_configure(tf_inputs.ConvertToUnicode)
 tokenize = tf_inputs.tokenize
 detokenize = tf_inputs.detokenize
 vocab_size = tf_inputs.vocab_size

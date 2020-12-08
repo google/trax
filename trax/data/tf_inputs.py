@@ -367,6 +367,46 @@ def detokenize(x, vocab_type='subword', vocab_file=None, vocab_dir=None,
   return str(vocab.decode(x_unreserved.tolist()))
 
 
+def _to_unicode(s):
+  # Errors of the casting are ignored (e.g. sequences not allowed by UTF-8),
+  # in order not to stay with incomplete examples (with empty values).
+  return str(s, encoding='utf-8', errors='ignore')
+
+
+def ConvertToUnicode(keys=None):  # pylint: disable=invalid-name
+  """Converts to Unicode UTF-8 elements of an example.
+
+  Useful for when TFDS outputs byte arrays. All of the errors of the conversion
+  are ignored.
+
+  Args:
+    keys: tuple/list of example dimensions to convert.
+  Returns:
+    Function converting chosen elements of an example to UTF-8.
+  """
+  def _convert_to_unicode_str(stream, keys=None):
+    for example in stream:
+      if isinstance(example, (list, tuple)):
+        new_example = []
+        for i, x in enumerate(example):
+          if keys is None or i in keys:
+            new_example.append(_to_unicode(x))
+          else:
+            new_example.append(x)
+        yield tuple(new_example)
+      elif isinstance(example, dict):
+        new_example = {}
+        for k in example:
+          if keys is None or k in keys:
+            new_example[k] = _to_unicode(example[k])
+          else:
+            new_example[k] = example[k]
+        yield new_example
+      else:
+        yield _to_unicode(example)
+  return lambda g: _convert_to_unicode_str(g, keys)
+
+
 def vocab_size(vocab_type='subword', vocab_file=None, vocab_dir=None,
                n_reserved_ids=0):
   """Returns the size of the vocabulary (number of symbols used).

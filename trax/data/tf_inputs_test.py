@@ -111,6 +111,28 @@ class TFInputsTest(tf.test.TestCase):
     super().setUp()
     gin.clear_config()
 
+  def test_convert_to_unicode(self):
+    def dataset1():
+      yield (b'Audentes fortuna iuvat.', b'Fortune favors the bold.')
+    def dataset2():
+      yield (b'\x81aabb', b'Value')
+
+    convert_function1 = tf_inputs.ConvertToUnicode(keys=[0])
+    convert_output1 = next(convert_function1(dataset1()))
+    self.assertEqual(convert_output1[0], 'Audentes fortuna iuvat.')
+    self.assertEqual(convert_output1[1], b'Fortune favors the bold.')
+    self.assertIsInstance(convert_output1[0], str)
+    self.assertIsInstance(convert_output1[1], bytes)
+
+    # Contains an invalid bytes array from the point of view of UTF-8.
+    try:
+      convert_function2 = tf_inputs.ConvertToUnicode(keys=[0])
+      convert_output2 = next(convert_function2(dataset2()))
+    except UnicodeDecodeError:
+      self.fail('ConvertToUnicode threw UnicodeDecodeError.')
+    self.assertEqual(convert_output2[0], 'aabb')
+    self.assertIsInstance(convert_output2[0], str)
+
   def test_tokenize_detokenize(self):
     def dataset():
       yield 'I have a cat.'

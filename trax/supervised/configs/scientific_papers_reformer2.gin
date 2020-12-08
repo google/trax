@@ -38,6 +38,7 @@ attn_type = @LSHSelfAttention
 # TODO(wgaj): Add shuffling.
 make_inputs.train_stream = [
   @train/data.TFDS(),
+  @data.ConvertToUnicode(),
   @data.Tokenize(),
   @data.FilterEmptyExamples(),
   @data.TruncateToLength(),
@@ -49,6 +50,7 @@ make_inputs.train_stream = [
 train/data.TFDS.dataset_name = 'scientific_papers/arxiv:1.1.1'
 train/data.TFDS.keys = ('article', 'abstract')
 train/data.TFDS.train = True
+data.ConvertToUnicode.keys = [0, 1]
 data.Tokenize.vocab_file = 'gs://t5-data/vocabs/cc_all.32000/sentencepiece.model'
 data.Tokenize.keys = [0, 1]
 data.Tokenize.vocab_type = 'sentencepiece'
@@ -61,6 +63,7 @@ data.AddLossWeights.id_to_mask = 0
 
 make_inputs.eval_stream = [
   @eval/data.TFDS(),
+  @data.ConvertToUnicode(),
   @data.Tokenize(),
   @data.FilterEmptyExamples(),
   @data.TruncateToLength(),
