@@ -1,0 +1,86 @@
+# Copyright 2020 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Generic gin file in TRAX to use for C4's span corruption objective.
+
+import t5.data.preprocessors
+import trax.data.inputs
+import trax.data.tf_inputs
+
+
+# Parameters for T5
+# ==============================================================================
+max_length = 512
+sequence_length = {'inputs': 512, 'targets': 512}
+mean_noise_span_length = 3.0
+noise_density = 0.15
+
+# Parameters for c4_bare_preprocess_fn:
+# ==============================================================================
+c4_bare_preprocess_fn.sequence_length = %sequence_length
+
+# Parameters for data_streams:
+# ==============================================================================
+data_streams.data_dir = None
+data_streams.dataset_name = 'c4/en:2.3.0'
+data_streams.input_name = 'inputs'
+data_streams.target_name = 'targets'
+data_streams.bare_preprocess_fn=@trax.data.tf_inputs.c4_bare_preprocess_fn
+
+# Parameters for unsupervised:
+# ==============================================================================
+
+# This is what T5 uses.
+# unsupervised.preprocessors = \
+#     [@preprocessors.select_random_chunk,
+#      @preprocessors.reduce_concat_tokens,
+#      @preprocessors.split_tokens,
+#      @preprocessors.denoise]
+
+# We.delete out reduce_concat_tokens since we don't want to do sequence packing
+unsupervised.preprocessors = \
+    [@preprocessors.select_random_chunk,
+     @preprocessors.split_tokens,
+     @preprocessors.denoise]
+
+# Parameters for select_random_chunk:
+# ==============================================================================
+select_random_chunk.feature_key = 'targets'
+select_random_chunk.max_length = %max_length
+
+# Parameters for reduce_concat_tokens:
+# ==============================================================================
+reduce_concat_tokens.batch_size = 128
+reduce_concat_tokens.feature_key = 'targets'
+
+# Parameters for random_spans_helper:
+# ==============================================================================
+random_spans_helper.extra_tokens_per_span_inputs = 1
+random_spans_helper.extra_tokens_per_span_targets = 1
+random_spans_helper.inputs_length = %max_length
+random_spans_helper.mean_noise_span_length = %mean_noise_span_length
+random_spans_helper.noise_density = %noise_density
+
+# Parameters for split_tokens:
+# ==============================================================================
+split_tokens.feature_key = 'targets'
+split_tokens.max_tokens_per_segment = @preprocessors.random_spans_tokens_length()
+split_tokens.min_tokens_per_segment = None
+
+# Parameters for denoise:
+# ==============================================================================
+denoise.inputs_fn = @preprocessors.noise_span_to_unique_sentinel
+denoise.noise_density = %noise_density
+denoise.noise_mask_fn = @preprocessors.random_spans_noise_mask
+denoise.targets_fn = @preprocessors.nonnoise_span_to_unique_sentinel
