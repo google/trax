@@ -210,9 +210,11 @@ class Loop:
     self._model.rng = self.new_rng()
     # In the memory-efficient case, we initialize in init_trainer.
     if not use_memory_efficient_trainer:
-      self._model.init(self._batch_signature)
+      if _is_uninitialized(self._model):
+        self._model.init(self._batch_signature)
       self._eval_model.rng = self.new_rng()
-      self._eval_model.init(self._batch_signature)
+      if _is_uninitialized(self._eval_model):
+        self._eval_model.init(self._batch_signature)
 
     # To handle the above case (i.e. random_seed = None), we psum the weights
     # and state and average them.
@@ -1138,3 +1140,15 @@ def _make_weights_and_state_same_across_hosts(weights_and_state):
       lambda ws: (ws / n_devices_total).astype(ws.dtype), weights_and_state)
 
   return weights_and_state
+
+
+def _is_uninitialized(model):
+  """Checks whether no weights in the model have been initialized."""
+  def _is_empty(x):
+    if isinstance(x, (list, tuple)):
+      return all(_is_empty(y) for y in x)
+    else:
+      return x is None
+  if not _is_empty(model.weights):
+    return False
+  return all(_is_uninitialized(l) for l in model.sublayers)

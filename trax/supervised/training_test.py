@@ -76,6 +76,23 @@ class TrainingTest(absltest.TestCase):
     training_session.run(n_steps=5)
     self.assertEqual(20, training_session.step)
 
+  def test_loop_with_initialized_model(self):
+    """Check that loop does not re-initialize an already initialized model."""
+    model = tl.Serial(tl.Dense(1))
+    example_data = next(_very_simple_data())
+    model.init(example_data)
+    w = model.weights[0][0]
+    task = training.TrainTask(
+        _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01))
+    eval_task = training.EvalTask(
+        _very_simple_data(),  # deliberately re-using training data
+        [tl.L2Loss()],
+        metric_names=['SGD.L2Loss'])
+    loop = training.Loop(model, [task], eval_tasks=[eval_task],
+                         eval_at=lambda step_n: step_n % 2 == 0)
+    self.assertEqual(0, loop.step)
+    self.assertEqual(loop.model.weights[0][0], w)
+
   def test_train_save_restore_dense(self):
     """Saves and restores a checkpoint to check for equivalence."""
     task = training.TrainTask(
