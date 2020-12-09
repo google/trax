@@ -329,6 +329,7 @@ class RLTask:
     if isinstance(env, str):
       self._env_name = env
       if dm_suite:
+        pass
       else:
         env = gym.make(self._env_name)
         eval_env = gym.make(self._env_name)
