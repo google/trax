@@ -239,6 +239,58 @@ class TraxTest(parameterized.TestCase):
       self.assertEqual(loop.step, 2 * steps)
 
   @parameterized.parameters(BACKENDS)
+  def test_train_permanent_checkpoints(self, backend):
+    with fastmath.use_backend(backend):
+      # Prepare model and inputs
+      n_classes = 4
+      steps = 5
+      eval_steps = 2
+      model_fn = functools.partial(models.MLP,
+                                   layer_widths=(16, 16, n_classes))
+      inputs = _test_inputs(n_classes)
+
+      # Train and evaluate
+      output_dir = self.create_tempdir().full_path
+
+      # Steps 1 -> 5
+      loop = trainer_lib.train(
+          output_dir,
+          model=model_fn,
+          inputs=inputs,
+          steps=steps,
+          eval_steps=eval_steps,
+          eval_frequency=1,
+          permanent_checkpoint_frequency=2)
+
+      # Steps 6 -> 10
+      loop = trainer_lib.train(
+          output_dir,
+          model=model_fn,
+          inputs=inputs,
+          steps=(2 * steps),
+          eval_steps=eval_steps,
+          eval_frequency=1,
+          permanent_checkpoints_at=[7, 8, 10])
+
+      path = os.path.join(output_dir, 'model.pkl.gz')
+      self.assertTrue(tf.io.gfile.exists(path))
+
+      for step in range(11):
+        filename = 'model_{}.pkl.gz'.format(step)
+        path = os.path.join(output_dir, filename)
+        if step in [1, 2, 4, 7, 8, 10]:
+          self.assertTrue(tf.io.gfile.exists(path),
+                          msg='No model for step: {} in dir {}.'.format(
+                              step, tf.io.gfile.listdir(output_dir)))
+        else:
+          self.assertFalse(tf.io.gfile.exists(path),
+                           msg='Model for step: {} in dir {}.'.format(
+                               step, tf.io.gfile.listdir(output_dir)))
+
+      # Assert total train steps
+      self.assertEqual(loop.step, 10)
+
+  @parameterized.parameters(BACKENDS)
   def test_train_restart_with_same_steps(self, backend):
     with fastmath.use_backend(backend):
       # Prepare model and inputs

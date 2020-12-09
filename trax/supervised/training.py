@@ -103,6 +103,7 @@ class Loop:
       eval_tasks=None,
       output_dir=None,
       checkpoint_at=None,
+      permanent_checkpoint_at=None,
       eval_at=None,
       which_task=None,
       n_devices=None,
@@ -136,6 +137,10 @@ class Loop:
       checkpoint_at: Function (integer --> boolean) telling, for step n, whether
           that step should have its checkpoint saved. If None, the default is
           periodic checkpointing at `task.n_steps_per_checkpoint`.
+      permanent_checkpoint_at: Function (integer --> boolean) telling,
+          for step n, whether that step should have its checkpoint saved
+          permanently. If None, the default is periodic checkpointing at
+          `task.n_steps_per_permanent_checkpoint`.
       eval_at: Function (integer --> boolean) that says, for training step n,
           whether that step should run evals. If None, run when checkpointing.
       which_task: Function (integer --> integer) indicating which task should be
@@ -179,6 +184,8 @@ class Loop:
       self._eval_model = model
 
     default_at = _at_step_1_and_every_nth_step(tasks[0].n_steps_per_checkpoint)
+    permanent_default_at = _at_step_1_and_every_nth_step(
+        tasks[0].n_steps_per_permanent_checkpoint)
     if output_dir is not None:
       self._output_dir = os.path.expanduser(output_dir)
       tf.io.gfile.makedirs(self._output_dir)
@@ -188,6 +195,8 @@ class Loop:
     # Prepare training components.
     self._step = 0
     self._checkpoint_at = checkpoint_at or default_at
+    self._permanent_checkpoint_at = (
+        permanent_checkpoint_at or permanent_default_at)
     if which_task is None:
       if len(tasks) > 1:
         raise ValueError('Must provide which_task for multitask training.')
@@ -369,6 +378,8 @@ class Loop:
 
         if self._checkpoint_at(self.step):
           self.save_checkpoint()
+        if self._permanent_checkpoint_at(self.step):
+          self.save_checkpoint(permanent=True)
         if self._eval_at(self.step):
           logging.info('cpu memory use (MB): %.2f',
                        process.memory_info().rss / float(1024*1024))
@@ -632,7 +643,7 @@ class Loop:
     """Logs message, labeled with the current training step number."""
     _log('Step % 6d: %s' % (self.step, msg), stdout=stdout)
 
-  def save_checkpoint(self):
+  def save_checkpoint(self, permanent=False):
     """Saves checkpoint to disk for the current training step."""
     if not self.is_chief:
       _log('Did not save checkpoint as we are not chief.')
@@ -640,7 +651,11 @@ class Loop:
     if self._output_dir is None:
       _log('Did not save checkpoint as output_dir is None')
       return
-    ckpt_file = os.path.join(self._output_dir, 'model.pkl.gz')
+    if permanent:
+      filename = 'model_{}.pkl.gz'.format(self.step)
+    else:
+      filename = 'model.pkl.gz'
+    ckpt_file = os.path.join(self._output_dir, filename)
     _log('Saving checkpoint to %s.' % ckpt_file, stdout=False)
     weights = self._model.weights
     state = self._model.state
@@ -863,7 +878,8 @@ class TrainTask:
   """A supervised task (labeled data + feedback mechanism) for training."""
 
   def __init__(self, labeled_data, loss_layer, optimizer,
-               lr_schedule=None, n_steps_per_checkpoint=100):
+               lr_schedule=None, n_steps_per_checkpoint=100,
+               n_steps_per_permanent_checkpoint=None):
     r"""Configures a training task.
 
     Args:
@@ -876,6 +892,8 @@ class TrainTask:
           loss-function gradients.
       lr_schedule: Learning rate schedule, a function step -> learning_rate.
       n_steps_per_checkpoint: How many steps to run between checkpoints.
+      n_steps_per_permanent_checkpoint: How many steps to run between permanent
+          checkpoints.
     """
     self._labeled_data = labeled_data
     self._loss_layer = loss_layer
@@ -883,6 +901,7 @@ class TrainTask:
     self._lr_schedule = lr_schedule
     self._sample_batch = next(labeled_data)
     self._n_steps_per_checkpoint = n_steps_per_checkpoint
+    self._n_steps_per_permanent_checkpoint = n_steps_per_permanent_checkpoint
 
   @property
   def labeled_data(self):
@@ -903,6 +922,10 @@ class TrainTask:
   @property
   def n_steps_per_checkpoint(self):
     return self._n_steps_per_checkpoint
+
+  @property
+  def n_steps_per_permanent_checkpoint(self):
+    return self._n_steps_per_permanent_checkpoint
 
   @property
   def optimizer(self):
@@ -995,6 +1018,9 @@ def _never(*args):
 
 def _at_step_1_and_every_nth_step(period):
   """A function that's true at 1 and n when n % period == 0."""
+  if period is None:
+    return lambda step_n: False
+
   def _at_1_and_periodically(step_n):
     return (step_n == 1) or (step_n > 0 and (step_n % period == 0))
   return _at_1_and_periodically

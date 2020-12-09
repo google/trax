@@ -512,8 +512,10 @@ def train(output_dir,
           trainer_class=Trainer,
           steps=1000,
           checkpoints_at=None,
+          permanent_checkpoints_at=None,
           eval_steps=10,
           eval_frequency=100,
+          permanent_checkpoint_frequency=None,
           random_seed=None,
           save_graphs=True,
           metrics=None,
@@ -538,9 +540,13 @@ def train(output_dir,
     steps: int, total number of training steps.
     checkpoints_at: list of integers. Save a checkpoint for each training step
       in the list.
+    permanent_checkpoints_at: list of integers. Save a permanent checkpoint for
+      each training step in the list.
     eval_steps: int, num of steps per evaluation. If None or 0, eval disabled.
     eval_frequency: int, how often to run evaluation (every eval_frequency
       steps). If None or 0, eval disabled.
+    permanent_checkpoint_frequency: int, how often to save permanent checkpoints
+      (every permanent_checkpoint_frequency steps).
     random_seed: the random seed to use; time/os dependent if None (default).
     save_graphs: bool, if True, save computation graph to file.
     metrics: optionally override the default metrics dictionary.
@@ -553,6 +559,10 @@ def train(output_dir,
   Returns:
     trax.TrainerState or training.Loop if use_loop is True
   """
+  if (permanent_checkpoint_frequency is not None
+      and permanent_checkpoints_at is not None):
+    raise ValueError('Only one of ["permanent_checkpoint_frequency", '
+                     '"permanent_checkpoints_at"] should be set.')
   if use_loop:
     n_devices = num_devices() or fastmath.device_count()
 
@@ -561,11 +571,13 @@ def train(output_dir,
     if callable(inputs):  # If we pass a function, e.g., through gin, call it.
       inputs = inputs()
     opt = optimizer if use_memory_efficient_trainer else optimizer()
-    train_task = training.TrainTask(inputs.train_stream(n_devices),
-                                    loss_layer=loss_fn,
-                                    optimizer=opt,
-                                    lr_schedule=lr_schedule_fn(),
-                                    n_steps_per_checkpoint=eval_frequency)
+    train_task = training.TrainTask(
+        inputs.train_stream(n_devices),
+        loss_layer=loss_fn,
+        optimizer=opt,
+        lr_schedule=lr_schedule_fn(),
+        n_steps_per_checkpoint=eval_frequency,
+        n_steps_per_permanent_checkpoint=permanent_checkpoint_frequency)
 
     # Prepare the evaluation.
     metrics_dict = metrics if metrics is not None else _DEFAULT_METRICS
@@ -579,6 +591,9 @@ def train(output_dir,
     checkpoint_at = None
     if checkpoints_at is not None:
       checkpoint_at = lambda step: step in checkpoints_at
+    permanent_checkpoint_at = None
+    if permanent_checkpoints_at is not None:
+      permanent_checkpoint_at = (lambda step: step in permanent_checkpoints_at)
     loop = training.Loop(
         model(mode='train'),
         [train_task],
@@ -586,6 +601,7 @@ def train(output_dir,
         eval_tasks=[eval_task],
         output_dir=output_dir,
         checkpoint_at=checkpoint_at,
+        permanent_checkpoint_at=permanent_checkpoint_at,
         n_devices=n_devices,
         loss_chunk_size=loss_chunk_size,
         use_memory_efficient_trainer=use_memory_efficient_trainer,
