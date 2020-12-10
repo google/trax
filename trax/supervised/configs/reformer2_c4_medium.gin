@@ -20,19 +20,69 @@ import trax.supervised.trainer_lib
 
 include 'c4.gin'
 
+ff_chunk_size = 512  # Decreasing can increase possible batch_size.
+
+enc_attn_type = @Attention
+
+MultiplicativeModularCausalAttention.sparsity = 16
+MultiplicativeConvCausalAttention.sparsity = 16
+MultiplicativeConvCausalAttention.length_kernel_size = 3
+
+dec_attn_type = @MultiplicativeConvCausalAttention
+
+ff_sparsity = 64
+loss_sparsity = 4
+
+d_model = 1024
+d_ff = 6144
+n_heads = 16
+n_layers = 24
+attn_kv = 64
 dropout = 0.1
-ff_chunk_size = 1024
-
-# Corresponds roughly to ~75B params.
-d_model = 9216
-d_ff = 65536
-n_heads = 96
-attn_kv = 96
-n_layers = 34  # would like 36 but runs out of RAM
-
-# We are using T5's 32k SPM model by default.
 vocab_size = 32000
 
+# Parameters for batcher:
+# ==============================================================================
+batcher.data_streams = @tf_inputs.data_streams
+batcher.bucket_length = 512
+batcher.batch_size_per_device = 8
+batcher.eval_batch_size = 64
+batcher.max_eval_length = %max_length
+batcher.buckets_include_inputs_in_length=True
+batcher.id_to_mask = 0
+
+# Parameters for multifactor:
+# ==============================================================================
+multifactor.constant = 1.0
+multifactor.factors = 'constant * rsqrt_decay'
+multifactor.warmup_steps = 10000
+
+# Parameters for Adafactor:
+# ==============================================================================
+Adafactor.weight_decay_rate = 1e-5
+Adafactor.weight_decay_n_steps = 100000
+Adafactor.beta1 = 0.0
+Adafactor.decay_rate = 0.8
+Adafactor.clipping_threshold = 1.0
+Adafactor.epsilon1 = 1e-16
+Adafactor.epsilon2 = 0.001
+Adafactor.factored = True
+Adafactor.multiply_by_parameter_scale = True
+
+# Parameters for train:
+# ==============================================================================
+train.eval_frequency = 1000
+train.eval_steps = 10
+train.model = @trax.models.Reformer2
+train.steps = 524288
+train.optimizer = @trax.optimizers.Adafactor
+train.checkpoint_highest = 'accuracy'
+train.checkpoint_lowest = 'loss'
+train.permanent_checkpoint_frequency = 50000
+train.use_memory_efficient_trainer = False
+# train.loss_chunk_size = 512  # only applicable for memory efficient trainer
+# CrossEntropyLossWithLogSoftmax is required for memory efficient trainer.
+# train.loss_fn = @CrossEntropyLossWithLogSoftmax()
 
 # Parameters for SelfAttention:
 # ==============================================================================
@@ -53,56 +103,6 @@ LSHSelfAttention.predict_mem_len = %max_length
 # Reformer2's *encoder* is bidirectional.
 ref2_encoder/LSHSelfAttention.n_chunks_after = 1
 
-# Parameters for batcher:
-# ==============================================================================
-batcher.data_streams = @tf_inputs.data_streams
-batcher.bucket_length = 512
-batcher.batch_size_per_device = 16
-batcher.eval_batch_size = 1
-batcher.max_eval_length = %max_length
-batcher.buckets_include_inputs_in_length=True
-batcher.id_to_mask = 0
-
-# Parameters for multifactor:
-# ==============================================================================
-multifactor.constant = 1.0
-multifactor.factors = 'constant * rsqrt_decay'
-multifactor.warmup_steps = 10000
-
-# Parameters for Adafactor:
-# ==============================================================================
-Adafactor.weight_decay_rate = 1e-5
-Adafactor.weight_decay_n_steps = 10000
-Adafactor.beta1 = 0.0
-Adafactor.decay_rate = 0.8
-Adafactor.clipping_threshold = 1.0
-Adafactor.epsilon1 = 1e-16
-Adafactor.epsilon2 = 0.001
-Adafactor.factored = True
-Adafactor.multiply_by_parameter_scale = True
-
-# Parameters for train:
-# ==============================================================================
-train.eval_frequency = 50
-train.eval_steps = 1
-train.model = @trax.models.Reformer2
-# T5 pretrains on C4 for 2^19 steps. Our batches are ~ 1/9th the size.
-train.steps = 524288
-train.optimizer = @trax.optimizers.Adafactor
-train.checkpoint_highest = 'accuracy'
-train.checkpoint_lowest = 'loss'
-train.permanent_checkpoint_frequency = 1000
-train.use_memory_efficient_trainer = True
-train.loss_chunk_size = 512
-train.loss_fn = @CrossEntropyLossWithLogSoftmax()
-
-# enc_attn_type = @LSHSelfAttention
-# dec_attn_type = @ref2_encoder/LSHSelfAttention
-MultiplicativeConvCausalAttention.sparsity = 96
-enc_attn_type = @Attention
-dec_attn_type = @MultiplicativeConvCausalAttention  # @CausalAttention
-
-
 # Parameters for Reformer2:
 # ==============================================================================
 Reformer2.d_model = %d_model  # was  512
@@ -111,19 +111,20 @@ Reformer2.dropout = %dropout  # was  0.1
 Reformer2.ff_activation = @trax.layers.Relu
 Reformer2.ff_dropout = 0.1
 Reformer2.ff_chunk_size = %ff_chunk_size
-Reformer2.ff_sparsity = (256, 32)
-Reformer2.ff_use_sru = (1, 64)
+Reformer2.ff_sparsity = %ff_sparsity
+Reformer2.ff_use_sru = (1, 32)
 Reformer2.max_len = %max_length
 Reformer2.mode = 'train'
 Reformer2.n_heads = %n_heads
-Reformer2.n_encoder_layers = 6
+Reformer2.n_encoder_layers = %n_layers
 Reformer2.n_decoder_layers = %n_layers
 Reformer2.input_vocab_size = %vocab_size
 Reformer2.d_attention_key = %attn_kv    # d_model // n_heads
 Reformer2.d_attention_value = %attn_kv  # d_model // n_heads
 Reformer2.encoder_attention_type = %enc_attn_type
 Reformer2.encoder_decoder_attention_type = %dec_attn_type
+Reformer2.loss_sparsity = %loss_sparsity
 Reformer2.n_layers_forget = 0
-Reformer2.attention_chunk_size = 1
+Reformer2.axial_pos_shape = None
+Reformer2.attention_chunk_size = 4
 Reformer2.use_bfloat16 = True
-Reformer2.loss_sparsity = 4
