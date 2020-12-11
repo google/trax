@@ -53,7 +53,7 @@ from trax.layers import core
 
 
 def CategoryAccuracy():
-  """Returns a layer that computes category prediction accuracy.
+  r"""Returns a layer that computes category prediction accuracy.
 
   The layer takes two inputs:
 
@@ -64,7 +64,7 @@ def CategoryAccuracy():
       index (category) having the highest probablity.
 
     - A batch of target categories; each target is an integer in
-      :math:`{0, ..., N-1}`.
+      :math:`\{0, ..., N-1\}`.
 
   The predicted category from each vector is the index of the highest-valued
   vector component. The layer returns the accuracy of these predictions
@@ -81,7 +81,7 @@ def CategoryAccuracy():
 
 
 def WeightedCategoryAccuracy():
-  """Returns a layer that computes a weighted category prediction accuracy.
+  r"""Returns a layer that computes a weighted category prediction accuracy.
 
   The layer takes three inputs:
 
@@ -92,7 +92,7 @@ def WeightedCategoryAccuracy():
       index (category) having the highest probablity.
 
     - A batch of target categories; each target is an integer in
-      :math:`{0, ..., N-1}`.
+      :math:`\{0, ..., N-1\}`.
 
     - A batch of weights, which matches or can be broadcast to match the shape
       of the target ndarray. This arg can give uneven weighting to different
@@ -123,15 +123,15 @@ def CategoryCrossEntropy():
       computations are combined inside the layer.
 
     - A batch of target categories; each target is an integer in
-      :math:`{0, ..., N-1}`, where :math:`N` is the activation vector
+      :math:`\{0, ..., N-1\}`, where :math:`N` is the activation vector
       depth/dimensionality.
 
   To compute cross-entropy, the layer derives probability distributions from
   its inputs:
 
-    - activation vectors: :math:`v \mapsto \text{softmax}(v)`
+    - activation vectors: :math:`\ v \mapsto \text{softmax}(v)`
 
-    - target categories (integers): :math:`n \mapsto \text{one_hot}(n)`
+    - target categories (integers): :math:`\ n \mapsto \text{one_hot}(n)`
 
   (The conversion of integer category targets to one-hot vectors amounts to
   assigning all the probability mass to the target category.) Cross-entropy
@@ -150,7 +150,7 @@ def CategoryCrossEntropy():
 
 
 def WeightedCategoryCrossEntropy():
-  """Returns a layer like ``CategoryCrossEntropy``, with weights as third input.
+  r"""Returns a layer like ``CategoryCrossEntropy``, with weights as third input.
 
   The layer takes three inputs:
 
@@ -160,7 +160,7 @@ def WeightedCategoryCrossEntropy():
       computations are combined inside the layer.
 
     - A batch of target categories; each target is an integer in
-      :math:`{0, ..., N-1}`, where :math:`N` is the activation vector
+      :math:`\{0, ..., N-1\}`, where :math:`N` is the activation vector
       depth/dimensionality.
 
     - A batch of weights, which matches or can be broadcast to match the shape
