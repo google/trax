@@ -515,7 +515,7 @@ class Loop:
     if self.step == 1:
       self._log_n_weights()
     self._log_step('Ran %d train steps in %0.2f secs' % (n_steps, elapsed_time))
-    self._log_scalars(
+    self._log_summary(
         {loss_name: total_loss / float(n_steps)},
         summary_writer, 'metrics/', 'train')
     if self.step == 1:
@@ -527,7 +527,7 @@ class Loop:
     # Average optimizer_metrics over n_steps.
     optimizer_metrics = {k: v / n_steps for k, v in optimizer_metrics.items()}
     train_parameters.update(optimizer_metrics)
-    self._log_scalars(
+    self._log_summary(
         train_parameters, summary_writer, 'training/', 'train', stdout=False)
 
   def _save_gin(self, summary_writer):
@@ -612,32 +612,37 @@ class Loop:
           sums += metric_values
         averages = sums / n_batches
         all_metrics = dict(zip(eval_task.metric_names, averages))
-        self._log_scalars(all_metrics, summary_writer, 'metrics/', 'eval')
+        self._log_summary(all_metrics, summary_writer, 'metrics/', 'eval')
 
         summary_metrics = dict(recursively_look_for_printable_states(
             model_state))
-        self._log_scalars(summary_metrics, summary_writer, 'summary_', 'eval')
+        self._log_summary(summary_metrics, summary_writer, 'summary_', 'eval')
 
-  def _log_scalars(self, scalars, summary_writer, scalar_prefix, log_prefix,
+  def _log_summary(self, values, summary_writer, value_prefix, log_prefix,
                    stdout=True):
     """Logs and saves provided metrics.
 
     Args:
-      scalars: Dict from metric name to metric value.
+      values: Dict from metric name to metric value.
       summary_writer: Jaxboard summary writer.
-      scalar_prefix: String appended in front of summary_writer entries.
+      value_prefix: String appended in front of summary_writer entries.
       log_prefix: String appended in front of logs.
       stdout: Boolean saying if logs should be logged to stdout as well.
     """
     should_write_summaries = self.is_chief and summary_writer is not None
-    for name, value in scalars.items():
-      self._log_step(
-          '%s %s | % .8f' %
-          (log_prefix.ljust(5), name.rjust(self._rjust_len), value),
-          stdout=stdout)
-      if should_write_summaries:
-        full_name = scalar_prefix + name
-        summary_writer.scalar(full_name, value, self.step)
+    for name, value in values.items():
+      full_name = value_prefix + name
+      s = jnp.shape(value)
+      if not s:
+        self._log_step(
+            '%s %s | % .8f' %
+            (log_prefix.ljust(5), name.rjust(self._rjust_len), value),
+            stdout=stdout)
+        if should_write_summaries:
+          summary_writer.scalar(full_name, value, self.step)
+      else:
+        if should_write_summaries:
+          summary_writer.image(full_name, value, self.step)
     if should_write_summaries:
       summary_writer.flush()
 

@@ -316,6 +316,67 @@ def PrintShape(n_in=1, msg=''):
   return base.PureLayer(Fwd, n_in=n_in, n_out=n_in, name=f'PrintShape_{n_in}')
 
 
+class SummaryImage(base.Layer):
+  """A layer receiving a tensor, and adding it to TensorBoard as an image.
+
+  It takes an input and returns it unchanged. It stores this input as a state to
+  be used as a metric in TensorBoard.
+  It converts a tensor to a scalar by running a given aggregation function (mean
+  by default). On TensorBoard, results for each device will be reported
+  separately.
+  """
+
+  def __init__(self, name, n_in, num_summaries=5,
+               recover_fn=None):
+    """Takes a tensor and returns it.
+
+    Args:
+      name: Name of the metric to be reported.
+      n_in: Number of inputs.
+      num_summaries: Number of images to show.
+      recover_fn: the function for converting a tensor to a dipslayable image.
+    """
+    super().__init__(name=f'Summary_{name}', n_in=n_in, n_out=n_in)
+    name = 'summary_' + name
+    self._name = name
+    self._num_summaries = num_summaries
+    self._recover_fn = recover_fn
+
+  def forward(self, x):
+    """Executes this layer as part of a forward pass through the model.
+
+    Args:
+      x: Tensor of same shape and dtype as the input signature used to
+          initialize this layer.
+
+    Returns:
+      Tensor with previously specified shape and dtype.
+    """
+    self.state = {}
+    batch_size = x[0].shape[0]
+    num_images = min(self._num_summaries, batch_size)
+    for s in range(num_images):
+      images = []
+      for i in range(self._n_in):
+        images.append(
+            self._recover_fn(x[i][s]) if self._recover_fn else x[i][s])
+      self.state[self._name + str(s)] = jnp.concatenate(images, axis=0)
+    return x[:self._n_in]
+
+  def init_weights_and_state(self, input_signature):
+    """Returns newly initialized weights for this layer.
+
+    Weights is a single  `w` tensor with previously specified shape.
+
+    Args:
+      input_signature: `ShapeDtype` instance characterizing the input this layer
+          should compute on. Unused.
+    """
+    del input_signature  # Unused.
+    self.weights = ()
+    self.state = {self._name: jnp.array(0.)}
+
+
 class SummaryScalar(base.Layer):
   """A layer receiving a tensor, and adding it to TensorBoard as a scalar.
 
