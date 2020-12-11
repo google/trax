@@ -207,6 +207,15 @@ def Log():
   return Fn('Log', lambda x: jnp.log(x))  # pylint: disable=unnecessary-lambda
 
 
+@assert_shape('...->...') # The output and input shapes are the same.
+def Swish():
+    r"""Returns a layer that computes the Swish function.
+  .. math::
+      f(x) = x \cdot \text{sigmoid}(x)
+  """
+  return Fn('Swish', lambda x: x * fastmath.expit(x))
+
+
 class ThresholdedLinearUnit(base.Layer):
   """Thresholded Linear Unit, c.f. https://arxiv.org/pdf/1911.09737.pdf ."""
 
