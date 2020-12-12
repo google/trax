@@ -92,7 +92,8 @@ def WeightedCategoryAccuracy():
       index (category) having the highest probablity.
 
     - A batch of target categories; each target is an integer in
-      :math:`\{0, ..., N-1\}`.
+      :math:`\{0, ..., N-1\}`, where :math:`N` is the activation vector
+      depth/dimensionality.
 
     - A batch of weights, which matches or can be broadcast to match the shape
       of the target ndarray. This arg can give uneven weighting to different
@@ -178,6 +179,51 @@ def WeightedCategoryCrossEntropy():
   return base.Fn('WeightedCategoryCrossEntropy', f)
 
 
+def MaskedSequenceAccuracy():
+  r"""Returns a layer that computes sequence prediction accuracy with masking.
+
+  This layer type is intended for variable length sequences, especially text,
+  that is represented as a batch of fixed-length sequences via padding for
+  unused positions.
+
+  The layer takes three inputs:
+
+    - A batch of sequences of activation vectors. The components in a given
+      vector should be mappable to a probability distribution in the following
+      loose sense: within a vector, a higher component value corresponds to a
+      higher probability, such that argmax within a vector (``axis=-1``) picks
+      the index having the highest probablity. In text modeling, the index
+      represents a token id from a predetermined token vocabulary (or padding).
+
+    - A batch of target integer sequences, with values in
+      :math:`\{0, ..., N-1\}`, where :math:`N` is the activation vector
+      depth/dimensionality. In text modeling, these sequences typically
+      represent token ids from a predetermined token vocabulary (or padding).
+
+    - A batch of weights/masks, which matches or can be broadcast to match the
+      shape of the target ndarray. This arg is used to give weight 0 to padding
+      positions, which masks those positions out of the calculation. Only the
+      zero/non-zero disctinction matters; all non-zero values are treated alike
+      as signaling non-masked (i.e., valid/in-use) positions.
+
+  The predicted integer value for each sequence position is the index of the
+  highest-valued component of the position's vector. A predicted integer
+  sequence is judged correct if it matches the target integer sequence in all
+  non-zero-weighted positions. The layer returns the accuracy of predicted
+  sequences averaged over the batch.
+  """
+  def f(model_output, targets, weights):  # pylint: disable=invalid-name
+    predictions = jnp.argmax(model_output, axis=-1)
+    shapes.assert_same_shape(predictions, targets)
+    position_is_padding = jnp.equal(weights, 0)
+    position_is_accurate = jnp.logical_or(jnp.equal(predictions, targets),
+                                          position_is_padding)
+    sequence_is_accurate = jnp.all(position_is_accurate, axis=-1)
+    return jnp.average(sequence_is_accurate)
+
+  return base.Fn('MaskedSequenceAccuracy', f)
+
+
 def Accuracy(classifier=core.ArgMax()):
   """Returns a layer that computes mean category prediction accuracy."""
   return cb.Serial(classifier,
@@ -188,7 +234,14 @@ def Accuracy(classifier=core.ArgMax()):
 
 
 def SequenceAccuracy(classifier=core.ArgMax()):
-  """Returns a layer that computes mean sequence prediction accuracy."""
+  """Returns a layer that computes mean sequence prediction accuracy.
+
+  DEPRECATED; use ``MaskedSequenceAccuracy`` instead.
+
+  Args:
+    classifier: Layer that transforms activation vectors into category
+        predictions.
+  """
   return cb.Serial(classifier,
                    _Accuracy(),
                    _WeightedSequenceMean(),
