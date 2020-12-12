@@ -183,8 +183,8 @@ def MaskedSequenceAccuracy():
   r"""Returns a layer that computes sequence prediction accuracy with masking.
 
   This layer type is intended for variable length sequences, especially text,
-  that is represented as a batch of fixed-length sequences via padding for
-  unused positions.
+  represented as a batch of fixed-length sequences via padding for unused
+  positions.
 
   The layer takes three inputs:
 
@@ -203,7 +203,7 @@ def MaskedSequenceAccuracy():
     - A batch of weights/masks, which matches or can be broadcast to match the
       shape of the target ndarray. This arg is used to give weight 0 to padding
       positions, which masks those positions out of the calculation. Only the
-      zero/non-zero disctinction matters; all non-zero values are treated alike
+      zero/non-zero distinction matters; all non-zero values are treated alike
       as signaling non-masked (i.e., valid/in-use) positions.
 
   The predicted integer value for each sequence position is the index of the
