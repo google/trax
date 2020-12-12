@@ -14,9 +14,9 @@
 
 import trax.layers
 import trax.models
+import trax.data
 import trax.optimizers
 import trax.supervised.lr_schedules
-import trax.supervised.pretrain_finetune
 import trax.supervised.trainer_lib
 import trax.models.research.bert
 import trax.layers.metrics
@@ -27,34 +27,67 @@ import trax.layers.metrics
 # not recommended and will likely result in lower than baseline accuracy.
 
 
-# Parameters for glue_inputs:
-# ==============================================================================
-glue_inputs.dataset_name = 'glue/mnli'
-glue_inputs.batch_size = 16
+dataset_name = 'glue/qnli'
 
-
-# Parameters for bert_tokenizer:
+# Parameters for TFDS data pipeline:
 # ==============================================================================
-# Download the model from from https://github.com/google-research/bert, type in path to vocabulary and uncomment
-# bert_tokenizer.vocab_path = 'PATH-TO-VOCAB'
+make_inputs.train_stream = [
+  @train/data.TFDS(),
+  @data.Tokenize(),
+  @data.CreateBertInputs(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+make_inputs.eval_stream = [
+  @eval/data.TFDS(),
+  @data.Tokenize(),
+  @data.CreateBertInputs(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+train/data.TFDS.dataset_name = %dataset_name
+train/data.TFDS.keys = @trax.data.tf_inputs.get_glue_key()
+train/data.TFDS.train = True
+eval/data.TFDS.dataset_name = %dataset_name
+eval/data.TFDS.keys = @trax.data.tf_inputs.get_glue_key()
+eval/data.TFDS.train = False
+get_glue_key.task_name = %dataset_name
+
+data.Tokenize.vocab_file = 'bert_uncased_vocab.txt'
+data.Tokenize.vocab_type = 'bert-lowercase'
+# If during the execution time of the binary the directory trax/data/testdata
+# containing the vocab file is not accessible, then copy the file to a drive
+# and change the path accordingly.
+data.Tokenize.vocab_dir = 'trax/data/testdata/'
+data.Tokenize.keys = [0, 1]
+data.CreateBertInputs.double_sentence = True
+data.PadToLength.len_map = {0: 512, 1: 512, 2: 512}
+data.PadToLength.pad_value = {0: 0, 1: 0, 2:0}
+data.TruncateToLength.len_map = {0: (256,), 1: (256,), 2: (256,)}
+data.Batch.batch_size = 16
 
 # Parameters for train:
 # ==============================================================================
 train.optimizer = @trax.optimizers.Adam
 train.eval_frequency = 20
 train.eval_steps = 10
-train.inputs = @pretrain_finetune.glue_inputs
+train.inputs = @trax.data.inputs.make_inputs
 train.model = @trax.models.BERT
-train.steps = 2000
+train.steps = 200000
 train.checkpoint_highest = 'accuracy'
 
 # Parameters for BERT:
 # ==============================================================================
-# Download the model from from https://github.com/google-research/bert, type in path to model checkpoint and uncomment
-# BERT.init_checkpoint = 'PATH-TO-MODEL-CHECKPOINT'
+BERT.init_checkpoint = 'bert-base-uncased'
 BERT.head = @bert.BERTClassifierHead
 bert.BERTClassifierHead.n_classes = 3
 
-# Parameters for lr_schedules
+# Parameters for multifactor:
 # ==============================================================================
-lr_schedules.multifactor.constant = 3e-5
+multifactor.constant = 3e-5
+multifactor.factors = 'constant * linear_warmup'
+multifactor.warmup_steps = 1000

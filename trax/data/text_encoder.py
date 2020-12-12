@@ -19,6 +19,7 @@
 * ByteTextEncoder: for ascii text
 * TokenTextEncoder: with user-supplied vocabulary file
 * SubwordTextEncoder: invertible
+* BertEncoder: for compatible tokenizers with original bert
 """
 
 import collections
@@ -27,6 +28,7 @@ import math
 import re
 import tempfile
 import time
+import unicodedata
 
 from absl import logging
 import numpy as np
@@ -123,8 +125,8 @@ class TextEncoder:
 
     Args:
       ids: list of integers to be converted.
-      strip_extraneous: bool, whether to strip off extraneous tokens
-        (EOS and PAD).
+      strip_extraneous: bool, whether to strip off extraneous tokens (EOS and
+        PAD).
 
     Returns:
       s: human-readable string.
@@ -273,13 +275,13 @@ class TokenTextEncoder(TextEncoder):
 
     Args:
       vocab_filename: If not None, the full filename to read vocab from. If this
-         is not None, then vocab_list should be None.
+        is not None, then vocab_list should be None.
       reverse: Boolean indicating if tokens should be reversed during encoding
-         and decoding.
+        and decoding.
       vocab_list: If not None, a list of elements of the vocabulary. If this is
-         not None, then vocab_filename should be None.
-      replace_oov: If not None, every out-of-vocabulary token seen when
-         encoding will be replaced by this string (which must be in vocab).
+        not None, then vocab_filename should be None.
+      replace_oov: If not None, every out-of-vocabulary token seen when encoding
+        will be replaced by this string (which must be in vocab).
       num_reserved_ids: Number of IDs to save for reserved tokens like <EOS>.
     """
     super(TokenTextEncoder, self).__init__(num_reserved_ids=num_reserved_ids)
@@ -296,8 +298,9 @@ class TokenTextEncoder(TextEncoder):
     sentence = s
     tokens = sentence.strip().split()
     if self._replace_oov is not None:
-      tokens = [t if t in self._token_to_id else self._replace_oov
-                for t in tokens]
+      tokens = [
+          t if t in self._token_to_id else self._replace_oov for t in tokens
+      ]
     ret = [self._token_to_id[tok] for tok in tokens]
     return ret[::-1] if self._reverse else ret
 
@@ -339,6 +342,7 @@ class TokenTextEncoder(TextEncoder):
     Args:
       vocab_list: A list of tokens.
     """
+
     def token_gen():
       for token in vocab_list:
         if token not in RESERVED_TOKENS:
@@ -360,8 +364,8 @@ class TokenTextEncoder(TextEncoder):
         enumerate(token_generator, start=non_reserved_start_index))
 
     # _token_to_id is the reverse of _id_to_token
-    self._token_to_id = dict((v, k)
-                             for k, v in six.iteritems(self._id_to_token))
+    self._token_to_id = dict(
+        (v, k) for k, v in six.iteritems(self._id_to_token))
 
   def store_to_file(self, filename):
     """Write vocab file to disk.
@@ -462,8 +466,7 @@ class SubwordTextEncoder(TextEncoder):
     """Initialize and read from a file, if provided.
 
     Args:
-      filename: filename from which to read vocab. If None, do not load a
-        vocab
+      filename: filename from which to read vocab. If None, do not load a vocab
     """
     self._alphabet = set()
     self.filename = filename
@@ -476,11 +479,11 @@ class SubwordTextEncoder(TextEncoder):
 
     Args:
       s: a native string.
+
     Returns:
       a list of integers in the range [0, vocab_size)
     """
-    return self._tokens_to_subtoken_ids(
-        tokenizer.encode(native_to_unicode(s)))
+    return self._tokens_to_subtoken_ids(tokenizer.encode(native_to_unicode(s)))
 
   def encode_without_tokenizing(self, token_text):
     """Converts string to list of subtoken IDs without calling tokenizer.
@@ -494,6 +497,7 @@ class SubwordTextEncoder(TextEncoder):
 
     Args:
       token_text: A native string representation of a single token.
+
     Returns:
       A list of subword token IDs; i.e., integers in the range [0, vocab_size).
     """
@@ -504,8 +508,8 @@ class SubwordTextEncoder(TextEncoder):
 
     Args:
       ids: a list of integers in the range [0, vocab_size)
-      strip_extraneous: bool, whether to strip off extraneous tokens
-        (EOS and PAD).
+      strip_extraneous: bool, whether to strip off extraneous tokens (EOS and
+        PAD).
 
     Returns:
       a native string
@@ -527,6 +531,7 @@ class SubwordTextEncoder(TextEncoder):
 
     Args:
       tokens: a list of strings.
+
     Returns:
       a list of integers in the range [0, vocab_size)
     """
@@ -540,6 +545,7 @@ class SubwordTextEncoder(TextEncoder):
 
     Args:
       token: a string.
+
     Returns:
       a list of integers in the range [0, vocab_size)
     """
@@ -557,6 +563,7 @@ class SubwordTextEncoder(TextEncoder):
 
     Args:
       subtokens: a list of integers in the range [0, vocab_size)
+
     Returns:
       a list of strings.
     """
@@ -582,6 +589,7 @@ class SubwordTextEncoder(TextEncoder):
 
     Args:
       escaped_token: An escaped token as a unicode string.
+
     Returns:
       A list of subtokens as unicode strings.
     """
@@ -612,6 +620,7 @@ class SubwordTextEncoder(TextEncoder):
 
     Args:
       escaped_token: An escaped token as a unicode string.
+
     Returns:
       A list of subtoken IDs as integers.
     """
@@ -647,7 +656,10 @@ class SubwordTextEncoder(TextEncoder):
       for tok in tokenizer.encode(native_to_unicode(item)):
         token_counts[tok] += 1
     encoder = cls.build_to_target_size(
-        target_size, token_counts, 1, 1e3,
+        target_size,
+        token_counts,
+        1,
+        1e3,
         max_subtoken_length=max_subtoken_length,
         reserved_tokens=reserved_tokens)
     return encoder
@@ -701,7 +713,9 @@ class SubwordTextEncoder(TextEncoder):
       logging.info("Trying min_count %d", present_count)
       subtokenizer = cls()
       subtokenizer.build_from_token_counts(
-          token_counts, present_count, num_iterations,
+          token_counts,
+          present_count,
+          num_iterations,
           max_subtoken_length=max_subtoken_length,
           reserved_tokens=reserved_tokens)
 
@@ -770,8 +784,8 @@ class SubwordTextEncoder(TextEncoder):
 
     # Bootstrap the initial list of subtokens with the characters from the
     # alphabet plus the escaping characters.
-    self._init_subtokens_from_list(list(self._alphabet),
-                                   reserved_tokens=reserved_tokens)
+    self._init_subtokens_from_list(
+        list(self._alphabet), reserved_tokens=reserved_tokens)
 
     # We build iteratively.  On each iteration, we segment all the words,
     # then count the resulting potential subtokens, keeping the ones
@@ -800,9 +814,10 @@ class SubwordTextEncoder(TextEncoder):
           start += len(subtoken)
         iter_time_secs = time.time() - iter_start_time
         if iter_time_secs > 0.1:
-          logging.info("Processing token [%s] took {%d} seconds, consider "
-                       "setting Text2TextProblem.max_subtoken_length to a "
-                       "smaller value.", token, iter_time_secs)
+          logging.info(
+              "Processing token [%s] took {%d} seconds, consider "
+              "setting Text2TextProblem.max_subtoken_length to a "
+              "smaller value.", token, iter_time_secs)
 
       # Array of sets of candidate subtoken strings, by length.
       len_to_subtoken_strings = []
@@ -829,8 +844,8 @@ class SubwordTextEncoder(TextEncoder):
               subtoken_counts[subtoken_string[:l]] -= count
 
       # Include the alphabet explicitly to guarantee all strings are encodable.
-      new_subtoken_strings.extend((subtoken_counts.get(a, 0), a)
-                                  for a in self._alphabet)
+      new_subtoken_strings.extend(
+          (subtoken_counts.get(a, 0), a) for a in self._alphabet)
       new_subtoken_strings.sort(reverse=True)
 
       # Reinitialize to the candidate vocabulary.
@@ -851,10 +866,11 @@ class SubwordTextEncoder(TextEncoder):
 
   def dump(self):
     """Debugging dump of the current subtoken vocabulary."""
-    subtoken_strings = [(i, s)
-                        for s, i in six.iteritems(self._subtoken_string_to_id)]
-    print(u", ".join(u"{0} : '{1}'".format(i, s)
-                     for i, s in sorted(subtoken_strings)))
+    subtoken_strings = [
+        (i, s) for s, i in six.iteritems(self._subtoken_string_to_id)
+    ]
+    print(u", ".join(
+        u"{0} : '{1}'".format(i, s) for i, s in sorted(subtoken_strings)))
 
   def _init_subtokens_from_list(self, subtoken_strings, reserved_tokens=None):
     """Initialize token information from a list of subtoken strings.
@@ -882,18 +898,17 @@ class SubwordTextEncoder(TextEncoder):
     # check arbitrarily long strings.
     self._max_subtoken_len = max([len(s) for s in subtoken_strings])
     self._subtoken_string_to_id = {
-        s: i + len(reserved_tokens)
-        for i, s in enumerate(subtoken_strings) if s
+        s: i + len(reserved_tokens) for i, s in enumerate(subtoken_strings) if s
     }
     # Initialize the cache to empty.
-    self._cache_size = 2 ** 20
+    self._cache_size = 2**20
     self._cache = [(None, None)] * self._cache_size
 
   def _init_alphabet_from_tokens(self, tokens):
     """Initialize alphabet from an iterable of token or subtoken strings."""
     # Include all characters from all tokens in the alphabet to guarantee that
     # any token can be encoded. Additionally, include all escaping characters.
-    self._alphabet = {c for token in tokens for c in token}
+    self._alphabet = {c for token in tokens for c in token}  # pylint: disable=g-complex-comprehension
     self._alphabet |= _ESCAPE_CHARS
 
   def _load_from_file_object(self, f):
@@ -982,9 +997,9 @@ class ImageEncoder:
       length = self._height * self._width * self._channels
     if len(ids) != length:
       raise ValueError("Length of ids (%d) must be height (%d) x width (%d) x "
-                       "channels (%d); %d != %d.\n Ids: %s"
-                       % (len(ids), self._height, self._width, self._channels,
-                          len(ids), length, " ".join([str(i) for i in ids])))
+                       "channels (%d); %d != %d.\n Ids: %s" %
+                       (len(ids), self._height, self._width, self._channels,
+                        len(ids), length, " ".join([str(i) for i in ids])))
     with tf.Graph().as_default():
       raw = tf.constant(ids, dtype=tf.uint8)
       if size is None:
@@ -1042,3 +1057,282 @@ class RealEncoder:
     """
     del strip_extraneous
     return " ".join([str(i) for i in ids])
+
+
+class BertEncoder:
+  """Encoder Class that is compatible with models trained in original BERT library."""
+
+  def __init__(self, vocab_file, do_lower_case=True):
+    self._vocab = self.load_vocab(vocab_file)
+    self._inv_vocab = {v: k for k, v in self._vocab.items()}
+    self._basic_tokenizer = BertBasicEncoder(do_lower_case=do_lower_case)
+    self._wordpiece_tokenizer = BertWordpieceTokenizer(vocab=self._vocab)
+
+  def load_vocab(self, vocab_file):
+    """Loads a vocabulary file into a dictionary."""
+    vocab = collections.OrderedDict()
+    index = 0
+    with tf.io.gfile.GFile(vocab_file, "r") as reader:
+      while True:
+        token = native_to_unicode(reader.readline())
+        if not token:
+          break
+        token = token.strip()
+        vocab[token] = index
+        index += 1
+    return vocab
+
+  def encode(self, text):
+    return self._convert_tokens_to_ids(self.tokenize(text))
+
+  # Note: Because encoding by BertEncoder is not unique text decoded
+  # from token ids is not unique.
+  def decode(self, ids):
+    """Returns a text that encoded would yield provided ids."""
+    tokens = self._convert_ids_to_tokens(ids)
+    if not tokens:
+      return ""
+    retarr = [tokens[0]]
+    for token in tokens[1:]:
+      if token.startswith("##"):
+        retarr.append(token.lstrip("#"))
+      else:
+        retarr.append(" ")
+        retarr.append(token)
+    return "".join(retarr)
+
+  @property
+  def vocab_size(self):
+    return len(self._vocab)
+
+  def tokenize(self, text):
+    split_tokens = []
+    for token in self._basic_tokenizer.tokenize(text):
+      for sub_token in self._wordpiece_tokenizer.tokenize(token):
+        split_tokens.append(sub_token)
+
+    return split_tokens
+
+  def _convert_tokens_to_ids(self, tokens):
+    return [self._vocab[token] for token in tokens]
+
+  def _convert_ids_to_tokens(self, ids):
+    return [self._inv_vocab[token_id] for token_id in ids]
+
+
+class BertBasicEncoder:
+  """Part of BertEncoder; tokenization (punctuation splitting, lower casing)."""
+
+  def __init__(self, do_lower_case=True):
+    """Constructs a BasicTokenizer.
+
+    Args:
+      do_lower_case: Whether to lower case the input.
+    """
+    self.do_lower_case = do_lower_case
+
+  def tokenize(self, text):
+    """Tokenizes a piece of text."""
+    text = native_to_unicode(text)
+    text = self._clean_text(text)
+
+    text = self._tokenize_chinese_chars(text)
+
+    orig_tokens = whitespace_tokenize(text)
+    split_tokens = []
+    for token in orig_tokens:
+      if self.do_lower_case:
+        token = token.lower()
+        token = self._run_strip_accents(token)
+      split_tokens.extend(self._run_split_on_punc(token))
+
+    output_tokens = whitespace_tokenize(" ".join(split_tokens))
+    return output_tokens
+
+  def _run_strip_accents(self, text):
+    """Strips accents from a piece of text."""
+    text = unicodedata.normalize("NFD", text)
+    output = []
+    for char in text:
+      cat = unicodedata.category(char)
+      if cat == "Mn":
+        continue
+      output.append(char)
+    return "".join(output)
+
+  def _run_split_on_punc(self, text):
+    """Splits punctuation on a piece of text."""
+    chars = list(text)
+    i = 0
+    start_new_word = True
+    output = []
+    while i < len(chars):
+      char = chars[i]
+      if _bert_is_punctuation(char):
+        output.append([char])
+        start_new_word = True
+      else:
+        if start_new_word:
+          output.append([])
+        start_new_word = False
+        output[-1].append(char)
+      i += 1
+
+    return ["".join(x) for x in output]
+
+  def _tokenize_chinese_chars(self, text):
+    """Adds whitespace around any CJK character."""
+    output = []
+    for char in text:
+      cp = ord(char)
+      if self._is_chinese_char(cp):
+        output.append(" ")
+        output.append(char)
+        output.append(" ")
+      else:
+        output.append(char)
+    return "".join(output)
+
+  def _is_chinese_char(self, cp):
+    """Checks whether CP is the codepoint of a CJK character."""
+    # This defines a "chinese character" as anything in the CJK Unicode block:
+    #   https://en.wikipedia.org/wiki/CJK_Unified_Ideographs_(Unicode_block)
+    #
+    # Note that the CJK Unicode block is NOT all Japanese and Korean characters,
+    # despite its name. The modern Korean Hangul alphabet is a different block,
+    # as is Japanese Hiragana and Katakana. Those alphabets are used to write
+    # space-separated words, so they are not treated specially and handled
+    # like the all of the other languages.
+    if ((cp >= 0x4E00 and cp <= 0x9FFF) or  #
+        (cp >= 0x3400 and cp <= 0x4DBF) or  #
+        (cp >= 0x20000 and cp <= 0x2A6DF) or  #
+        (cp >= 0x2A700 and cp <= 0x2B73F) or  #
+        (cp >= 0x2B740 and cp <= 0x2B81F) or  #
+        (cp >= 0x2B820 and cp <= 0x2CEAF) or
+        (cp >= 0xF900 and cp <= 0xFAFF) or  #
+        (cp >= 0x2F800 and cp <= 0x2FA1F)):  #
+      return True
+
+    return False
+
+  def _clean_text(self, text):
+    """Performs invalid character removal and whitespace cleanup on text."""
+    output = []
+    for char in text:
+      cp = ord(char)
+      if cp == 0 or cp == 0xfffd or _bert_is_control(char):
+        continue
+      if _bert_is_whitespace(char):
+        output.append(" ")
+      else:
+        output.append(char)
+    return "".join(output)
+
+
+class BertWordpieceTokenizer:
+  """Runs WordPiece tokenziation."""
+
+  def __init__(self, vocab, unk_token="[UNK]", max_input_chars_per_word=200):
+    self.vocab = vocab
+    self.unk_token = unk_token
+    self.max_input_chars_per_word = max_input_chars_per_word
+
+  def tokenize(self, text):
+    """Tokenizes a piece of text into its word pieces.
+
+    This uses a greedy longest-match-first algorithm to perform tokenization
+    using the given vocabulary.
+    For example:
+      input = "unaffable"
+      output = ["un", "##aff", "##able"]
+    Args:
+      text: A single token or whitespace separated tokens. This should have
+        already been passed through `BasicTokenizer.
+
+    Returns:
+      A list of wordpiece tokens.
+    """
+
+    text = native_to_unicode(text)
+
+    output_tokens = []
+    for token in whitespace_tokenize(text):
+      chars = list(token)
+      if len(chars) > self.max_input_chars_per_word:
+        output_tokens.append(self.unk_token)
+        continue
+
+      is_bad = False
+      start = 0
+      sub_tokens = []
+      while start < len(chars):
+        end = len(chars)
+        cur_substr = None
+        while start < end:
+          substr = "".join(chars[start:end])
+          if start > 0:
+            substr = "##" + substr
+          if substr in self.vocab:
+            cur_substr = substr
+            break
+          end -= 1
+        if cur_substr is None:
+          is_bad = True
+          break
+        sub_tokens.append(cur_substr)
+        start = end
+
+      if is_bad:
+        output_tokens.append(self.unk_token)
+      else:
+        output_tokens.extend(sub_tokens)
+    return output_tokens
+
+
+def _bert_is_whitespace(char):
+  """Checks whether `chars` is a whitespace character."""
+  # \t, \n, and \r are technically contorl characters but we treat them
+  # as whitespace since they are generally considered as such.
+  if char == " " or char == "\t" or char == "\n" or char == "\r":
+    return True
+  cat = unicodedata.category(char)
+  if cat == "Zs":
+    return True
+  return False
+
+
+def _bert_is_control(char):
+  """Checks whether `chars` is a control character."""
+  # These are technically control characters but we count them as whitespace
+  # characters.
+  if char == "\t" or char == "\n" or char == "\r":
+    return False
+  cat = unicodedata.category(char)
+  if cat in ("Cc", "Cf"):
+    return True
+  return False
+
+
+def _bert_is_punctuation(char):
+  """Checks whether `chars` is a punctuation character."""
+  cp = ord(char)
+  # We treat all non-letter/number ASCII as punctuation.
+  # Characters such as "^", "$", and "`" are not in the Unicode
+  # Punctuation class but we treat them as punctuation anyways, for
+  # consistency.
+  if ((cp >= 33 and cp <= 47) or (cp >= 58 and cp <= 64) or
+      (cp >= 91 and cp <= 96) or (cp >= 123 and cp <= 126)):
+    return True
+  cat = unicodedata.category(char)
+  if cat.startswith("P"):
+    return True
+  return False
+
+
+def whitespace_tokenize(text):
+  """Runs basic whitespace cleaning and splitting on a piece of text."""
+  text = text.strip()
+  if not text:
+    return []
+  tokens = text.split()
+  return tokens

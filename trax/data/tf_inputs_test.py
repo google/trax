@@ -28,18 +28,19 @@ import tensorflow_datasets as tfds
 from trax.data import inputs  # pylint: disable=unused-import
 from trax.data import tf_inputs
 
-
 pkg_dir, _ = os.path.split(__file__)
 _TESTDATA = os.path.join(pkg_dir, 'testdata')
 
 
 def _test_dataset_ints(inp_lengths, tgt_lengths):
   """Create a test dataset of int64 tensors of given shapes."""
+
   def generator():
     for inp_len, tgt_len in zip(inp_lengths, tgt_lengths):
       inp = np.ones([inp_len], dtype=np.int64)
       tgt = np.ones([tgt_len], dtype=np.int64)
       yield {'inputs': inp, 'targets': tgt}
+
   types = {'inputs': tf.int64, 'targets': tf.int64}
   shapes = {'inputs': tf.TensorShape([None]), 'targets': tf.TensorShape([None])}
   return tf.data.Dataset.from_generator(
@@ -112,8 +113,10 @@ class TFInputsTest(tf.test.TestCase):
     gin.clear_config()
 
   def test_convert_to_unicode(self):
+
     def dataset1():
       yield (b'Audentes fortuna iuvat.', b'Fortune favors the bold.')
+
     def dataset2():
       yield (b'\x81aabb', b'Value')
 
@@ -134,6 +137,7 @@ class TFInputsTest(tf.test.TestCase):
     self.assertIsInstance(convert_output2[0], str)
 
   def test_tokenize_detokenize(self):
+
     def dataset():
       yield 'I have a cat.'
 
@@ -145,40 +149,70 @@ class TFInputsTest(tf.test.TestCase):
     self.assertEqual(detok, 'I have a cat.')
 
     # Sentencepiece.
-    tok_spc = list(tf_inputs.tokenize(
-        dataset(), vocab_type='sentencepiece',
-        vocab_dir=_TESTDATA, vocab_file='sentencepiece.model'))
+    tok_spc = list(
+        tf_inputs.tokenize(
+            dataset(),
+            vocab_type='sentencepiece',
+            vocab_dir=_TESTDATA,
+            vocab_file='sentencepiece.model'))
     self.assertAllEqual(tok_spc[0], np.array([27, 43, 3, 9, 1712, 5]))
     detok = tf_inputs.detokenize(
-        list(tok_spc[0]), vocab_type='sentencepiece',
-        vocab_dir=_TESTDATA, vocab_file='sentencepiece.model')
+        list(tok_spc[0]),
+        vocab_type='sentencepiece',
+        vocab_dir=_TESTDATA,
+        vocab_file='sentencepiece.model')
     self.assertEqual(detok, 'I have a cat.')
 
     # Subword.
-    tok_sbw = list(tf_inputs.tokenize(
-        dataset(), vocab_type='subword',
-        vocab_dir=_TESTDATA, vocab_file='en_8k.subword'))
+    tok_sbw = list(
+        tf_inputs.tokenize(
+            dataset(),
+            vocab_type='subword',
+            vocab_dir=_TESTDATA,
+            vocab_file='en_8k.subword'))
     self.assertAllEqual(tok_sbw[0], np.array([139, 96, 12, 2217, 2, 21]))
     detok = tf_inputs.detokenize(
-        tok_sbw[0], vocab_type='subword',
-        vocab_dir=_TESTDATA, vocab_file='en_8k.subword')
+        tok_sbw[0],
+        vocab_type='subword',
+        vocab_dir=_TESTDATA,
+        vocab_file='en_8k.subword')
     self.assertEqual(detok, 'I have a cat.')
 
+    # bert-lowercase
+    tok_sbw = list(
+        tf_inputs.tokenize(
+            dataset(),
+            vocab_type='bert-lowercase',
+            vocab_dir=_TESTDATA,
+            vocab_file='bert_uncased_vocab.txt'))
+    self.assertAllEqual(tok_sbw[0], np.array([1045, 2031, 1037, 4937, 1012]))
+    detok = tf_inputs.detokenize(
+        tok_sbw[0],
+        vocab_type='bert-lowercase',
+        vocab_dir=_TESTDATA,
+        vocab_file='bert_uncased_vocab.txt')
+    self.assertEqual(detok, 'i have a cat .')
+    # note: BERT tokenizer is not reversible, therefore
+    # difference between original input
+
   def test_tokenize_keys_reservedids(self):
+
     def dataset():
       yield ('Cat.', 'Dog.')
 
-    tok_char1 = list(tf_inputs.tokenize(
-        dataset(), vocab_type='char', n_reserved_ids=5))
+    tok_char1 = list(
+        tf_inputs.tokenize(dataset(), vocab_type='char', n_reserved_ids=5))
     self.assertAllEqual(tok_char1[0][0], np.array([ord(c) + 5 for c in 'Cat.']))
     self.assertAllEqual(tok_char1[0][1], np.array([ord(c) + 5 for c in 'Dog.']))
 
-    tok_char2 = list(tf_inputs.tokenize(
-        dataset(), keys=[0], vocab_type='char', n_reserved_ids=2))
+    tok_char2 = list(
+        tf_inputs.tokenize(
+            dataset(), keys=[0], vocab_type='char', n_reserved_ids=2))
     self.assertAllEqual(tok_char2[0][0], np.array([ord(c) + 2 for c in 'Cat.']))
     self.assertEqual(tok_char2[0][1], 'Dog.')
 
   def test_tokenize_dict(self):
+
     def dataset():
       yield {'a': 'Cat.', 'b': 'Dog.'}
 
@@ -186,8 +220,8 @@ class TFInputsTest(tf.test.TestCase):
     self.assertAllEqual(tok_char1[0]['a'], np.array([ord(c) for c in 'Cat.']))
     self.assertAllEqual(tok_char1[0]['b'], np.array([ord(c) for c in 'Dog.']))
 
-    tok_char2 = list(tf_inputs.tokenize(dataset(), keys=['a'],
-                                        vocab_type='char'))
+    tok_char2 = list(
+        tf_inputs.tokenize(dataset(), keys=['a'], vocab_type='char'))
     self.assertAllEqual(tok_char2[0]['a'], np.array([ord(c) for c in 'Cat.']))
     self.assertEqual(tok_char2[0]['b'], 'Dog.')
 
@@ -198,13 +232,19 @@ class TFInputsTest(tf.test.TestCase):
     # Sentencepiece.
     spc_size = tf_inputs.vocab_size(
         vocab_type='sentencepiece',
-        vocab_dir=_TESTDATA, vocab_file='sentencepiece.model')
+        vocab_dir=_TESTDATA,
+        vocab_file='sentencepiece.model')
     self.assertEqual(spc_size, 32000)
     # Subword.
     sbw_size = tf_inputs.vocab_size(
-        vocab_type='subword',
-        vocab_dir=_TESTDATA, vocab_file='en_8k.subword')
+        vocab_type='subword', vocab_dir=_TESTDATA, vocab_file='en_8k.subword')
     self.assertEqual(sbw_size, 8183)
+    # Bert_uncased.
+    sbw_size = tf_inputs.vocab_size(
+        vocab_type='bert-lowercase',
+        vocab_dir=_TESTDATA,
+        vocab_file='bert_uncased_vocab.txt')
+    self.assertEqual(sbw_size, 30522)
 
   def test_c4_bare_preprocess_fn(self):
     dataset = _c4_dataset()
@@ -238,6 +278,7 @@ class TFInputsTest(tf.test.TestCase):
     self.assertEqual(len(example['inputs']), 0)
 
   def test_c4_preprocess(self):
+
     def load_c4_dataset(split='train'):
       dataset = _c4_dataset(split=split)
       return dataset.map(lambda example: (example, example['text']))
@@ -274,7 +315,10 @@ class TFInputsTest(tf.test.TestCase):
 
     # Preprocess using the sentencepiece model in testdata.
     spc_proc_dataset = tf_inputs.c4_preprocess(
-        load_c4_dataset(), False, 2048, tokenization='spc',
+        load_c4_dataset(),
+        False,
+        2048,
+        tokenization='spc',
         spm_path=_spm_path())
 
     spc_proc_count, spc_lengths = examine_processed_dataset(spc_proc_dataset)
@@ -295,7 +339,10 @@ class TFInputsTest(tf.test.TestCase):
 
     # Just make sure this doesn't throw.
     _ = tf_inputs.data_streams(
-        'c4', data_dir=_TESTDATA, input_name='targets', target_name='text',
+        'c4',
+        data_dir=_TESTDATA,
+        input_name='targets',
+        target_name='text',
         preprocess_fn=tf_inputs.c4_preprocess)
 
   def test_c4_bare_preprocess_fn_denoising_objective(self):
@@ -341,7 +388,10 @@ class TFInputsTest(tf.test.TestCase):
 
     # Just make sure this doesn't throw.
     _ = tf_inputs.data_streams(
-        'c4', data_dir=_TESTDATA, input_name='inputs', target_name='targets',
+        'c4',
+        data_dir=_TESTDATA,
+        input_name='inputs',
+        target_name='targets',
         bare_preprocess_fn=tf_inputs.c4_bare_preprocess_fn)
 
   def test_generic_text_dataset_preprocess_fn(self):
@@ -353,7 +403,8 @@ class TFInputsTest(tf.test.TestCase):
     self.assertNotIn('targets', example)
 
     proc_dataset = tf_inputs.generic_text_dataset_preprocess_fn(
-        dataset, spm_path=_spm_path(),
+        dataset,
+        spm_path=_spm_path(),
         text_preprocess_fns=[lambda ds, training: t5_processors.squad(ds)],
         copy_plaintext=True,
         debug_print_examples=True,
@@ -369,16 +420,17 @@ class TFInputsTest(tf.test.TestCase):
 
   # TODO(afrozm): Why does this test take so much time?
   def test_inputs_using_generic_text_dataset_preprocess_fn(self):
-    gin.bind_parameter(
-        'generic_text_dataset_preprocess_fn.spm_path', _spm_path())
-    gin.bind_parameter(
-        'generic_text_dataset_preprocess_fn.text_preprocess_fns',
-        [lambda ds, training: t5_processors.squad(ds)])
+    gin.bind_parameter('generic_text_dataset_preprocess_fn.spm_path',
+                       _spm_path())
+    gin.bind_parameter('generic_text_dataset_preprocess_fn.text_preprocess_fns',
+                       [lambda ds, training: t5_processors.squad(ds)])
 
     # Just make sure this doesn't throw.
     def data_streams():
       return tf_inputs.data_streams(
-          'squad', data_dir=_TESTDATA, input_name='inputs',
+          'squad',
+          data_dir=_TESTDATA,
+          input_name='inputs',
           target_name='targets',
           bare_preprocess_fn=tf_inputs.generic_text_dataset_preprocess_fn,
           shuffle_buffer_size=1)
@@ -388,8 +440,9 @@ class TFInputsTest(tf.test.TestCase):
     squad_inputs = inputs.batcher(
         data_streams=data_streams,
         max_eval_length=512,
-        buckets=([513,], [n_devices, n_devices])
-    )
+        buckets=([
+            513,
+        ], [n_devices, n_devices]))
 
     eval_stream = squad_inputs.eval_stream(n_devices)
     inps, tgts, _ = next(eval_stream)
@@ -402,19 +455,31 @@ class TFInputsTest(tf.test.TestCase):
     # {1, 2}, {2, 4}, {3, 6} ... {10, 20}
     ds = _test_dataset_ints(range(1, 11), range(2, 21, 2))
 
-    ds1 = tf_inputs.filter_dataset_on_len(
-        ds, True, {'inputs': [4, 8], 'targets': [14, 20]})
+    ds1 = tf_inputs.filter_dataset_on_len(ds, True, {
+        'inputs': [4, 8],
+        'targets': [14, 20]
+    })
     # Only {7, 14} and {8, 16} satisfy this.
     self.assertLen(list(ds1.as_numpy_iterator()), 2)
 
     ds2 = tf_inputs.filter_dataset_on_len(
-        ds, False, len_map={'inputs': [4, 8], 'targets': [14, 20]},
+        ds,
+        False,
+        len_map={
+            'inputs': [4, 8],
+            'targets': [14, 20]
+        },
         filter_on_eval=False)
     # This is eval and we aren't supposed to filter it.
     self.assertLen(list(ds2.as_numpy_iterator()), 10)
 
     ds3 = tf_inputs.filter_dataset_on_len(
-        ds, False, len_map={'inputs': [4, 8], 'targets': [14, 20]},
+        ds,
+        False,
+        len_map={
+            'inputs': [4, 8],
+            'targets': [14, 20]
+        },
         filter_on_eval=True)
     # This is eval and we are asked to filter it.
     self.assertLen(list(ds3.as_numpy_iterator()), 2)
@@ -422,7 +487,10 @@ class TFInputsTest(tf.test.TestCase):
   def test_truncate_dataset_on_len(self):
     ds = _test_dataset_ints([5, 6, 7], [8, 9, 10])
     ds1 = tf_inputs.truncate_dataset_on_len(
-        ds, True, len_map={'inputs': 6, 'targets': 4})
+        ds, True, len_map={
+            'inputs': 6,
+            'targets': 4
+        })
     expected_ds = _test_dataset_ints([5, 6, 6], [4, 4, 4])
 
     # training, should filter.
@@ -430,12 +498,18 @@ class TFInputsTest(tf.test.TestCase):
 
     # not Training, shouldn't filter.
     ds2 = tf_inputs.truncate_dataset_on_len(
-        ds, False, len_map={'inputs': 6, 'targets': 4})
+        ds, False, len_map={
+            'inputs': 6,
+            'targets': 4
+        })
     t5_test_utils.assert_dataset(ds2, list(ds.as_numpy_iterator()))
 
     # not Training, but asked to filter, should filter.
     ds3 = tf_inputs.truncate_dataset_on_len(
-        ds, False, len_map={'inputs': 6, 'targets': 4}, truncate_on_eval=True)
+        ds, False, len_map={
+            'inputs': 6,
+            'targets': 4
+        }, truncate_on_eval=True)
     t5_test_utils.assert_dataset(ds3, list(expected_ds.as_numpy_iterator()))
 
   def test_get_t5_preprocessor_by_name(self):
@@ -447,17 +521,23 @@ class TFInputsTest(tf.test.TestCase):
     """)
     prep_rekey = tf_inputs.get_t5_preprocessor_by_name()
     og_dataset = tf.data.Dataset.from_tensors({
-        'text': 'That is good.', 'other': 'That is bad.'})
+        'text': 'That is good.',
+        'other': 'That is bad.'
+    })
     training = True
     dataset = prep_rekey(og_dataset, training)
-    t5_test_utils.assert_dataset(
-        dataset,
-        {'inputs': 'That is bad.', 'targets': 'That is good.'})
+    t5_test_utils.assert_dataset(dataset, {
+        'inputs': 'That is bad.',
+        'targets': 'That is good.'
+    })
 
   def test_pad_dataset_to_length(self):
     ds = _test_dataset_ints([5, 6, 7], [6, 7, 8])
     ds1 = tf_inputs.pad_dataset_to_length(
-        ds, True, len_map={'inputs': 7, 'targets': 10})
+        ds, True, len_map={
+            'inputs': 7,
+            'targets': 10
+        })
 
     expected_ds = [
         {
@@ -483,24 +563,49 @@ class TFInputsTest(tf.test.TestCase):
     # pylint: disable=bad-whitespace
     expected_ds = [
         {
-            'inputs':  np.array([1, 0, 1, 1, 1], dtype=np.int64),
+            'inputs': np.array([1, 0, 1, 1, 1], dtype=np.int64),
             'targets': np.array([1, 0, 1, 1, 1], dtype=np.int64),
-            'mask':    np.array([0, 0, 1, 1, 1], dtype=np.int64),
+            'mask': np.array([0, 0, 1, 1, 1], dtype=np.int64),
         },
         {
-            'inputs':  np.array([1, 1, 0, 1, 1], dtype=np.int64),
+            'inputs': np.array([1, 1, 0, 1, 1], dtype=np.int64),
             'targets': np.array([1, 1, 0, 1, 1], dtype=np.int64),
-            'mask':    np.array([0, 0, 0, 1, 1], dtype=np.int64),
+            'mask': np.array([0, 0, 0, 1, 1], dtype=np.int64),
         },
         {
-            'inputs':  np.array([1, 1, 1, 0, 1], dtype=np.int64),
+            'inputs': np.array([1, 1, 1, 0, 1], dtype=np.int64),
             'targets': np.array([1, 1, 1, 0, 1], dtype=np.int64),
-            'mask':    np.array([0, 0, 0, 0, 1], dtype=np.int64),
+            'mask': np.array([0, 0, 0, 0, 1], dtype=np.int64),
         },
     ]
     # pylint: enable=bad-whitespace
 
     t5_test_utils.assert_dataset(ds1, expected_ds)
+
+  def test_create_bert_inputs(self):
+    inputs_sentences_1 = [np.array([100, 150, 200])]
+    inputs_sentences_2 = [np.array([300, 500])]
+    labels = [np.array(1)]
+
+    create_inputs_1 = tf_inputs.CreateBertInputs(False)
+    create_inputs_2 = tf_inputs.CreateBertInputs(True)
+    for res in create_inputs_1(zip(inputs_sentences_1, labels)):
+      values, segment_embs, _, label, weight = res
+      self.assertTrue((values == np.array([101, 100, 150, 200, 102])).all())
+      self.assertTrue((segment_embs == np.zeros(5)).all())
+      self.assertEqual(label, np.int64(1))
+      self.assertEqual(weight, np.int64(1))
+
+    for res in create_inputs_2(
+        zip(inputs_sentences_1, inputs_sentences_2, labels)):
+      values, segment_embs, _, label, weight = res
+      self.assertTrue(
+          (values == np.array([101, 100, 150, 200, 102, 300, 500, 102])).all())
+      exp_segment = np.concatenate((np.zeros(5), np.ones(3)))
+      self.assertTrue((segment_embs == exp_segment).all())
+      self.assertEqual(label, np.int64(1))
+      self.assertEqual(weight, np.int64(1))
+
 
 if __name__ == '__main__':
   tf.test.main()

@@ -26,7 +26,7 @@ import gin
 import numpy as np
 
 import t5.data
-import tensorflow as tf   # pylint: disable=g-explicit-tensorflow-version-import
+import tensorflow as tf  # pylint: disable=g-explicit-tensorflow-version-import
 import tensorflow_datasets as tfds
 import tensorflow_text as tf_text
 from trax import fastmath
@@ -50,10 +50,14 @@ def t2t_problems():
 
 
 @gin.configurable()
-def data_streams(dataset_name, data_dir=None, preprocess_fn=no_preprocess,
+def data_streams(dataset_name,
+                 data_dir=None,
+                 preprocess_fn=no_preprocess,
                  bare_preprocess_fn=None,
-                 shuffle_buffer_size=1024, eval_holdout_size=0,
-                 input_name=None, target_name=None):
+                 shuffle_buffer_size=1024,
+                 eval_holdout_size=0,
+                 input_name=None,
+                 target_name=None):
   """Make data streams for TF datasets.
 
   Args:
@@ -77,12 +81,14 @@ def data_streams(dataset_name, data_dir=None, preprocess_fn=no_preprocess,
   data_dir = download_and_prepare(dataset_name, data_dir)
 
   cache = []
+
   def stream(which):
     """Create the stream, cache TF streams if needed."""
     if not cache:
-      cache.append(_train_and_eval_streams(
-          dataset_name, data_dir, preprocess_fn, bare_preprocess_fn,
-          shuffle_buffer_size, eval_holdout_size, input_name, target_name))
+      cache.append(
+          _train_and_eval_streams(dataset_name, data_dir, preprocess_fn,
+                                  bare_preprocess_fn, shuffle_buffer_size,
+                                  eval_holdout_size, input_name, target_name))
 
     (train_ds, eval_ds, input_name_c) = cache[0]
     dataset = eval_ds if which == 'eval' else train_ds
@@ -112,33 +118,28 @@ def _train_and_eval_streams(dataset, data_dir, preprocess_fn,
                             bare_preprocess_fn, shuffle_buffer_size,
                             eval_holdout_size, input_name, target_name):
   """Return train and eval batches with input name and shape."""
-  (train_data, eval_data, keys) = _train_and_eval_dataset(
-      dataset, data_dir, eval_holdout_size)
+  (train_data, eval_data,
+   keys) = _train_and_eval_dataset(dataset, data_dir, eval_holdout_size)
   # If provided select input_name/target_name else fall back to keys if that is
   # available, else [None].
-  input_names = ([input_name] if input_name is not None
-                 else keys[0] if keys is not None
-                 else [None])
-  target_names = ([target_name] if target_name is not None
-                  else keys[1] if keys is not None
-                  else [None])
+  input_names = ([input_name] if input_name is not None else
+                 keys[0] if keys is not None else [None])
+  target_names = ([target_name] if target_name is not None else
+                  keys[1] if keys is not None else [None])
 
-  train_batches = _shuffle_data(
-      train_data, target_names, True, shuffle_buffer_size, preprocess_fn,
-      bare_preprocess_fn)
-  eval_batches = _shuffle_data(
-      eval_data, target_names, False, shuffle_buffer_size, preprocess_fn,
-      bare_preprocess_fn)
+  train_batches = _shuffle_data(train_data, target_names, True,
+                                shuffle_buffer_size, preprocess_fn,
+                                bare_preprocess_fn)
+  eval_batches = _shuffle_data(eval_data, target_names, False,
+                               shuffle_buffer_size, preprocess_fn,
+                               bare_preprocess_fn)
   return (train_batches, eval_batches, input_names[0])
 
 
-def _shuffle_data(dataset,
-                  target_names,
-                  training,
-                  shuffle_buffer_size,
-                  preprocess_fn,
-                  bare_preprocess_fn):
+def _shuffle_data(dataset, target_names, training, shuffle_buffer_size,
+                  preprocess_fn, bare_preprocess_fn):
   """Shuffle the given dataset and run pre-processing."""
+
   def append_targets(example):
     """Append targets to the example dictionary. Needed for Keras."""
     if len(target_names) == 1:
@@ -147,6 +148,7 @@ def _shuffle_data(dataset,
     for name in target_names:
       targets[name] = example[name]
     return (example, targets)
+
   # `bare_preprocess_fn` is called before appending targets etc.
   if bare_preprocess_fn is not None:
     dataset = bare_preprocess_fn(dataset, training)
@@ -166,14 +168,17 @@ def _shuffle_data(dataset,
   return dataset.prefetch(8)
 
 
-def _train_and_eval_dataset(dataset_name, data_dir, eval_holdout_size,
-                            train_shuffle_files=True, eval_shuffle_files=False):
+def _train_and_eval_dataset(dataset_name,
+                            data_dir,
+                            eval_holdout_size,
+                            train_shuffle_files=True,
+                            eval_shuffle_files=False):
   """Return train and evaluation datasets, feature info and supervised keys.
 
   Args:
     dataset_name: a string, the name of the dataset; if it starts with 't2t_'
-      then we'll search T2T Problem registry for it, otherwise we assume it
-      is a dataset from TFDS and load it from there.
+      then we'll search T2T Problem registry for it, otherwise we assume it is a
+      dataset from TFDS and load it from there.
     data_dir: directory where the data is located.
     eval_holdout_size: float from 0 to <1; if >0 use this much of training data
       for evaluation (instead of looking for a pre-specified VALIDATION split).
@@ -205,6 +210,9 @@ def _train_and_eval_dataset(dataset_name, data_dir, eval_holdout_size,
     train_percentage = 100 - holdout_percentage
     train_split = f'train[:{train_percentage}%]'
     eval_split = f'train[{train_percentage}%:]'
+  elif dataset_name == 'glue/mnli':
+    eval_split = 'validation_matched'
+    # TODO(kitaev): Support diagnostic dataset (AX)
   else:
     if tfds.Split.VALIDATION not in splits and 'test' not in splits:
       raise ValueError('We require a validation or test split in the dataset.')
@@ -212,10 +220,14 @@ def _train_and_eval_dataset(dataset_name, data_dir, eval_holdout_size,
     if tfds.Split.VALIDATION not in splits:
       eval_split = tfds.Split.TEST
   train = tfds.load(
-      name=dataset_name, split=train_split, data_dir=data_dir,
+      name=dataset_name,
+      split=train_split,
+      data_dir=data_dir,
       shuffle_files=train_shuffle_files)
   valid = tfds.load(
-      name=dataset_name, split=eval_split, data_dir=data_dir,
+      name=dataset_name,
+      split=eval_split,
+      data_dir=data_dir,
       shuffle_files=eval_shuffle_files)
   keys = None
   if info.supervised_keys:
@@ -224,13 +236,17 @@ def _train_and_eval_dataset(dataset_name, data_dir, eval_holdout_size,
 
 
 @gin.configurable()
-def TFDS(dataset_name, data_dir=None,  # pylint: disable=invalid-name
-         keys=None, train=True, eval_holdout_size=0):
+def TFDS(  # pylint: disable=invalid-name
+    dataset_name,
+    data_dir=None,
+    keys=None,
+    train=True,
+    eval_holdout_size=0):
   """Returns an iterator of numpy arrays representing the dataset."""
   data_dir = download_and_prepare(dataset_name, data_dir)
 
-  (train_data, eval_data, _) = _train_and_eval_dataset(
-      dataset_name, data_dir, eval_holdout_size)
+  (train_data, eval_data, _) = _train_and_eval_dataset(dataset_name, data_dir,
+                                                       eval_holdout_size)
   dataset = train_data if train else eval_data
 
   def select_from(example):
@@ -243,6 +259,7 @@ def TFDS(dataset_name, data_dir=None,  # pylint: disable=invalid-name
     del generator
     for example in fastmath.dataset_as_numpy(dataset):
       yield example
+
   return gen
 
 
@@ -259,8 +276,8 @@ def _eager_dataset_iterator(dataset):
     yield tf.nest.pack_sequence_as(item, flat)
 
 
-def _train_and_eval_dataset_v1(problem_name, data_dir,
-                               train_shuffle_files, eval_shuffle_files):
+def _train_and_eval_dataset_v1(problem_name, data_dir, train_shuffle_files,
+                               eval_shuffle_files):
   """Return train and evaluation datasets, feature info and supervised keys."""
   with tf.device('cpu:0'):
     problem = t2t_problems().problem(problem_name)
@@ -268,13 +285,17 @@ def _train_and_eval_dataset_v1(problem_name, data_dir,
     if problem_name == 'video_bair_robot_pushing':
       hparams = problem.get_hparams()
       bair_robot_pushing_hparams(hparams)
-    train_dataset = problem.dataset(tf.estimator.ModeKeys.TRAIN, data_dir,
-                                    shuffle_files=train_shuffle_files,
-                                    hparams=hparams)
+    train_dataset = problem.dataset(
+        tf.estimator.ModeKeys.TRAIN,
+        data_dir,
+        shuffle_files=train_shuffle_files,
+        hparams=hparams)
     train_dataset = train_dataset.map(_select_features)
-    eval_dataset = problem.dataset(tf.estimator.ModeKeys.EVAL, data_dir,
-                                   shuffle_files=eval_shuffle_files,
-                                   hparams=hparams)
+    eval_dataset = problem.dataset(
+        tf.estimator.ModeKeys.EVAL,
+        data_dir,
+        shuffle_files=eval_shuffle_files,
+        hparams=hparams)
     eval_dataset = eval_dataset.map(_select_features)
     # TODO(lukaszkaiser): remove this need for one example, just input_key.
     examples = list(tfds.as_numpy(train_dataset.take(1)))
@@ -286,8 +307,12 @@ def _train_and_eval_dataset_v1(problem_name, data_dir,
 
 
 # Tokenization.
-def tokenize(stream, keys=None, vocab_type='subword',
-             vocab_file=None, vocab_dir=None, n_reserved_ids=0):
+def tokenize(stream,
+             keys=None,
+             vocab_type='subword',
+             vocab_file=None,
+             vocab_dir=None,
+             n_reserved_ids=0):
   """Tokenize examples from the stream.
 
   This function assumes that `stream` generates either strings or tuples/dicts
@@ -332,15 +357,26 @@ def tokenize(stream, keys=None, vocab_type='subword',
 
 
 @gin.configurable()
-def Tokenize(keys=None, vocab_type='subword',  # pylint: disable=invalid-name
-             vocab_file=None, vocab_dir=None, n_reserved_ids=0):
+def Tokenize(  # pylint: disable=invalid-name
+    keys=None,
+    vocab_type='subword',  # pylint: disable=invalid-name
+    vocab_file=None,
+    vocab_dir=None,
+    n_reserved_ids=0):
   """Returns a function that maps text to integer arrays; see `tokenize`."""
   return lambda g: tokenize(  # pylint: disable=g-long-lambda
-      g, keys=keys, vocab_type=vocab_type, vocab_file=vocab_file,
-      vocab_dir=vocab_dir, n_reserved_ids=n_reserved_ids)
+      g,
+      keys=keys,
+      vocab_type=vocab_type,
+      vocab_file=vocab_file,
+      vocab_dir=vocab_dir,
+      n_reserved_ids=n_reserved_ids)
 
 
-def detokenize(x, vocab_type='subword', vocab_file=None, vocab_dir=None,
+def detokenize(x,
+               vocab_type='subword',
+               vocab_file=None,
+               vocab_dir=None,
                n_reserved_ids=0):
   """Maps integer arrays to text; the opposite of `tokenize`.
 
@@ -381,9 +417,11 @@ def ConvertToUnicode(keys=None):  # pylint: disable=invalid-name
 
   Args:
     keys: tuple/list of example dimensions to convert.
+
   Returns:
     Function converting chosen elements of an example to UTF-8.
   """
+
   def _convert_to_unicode_str(stream, keys=None):
     for example in stream:
       if isinstance(example, (list, tuple)):
@@ -404,10 +442,13 @@ def ConvertToUnicode(keys=None):  # pylint: disable=invalid-name
         yield new_example
       else:
         yield _to_unicode(example)
+
   return lambda g: _convert_to_unicode_str(g, keys)
 
 
-def vocab_size(vocab_type='subword', vocab_file=None, vocab_dir=None,
+def vocab_size(vocab_type='subword',
+               vocab_file=None,
+               vocab_dir=None,
                n_reserved_ids=0):
   """Returns the size of the vocabulary (number of symbols used).
 
@@ -431,9 +472,12 @@ def vocab_size(vocab_type='subword', vocab_file=None, vocab_dir=None,
 
 def _get_vocab(vocab_type='subword', vocab_file=None, vocab_dir=None):
   """Gets the vocabulary object for tokenization; see tokenize for details."""
-  if vocab_type not in ['char', 'subword', 'sentencepiece']:
-    raise ValueError('vocab_type must be "subword", "char", or "sentencepiece" '
-                     f'but got {vocab_type}')
+  if vocab_type not in [
+      'char', 'subword', 'sentencepiece', 'bert', 'bert-lowercase'
+  ]:
+    raise ValueError(
+        'vocab_type must be "subword", "char", "sentencepiece", "bert" or "bert-lowercase" '
+        f'but got {vocab_type}')
 
   if vocab_type == 'char':
     # Note that we set num_reserved_ids=0 below. We could instead pass
@@ -446,6 +490,12 @@ def _get_vocab(vocab_type='subword', vocab_file=None, vocab_dir=None):
 
   if vocab_type == 'subword':
     return text_encoder.SubwordTextEncoder(path)
+
+  if vocab_type == 'bert':
+    return text_encoder.BertEncoder(path, do_lower_case=False)
+
+  if vocab_type == 'bert-lowercase':
+    return text_encoder.BertEncoder(path, do_lower_case=True)
 
   assert vocab_type == 'sentencepiece'
   return t5.data.SentencePieceVocabulary(sentencepiece_model_file=path)
@@ -471,6 +521,7 @@ def _cifar_augment_image(image):
 
   Args:
     image: a Tensor.
+
   Returns:
     Tensor of the same shape as image.
   """
@@ -500,7 +551,8 @@ def cifar10_augmentation_preprocess(dataset, training):
 
 
 @gin.configurable(denylist=['dataset', 'training'])
-def cifar10_augmentation_flatten_preprocess(dataset, training,
+def cifar10_augmentation_flatten_preprocess(dataset,
+                                            training,
                                             predict_image_train_weight=0.01):
   """Preprocessing for cifar10 that flattens it and appends targets."""
 
@@ -563,8 +615,10 @@ def squeeze_targets_preprocess(dataset, training):
 
 
 @gin.configurable(denylist=['dataset', 'training'])
-def lm1b_preprocess(dataset, training,
-                    max_target_length=-1, max_eval_target_length=-1):
+def lm1b_preprocess(dataset,
+                    training,
+                    max_target_length=-1,
+                    max_eval_target_length=-1):
   """Preprocessing for LM1B: filter out targets exceeding maximum length."""
 
   def target_right_length(_, target):
@@ -584,8 +638,7 @@ def lm1b_preprocess(dataset, training,
 
 # TODO(lukaszkaiser): find a single more abstract way of text pre-processing.
 @gin.configurable(denylist=['dataset', 'training'])
-def wmt_preprocess(dataset, training,
-                   max_length=-1, max_eval_length=-1):
+def wmt_preprocess(dataset, training, max_length=-1, max_eval_length=-1):
   """Preprocessing for LM1B: filter out targets exceeding maximum length."""
 
   def train_right_length(example, target):
@@ -606,8 +659,7 @@ def wmt_preprocess(dataset, training,
 
 
 @gin.configurable(denylist=['dataset', 'training'])
-def wmt_concat_preprocess(dataset, training,
-                          max_length=-1, max_eval_length=-1):
+def wmt_concat_preprocess(dataset, training, max_length=-1, max_eval_length=-1):
   """Preprocessing for WMT: filter exceeding maximum length and concatenate."""
   dataset = wmt_preprocess(dataset, training, max_length, max_eval_length)
 
@@ -645,9 +697,9 @@ def lm_token_preprocessing(dataset, training):
 
 
 @gin.configurable(denylist=['hparams'])
-def bair_robot_pushing_hparams(
-    hparams=None, video_num_input_frames=1, video_num_target_frames=15
-    ):
+def bair_robot_pushing_hparams(hparams=None,
+                               video_num_input_frames=1,
+                               video_num_target_frames=15):
   if hparams is not None:
     hparams.video_num_input_frames = video_num_input_frames
     hparams.video_num_target_frames = video_num_target_frames
@@ -681,10 +733,14 @@ DEFAULT_SPM_PATH = 'gs://t5-data/vocabs/cc_all.32000/sentencepiece.model'  # GCS
 
 
 @gin.configurable(denylist=['dataset', 'training'])
-def c4_preprocess(dataset, training, max_target_length=-1,
-                  tokenization=None, spm_path=None):
+def c4_preprocess(dataset,
+                  training,
+                  max_target_length=-1,
+                  tokenization=None,
+                  spm_path=None):
   """Pre-processing function for C4 dataset."""
   del training
+
   def unicode_decode_chars(features, targets):
     targets = tf.strings.unicode_decode(features['text'], 'UTF-8')
     targets = tf.cast(targets, tf.int64)
@@ -726,7 +782,10 @@ def c4_bare_preprocess_fn(dataset,
   """Returns a dataset that contains 'inputs' and 'targets' from C4."""
   # Set target key to be equal to the text content.
   dataset = t5.data.preprocessors.rekey(
-      dataset, key_map={'targets': 'text', 'inputs': None})
+      dataset, key_map={
+          'targets': 'text',
+          'inputs': None
+      })
 
   # Vocabulary for tokenization.
   vocab = t5.data.SentencePieceVocabulary(
@@ -736,11 +795,13 @@ def c4_bare_preprocess_fn(dataset,
 
   # Tokenize the targets.
   keys = output_features
+
   def encode_string_features_fn(features):
     """Encode all specified feature that are strings and return a dictionary.
 
     Args:
       features: a dictionary
+
     Returns:
       a dictionary
     """
@@ -752,14 +813,14 @@ def c4_bare_preprocess_fn(dataset,
         v = tf.cast(output_features[k].vocabulary.encode_tf(v), tf.int64)
       ret[k] = v
     return ret
-  dataset = dataset.map(encode_string_features_fn,
-                        num_parallel_calls=tf.data.experimental.AUTOTUNE)
+
+  dataset = dataset.map(
+      encode_string_features_fn,
+      num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
   # Preprocess the tokens - the exact preprocessors are set via gin.
   dataset = t5.data.preprocessors.unsupervised(
-      dataset,
-      sequence_length=sequence_length,
-      output_features=output_features)
+      dataset, sequence_length=sequence_length, output_features=output_features)
 
   # Add EOS.
   dataset = add_eos_to_output_features(dataset, training)
@@ -772,7 +833,9 @@ def c4_bare_preprocess_fn(dataset,
 
 
 @gin.configurable(denylist=['dataset', 'training'])
-def filter_dataset_on_len(dataset, training, len_map=None,
+def filter_dataset_on_len(dataset,
+                          training,
+                          len_map=None,
                           filter_on_eval=False):
   """Filters a dataset of lengths given in `len_map`.
 
@@ -782,7 +845,7 @@ def filter_dataset_on_len(dataset, training, len_map=None,
     len_map: optional dict of str to (int, int). We filter examples where a
       feature's size is beyond the specified bounds. Ex:
       {'inputs': (1, 512), 'targets': (64, 128)} will keep only those examples
-      where 1 <= len(inputs) <= 512 and 64 <= len(targets) <= 128.
+        where 1 <= len(inputs) <= 512 and 64 <= len(targets) <= 128.
     filter_on_eval: bool if true, we will filter in eval mode also.
 
   Returns:
@@ -800,6 +863,7 @@ def filter_dataset_on_len(dataset, training, len_map=None,
       size = tf.shape(x[key])[0]
       min_len, max_len = len_bounds
       return (min_len <= size) and (size <= max_len)
+
     dataset = dataset.filter(lambda x: within_bounds(x, k, bounds))
     # pylint: enable=cell-var-from-loop
 
@@ -807,7 +871,9 @@ def filter_dataset_on_len(dataset, training, len_map=None,
 
 
 @gin.configurable(denylist=['dataset', 'training'])
-def truncate_dataset_on_len(dataset, training, len_map=None,
+def truncate_dataset_on_len(dataset,
+                            training,
+                            len_map=None,
                             truncate_on_eval=False):
   """Truncates features in an example to lengths given in `len_map`.
 
@@ -816,7 +882,7 @@ def truncate_dataset_on_len(dataset, training, len_map=None,
     training: bool, true if we are in training mode.
     len_map: optional dict of str to int, we truncate examples where a feature's
       size is beyond the max. Ex: {'inputs': 512, 'targets': 64} will truncate
-      examples to be within those bounds.
+        examples to be within those bounds.
     truncate_on_eval: bool if true, we will truncate in eval mode also.
 
   Returns:
@@ -826,6 +892,7 @@ def truncate_dataset_on_len(dataset, training, len_map=None,
     return dataset
 
   assert isinstance(len_map, dict)
+
   def truncate_example(x):
     for key, max_len in len_map.items():
       x_len = tf.shape(x[key])[0]
@@ -842,21 +909,27 @@ def pad_dataset_to_length(dataset, training, len_map=None):
   del training
   if len_map is None:
     return dataset
+
   def pad_to_len(x):
     for key, max_len in len_map.items():
       x_shape = tf.shape(x[key])
       x_len = x_shape[0]
       if x_len < max_len:
-        pad_shape = [max_len - x_len,]
+        pad_shape = [
+            max_len - x_len,
+        ]
         zeros = tf.zeros(pad_shape, dtype=x[key].dtype)
         x[key] = tf.concat([x[key], zeros], 0)
     return x
+
   return dataset.map(pad_to_len)
 
 
 @gin.configurable(denylist=['dataset', 'training'])
-def add_eos_to_output_features(dataset, training,
-                               output_features='targets', eos=1):
+def add_eos_to_output_features(dataset,
+                               training,
+                               output_features='targets',
+                               eos=1):
   """Adds `EOS` to all features in `output_features`."""
   del training
   if not isinstance(output_features, (list, tuple)):
@@ -886,8 +959,8 @@ def generic_text_dataset_preprocess_fn(dataset,
     training: boolean, set to True if training, False otherwise.
     text_preprocess_fns: None or list of callables: `tf.data.Dataset`, bool ->
       `tf.data.Dataset` this operates before tokenization. Typically used to
-      select which fields we want to learn over or change something into
-      "text to text" form.
+      select which fields we want to learn over or change something into "text
+      to text" form.
     token_preprocess_fns: None or list of callables: `tf.data.Dataset`, bool ->
       `tf.data.Dataset`, this operates after tokenization. Since this can view
       the tokenized fields, this can be used to filter on length etc.
@@ -913,10 +986,12 @@ def generic_text_dataset_preprocess_fn(dataset,
 
   # Print debugging examples if needed before tokenization.
   if debug_print_examples:
+
     def print_examples(x):
       if np.random.uniform() < debug_print_examples_rate:
         tf.print(x, output_stream=logging.info)
       return x
+
     dataset = dataset.map(print_examples)
 
   # Vocabulary for tokenization.
@@ -935,13 +1010,19 @@ def generic_text_dataset_preprocess_fn(dataset,
       dataset = token_preprocess_fn(dataset, training)
 
   if debug_print_examples:
+
     def print_examples_and_shapes(x):
       if np.random.uniform() < debug_print_examples_rate:
-        tf.print({'inputs_shape': tf.size(x['inputs']),
-                  'targets_shape': tf.size(x['targets']),
-                  'inputs': x['inputs'],
-                  'targets': x['targets'],}, output_stream=logging.info)
+        tf.print(
+            {
+                'inputs_shape': tf.size(x['inputs']),
+                'targets_shape': tf.size(x['targets']),
+                'inputs': x['inputs'],
+                'targets': x['targets'],
+            },
+            output_stream=logging.info)
       return x
+
     dataset = dataset.map(print_examples_and_shapes)
 
   return dataset
@@ -998,8 +1079,8 @@ def download_and_prepare(dataset_name, data_dir):
       data_dir = os.path.join(data_dir, dataset_name)
       tf.io.gfile.makedirs(data_dir)
       tf.io.gfile.makedirs(dl_dir)
-      t2t_problems().problem(
-          dataset_name[len('t2t_'):]).generate_data(data_dir, dl_dir)
+      t2t_problems().problem(dataset_name[len('t2t_'):]).generate_data(
+          data_dir, dl_dir)
     else:
       # Download and prepare TFDS dataset.
       tfds_builder = tfds.builder(dataset_name)
@@ -1007,3 +1088,52 @@ def download_and_prepare(dataset_name, data_dir):
   else:
     data_dir = os.path.expanduser(data_dir)
   return data_dir
+
+
+def bert_single_sentence_preprocess(batch):
+  for sent1, label in batch:
+    value_vector = np.concatenate(([101], sent1, [102]))
+    segment_embs = np.zeros(sent1.shape[0] + 2, dtype=np.int32)
+    yield value_vector, segment_embs, segment_embs, label, np.int64(1)
+
+
+def bert_double_sentence_preprocess(batch):
+  for sent1, sent2, label in batch:
+    value_vector = np.concatenate(([101], sent1, [102], sent2, [102]))
+
+    segment_embs = np.zeros(sent1.shape[0] + sent2.shape[0] + 3, dtype=np.int32)
+    second_sent_start = sent1.shape[0] + 2
+    segment_embs[second_sent_start:] = 1
+    yield value_vector, segment_embs, segment_embs, label, np.int64(1)
+
+
+def CreateBertInputs(double_sentence=True):  # pylint: disable=invalid-name
+  """Prepares inputs for BERT models by adding [SEP] and [CLS] tokens and creating segment embeddings."""
+  if double_sentence:
+    return bert_double_sentence_preprocess
+  else:
+    return bert_single_sentence_preprocess
+
+
+@gin.configurable()
+def get_glue_key(task_name=gin.REQUIRED):
+  """Get glue key from the task name."""
+  ext_task_name = task_name if task_name.startswith(
+      'glue') else f'glue/{task_name}'
+  try:
+    glue_keys = {
+        'glue/cola': ('sentence',),
+        'glue/sst2': ('sentence',),
+        'glue/mrpc': ('sentence1', 'sentence2'),
+        'glue/qqp': ('question1', 'question2'),
+        'glue/stsb': ('sentence1', 'sentence2'),
+        'glue/mnli': ('premise', 'hypothesis'),
+        'glue/qnli': ('question', 'sentence'),
+        'glue/rte': ('sentence1', 'sentence2'),
+        'glue/wnli': ('sentence1', 'sentence2'),
+    }
+    return (*glue_keys[ext_task_name], 'label')
+  except KeyError:
+    raise KeyError(
+        f'Wrong task name entered, available glue tasks: {list(glue_keys.keys())}. Entered: {task_name}'
+    )
