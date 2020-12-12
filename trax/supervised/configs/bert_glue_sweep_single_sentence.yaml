@@ -12,14 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-finetune.dataset_name: [
+dataset_name: [
     'glue/cola',
     'glue/sst2',
-    'glue/mrpc',
-    'glue/qqp',
-    'glue/stsb',
-    'glue/mnli',
-    'glue/qnli',
-    'glue/rte',
 ]
 multifactor.constant: [2.0e-5, 3.0e-5, 5.0e-5]
+CreateBertInputs.double_sentence: [False]
+data.Tokenize.keys: [[0,]]
