@@ -47,7 +47,8 @@ class MnistTest(absltest.TestCase):
     self.assertEqual(training_session.step, 100)
 
     # Assert that we reach at least 80% eval accuracy.
-    self.assertGreater(_read_metric('Accuracy', mock_stdout), 0.8)
+    self.assertGreater(_read_metric('WeightedCategoryAccuracy', mock_stdout),
+                       0.8)
 
   @mock.patch('sys.stdout', new_callable=io.StringIO)
   def test_train_mnist_multitask(self, mock_stdout):
@@ -79,7 +80,8 @@ class MnistTest(absltest.TestCase):
     self.assertEqual(training_session.step, 100)
 
     # Assert that we reach at least 80% eval accuracy on MNIST.
-    self.assertGreater(_read_metric('Accuracy', mock_stdout), 0.8)
+    self.assertGreater(_read_metric('WeightedCategoryAccuracy', mock_stdout),
+                       0.8)
     # Assert that we get below 0.03 brightness prediction error.
     self.assertLess(_read_metric('L2', mock_stdout), 0.03)
 
@@ -135,7 +137,7 @@ def _mnist_tasks(head=None):
     MNIST evaluation task using cross-entropy as loss and accuracy as metric.
   """
   loss = tl.WeightedCategoryCrossEntropy()
-  accuracy = tl.Accuracy()
+  accuracy = tl.WeightedCategoryAccuracy()
   if head is not None:
     loss = tl.Serial(head, loss)
     accuracy = tl.Serial(head, accuracy)
@@ -148,7 +150,7 @@ def _mnist_tasks(head=None):
       itertools.cycle(_mnist_dataset().eval_stream(1)),
       [loss, accuracy],
       n_eval_batches=10,
-      metric_names=['CrossEntropy', 'Accuracy'],
+      metric_names=['CrossEntropy', 'WeightedCategoryAccuracy'],
   )
   return (task, eval_task)
 
