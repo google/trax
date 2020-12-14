@@ -577,5 +577,4 @@ def FunnelTransformerLM(vocab_size,
       conv_layer,
       post_decoder_blocks,
       tl.Dense(vocab_size),      # vecs
-      tl.LogSoftmax(),           # vecs
   )
