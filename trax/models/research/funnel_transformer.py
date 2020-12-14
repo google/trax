@@ -571,7 +571,6 @@ def FunnelTransformerLM(vocab_size,
       tl.Residual(
           tl.ShiftRight(n_positions=total_shorten_factor - 1),
           funnel_blocks,
-          tl.LayerNorm(),
           _UpsamplerLM(total_shorten_factor, d_model)
       ),
       conv_layer,
