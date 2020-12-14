@@ -45,6 +45,7 @@ Shuffle = data_configure(inputs.Shuffle)
 shuffle = inputs.shuffle
 TFDS = data_configure(tf_inputs.TFDS)
 CreateBertInputs = data_configure(tf_inputs.CreateBertInputs)
+CreateT5GlueInputs = data_configure(tf_inputs.CreateT5GlueInputs)
 Tokenize = data_configure(tf_inputs.Tokenize)
 ConvertToUnicode = data_configure(tf_inputs.ConvertToUnicode)
 tokenize = tf_inputs.tokenize
