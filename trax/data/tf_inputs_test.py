@@ -415,8 +415,8 @@ class TFInputsTest(tf.test.TestCase):
     self.assertIn('inputs', proc_example)
     self.assertIn('targets', proc_example)
 
-    self.assertEqual(proc_example['inputs'].dtype, np.int64)
-    self.assertEqual(proc_example['targets'].dtype, np.int64)
+    self.assertEqual(proc_example['inputs'].dtype, np.int32)
+    self.assertEqual(proc_example['targets'].dtype, np.int32)
 
   # TODO(afrozm): Why does this test take so much time?
   def test_inputs_using_generic_text_dataset_preprocess_fn(self):
