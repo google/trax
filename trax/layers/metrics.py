@@ -315,8 +315,9 @@ def CrossEntropyLoss():
 
 def CrossEntropyLossWithLogSoftmax():
   """Mean prediction-target cross-entropy for multiclass classification."""
-  return cb.Serial(core.LogSoftmax(), CrossEntropyLoss(),
-                   name='CrossEntropyLoss')
+  return cb.Serial(core.LogSoftmax(), _CrossEntropy(), _WeightedMean(),
+                   name='CrossEntropyLossWithLogSoftmax',
+                   sublayers_to_print=[])
 
 
 def BinaryCrossEntropyLoss():
