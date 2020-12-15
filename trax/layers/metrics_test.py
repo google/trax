@@ -144,6 +144,30 @@ class MetricsTest(absltest.TestCase):
     accuracy = layer([model_outputs, targets, weights])
     self.assertEqual(accuracy, 0.)
 
+  def test_binary_cross_entropy(self):
+    layer = tl.BinaryCrossEntropy()
+    targets = np.array([1, 1, 0, 0, 0])
+
+    # Near-perfect prediction for all five items in batch.
+    model_outputs = np.array([9., 9., -9., -9., -9.])
+    metric_output = layer([model_outputs, targets])
+    self.assertAlmostEqual(metric_output, 0.000123, places=6)
+
+    # More right than wrong for all five items in batch.
+    model_outputs = np.array([1., 1., -1., -1., -1.])
+    metric_output = layer([model_outputs, targets])
+    self.assertAlmostEqual(metric_output, 0.313, places=3)
+
+    # Near-perfect for 2, more right than wrong for 3.
+    model_outputs = np.array([9., 1., -1., -1., -9.])
+    metric_output = layer([model_outputs, targets])
+    self.assertAlmostEqual(metric_output, 0.188, places=3)
+
+    # More wrong than right for all five.
+    model_outputs = np.array([-1., -1., 1., 1., 1.])
+    metric_output = layer([model_outputs, targets])
+    self.assertAlmostEqual(metric_output, 1.313, places=3)
+
   def test_accuracy_even_weights(self):
     layer = tl.Accuracy()
     weights = np.array([1., 1., 1.])

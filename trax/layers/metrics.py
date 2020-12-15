@@ -45,6 +45,7 @@ weighted-average. For example:
     cross-entropy values.
 """
 
+from trax import fastmath
 from trax import shapes
 from trax.fastmath import numpy as jnp
 from trax.layers import base
@@ -179,6 +180,44 @@ def WeightedCategoryCrossEntropy():
   return base.Fn('WeightedCategoryCrossEntropy', f)
 
 
+def BinaryCrossEntropy():
+  r"""Returns a layer that computes cross-entropy for binary classification.
+
+  The layer takes two inputs:
+
+    - A batch of activation values; each batch item :math:`x` is a float in
+      :math:`(-\infty, \infty)`).
+
+    - A batch of binary targets; each target :math:`t` is an integer in
+      :math:`\{0, 1\}`.
+
+  The layer maps each activation value into the range :math:`(0, 1)` of
+  probability values:
+
+  .. math::
+      p = \frac 1 {1 + e^{-x}}
+
+   and computes cross-entropy by assigning all the probability mass to the
+   target category:
+
+  .. math::
+      \text{output} = \left\{ \begin{array}{cl}
+          - \log p        & \text{if}\ t = 1, \\
+          - \log{(1 - p)} & \text{if}\ t = 0.
+      \end{array} \right.
+
+  The layer returns the average of these cross-entropy values over all items in
+  the batch.
+  """
+  def f(model_output, targets):  # pylint: disable=invalid-name
+    probabilities = fastmath.expit(model_output)
+    binary_entropies = - (targets * jnp.log(probabilities) +
+                          (1 - targets) * (jnp.log(1 - probabilities)))
+    return jnp.average(binary_entropies)
+
+  return base.Fn('BinaryCrossEntropy', f)
+
+
 def MaskedSequenceAccuracy():
   r"""Returns a layer that computes sequence prediction accuracy with masking.
 
@@ -259,7 +298,8 @@ def SequenceAccuracy(classifier=core.ArgMax()):
 def CrossEntropyLoss():
   """Returns a layer that outputs multiclass prediction-target cross-entropy.
 
-  DEPRECATED; refactor to use ``WeightedCategoryCrossEntropy`` instead.
+  DEPRECATED; refactor to use ``WeightedCategoryCrossEntropy`` or
+  ``CategoryCrossEntropy`` instead.
 
   (``CrossEntropyLoss`` by itself does not compute cross-entropy. In older
   code, this layer had to be preceded by ``LogSoftmax``, and the two layers
@@ -280,7 +320,13 @@ def CrossEntropyLossWithLogSoftmax():
 
 
 def BinaryCrossEntropyLoss():
-  """Mean prediction-target cross-entropy for binary classification."""
+  """Returns a layer that outputs binary prediction-target cross-entropy.
+
+  DEPRECATED; refactor to use ``BinaryCrossEntropy`` instead. (The newer
+  ``BinaryCrossEntropy`` does not use weights, so refactor accordingly. Unless
+  and until clear motivating use cases arise, the library will not include a
+  binary cross-entropy function with weights.)
+  """
   return cb.Serial(_BinaryCrossEntropy(),
                    _WeightedMean(),
                    name='BinaryCrossEntropyLoss',
