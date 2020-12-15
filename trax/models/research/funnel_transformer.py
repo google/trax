@@ -92,6 +92,7 @@ def _Upsampler(total_pool_size, separate_cls):
     separate_cls: If `True`, pooling in funnel blocks is not applied to
           embeddings of the first token (`cls` from BERT paper).
   """
+
   def _Upsample(short, long):
     if separate_cls:
       upsampled_short = jnp.concatenate(
@@ -117,6 +118,7 @@ def _UpsamplerLM(shorten_factor, d_embedding):
       tl.Fn('ProlongBack', lambda x: jnp.reshape(  # Prolong back.
           x, (x.shape[0], x.shape[1] * shorten_factor, -1)), n_out=1),
   )
+
 
 def _FunnelBlock(d_model, d_ff, n_heads,
                  dropout, dropout_shared_axes, mode, ff_activation,
@@ -165,15 +167,15 @@ def _FunnelBlock(d_model, d_ff, n_heads,
   feed_forward = _FeedForwardBlock(
       d_model, d_ff, dropout, dropout_shared_axes, mode, ff_activation)
 
-  return [                                          # h, mask
-      tl.LayerNorm(),                               # h, mask
-      tl.Branch(pooling, None),                     # h', h, mask
+  return [  # h, mask
+      tl.LayerNorm(),  # h, mask
+      tl.Branch(pooling, None),  # h', h, mask
       tl.Residual(
-          tl.Select([0, 1, 1, 2]),                  # h', h, h, mask
-          attention,                                # attn, mask
-          tl.Parallel(None, mask_pooling),          # attn, mask'
-          hidden_dropout                            # attn, mask'
-      ),                                            # funnel_activations, mask'
+          tl.Select([0, 1, 1, 2]),  # h', h, h, mask
+          attention,  # attn, mask
+          tl.Parallel(None, mask_pooling),  # attn, mask'
+          hidden_dropout  # attn, mask'
+      ),  # funnel_activations, mask'
       tl.Residual(
           feed_forward
       )
@@ -282,17 +284,17 @@ def FunnelTransformerEncoder(vocab_size,
   cls_pooling = SelectFirst() if separate_cls else tl.Mean(axis=1)
 
   # Assemble and return the model.
-  return tl.Serial(                               # toks
-                                                  # Encode.
+  return tl.Serial(  # toks
+      # Encode.
       tl.Branch(
           positional_encoder, tl.PaddingMask()),  # vecs masks
-      encoder_blocks,                             # vecs masks
-      tl.Select([0], n_in=2),                     # vecs
-      tl.LayerNorm(),                             # vecs
+      encoder_blocks,  # vecs masks
+      tl.Select([0], n_in=2),  # vecs
+      tl.LayerNorm(),  # vecs
 
       # Map to output categories.
-      cls_pooling,                                # cls
-      tl.Dense(n_classes),                        # cls
+      cls_pooling,  # cls
+      tl.Dense(n_classes),  # cls
   )
 
 
@@ -401,21 +403,21 @@ def FunnelTransformer(vocab_size,
   total_pool_size = pool_size[0] ** (len(encoder_segment_lengths) - 1)
 
   # Assemble and return the model.
-  return tl.Serial(                               # toks
+  return tl.Serial(  # toks
       tl.Branch(
           positional_encoder, tl.PaddingMask()),  # vecs masks
-      encoder_blocks_before_first_pooling,        # vecs masks
+      encoder_blocks_before_first_pooling,  # vecs masks
       tl.Select([0, 1, 0, 1]),
       # vecs masks residual = vecs old_masks
-      encoder_blocks_from_first_pooling,          # vecs masks residual masks
-      tl.Select([0, 2, 3]),                       # vecs residual masks
+      encoder_blocks_from_first_pooling,  # vecs masks residual masks
+      tl.Select([0, 2, 3]),  # vecs residual masks
       tl.Parallel(
           # residual from first segment is taken before
           # normalization, so apply it now
-          None, tl.LayerNorm(), None),            # vecs norm(residual) masks
+          None, tl.LayerNorm(), None),  # vecs norm(residual) masks
       _Upsampler(total_pool_size, separate_cls),  # vecs masks
       decoder_blocks,
-      tl.Select([0], n_in=2),                     # vecs
+      tl.Select([0], n_in=2),  # vecs
       tl.LayerNorm(),
       tl.Dense(vocab_size),
   )
@@ -446,11 +448,8 @@ def _FunnelDecoderBlock(shorten_factor, d_model, d_ff, n_heads,
   Returns:
     A list of layers that maps an activation tensor to an activation tensor.
   """
-  pooling = tl.Serial(
-      tl.Fn('Shorten', lambda x: jnp.reshape(  # Shorten -- move to depth.
-          x, (x.shape[0], x.shape[1] // shorten_factor, -1)), n_out=1),
-      tl.Dense(d_model)
-  )
+  pooling = PoolLayer(tl.AvgPool, pool_size=(shorten_factor,),
+                      strides=(shorten_factor,), separate_cls=False)
 
   causal_attention = FunnelCausalAttention(
       shorten_factor, d_model, n_heads=n_heads, dropout=dropout, mode=mode)
@@ -462,10 +461,10 @@ def _FunnelDecoderBlock(shorten_factor, d_model, d_ff, n_heads,
       rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
 
   return [
-      tl.LayerNorm(),                               # h
-      tl.Branch(pooling, None),                     # h', h
+      tl.LayerNorm(),  # h
+      tl.Branch(pooling, None),  # h', h
       tl.Residual(
-          tl.Select([0, 1, 1]),                     # h', h, h
+          tl.Select([0, 1, 1]),  # h', h, h
           causal_attention,
           dropout_,
       ),
@@ -550,7 +549,7 @@ def FunnelTransformerLM(vocab_size,
   pre_decoder_blocks = create_decoder_blocks(n_pre_decoder_blocks)
   post_decoder_blocks = create_decoder_blocks(n_post_decoder_blocks)
 
-  total_shorten_factor = functools.reduce(lambda x, y: x*y, shorten_factors)
+  total_shorten_factor = functools.reduce(lambda x, y: x * y, shorten_factors)
 
   funnel_blocks = [[_FunnelDecoderBlock(
       shorten_factor, d_model, d_ff, n_heads, dropout, dropout_shared_axes,
@@ -559,15 +558,15 @@ def FunnelTransformerLM(vocab_size,
                    zip(shorten_factors, n_funnel_blocks)]
 
   conv_layer = tl.Serial(
-    tl.CausalConv(d_model, shorten_factors[0]),
-    tl.Relu()
+      tl.CausalConv(d_model, shorten_factors[0]),
+      tl.Relu()
   ) if use_conv else []
 
   # Assemble and return the model.
-  return tl.Serial(              # tokens (or chunked tuple of tokens)
+  return tl.Serial(  # tokens (or chunked tuple of tokens)
       tl.ShiftRight(mode=mode),  # toks
-      positional_encoder,        # vecs
-      pre_decoder_blocks,        # vecs
+      positional_encoder,  # vecs
+      pre_decoder_blocks,  # vecs
       tl.Residual(
           tl.ShiftRight(n_positions=total_shorten_factor - 1),
           funnel_blocks,
@@ -575,5 +574,5 @@ def FunnelTransformerLM(vocab_size,
       ),
       conv_layer,
       post_decoder_blocks,
-      tl.Dense(vocab_size),      # vecs
+      tl.Dense(vocab_size),  # vecs
   )
