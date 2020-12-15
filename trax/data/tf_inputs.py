@@ -240,14 +240,19 @@ def TFDS(  # pylint: disable=invalid-name
     dataset_name,
     data_dir=None,
     keys=None,
+    tfds_preprocess_fn=None,
     train=True,
     eval_holdout_size=0):
-  """Returns an iterator of numpy arrays representing the dataset."""
+  """Returns an iterator of numpy arrays representing the dataset.
+  Args:
+     tfds_preprocess_fn: function that transforms tensorflow dataset applied before changing dataset to generator
+  """
   data_dir = download_and_prepare(dataset_name, data_dir)
 
   (train_data, eval_data, _) = _train_and_eval_dataset(dataset_name, data_dir,
                                                        eval_holdout_size)
   dataset = train_data if train else eval_data
+  dataset = dataset if tfds_preprocess_fn is None else tfds_preprocess_fn(dataset)
 
   def select_from(example):
     return tuple(example[k] for k in keys)
@@ -1113,6 +1118,30 @@ def CreateBertInputs(double_sentence=True):  # pylint: disable=invalid-name
     return bert_double_sentence_preprocess
   else:
     return bert_single_sentence_preprocess
+
+
+@gin.configurable()
+def NSPInputs(dataset_name, text_key='text', train=True):
+  stream = TFDS(
+    dataset_name,
+    tfds_preprocess_fn=functools.partial(t5.data.preprocessors.next_sentence_prediction,
+                                         text_key=text_key,
+                                         label_sentences=True),
+    keys=['inputs', 'targets'],
+    train=train
+  )
+
+  def split_stream(generator=None):
+    # split string with 'sentence1:' and 'sentence2:' into two separate strings
+    for text, target in stream(generator):
+      sentences = str(text).split('sentence1:')[1].split('sentence2:')
+      if len(sentences) != 2:
+        # 'sentence2:' appeared in the text and got mixed up with the label
+        continue
+      sent1, sent2 = sentences
+      yield sent1, sent2, target == 'next'
+
+  return split_stream
 
 
 @gin.configurable()
