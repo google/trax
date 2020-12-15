@@ -1112,6 +1112,42 @@ def bert_double_sentence_preprocess(batch):
     yield value_vector, segment_embs, segment_embs, label, np.int64(1)
 
 
+def mask_random_tokens(batch, vocab_size=30522, masking_prob=0.15, merge_with_loss=True):
+  """
+  Follows standard procedure of masking in BERT:
+  `masking_prob` random tokens are selected out of which:
+    80% are replaced with [MASK] token
+    10% are replaced with random token
+    10% are leaved with original token unchanged
+
+  ids of the tokens are from original lowercase vocab
+  """
+
+  for token_ids, *row_rest in batch:
+    y = token_ids.copy()
+
+    is_special_token = np.logical_or(token_ids == 101, token_ids == 102) # CLS and SEP tokens
+    is_special_token = np.logical_or(is_special_token, token_ids == 0) # padding
+    prob_scores = np.maximum(np.random.random(token_ids.shape), is_special_token)
+    tokens_to_predict = prob_scores < masking_prob # loss will be calculated only on these tokens
+    total_tokens_to_pred = tokens_to_predict.sum()
+    if total_tokens_to_pred > 0:
+      token_weights = tokens_to_predict.astype(np.float32) / total_tokens_to_pred # total sum is 1
+
+    # , 10% to random token and leave 10% unchanged
+    mask_threshold, random_token_threshold = 0.8 * masking_prob, 0.9 * masking_prob
+    # change 80 % of tokens to [MASK]
+    mask_tokens = prob_scores < mask_threshold
+    token_ids[mask_tokens] = 103
+
+    # change 10% of tokens to random token
+    random_tokens = np.logical_and(prob_scores > mask_threshold, prob_scores < random_token_threshold)
+    token_ids[random_tokens] = np.random.randint(999, vocab_size, random_tokens.sum())
+
+    # leave 10% unchanged
+    yield (token_ids, *row_rest, y, token_weights)
+
+
 def CreateBertInputs(double_sentence=True):  # pylint: disable=invalid-name
   """Prepares inputs for BERT models by adding [SEP] and [CLS] tokens and creating segment embeddings."""
   if double_sentence:

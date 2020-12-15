@@ -46,6 +46,7 @@ shuffle = inputs.shuffle
 TFDS = data_configure(tf_inputs.TFDS)
 NSPInputs = data_configure(tf_inputs.NSPInputs)
 CreateBertInputs = data_configure(tf_inputs.CreateBertInputs)
+mask_random_tokens = data_configure(tf_inputs.mask_random_tokens)
 Tokenize = data_configure(tf_inputs.Tokenize)
 ConvertToUnicode = data_configure(tf_inputs.ConvertToUnicode)
 tokenize = tf_inputs.tokenize
