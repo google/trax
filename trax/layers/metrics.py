@@ -39,7 +39,7 @@ weighted-average. For example:
     these 1's and 0's.
 
   - `CategoryCrossEntropy`: Treat model output and target values as the source
-    of two probability distributions; measure the cross entropy of the model's
+    of two probability distributions; measure the cross-entropy of the model's
     predicted distribution relative to the (assumed true) target distribution.
     The scalar value for the batch is then the average of the item-wise
     cross-entropy values.
@@ -114,13 +114,13 @@ def WeightedCategoryAccuracy():
 
 
 def CategoryCrossEntropy():
-  r"""Returns a layer that computes cross entropy from activations and integers.
+  r"""Returns a layer that computes cross-entropy from activations and integers.
 
   The layer takes two inputs:
 
     - A batch of activation vectors. The components in a given vector should
       be pre-softmax activations (mappable to a probability distribution via
-      softmax). For performance reasons, the softmax and cross entropy
+      softmax). For performance reasons, the softmax and cross-entropy
       computations are combined inside the layer.
 
     - A batch of target categories; each target is an integer in
@@ -157,7 +157,7 @@ def WeightedCategoryCrossEntropy():
 
     - A batch of activation vectors. The components in a given vector should
       be pre-softmax activations (mappable to a probability distribution via
-      softmax). For performance reasons, the softmax and cross entropy
+      softmax). For performance reasons, the softmax and cross-entropy
       computations are combined inside the layer.
 
     - A batch of target categories; each target is an integer in
@@ -225,7 +225,14 @@ def MaskedSequenceAccuracy():
 
 
 def Accuracy(classifier=core.ArgMax()):
-  """Returns a layer that computes mean category prediction accuracy."""
+  """Returns a layer that computes mean category prediction accuracy.
+
+  DEPRECATED; use ``WeightedCategoryAccuracy`` instead.
+
+  Args:
+    classifier: Layer that transforms activation vectors into category
+        predictions.
+  """
   return cb.Serial(classifier,
                    _Accuracy(),
                    _WeightedMean(),
@@ -250,7 +257,16 @@ def SequenceAccuracy(classifier=core.ArgMax()):
 
 
 def CrossEntropyLoss():
-  """Mean prediction-target cross entropy for multiclass classification."""
+  """Returns a layer that outputs multiclass prediction-target cross-entropy.
+
+  DEPRECATED; refactor to use ``WeightedCategoryCrossEntropy`` instead.
+
+  (``CrossEntropyLoss`` by itself does not compute cross-entropy. In older
+  code, this layer had to be preceded by ``LogSoftmax``, and the two layers
+  together did the work of converting category information to probability
+  distributions and computing the cross-entropy between those distributions.
+  All this is now done by ``WeightedCategoryCrossEntropy``.)
+  """
   return cb.Serial(_CrossEntropy(),
                    _WeightedMean(),
                    name='CrossEntropyLoss',
@@ -258,13 +274,13 @@ def CrossEntropyLoss():
 
 
 def CrossEntropyLossWithLogSoftmax():
-  """Mean prediction-target cross entropy for multiclass classification."""
+  """Mean prediction-target cross-entropy for multiclass classification."""
   return cb.Serial(core.LogSoftmax(), CrossEntropyLoss(),
                    name='CrossEntropyLoss')
 
 
 def BinaryCrossEntropyLoss():
-  """Mean prediction-target cross entropy for binary classification."""
+  """Mean prediction-target cross-entropy for binary classification."""
   return cb.Serial(_BinaryCrossEntropy(),
                    _WeightedMean(),
                    name='BinaryCrossEntropyLoss',

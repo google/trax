@@ -1202,3 +1202,72 @@ def get_glue_key(task_name=gin.REQUIRED):
     raise KeyError(
         f'Wrong task name entered, available glue tasks: {list(glue_keys.keys())}. Entered: {task_name}'
     )
+
+
+def get_glue_t5_labels(dataset_name):
+  """Get glue labels for T5 from the task name."""
+  ext_task_name = dataset_name if dataset_name.startswith(
+      'glue') else f'glue/{dataset_name}'
+  try:
+    # Labels inferred from the T5 paper: https://arxiv.org/pdf/1910.10683.pdf
+    glue_t5_labels = {
+        'glue/cola': ('not_acceptable', 'acceptable'),
+        'glue/sst2': ('entailment', 'not_entailment'),
+        'glue/mrpc': ('not_equivalent', 'equivalent'),
+        'glue/qqp': ('not_duplicate', 'duplicate'),
+        # Requires processing of floats
+        # 'glue/stsb': ('sentence1', 'sentence2'),
+        'glue/mnli': ('entailment', 'neutral', 'contradiction'),
+        'glue/qnli': ('entailment', 'not_entailment'),
+        'glue/rte': ('entailment', 'not_entailment'),
+        # Used for evaluation and for training of T5.
+        # As explained in Section 2.4 of https://arxiv.org/pdf/1910.10683.pdf
+        # it has an overlap with WSC from Super-GLUE.
+        # 'glue/wnli': ('sentence1', 'sentence2'),
+    }
+    return glue_t5_labels[ext_task_name]
+  except KeyError:
+    raise KeyError(
+        f'Wrong task name entered, available glue tasks: {list(glue_t5_labels.keys())}. Entered: {dataset_name}'
+    )
+
+
+def CreateT5GlueInputs(  # pylint: disable=invalid-name
+    dataset_name='glue/qnli',
+    label_names=('entailment', 'not_entailment'),
+    train=True):
+  """Prepares glue inputs for T5 models using standard T5 preprocessor."""
+
+  label_names = get_glue_t5_labels(dataset_name)
+  benchmark_name = dataset_name.split('/')[1]
+  if train:
+    dataset = tfds.load(name=dataset_name, split='train')
+  elif dataset_name == 'glue/mnli':
+    # TODO(henrykm): The other option for mnli is validation_mismatched
+    dataset = tfds.load(name=dataset_name, split='validation_matched')
+  else:
+    dataset = tfds.load(name=dataset_name, split='validation')
+  proc_dataset = generic_text_dataset_preprocess_fn(
+      dataset,
+      spm_path=t5.data.DEFAULT_SPM_PATH,
+      text_preprocess_fns=[
+          lambda ds, training: t5.data.preprocessors.glue(  # pylint: disable=g-long-lambda
+              ds,
+              benchmark_name=benchmark_name,
+              label_names=label_names)
+      ],
+      copy_plaintext=True,
+      debug_print_examples=True,
+      debug_print_examples_rate=1.0)
+
+  def t5_yield_examples(generator=None):
+    del generator
+    while True:
+      for example in proc_dataset:
+        input_values = example['inputs']
+        target_values = example['targets']
+        yield (fastmath.numpy.array(input_values),
+               fastmath.numpy.array(target_values),
+               fastmath.numpy.array([1] * len(target_values)))
+
+  return t5_yield_examples
