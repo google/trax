@@ -335,55 +335,59 @@ def BinaryCrossEntropyLoss():
 
 
 def L2Loss():
-  """Returns a layer that computes an L2-like loss for one batch."""
-  def f(model_output, targets, weights):  # pylint: disable=invalid-name
-    """Returns weighted sum-of-squared-errors for `model_output` vs. `targets`.
+  r"""Returns a layer that computes an L2-like loss for one batch.
 
-    Args:
-      model_output: Output from one batch, typically a 2- or 3-d array of
-          float-valued elements.
-      targets: Tensor of same shape as `model_output` containing element-wise
-          target values.
-      weights: Tensor of same shape as `model_output` and `targets`, containing
-          element-wise weight values.
-    """
+  The layer takes three inputs:
+
+    - Model output from one batch, an ndarray of float-valued elements.
+
+    - A batch of element-wise target values, which matches the shape of the
+      model output.
+
+    - A batch of weights, which matches the shape of the model output.
+
+  The layer returns a weighted average of element-wise squared error terms
+  :math:`(y_i - t_i)^2`.
+  """
+  def f(model_output, targets, weights):  # pylint: disable=invalid-name
     shapes.assert_same_shape(model_output, targets)
-    shapes.assert_same_shape(targets, weights)
+    shapes.assert_same_shape(model_output, weights)
     weighted_sse = weights * (model_output - targets)**2
     return jnp.sum(weighted_sse) / jnp.sum(weights)
   return base.Fn('L2Loss', f)
 
 
 def SmoothL1Loss():
-  """Returns a layer that computes total smooth L1 loss for one batch."""
-  def smoothl1loss(model_output, targets, weights):  # pylint: disable=invalid-name
-    r"""Returns weighted smooth L1 norm of `model_output - targets`.
+  r"""Returns a layer that computes a weighted, smoothed L1 loss for one batch.
 
-    The smooth L1 loss, also known as the Huber loss, is defined as:
-    .. math::
-        z_i =
-        \begin{cases}
-        0.5 (x_i - y_i)^2, & \text{if } |x_i - y_i| < 1 \\
-        |x_i - y_i| - 0.5, & \text{otherwise }
-        \end{cases}
+  The layer takes three inputs:
 
-    Args:
-      model_output: Output from one batch, treated as an unanalyzed tensor.
-      targets: Tensor of same shape as `model_output` containing element-wise
-          target values.
-      weights: Tensor of same shape as `model_output` and `targets`, containing
-          element-wise weight values.
-    """
+    - Model output from one batch, an ndarray of float-valued elements.
+
+    - A batch of element-wise target values, which matches the shape of the
+      model output.
+
+    - A batch of weights, which matches the shape of the model output.
+
+  The layer computes a "smooth" L1 loss (a.k.a. Huber loss), for model output
+  float :math:`y_i` and target float :math:`t_i`:
+
+  .. math::
+      \text{output} = \left\{ \begin{array}{cl}
+          0.5 (y_i - t_i)^2, & \text{if}\ |y_i - t_i| < 1, \\
+          |y_i - t_i| - 0.5, & \text{otherwise}.
+      \end{array} \right.
+
+  The layer returns a weighted average of these element-wise values.
+  """
+  def f(model_output, targets, weights):  # pylint: disable=invalid-name
     shapes.assert_same_shape(model_output, targets)
-    shapes.assert_same_shape(targets, weights)
+    shapes.assert_same_shape(model_output, weights)
     l1_dist = jnp.abs(model_output - targets)
-    smooth_dist = jnp.where(l1_dist < 1,
-                            0.5 * l1_dist**2,
-                            l1_dist - 0.5)
-    shapes.assert_same_shape(smooth_dist, weights)
+    smooth_dist = jnp.where(l1_dist < 1, 0.5 * l1_dist**2, l1_dist - 0.5)
     weighted_smooth_dist = weights * smooth_dist
     return jnp.sum(weighted_smooth_dist) / jnp.sum(weights)
-  return base.Fn('SmoothL1Loss', smoothl1loss)
+  return base.Fn('SmoothL1Loss', f)
 
 
 def WeightedSum():
