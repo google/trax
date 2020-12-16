@@ -186,7 +186,7 @@ def BinaryCrossEntropy():
   The layer takes two inputs:
 
     - A batch of activation values; each batch item :math:`x` is a float in
-      :math:`(-\infty, \infty)`).
+      :math:`(-\infty, \infty)`.
 
     - A batch of binary targets; each target :math:`t` is an integer in
       :math:`\{0, 1\}`.
@@ -197,8 +197,8 @@ def BinaryCrossEntropy():
   .. math::
       p = \frac 1 {1 + e^{-x}}
 
-   and computes cross-entropy by assigning all the probability mass to the
-   target category:
+  and computes cross-entropy by assigning all the probability mass to the
+  target category:
 
   .. math::
       \text{output} = \left\{ \begin{array}{cl}
