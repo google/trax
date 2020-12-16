@@ -128,18 +128,19 @@ def CategoryCrossEntropy():
       :math:`\{0, ..., N-1\}`, where :math:`N` is the activation vector
       depth/dimensionality.
 
-  To compute cross-entropy, the layer derives probability distributions from
-  its inputs:
+  To compute cross-entropy per batch item, the layer derives probability
+  distributions:
 
-    - activation vectors: :math:`\ v \mapsto \text{softmax}(v)`
+    - from model output (vectors): :math:`\ q = \text{softmax}(v)`
 
-    - target categories (integers): :math:`\ n \mapsto \text{one_hot}(n)`
+    - from target categories (integers): :math:`\ p = \text{one_hot}(n)`
 
   (The conversion of integer category targets to one-hot vectors amounts to
   assigning all the probability mass to the target category.) Cross-entropy
-  per batch item is computed between the resulting distributions; notionally:
+  per batch item is computed between the resulting distributions:
 
-      cross_entropy(one_hot(targets), softmax(model_output))
+  .. math::
+      \text{cross_entropy} = - \sum_{i=0}^{N-1} p_i \log q_i
 
   The layer returns the average of these cross-entropy values over all items in
   the batch.
@@ -191,19 +192,19 @@ def BinaryCrossEntropy():
     - A batch of binary targets; each target :math:`t` is an integer in
       :math:`\{0, 1\}`.
 
-  The layer maps each activation value into the range :math:`(0, 1)` of
-  probability values:
+  The layer maps each activation value into the range :math:`(0, 1)`,
+  interpreted as the model-predicted probability that item's category is 1:
 
   .. math::
-      p = \frac 1 {1 + e^{-x}}
+      q = \frac 1 {1 + e^{-x}} \ \ \text{[model-predicted probability]}
 
-  and computes cross-entropy by assigning all the probability mass to the
-  target category:
+  and computes cross-entropy (per batch item) by treating the target category
+  as having probability 1:
 
   .. math::
-      \text{output} = \left\{ \begin{array}{cl}
-          - \log p        & \text{if}\ t = 1, \\
-          - \log{(1 - p)} & \text{if}\ t = 0.
+      \text{cross_entropy} = \left\{ \begin{array}{cl}
+          - \log q       & \text{if}\ t = 1, \\
+          - \log (1 - q) & \text{if}\ t = 0.
       \end{array} \right.
 
   The layer returns the average of these cross-entropy values over all items in
@@ -374,8 +375,8 @@ def SmoothL1Loss():
 
   .. math::
       \text{output} = \left\{ \begin{array}{cl}
-          0.5 (y_i - t_i)^2, & \text{if}\ |y_i - t_i| < 1, \\
-          |y_i - t_i| - 0.5, & \text{otherwise}.
+          \frac 1 2 (y_i - t_i)^2, & \text{if}\ |y_i - t_i| < 1, \\
+          |y_i - t_i| - \frac 1 2, & \text{otherwise}.
       \end{array} \right.
 
   The layer returns a weighted average of these element-wise values.
