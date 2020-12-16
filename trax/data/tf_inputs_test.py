@@ -21,8 +21,8 @@ import os
 
 import gin
 import numpy as np
+from t5.data import assert_dataset
 from t5.data import preprocessors as t5_processors
-from t5.data import test_utils as t5_test_utils
 import tensorflow as tf
 import tensorflow_datasets as tfds
 from trax.data import inputs  # pylint: disable=unused-import
@@ -494,7 +494,7 @@ class TFInputsTest(tf.test.TestCase):
     expected_ds = _test_dataset_ints([5, 6, 6], [4, 4, 4])
 
     # training, should filter.
-    t5_test_utils.assert_dataset(ds1, list(expected_ds.as_numpy_iterator()))
+    assert_dataset(ds1, list(expected_ds.as_numpy_iterator()))
 
     # not Training, shouldn't filter.
     ds2 = tf_inputs.truncate_dataset_on_len(
@@ -502,7 +502,7 @@ class TFInputsTest(tf.test.TestCase):
             'inputs': 6,
             'targets': 4
         })
-    t5_test_utils.assert_dataset(ds2, list(ds.as_numpy_iterator()))
+    assert_dataset(ds2, list(ds.as_numpy_iterator()))
 
     # not Training, but asked to filter, should filter.
     ds3 = tf_inputs.truncate_dataset_on_len(
@@ -510,7 +510,7 @@ class TFInputsTest(tf.test.TestCase):
             'inputs': 6,
             'targets': 4
         }, truncate_on_eval=True)
-    t5_test_utils.assert_dataset(ds3, list(expected_ds.as_numpy_iterator()))
+    assert_dataset(ds3, list(expected_ds.as_numpy_iterator()))
 
   def test_get_t5_preprocessor_by_name(self):
     gin.clear_config()
@@ -526,7 +526,7 @@ class TFInputsTest(tf.test.TestCase):
     })
     training = True
     dataset = prep_rekey(og_dataset, training)
-    t5_test_utils.assert_dataset(dataset, {
+    assert_dataset(dataset, {
         'inputs': 'That is bad.',
         'targets': 'That is good.'
     })
@@ -554,7 +554,7 @@ class TFInputsTest(tf.test.TestCase):
         },
     ]
 
-    t5_test_utils.assert_dataset(ds1, expected_ds)
+    assert_dataset(ds1, expected_ds)
 
   def test_lm_token_preprocessing(self):
     ds = _test_dataset_ints([1, 2, 3], [3, 2, 1])
@@ -580,7 +580,7 @@ class TFInputsTest(tf.test.TestCase):
     ]
     # pylint: enable=bad-whitespace
 
-    t5_test_utils.assert_dataset(ds1, expected_ds)
+    assert_dataset(ds1, expected_ds)
 
   def test_create_bert_inputs(self):
     inputs_sentences_1 = [np.array([100, 150, 200])]
