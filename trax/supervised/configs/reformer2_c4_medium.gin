@@ -45,7 +45,7 @@ vocab_size = 32000
 # ==============================================================================
 batcher.data_streams = @tf_inputs.data_streams
 batcher.bucket_length = 512
-batcher.batch_size_per_device = 8
+batcher.batch_size_per_device = 4
 batcher.eval_batch_size = 64
 batcher.max_eval_length = %max_length
 batcher.buckets_include_inputs_in_length=True
@@ -125,6 +125,6 @@ Reformer2.encoder_attention_type = %enc_attn_type
 Reformer2.encoder_decoder_attention_type = %dec_attn_type
 Reformer2.loss_sparsity = %loss_sparsity
 Reformer2.n_layers_forget = 0
-Reformer2.axial_pos_shape = None
-Reformer2.attention_chunk_size = 4
+Reformer2.axial_pos_shape = 'fixed-base'
+Reformer2.attention_chunk_size = 0  # use 4 if it OOMs
 Reformer2.use_bfloat16 = True
