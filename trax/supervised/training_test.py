@@ -305,6 +305,27 @@ class TrainingTest(absltest.TestCase):
     training_session.run(n_steps=5)
     self.assertEqual(20, training_session.step)
 
+  def test_train_one_task_eval_two_tasks(self):
+    """Trains a very simple network on one task and evaluates on two tasks."""
+    model = tl.Serial(tl.Dense(3), tl.Dense(1))
+    task = training.TrainTask(
+        _very_simple_data(),
+        tl.L2Loss(),
+        optimizers.SGD(.01)
+    )
+    eval_task = training.EvalTask(
+        _very_simple_data(),  # deliberately re-using training data
+        [tl.L2Loss()],
+    )
+    training_session = training.Loop(
+        model,
+        tasks=(task,),
+        eval_tasks=(eval_task, eval_task),
+    )
+    self.assertEqual(0, training_session.step)
+    training_session.run(n_steps=5)
+    self.assertEqual(5, training_session.step)
+
   def test_can_predict_with_trained_model(self):
     model = tl.Serial(tl.Dense(3), tl.Branch(tl.Dense(1), tl.Dense(2)))
     train_tasks, eval_tasks = [], []

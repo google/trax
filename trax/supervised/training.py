@@ -580,13 +580,14 @@ class Loop:
               yield ('device{}/{}'.format(device_id, key[len('summary_'):]),
                      device_value)
 
-    for task_index in range(len(self._eval_tasks)):
-      eval_task = self._eval_tasks[task_index]
+    # The most recently trained weights are in this trainer, use those for eval.
+    cur_train_task_index = self._which_task(self._step)
+    trainer = self._trainer_per_task[cur_train_task_index]
+
+    for eval_task_index in range(len(self._eval_tasks)):
+      eval_task = self._eval_tasks[eval_task_index]
       if eval_task is None:
         continue
-
-      trainer = self._trainer_per_task[task_index]
-      summary_writer = summary_writers[task_index]
 
       # Extract the actual model weights and state, excluding the loss layer.
       if self._use_memory_efficient_trainer:
@@ -612,8 +613,8 @@ class Loop:
           sums += metric_values
         averages = sums / n_batches
         all_metrics = dict(zip(eval_task.metric_names, averages))
+        summary_writer = summary_writers[eval_task_index]
         self._log_summary(all_metrics, summary_writer, 'metrics/', 'eval')
-
         summary_metrics = dict(recursively_look_for_printable_states(
             model_state))
         self._log_summary(summary_metrics, summary_writer, 'summary_', 'eval')
