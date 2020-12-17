@@ -32,7 +32,8 @@ class Conv(base.Layer):
   def __init__(self, filters, kernel_size, strides=None, padding='VALID',
                dimension_numbers=('NHWC', 'HWIO', 'NHWC'),
                kernel_initializer=None,
-               bias_initializer=init.RandomNormalInitializer(1e-6)):
+               bias_initializer=init.RandomNormalInitializer(1e-6),
+               use_bias=True):
     super().__init__()
     self._filters = filters
     self._kernel_size = kernel_size
@@ -42,6 +43,7 @@ class Conv(base.Layer):
     self._one = (1,) * len(kernel_size)
     self._strides = strides or self._one
     self._bias_initializer = bias_initializer
+    self._use_bias = use_bias
     rhs_spec = self._rhs_spec
     self._kernel_initializer = kernel_initializer
     if kernel_initializer is None:
@@ -53,7 +55,10 @@ class Conv(base.Layer):
     assert self._lhs_spec == self._out_spec == 'NHWC', msg
 
   def forward(self, x):
-    w, b = self.weights
+    if self._use_bias:
+      w, b = self.weights
+    else:
+      w = self.weights
     x_shape = list(x.shape)
     if len(x_shape) > 4:
       self._check_nhwc()
@@ -61,7 +66,9 @@ class Conv(base.Layer):
       x = jnp.reshape(x, [new_batch_dim] + x_shape[-3:])
     res = fastmath.conv(
         x, w, self._strides, self._padding, self._dimension_numbers,
-        self._one) + b
+        self._one)
+    if self._use_bias:
+      res = res + b
     if len(x_shape) > 4:
       res = jnp.reshape(res, x_shape[:-3] + list(res.shape[-3:]))
     return res
@@ -80,12 +87,15 @@ class Conv(base.Layer):
       new_batch_dim = functools.reduce(operator.mul, input_shape[:-3])
       input_shape = [new_batch_dim] + list(input_shape[-3:])
     kernel_shape = self._kernel_shape(input_shape)
-    bias_shape = [self._filters if c == 'C' else 1 for c in self._out_spec]
-    bias_shape = tuple(itertools.dropwhile(lambda x: x == 1, bias_shape))
     rng1, rng2 = fastmath.random.split(self.rng, 2)
     w = self._kernel_initializer(kernel_shape, rng1)
-    b = self._bias_initializer(bias_shape, rng2)
-    self.weights = (w, b)
+    if self._use_bias:
+      bias_shape = [self._filters if c == 'C' else 1 for c in self._out_spec]
+      bias_shape = tuple(itertools.dropwhile(lambda x: x == 1, bias_shape))
+      b = self._bias_initializer(bias_shape, rng2)
+      self.weights = (w, b)
+    else:
+      self.weights = w
 
 
 class CausalConv(Conv):
@@ -98,7 +108,8 @@ class CausalConv(Conv):
                filters,
                kernel_width=3,
                kernel_initializer=None,
-               bias_initializer=init.RandomNormalInitializer(1e-6)):
+               bias_initializer=init.RandomNormalInitializer(1e-6),
+               use_bias=True):
     super().__init__(
         filters=filters,
         kernel_size=(kernel_width,),
@@ -106,7 +117,8 @@ class CausalConv(Conv):
         padding='VALID',
         dimension_numbers=('NWC', 'WIO', 'NWC'),
         kernel_initializer=kernel_initializer,
-        bias_initializer=bias_initializer)
+        bias_initializer=bias_initializer,
+        use_bias=use_bias)
 
   def forward(self, x):
     assert self._padding == 'VALID'
@@ -123,8 +135,10 @@ class CausalConv(Conv):
 
 def Conv1d(filters, kernel_size, stride=1, padding='VALID',
            kernel_initializer=None,
-           bias_initializer=init.RandomNormalInitializer(1e-6)):
+           bias_initializer=init.RandomNormalInitializer(1e-6),
+           use_bias=True):
   return Conv(filters, (kernel_size,), strides=(stride,), padding=padding,
               dimension_numbers=('NWC', 'WIO', 'NWC'),
               kernel_initializer=kernel_initializer,
-              bias_initializer=bias_initializer)
+              bias_initializer=bias_initializer,
+              use_bias=use_bias)
