@@ -98,7 +98,7 @@ train.loss_fn = @CrossEntropyLossWithLogSoftmax()
 
 # enc_attn_type = @LSHSelfAttention
 # dec_attn_type = @ref2_encoder/LSHSelfAttention
-MultiplicativeConvCausalAttention.sparsity = 96
+MultiplicativeConvCausalAttention.sparsity = 32
 enc_attn_type = @Attention
 dec_attn_type = @MultiplicativeConvCausalAttention  # @CausalAttention
 
@@ -126,4 +126,4 @@ Reformer2.encoder_decoder_attention_type = %dec_attn_type
 Reformer2.n_layers_forget = 0
 Reformer2.attention_chunk_size = 1
 Reformer2.use_bfloat16 = True
-Reformer2.loss_sparsity = 4
+Reformer2.loss_sparsity = 8
