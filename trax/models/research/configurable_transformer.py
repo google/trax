@@ -117,7 +117,8 @@ def FeedForwardWithOptions(d_model,
     else:
       sru_n_layers, sru_n_units = ff_use_sru, 32
     sru = [tl.SRU(sru_n_units) for _ in range(sru_n_layers)]
-    res = tl.Residual([tl.Dense(sru_n_units)] + sru + [tl.Dense(d_model)], res)
+    res = tl.Residual([tl.Dense(sru_n_units)] + sru + [tl.Dense(d_model)],
+                      shortcut=res)
   return [res]
 
 
