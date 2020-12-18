@@ -32,7 +32,7 @@ def list_configs():
   return [
       # (config name without extension, config path)
       (os.path.splitext(config)[0], os.path.join(config_dir, config))
-      for config in os.listdir(config_dir)
+      for config in os.listdir(config_dir)  if config.endswith('.gin')
   ]
 
 
@@ -43,18 +43,37 @@ class ConfigTest(parameterized.TestCase):
     """Dry-runs all gin configs."""
     gin.clear_config(clear_constants=True)
     gin.parse_config_file(config)
+    def run_config():
+      try:
+        rl_trainer.train_rl(
+            output_dir=self.create_tempdir().full_path,
+            # Don't run any actual training, just initialize all classes.
+            n_epochs=0,
+            train_batch_size=1,
+            eval_batch_size=1,
+        )
+      except Exception as e:
+        raise AssertionError(
+            'Error in gin config {}.'.format(os.path.basename(config))
+        ) from e
+
+    # Some tests, ex: DM suite can't be run in OSS - so skip them.
+    should_skip = False
     try:
-      rl_trainer.train_rl(
-          output_dir=self.create_tempdir().full_path,
-          # Don't run any actual training, just initialize all classes.
-          n_epochs=0,
-          train_batch_size=1,
-          eval_batch_size=1,
-      )
-    except Exception as e:
-      raise AssertionError(
-          'Error in gin config {}.'.format(os.path.basename(config))
-      ) from e
+      should_skip = should_skip or gin.query_parameter('RLTask.dm_suite')
+    except ValueError as e:
+      pass
+    try:
+      env_name = gin.query_parameter('RLTask.env')
+      should_skip = (should_skip or env_name.startswith('DM-') or
+                     env_name.startswith('LunarLander'))
+    except ValueError as e:
+      pass
+
+    if should_skip:
+      pass
+    else:
+      run_config()
 
 
 if __name__ == '__main__':

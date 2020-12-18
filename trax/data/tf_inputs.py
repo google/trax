@@ -498,7 +498,8 @@ def _get_vocab(vocab_type='subword', vocab_file=None, vocab_dir=None):
     return text_encoder.BertEncoder(path, do_lower_case=True)
 
   assert vocab_type == 'sentencepiece'
-  return t5.data.SentencePieceVocabulary(sentencepiece_model_file=path)
+  return t5.data.SentencePieceVocabulary(sentencepiece_model_file=path,
+                                         extra_ids=0)
 
 
 # Makes the function accessible in gin configs, even with all args denylisted.
@@ -788,8 +789,10 @@ def c4_bare_preprocess_fn(dataset,
       })
 
   # Vocabulary for tokenization.
+  extra_ids = 0
   vocab = t5.data.SentencePieceVocabulary(
-      sentencepiece_model_file=spm_path or t5.data.DEFAULT_SPM_PATH)
+      sentencepiece_model_file=spm_path or t5.data.DEFAULT_SPM_PATH,
+      extra_ids=extra_ids)
   feature = t5.data.Feature(vocab)
   output_features = {'targets': feature, 'inputs': feature}
 
@@ -995,8 +998,10 @@ def generic_text_dataset_preprocess_fn(dataset,
     dataset = dataset.map(print_examples)
 
   # Vocabulary for tokenization.
+  extra_ids = 0
   vocab = t5.data.SentencePieceVocabulary(
-      sentencepiece_model_file=spm_path or t5.data.DEFAULT_SPM_PATH)
+      sentencepiece_model_file=spm_path or t5.data.DEFAULT_SPM_PATH,
+      extra_ids=extra_ids)
   feature = t5.data.Feature(vocab)
   output_features = {'targets': feature, 'inputs': feature}
 
