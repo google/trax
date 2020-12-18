@@ -951,6 +951,7 @@ class TrainTask:
     return params['learning_rate']
 
 
+@gin.configurable()
 class EvalTask:
   """Labeled data plus scalar functions for (periodically) measuring a model.
 

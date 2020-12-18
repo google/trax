@@ -530,7 +530,8 @@ def train(output_dir,
           use_loop=True,
           loss_chunk_size=0,
           use_memory_efficient_trainer=False,
-          init_checkpoint=None):
+          init_checkpoint=None,
+          additional_eval_tasks=None):
   """Train the model on the inputs.
 
   Args:
@@ -563,6 +564,8 @@ def train(output_dir,
     loss_chunk_size: int, if > 0 chunk loss into these sizes to save memory.
     use_memory_efficient_trainer: whether to use memory-efficient trainer..
     init_checkpoint: a checkpoint for fine tuning.
+    additional_eval_tasks: additional tasks which should be performed during
+      evaluation.
 
   Returns:
     trax.TrainerState or training.Loop if use_loop is True
@@ -610,10 +613,10 @@ def train(output_dir,
       model_train.init_from_file(init_checkpoint, weights_only=True)
       model_predict_eval.init_from_file(init_checkpoint, weights_only=True)
     loop = training.Loop(
-        model_train,
-        [train_task],
+        model_train, [train_task],
         eval_model=model_predict_eval,
-        eval_tasks=[eval_task],
+        eval_tasks=[eval_task] +
+        (additional_eval_tasks if additional_eval_tasks is not None else []),
         output_dir=output_dir,
         checkpoint_at=checkpoint_at,
         permanent_checkpoint_at=permanent_checkpoint_at,

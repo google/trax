@@ -689,6 +689,12 @@ def make_inputs(train_stream=gin.REQUIRED, eval_stream=None):
 
 
 @gin.configurable()
+def make_additional_stream(stream=gin.REQUIRED):
+  """Create a stream mostly for use in gin configs for additional tasks."""
+  return Serial(stream)()
+
+
+@gin.configurable()
 def batcher(data_streams=gin.REQUIRED, variable_shapes=True,
             batch_size_per_device=32, batch_size=None, eval_batch_size=32,
             bucket_length=32, buckets=None,

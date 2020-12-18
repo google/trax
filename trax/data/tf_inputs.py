@@ -16,6 +16,7 @@
 # Lint as: python3
 """Trax TF input pipeline."""
 
+import collections
 import functools
 import os
 import random
@@ -1151,8 +1152,8 @@ def get_glue_t5_labels(dataset_name):
   try:
     # Labels inferred from the T5 paper: https://arxiv.org/pdf/1910.10683.pdf
     glue_t5_labels = {
-        'glue/cola': ('not_acceptable', 'acceptable'),
-        'glue/sst2': ('entailment', 'not_entailment'),
+        'glue/cola': ('unacceptable', 'acceptable'),
+        'glue/sst2': ('negative', 'positive'),
         'glue/mrpc': ('not_equivalent', 'equivalent'),
         'glue/qqp': ('not_duplicate', 'duplicate'),
         # Requires processing of floats
@@ -1172,21 +1173,29 @@ def get_glue_t5_labels(dataset_name):
     )
 
 
+def get_t5_splits(dataset_name, train=True):
+  """Get splits for glue tasks."""
+  # Splits listed in https://www.tensorflow.org/datasets/catalog/glue
+  glue_t5_labels = collections.defaultdict(lambda: ('train', 'validation'))
+  glue_t5_labels['glue/mnli'] = ('train', 'validation_matched')
+  if train:
+    return glue_t5_labels[dataset_name][0]
+  else:
+    return glue_t5_labels[dataset_name][1]
+
+
 def CreateT5GlueInputs(  # pylint: disable=invalid-name
     dataset_name='glue/qnli',
-    label_names=('entailment', 'not_entailment'),
-    train=True):
+    split=None,
+    train=True,
+    label_names=('entailment', 'not_entailment')):
   """Prepares glue inputs for T5 models using standard T5 preprocessor."""
 
   label_names = get_glue_t5_labels(dataset_name)
+  if not split:
+    split = get_t5_splits(dataset_name, train)
   benchmark_name = dataset_name.split('/')[1]
-  if train:
-    dataset = tfds.load(name=dataset_name, split='train')
-  elif dataset_name == 'glue/mnli':
-    # TODO(henrykm): The other option for mnli is validation_mismatched
-    dataset = tfds.load(name=dataset_name, split='validation_matched')
-  else:
-    dataset = tfds.load(name=dataset_name, split='validation')
+  dataset = tfds.load(name=dataset_name, split=split)
   proc_dataset = generic_text_dataset_preprocess_fn(
       dataset,
       spm_path=t5.data.DEFAULT_SPM_PATH,
@@ -1198,7 +1207,7 @@ def CreateT5GlueInputs(  # pylint: disable=invalid-name
       ],
       copy_plaintext=True,
       debug_print_examples=True,
-      debug_print_examples_rate=1.0)
+      debug_print_examples_rate=0.05)
 
   def t5_yield_examples(generator=None):
     del generator
