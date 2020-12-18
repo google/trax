@@ -33,7 +33,7 @@ dataset_name = 'wiki40b'
 # Parameters for TFDS data pipeline:
 # ==============================================================================
 make_inputs.train_stream = [
-  @train/data.BertNextSentencePredictionInputs(),
+  @train/data.CorpusToRandomChunks(),
   @data.Tokenize(),
   @data.CreateBertInputs(),
   @data.Shuffle(),
@@ -43,7 +43,7 @@ make_inputs.train_stream = [
   @data.Batch()
 ]
 make_inputs.eval_stream = [
-  @eval/data.BertNextSentencePredictionInputs(),
+  @eval/data.CorpusToRandomChunks(),
   @data.Tokenize(),
   @data.CreateBertInputs(),
   @data.Shuffle(),
@@ -53,9 +53,9 @@ make_inputs.eval_stream = [
   @data.Batch()
 ]
 
-train/data.BertNextSentencePredictionInputs.dataset_name = %dataset_name
+train/data.CorpusToRandomChunks.dataset_name = %dataset_name
 train/data.TFDS.train = True
-eval/data.BertNextSentencePredictionInputs.dataset_name = %dataset_name
+eval/data.CorpusToRandomChunks.dataset_name = %dataset_name
 eval/data.TFDS.train = False
 
 data.Tokenize.vocab_file = 'bert_uncased_vocab.txt'
@@ -65,6 +65,8 @@ data.Tokenize.vocab_type = 'bert-lowercase'
 # and change the path accordingly.
 data.Tokenize.vocab_dir = 'trax/data/testdata/'
 data.Tokenize.keys = [0, 1]
+data.CreateBertInputs.labeled = False
+data.CreateBertInputs.double_sentence = False
 data.PadToLength.len_map = {0: 512, 1: 512, 2: 512}
 data.PadToLength.pad_value = {0: 0, 1: 0, 2:0}
 data.TruncateToLength.len_map = {0: (512,), 1: (512,), 2: (512,)}
@@ -79,13 +81,11 @@ train.inputs = @trax.data.inputs.make_inputs
 train.model = @trax.models.BERT
 train.steps = 200000
 train.checkpoint_highest = 'accuracy'
-train.loss_fn = @bert.BERTPretrainingLoss()
-train.metrics = {'loss': @bert.BERTPretrainingLoss()}
 
 # Parameters for BERT:
 # ==============================================================================
 BERT.init_checkpoint = 'bert-base-uncased'
-BERT.head = @bert.BERTPretrainingHead
+BERT.head = @bert.BERTMLMHead
 bert.BERTClassifierHead.n_classes = 2
 
 # Parameters for multifactor:

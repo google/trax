@@ -1095,69 +1095,107 @@ def download_and_prepare(dataset_name, data_dir):
   return data_dir
 
 
-def bert_single_sentence_preprocess(batch):
-  for sent1, label in batch:
-    value_vector = np.concatenate(([101], sent1, [102]))
-    segment_embs = np.zeros(sent1.shape[0] + 2, dtype=np.int32)
-    yield value_vector, segment_embs, segment_embs, label, np.int64(1)
+def BertSingleSentenceInputs(batch, labeled=True, CLS_id=101, SEP_id=102):
+  """Prepares inputs for BERT models by adding [SEP] and [CLS] tokens and creating segment embeddings."""
+  if labeled:
+    for sent1, label in batch:
+      value_vector = np.concatenate(([CLS_id], sent1, [SEP_id]))
+      segment_embs = np.zeros(sent1.shape[0] + 2, dtype=np.int32)
+      yield value_vector, segment_embs, segment_embs, label, np.int64(1)
+  else:
+    for sent1, *_ in batch: # row is a tuple with 1 element
+      value_vector = np.concatenate(([CLS_id], sent1, [SEP_id]))
+      segment_embs = np.zeros(sent1.shape[0] + 2, dtype=np.int32)
+      yield value_vector, segment_embs, segment_embs
 
 
-def bert_double_sentence_preprocess(batch):
-  for sent1, sent2, label in batch:
-    value_vector = np.concatenate(([101], sent1, [102], sent2, [102]))
+def BertDoubleSentenceInputs(batch, labeled=True, CLS_id=101, SEP_id=102):
+  """Prepares inputs for BERT models by adding [SEP] and [CLS] tokens and creating segment embeddings."""
+  if labeled:
+    for sent1, sent2, label in batch:
+      value_vector = np.concatenate(([CLS_id], sent1, [SEP_id], sent2, [SEP_id]))
 
-    segment_embs = np.zeros(sent1.shape[0] + sent2.shape[0] + 3, dtype=np.int32)
-    second_sent_start = sent1.shape[0] + 2
-    segment_embs[second_sent_start:] = 1
-    yield value_vector, segment_embs, segment_embs, label, np.int64(1)
+      segment_embs = np.zeros(sent1.shape[0] + sent2.shape[0] + 3, dtype=np.int32)
+      second_sent_start = sent1.shape[0] + 2
+      segment_embs[second_sent_start:] = 1
+      yield value_vector, segment_embs, segment_embs, label, np.int64(1)
+  else:
+    for sent1, sent2 in batch:
+      value_vector = np.concatenate(([CLS_id], sent1, [SEP_id], sent2, [SEP_id]))
+
+      segment_embs = np.zeros(sent1.shape[0] + sent2.shape[0] + 3, dtype=np.int32)
+      second_sent_start = sent1.shape[0] + 2
+      segment_embs[second_sent_start:] = 1
+      yield value_vector, segment_embs, segment_embs
 
 
-def mask_random_tokens(batch, vocab_size=30522, masking_prob=0.15, merge_with_loss=True):
+def CreateBertInputs(double_sentence=True, labeled=True, CLS_id=101, SEP_id=101):
+  foo = BertDoubleSentenceInputs if double_sentence else BertSingleSentenceInputs
+  return functools.partial(foo, labeled=labeled, CLS_id=CLS_id, SEP_id=SEP_id)
+
+
+def mask_random_tokens(batch, vocab_size=30522, masking_prob=0.15,
+                       CLS_id=101, SEP_id=102, MASK_id=103, vocab_start_id=999
+                       ):
   """
-  Follows standard procedure of masking in BERT:
-  `masking_prob` random tokens are selected out of which:
-    80% are replaced with [MASK] token
-    10% are replaced with random token
-    10% are leaved with original token unchanged
-
-  ids of the tokens are from original lowercase vocab
+  Prepares input for masking task by masking masking_prob % of non-special tokens at each input row.
+    round(masking_prob * num_nonspecial_tokens) random tokens are selected out of which each token is either
+      - replaced with [MASK] token with 80% probability
+      - replaced with random token with 10% probability
+      - unchanged with 10%
+  Follows standard procedure of masking in BERT found in
+  create_masked_lm_predictions-https://github.com/google-research/bert/blob/master/create_pretraining_data.py, line 342.
+  Args:
+    batch: stream of inputs. Each row in the stream is a tuple which first element is an array of tokens
+    masking_prob: Determines percent of non-special tokens to be selected for masking.
+    CLS_id, SEP_id, MASK_id: ids of special tokens CLS,SEP and MASK in the vocabulary
+    vocab_start_id: id of first non-special token in the vocabulary
+  Returns:
+    it is a stream with tokens masked for MLM training and 2 appended arrays:
+      - original tokens: a copy of original tokens used as a label for mlm training
+      - token_weights: weights distributed uniformly over selected tokens (sum is 1). Other tokens have 0 weight.
+  Examples:
+    - batch is a stream with each row having tuple (token_ids,).
+      Function yields rows of form (modified_token_ids, original_tokens, token_weights), where modified_token_ids have
+      [MASK] tokens or random tokens according to the procedure described above.
+    - batch is a stream with each row having tuple (token_ids, segment_embeddings, nsp_label, nsp_weight).
+      Function yields rows of form
+      (modified_token_ids, segment_embeddings, nsp_label, nsp_weight, original_tokens, token_weights)
   """
 
   for token_ids, *row_rest in batch:
-    y = token_ids.copy()
+    original_tokens = token_ids.copy()
 
-    is_special_token = np.logical_or(token_ids == 101, token_ids == 102) # CLS and SEP tokens
+    # choose tokens for prediction. Chooses exactly 0.15 of all non-special tokens
+    is_special_token = np.logical_or(token_ids == CLS_id, token_ids == SEP_id) # CLS and SEP tokens
     is_special_token = np.logical_or(is_special_token, token_ids == 0) # padding
-    prob_scores = np.maximum(np.random.random(token_ids.shape), is_special_token)
-    tokens_to_predict = prob_scores < masking_prob # loss will be calculated only on these tokens
-    total_tokens_to_pred = tokens_to_predict.sum()
-    if total_tokens_to_pred > 0:
-      token_weights = tokens_to_predict.astype(np.float32) / total_tokens_to_pred # total sum is 1
+    viable_ids = np.arange(token_ids.shape[0])[~is_special_token]
+    num_to_sample = round(masking_prob * viable_ids.shape[0])
+    if num_to_sample == 0:
+      # sentence is too short to select given percentage of tokens to mask
+      continue
+    candidate_ids = np.random.choice(viable_ids, num_to_sample, replace=False)
 
-    # , 10% to random token and leave 10% unchanged
-    mask_threshold, random_token_threshold = 0.8 * masking_prob, 0.9 * masking_prob
+    # create weights
+    token_weights = np.zeros(token_ids.shape)
+    token_weights[candidate_ids] = 1 / candidate_ids.shape[0]
+
+    prob_scores = np.random.random(candidate_ids.shape)
+
     # change 80 % of tokens to [MASK]
-    mask_tokens = prob_scores < mask_threshold
-    token_ids[mask_tokens] = 103
+    mask_token_ids = candidate_ids[prob_scores < 0.8]
+    token_ids[mask_token_ids] = MASK_id
 
     # change 10% of tokens to random token
-    random_tokens = np.logical_and(prob_scores > mask_threshold, prob_scores < random_token_threshold)
-    token_ids[random_tokens] = np.random.randint(999, vocab_size, random_tokens.sum())
+    random_token_ids = candidate_ids[(0.8 <= prob_scores) & (prob_scores < 0.9)]
+    token_ids[random_token_ids] = np.random.randint(vocab_start_id, vocab_size, random_token_ids.shape[0])
 
     # leave 10% unchanged
-    yield (token_ids, *row_rest, y, token_weights)
+
+    yield (token_ids, *row_rest, original_tokens, token_weights)
 
 
-def CreateBertInputs(double_sentence=True):  # pylint: disable=invalid-name
-  """Prepares inputs for BERT models by adding [SEP] and [CLS] tokens and creating segment embeddings."""
-  if double_sentence:
-    return bert_double_sentence_preprocess
-  else:
-    return bert_single_sentence_preprocess
-
-
-@gin.configurable()
-def NSPInputs(dataset_name, text_key='text', train=True):
+def BertNextSentencePredictionInputs(dataset_name, text_key='text', train=True):
   stream = TFDS(
     dataset_name,
     tfds_preprocess_fn=functools.partial(t5.data.preprocessors.next_sentence_prediction,
@@ -1179,6 +1217,14 @@ def NSPInputs(dataset_name, text_key='text', train=True):
 
   return split_stream
 
+def CorpusToRandomChunks(dataset_name, num_tokens=512, train=True):
+  return TFDS(
+    dataset_name,
+    tfds_preprocess_fn=functools.partial(t5.data.preprocessors.random_split_text,
+                                         max_words_per_segment=num_tokens),
+    train=train,
+    keys=['text']
+  )
 
 @gin.configurable()
 def get_glue_key(task_name=gin.REQUIRED):
