@@ -217,6 +217,23 @@ def Swish():
   return Fn('Swish', lambda x: x * fastmath.expit(x))
 
 
+@assert_shape('...a->...b') # The output and input shapes are not the same.
+def Glu():
+  r"""Returns a layer that computes the Gated Linear Unit function.
+  
+  .. math::
+      f(x) = a \cdot \text{sigmoid}(b)
+  where a and b are formed by splitting input in half along axis
+  
+  """
+  def f(x, axis=-1):
+      size = x.shape[axis]
+      assert size % 2 == 0, f"axis {axis} of size {size} is not be divisible by 2"
+      a, b = jnp.split(x, 2, axis)
+      return a * fastmath.expit(b)
+  return Fn('Glu', f)
+
+
 class ThresholdedLinearUnit(base.Layer):
   """Thresholded Linear Unit, c.f. https://arxiv.org/pdf/1911.09737.pdf ."""
 
