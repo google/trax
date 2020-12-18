@@ -30,8 +30,6 @@ Sample invocation:
 """
 
 import faulthandler
-import multiprocessing
-import os
 
 from absl import app
 from absl import flags
@@ -39,8 +37,6 @@ from absl import logging
 import gin
 import jax
 from jax.config import config
-from tensor2tensor import envs  # pylint: disable=unused-import
-from tensor2tensor.envs import env_problem_utils
 from trax import fastmath
 from trax import rl  # pylint: disable=unused-import
 from trax import trainer_flags  # pylint: disable=unused-import
@@ -93,19 +89,13 @@ def train_rl(
     trajectory_dump_dir: Directory to dump trajectories to.
     num_actions: None unless one wants to use the discretization wrapper. Then
       num_actions specifies the number of discrete actions.
-    light_rl: whether to use the light RL setting (experimental).
+    light_rl: deprecated, always True, left out for old gin configs.
     light_rl_trainer: which light RL trainer to use (experimental).
   """
+  del light_rl
   tf_np.set_allow_float64(FLAGS.tf_allow_float64)
-
-  if light_rl:
-    task = rl_task.RLTask()
-    env_name = task.env_name
-  else:
-    # TODO(lukaszkaiser): remove the name light and all references.
-    # It was kept for now to make sure all regression tests pass first,
-    # so that if we need to revert we save some work.
-    raise ValueError('Non-light RL is deprecated.')
+  task = rl_task.RLTask()
+  env_name = task.env_name
 
 
   if FLAGS.jax_debug_nans:
@@ -117,93 +107,28 @@ def train_rl(
     config.update('jax_platform_name', '')
 
 
-  if light_rl:
-    trainer = light_rl_trainer(task=task, output_dir=output_dir)
-    def light_training_loop():
-      """Run the trainer for n_epochs and call close on it."""
-      try:
-        logging.info('Starting RL training for %d epochs.', n_epochs)
-        trainer.run(n_epochs, n_epochs_is_total_epochs=True)
-        logging.info('Completed RL training for %d epochs.', n_epochs)
-        trainer.close()
-        logging.info('Trainer is now closed.')
-      except Exception as e:
-        raise e
-      finally:
-        logging.info('Encountered an exception, still calling trainer.close()')
-        trainer.close()
-        logging.info('Trainer is now closed.')
-
-    if FLAGS.jax_debug_nans or FLAGS.disable_jit:
-      fastmath.disable_jit()
-      with jax.disable_jit():
-        light_training_loop()
-    else:
-      light_training_loop()
-    return
-
-  # TODO(pkozakowski): Find a better way to determine this.
-  train_env_kwargs = {}
-  eval_env_kwargs = {}
-  if 'OnlineTuneEnv' in env_name:
-    envs_output_dir = FLAGS.envs_output_dir or os.path.join(output_dir, 'envs')
-    train_env_output_dir = os.path.join(envs_output_dir, 'train')
-    eval_env_output_dir = os.path.join(envs_output_dir, 'eval')
-    train_env_kwargs = {'output_dir': train_env_output_dir}
-    eval_env_kwargs = {'output_dir': eval_env_output_dir}
-
-  parallelism = multiprocessing.cpu_count() if FLAGS.parallelize_envs else 1
-
-  logging.info('Num discretized actions %s', num_actions)
-  logging.info('Resize %d', resize)
-
-  train_env = env_problem_utils.make_env(
-      batch_size=train_batch_size,
-      env_problem_name=env_name,
-      rendered_env=rendered_env,
-      resize=resize,
-      resize_dims=resize_dims,
-      max_timestep=max_timestep,
-      clip_rewards=clip_rewards,
-      parallelism=parallelism,
-      use_tpu=FLAGS.use_tpu,
-      num_actions=num_actions,
-      **train_env_kwargs)
-  assert train_env
-
-  eval_env = env_problem_utils.make_env(
-      batch_size=eval_batch_size,
-      env_problem_name=env_name,
-      rendered_env=rendered_env,
-      resize=resize,
-      resize_dims=resize_dims,
-      max_timestep=max_timestep,
-      clip_rewards=clip_rewards,
-      parallelism=parallelism,
-      use_tpu=FLAGS.use_tpu,
-      num_actions=num_actions,
-      **eval_env_kwargs)
-  assert eval_env
-
-  def run_training_loop():
-    """Runs the training loop."""
-    logging.info('Starting the training loop.')
-
-    trainer = trainer_class(
-        output_dir=output_dir,
-        train_env=train_env,
-        eval_env=eval_env,
-        trajectory_dump_dir=trajectory_dump_dir,
-        async_mode=FLAGS.async_mode,
-    )
-    trainer.training_loop(n_epochs=n_epochs)
+  trainer = light_rl_trainer(task=task, output_dir=output_dir)
+  def light_training_loop():
+    """Run the trainer for n_epochs and call close on it."""
+    try:
+      logging.info('Starting RL training for %d epochs.', n_epochs)
+      trainer.run(n_epochs, n_epochs_is_total_epochs=True)
+      logging.info('Completed RL training for %d epochs.', n_epochs)
+      trainer.close()
+      logging.info('Trainer is now closed.')
+    except Exception as e:
+      raise e
+    finally:
+      logging.info('Encountered an exception, still calling trainer.close()')
+      trainer.close()
+      logging.info('Trainer is now closed.')
 
   if FLAGS.jax_debug_nans or FLAGS.disable_jit:
     fastmath.disable_jit()
     with jax.disable_jit():
-      run_training_loop()
+      light_training_loop()
   else:
-    run_training_loop()
+    light_training_loop()
 
 
 def main(argv):
