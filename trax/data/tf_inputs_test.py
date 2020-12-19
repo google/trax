@@ -591,20 +591,49 @@ class TFInputsTest(tf.test.TestCase):
     create_inputs_2 = tf_inputs.CreateBertInputs(True)
     for res in create_inputs_1(zip(inputs_sentences_1, labels)):
       values, segment_embs, _, label, weight = res
-      self.assertTrue((values == np.array([101, 100, 150, 200, 102])).all())
-      self.assertTrue((segment_embs == np.zeros(5)).all())
+      self.assertAllEqual(values, np.array([101, 100, 150, 200, 102]))
+      self.assertAllEqual(segment_embs, np.zeros(5))
       self.assertEqual(label, np.int64(1))
       self.assertEqual(weight, np.int64(1))
 
     for res in create_inputs_2(
         zip(inputs_sentences_1, inputs_sentences_2, labels)):
       values, segment_embs, _, label, weight = res
-      self.assertTrue(
-          (values == np.array([101, 100, 150, 200, 102, 300, 500, 102])).all())
+      self.assertAllEqual(values, np.array([101, 100, 150, 200, 102, 300, 500, 102]))
       exp_segment = np.concatenate((np.zeros(5), np.ones(3)))
-      self.assertTrue((segment_embs == exp_segment).all())
+      self.assertAllEqual(segment_embs, exp_segment)
       self.assertEqual(label, np.int64(1))
       self.assertEqual(weight, np.int64(1))
+
+  def test_mask_random_tokens(self):
+    test_case_row = np.array([101]*100 + [1001]*100)
+    test_case = [(test_case_row.copy(), )]
+
+    out, original_tokens, token_weights = next(tf_inputs.mask_random_tokens(test_case))
+    # test whether original tokens are unchanged
+    self.assertAllEqual(test_case_row, original_tokens)
+
+    self.assertEqual(1, token_weights.sum())
+    self.assertEqual(15, (token_weights > 0).sum())
+
+    # 101 is a special token, so only 1001 should be masked
+    self.assertAllEqual(out[:100], test_case_row[:100])
+
+    # no more than 15 tokens with mask
+    self.assertLessEqual((out == 103).sum(), 15)
+
+  def test_BertNextSentencePredictionInputs(self):
+    stream = tf_inputs.BertNextSentencePredictionInputs('wiki40b', train=False, shuffle_size=1)
+    exp_sent1 = 'In the provincial election of May 30, 1967, ' \
+                'Akerman ran for the first time as an NDP candidate,' \
+                ' in the constituency of Cape Breton West, and won 13 per cent of the vote.'
+    exp_sent2 = 'In the following year, he ran as the party\'s candidate in the ' \
+                'federal election in Cape Breton\\xe2\\x80\\x94East Richmond, ' \
+                'and won 7,750 votes.'
+    sent1, sent2, label = next(stream())
+    self.assertEqual(exp_sent1, sent1)
+    self.assertEqual(exp_sent2, sent2)
+    self.assertEqual(False, label)
 
 
 if __name__ == '__main__':

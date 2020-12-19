@@ -21,34 +21,34 @@ import trax.models.research.bert
 # not recommended and will likely result in lower than baseline accuracy.
 
 
-dataset_name = 'glue/qnli'
+dataset_name = 'wiki40b'
 
 include 'bert.gin'
 
 # Parameters for TFDS data pipeline:
 # ==============================================================================
 make_inputs.train_stream = [
-  @train/data.TFDS(),
+  @train/data.CorpusToRandomChunks(),
   %bert_stream_core,
+  @data.mask_random_tokens,
   @data.Batch()
 ]
 make_inputs.eval_stream = [
-  @eval/data.TFDS(),
+  @eval/data.CorpusToRandomChunks(),
   %bert_stream_core,
+  @data.mask_random_tokens,
   @data.Batch()
 ]
-train/data.TFDS.dataset_name = %dataset_name
-train/data.TFDS.keys = @trax.data.tf_inputs.get_glue_key()
-train/data.TFDS.train = True
-eval/data.TFDS.dataset_name = %dataset_name
-eval/data.TFDS.keys = @trax.data.tf_inputs.get_glue_key()
-eval/data.TFDS.train = False
-get_glue_key.task_name = %dataset_name
 
-# Parameters for train:
-# ==============================================================================
-train.loss_fn = @trax.layers.L2Loss()
+train/data.CorpusToRandomChunks.dataset_name = %dataset_name
+train/data.TFDS.train = True
+eval/data.CorpusToRandomChunks.dataset_name = %dataset_name
+eval/data.TFDS.train = False
+
+data.CreateBertInputs.labeled = False
+data.CreateBertInputs.double_sentence = False
 
 # Parameters for BERT:
 # ==============================================================================
-BERT.head = @bert.BERTRegressionHead
+BERT.head = @bert.BERTMLMHead
+

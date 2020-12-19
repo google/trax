@@ -19,7 +19,6 @@ import trax.data
 import trax.optimizers
 import trax.supervised.lr_schedules
 import trax.supervised.trainer_lib
-import trax.models.research.bert
 import trax.layers.metrics
 
 # See https://www.tensorflow.org/datasets/catalog/glue -- valid dataset_name
@@ -28,35 +27,15 @@ import trax.layers.metrics
 # not recommended and will likely result in lower than baseline accuracy.
 
 
-dataset_name = 'wiki40b'
-
 # Parameters for TFDS data pipeline:
 # ==============================================================================
-make_inputs.train_stream = [
-  @train/data.CorpusToRandomChunks(),
+bert_stream_core = [
   @data.Tokenize(),
   @data.CreateBertInputs(),
   @data.Shuffle(),
   @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.mask_random_tokens,
-  @data.Batch()
+  @data.TruncateToLength()
 ]
-make_inputs.eval_stream = [
-  @eval/data.CorpusToRandomChunks(),
-  @data.Tokenize(),
-  @data.CreateBertInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.mask_random_tokens,
-  @data.Batch()
-]
-
-train/data.CorpusToRandomChunks.dataset_name = %dataset_name
-train/data.TFDS.train = True
-eval/data.CorpusToRandomChunks.dataset_name = %dataset_name
-eval/data.TFDS.train = False
 
 data.Tokenize.vocab_file = 'bert_uncased_vocab.txt'
 data.Tokenize.vocab_type = 'bert-lowercase'
@@ -65,8 +44,6 @@ data.Tokenize.vocab_type = 'bert-lowercase'
 # and change the path accordingly.
 data.Tokenize.vocab_dir = 'trax/data/testdata/'
 data.Tokenize.keys = [0, 1]
-data.CreateBertInputs.labeled = False
-data.CreateBertInputs.double_sentence = False
 data.PadToLength.len_map = {0: 512, 1: 512, 2: 512}
 data.PadToLength.pad_value = {0: 0, 1: 0, 2:0}
 data.TruncateToLength.len_map = {0: (512,), 1: (512,), 2: (512,)}
@@ -85,8 +62,6 @@ train.checkpoint_highest = 'accuracy'
 # Parameters for BERT:
 # ==============================================================================
 BERT.init_checkpoint = 'bert-base-uncased'
-BERT.head = @bert.BERTMLMHead
-bert.BERTClassifierHead.n_classes = 2
 
 # Parameters for multifactor:
 # ==============================================================================

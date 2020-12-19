@@ -239,13 +239,21 @@ def _train_and_eval_dataset(dataset_name,
 def TFDS(  # pylint: disable=invalid-name
     dataset_name,
     data_dir=None,
-    keys=None,
     tfds_preprocess_fn=None,
+    keys=None,
     train=True,
     eval_holdout_size=0):
   """Returns an iterator of numpy arrays representing the dataset.
   Args:
-     tfds_preprocess_fn: function that transforms tensorflow dataset applied before changing dataset to generator
+    dataset_name: a string, the name of the dataset; if it starts with 't2t_'
+      then we'll search T2T Problem registry for it, otherwise we assume it is a
+      dataset from TFDS and load it from there.
+    data_dir: directory where the data is located.
+    tfds_preprocess_fn: function that transforms tensorflow dataset applied before changing dataset to generator
+    keys: list of keys from the transformed dataset to use in generator
+    train: boolean value, whether to use train or evaluation data
+    eval_holdout_size: float from 0 to <1; if >0 use this much of training data
+      for evaluation (instead of looking for a pre-specified VALIDATION split).
   """
   data_dir = download_and_prepare(dataset_name, data_dir)
 
@@ -1100,12 +1108,12 @@ def BertSingleSentenceInputs(batch, labeled=True, CLS_id=101, SEP_id=102):
   if labeled:
     for sent1, label in batch:
       value_vector = np.concatenate(([CLS_id], sent1, [SEP_id]))
-      segment_embs = np.zeros(sent1.shape[0] + 2, dtype=np.int32)
-      yield value_vector, segment_embs, segment_embs, label, np.int64(1)
+      segment_embs = np.zeros(sent1.shape[0] + 2, dtype=np.uint16)
+      yield value_vector, segment_embs, segment_embs, label, np.uint32(1)
   else:
-    for sent1, *_ in batch: # row is a tuple with 1 element
+    for (sent1,) in batch:  # row is a tuple with 1 element
       value_vector = np.concatenate(([CLS_id], sent1, [SEP_id]))
-      segment_embs = np.zeros(sent1.shape[0] + 2, dtype=np.int32)
+      segment_embs = np.zeros(sent1.shape[0] + 2, dtype=np.uint16)
       yield value_vector, segment_embs, segment_embs
 
 
@@ -1115,23 +1123,23 @@ def BertDoubleSentenceInputs(batch, labeled=True, CLS_id=101, SEP_id=102):
     for sent1, sent2, label in batch:
       value_vector = np.concatenate(([CLS_id], sent1, [SEP_id], sent2, [SEP_id]))
 
-      segment_embs = np.zeros(sent1.shape[0] + sent2.shape[0] + 3, dtype=np.int32)
+      segment_embs = np.zeros(sent1.shape[0] + sent2.shape[0] + 3, dtype=np.uint16)
       second_sent_start = sent1.shape[0] + 2
       segment_embs[second_sent_start:] = 1
-      yield value_vector, segment_embs, segment_embs, label, np.int64(1)
+      yield value_vector, segment_embs, segment_embs, label, np.uint32(1)
   else:
     for sent1, sent2 in batch:
       value_vector = np.concatenate(([CLS_id], sent1, [SEP_id], sent2, [SEP_id]))
 
-      segment_embs = np.zeros(sent1.shape[0] + sent2.shape[0] + 3, dtype=np.int32)
+      segment_embs = np.zeros(sent1.shape[0] + sent2.shape[0] + 3, dtype=np.uint16)
       second_sent_start = sent1.shape[0] + 2
       segment_embs[second_sent_start:] = 1
       yield value_vector, segment_embs, segment_embs
 
 
-def CreateBertInputs(double_sentence=True, labeled=True, CLS_id=101, SEP_id=101):
-  foo = BertDoubleSentenceInputs if double_sentence else BertSingleSentenceInputs
-  return functools.partial(foo, labeled=labeled, CLS_id=CLS_id, SEP_id=SEP_id)
+def CreateBertInputs(double_sentence=True, labeled=True, CLS_id=101, SEP_id=102):
+  bert_inputs_fn = BertDoubleSentenceInputs if double_sentence else BertSingleSentenceInputs
+  return functools.partial(bert_inputs_fn, labeled=labeled, CLS_id=CLS_id, SEP_id=SEP_id)
 
 
 def mask_random_tokens(batch, vocab_size=30522, masking_prob=0.15,
@@ -1143,8 +1151,8 @@ def mask_random_tokens(batch, vocab_size=30522, masking_prob=0.15,
       - replaced with [MASK] token with 80% probability
       - replaced with random token with 10% probability
       - unchanged with 10%
-  Follows standard procedure of masking in BERT found in
-  create_masked_lm_predictions-https://github.com/google-research/bert/blob/master/create_pretraining_data.py, line 342.
+  Follows standard procedure of masking in BERT found in create_masked_lm_predictions function from
+  https://github.com/google-research/bert/blob/master/create_pretraining_data.py, line 342.
   Args:
     batch: stream of inputs. Each row in the stream is a tuple which first element is an array of tokens
     masking_prob: Determines percent of non-special tokens to be selected for masking.
@@ -1190,17 +1198,17 @@ def mask_random_tokens(batch, vocab_size=30522, masking_prob=0.15,
     random_token_ids = candidate_ids[(0.8 <= prob_scores) & (prob_scores < 0.9)]
     token_ids[random_token_ids] = np.random.randint(vocab_start_id, vocab_size, random_token_ids.shape[0])
 
-    # leave 10% unchanged
-
+    # rest (10%) is left unchaged
     yield (token_ids, *row_rest, original_tokens, token_weights)
 
 
-def BertNextSentencePredictionInputs(dataset_name, text_key='text', train=True):
+def BertNextSentencePredictionInputs(dataset_name, text_key='text', train=True, shuffle_size=50000):
   stream = TFDS(
     dataset_name,
     tfds_preprocess_fn=functools.partial(t5.data.preprocessors.next_sentence_prediction,
                                          text_key=text_key,
-                                         label_sentences=True),
+                                         label_sentences=True,
+                                         buffer_size=shuffle_size),
     keys=['inputs', 'targets'],
     train=train
   )
@@ -1208,7 +1216,8 @@ def BertNextSentencePredictionInputs(dataset_name, text_key='text', train=True):
   def split_stream(generator=None):
     # split string with 'sentence1:' and 'sentence2:' into two separate strings
     for text, target in stream(generator):
-      sentences = str(text).split('sentence1:')[1].split('sentence2:')
+      text_str = str(text)[:-1]  # removes last '"' which is always at the end
+      sentences = text_str.split('sentence1: ')[1].split(' sentence2: ')
       if len(sentences) != 2:
         # 'sentence2:' appeared in the text and got mixed up with the label
         continue
@@ -1216,6 +1225,7 @@ def BertNextSentencePredictionInputs(dataset_name, text_key='text', train=True):
       yield sent1, sent2, target == 'next'
 
   return split_stream
+
 
 def CorpusToRandomChunks(dataset_name, num_tokens=512, train=True):
   return TFDS(

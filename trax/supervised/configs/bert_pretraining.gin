@@ -12,15 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import t5.data.preprocessors
-import trax.layers
-import trax.models
 import trax.data
-import trax.optimizers
-import trax.supervised.lr_schedules
-import trax.supervised.trainer_lib
 import trax.models.research.bert
-import trax.layers.metrics
 
 # See https://www.tensorflow.org/datasets/catalog/glue -- valid dataset_name
 # values are: glue/cola, glue/sst2, glue/mrpc, glue/qqp, glue/stsb, glue/mnli,
@@ -30,25 +23,19 @@ import trax.layers.metrics
 
 dataset_name = 'wiki40b'
 
+include 'bert.gin'
+
 # Parameters for TFDS data pipeline:
 # ==============================================================================
 make_inputs.train_stream = [
   @train/data.BertNextSentencePredictionInputs(),
-  @data.Tokenize(),
-  @data.CreateBertInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
+  %bert_stream_core,
   @data.mask_random_tokens,
   @data.Batch()
 ]
 make_inputs.eval_stream = [
   @eval/data.BertNextSentencePredictionInputs(),
-  @data.Tokenize(),
-  @data.CreateBertInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
+  %bert_stream_core,
   @data.mask_random_tokens,
   @data.Batch()
 ]
@@ -58,38 +45,12 @@ train/data.TFDS.train = True
 eval/data.BertNextSentencePredictionInputs.dataset_name = %dataset_name
 eval/data.TFDS.train = False
 
-data.Tokenize.vocab_file = 'bert_uncased_vocab.txt'
-data.Tokenize.vocab_type = 'bert-lowercase'
-# If during the execution time of the binary the directory trax/data/testdata
-# containing the vocab file is not accessible, then copy the file to a drive
-# and change the path accordingly.
-data.Tokenize.vocab_dir = 'trax/data/testdata/'
-data.Tokenize.keys = [0, 1]
-data.PadToLength.len_map = {0: 512, 1: 512, 2: 512}
-data.PadToLength.pad_value = {0: 0, 1: 0, 2:0}
-data.TruncateToLength.len_map = {0: (512,), 1: (512,), 2: (512,)}
-data.Batch.batch_size = 16
-
 # Parameters for train:
 # ==============================================================================
-train.optimizer = @trax.optimizers.Adam
-train.eval_frequency = 20
-train.eval_steps = 10
-train.inputs = @trax.data.inputs.make_inputs
-train.model = @trax.models.BERT
-train.steps = 200000
-train.checkpoint_highest = 'accuracy'
 train.loss_fn = @bert.BERTPretrainingLoss()
 train.metrics = {'loss': @bert.BERTPretrainingLoss()}
 
 # Parameters for BERT:
 # ==============================================================================
-BERT.init_checkpoint = 'bert-base-uncased'
 BERT.head = @bert.BERTPretrainingHead
 bert.BERTClassifierHead.n_classes = 2
-
-# Parameters for multifactor:
-# ==============================================================================
-multifactor.constant = 3e-5
-multifactor.factors = 'constant * linear_warmup'
-multifactor.warmup_steps = 1000
