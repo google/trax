@@ -586,6 +586,7 @@ class Loop:
 
     for eval_task_index in range(len(self._eval_tasks)):
       eval_task = self._eval_tasks[eval_task_index]
+      evaluator = self._evaluator_per_task[eval_task_index]
       if eval_task is None:
         continue
 
@@ -596,28 +597,26 @@ class Loop:
         model_weights = trainer.accelerated_model_with_loss.weights[0]
         model_state = trainer.accelerated_model_with_loss.state[0]
 
-      for (eval_task, evaluator) in zip(
-          self._eval_tasks, self._evaluator_per_task):
-        # evaluator.{weights,state} are already replicated.
-        metrics_weights = (model_weights, evaluator.weights)
-        metrics_state = (model_state, evaluator.state)
+      # evaluator.{weights,state} are already replicated.
+      metrics_weights = (model_weights, evaluator.weights)
+      metrics_state = (model_state, evaluator.state)
 
-        n_batches = eval_task.n_eval_batches
-        n_metrics = len(eval_task.metrics)
-        sums = np.zeros((n_metrics,))
-        for _ in range(n_batches):
-          rng = self.new_rng()
-          batch = eval_task.next_batch()
-          metric_values, _ = evaluator.metrics_fn(
-              batch, metrics_weights, metrics_state, rng)
-          sums += metric_values
-        averages = sums / n_batches
-        all_metrics = dict(zip(eval_task.metric_names, averages))
-        summary_writer = summary_writers[eval_task_index]
-        self._log_summary(all_metrics, summary_writer, 'metrics/', 'eval')
-        summary_metrics = dict(recursively_look_for_printable_states(
-            model_state))
-        self._log_summary(summary_metrics, summary_writer, 'summary_', 'eval')
+      n_batches = eval_task.n_eval_batches
+      n_metrics = len(eval_task.metrics)
+      sums = np.zeros((n_metrics,))
+      for _ in range(n_batches):
+        rng = self.new_rng()
+        batch = eval_task.next_batch()
+        metric_values, _ = evaluator.metrics_fn(
+            batch, metrics_weights, metrics_state, rng)
+        sums += metric_values
+      averages = sums / n_batches
+      all_metrics = dict(zip(eval_task.metric_names, averages))
+      summary_writer = summary_writers[eval_task_index]
+      self._log_summary(all_metrics, summary_writer, 'metrics/', 'eval')
+      summary_metrics = dict(recursively_look_for_printable_states(
+          model_state))
+      self._log_summary(summary_metrics, summary_writer, 'summary_', 'eval')
 
   def _log_summary(self, values, summary_writer, value_prefix, log_prefix,
                    stdout=True):
