@@ -580,6 +580,7 @@ def Reformer2(input_vocab_size,
               n_layers_forget=0,
               n_decoder_attention_layers=2,
               use_bfloat16=False,
+              reversible_encoder=False,
               mode='train'):
   """Reversible transformer encoder-decoder model.
 
@@ -624,6 +625,7 @@ def Reformer2(input_vocab_size,
     n_layers_forget: how often to have a forgetting block between layers
     n_decoder_attention_layers: how many attention layers in a decoder block
     use_bfloat16: whether to use bfloat16 for weights (default: False)
+    reversible_encoder: whether to be reversible through the encoder
     mode: str: 'train' or 'eval'
 
   Returns:
@@ -671,13 +673,17 @@ def Reformer2(input_vocab_size,
       for _ in range(n_encoder_layers)]
   # pylint: enable=g-complex-comprehension
 
-  encoder = tl.Serial(     # vec_e mask_e tok_e tok_d tok_d
+  encoder = [     # vec_e mask_e tok_e tok_d tok_d
       tl.ReversibleSelect([0, 0]),     # vec_e1 vec_e2 mask_e tok_e tok_d tok_d
-      _ReversibleSerialForget(encoder_blocks, d_model, n_layers_forget),
-      tl.Fn('XYAvg', lambda x, y: (x + y) / 2.0),
-      tl.Dense(d_model, use_bfloat16=use_bfloat16),
-      tl.LayerNorm(),
-  )
+      _ReversibleSerialForget(encoder_blocks, d_model, n_layers_forget)
+  ]
+  if not reversible_encoder:
+    encoder += [
+        tl.Fn('XYAvg', lambda x, y: (x + y) / 2.0),
+        tl.Dense(d_model, use_bfloat16=use_bfloat16),
+        tl.LayerNorm(),
+    ]
+  encoder = tl.Serial(encoder)
   if mode == 'predict':
     encoder = tl.Cache(encoder)
 
@@ -715,6 +721,19 @@ def Reformer2(input_vocab_size,
       use_bfloat16=use_bfloat16,
       mode=mode)
 
+  # Layers to merge encoder and decoder, see below for details.
+  if reversible_encoder:
+    encdec_layers = [
+        tl.ReversibleSelect([0, 1, 4, 2, 3]),  # vec_e vec_d mask_e tok_e tok_d
+        t2.ConcatWithPadding2(mode=mode),      # vec_ed vec_ed tok_e tok_d
+    ]
+  else:
+    encdec_layers = [
+        tl.ReversibleSelect([0, 3, 1, 2]),     # vec_e vec_d mask_e tok_e tok_d
+        t2.ConcatWithPadding(mode=mode),       # vec_ed tok_e tok_d
+        tl.ReversibleSelect([0, 0]),           # vec_ed vec_ed tok_e tok_d
+    ]
+
   # Assemble and return the model.
   return tl.Serial(
       # Input: encoder_side_tokens, decoder_side_tokens
@@ -734,9 +753,7 @@ def Reformer2(input_vocab_size,
       encoder,                                  # vec_e mask_e tok_e vec_d tok_d
 
       # Concat encoder and decoder, given encoder mask.
-      tl.ReversibleSelect([0, 3, 1, 2]),        # vec_e vec_d mask_e tok_e tok_d
-      t2.ConcatWithPadding(mode=mode),          # vec_ed tok_e tok_d
-      tl.ReversibleSelect([0, 0]),              # vec_ed vec_ed tok_e tok_d
+      encdec_layers,
 
       # Run decoder blocks.
       _ReversibleSerialForget(decoder_blocks, d_model,
