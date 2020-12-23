@@ -1108,12 +1108,12 @@ def BertSingleSentenceInputs(batch, labeled=True, CLS_id=101, SEP_id=102):
   if labeled:
     for sent1, label in batch:
       value_vector = np.concatenate(([CLS_id], sent1, [SEP_id]))
-      segment_embs = np.zeros(sent1.shape[0] + 2, dtype=np.uint16)
-      yield value_vector, segment_embs, segment_embs, label, np.uint32(1)
+      segment_embs = np.zeros(sent1.shape[0] + 2, dtype=np.int32)
+      yield value_vector, segment_embs, segment_embs, label, np.int32(1)
   else:
     for (sent1,) in batch:  # row is a tuple with 1 element
       value_vector = np.concatenate(([CLS_id], sent1, [SEP_id]))
-      segment_embs = np.zeros(sent1.shape[0] + 2, dtype=np.uint16)
+      segment_embs = np.zeros(sent1.shape[0] + 2, dtype=np.int32)
       yield value_vector, segment_embs, segment_embs
 
 
@@ -1123,15 +1123,15 @@ def BertDoubleSentenceInputs(batch, labeled=True, CLS_id=101, SEP_id=102):
     for sent1, sent2, label in batch:
       value_vector = np.concatenate(([CLS_id], sent1, [SEP_id], sent2, [SEP_id]))
 
-      segment_embs = np.zeros(sent1.shape[0] + sent2.shape[0] + 3, dtype=np.uint16)
+      segment_embs = np.zeros(sent1.shape[0] + sent2.shape[0] + 3, dtype=np.int32)
       second_sent_start = sent1.shape[0] + 2
       segment_embs[second_sent_start:] = 1
-      yield value_vector, segment_embs, segment_embs, label, np.uint32(1)
+      yield value_vector, segment_embs, segment_embs, label, np.int32(1)
   else:
     for sent1, sent2 in batch:
       value_vector = np.concatenate(([CLS_id], sent1, [SEP_id], sent2, [SEP_id]))
 
-      segment_embs = np.zeros(sent1.shape[0] + sent2.shape[0] + 3, dtype=np.uint16)
+      segment_embs = np.zeros(sent1.shape[0] + sent2.shape[0] + 3, dtype=np.int32)
       second_sent_start = sent1.shape[0] + 2
       segment_embs[second_sent_start:] = 1
       yield value_vector, segment_embs, segment_embs
@@ -1202,9 +1202,10 @@ def mask_random_tokens(batch, vocab_size=30522, masking_prob=0.15,
     yield (token_ids, *row_rest, original_tokens, token_weights)
 
 
-def BertNextSentencePredictionInputs(dataset_name, text_key='text', train=True, shuffle_size=50000):
+def BertNextSentencePredictionInputs(dataset_name, data_dir=None, text_key='text', train=True, shuffle_size=50000):
   stream = TFDS(
     dataset_name,
+    data_dir=data_dir,
     tfds_preprocess_fn=functools.partial(t5.data.preprocessors.next_sentence_prediction,
                                          text_key=text_key,
                                          label_sentences=True,

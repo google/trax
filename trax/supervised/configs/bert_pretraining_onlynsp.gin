@@ -15,26 +15,28 @@
 import trax.data
 import trax.models.research.bert
 
-# See https://www.tensorflow.org/datasets/catalog/glue -- valid dataset_name
-# values are: glue/cola, glue/sst2, glue/mrpc, glue/qqp, glue/stsb, glue/mnli,
-# glue/qnli, glue/rte, glue/wnli. However, training on WNLI with this setup is
-# not recommended and will likely result in lower than baseline accuracy.
-
+include 'bert.gin'
 
 dataset_name = 'wiki40b'
-
-include 'bert.gin'
 
 # Parameters for TFDS data pipeline:
 # ==============================================================================
 make_inputs.train_stream = [
   @train/data.BertNextSentencePredictionInputs(),
-  %bert_stream_core,
+  @data.Tokenize(),
+  @data.CreateBertInputs(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
   @data.Batch()
 ]
 make_inputs.eval_stream = [
   @eval/data.BertNextSentencePredictionInputs(),
-  %bert_stream_core,
+  @data.Tokenize(),
+  @data.CreateBertInputs(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
   @data.Batch()
 ]
 

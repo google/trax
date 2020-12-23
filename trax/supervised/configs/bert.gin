@@ -21,22 +21,8 @@ import trax.supervised.lr_schedules
 import trax.supervised.trainer_lib
 import trax.layers.metrics
 
-# See https://www.tensorflow.org/datasets/catalog/glue -- valid dataset_name
-# values are: glue/cola, glue/sst2, glue/mrpc, glue/qqp, glue/stsb, glue/mnli,
-# glue/qnli, glue/rte, glue/wnli. However, training on WNLI with this setup is
-# not recommended and will likely result in lower than baseline accuracy.
-
-
 # Parameters for TFDS data pipeline:
 # ==============================================================================
-bert_stream_core = [
-  @data.Tokenize(),
-  @data.CreateBertInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength()
-]
-
 data.Tokenize.vocab_file = 'bert_uncased_vocab.txt'
 data.Tokenize.vocab_type = 'bert-lowercase'
 # If during the execution time of the binary the directory trax/data/testdata
