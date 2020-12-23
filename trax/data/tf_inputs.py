@@ -779,7 +779,7 @@ def c4_preprocess(dataset,
 def c4_bare_preprocess_fn(dataset,
                           training=True,
                           spm_path=None,
-                          copy_plaintext=True,
+                          copy_pretokenized=True,
                           sequence_length=None):
   """Returns a dataset that contains 'inputs' and 'targets' from C4."""
   # Set target key to be equal to the text content.
@@ -812,8 +812,8 @@ def c4_bare_preprocess_fn(dataset,
     ret = {}
     for k, v in features.items():
       if k in keys and v.dtype == tf.string:
-        if copy_plaintext:
-          ret['%s_plaintext' % k] = v
+        if copy_pretokenized:
+          ret['%s_pretokenized' % k] = v
         v = tf.cast(output_features[k].vocabulary.encode_tf(v), tf.int64)
       ret[k] = v
     return ret
@@ -953,7 +953,7 @@ def generic_text_dataset_preprocess_fn(dataset,
                                        text_preprocess_fns=None,
                                        token_preprocess_fns=None,
                                        spm_path=None,
-                                       copy_plaintext=False,
+                                       copy_pretokenized=False,
                                        debug_print_examples=False,
                                        debug_print_examples_rate=0.01):
   """Pre-processes, tokenizes and post-processes a `tf.data.Dataset`.
@@ -970,7 +970,7 @@ def generic_text_dataset_preprocess_fn(dataset,
       the tokenized fields, this can be used to filter on length etc.
     spm_path: None or str, path to a sentencepiece model to use for tokenization
       by default uses the 32k vocabulary from T5.
-    copy_plaintext: bool, if True retains the original fields after
+    copy_pretokenized: bool, if True retains the original fields after
       tokenization.
     debug_print_examples: bool, if True this prints examples to the logging
       stream for inspection, both before and after tokenization.
@@ -1008,7 +1008,7 @@ def generic_text_dataset_preprocess_fn(dataset,
 
   # Tokenize the inputs and targets.
   dataset = t5.data.preprocessors.tokenize(
-      dataset, output_features, copy_plaintext=copy_plaintext)
+      dataset, output_features, copy_pretokenized=copy_pretokenized)
 
   # Apply the token-preprocessors.
   if token_preprocess_fns is not None:
@@ -1205,7 +1205,7 @@ def CreateT5GlueInputs(  # pylint: disable=invalid-name
               benchmark_name=benchmark_name,
               label_names=label_names)
       ],
-      copy_plaintext=True,
+      copy_pretokenized=True,
       debug_print_examples=True,
       debug_print_examples_rate=0.05)
 

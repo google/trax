@@ -261,9 +261,9 @@ class TFInputsTest(tf.test.TestCase):
 
     example = list(tfds.as_numpy(dataset.take(1)))[0]
 
-    # Earlier text is now stored in targets_plaintext
-    self.assertIn('targets_plaintext', example)
-    self.assertEqual(example['targets_plaintext'], text)
+    # Earlier text is now stored in targets_pretokenized
+    self.assertIn('targets_pretokenized', example)
+    self.assertEqual(example['targets_pretokenized'], text)
 
     # Targets are now tokenized.
     self.assertIn('targets', example)
@@ -406,7 +406,7 @@ class TFInputsTest(tf.test.TestCase):
         dataset,
         spm_path=_spm_path(),
         text_preprocess_fns=[lambda ds, training: t5_processors.squad(ds)],
-        copy_plaintext=True,
+        copy_pretokenized=True,
         debug_print_examples=True,
         debug_print_examples_rate=1.0)
 
