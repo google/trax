@@ -847,7 +847,7 @@ def random_sequence_inputs(
     mask = np.ones((batch_size, train_length))
 
     while True:
-      inp = rand(1, vocab_size - 1, input_shape)
+      inp = rand(1, vocab_size, input_shape)
       inp = inp.astype(input_dtype)
       yield inp, inp, mask
 
@@ -855,12 +855,12 @@ def random_sequence_inputs(
 
 
 def dictionary_lookup(vocab_size, k):
-  my_dict = {x: np.random.randint(1, vocab_size - 1) for x in
+  my_dict = {x: np.random.randint(1, vocab_size) for x in
              range(1, vocab_size)}
   my_dict_str = [(k, v) for k, v in my_dict.items()]
   np.random.shuffle(my_dict_str)
   my_dict_str = np.concatenate(my_dict_str)
-  key = np.random.randint(1, vocab_size - 1, (k,))
+  key = np.random.randint(1, vocab_size, (k,))
   value = itemgetter(*key)(my_dict)
   target = np.concatenate([(k, v) for k, v in zip(key, value)])
 
