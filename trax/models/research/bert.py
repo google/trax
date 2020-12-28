@@ -72,7 +72,29 @@ def BERTRegressionHead():
   ])
 
 
-# TODO(kitaev): masked LM head
+@gin.configurable()
+def BERTMLMHead(vocab_size=30522):
+  return tl.Serial([
+      tl.Select([1], n_in=2),
+      tl.Dense(vocab_size,
+               kernel_initializer=tl.RandomNormalInitializer(0.02),
+               bias_initializer=tl.RandomNormalInitializer(1e-6),
+               ),
+  ])
+
+
+@gin.configurable()
+def BERTPretrainingLoss():
+  nsp_loss = [tl.Select([0, 2, 3], n_in=6), tl.WeightedCategoryCrossEntropy()]
+  mlm_loss = [tl.Select([1, 4, 5], n_in=6), tl.WeightedCategoryCrossEntropy()]
+  return tl.Serial(tl.Branch(nsp_loss, mlm_loss), tl.Add())
+
+
+@gin.configurable()
+def BERTPretrainingHead(n_classes):
+  return tl.Branch(BERTClassifierHead(n_classes), BERTMLMHead()),
+
+
 # TODO(piotrekp1): add tests
 
 

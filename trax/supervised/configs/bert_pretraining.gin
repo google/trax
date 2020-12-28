@@ -17,42 +17,42 @@ import trax.models.research.bert
 
 include 'bert.gin'
 
-# See https://www.tensorflow.org/datasets/catalog/glue -- valid dataset_name
-# values are: glue/cola, glue/sst2, glue/mrpc, glue/qqp, glue/stsb, glue/mnli,
-# glue/qnli, glue/rte, glue/wnli. However, training on WNLI with this setup is
-# not recommended and will likely result in lower than baseline accuracy.
-dataset_name = 'glue/mnli'
+dataset_name = 'wiki40b'
 
 # Parameters for TFDS data pipeline:
 # ==============================================================================
 make_inputs.train_stream = [
-  @train/data.TFDS(),
+  @train/data.BertNextSentencePredictionInputs(),
   @data.Tokenize(),
   @data.CreateBertInputs(),
   @data.Shuffle(),
   @data.PadToLength(),
   @data.TruncateToLength(),
+  @data.mask_random_tokens,
   @data.Batch()
 ]
 make_inputs.eval_stream = [
-  @eval/data.TFDS(),
+  @eval/data.BertNextSentencePredictionInputs(),
   @data.Tokenize(),
   @data.CreateBertInputs(),
   @data.Shuffle(),
   @data.PadToLength(),
   @data.TruncateToLength(),
+  @data.mask_random_tokens,
   @data.Batch()
 ]
-train/data.TFDS.dataset_name = %dataset_name
-train/data.TFDS.keys = @trax.data.tf_inputs.get_glue_key()
-train/data.TFDS.train = True
-eval/data.TFDS.dataset_name = %dataset_name
-eval/data.TFDS.keys = @trax.data.tf_inputs.get_glue_key()
-eval/data.TFDS.train = False
-get_glue_key.task_name = %dataset_name
 
+train/data.BertNextSentencePredictionInputs.dataset_name = %dataset_name
+train/data.TFDS.train = True
+eval/data.BertNextSentencePredictionInputs.dataset_name = %dataset_name
+eval/data.TFDS.train = False
+
+# Parameters for train:
+# ==============================================================================
+train.loss_fn = @bert.BERTPretrainingLoss()
+train.metrics = {'loss': @bert.BERTPretrainingLoss()}
 
 # Parameters for BERT:
 # ==============================================================================
-BERT.head = @bert.BERTClassifierHead
-bert.BERTClassifierHead.n_classes = 3
+BERT.head = @bert.BERTPretrainingHead
+bert.BERTPretrainingHead.n_classes = 2

@@ -44,7 +44,11 @@ Serial = data_configure(inputs.Serial)
 Shuffle = data_configure(inputs.Shuffle)
 shuffle = inputs.shuffle
 TFDS = data_configure(tf_inputs.TFDS)
+BertNextSentencePredictionInputs = data_configure(
+    tf_inputs.BertNextSentencePredictionInputs)
+CorpusToRandomChunks = data_configure(tf_inputs.CorpusToRandomChunks)
 CreateBertInputs = data_configure(tf_inputs.CreateBertInputs)
+mask_random_tokens = data_configure(tf_inputs.mask_random_tokens)
 CreateT5GlueInputs = data_configure(tf_inputs.CreateT5GlueInputs)
 Tokenize = data_configure(tf_inputs.Tokenize)
 ConvertToUnicode = data_configure(tf_inputs.ConvertToUnicode)
