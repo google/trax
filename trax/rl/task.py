@@ -737,6 +737,8 @@ class RLTask:
       tensor_list = [t if t is not None else prototype for t in tensor_list]
 
       max_len = max([t.shape[0] for t in tensor_list])
+      if min_slice_length is not None:
+        max_len = max(max_len, min_slice_length)
       min_len = min([t.shape[0] for t in tensor_list])
       if max_len == min_len:  # No padding needed.
         return np.array(tensor_list)
@@ -750,11 +752,6 @@ class RLTask:
         include_final_state, sample_trajectories_uniformly,
         margin=margin
     ):
-      # TODO(pkozakowski): Instead sample the trajectories out of those with
-      # the minimum length.
-      if min_slice_length is not None and len(t) < min_slice_length:
-        continue
-
       cur_batch.append(t)
       if len(cur_batch) == batch_size:
         # TODO(pkozakowski): Unpack based on name instead of position in the

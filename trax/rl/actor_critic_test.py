@@ -139,6 +139,24 @@ class ActorCriticTest(absltest.TestCase):
     trainer.run(2)
     self.assertEqual(2, trainer.current_epoch)
 
+  def test_sanity_loopawr(self):
+    """Test-runs LoopAWR."""
+    task = rl_task.RLTask('CartPole-v0', initial_trajectories=0, max_steps=2)
+    body = lambda mode: tl.Serial(tl.Dense(64), tl.Relu())
+    model_fn = functools.partial(models.PolicyAndValue, body=body)
+    trainer = actor_critic.LoopAWR(
+        task,
+        model_fn,
+        batch_size=2,
+        network_eval_at=(lambda _: True),
+        policy_n_steps_per_epoch=2,
+        value_n_steps_per_epoch=2,
+        n_trajectories_per_epoch=1,
+        n_eval_episodes=1,
+    )
+    trainer.run(2)
+    self.assertEqual(2, trainer.current_epoch)
+
   def test_sanity_awrtrainer_transformer_cartpole(self):
     """Test-runs AWR on cartpole with Transformer."""
     task = rl_task.RLTask('CartPole-v0', initial_trajectories=2,

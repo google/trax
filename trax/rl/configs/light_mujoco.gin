@@ -47,6 +47,13 @@ Value.inject_actions_dim = 256
 Value.multiplicative_action_injection = True
 Value.head_init_range = 0.01
 
+# Parameters for PolicyAndValue:
+# ==============================================================================
+PolicyAndValue.body = @trax.models.MLP
+PolicyAndValue.policy_top = @trax.models.Policy
+PolicyAndValue.value_top = @trax.models.Value
+PolicyAndValue.normalizer = @trax.rl.normalization.Normalize
+
 # Parameters for Normalize:
 # ==============================================================================
 Normalize.sample_limit = 300000
@@ -117,6 +124,32 @@ AWR.n_shared_layers = 1  # normalizer
 AWR.q_value = False
 AWR.q_value_n_samples = %q_value_n_samples
 AWR.q_value_aggregate = 'max'
+
+# Parameters for LoopAWR:
+# ==============================================================================
+LoopAWR.advantage_estimator = @trax.rl.advantages.td_lambda
+LoopAWR.model_fn = @trax.models.PolicyAndValue
+LoopAWR.optimizer = @trax.optimizers.Adam
+LoopAWR.policy_lr_schedule = @policy/multifactor
+LoopAWR.policy_n_steps_per_epoch = %policy_train_steps
+LoopAWR.value_lr_schedule = @value/multifactor
+LoopAWR.value_n_steps_per_epoch = %value_train_steps
+LoopAWR.value_sync_at = @value_sync_at/trax.rl.every()
+LoopAWR.batch_size = %batch_size
+LoopAWR.network_eval_at = None  # Use the default: eval every 100 steps.
+LoopAWR.n_trajectories_per_epoch = None
+LoopAWR.n_interactions_per_epoch = 1000
+LoopAWR.n_eval_episodes = 1
+LoopAWR.eval_steps = [1000]
+LoopAWR.beta = 1.0
+LoopAWR.w_max = 20
+LoopAWR.max_slice_length = 1
+LoopAWR.margin = %margin
+LoopAWR.n_replay_epochs = 50
+
+# Parameters for value_sync_at/every:
+value_sync_at/every.n_steps = %value_train_steps
+# ==============================================================================
 
 # Parameters for SamplingAWR:
 # ==============================================================================

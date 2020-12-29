@@ -127,29 +127,33 @@ def PolicyAndValue(
     policy_top=Policy,
     value_top=Value,
     normalizer=None,
-    head_init_range=None,
+    joint=True,
     mode='train',
 ):
   """Attaches policy and value heads to a model body."""
-
-  head_kwargs = {}
-  if head_init_range is not None:
-    head_kwargs['kernel_initializer'] = tl.RandomUniformInitializer(
-        lim=head_init_range
-    )
-
   if normalizer is None:
     normalizer = lambda mode: []
   if body is None:
     body = lambda mode: []
-  return tl.Serial(
-      normalizer(mode=mode),
-      body(mode=mode),
-      tl.Branch(
-          policy_top(policy_distribution=policy_distribution, mode=mode),
-          value_top(mode=mode),
-      ),
+
+  common_kwargs = {'body': None, 'normalizer': None, 'mode': mode}
+  policy_top = policy_top(
+      policy_distribution=policy_distribution, **common_kwargs
   )
+  value_top = value_top(**common_kwargs)
+
+  layers = [normalizer(mode=mode)]
+  if joint:
+    layers.extend([
+        body(mode=mode),
+        tl.Branch(policy_top, value_top),
+    ])
+  else:
+    layers.append(tl.Branch(
+        tl.Serial(body(mode=mode), policy_top),
+        tl.Serial(body(mode=mode), value_top),
+    ))
+  return tl.Serial(layers)
 
 
 def Quality(

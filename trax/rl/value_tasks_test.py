@@ -55,17 +55,20 @@ class ValueTasksTest(absltest.TestCase):
 
   def test_value_tasks_smoke(self):
     # Smoke test for train + eval.
-    model = self._model_fn(mode='train')
+    train_model = self._model_fn(mode='train')
+    eval_model = self._model_fn(mode='eval')
     train_task = value_tasks.ValueTrainTask(
         self._trajectory_batch_stream,
         optimizer=opt.Adam(),
         lr_schedule=lr_schedules.constant(1e-3),
         advantage_estimator=advantages.td_k(gamma=self._task.gamma, margin=1),
-        model=model,
+        model=train_model,
+        target_model=eval_model,
     )
     eval_task = value_tasks.ValueEvalTask(train_task)
     loop = training.Loop(
-        model=model,
+        model=train_model,
+        eval_model=eval_model,
         tasks=[train_task],
         eval_tasks=[eval_task],
         eval_at=(lambda _: True),
@@ -73,18 +76,21 @@ class ValueTasksTest(absltest.TestCase):
     loop.run(n_steps=1)
 
   def test_value_error_high_without_syncs(self):
-    model = self._model_fn(mode='train')
+    train_model = self._model_fn(mode='train')
+    eval_model = self._model_fn(mode='eval')
     train_task = value_tasks.ValueTrainTask(
         self._trajectory_batch_stream,
         optimizer=opt.Adam(),
         lr_schedule=lr_schedules.constant(1e-3),
         advantage_estimator=advantages.td_k(gamma=self._task.gamma, margin=1),
-        model=model,
+        model=train_model,
+        target_model=eval_model,
         # Synchronize just once, at the end of training.
         sync_at=(lambda step: step == 100),
     )
     loop = training.Loop(
-        model=model,
+        model=train_model,
+        eval_model=eval_model,
         tasks=[train_task],
     )
 
@@ -103,18 +109,21 @@ class ValueTasksTest(absltest.TestCase):
   def test_value_error_low_with_syncs(self):
     min_error = np.inf
     for _ in range(5):
-      model = self._model_fn(mode='train')
+      train_model = self._model_fn(mode='train')
+      eval_model = self._model_fn(mode='eval')
       train_task = value_tasks.ValueTrainTask(
           self._trajectory_batch_stream,
           optimizer=opt.Adam(),
           lr_schedule=lr_schedules.constant(1e-3),
           advantage_estimator=advantages.td_k(gamma=self._task.gamma, margin=1),
-          model=model,
+          model=train_model,
+          target_model=eval_model,
           # Synchronize often throughout training.
           sync_at=(lambda step: step % 10 == 0),
       )
       loop = training.Loop(
-          model=model,
+          model=train_model,
+          eval_model=eval_model,
           tasks=[train_task],
       )
 
@@ -141,7 +150,8 @@ class ValueTasksTest(absltest.TestCase):
     advantage_estimator = advantages.td_k(gamma=self._task.gamma, margin=1)
     policy_dist = distributions.create_distribution(self._task.action_space)
     body = lambda mode: tl.Dense(64)
-    model = models.PolicyAndValue(policy_dist, body=body)
+    train_model = models.PolicyAndValue(policy_dist, body=body)
+    eval_model = models.PolicyAndValue(policy_dist, body=body)
 
     head_selector = tl.Select([1])
     value_train_task = value_tasks.ValueTrainTask(
@@ -149,7 +159,8 @@ class ValueTasksTest(absltest.TestCase):
         optimizer,
         lr_schedule,
         advantage_estimator,
-        model=model,
+        model=train_model,
+        target_model=eval_model,
         head_selector=head_selector,
     )
     value_eval_task = value_tasks.ValueEvalTask(
@@ -174,7 +185,8 @@ class ValueTasksTest(absltest.TestCase):
     )
 
     loop = training.Loop(
-        model=model,
+        model=train_model,
+        eval_model=eval_model,
         tasks=[policy_train_task, value_train_task],
         eval_tasks=[policy_eval_task, value_eval_task],
         eval_at=(lambda _: True),

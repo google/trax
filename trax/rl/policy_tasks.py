@@ -78,6 +78,7 @@ class PolicyTrainTask(training.TrainTask):
         head. Only needed in multitask training. By default, use a no-op layer,
         signified by an empty sequence of layers, ().
     """
+    self.trajectory_batch_stream = trajectory_batch_stream
     self._value_fn = value_fn
     self._advantage_estimator = advantage_estimator
     self._weight_fn = weight_fn
@@ -86,40 +87,49 @@ class PolicyTrainTask(training.TrainTask):
     self.policy_distribution = policy_distribution
 
     labeled_data = map(self.policy_batch, trajectory_batch_stream)
+    sample_batch = self.policy_batch(
+        next(trajectory_batch_stream), shape_only=True
+    )
     loss_layer = distributions.LogLoss(distribution=policy_distribution)
     loss_layer = tl.Serial(head_selector, loss_layer)
     super().__init__(
         labeled_data, loss_layer, optimizer,
+        sample_batch=sample_batch,
         lr_schedule=lr_schedule,
+        loss_name='policy_loss',
     )
 
-  def policy_batch(self, trajectory_batch):
-    """Computes a policy training batch based on a trajectory batch.
-
-    Args:
-      trajectory_batch: trax.rl.task.TrajectoryNp with a batch of trajectory
-        slices. Elements should have shape (batch_size, seq_len, ...).
-
-    Returns:
-      Triple (observations, actions, weights), where weights are the
-      advantage-based weights for the policy loss. Shapes:
-      - observations: (batch_size, seq_len) + observation_shape
-      - actions: (batch_size, seq_len) + action_shape
-      - weights: (batch_size, seq_len)
-    """
+  def calculate_advantages(self, trajectory_batch, shape_only=False):
     (batch_size, seq_len) = trajectory_batch.observations.shape[:2]
     assert trajectory_batch.actions.shape[:2] == (batch_size, seq_len)
     assert trajectory_batch.mask.shape == (batch_size, seq_len)
-    # Compute the value, i.e. baseline in advantage computation.
-    values = np.array(self._value_fn(trajectory_batch))
-    assert values.shape == (batch_size, seq_len)
+    if shape_only:
+      values = np.zeros((batch_size, seq_len))
+    else:
+      # Compute the value, i.e. baseline in advantage computation.
+      values = np.array(self._value_fn(trajectory_batch))
+      assert values.shape == (batch_size, seq_len)
     # Compute the advantages using the chosen advantage estimator.
-    advantages = self._advantage_estimator(
+    return self._advantage_estimator(
         rewards=trajectory_batch.rewards,
         returns=trajectory_batch.returns,
         dones=trajectory_batch.dones,
         values=values,
     )
+
+  def calculate_weights(self, advantages):
+    """Calculates advantage-based weights for log loss in policy training."""
+    if self._advantage_normalization:
+      # Normalize advantages.
+      advantages -= jnp.mean(advantages)
+      advantage_std = jnp.std(advantages)
+      advantages /= advantage_std + self._advantage_normalization_epsilon
+    weights = self._weight_fn(advantages)
+    assert weights.shape == advantages.shape
+    return weights
+
+  def trim_batch(self, trajectory_batch, advantages):
+    (batch_size, seq_len) = trajectory_batch.observations.shape[:2]
     adv_seq_len = advantages.shape[1]
     # The advantage sequence should be shorter by the margin. Margin is the
     # number of timesteps added to the trajectory slice, to make the advantage
@@ -131,17 +141,35 @@ class PolicyTrainTask(training.TrainTask):
     # advantages.shape == (4, 3)
     assert adv_seq_len <= seq_len
     assert advantages.shape == (batch_size, adv_seq_len)
-    if self._advantage_normalization:
-      # Normalize advantages.
-      advantages -= np.mean(advantages)
-      advantages /= (np.std(advantages) + self._advantage_normalization_epsilon)
     # Trim observations, actions and mask to match the target length.
     observations = trajectory_batch.observations[:, :adv_seq_len]
     actions = trajectory_batch.actions[:, :adv_seq_len]
     mask = trajectory_batch.mask[:, :adv_seq_len]
-    # Compute advantage-based weights for the log loss in policy training.
-    weights = self._weight_fn(advantages) * mask
-    assert weights.shape == (batch_size, adv_seq_len)
+    return (observations, actions, mask)
+
+  def policy_batch(self, trajectory_batch, shape_only=False):
+    """Computes a policy training batch based on a trajectory batch.
+
+    Args:
+      trajectory_batch: trax.rl.task.TrajectoryNp with a batch of trajectory
+        slices. Elements should have shape (batch_size, seq_len, ...).
+      shape_only: Whether to return dummy zero arrays of correct shape. Useful
+        for initializing models.
+
+    Returns:
+      Triple (observations, actions, weights), where weights are the
+      advantage-based weights for the policy loss. Shapes:
+      - observations: (batch_size, seq_len) + observation_shape
+      - actions: (batch_size, seq_len) + action_shape
+      - weights: (batch_size, seq_len)
+    """
+    advantages = self.calculate_advantages(
+        trajectory_batch, shape_only=shape_only
+    )
+    (observations, actions, mask) = self.trim_batch(
+        trajectory_batch, advantages
+    )
+    weights = self.calculate_weights(advantages) * mask / jnp.sum(mask)
     return (observations, actions, weights)
 
 
@@ -157,19 +185,74 @@ class PolicyEvalTask(training.EvalTask):
       head_selector: Layer to apply to the network output to select the value
         head. Only needed in multitask training.
     """
+    self._train_task = train_task
     self._policy_dist = train_task.policy_distribution
-    # TODO(pkozakowski): Implement more metrics.
-    metrics = [self.entropy_metric]
-    # Select the appropriate head for evaluation.
-    metrics = [tl.Serial(head_selector, metric) for metric in metrics]
-    super().__init__(
-        train_task.labeled_data, metrics, n_eval_batches=n_eval_batches
+    labeled_data = map(self._eval_batch, train_task.trajectory_batch_stream)
+    sample_batch = self._eval_batch(
+        next(train_task.trajectory_batch_stream), shape_only=True
     )
+    # TODO(pkozakowski): Implement more metrics.
+    metrics = {
+        'policy_entropy': self.entropy_metric,
+    }
+    metrics.update(self.advantage_metrics)
+    metrics.update(self.weight_metrics)
+    metrics = {
+        name: tl.Serial(head_selector, metric)
+        for (name, metric) in metrics.items()
+    }
+    (metric_names, metric_layers) = zip(*metrics.items())
+    # Select the appropriate head for evaluation.
+    super().__init__(
+        labeled_data, metric_layers,
+        sample_batch=sample_batch,
+        metric_names=metric_names,
+        n_eval_batches=n_eval_batches,
+    )
+
+  def _eval_batch(self, trajectory_batch, shape_only=False):
+    advantages = self._train_task.calculate_advantages(
+        trajectory_batch, shape_only=shape_only
+    )
+    (observations, actions, mask) = self._train_task.trim_batch(
+        trajectory_batch, advantages
+    )
+    return (observations, actions, advantages, mask)
 
   @property
   def entropy_metric(self):
-    def Entropy(policy_inputs, actions, weights):
-      del actions
-      del weights
+    def Entropy(policy_inputs, actions, advantages, mask):
+      del actions, advantages, mask
       return jnp.mean(self._policy_dist.entropy(policy_inputs))
     return tl.Fn('Entropy', Entropy)
+
+  @property
+  def advantage_metrics(self):
+    def make_metric(aggregate_fn):  # pylint: disable=invalid-name
+      def AdvantageMetric(policy_inputs, actions, advantages, mask):
+        del policy_inputs, actions, mask
+        return aggregate_fn(advantages)
+      return tl.Fn('AdvantageMetric', AdvantageMetric)
+    return {
+        'advantage_' + name: make_metric(fn) for (name, fn) in [
+            ('mean', jnp.mean),
+            ('std', jnp.std),
+        ]
+    }
+
+  @property
+  def weight_metrics(self):
+    def make_metric(aggregate_fn):  # pylint: disable=invalid-name
+      def WeightMetric(policy_inputs, actions, advantages, mask):
+        del policy_inputs, actions, mask
+        weights = self._train_task.calculate_weights(advantages)
+        return aggregate_fn(weights)
+      return tl.Fn('WeightMetric', WeightMetric)
+    return {  # pylint: disable=g-complex-comprehension
+        'weight_' + name: make_metric(fn) for (name, fn) in [
+            ('mean', jnp.mean),
+            ('std', jnp.std),
+            ('min', jnp.min),
+            ('max', jnp.max),
+        ]
+    }

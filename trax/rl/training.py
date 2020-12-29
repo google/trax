@@ -509,6 +509,7 @@ class PolicyGradient(Agent):
         checkpoint_at=checkpoint_at,
     )
     self._collect_model = model_fn(mode='collect')
+    self._collect_model.init(shapes.signature(train_task.sample_batch))
 
     # Validate the restored checkpoints. The number of network training steps
     # (self.loop.step) should be equal to the number of epochs (self._epoch),
@@ -539,6 +540,8 @@ class PolicyGradient(Agent):
 
   def train_epoch(self):
     """Trains RL for one epoch."""
+    # Copy policy state accumulated during data collection to the trainer.
+    self._loop.update_weights_and_state(state=self._collect_model.state)
     # Perform one gradient step per training epoch to ensure we stay on policy.
     self._loop.run(n_steps=1)
 
@@ -551,7 +554,12 @@ class PolicyGradient(Agent):
 
 
 def network_policy(
-    collect_model, policy_distribution, loop, trajectory_np, temperature=1.0
+    collect_model,
+    policy_distribution,
+    loop,
+    trajectory_np,
+    head_index=0,
+    temperature=1.0,
 ):
   """Policy function powered by a neural network.
 
@@ -562,6 +570,7 @@ def network_policy(
     policy_distribution: an instance of trax.rl.distributions.Distribution
     loop: trax.supervised.training.Loop used to train the policy network
     trajectory_np: an instance of trax.rl.task.TrajectoryNp
+    head_index: index of the policy head a multihead model.
     temperature: temperature used to sample from the policy (default=1.0)
 
   Returns:
@@ -585,6 +594,9 @@ def network_policy(
   model.weights = acc._unreplicate(acc.weights[0])  # pylint: disable=protected-access
   # Add batch dimension to trajectory_np and run the model.
   pred = model(trajectory_np.observations[None, ...])
+  if isinstance(pred, (tuple, list)):
+    # For multihead models, extract the policy head output.
+    pred = pred[head_index]
   assert pred.shape == (
       1, trajectory_np.observations.shape[0], policy_distribution.n_inputs
   )

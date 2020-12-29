@@ -236,7 +236,7 @@ class Loop:
     # Prepare eval components.
     self._eval_at = eval_at or default_at
     self._eval_tasks = eval_tasks
-    loss_names = [task.loss_layer.name for task in self._tasks]
+    loss_names = [task.loss_name for task in self._tasks]
     metric_names = [
         name  # pylint: disable=g-complex-comprehension
         for eval_task in self._eval_tasks
@@ -358,6 +358,9 @@ class Loop:
         self._step += 1
         task_index = self._which_task(self._step)
         task_changed = task_index != prev_task_index
+
+        if task_changed:
+          loss_acc, step_acc = 0.0, 0
         loss, optimizer_metrics = self._run_one_step(task_index, task_changed)
 
         # optimizer_metrics and loss are replicated on self.n_devices, a few
@@ -386,7 +389,6 @@ class Loop:
           logging.info('cpu memory use (MB): %.2f',
                        process.memory_info().rss / float(1024*1024))
           elapsed_time = time.time() - start_time
-          self._eval_model.weights = self._model.weights
           self._log_training_progress(
               task=self._tasks[task_index],
               total_loss=loss_acc,
@@ -469,6 +471,28 @@ class Loop:
       return x
     return tl.reshape_by_device(x, self.n_devices)
 
+  def update_weights_and_state(self, weights=None, state=None):
+    """Updates the weights and state of the trained model.
+
+    Sends this data both to the singleton model accessible via Loop.model
+    and to the replicated model on the accelerator.
+
+    Useful when the weights or state are modified outside of training, e.g.
+    during data collection in RL agents.
+
+    Args:
+      weights: Model weights or None. If None, don't set.
+      state: Model state or None. If None, don't set.
+    """
+    for trainer in self._trainer_per_task:
+      acc_model_with_loss = trainer.accelerated_model_with_loss
+      if weights is not None:
+        self._model.weights = weights
+        acc_model_with_loss.replicate_weights(trainer.model_with_loss.weights)
+      if state is not None:
+        self._model.state = state
+        acc_model_with_loss.replicate_state(trainer.model_with_loss.state)
+
   def _run_one_step(self, task_index, task_changed):
     """Updates model weights/state and optimizer slots by running one step.
 
@@ -491,9 +515,8 @@ class Loop:
     trainer = self._trainer_per_task[task_index]
     if task_changed:
       # Re-replicate weights and state to synchronize them between tasks.
-      model = trainer.model_with_loss
-      trainer.accelerated_model_with_loss.replicate_weights(model.weights)
-      trainer.accelerated_model_with_loss.replicate_state(model.state)
+      self.update_weights_and_state(self._model.weights, self._model.state)
+
     (loss, stats) = trainer.one_step(
         batch, rng, step=step, learning_rate=learning_rate
     )
@@ -523,7 +546,6 @@ class Loop:
       optimizer_metrics: Dict from optimizer metric name to metric values.
       summary_writer: Jaxboard summary writer for saving provided metrics.
     """
-    loss_name = task.loss_layer.name
     # only here do avoid potential divide-by-0
     n_steps = max(1, n_steps)
     _log('')  # Separator for visibility on terminals.
@@ -531,7 +553,7 @@ class Loop:
       self._log_n_weights()
     self._log_step('Ran %d train steps in %0.2f secs' % (n_steps, elapsed_time))
     self.log_summary(
-        {loss_name: total_loss / float(n_steps)},
+        {task.loss_name: total_loss / float(n_steps)},
         summary_writer, 'metrics/', 'train')
     if self.step == 1:
       self._save_gin(summary_writer)
@@ -901,7 +923,8 @@ class TrainTask:
 
   def __init__(self, labeled_data, loss_layer, optimizer,
                lr_schedule=None, n_steps_per_checkpoint=100,
-               n_steps_per_permanent_checkpoint=None):
+               n_steps_per_permanent_checkpoint=None, loss_name=None,
+               sample_batch=None):
     r"""Configures a training task.
 
     Args:
@@ -916,14 +939,18 @@ class TrainTask:
       n_steps_per_checkpoint: How many steps to run between checkpoints.
       n_steps_per_permanent_checkpoint: How many steps to run between permanent
           checkpoints.
+      loss_name: Name for the loss metric.
+      sample_batch: Optional sample batch for model initialization. If not
+          provided, it will be taken from `labeled_data`.
     """
     self._labeled_data = labeled_data
     self._loss_layer = loss_layer
     self._optimizer = optimizer
     self._lr_schedule = lr_schedule
-    self._sample_batch = next(labeled_data)
+    self._sample_batch = sample_batch or next(labeled_data)
     self._n_steps_per_checkpoint = n_steps_per_checkpoint
     self._n_steps_per_permanent_checkpoint = n_steps_per_permanent_checkpoint
+    self._loss_name = loss_name or self._loss_layer.name
 
   @property
   def labeled_data(self):
@@ -940,6 +967,10 @@ class TrainTask:
   @property
   def loss_layer(self):
     return self._loss_layer
+
+  @property
+  def loss_name(self):
+    return self._loss_name
 
   @property
   def n_steps_per_checkpoint(self):
@@ -976,7 +1007,7 @@ class EvalTask:
   """
 
   def __init__(self, labeled_data, metrics,
-               metric_names=None, n_eval_batches=1):
+               metric_names=None, n_eval_batches=1, sample_batch=None):
     r"""Configures an eval task: named metrics run with a given data source.
 
     Args:
@@ -990,13 +1021,15 @@ class EvalTask:
            generate default names using layer names from metrics.
       n_eval_batches: Integer N that specifies how many eval batches to run;
           the output is then the average of the outputs from the N batches.
+      sample_batch: Optional sample batch for model initialization. If not
+          provided, it will be taken from `labeled_data`.
     """
     self._labeled_data = labeled_data
     self._metrics = metrics
     self._metric_names = metric_names or self._default_names()
     self._n_eval_batches = n_eval_batches  # pylint: disable=invalid-name
 
-    self._sample_batch = next(labeled_data)
+    self._sample_batch = sample_batch or next(labeled_data)
     self._check_init_values()
 
   @property

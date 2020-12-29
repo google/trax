@@ -30,6 +30,7 @@ def configure_rl(*args, **kwargs):
 
 A2C = configure_rl(actor_critic.A2C)
 AWR = configure_rl(actor_critic.AWR)
+LoopAWR = configure_rl(actor_critic.LoopAWR)
 PPO = configure_rl(actor_critic.PPO)
 SamplingAWR = configure_rl(actor_critic.SamplingAWR)
 

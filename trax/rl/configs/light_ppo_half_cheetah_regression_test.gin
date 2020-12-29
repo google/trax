@@ -27,11 +27,19 @@ Adam.clip_grad_norm = 0.5
 # ==============================================================================
 Gaussian.std = 0.4
 
+# Parameters for Policy:
+# ==============================================================================
+Policy.head_init_range = 0.01
+
+# Parameters for Value:
+# ==============================================================================
+Value.head_init_range = 0.01
+
 # Parameters for Policy and Value:
 # ==============================================================================
 PolicyAndValue.body = @trax.models.MLP
-PolicyAndValue.head_init_range = 0.01
 PolicyAndValue.normalizer = @trax.rl.normalization.Normalize
+PolicyAndValue.joint = True
 
 # Parameters for Normalize:
 # ==============================================================================

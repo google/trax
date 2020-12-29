@@ -19,6 +19,7 @@
 import functools
 import os
 
+import gin
 import gym
 import numpy as np
 import tensorflow as tf
@@ -29,8 +30,12 @@ from trax import layers as tl
 from trax import shapes
 from trax import supervised
 from trax.fastmath import numpy as jnp
+from trax.optimizers import adam
 from trax.rl import advantages as rl_advantages
+from trax.rl import distributions
+from trax.rl import policy_tasks
 from trax.rl import training as rl_training
+from trax.rl import value_tasks
 from trax.supervised import lr_schedules as lr
 
 
@@ -469,9 +474,6 @@ def _copy_model_weights_and_state(  # pylint: disable=invalid-name
     # pylint: enable=protected-access
 
 
-### Implementations of common actor-critic algorithms.
-
-
 class AdvantageBasedActorCriticAgent(ActorCriticAgent):
   """Base class for advantage-based actor-critic algorithms."""
 
@@ -588,6 +590,283 @@ class AdvantageBasedActorCriticAgent(ActorCriticAgent):
         tl.Select([1]),  # Select just the advantages.
         tl.Fn('AdvantageStd', lambda x: jnp.std(x)),  # pylint: disable=unnecessary-lambda
     ])
+
+
+# TODO(pkozakowski): Move to a better place.
+@gin.configurable(module='trax.rl')
+def every(n_steps):
+  """Returns True every n_steps, for use as *_at functions in various places."""
+  return lambda step: step % n_steps == 0
+
+
+# TODO(pkozakowski): Rewrite all interleaved actor-critic algos to subclass
+# this, then rename to ActorCriticAgent and remove the other base classes.
+class LoopActorCriticAgent(rl_training.Agent):
+  """Base class for actor-critic algorithms based on `Loop`."""
+
+  on_policy = None
+
+  def __init__(
+      self, task, model_fn,
+      optimizer=adam.Adam,
+      policy_lr_schedule=lr.multifactor,
+      policy_n_steps_per_epoch=1000,
+      policy_weight_fn=(lambda x: x),
+      value_lr_schedule=lr.multifactor,
+      value_n_steps_per_epoch=1000,
+      value_sync_at=(lambda x: x % 100 == 0),
+      advantage_estimator=rl_advantages.monte_carlo,
+      batch_size=64,
+      network_eval_at=None,
+      n_eval_batches=1,
+      max_slice_length=1,
+      margin=0,
+      n_replay_epochs=1,
+      **kwargs
+  ):
+    """Initializes LoopActorCriticAgent.
+
+    Args:
+      task: `RLTask` instance to use.
+      model_fn: Function mode -> Trax model, building a joint policy and value
+        network.
+      optimizer: Optimizer for the policy and value networks.
+      policy_lr_schedule: Learning rate schedule for the policy network.
+      policy_n_steps_per_epoch: Number of steps to train the policy network for
+        in each epoch.
+      policy_weight_fn: Function advantages -> weights for calculating the
+        log probability weights in policy training.
+      value_lr_schedule: Learning rate schedule for the value network.
+      value_n_steps_per_epoch: Number of steps to train the value network for
+        in each epoch.
+      value_sync_at: Function step -> bool indicating when to synchronize the
+        target network with the trained network in value training.
+      advantage_estimator: Advantage estimator to use in policy and value
+        training.
+      batch_size: Batch size for training the networks.
+      network_eval_at: Function step -> bool indicating in when to evaluate the
+        networks.
+      n_eval_batches: Number of batches to compute the network evaluation
+        metrics on.
+      max_slice_length: Maximum length of a trajectory slice to train on.
+      margin: Number of timesteps to add at the end of each trajectory slice for
+        better advantage estimation.
+      n_replay_epochs: Number of epochs of trajectories to store in the replay
+        buffer.
+      **kwargs: Keyword arguments forwarded to Agent.
+    """
+    super().__init__(task, **kwargs)
+
+    self._policy_dist = distributions.create_distribution(
+        self.task.action_space
+    )
+    model_fn = functools.partial(
+        model_fn,
+        policy_distribution=self._policy_dist,
+    )
+    train_model = model_fn(mode='train')
+    eval_model = model_fn(mode='eval')
+
+    trajectory_batch_stream = self._init_trajectory_batch_stream(
+        batch_size, max_slice_length, margin, n_replay_epochs
+    )
+    advantage_estimator = advantage_estimator(task.gamma, margin=margin)
+    (value_train_task, value_eval_task) = self._init_value_tasks(
+        trajectory_batch_stream,
+        optimizer=optimizer(),
+        lr_schedule=value_lr_schedule(),
+        advantage_estimator=advantage_estimator,
+        train_model=train_model,
+        eval_model=eval_model,
+        sync_at=value_sync_at,
+        n_steps_per_epoch=value_n_steps_per_epoch,
+        n_eval_batches=n_eval_batches,
+    )
+    (policy_train_task, policy_eval_task) = self._init_policy_tasks(
+        trajectory_batch_stream,
+        optimizer=optimizer(),
+        lr_schedule=policy_lr_schedule(),
+        advantage_estimator=advantage_estimator,
+        value_train_task=value_train_task,
+        weight_fn=policy_weight_fn,
+        n_eval_batches=n_eval_batches,
+    )
+    self._init_loop(
+        train_model=train_model,
+        eval_model=eval_model,
+        policy_train_and_eval_task=(policy_train_task, policy_eval_task),
+        value_train_and_eval_task=(value_train_task, value_eval_task),
+        eval_at=network_eval_at,
+        policy_n_steps_per_epoch=policy_n_steps_per_epoch,
+        value_n_steps_per_epoch=value_n_steps_per_epoch,
+    )
+    self._init_collection(model_fn, policy_train_task.sample_batch)
+
+  def _init_trajectory_batch_stream(
+      self, batch_size, max_slice_length, margin, n_replay_epochs
+  ):
+    assert self.on_policy is not None, 'Attribute "on_policy" not set.'
+    if self.on_policy:
+      assert n_replay_epochs == 1, (
+          'Non-unit replay buffer size only makes sense for off-policy '
+          'algorithms.'
+      )
+    self._task.set_n_replay_epochs(n_replay_epochs)
+    self._max_slice_length = max_slice_length
+    return self._task.trajectory_batch_stream(
+        batch_size,
+        epochs=[-(ep + 1) for ep in range(n_replay_epochs)],
+        min_slice_length=(1 + margin),
+        max_slice_length=(self._max_slice_length + margin),
+        margin=margin,
+    )
+
+  def _init_value_tasks(
+      self,
+      trajectory_batch_stream,
+      optimizer,
+      lr_schedule,
+      advantage_estimator,
+      train_model,
+      eval_model,
+      sync_at,
+      n_steps_per_epoch,
+      n_eval_batches,
+  ):
+    def sync_also_at_epoch_boundaries(step):
+      return sync_at(step) or (
+          # 0 - end of the epoch, 1 - beginning of the next.
+          step % n_steps_per_epoch in (0, 1)
+      )
+
+    head_selector = tl.Select([1])
+    value_train_task = value_tasks.ValueTrainTask(
+        trajectory_batch_stream,
+        optimizer,
+        lr_schedule,
+        advantage_estimator=advantage_estimator,
+        model=train_model,
+        target_model=eval_model,
+        target_scale=(1 - self.task.gamma),
+        sync_at=sync_also_at_epoch_boundaries,
+        head_selector=head_selector,
+    )
+    value_eval_task = value_tasks.ValueEvalTask(
+        value_train_task, n_eval_batches, head_selector
+    )
+    return (value_train_task, value_eval_task)
+
+  def _init_policy_tasks(
+      self,
+      trajectory_batch_stream,
+      optimizer,
+      lr_schedule,
+      advantage_estimator,
+      value_train_task,
+      weight_fn,
+      n_eval_batches,
+  ):
+    head_selector = tl.Select([0], n_in=2)
+    policy_train_task = policy_tasks.PolicyTrainTask(
+        trajectory_batch_stream,
+        optimizer,
+        lr_schedule,
+        self._policy_dist,
+        advantage_estimator=advantage_estimator,
+        value_fn=value_train_task.value,
+        weight_fn=weight_fn,
+        head_selector=head_selector,
+    )
+    policy_eval_task = policy_tasks.PolicyEvalTask(
+        policy_train_task, n_eval_batches, head_selector
+    )
+    return (policy_train_task, policy_eval_task)
+
+  def _init_loop(
+      self,
+      train_model,
+      eval_model,
+      policy_train_and_eval_task,
+      value_train_and_eval_task,
+      eval_at,
+      policy_n_steps_per_epoch,
+      value_n_steps_per_epoch,
+  ):
+    (policy_train_task, policy_eval_task) = policy_train_and_eval_task
+    (value_train_task, value_eval_task) = value_train_and_eval_task
+
+    if self._output_dir is not None:
+      model_output_dir = os.path.join(self._output_dir, 'model')
+    else:
+      model_output_dir = None
+
+    self._n_train_steps_per_epoch = (
+        policy_n_steps_per_epoch + value_n_steps_per_epoch
+    )
+
+    checkpoint_at = lambda step: step % self._n_train_steps_per_epoch == 0
+
+    def which_task(step):
+      if step % self._n_train_steps_per_epoch < value_n_steps_per_epoch:
+        return 1
+      else:
+        return 0
+
+    self._loop = supervised.training.Loop(
+        model=train_model,
+        tasks=(policy_train_task, value_train_task),
+        eval_model=eval_model,
+        eval_tasks=(policy_eval_task, value_eval_task),
+        output_dir=model_output_dir,
+        eval_at=eval_at,
+        checkpoint_at=checkpoint_at,
+        which_task=which_task,
+    )
+
+    # Validate the restored checkpoints.
+    # TODO(pkozakowski): Move this to the base class once all Agents use Loop.
+    if self._loop.step != self._epoch * self._n_train_steps_per_epoch:
+      raise ValueError(
+          'The number of Loop steps must equal the number of Agent epochs '
+          'times the number of steps per epoch, got {}, {} and {}.'.format(
+              self._loop.step, self._epoch, self._n_train_steps_per_epoch
+          )
+      )
+
+  def _init_collection(self, model_fn, sample_batch):
+    self._collect_model = model_fn(mode='collect')
+    self._collect_model.init(shapes.signature(sample_batch))
+    if self._task._initial_trajectories == 0:  # pylint: disable=protected-access
+      self._task.remove_epoch(0)
+      self._collect_trajectories()
+
+  @property
+  def loop(self):
+    """Loop exposed for testing."""
+    return self._loop
+
+  def policy(self, trajectory, temperature=1.0):
+    """Policy function that allows to play using this agent."""
+    tr_slice = trajectory[-self._max_slice_length:]
+    trajectory_np = tr_slice.to_np(timestep_to_np=self.task.timestep_to_np)
+    return rl_training.network_policy(
+        collect_model=self._collect_model,
+        policy_distribution=self._policy_dist,
+        loop=self.loop,
+        trajectory_np=trajectory_np,
+        head_index=0,
+        temperature=temperature,
+    )
+
+  def train_epoch(self):
+    """Trains RL for one epoch."""
+    # Copy policy state accumulated during data collection to the trainer.
+    self._loop.update_weights_and_state(state=self._collect_model.state)
+    # Perform one gradient step per training epoch to ensure we stay on policy.
+    self._loop.run(n_steps=self._n_train_steps_per_epoch)
+
+
+### Implementations of common actor-critic algorithms.
 
 
 class A2C(AdvantageBasedActorCriticAgent):
@@ -757,11 +1036,18 @@ class AWR(AdvantageBasedActorCriticAgent):
     """Policy loss."""
     return AWRLoss(beta=self._beta, w_max=self._w_max)  # pylint: disable=no-value-for-parameter
 
-  @property
-  def policy_metrics(self):
-    metrics = super().policy_metrics
-    metrics.update(awr_metrics(self._beta))
-    return metrics
+
+class LoopAWR(LoopActorCriticAgent):
+  """Advantage Weighted Regression."""
+
+  on_policy = False
+
+  def __init__(self, task, model_fn, beta=1.0, w_max=20, **kwargs):
+    def policy_weight_fn(advantages):
+      return jnp.minimum(jnp.exp(advantages / beta), w_max)
+    super().__init__(
+        task, model_fn, policy_weight_fn=policy_weight_fn, **kwargs
+    )
 
 
 def SamplingAWRLoss(beta, w_max, reweight=False, sampled_all_discrete=False):  # pylint: disable=invalid-name
