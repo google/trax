@@ -531,6 +531,7 @@ def train(output_dir,
           loss_chunk_size=0,
           use_memory_efficient_trainer=False,
           init_checkpoint=None,
+          callbacks=None,
           additional_eval_tasks=None):
   """Train the model on the inputs.
 
@@ -564,6 +565,7 @@ def train(output_dir,
     loss_chunk_size: int, if > 0 chunk loss into these sizes to save memory.
     use_memory_efficient_trainer: whether to use memory-efficient trainer..
     init_checkpoint: a checkpoint for fine tuning.
+    callbacks: a list of callbacks to call during training.
     additional_eval_tasks: additional tasks which should be performed during
       evaluation.
 
@@ -623,7 +625,9 @@ def train(output_dir,
         n_devices=n_devices,
         loss_chunk_size=loss_chunk_size,
         use_memory_efficient_trainer=use_memory_efficient_trainer,
-        random_seed=random_seed)
+        random_seed=random_seed,
+        callbacks=callbacks,
+    )
 
     steps_to_go = steps - loop.step
     if steps_to_go <= 0:

@@ -429,9 +429,24 @@ class Loop:
     return self._model
 
   @property
+  def tasks(self):
+    """Returns the training tasks."""
+    return self._tasks
+
+  @property
   def eval_model(self):
     """Returns the model used for evaluation."""
     return self._eval_model
+
+  @property
+  def eval_tasks(self):
+    """Returns the evaluation tasks."""
+    return self._eval_tasks
+
+  @property
+  def output_dir(self):
+    """Returns the output directory."""
+    return self._output_dir
 
   def new_rng(self):
     """Returns a new single-use random number generator (JAX PRNG key)."""
@@ -515,7 +530,7 @@ class Loop:
     if self.step == 1:
       self._log_n_weights()
     self._log_step('Ran %d train steps in %0.2f secs' % (n_steps, elapsed_time))
-    self._log_summary(
+    self.log_summary(
         {loss_name: total_loss / float(n_steps)},
         summary_writer, 'metrics/', 'train')
     if self.step == 1:
@@ -527,7 +542,7 @@ class Loop:
     # Average optimizer_metrics over n_steps.
     optimizer_metrics = {k: v / n_steps for k, v in optimizer_metrics.items()}
     train_parameters.update(optimizer_metrics)
-    self._log_summary(
+    self.log_summary(
         train_parameters, summary_writer, 'training/', 'train', stdout=False)
 
   def _save_gin(self, summary_writer):
@@ -613,13 +628,13 @@ class Loop:
       averages = sums / n_batches
       all_metrics = dict(zip(eval_task.metric_names, averages))
       summary_writer = summary_writers[eval_task_index]
-      self._log_summary(all_metrics, summary_writer, 'metrics/', 'eval')
+      self.log_summary(all_metrics, summary_writer, 'metrics/', 'eval')
       summary_metrics = dict(recursively_look_for_printable_states(
           model_state))
-      self._log_summary(summary_metrics, summary_writer, 'summary_', 'eval')
+      self.log_summary(summary_metrics, summary_writer, 'summary_', 'eval')
 
-  def _log_summary(self, values, summary_writer, value_prefix, log_prefix,
-                   stdout=True):
+  def log_summary(self, values, summary_writer, value_prefix, log_prefix,
+                  stdout=True):
     """Logs and saves provided metrics.
 
     Args:

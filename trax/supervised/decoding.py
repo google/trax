@@ -48,7 +48,7 @@ def autoregressive_sample_stream(model, inputs=None,
         goes to one candidate; like an argmax) to positive infinity (all
         candidates have equal probability).
     start_id: Integer representing the start symbol for the autoregressive
-        process.
+        process, or array of shape (`batch_size`, 1) of such integers.
     accelerate: If True, create an accelerated version of `model` and use it
         for generating outputs.
 
@@ -61,7 +61,10 @@ def autoregressive_sample_stream(model, inputs=None,
                      f'batch_size arg ({batch_size}.')
 
   fast_model = tl.Accelerate(model) if accelerate else model
-  start_symbol = np.full((batch_size, 1), start_id, dtype=np.int32)
+  if np.isscalar(start_id):
+    start_symbol = np.full((batch_size, 1), start_id, dtype=np.int32)
+  else:
+    start_symbol = start_id
   if model.n_in == 1 and inputs is not None:
     current_symbols = np.concatenate([start_symbol, inputs], axis=1)
   else:
@@ -105,7 +108,8 @@ def autoregressive_sample(model, inputs=None,
         feeds the sampling process. Values range from 0.0 (all probability mass
         goes to one candidate; like an argmax) to positive infinity (all
         candidates have equal probability).
-    start_id: The start symbol (ID/integer) for the autoregressive process.
+    start_id: The start symbol (ID/integer) for the autoregressive process,
+        or array of shape (`batch_size`, 1) of such integers.
     eos_id: The end-of-sequence symbol (ID/integer) for the autoregressive
         process.
     max_length: Maximum length for generated sequences.
