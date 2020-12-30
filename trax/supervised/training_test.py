@@ -281,6 +281,38 @@ class TrainingTest(absltest.TestCase):
     loop2.run(2)  # check that continued training works
     self.assertEqual(6, loop2.step)
 
+  def test_restores_history(self):
+    """Training restores history from directory where it saved it."""
+    model = tl.Serial(tl.Dense(1))
+    task = training.TrainTask(_very_simple_data(), tl.L2Loss(),
+                              optimizers.SGD(.01))
+    eval_task = training.EvalTask(
+        _very_simple_data(),  # deliberately re-using training data
+        [tl.L2Loss()])
+    tmp_dir = self.create_tempdir().full_path
+    loop = training.Loop(
+        model, [task],
+        eval_tasks=[eval_task],
+        eval_at=lambda step_n: step_n % 2 == 0,
+        checkpoint_at=lambda step_n: step_n % 2 == 0,
+        output_dir=tmp_dir)
+    loop.run(4)
+    loop2 = training.Loop(model, [task], output_dir=tmp_dir)
+    self.assertLen(loop2.history.modes, 2)
+    self.assertLen(loop2.history.metrics_for_mode('train'), 6)
+    self.assertLen(loop2.history.metrics_for_mode('eval'), 1)
+    for mode, metric in [
+        ('train', 'metrics/L2Loss'),
+        ('train', 'training/learning_rate'),
+        ('train', 'training/steps per second'),
+        ('train', 'training/gradients_l2'),
+        ('train', 'training/loss'),
+        ('train', 'training/weights_l2'),
+        ('eval', 'metrics/L2Loss'),
+    ]:
+      self.assertLen(loop2.history.get(mode, metric), 1)
+      self.assertEqual(2, loop2.history.get(mode, metric)[0][0])
+
   def test_trains_on_two_tasks(self):
     """Trains a very simple network on two very simple tasks."""
     model = tl.Serial(tl.Dense(3), tl.Dense(1))

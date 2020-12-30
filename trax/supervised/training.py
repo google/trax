@@ -57,6 +57,7 @@ from trax import optimizers
 from trax import shapes
 from trax.fastmath import numpy as jnp
 from trax.fastmath import random as jax_random
+from trax.supervised import history as trax_history
 
 
 _Evaluator = collections.namedtuple(
@@ -194,6 +195,7 @@ class Loop:
 
     # Prepare training components.
     self._step = 0
+    self._history = trax_history.History()
     self._checkpoint_at = checkpoint_at or default_at
     self._permanent_checkpoint_at = (
         permanent_checkpoint_at or permanent_default_at)
@@ -381,13 +383,22 @@ class Loop:
         for metric_name, value in optimizer_metrics.items():
           optimizer_metrics_acc[metric_name] += value
 
+        # TODO(yuwenyan): Finds a way to log the last round eval step in
+        # `history`.
+        #
+        # Right now, the last round eval log is missing in `history` since the
+        # checkpoint is saved before it. However sometimes the eval step will
+        # fail for some reasons, and it's not acceptable to loose the whole
+        # checkpoint in this case. Stays with the old way for now, and fixes it
+        # when the checkpoint format is changed to storing weights separately
+        # from a small file with `history` and other data.
         if self._checkpoint_at(self.step):
           self.save_checkpoint()
         if self._permanent_checkpoint_at(self.step):
           self.save_checkpoint(permanent=True)
         if self._eval_at(self.step):
           logging.info('cpu memory use (MB): %.2f',
-                       process.memory_info().rss / float(1024*1024))
+                       process.memory_info().rss / float(1024 * 1024))
           elapsed_time = time.time() - start_time
           self._log_training_progress(
               task=self._tasks[task_index],
@@ -414,6 +425,11 @@ class Loop:
   def step(self):
     """Returns current step number in this training session."""
     return self._step
+
+  @property
+  def history(self):
+    """Returns history in this training session."""
+    return self._history
 
   @property
   def n_devices(self):
@@ -666,6 +682,7 @@ class Loop:
       log_prefix: String appended in front of logs.
       stdout: Boolean saying if logs should be logged to stdout as well.
     """
+    history = self._history
     should_write_summaries = self.is_chief and summary_writer is not None
     for name, value in values.items():
       full_name = value_prefix + name
@@ -680,6 +697,8 @@ class Loop:
       else:
         if should_write_summaries:
           summary_writer.image(full_name, value, self.step)
+      if history:
+        history.append(log_prefix, full_name, self.step, value)
     if should_write_summaries:
       summary_writer.flush()
 
@@ -724,6 +743,7 @@ class Loop:
         'flat_weights': weights_in_dict,
         'flat_state': flat_state,
         'flat_eval_state': flat_eval_state,
+        'history': self._history.to_dict(),
         'slots_per_task': slots_per_task,
         'input_signature': input_signature,
         'version_timestamp': 'Oct-28-2020'  # To update in the future if needed.
@@ -821,6 +841,7 @@ class Loop:
     else:
       d['flat_weights'] = self._from_bits(d['flat_weights'])
     self._step = d['step']
+    self._history = trax_history.History.from_dict(d['history'])
     if 'slots' in d:
       if len(self._tasks) != 1:
         raise ValueError(

@@ -20,8 +20,10 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import copy
 
 from absl import logging
+import six
 
 
 class History:
@@ -48,6 +50,19 @@ class History:
     #   'mode2': ...
     # }
     self._values = {}
+
+  @classmethod
+  def from_dict(cls, json_object):
+    """Constructs a `History` from a Python dictionary of parameters."""
+    history = History()
+    for (key, value) in six.iteritems(json_object):
+      history.__dict__[key] = value
+    return history
+
+  def to_dict(self):
+    """Serializes this instance to a Python dictionary."""
+    output = copy.deepcopy(self.__dict__)
+    return output
 
   def append(self, mode, metric, step, value):
     """Append (step, value) pair to history for the given mode and metric."""
