@@ -54,10 +54,10 @@ class DenseTest(absltest.TestCase):
     self.assertNotEqual(w.tolist(), w_init.tolist())
     self.assertNotEqual(b.tolist(), b_init.tolist())
 
-    # ... and the provided values become the new cached weights.
+    # ... and do not over-write the old weights.
     w_cached, b_cached = layer.weights
-    self.assertEqual(w.tolist(), w_cached.tolist())
-    self.assertEqual(b.tolist(), b_cached.tolist())
+    self.assertNotEqual(w.tolist(), w_cached.tolist())
+    self.assertNotEqual(b.tolist(), b_cached.tolist())
 
   def test_separate_instances_have_separate_weights(self):
     # Two dense layer instances: each will get its own initial weights (w, b).

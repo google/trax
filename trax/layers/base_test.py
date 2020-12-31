@@ -154,8 +154,9 @@ class PureLayerTest(absltest.TestCase):
 
     # Use Layer.__call__.
     in_0 = np.array([1, 2])
-    out_0 = layer(in_0)
+    out_0 = layer(in_0, weights=jnp.zeros((2, 3)))
     self.assertEqual(out_0.tolist(), [2, 4])
+    self.assertEmpty(layer.weights)
 
     # Use PureLayer.forward.
     in_1 = np.array([3, 4])

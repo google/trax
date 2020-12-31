@@ -170,7 +170,8 @@ class Layer:
     call. For convenience, weights and non-parameter state are cached per layer
     instance, starting from default values of `EMPTY_WEIGHTS` and `EMPTY_STATE`,
     and acquiring non-empty values either by initialization or from values
-    explicitly provided via the weights and state keyword arguments.
+    explicitly provided via the weights and state keyword arguments, in which
+    case the old weights will be preserved, and the state will be updated.
 
     Args:
       x: Zero or more input tensors, packaged as described in the `Layer` class
@@ -191,7 +192,6 @@ class Layer:
     state = self.state
     outputs, new_state = self.pure_fn(x, weights, state, rng)
     self.state = new_state
-    self.weights = weights
     return outputs
 
   def forward(self, inputs):
