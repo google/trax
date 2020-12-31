@@ -22,14 +22,19 @@ Language Processing https://arxiv.org/abs/2006.03236
 import functools
 
 from trax import layers as tl
-from trax.fastmath import numpy as jnp
 from trax.fastmath.ops import index_add
 from trax.layers.assert_shape import assert_shape
 from trax.models.transformer import _EncoderBlock
-from trax.models.transformer import _DecoderBlock
 from trax.models.transformer import _FeedForwardBlock
-from trax.models.research.funnel_attention import \
-  FunnelCausalAttention
+
+from trax.layers.research.rel_attention import RelativeAttentionLayer
+from trax.layers import initializers as init
+from trax.layers import core
+
+import numpy as np
+from trax.fastmath import numpy as jnp
+from trax import fastmath
+from trax.layers import combinators as cb
 
 
 @assert_shape('bld->bSd')
@@ -423,17 +428,6 @@ def FunnelTransformer(vocab_size,
   )
 
 
-from trax.layers.research.rel_attention import RelativeAttentionLayer, \
-  ShiftRightCls
-from trax.layers import initializers as init
-from trax.layers import core
-
-import numpy as np
-from trax.fastmath import numpy as jnp
-from trax import fastmath
-from trax.layers import combinators as cb
-
-
 def get_rel_att_inputs(d_model, n_heads):
   # Global relative attentions bias initialization shared across the layers
   assert d_model % n_heads == 0 and d_model % 2 == 0
@@ -488,23 +482,25 @@ def _RelativeDecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
       rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
 
   return [
-      tl.Residual(                # vecs
+      tl.Residual(  # vecs
           tl.LayerNorm(),
           tl.Select([0, 0, 0]),
           CreateMask(),
           attention,
           tl.Select([0], n_in=2),
           dropout_,
-      ),                          # vecs
+      ),  # vecs
       tl.Residual(
           feed_forward
-      ),                          # vecs
+      ),  # vecs
   ]
 
 
 def _FunnelRelativeDecoderBlock(shorten_factor, d_model, d_ff, n_heads,
-                 dropout, dropout_shared_axes, mode, ff_activation,
-                 separate_cls, context_bias_layer, location_bias_layer, total_pooling):
+                                dropout, dropout_shared_axes, mode,
+                                ff_activation,
+                                separate_cls, context_bias_layer,
+                                location_bias_layer, total_pooling):
   """Returns a list of layers that implements a Transformer decoder block.
 
   The input is an activation tensor.
@@ -545,7 +541,7 @@ def _FunnelRelativeDecoderBlock(shorten_factor, d_model, d_ff, n_heads,
       tl.LayerNorm(),  # h
       tl.Branch(pooling, None),  # h', h
       tl.Residual(
-          tl.Select([0, 1, 1]),                     # h', h, h
+          tl.Select([0, 1, 1]),  # h', h, h
           CreateMask(),
           attention,
           tl.Select([0], n_in=2),
@@ -560,28 +556,29 @@ def _FunnelRelativeDecoderBlock(shorten_factor, d_model, d_ff, n_heads,
 def CreateMask():
   def calculate_mask(queries, keys, values):
     batch_size = queries.shape[0]
-    n_queries, n_keys, n_values = queries.shape[-2], keys.shape[-2], values.shape[-2]
+    n_queries, n_keys, n_values = queries.shape[-2], keys.shape[-2], \
+                                  values.shape[-2]
     shorten_factor = n_keys // n_queries
 
     return _funnel_mask(batch_size, n_queries, n_keys, shorten_factor)
 
   def _funnel_mask(batch_size, n_queries, n_keys, shorten_factor):
-      numpy_ = jnp if fastmath.is_backend(fastmath.Backend.JAX) else np
+    numpy_ = jnp if fastmath.is_backend(fastmath.Backend.JAX) else np
 
-      mask = numpy_.tril(numpy_.ones((n_queries, n_queries), dtype=np.bool_))
+    mask = numpy_.tril(numpy_.ones((n_queries, n_queries), dtype=np.bool_))
 
-      if n_queries != n_keys:
-          mask = numpy_.repeat(mask, shorten_factor, axis=-1)
-          mask = numpy_.pad(mask, ((0, 0), (0, n_keys - mask.shape[1])))
+    if n_queries != n_keys:
+      mask = numpy_.repeat(mask, shorten_factor, axis=-1)
+      mask = numpy_.pad(mask, ((0, 0), (0, n_keys - mask.shape[1])))
 
-      return numpy_.repeat(mask[None, None, :, :], batch_size, axis=0)
+    return numpy_.repeat(mask[None, None, :, :], batch_size, axis=0)
 
   return cb.Branch(
-          cb.Select([0]),
-          cb.Select([1]),
-          cb.Select([2]),
-          cb.Fn('create mask layer', calculate_mask, n_out=1)
-      )
+      cb.Select([0]),
+      cb.Select([1]),
+      cb.Select([2]),
+      cb.Fn('create mask layer', calculate_mask, n_out=1)
+  )
 
 
 def FunnelTransformerLM(vocab_size,
@@ -654,30 +651,33 @@ def FunnelTransformerLM(vocab_size,
     decoder_blocks = [
         # pylint: disable=g-complex-comprehension
         _RelativeDecoderBlock(d_model, d_ff, n_heads, dropout,
-                            dropout_shared_axes, mode, ff_activation,
-                            separate_cls, context_bias_layer,
-                            location_bias_layer, total_pooling)
+                              dropout_shared_axes, mode, ff_activation,
+                              separate_cls, context_bias_layer,
+                              location_bias_layer, total_pooling)
         for _ in range(n_layers)]
     return decoder_blocks
 
-  pre_decoder_blocks = create_decoder_blocks(n_pre_decoder_blocks, total_pooling_acc)
-  post_decoder_blocks = create_decoder_blocks(n_post_decoder_blocks, total_pooling_acc)
+  pre_decoder_blocks = create_decoder_blocks(n_pre_decoder_blocks,
+                                             total_pooling_acc)
+  post_decoder_blocks = create_decoder_blocks(n_post_decoder_blocks,
+                                              total_pooling_acc)
 
   total_shorten_factor = functools.reduce(lambda x, y: x * y, shorten_factors)
 
   funnel_blocks = []
 
   for shorten_factor, block_len in zip(shorten_factors, n_funnel_blocks):
-      funnel_blocks = funnel_blocks + [_FunnelRelativeDecoderBlock(
-                     shorten_factor, d_model, d_ff, n_heads, dropout,
-                     dropout_shared_axes, mode,
-                     ff_activation,
-                     separate_cls=separate_cls,
-                     context_bias_layer=context_bias_layer,
-                     location_bias_layer=location_bias_layer,
-                     total_pooling=total_pooling_acc)]
-      total_pooling_acc *= shorten_factor
-      funnel_blocks = funnel_blocks + create_decoder_blocks(block_len, total_pooling_acc)
+    funnel_blocks = funnel_blocks + [_FunnelRelativeDecoderBlock(
+        shorten_factor, d_model, d_ff, n_heads, dropout,
+        dropout_shared_axes, mode,
+        ff_activation,
+        separate_cls=separate_cls,
+        context_bias_layer=context_bias_layer,
+        location_bias_layer=location_bias_layer,
+        total_pooling=total_pooling_acc)]
+    total_pooling_acc *= shorten_factor
+    funnel_blocks = funnel_blocks + create_decoder_blocks(block_len,
+                                                          total_pooling_acc)
 
   conv_layer = tl.Serial(
       tl.CausalConv(d_model, shorten_factors[0]),
@@ -687,8 +687,8 @@ def FunnelTransformerLM(vocab_size,
   # Assemble and return the model.
   return tl.Serial(  # tokens (or chunked tuple of tokens)
       tl.ShiftRight(mode=mode),  # toks
-      token_encoder,        # vecs
-      pre_decoder_blocks,        # vecs
+      token_encoder,  # vecs
+      pre_decoder_blocks,  # vecs
       tl.Residual(
           tl.ShiftRight(n_positions=total_shorten_factor - 1),
           funnel_blocks,
