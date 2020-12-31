@@ -661,6 +661,7 @@ def FunnelTransformerLM(vocab_size,
     return decoder_blocks
 
   pre_decoder_blocks = create_decoder_blocks(n_pre_decoder_blocks, total_pooling_acc)
+  post_decoder_blocks = create_decoder_blocks(n_post_decoder_blocks, total_pooling_acc)
 
   total_shorten_factor = functools.reduce(lambda x, y: x * y, shorten_factors)
 
@@ -682,8 +683,6 @@ def FunnelTransformerLM(vocab_size,
       tl.CausalConv(d_model, shorten_factors[0]),
       tl.Relu()
   ) if use_conv else []
-
-  post_decoder_blocks = create_decoder_blocks(n_post_decoder_blocks, total_pooling_acc)
 
   # Assemble and return the model.
   return tl.Serial(  # tokens (or chunked tuple of tokens)
