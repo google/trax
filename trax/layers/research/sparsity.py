@@ -797,12 +797,14 @@ class SparseFF(base.Layer):
 
   def __init__(self, d_ff, n_elements_in_block=32, d_lowrank=64,
                temperature=0.1, quant_prob=0.3, use_bfloat16=False,
-               mode='train', kernel_initializer=init.GlorotUniformInitializer(),
+               big_weights_in_bfloat16=True, mode='train',
+               kernel_initializer=init.GlorotUniformInitializer(),
                bias_initializer=init.RandomNormalInitializer(1e-6)):
     """Returns a sparse feed-forward block."""
     super().__init__(name=f'SparseFF_{d_ff}')
     self._mode = mode
     self._use_bfloat16 = use_bfloat16
+    self._big_weights_in_bfloat16 = big_weights_in_bfloat16
     self._d_ff = d_ff
     self._d_lowrank = d_lowrank
     # Q: what temperature is actually most useful in training?
@@ -915,9 +917,10 @@ class SparseFF(base.Layer):
       m1 = m1.astype(jnp.bfloat16)
       m2 = m2.astype(jnp.bfloat16)
       mb = mb.astype(jnp.bfloat16)
+      b2 = b2.astype(jnp.bfloat16)
+    if self._use_bfloat16 or self._big_weights_in_bfloat16:
       w1 = w1.astype(jnp.bfloat16)
       w2 = w2.astype(jnp.bfloat16)
-      b2 = b2.astype(jnp.bfloat16)
 
     w1 = jnp.reshape(w1.T, (self._d1, self._d2, -1))
     w2 = jnp.reshape(w2, (self._d1, self._d2, -1))
