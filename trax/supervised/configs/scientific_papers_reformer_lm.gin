@@ -12,36 +12,128 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# -*-Python-*-
-
 import trax.models
+import trax.optimizers
 import trax.data.inputs
 import trax.data.tf_inputs
+import trax.supervised.trainer_lib
 
-include 'scientific_papers.gin'
+# Macros:
+# ==============================================================================
+# Maximum length of an input sequence.
+max_len = 16384
+axial_pos_shape  = (128, 128)  # should multiply out to max_len
+attn_kv = 128
+n_layers = 8 # TODO(wgaj): used to be 12
+dropout = 0.2
+d_model = 1024
+d_axial_pos_embs = (512, 512)
+d_ff = 4096
+n_heads = 8
+ff_chunk_size = 0
+attn_type = @LSHSelfAttention
 
-train.model = @trax.models.ReformerLM
-
-generic_text_dataset_preprocess_fn.token_preprocess_fns = [
-    @trax.data.tf_inputs.add_eos_to_output_features,
-    @trax.data.tf_inputs.truncate_dataset_on_len,
-    @trax.data.tf_inputs.filter_dataset_on_len,
-    @trax.data.tf_inputs.lm_token_preprocessing
+# Parameters for TFDS data pipeline:
+# ==============================================================================
+# TODO(wgaj): Add shuffling.
+make_inputs.train_stream = [
+  @train/data.TFDS(),
+  @data.ConvertToUnicode(),
+  @data.Tokenize(),
+  @data.FilterEmptyExamples(),
+  @data.TruncateToLength(),
+  @data.AppendValue(),
+  @data.ConcatenateToLMInput(),
+  @data.Batch(),
 ]
+train/data.TFDS.dataset_name = 'scientific_papers/arxiv:1.1.1'
+train/data.TFDS.keys = ('article', 'abstract')
+train/data.TFDS.train = True
+data.ConvertToUnicode.keys = [0, 1]
+data.Tokenize.vocab_file = 'gs://t5-data/vocabs/cc_all.32000/sentencepiece.model'
+data.Tokenize.keys = [0, 1]
+data.Tokenize.vocab_type = 'sentencepiece'
+data.TruncateToLength.len_map = {0: (15359, ), 1: (1023, )}
+data.AppendValue.val = {0:[0], 1:[1]}
+data.ConcatenateToLMInput.pad_to_length = 16384
+data.Batch.batch_size = 8
 
+make_inputs.eval_stream = [
+  @eval/data.TFDS(),
+  @data.ConvertToUnicode(),
+  @data.Tokenize(),
+  @data.FilterEmptyExamples(),
+  @data.TruncateToLength(),
+  @data.AppendValue(),
+  @data.ConcatenateToLMInput(),
+  @data.Batch(),
+]
+eval/data.TFDS.dataset_name = 'scientific_papers/arxiv:1.1.1'
+eval/data.TFDS.keys = ('article', 'abstract')
+eval/data.TFDS.train = False
 
-# Parameters for filter_dataset_on_len:
+# Parameters for LSHSelfAttention:
 # ==============================================================================
-filter_dataset_on_len.len_map = {'inputs': (1, 15360), 'targets': (1, 1023)}
-filter_dataset_on_len.filter_on_eval = True
+LSHSelfAttention.attention_dropout = 0.2
+LSHSelfAttention.chunk_len = 128
+LSHSelfAttention.n_buckets = 128
+LSHSelfAttention.n_chunks_after = 0
+LSHSelfAttention.n_chunks_before = 1
+LSHSelfAttention.n_hashes = 2
+LSHSelfAttention.n_parallel_heads = 1
+LSHSelfAttention.predict_drop_len = %max_len
+LSHSelfAttention.predict_mem_len = %max_len
+# Reformer2's *encoder* is bidirectional.
+ref2_encoder/LSHSelfAttention.n_chunks_after = 1
 
-
-# Parameters for truncate_dataset_on_len:
+# Parameters for multifactor:
 # ==============================================================================
-truncate_dataset_on_len.len_map = {'inputs': 15360, 'targets': 1023}
-truncate_dataset_on_len.truncate_on_eval = True
+multifactor.constant = 1.0
+multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
+multifactor.warmup_steps = 10000
 
 
-# Parameters for pad_dataset_to_length:
+# Parameters for Adafactor:
 # ==============================================================================
-pad_dataset_to_length.len_map = {'inputs': 15360, 'targets': 1023}
+Adafactor.beta1 = 0.0
+Adafactor.decay_rate = 0.95  # Used to be 0.8
+Adafactor.clipping_threshold = 1.0
+#Adafactor.epsilon1 = 1e-16
+Adafactor.epsilon1 = 1e-25
+Adafactor.epsilon2 = 0.001
+Adafactor.factored = True
+Adafactor.multiply_by_parameter_scale = True
+
+
+# Parameters for train:
+# ==============================================================================
+train.eval_frequency = 500
+train.eval_steps = 10
+train.model = @trax.models.ReformerLM
+train.steps = 1000000
+train.optimizer = @trax.optimizers.Adafactor
+train.checkpoint_highest = 'neg_log_perplexity'
+train.checkpoint_lowest = 'loss'
+# train.use_memory_efficient_trainer = True
+train.inputs = @trax.data.inputs.make_inputs
+
+
+# We are using T5's 32k SPM model by default.
+vocab_size = 32000
+
+# Parameters for ReformerLM:
+# ==============================================================================
+ReformerLM.attention_type = %attn_type
+ReformerLM.d_attention_key = %attn_kv
+ReformerLM.d_attention_value = %attn_kv
+ReformerLM.d_model = %d_model
+ReformerLM.d_ff = %d_ff
+ReformerLM.dropout = %dropout
+ReformerLM.ff_activation = @Relu
+ReformerLM.max_len = %max_len
+ReformerLM.mode = 'train'
+ReformerLM.n_heads = %n_heads
+ReformerLM.n_layers = %n_layers
+ReformerLM.vocab_size = %vocab_size
+ReformerLM.axial_pos_shape = 'fixed-base'
+ReformerLM.d_axial_pos_embs= %d_axial_pos_embs
