@@ -313,7 +313,8 @@ def ReformerShortenLM(vocab_size,
 
 def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
                  ff_dropout, ff_use_sru=0, ff_chunk_size=0, ff_sparsity=0,
-                 attention_chunk_size=0, use_bfloat16=False, mode='train'):
+                 attention_chunk_size=0, use_bfloat16=False,
+                 use_two_swaps_per_block=True, mode='train'):
   """Returns a list of layers that implements a Reformer encoder block.
 
   The input to the layer is a pair, (activations, mask), where the mask was
@@ -333,6 +334,8 @@ def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
     ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
     attention_chunk_size: int, if > 0 run attention chunked at this size
     use_bfloat16: whether to use bfloat16 for weights (default: False)
+    use_two_swaps_per_block: bool, if True use two reversible swaps in Encoder
+      block, otherwise use only one swap.
     mode: str: 'train' or 'eval'
 
   Returns:
@@ -370,12 +373,14 @@ def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
       d_model, d_ff, dropout, [-2], ff_activation, ff_dropout,
       ff_chunk_size, ff_use_sru, ff_sparsity, mode, use_bfloat16)
 
-  return [
+  encoder_block = [
       attention_half_residual,
       tl.ReversibleSwap(),
       tl.ReversibleHalfResidual(feed_forward),
-      tl.ReversibleSwap(),
   ]
+  if use_two_swaps_per_block:
+    encoder_block.append(tl.ReversibleSwap())
+  return encoder_block
 
 
 def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, ff_activation,
@@ -581,6 +586,7 @@ def Reformer2(input_vocab_size,
               n_decoder_attention_layers=2,
               use_bfloat16=False,
               reversible_encoder=False,
+              use_two_swaps_per_encoder_block=True,
               mode='train'):
   """Reversible transformer encoder-decoder model.
 
@@ -626,6 +632,8 @@ def Reformer2(input_vocab_size,
     n_decoder_attention_layers: how many attention layers in a decoder block
     use_bfloat16: whether to use bfloat16 for weights (default: False)
     reversible_encoder: whether to be reversible through the encoder
+    use_two_swaps_per_encoder_block: whether to allow even number of swaps in
+      the encoder
     mode: str: 'train' or 'eval'
 
   Returns:
@@ -669,6 +677,7 @@ def Reformer2(input_vocab_size,
           ff_sparsity=ff_sparsity,
           attention_chunk_size=attention_chunk_size,
           use_bfloat16=use_bfloat16,
+          use_two_swaps_per_block=use_two_swaps_per_encoder_block,
           mode=mode)
       for _ in range(n_encoder_layers)]
   # pylint: enable=g-complex-comprehension
