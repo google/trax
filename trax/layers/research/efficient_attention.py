@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2020 The Trax Authors.
+# Copyright 2021 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -404,15 +404,13 @@ class EfficientAttentionBase(base.Layer):
         input_signature)
     batch_size = int(input_signature[0].shape[0])
 
-    self.rng, weights_rng, state_rng = fastmath.random.split(self.rng, 3)
-
     weights = []
-    weight_rngs = fastmath.random.split(weights_rng, self.n_heads)
+    weight_rngs = fastmath.random.split(self.rng, self.n_heads)
     for i in range(self.n_heads):
       weights.append(self.create_weights_unbatched(input_signature_unbatched,
                                                    weight_rngs[i]))
     state = []
-    state_rngs = fastmath.random.split(state_rng, self.n_heads * batch_size)
+    state_rngs = fastmath.random.split(self.rng, self.n_heads * batch_size)
     for i in range(self.n_heads * batch_size):
       state.append(self.create_state_unbatched(input_signature_unbatched,
                                                state_rngs[i]))
@@ -1069,15 +1067,13 @@ class SelfAttention(base.Layer):
         input_signature)
     batch_size = int(input_signature[0].shape[0])
 
-    self.rng, weights_rng, state_rng = fastmath.random.split(self.rng, 3)
-
     weights = []
-    weight_rngs = fastmath.random.split(weights_rng, self.n_heads)
+    weight_rngs = fastmath.random.split(self.rng, self.n_heads)
     for i in range(self.n_heads):
       weights.append(self.create_weights_unbatched(input_signature_unbatched,
                                                    weight_rngs[i]))
     state = []
-    state_rngs = fastmath.random.split(state_rng, self.n_heads * batch_size)
+    state_rngs = fastmath.random.split(self.rng, self.n_heads * batch_size)
     for i in range(self.n_heads * batch_size):
       state.append(self.create_state_unbatched(input_signature_unbatched,
                                                state_rngs[i]))
@@ -1809,15 +1805,13 @@ class LSHSelfAttention(base.Layer):
         input_signature)
     batch_size = int(input_signature[0].shape[0])
 
-    self.rng, weights_rng, state_rng = fastmath.random.split(self.rng, 3)
-
     weights = []
-    weight_rngs = fastmath.random.split(weights_rng, self.n_heads)
+    weight_rngs = fastmath.random.split(self.rng, self.n_heads)
     for i in range(self.n_heads):
       weights.append(self.create_weights_unbatched(input_signature_unbatched,
                                                    weight_rngs[i]))
     state = []
-    state_rngs = fastmath.random.split(state_rng, self.n_heads * batch_size)
+    state_rngs = fastmath.random.split(self.rng, self.n_heads * batch_size)
     for i in range(self.n_heads * batch_size):
       state.append(self.create_state_unbatched(input_signature_unbatched,
                                                state_rngs[i]))
