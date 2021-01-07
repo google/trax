@@ -1,4 +1,4 @@
-# Copyright 2021 The Trax Authors.
+# Copyright 2020 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,12 +17,15 @@ import trax.models.research.bert
 
 include 'bert.gin'
 
-dataset_name = 'wiki40b'
+# Download AQuA-RAT dataset https://github.com/deepmind/AQuA and change data_dir to path containing dataset
+data_dir = 'path-to-directory-with-aqua-dataset'
 
 # Parameters for TFDS data pipeline:
 # ==============================================================================
 make_inputs.train_stream = [
-  @train/data.BertNextSentencePredictionInputs(),
+  @train/data.LoadJSONRows(),
+  @data.AQuAExtendedQuestion(),
+  @data.NROP(),
   @data.Tokenize(),
   @data.CreateBertInputs(),
   @data.Shuffle(),
@@ -32,7 +35,9 @@ make_inputs.train_stream = [
   @data.Batch()
 ]
 make_inputs.eval_stream = [
-  @eval/data.BertNextSentencePredictionInputs(),
+  @eval/data.LoadJSONRows(),
+  @data.AQuAExtendedQuestion(),
+  @data.NROP(),
   @data.Tokenize(),
   @data.CreateBertInputs(),
   @data.Shuffle(),
@@ -42,16 +47,23 @@ make_inputs.eval_stream = [
   @data.Batch()
 ]
 
-train/data.BertNextSentencePredictionInputs.dataset_name = %dataset_name
-train/data.TFDS.train = True
-eval/data.BertNextSentencePredictionInputs.dataset_name = %dataset_name
-eval/data.TFDS.train = False
+train/data.LoadJSONRows.dir_path = %data_dir
+train/data.LoadJSONRows.fname = 'train.json'
+eval/data.LoadJSONRows.dir_path = %data_dir
+eval/data.LoadJSONRows.fname = 'dev.json'
 
+
+sentences_length = 512
+data.PadToLength.len_map = {0: %sentences_length, 1: %sentences_length, 2: %sentences_length}
+data.PadToLength.pad_value = {0: 0, 1: 0, 2:0}
+data.TruncateToLength.len_map = {0: (%sentences_length,), 1: (%sentences_length,), 2: (%sentences_length,)}
+
+data.Batch.batch_size = 32
 # Parameters for train:
 # ==============================================================================
 train.loss_fn = @bert.BERTPretrainingLoss()
 train.metrics = {'loss': @bert.BERTPretrainingLoss(),
-                 'nsp accuracy': @bert.BERTPretrainingClsAcc(),
+                 'rop accuracy': @bert.BERTPretrainingClsAcc(),
                  'mlm accuracy': @bert.BERTPretrainingMLMAcc()
                 }
 

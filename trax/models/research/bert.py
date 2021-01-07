@@ -20,6 +20,7 @@ import os
 import pathlib
 import urllib
 import zipfile
+import functools
 
 import gin
 import jax
@@ -89,6 +90,19 @@ def BERTPretrainingLoss():
   mlm_loss = [tl.Select([1, 4, 5], n_in=6), tl.WeightedCategoryCrossEntropy()]
   return tl.Serial(tl.Branch(nsp_loss, mlm_loss), tl.Add())
 
+@gin.configurable()
+def BERTPretrainingClsAcc():
+  return tl.Serial(
+      tl.Select([0, 2, 3], n_in=6),
+      tl.Accuracy()
+  )
+
+@gin.configurable()
+def BERTPretrainingMLMAcc():
+  return tl.Serial(
+      tl.Select([1, 4, 5], n_in=6),
+      tl.Accuracy()
+  )
 
 @gin.configurable()
 def BERTPretrainingHead(n_classes):
@@ -253,6 +267,13 @@ class PretrainedBERT(tl.Serial):
   def init_weights_and_state(self, input_signature):
     super().init_weights_and_state(input_signature)
     if self.init_checkpoint is None:
+      return
+
+    if self.init_checkpoint.endswith('.pkl.gz'):
+      # file is a model saved in trax
+      model2 = BERT(head=functools.partial(BERTPretrainingHead, n_classes=2))
+      model2.init_from_file(self.init_checkpoint)
+      self.weights = model2.weights[0] # take just core transformer weights without head
       return
 
     print('Loading pre-trained weights from', self.init_checkpoint)

@@ -1,0 +1,95 @@
+# Copyright 2020 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.data
+import trax.models.research.bert
+
+include 'bert.gin'
+
+# Download AQuA-RAT dataset https://github.com/deepmind/AQuA and change data_dir to path containing dataset
+data_dir = 'path-to-directory-with-aqua-dataset'
+
+model_starting_point = 'path-to-model-or-model-name'
+
+# Parameters for TFDS data pipeline:
+# ==============================================================================
+make_inputs.train_stream = [
+  @train/data.LoadJSONRows(),
+  @data.AQuAExtendedQuestion(),
+  @data.AQuAFT(),
+  @data.Tokenize(),
+  @data.CreateBertInputs(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+make_inputs.eval_stream = [
+  @eval/data.LoadJSONRows(),
+  @data.AQuAExtendedQuestion(),
+  @data.AQuAFT(),
+  @data.Tokenize(),
+  @data.CreateBertInputs(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+
+make_additional_stream.stream = [
+  @eval_additional_task/data.LoadJSONRows(),
+  @data.AQuAExtendedQuestion(),
+  @data.AQuAFT(),
+  @data.Tokenize(),
+  @data.CreateBertInputs(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+
+train/data.LoadJSONRows.dir_path = %data_dir
+train/data.LoadJSONRows.fname = 'train.json'
+eval/data.LoadJSONRows.dir_path = %data_dir
+eval/data.LoadJSONRows.fname = 'dev.json'
+eval_additional_task/data.LoadJSONRows.dir_path = %data_dir
+eval_additional_task/data.LoadJSONRows.fname = 'dev.json'
+
+eval_additional_task/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(),]
+eval_additional_task/trax.supervised.training.EvalTask.labeled_data = @trax.data.inputs.make_additional_stream()
+
+data.CreateBertInputs.double_sentence = False
+
+sentences_length = 512
+data.PadToLength.len_map = {0: %sentences_length, 1: %sentences_length, 2: %sentences_length}
+data.PadToLength.pad_value = {0: 0, 1: 0, 2:0}
+data.TruncateToLength.len_map = {0: (%sentences_length,), 1: (%sentences_length,), 2: (%sentences_length,)}
+data.Tokenize.keys = [0]
+data.Batch.batch_size = 32
+
+# Parameters for train:
+# ==============================================================================
+train.additional_eval_tasks = [@eval_additional_task/trax.supervised.training.EvalTask(),]
+
+# Parameters for BERT:
+# ==============================================================================
+BERT.init_checkpoint = %model_starting_point
+BERT.head = @bert.BERTClassifierHead
+bert.BERTClassifierHead.n_classes = 5
+
+# Parameters for multifactor:
+# ==============================================================================
+multifactor.constant = 3e-5
+multifactor.factors = 'constant * linear_warmup'
+multifactor.warmup_steps = 1000

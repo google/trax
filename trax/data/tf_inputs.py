@@ -20,6 +20,7 @@ import collections
 import functools
 import os
 import random
+import json
 
 from absl import logging
 
@@ -1262,6 +1263,61 @@ def BertNextSentencePredictionInputs(dataset_name,  # pylint: disable=invalid-na
       yield sent1, sent2, target == 'next'
 
   return split_stream
+
+
+def LoadJSONRows(dir_path=gin.REQUIRED, fname=gin.REQUIRED):
+  path = os.path.join(dir_path, fname)
+  with open(path, 'r') as f:
+    # loads everything into memory
+    ds = [json.loads(line) for line in f.readlines()]
+
+  def iterator(generator=None):
+    while True:
+      for el in ds:
+        yield el
+  return iterator
+
+
+def AQuAExtendedQuestion():
+  """
+  Merges question with possible options into one string and
+  returns tuple with 3 elements: extended string, rationale and correct answer
+  """
+  def aqua_extended_question(ds=None):
+    for datapoint in ds:
+      ext_question = datapoint['question'] + ' ; ' + ' ; '.join(datapoint['options'])
+      correct_answer_label = ord(datapoint['correct']) - ord('A')
+      yield ext_question, datapoint['rationale'], correct_answer_label
+  return aqua_extended_question
+
+
+def NROP(ROP_prob=0.5, split_token='\n'):
+  """
+  Creates task for predicting correct order of reasoning in rationale
+  Rationale is string with steps separated by '\n'.
+  """
+  def nrop(ds=None):
+    for ext_question, rationale, *_ in ds:
+      if np.random.random() < ROP_prob:
+        steps = rationale.split(split_token)
+        if len(steps) >= 2:
+          swap_id = np.random.randint(0, len(steps) - 1)
+          steps[swap_id], steps[swap_id + 1] = steps[swap_id + 1], steps[swap_id]
+          rationale = '\n'.join(steps)
+          label = 0
+        else:  # rationale is too short to swap
+          label = 1
+      else:
+        label = 1
+      yield ext_question, rationale, label
+  return nrop
+
+
+def AQuAFT():
+  def aquaft(ds=None):
+    for ext_question, _, label in ds:
+      yield ext_question, label
+  return aquaft
 
 
 def CorpusToRandomChunks(dataset_name, num_tokens=512, train=True):  # pylint: disable=invalid-name
