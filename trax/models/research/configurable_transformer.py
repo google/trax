@@ -169,6 +169,8 @@ def PositionalEncoder(mode, dropout=None, max_len=None,
   if not axial_pos_shape:
     positional_encoding = tl.PositionalEncoding(
         max_len=max_len, dropout=dropout, mode=mode, use_bfloat16=use_bfloat16)
+  elif axial_pos_shape == 'sin-cos':  # TODO(lukaszkaiser): remove this HACK
+    positional_encoding = tl.SinCosPositionalEncoding(mode=mode)
   elif axial_pos_shape == 'fixed-base':  # TODO(lukaszkaiser): remove this HACK
     positional_encoding = tl.FixedBasePositionalEncoding(mode=mode)
   elif axial_pos_shape == 'infinite':  # TODO(lukaszkaiser): remove this HACK

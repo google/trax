@@ -104,6 +104,96 @@ class AxialPositionalEncoding(layer_base.Layer):
     self.weights = tuple(weights)
 
 
+class SinCosPositionalEncoding(layer_base.Layer):
+  """Implements the sin-cos positional encoding."""
+
+  def __init__(self, add_offset=2048, dropout=0.0, dropout_broadcast_dims=(-2,),
+               start_from_zero_one_in=2, mode='train'):
+    """Creates a SinCosPositionalEncoding instance.
+
+    Args:
+      add_offset: Maximumnumber to add to positions during training.
+      dropout: Probability of *not* adding positional encoding to a sequence
+          position.
+      dropout_broadcast_dims: Axes along which dropout mask values are
+          broadcast rather than individually set at random.
+      start_from_zero_one_in: how often to start from 0 during training,
+          every one in that many times (e.g., if 4, then it's 25% of the time).
+      mode: One of `'train'`, `'eval'`, or `'predict'`.
+    """
+    super().__init__()
+    self._add_offset = add_offset
+    if dropout >= 1.0:
+      raise ValueError('Dropout rates must be lower than 1.')
+    if mode == 'train':
+      self._dropout = dropout
+    else:
+      self._dropout = 0.0
+    self._dropout_broadcast_dims = dropout_broadcast_dims
+    self._start_from_zero_one_in = start_from_zero_one_in
+    self._mode = mode
+
+  def _sincos(self, start, length, d_feature):
+    """Create the sin-cos tensor of shape [1, length, d_feature]."""
+    position = jnp.arange(0, length)[:, None] + start
+    div_term = jnp.exp(
+        jnp.arange(0, d_feature, 2) * -(jnp.log(10000.0) / d_feature))
+    sin = jnp.sin(position * div_term)
+    cos = jnp.cos(position * div_term)
+    pe = jnp.concatenate([sin, cos], axis=1)
+    return pe[None, :, :]  # [1, length, d_feature]
+
+  def forward(self, inputs):
+    """Returns the input activations, with added positional information."""
+    if self._mode != 'predict':
+      x = inputs
+      length = jnp.shape(x)[1]
+      if self._mode != 'train':
+        start = 0
+      else:
+        rng1, rng2 = fastmath.random.split(self.rng, 2)
+        start = fastmath.random.randint(rng1, (), 0, self._add_offset)
+        start_from_nonzero = fastmath.random.randint(
+            rng2, (), 0, self._start_from_zero_one_in)
+        start_from_nonzero = jnp.minimum(1, start_from_nonzero)
+        start *= start_from_nonzero
+      px = self._sincos(start, length, inputs.shape[2])
+      if self._dropout == 0:
+        return x + px
+      else:
+        noise_shape = list(px.shape)
+        for dim in self._dropout_broadcast_dims:
+          noise_shape[dim] = 1
+        keep_prob = 1.0 - self._dropout
+        keep = fastmath.random.bernoulli(self.rng, keep_prob,
+                                         tuple(noise_shape))
+        multiplier = keep.astype(x.dtype) / keep_prob
+        return x + px * multiplier
+    else:
+      if self._dropout != 0:
+        raise ValueError(f'In predict mode, but dropout rate '
+                         f'({self._dropout}) is not zero.')
+
+      # State in this class is only used for fast inference. In that case,
+      # the model is called with consecutive elements position-by-position.
+      # This positional encoding layer needs to store the index of the current
+      # position then and increment it on each call -- that's how state is used
+      # and updated below.
+      pe = self._sincos(self.state, inputs.shape[1], inputs.shape[2])
+      self.state += inputs.shape[1]
+      return inputs + pe
+
+  def init_weights_and_state(self, input_signature):
+    """Randomly initializes the positional encoding vectors.
+
+    Args:
+      input_signature: `ShapeDtype` instance characterizing the input this
+          layer should compute on.
+    """
+    if self._mode == 'predict':
+      self.state = jnp.zeros((), dtype=jnp.int32)
+
+
 class FixedBasePositionalEncoding(layer_base.Layer):
   """Implements fixed-base positional encoding."""
 
