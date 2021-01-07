@@ -126,6 +126,6 @@ Reformer2.encoder_decoder_attention_type = %dec_attn_type
 Reformer2.use_two_swaps_per_encoder_block = False
 Reformer2.loss_sparsity = %loss_sparsity
 Reformer2.n_layers_forget = 0
-Reformer2.axial_pos_shape = 'fixed-base'
+Reformer2.axial_pos_shape = None
 Reformer2.attention_chunk_size = 0  # use 4 if it OOMs
 Reformer2.use_bfloat16 = False
