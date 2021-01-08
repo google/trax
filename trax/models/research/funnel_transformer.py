@@ -680,7 +680,7 @@ def FunnelTransformerLM(vocab_size,
 
   conv_layer = tl.Serial(
       tl.CausalConv(d_model, shorten_factors[0]),
-      ff_activation
+      ff_activation()
   ) if use_conv else []
 
   # Assemble and return the model.
