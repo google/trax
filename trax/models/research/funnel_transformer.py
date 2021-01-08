@@ -655,14 +655,13 @@ def FunnelTransformerLM(vocab_size,
                               separate_cls, context_bias_layer,
                               location_bias_layer, total_pooling)
         for _ in range(n_layers)]
-    return decoder_blocks
+    ln = tl.LayerNorm()
+    return decoder_blocks + [ln]
 
   pre_decoder_blocks = create_decoder_blocks(n_pre_decoder_blocks,
                                              total_pooling_acc)
   post_decoder_blocks = create_decoder_blocks(n_post_decoder_blocks,
                                               total_pooling_acc)
-
-  total_shorten_factor = functools.reduce(lambda x, y: x * y, shorten_factors)
 
   funnel_blocks = []
 
@@ -681,7 +680,7 @@ def FunnelTransformerLM(vocab_size,
 
   conv_layer = tl.Serial(
       tl.CausalConv(d_model, shorten_factors[0]),
-      tl.Relu()
+      ff_activation
   ) if use_conv else []
 
   # Assemble and return the model.
@@ -690,9 +689,9 @@ def FunnelTransformerLM(vocab_size,
       token_encoder,  # vecs
       pre_decoder_blocks,  # vecs
       tl.Residual(
-          tl.ShiftRight(n_positions=total_shorten_factor - 1),
+          tl.ShiftRight(n_positions=total_pooling_acc - 1),
           funnel_blocks,
-          _UpsamplerLM(total_shorten_factor, d_model)
+          _UpsamplerLM(total_pooling_acc, d_model)
       ),
       conv_layer,
       post_decoder_blocks,
