@@ -524,8 +524,11 @@ def _FunnelRelativeDecoderBlock(shorten_factor, d_model, d_ff, n_heads,
   Returns:
     A list of layers that maps an activation tensor to an activation tensor.
   """
-  pooling = PoolLayer(tl.AvgPool, pool_size=(shorten_factor,),
-                      strides=(shorten_factor,), separate_cls=False)
+  pooling = tl.Serial(
+      tl.Fn('Shorten', lambda x: jnp.reshape(  # Shorten -- move to depth.
+          x, (x.shape[0], x.shape[1] // shorten_factor, -1)), n_out=1),
+      tl.Dense(d_model)
+  )
 
   attention = RelativeAttentionLayer(
       d_model, context_bias_layer, location_bias_layer, separate_cls,
