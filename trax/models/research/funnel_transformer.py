@@ -690,11 +690,12 @@ def FunnelTransformerLM(vocab_size,
       tl.ShiftRight(mode=mode),  # toks
       token_encoder,  # vecs
       pre_decoder_blocks,  # vecs
-      tl.Residual(
-          tl.ShiftRight(n_positions=total_pooling_acc - 1),
-          funnel_blocks,
-          _UpsamplerLM(total_pooling_acc, d_model)
-      ),
+      tl.Dup(),
+      tl.ShiftRight(n_positions=total_pooling_acc - 1),
+      funnel_blocks,
+      tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),  # pylint: disable=no-value-for-parameter
+      _UpsamplerLM(total_pooling_acc, d_model),
+      tl.Concatenate(),
       conv_layer,
       post_decoder_blocks,
       tl.Dense(vocab_size),  # vecs
