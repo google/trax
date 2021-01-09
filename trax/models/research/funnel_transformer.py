@@ -556,8 +556,7 @@ def _FunnelRelativeDecoderBlock(shorten_factor, d_model, d_ff, n_heads,
 def CreateMask():
   def calculate_mask(queries, keys, values):
     batch_size = queries.shape[0]
-    n_queries, n_keys, n_values = queries.shape[-2], keys.shape[-2], \
-                                  values.shape[-2]
+    n_queries, n_keys = queries.shape[-2], keys.shape[-2]
     shorten_factor = n_keys // n_queries
 
     return _funnel_mask(batch_size, n_queries, n_keys, shorten_factor)
