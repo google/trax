@@ -883,7 +883,8 @@ def dictionary_lookup_inputs(vocab_size=gin.REQUIRED,
       dicts, queries = map(np.array, zip(
           *[dictionary_lookup(vocab_size, n_queries) for _ in
             range(batch_size)]))
-      inputs = np.concatenate([dicts, queries], axis=1)
+      zeros = np.zeros((batch_size, 1))
+      inputs = np.concatenate([zeros, dicts, zeros, queries], axis=1)
       inputs = _pad_to_multiple_of(inputs, pad_to_multiple, 1)
 
       yield inputs, inputs, masks
