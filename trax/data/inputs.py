@@ -874,7 +874,7 @@ def dictionary_lookup_inputs(vocab_size=gin.REQUIRED,
   def random_minibatches(n_devices):
     assert batch_size % n_devices == 0
 
-    masks = np.concatenate([np.zeros((batch_size, 2 * (vocab_size - 1))),
+    masks = np.concatenate([np.zeros((batch_size, 2 * vocab_size)),  # + zeros
                             np.ones((batch_size, 2 * n_queries))], axis=1)
 
     masks = _pad_to_multiple_of(masks, pad_to_multiple, 1)
@@ -883,7 +883,7 @@ def dictionary_lookup_inputs(vocab_size=gin.REQUIRED,
       dicts, queries = map(np.array, zip(
           *[dictionary_lookup(vocab_size, n_queries) for _ in
             range(batch_size)]))
-      zeros = np.zeros((batch_size, 1))
+      zeros = np.zeros((batch_size, 1), dtype=np.int64)
       inputs = np.concatenate([zeros, dicts, zeros, queries], axis=1)
       inputs = _pad_to_multiple_of(inputs, pad_to_multiple, 1)
 
