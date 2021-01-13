@@ -46,6 +46,7 @@ shuffle = inputs.shuffle
 TFDS = data_configure(tf_inputs.TFDS)
 BertNextSentencePredictionInputs = data_configure(
     tf_inputs.BertNextSentencePredictionInputs)
+CastTo = data_configure(inputs.CastTo)
 CorpusToRandomChunks = data_configure(tf_inputs.CorpusToRandomChunks)
 CreateBertInputs = data_configure(tf_inputs.CreateBertInputs)
 mask_random_tokens = data_configure(tf_inputs.mask_random_tokens)
