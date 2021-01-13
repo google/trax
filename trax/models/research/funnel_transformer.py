@@ -527,7 +527,8 @@ def _FunnelRelativeDecoderBlock(shorten_factor, d_model, d_ff, n_heads,
   pooling = tl.Serial(
       tl.Fn('Shorten', lambda x: jnp.reshape(  # Shorten -- move to depth.
           x, (x.shape[0], x.shape[1] // shorten_factor, -1)), n_out=1),
-      tl.Dense(d_model)
+      tl.Dense(d_model),
+      tl.LayerNorm()
   )
 
   attention = RelativeAttentionLayer(
