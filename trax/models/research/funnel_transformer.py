@@ -682,6 +682,7 @@ def FunnelTransformerLM(vocab_size,
 
   conv_layer = tl.Serial(
       tl.CausalConv(d_model, shorten_factors[0]),
+      tl.BatchNorm(axis=(0, 1)),
       ff_activation()
   ) if use_conv else []
 
