@@ -20,3 +20,7 @@ dataset_name: [
     'glue/qnli',
     'glue/rte',
 ]
+Adafactor.weight_decay_rate: [0, ]
+multifactor.constant: [0.001, 0.0001, 0.00001]
+
+

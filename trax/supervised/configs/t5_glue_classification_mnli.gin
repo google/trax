@@ -71,7 +71,7 @@ make_inputs.eval_stream = [
 ]
 
 make_additional_stream.stream = [
-  @eval_additional_stream/data.CreateT5GlueInputs(),
+  @eval_additional_task/data.CreateT5GlueInputs(),
   @data.Shuffle(),
   @data.PadToLength(),
   @data.TruncateToLength(),
@@ -97,8 +97,8 @@ data.Batch.batch_size = 4
 
 # Parameters for train:
 # ==============================================================================
-train.init_checkpoint = 'path_to_the_checkpoint'
-train.optimizer = @trax.optimizers.Adam
+train.init_checkpoint = None
+train.optimizer = @trax.optimizers.Adafactor
 train.eval_frequency = 20
 train.eval_steps = 10
 train.inputs = @trax.data.inputs.make_inputs
@@ -138,7 +138,22 @@ Transformer.n_encoder_layers = %n_layers
 Transformer.n_heads = %n_heads
 Transformer.output_vocab_size = None
 
+# Parameters for Adafactor:
+# ==============================================================================
+Adafactor.weight_decay_rate = 1e-5
+Adafactor.weight_decay_n_steps = 100000
+Adafactor.beta1 = 0.0
+Adafactor.decay_rate = 0.8
+Adafactor.clipping_threshold = 1.0
+Adafactor.epsilon1 = 1e-16
+Adafactor.epsilon2 = 0.001
+Adafactor.factored = True
+Adafactor.multiply_by_parameter_scale = True
+
 # Parameters for multifactor:
 # ==============================================================================
 multifactor.constant = 1e-3
-multifactor.factors = 'constant'
+# multifactor.factors = 'constant'
+Adam.weight_decay_rate = 0.0   # default is 1e-05
+multifactor.factors = 'constant * linear_warmup'
+multifactor.warmup_steps = 1000  # default is 400
