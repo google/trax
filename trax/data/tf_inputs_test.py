@@ -650,6 +650,73 @@ class TFInputsTest(tf.test.TestCase):
     self.assertEqual(exp_sent2, sent2)
     self.assertFalse(label)
 
+  def test_process_single_mathqa_example_0(self):
+    # This is the first problem in the MathQA dataset.
+    example = {
+        'Problem':
+            "the banker ' s gain of a certain sum due 3 years hence at 10 % "
+            'per annum is rs . 36 . what is the present worth ?',
+        'Rationale':
+            '"explanation : t = 3 years r = 10 % td = ( bg × 100 ) / tr = ( '
+            '36 × 100 ) / ( 3 × 10 ) = 12 × 10 = rs . 120 td = ( pw × tr )'
+            ' / 100 ⇒ 120 = ( pw × 3 × 10 ) / 100 ⇒ 1200 = pw × 3 pw = '
+            '1200 / 3 = rs . 400 answer : option a"',
+        'options':
+            'a ) rs . 400 , b ) rs . 300 , c ) rs . 500 , d ) rs . 350 , e ) '
+            'none of these',
+        'correct':
+            'a',
+        'annotated_formula':
+            'divide(multiply(const_100, divide(multiply(36, const_100), '
+            'multiply(3, 10))), multiply(3, 10))',
+        'linear_formula':
+            'multiply(n2,const_100)|multiply(n0,n1)|divide(#0,#1)|multiply(#2,const_100)|divide(#3,#1)|',
+        'category':
+            'gain'
+    }
+
+    answer_num, python_result, list_op, list_num = tf_inputs.process_single_mathqa_example(
+        example)
+    self.assertEqual(answer_num,
+                     400)  # we know it, because correct answer is a)
+    self.assertEqual(python_result, [3600.0, 30.0, 120.0, 12000.0, 400.0])
+    self.assertEqual(list_op, [
+        'multiply(n2,const_100)', 'multiply(n0,n1)', 'divide(#0,#1)',
+        'multiply(#2,const_100)', 'divide(#3,#1)'
+    ])
+    self.assertEqual(list_num, [3.0, 10.0, 36.0])
+
+  def test_process_single_mathqa_example_1(self):
+    # This is the third problem in the MathQA dataset.
+    example = {
+        'Problem':
+            'sophia finished 2 / 3 of a book . she calculated that she '
+            'finished 90 more pages than she has yet to read . how long is her'
+            ' book ?',
+        'Rationale':
+            'let xx be the total number of pages in the book , then she '
+            'finished 23 ⋅ x 23 ⋅ x pages . then she has x − 23 ⋅ x = '
+            '13 ⋅ xx − 23 ⋅ x = 13 ⋅ x pages left . 23 ⋅ x − 13 '
+            '⋅ x = 9023 ⋅ x − 13 ⋅ x = 90 13 ⋅ x = 9013 ⋅ x = 90 x'
+            ' = 270 x = 270 so the book is 270 pages long . answer : b',
+        'options': 'a ) 229 , b ) 270 , c ) 877 , d ) 266 , e ) 281',
+        'correct': 'b',
+        'annotated_formula': 'divide(90, subtract(const_1, divide(2, 3)))',
+        'linear_formula': 'divide(n0,n1)|subtract(const_1,#0)|divide(n2,#1)',
+        'category': 'general'
+    }
+
+    answer_num, python_result, list_op, list_num = tf_inputs.process_single_mathqa_example(
+        example)
+    self.assertEqual(answer_num,
+                     270)  # we know it, because correct answer is b)
+    self.assertAllClose(
+        python_result,
+        [0.6666666666666666, 0.33333333333333337, 269.99999999999994])
+    self.assertEqual(list_op,
+                     ['divide(n0,n1)', 'subtract(const_1,#0)', 'divide(n2,#1)'])
+    self.assertEqual(list_num, [2.0, 3.0, 90.0])
+
 
 if __name__ == '__main__':
   tf.test.main()
