@@ -177,7 +177,7 @@ def HardTanh():
 
   .. math::
       f(x) = \left\{ \begin{array}{cl}
-          -1 & \text{if}\ x \leq 0, \\
+          -1 & \text{if}\ x \leq -1, \\
           x  & \text{if}\ -1 < x < 1, \\
           1  & \text{otherwise}.
       \end{array} \right.
