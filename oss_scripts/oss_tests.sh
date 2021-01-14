@@ -59,15 +59,17 @@ then
 
   # training_test and trainer_lib_test parse flags, so can't use with --ignore
   pytest \
-    --ignore=trax/supervised/trainer_lib_test.py \
-    --ignore=trax/supervised/training_test.py \
+    --ignore=trax/supervised/callbacks_test.py \
     --ignore=trax/supervised/decoding_test.py \
     --ignore=trax/supervised/decoding_timing_test.py \
+    --ignore=trax/supervised/trainer_lib_test.py \
+    --ignore=trax/supervised/training_test.py \
     trax/supervised
   set_status
 
   # Testing these separately here.
   pytest \
+    trax/supervised/callbacks_test.py \
     trax/supervised/trainer_lib_test.py \
     trax/supervised/training_test.py
   set_status
