@@ -78,6 +78,7 @@ import numpy as np
 
 from trax import fastmath
 from trax import shapes
+from trax.data import debug_data_pipeline
 from trax.fastmath import numpy as jnp
 
 
@@ -453,7 +454,7 @@ def CastTo(dtype=np.int32, indices=(0, 1,), debug=False):  # pylint: disable=inv
   return _cast_fn
 
 
-def ConcatenateToLMInput(pad_to_length=None, debug=False):  # pylint: disable=invalid-name
+def ConcatenateToLMInput(pad_to_length=None):  # pylint: disable=invalid-name
   """Prepares the input needed for training of Language Models.
 
   Each example needs to contain two elements (input and target).
@@ -463,12 +464,11 @@ def ConcatenateToLMInput(pad_to_length=None, debug=False):  # pylint: disable=in
 
   Args:
     pad_to_length: int, total length of padding of input and target arrays.
-    debug: bool, if true, log output at every power of 2.
   Returns:
     Function to return input for a LM.
   """
+  @debug_data_pipeline.debug_pipeline
   def _concatenate_to_lm_input(generator):
-    debug_count = 0
     for example in generator:
       if isinstance(example, (list, tuple)) and (len(example) == 2):
         concatenated = np.concatenate((example[0], example[1]), axis=-1)
@@ -494,17 +494,13 @@ def ConcatenateToLMInput(pad_to_length=None, debug=False):  # pylint: disable=in
       else:
         output = None
         raise ValueError(f'Unknown input to ConcatenateToLMInput: {example}')
-      debug_count += 1
-      if debug and (debug_count & debug_count - 1 == 0):
-        logging.info('ConcatenateToLMInput example[%d]: %r',
-                     debug_count, output)
       yield output
 
   return _concatenate_to_lm_input
 
 
 def PadToLength(  # pylint: disable=invalid-name
-    len_map=None, pad_value=0, multiple=False, debug=False):
+    len_map=None, pad_value=0, multiple=False):
   """Pads the values to lengths given in `len_map'.
 
   len_map contains a dictionary of example keys to dimension sizes.
@@ -517,14 +513,12 @@ def PadToLength(  # pylint: disable=invalid-name
       constant_values on numpy.pad per given dimension.
     multiple: boolean. If False, pads to the value of len_map. If True, pads to
       closest multiple of value of len_map.
-    debug: bool, if true, log output at every power of 2.
   Returns:
     Function to pad examples to given lengths.
   """
+  @debug_data_pipeline.debug_pipeline
   def _pad_to_length(generator):
-    debug_count = 0
     for example in generator:
-      debug_count += 1
       if isinstance(example, (list, tuple)):
         example = list(example)
         for key, value in len_map.items():
@@ -550,15 +544,13 @@ def PadToLength(  # pylint: disable=invalid-name
                         pad_width=(0, padding_len),
                         mode='constant',
                         constant_values=pad_value[0])
-      if debug and (debug_count & debug_count - 1 == 0):
-        logging.info('PadToLength example[%d] is %r', debug_count, output)
       yield output
   if len_map is None:
     raise ValueError('len_map parameter should be provided.')
   return _pad_to_length
 
 
-def AppendValue(val=None, debug=False):  # pylint: disable=invalid-name
+def AppendValue(val=None):  # pylint: disable=invalid-name
   """Appends values provided in 'val` to inputs.
 
   val are keyed by example keys, its values contain appended tensors.
@@ -566,14 +558,12 @@ def AppendValue(val=None, debug=False):  # pylint: disable=invalid-name
   Args:
     val: dict of int to tensors. Specific keys get the tensors specified in
       values appended.
-    debug: bool, if true, log output at every power of 2.
   Returns:
     Funtion to append tensors to examples.
   """
+  @debug_data_pipeline.debug_pipeline
   def _append_value(generator):
-    debug_count = 0
     for example in generator:
-      debug_count += 1
       if isinstance(example, tuple):
         example = list(example)
         if val is not None:
@@ -584,14 +574,12 @@ def AppendValue(val=None, debug=False):  # pylint: disable=invalid-name
         if not isinstance(example, np.ndarray):
           raise ValueError(f'example isn\'t nparray, but should be: {example}')
         output = np.append(example, val[0])
-      if debug and (debug_count & debug_count - 1 == 0):
-        logging.info('AppendValue example[%d] is %r', debug_count, output)
       yield output
 
   return _append_value
 
 
-def TruncateToLength(len_map=None, debug=False):  # pylint: disable=invalid-name
+def TruncateToLength(len_map=None):  # pylint: disable=invalid-name
   """Truncates features in an example to lengths given in `len_map`.
 
   len_map contains a dictionary of example keys to tuples of dimension sizes.
@@ -600,14 +588,12 @@ def TruncateToLength(len_map=None, debug=False):  # pylint: disable=invalid-name
     len_map: dict of int to int tuples (shapes), we truncate examples
       where a feature's size is beyond the max. Ex: {0: (1, 512), 1: 64}
       will truncate examples to be within those bounds.
-    debug: bool, if true, log output at every power of 2.
   Returns:
     Function to truncate length of examples.
   """
+  @debug_data_pipeline.debug_pipeline
   def _truncate_to_length(generator):
-    debug_count = 0
     for example in generator:
-      debug_count += 1
       if isinstance(example, np.ndarray):
         example = (example,)
       if isinstance(example, (list, tuple)):
@@ -621,14 +607,13 @@ def TruncateToLength(len_map=None, debug=False):  # pylint: disable=invalid-name
       else:
         output = None
         raise ValueError(f'Unknown example type: {example}')
-      if debug and (debug_count & debug_count - 1 == 0):
-        logging.info('TruncateToLength example[%d] is %r', debug_count, output)
       yield output
 
   return _truncate_to_length
 
 
-def add_loss_weights(generator, id_to_mask=None, debug=False):
+@debug_data_pipeline.debug_pipeline
+def add_loss_weights(generator, id_to_mask=None):
   """Add weights to inputs without weights and masks by id if requested.
 
   The generator stream is augmented in the following way:
@@ -643,18 +628,13 @@ def add_loss_weights(generator, id_to_mask=None, debug=False):
     generator: Stream of tuples.
     id_to_mask: If not None, int-valued id that represents padding, as opposed
         to true target IDs.
-    debug: bool, if true, log output at every power of 2.
 
   Yields:
     Examples from the augmented stream.
   """
-  debug_count = 0
   for example in generator:
-    debug_count += 1
     if len(example) > 3 or len(example) < 2:
       assert id_to_mask is None, 'Cannot automatically mask this stream.'
-      if debug and (debug_count & debug_count - 1 == 0):
-        logging.info('AddLossWeights example[%d] is %r', debug_count, example)
       yield example
     else:
       if len(example) == 2:
@@ -664,14 +644,12 @@ def add_loss_weights(generator, id_to_mask=None, debug=False):
       mask = 1.0 - np.equal(example[1], id_to_mask).astype(np.float32)
       weights *= mask
       output = (example[0], example[1], weights)
-      if debug and (debug_count & debug_count - 1 == 0):
-        logging.info('AddLossWeights example[%d] is %r', debug_count, output)
       yield output
 
 
-def AddLossWeights(id_to_mask=None, debug=False):  # pylint: disable=invalid-name
+def AddLossWeights(id_to_mask=None):  # pylint: disable=invalid-name
   """Returns a function to add loss weights; see `add_loss_weights`."""
-  return lambda g: add_loss_weights(g, id_to_mask=id_to_mask, debug=debug)
+  return lambda g: add_loss_weights(g, id_to_mask=id_to_mask)
 
 
 # Inputs class used for setting up Trainer.

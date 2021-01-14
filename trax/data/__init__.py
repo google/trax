@@ -16,6 +16,7 @@
 """Data imports in Trax."""
 import gin
 
+from trax.data import debug_data_pipeline
 from trax.data import inputs
 from trax.data import tf_inputs
 
@@ -56,3 +57,4 @@ ConvertToUnicode = data_configure(tf_inputs.ConvertToUnicode)
 tokenize = tf_inputs.tokenize
 detokenize = tf_inputs.detokenize
 vocab_size = tf_inputs.vocab_size
+debug_pipeline = debug_data_pipeline.debug_pipeline
