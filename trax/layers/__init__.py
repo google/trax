@@ -95,3 +95,4 @@ TimeBinPositionalEncoding = layer_configure(
 AtariConvInit = layer_configure(AtariConvInit)
 CrossEntropyLossWithLogSoftmax = layer_configure(CrossEntropyLossWithLogSoftmax)
 WeightedCategoryAccuracy = layer_configure(WeightedCategoryAccuracy)
+SequenceAccuracy = layer_configure(SequenceAccuracy)

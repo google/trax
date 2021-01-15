@@ -18,6 +18,7 @@
 
 import collections
 import functools
+import itertools
 import json
 import math
 import os
@@ -1683,7 +1684,7 @@ def CreateMathQAInputs(  # pylint: disable=invalid-name
   if train:
     dataset_path = os.path.join(dataset_path, 'train.json')
   else:
-    dataset_path = os.path.join(dataset_path, 'valid.json')
+    dataset_path = os.path.join(dataset_path, 'dev.json')
   # Opening with GFile allows to use remotely stored files, e.g.
   # in a gs bucket.
   dataset_handle = tf.io.gfile.GFile(dataset_path, 'r')
@@ -1692,20 +1693,28 @@ def CreateMathQAInputs(  # pylint: disable=invalid-name
   def mathqa_yield_examples(generator=None):
     del generator
     while True:
-      for example in dataset:
-        answer_num, python_result, list_op, list_num = process_single_mathqa_example(
-            example)
+      for example in itertools.cycle(dataset):
+        result = process_single_mathqa_example(example)
+        # TODO(henrykm): Remove the first two ifs.
+        if not result:
+          continue
+        answer_num, python_result, list_op, list_num = result
+        if not answer_num or not python_result[-1]:
+          continue
         if math.isclose(answer_num, python_result[-1], rel_tol=tolerance):
-          input_prefix = example['Problem'] + ' '.join(list_num)
+          input_prefix = example['Problem'] + ' ' + ' '.join(
+              [str(num) for num in list_num])
           if cumulative:
             for op in list_op:
               input_values = input_prefix
               target_values = op
               input_prefix += ' ' + op
-              yield input_values, target_values, [1] * len(target_values)
+              yield input_values, target_values, np.array([1] *
+                                                          len(target_values))
           else:
             input_values = input_prefix
             target_values = example['linear_formula']
-            yield input_values, target_values, [1] * len(target_values)
+            yield input_values, target_values, np.array([1] *
+                                                        len(target_values))
 
   return mathqa_yield_examples

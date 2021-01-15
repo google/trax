@@ -1,0 +1,140 @@
+# Copyright 2021 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.layers
+import trax.models
+import trax.data
+import trax.optimizers
+import trax.supervised.lr_schedules
+import trax.supervised.trainer_lib
+import trax.models.research.bert
+import trax.layers.metrics
+
+include 'c4.gin'
+
+# See https://math-qa.github.io/ for more details about the MathQA dataset.
+
+# Under the dataset_path should be located train.json and dev.json
+# downloaded from the above site.
+dataset_path = 'path_to_the_dataset'
+
+# Corresponds roughly to T5 'large' ~ 770m params, i.e. T5's `bi_v1_large.gin`.
+d_model = 1024
+d_ff = 4096
+n_heads = 16
+n_layers = 24
+attn_kv = 64
+dropout = 0.1
+vocab_size = 32000
+
+ff_chunk_size = 0
+ff_sparsity = 0
+loss_sparsity = 0
+
+enc_attn_type = @Attention
+
+MultiplicativeModularCausalAttention.sparsity = 16
+MultiplicativeConvCausalAttention.sparsity = 16
+MultiplicativeConvCausalAttention.length_kernel_size = 3
+
+dec_attn_type = @CausalAttention
+
+trax.data.Tokenize.keys = [0,1]
+trax.data.Tokenize.vocab_file = 'en_32k.subword'
+
+# Parameters for TFDS data pipeline:
+# ==============================================================================
+make_inputs.train_stream = [
+  @train/data.CreateMathQAInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+make_inputs.eval_stream = [
+  @eval/data.CreateMathQAInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+make_additional_stream.stream = [
+  @eval_additional_task/data.CreateMathQAInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+
+train/data.CreateMathQAInputs.dataset_path = %dataset_path
+train/data.CreateMathQAInputs.train = True
+train/data.CreateMathQAInputs.tolerance = 0.01
+train/data.CreateMathQAInputs.cumulative = True
+
+eval/data.CreateMathQAInputs.dataset_path = %dataset_path
+eval/data.CreateMathQAInputs.train = False
+eval/data.CreateMathQAInputs.tolerance = 0.01
+eval/data.CreateMathQAInputs.cumulative = True
+
+eval_additional_task/data.CreateMathQAInputs.dataset_path = %dataset_path
+eval_additional_task/data.CreateMathQAInputs.train = False
+eval_additional_task/data.CreateMathQAInputs.tolerance = 0.01
+eval_additional_task/data.CreateMathQAInputs.cumulative = False
+eval_additional_task/trax.supervised.training.EvalTask.labeled_data = @trax.data.inputs.make_additional_stream()
+# Explicitly pass the accuracy metric - we can pass multiple metrics if needs be
+eval_additional_task/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
+eval_additional_task/trax.supervised.training.EvalTask.metric_names = ['Full program accuracy', 'Full program sequence accuracy']
+
+data.PadToLength.len_map = {0: 512, 1: 512, 2: 512}
+data.PadToLength.pad_value = {0: 0, 1: 0, 2:0}
+data.TruncateToLength.len_map = {0: (256,), 1: (256,), 2: (256,)}
+data.Batch.batch_size = 4
+
+# Parameters for train:
+# ==============================================================================
+train.init_checkpoint = None
+train.optimizer = @trax.optimizers.Adafactor
+train.eval_frequency = 20
+train.eval_steps = 10
+train.inputs = @trax.data.inputs.make_inputs
+train.model = @trax.models.ConfigurableTransformer
+train.steps = 200000
+train.checkpoint_highest = 'accuracy'
+train.additional_eval_tasks = [@eval_additional_task/trax.supervised.training.EvalTask(),]
+
+# Parameters for ConfigurableTransformer:
+# ==============================================================================
+ConfigurableTransformer.d_model = %d_model
+ConfigurableTransformer.d_ff = %d_ff
+ConfigurableTransformer.dropout = %dropout
+ConfigurableTransformer.ff_dropout = %dropout
+ConfigurableTransformer.ff_chunk_size = %ff_chunk_size
+ConfigurableTransformer.ff_sparsity = %ff_sparsity
+ConfigurableTransformer.max_len = %max_length
+ConfigurableTransformer.mode = 'train'
+ConfigurableTransformer.n_heads = %n_heads
+ConfigurableTransformer.n_encoder_layers = %n_layers
+ConfigurableTransformer.n_decoder_layers = %n_layers
+ConfigurableTransformer.input_vocab_size = %vocab_size
+ConfigurableTransformer.encoder_attention_type = %enc_attn_type
+ConfigurableTransformer.encoder_decoder_attention_type = %dec_attn_type
+ConfigurableTransformer.loss_sparsity = %loss_sparsity
+
+# Parameters for multifactor:
+# ==============================================================================
+multifactor.constant = 1e-3
+multifactor.factors = 'constant'
