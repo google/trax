@@ -203,6 +203,11 @@ class MultiplicativeModularCausalAttentionTest(test.TestCase):
 class FavorTest(test.TestCase):
 
   def test_call_and_grad(self):
+    layer_partial = tl.Serial(
+        tl.Branch(tl.Embedding(3, 4), tl.PaddingMask()),
+        sparsity.Favor(d_feature=4, n_heads=2),
+        tl.Select([0], n_in=2),
+    )
     layer = tl.Serial(
         tl.Branch(tl.Embedding(3, 4), tl.PaddingMask()),
         sparsity.Favor(d_feature=4, n_heads=2),
@@ -213,6 +218,9 @@ class FavorTest(test.TestCase):
     w = np.ones_like(x).astype(np.float32)
     x_sig = shapes.signature(x)
     w_sig = shapes.signature(w)
+    layer_partial.init(x_sig)
+    y = layer_partial(x)
+    self.assertEqual(y.shape, (1, 2, 4))
     layer.init((x_sig, x_sig, w_sig))
     y = layer((x, x, w))
     self.assertEqual(y.shape, ())

@@ -644,15 +644,10 @@ def Favor(d_feature, n_heads=1, dropout=0.0,
     renormalized_attention = w * r
     return renormalized_attention, mask
 
-  return tl.Serial(
-      tl.Branch(
-          [tl.Dense(d_feature), tl.SplitIntoHeads(n_heads)],
-          [tl.Dense(d_feature), tl.SplitIntoHeads(n_heads)],
-          [tl.Dense(d_feature), tl.SplitIntoHeads(n_heads)],
-      ),
-      tl.Fn('FAVOR', favor, n_out=2),
+  return  tl.ConfigurableAttention(
+      tl.Dense(d_feature), tl.Dense(d_feature), tl.Dense(d_feature),
       tl.Dense(d_feature),
-  )
+      tl.Fn('FAVOR', favor, n_out=2), n_heads=n_heads)
 
 
 def CausalFavor(d_feature, n_heads=1, dropout=0.0,
