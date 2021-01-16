@@ -32,9 +32,7 @@ data_streams.dataset_name = 'mnist'
 
 # Parameters for MLP:
 # ==============================================================================
-MLP.d_hidden = 512
-MLP.n_hidden_layers = 2
-MLP.n_output_classes = 10
+MLP.layer_widths=(128, 64)
 
 # Parameters for lr_schedules.constant
 # ==============================================================================
