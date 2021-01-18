@@ -16,6 +16,7 @@ import trax.supervised.lr_schedules
 import trax.models
 import trax.optimizers
 import trax.rl
+import trax.rl_trainer
 
 # Parameters for Adam:
 # ==============================================================================
@@ -59,6 +60,6 @@ PPOJoint.entropy_coeff = 0
 
 # Parameters for train_rl:
 # ==============================================================================
-train_rl.light_rl = True
-train_rl.light_rl_trainer = @trax.rl.PPOJoint
-train_rl.n_epochs = 500
+rl_trainer.train_rl.light_rl = True
+rl_trainer.train_rl.light_rl_trainer = @trax.rl.PPOJoint
+rl_trainer.train_rl.n_epochs = 500

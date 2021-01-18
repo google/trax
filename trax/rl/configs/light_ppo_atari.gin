@@ -17,6 +17,7 @@ import trax.supervised.lr_schedules
 import trax.models
 import trax.optimizers
 import trax.rl
+import trax.rl_trainer
 
 # Parameters for Policy:
 # ==============================================================================
@@ -62,6 +63,6 @@ PPO.n_trajectories_per_epoch = 50
 
 # Parameters for train_rl:
 # ==============================================================================
-train_rl.light_rl = True
-train_rl.light_rl_trainer = @trax.rl.PPO
-train_rl.n_epochs = 5000
+rl_trainer.train_rl.light_rl = True
+rl_trainer.train_rl.light_rl_trainer = @trax.rl.PPO
+rl_trainer.train_rl.n_epochs = 5000

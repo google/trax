@@ -18,6 +18,7 @@ import trax.optimizers
 import trax.rl
 import trax.rl.distributions
 import trax.rl.normalization
+import trax.rl_trainer
 
 batch_size = 256
 train_steps = 1000
@@ -153,6 +154,6 @@ SamplingAWR.reweight = False
 
 # Parameters for train_rl:
 # ==============================================================================
-train_rl.light_rl = True
-train_rl.light_rl_trainer = @trax.rl.SamplingAWR
-train_rl.n_epochs = 10000000
+rl_trainer.train_rl.light_rl = True
+rl_trainer.train_rl.light_rl_trainer = @trax.rl.SamplingAWR
+rl_trainer.train_rl.n_epochs = 10000000
