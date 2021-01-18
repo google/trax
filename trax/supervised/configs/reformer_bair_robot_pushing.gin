@@ -61,7 +61,7 @@ Adam.eps = 1e-9
 # ==============================================================================
 train.eval_frequency = 20
 train.eval_steps = 1
-train.inputs = @trax.data.tf_inputs.inputs
+train.inputs = @trax.data.inputs.make_inputs
 # train.model: see top
 train.optimizer = @trax.optimizers.Adam
 train.steps = 100000

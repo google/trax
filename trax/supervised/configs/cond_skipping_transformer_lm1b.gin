@@ -47,7 +47,7 @@ lm1b_preprocess.max_eval_target_length = 2048
 # ==============================================================================
 train.eval_frequency = 1000
 train.eval_steps = 10
-train.model = @trax.models.LayerDropSkippingTransformerLM
+train.model = @trax.models.SkippingTransformerLM
 train.optimizer = @trax.optimizers.SM3
 train.steps = 500000
 
@@ -57,11 +57,11 @@ DotProductCausalAttention.dropout = 0.1
 
 # Parameters for SkippingTransformerLM:
 # ==============================================================================
-LayerDropSkippingTransformerLM.d_model = 1024
-LayerDropSkippingTransformerLM.d_ff = 4096
-LayerDropSkippingTransformerLM.dropout = 0.2
-LayerDropSkippingTransformerLM.max_len = 2048
-LayerDropSkippingTransformerLM.mode = 'train'
-LayerDropSkippingTransformerLM.n_heads = 8
-LayerDropSkippingTransformerLM.n_layers = 8
-LayerDropSkippingTransformerLM.vocab_size = 32000
+SkippingTransformerLM.d_model = 1024
+SkippingTransformerLM.d_ff = 4096
+SkippingTransformerLM.dropout = 0.2
+SkippingTransformerLM.max_len = 2048
+SkippingTransformerLM.mode = 'train'
+SkippingTransformerLM.n_heads = 8
+SkippingTransformerLM.n_layers = 8
+SkippingTransformerLM.vocab_size = 32000
