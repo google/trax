@@ -101,8 +101,8 @@ class DecodingTest(test.TestCase):
                               max_len=65536,
                               attention_type=[timebin_self_attention,
                                               lsh_self_attention],
-                              axial_pos_shape=(256, 256),
-                              d_axial_pos_embs=(128, 128),
+                              pos_axial_shape=(256, 256),
+                              pos_d_axial_embs=(128, 128),
                               ff_activation=tl.Relu,
                               ff_use_sru=0,
                               mode='predict',
@@ -169,7 +169,7 @@ class DecodingTest(test.TestCase):
         encoder_attention_type=self._lsh_self_attention_fn(),
         encoder_decoder_attention_type=self._lsh_self_attention_fn(),
         input_vocab_size=256,
-        axial_pos_shape=None,
+        pos_axial_shape=None,
     )
 
     shape11 = shapes.ShapeDtype((1, 1), dtype=np.int32)
@@ -246,8 +246,8 @@ class DecodingTest(test.TestCase):
                                          predict_mem_len=max_len,
                                          max_length_for_buckets=1024),
         vocab_size=13,
-        axial_pos_shape='fixed-base',
-        d_axial_pos_embs=None,
+        pos_type='fixed-base',
+        pos_d_axial_embs=None,
     )
 
     shape11 = shapes.ShapeDtype((1, 1), dtype=np.int32)
@@ -285,8 +285,8 @@ class DecodingTest(test.TestCase):
                                          predict_mem_len=max_len,
                                          max_length_for_buckets=1024),
         vocab_size=13,
-        axial_pos_shape='fixed-base',
-        d_axial_pos_embs=None,
+        pos_type='fixed-base',
+        pos_d_axial_embs=None,
     )
 
     shape11 = shapes.ShapeDtype((1, 1), dtype=np.int32)

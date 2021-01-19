@@ -103,7 +103,7 @@ class DecodingTimingTest(test.TestCase):
         attention_chunk_size=1,
         n_decoder_attention_layers=settings['attention_layers'],
         loss_sparsity=settings['loss_sparsity'],
-        axial_pos_shape=None,
+        pos_axial_shape=None,
         use_bfloat16=True,
     )
     # We put acceleration outside of autoregressive_sample_stream, because

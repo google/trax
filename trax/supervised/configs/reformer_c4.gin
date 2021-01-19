@@ -125,5 +125,5 @@ ReformerLM.mode = 'train'
 ReformerLM.n_heads = 8
 ReformerLM.n_layers = %n_layers
 ReformerLM.vocab_size = 32000  # Includes pad token and unused EOS token
-#ReformerLM.axial_pos_shape = (128, 512)
-ReformerLM.axial_pos_shape = (32, 32)
+#ReformerLM.pos_axial_shape = (128, 512)
+ReformerLM.pos_axial_shape = (32, 32)

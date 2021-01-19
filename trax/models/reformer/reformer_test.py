@@ -85,8 +85,8 @@ class ReformerTest(absltest.TestCase):
         dropout=0.05,
         max_len=65536,
         attention_type=[timebin_self_attention, lsh_self_attention],
-        axial_pos_shape=(256, 256),
-        d_axial_pos_embs=(64, 192),
+        pos_axial_shape=(256, 256),
+        pos_d_axial_embs=(64, 192),
         ff_activation=tl.Relu,
         ff_use_sru=0,
         ff_chunk_size=8192,
@@ -124,8 +124,7 @@ class ReformerTest(absltest.TestCase):
         n_heads=2,
         dropout=0.05,
         max_len=max_len,
-        axial_pos_shape=None,
-        d_axial_pos_embs=None,
+        pos_type=None,
         ff_activation=tl.Relu,
         ff_use_sru=0,
         ff_chunk_size=2,
@@ -144,8 +143,8 @@ class ReformerTest(absltest.TestCase):
   def test_reformer2_one_step(self):
     vocab_size = 256
     max_len = 65536
-    axial_pos = 256
-    assert axial_pos * axial_pos == max_len
+    pos_axial = 256
+    assert pos_axial * pos_axial == max_len
 
     chunk_len = 64
 
@@ -172,8 +171,8 @@ class ReformerTest(absltest.TestCase):
         encoder_attention_type=lsh_self_attention,
         encoder_decoder_attention_type=[timebin_self_attention,
                                         lsh_self_attention],
-        axial_pos_shape=(axial_pos, axial_pos),
-        d_axial_pos_embs=(64, 192),
+        pos_axial_shape=(pos_axial, pos_axial),
+        pos_d_axial_embs=(64, 192),
         ff_activation=tl.Relu,
         ff_use_sru=0,
         ff_chunk_size=8192,

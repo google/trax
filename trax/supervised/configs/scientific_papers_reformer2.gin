@@ -22,12 +22,12 @@ import trax.supervised.trainer_lib
 # ==============================================================================
 # Maximum length of an input sequence.
 max_len = 16384
-axial_pos_shape  = (128, 128)  # should multiply out to max_len
+pos_axial_shape  = (128, 128)  # should multiply out to max_len
 attn_kv = 128
 n_layers = 8 # TODO(wgaj): used to be 12
 dropout = 0.2
 d_model = 1024
-d_axial_pos_embs = (512, 512)
+pos_d_axial_embs = (512, 512)
 d_ff = 4096
 n_heads = 8
 ff_chunk_size = 0
@@ -198,8 +198,8 @@ Reformer2.d_attention_key = %attn_kv    # d_model // n_heads
 Reformer2.d_attention_value = %attn_kv  # d_model // n_heads
 Reformer2.encoder_attention_type = @ref2_encoder/LSHSelfAttention
 Reformer2.encoder_decoder_attention_type = @LSHSelfAttention
-Reformer2.axial_pos_shape = 'fixed-base'
-Reformer2.d_axial_pos_embs = %d_axial_pos_embs
+Reformer2.pos_type = 'fixed-base'
+Reformer2.pos_d_axial_embs = %pos_d_axial_embs
 
 
 # Parameters for ReformerLM:
@@ -216,5 +216,5 @@ ReformerLM.mode = 'train'
 ReformerLM.n_heads = %n_heads
 ReformerLM.n_layers = %n_layers
 ReformerLM.vocab_size = %vocab_size
-ReformerLM.axial_pos_shape = 'fixed-base'
-ReformerLM.d_axial_pos_embs= %d_axial_pos_embs
+ReformerLM.pos_type = 'fixed-base'
+ReformerLM.pos_d_axial_embs= %pos_d_axial_embs

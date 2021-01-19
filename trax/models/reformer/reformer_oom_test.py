@@ -53,11 +53,11 @@ class ReformerOOMTest(absltest.TestCase):
     d_model = 1024
     vocab_size = 14041
     max_len = 16384
-    axial_pos = (128, 128)  # should multiply to max_len
-    d_axial_pos_embs = (512, 512)  # sum to d model
+    pos_axial = (128, 128)  # should multiply to max_len
+    pos_d_axial_embs = (512, 512)  # sum to d model
 
-    assert operator.mul(*axial_pos) == max_len
-    assert sum(d_axial_pos_embs) == d_model
+    assert operator.mul(*pos_axial) == max_len
+    assert sum(pos_d_axial_embs) == d_model
 
     d_ff = 4096
     n_heads = 8
@@ -92,8 +92,8 @@ class ReformerOOMTest(absltest.TestCase):
         max_len=max_len,
         encoder_attention_type=encoder_lsh_self_attention,
         encoder_decoder_attention_type=decoder_lsh_self_attention,
-        axial_pos_shape=axial_pos,
-        d_axial_pos_embs=d_axial_pos_embs,
+        pos_axial_shape=pos_axial,
+        pos_d_axial_embs=pos_d_axial_embs,
         ff_activation=tl.Relu,
         ff_use_sru=0,
         mode='train',

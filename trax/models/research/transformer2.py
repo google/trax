@@ -45,8 +45,9 @@ def Transformer2(input_vocab_size,
                  n_encoder_attention_layers=1,
                  decoder_attention_type=tl.CausalAttention,
                  n_decoder_attention_layers=2,
-                 axial_pos_shape=None,
-                 d_axial_pos_embs=None):
+                 pos_type=None,
+                 pos_axial_shape=None,
+                 pos_d_axial_embs=None):
   """Returns a Transformer model.
 
   This model expects an input pair: target, source.
@@ -81,10 +82,11 @@ def Transformer2(input_vocab_size,
       encoder-decoder attention.
     n_decoder_attention_layers: int, within each decoder block, how many
       attention layers to have.
-    axial_pos_shape: tuple of ints: input shape to use for the axial position
+    pos_type: string, the type of positional embeddings to use.
+    pos_axial_shape: tuple of ints: input shape to use for the axial position
       encoding. If unset, axial position encoding is disabled.
-    d_axial_pos_embs: tuple of ints: depth of position embedding for each axis.
-      Tuple length must match axial_pos_shape, and values must sum to d_model.
+    pos_d_axial_embs: tuple of ints: depth of position embedding for each axis.
+      Tuple length must match pos_axial_shape, and values must sum to d_model.
 
   Returns:
     A Transformer model as a layer that maps from a target, source pair to
@@ -99,8 +101,9 @@ def Transformer2(input_vocab_size,
           dropout_shared_axes,
           max_len,
           output_vocab_size=output_vocab_size,
-          axial_pos_shape=axial_pos_shape,
-          d_axial_pos_embs=d_axial_pos_embs)
+          pos_type=pos_type,
+          pos_axial_shape=pos_axial_shape,
+          pos_d_axial_embs=pos_d_axial_embs)
   )
 
   # pylint: disable=g-complex-comprehension

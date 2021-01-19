@@ -107,18 +107,18 @@ class ConfigurableTransformerTest(parameterized.TestCase):
       ('infinite_positional_encoding', 'infinite'),
       ('infinite_affine_positional_encoding', 'infinite-affine'),
       ('axial_positional_encoding', (2, 16)))
-  def test_positional_encoder(self, axial_pos_shape):
+  def test_positional_encoder(self, pos_axial_shape):
     # dim should divide FixedBasePositionalEncoding.n_digits
     batch, length, dim = 2, 32, 8
     input_shape = (batch, length, dim)
     vocab_size = 32
     x = np.random.randint(0, vocab_size - 1, input_shape)
     # should sum to dim
-    d_axial_pos_embs = (4, 4)
+    pos_d_axial_embs = (4, 4)
 
     positional_encoding = ct.PositionalEncoder(
-        'train', dropout=0.1, max_len=length, axial_pos_shape=axial_pos_shape,
-        d_axial_pos_embs=d_axial_pos_embs)
+        'train', dropout=0.1, max_len=length, pos_axial_shape=pos_axial_shape,
+        pos_d_axial_embs=pos_d_axial_embs)
     _, _ = positional_encoding.init(shapes.signature(x))
     y = positional_encoding(x)
     self.assertEqual(y.shape, input_shape)
@@ -140,8 +140,8 @@ class ConfigurableTransformerTest(parameterized.TestCase):
             [-2],
             max_len,
             output_vocab_size=None,
-            axial_pos_shape=None,
-            d_axial_pos_embs=None))
+            pos_axial_shape=None,
+            pos_d_axial_embs=None))
 
     self.assertEqual(output_vocab_size, input_vocab_size)
 

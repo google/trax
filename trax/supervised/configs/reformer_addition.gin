@@ -78,7 +78,7 @@ ReformerLM.max_len = 256
 ReformerLM.n_heads = 4
 ReformerLM.n_layers = 8
 ReformerLM.ff_use_sru = 2
-ReformerLM.axial_pos_shape = 'fixed-base'
+ReformerLM.pos_type = 'fixed-base'
 ReformerLM.attention_type = @CausalAttention  # @LSHSelfAttention
 ReformerLM.vocab_size = %vocab_size
 
@@ -95,7 +95,7 @@ Reformer2.ff_use_sru = 2
 Reformer2.encoder_attention_type = @Attention
 Reformer2.encoder_decoder_attention_type = @CausalAttention
 Reformer2.input_vocab_size = %vocab_size
-Reformer2.axial_pos_shape  = 'fixed-base'
+Reformer2.pos_axial_shape  = 'fixed-base'
 
 # Parameters for train:
 # ==============================================================================

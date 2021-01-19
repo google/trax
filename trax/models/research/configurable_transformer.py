@@ -143,8 +143,8 @@ def ApplyAttentionLayer(attention_type, d_model, n_heads, d_qk, d_v, causal,
   return tl.Chunk(attention, attention_chunk_size)
 
 
-def PositionalEncoder(mode, dropout=None, max_len=None,
-                      axial_pos_shape=None, d_axial_pos_embs=None,
+def PositionalEncoder(mode, dropout=None, max_len=None, pos_type=None,
+                      pos_axial_shape=None, pos_d_axial_embs=None,
                       use_bfloat16=False):
   """Returns the positional encoding layer depending on the arguments.
 
@@ -155,36 +155,35 @@ def PositionalEncoder(mode, dropout=None, max_len=None,
     dropout: Stochastic rate (probability) for dropping an activation
       value when applying dropout after the embedding block.
     max_len: Maximum symbol length for positional encoding.
-    axial_pos_shape: tuple of ints: input shape to use for the axial position
+    pos_type: string, the type of positional embeddings to use.
+    pos_axial_shape: tuple of ints: input shape to use for the axial position
       encoding. If unset, axial position encoding is disabled.
-    d_axial_pos_embs: tuple of ints: depth of position embedding for each axis.
-      Tuple length must match axial_pos_shape, and values must sum to d_model.
+    pos_d_axial_embs: tuple of ints: depth of position embedding for each axis.
+      Tuple length must match pos_axial_shape, and values must sum to d_model.
     use_bfloat16: If `True`, use bfloat16 weights instead of the default
       float32; this can save memory but may (rarely) lead to numerical issues.
 
   Returns:
     A layer that will do the positional encoding.
   """
-
-  if not axial_pos_shape:
+  if not pos_type:
     positional_encoding = tl.PositionalEncoding(
         max_len=max_len, dropout=dropout, mode=mode, use_bfloat16=use_bfloat16)
-  elif axial_pos_shape == 'sin-cos':  # TODO(lukaszkaiser): remove this HACK
+  elif pos_type == 'sin-cos':
     positional_encoding = tl.SinCosPositionalEncoding(mode=mode)
-  elif axial_pos_shape == 'fixed-base':  # TODO(lukaszkaiser): remove this HACK
+  elif pos_type == 'fixed-base':
     positional_encoding = tl.FixedBasePositionalEncoding(mode=mode)
-  elif axial_pos_shape == 'infinite':  # TODO(lukaszkaiser): remove this HACK
+  elif pos_type == 'infinite':
     positional_encoding = tl.InfinitePositionalEncoding(affine=False)
-  elif axial_pos_shape == 'infinite-affine':
-    # TODO(lukaszkaiser): remove this HACK
+  elif pos_type == 'infinite-affine':
     positional_encoding = tl.InfinitePositionalEncoding()
-  elif axial_pos_shape == 'time-bin':  # TODO(lukaszkaiser): remove this HACK
+  elif pos_type == 'time-bin':
     positional_encoding = tl.TimeBinPositionalEncoding()
-  else:
-    assert d_axial_pos_embs is not None
+  else:  # TODO(lukaszkaiser): name this type and check for the correct name
+    assert pos_d_axial_embs is not None
     positional_encoding = tl.AxialPositionalEncoding(
-        shape=axial_pos_shape, d_embs=d_axial_pos_embs,
-        dropout_broadcast_dims=tuple(range(1, len(axial_pos_shape) + 1)),
+        shape=pos_axial_shape, d_embs=pos_d_axial_embs,
+        dropout_broadcast_dims=tuple(range(1, len(pos_axial_shape) + 1)),
         dropout=dropout, mode=mode)
 
   return positional_encoding
@@ -197,8 +196,9 @@ def EmbeddingAndPositionalEncodings(input_vocab_size,
                                     dropout_shared_axes,
                                     max_len,
                                     output_vocab_size=None,
-                                    axial_pos_shape=None,
-                                    d_axial_pos_embs=None,
+                                    pos_type=None,
+                                    pos_axial_shape=None,
+                                    pos_d_axial_embs=None,
                                     use_bfloat16=False):
   """Returns the embedder and positional encoder.
 
@@ -221,10 +221,11 @@ def EmbeddingAndPositionalEncodings(input_vocab_size,
     output_vocab_size: If specified, gives the vocabulary size for the targets;
       if None, then input and target integers (token IDs) are assumed to come
       from the same vocabulary.
-    axial_pos_shape: tuple of ints: input shape to use for the axial position
+    pos_type: string, the type of positional embeddings to use.
+    pos_axial_shape: tuple of ints: input shape to use for the axial position
       encoding. If unset, axial position encoding is disabled.
-    d_axial_pos_embs: tuple of ints: depth of position embedding for each axis.
-      Tuple length must match axial_pos_shape, and values must sum to d_model.
+    pos_d_axial_embs: tuple of ints: depth of position embedding for each axis.
+      Tuple length must match pos_axial_shape, and values must sum to d_model.
     use_bfloat16: If `True`, use bfloat16 weights instead of the default
       float32; this can save memory but may (rarely) lead to numerical issues.
 
@@ -253,8 +254,9 @@ def EmbeddingAndPositionalEncodings(input_vocab_size,
       PositionalEncoder(encoder_mode,
                         dropout=embedding_dropout,
                         max_len=max_len,
-                        axial_pos_shape=axial_pos_shape,
-                        d_axial_pos_embs=d_axial_pos_embs,
+                        pos_type=pos_type,
+                        pos_axial_shape=pos_axial_shape,
+                        pos_d_axial_embs=pos_d_axial_embs,
                         use_bfloat16=use_bfloat16)
   ]
 
@@ -269,8 +271,9 @@ def EmbeddingAndPositionalEncodings(input_vocab_size,
       PositionalEncoder(mode,
                         dropout=embedding_dropout,
                         max_len=max_len,
-                        axial_pos_shape=axial_pos_shape,
-                        d_axial_pos_embs=d_axial_pos_embs,
+                        pos_type=pos_type,
+                        pos_axial_shape=pos_axial_shape,
+                        pos_d_axial_embs=pos_d_axial_embs,
                         use_bfloat16=use_bfloat16)
   ]
 
@@ -299,8 +302,9 @@ def ConfigurableTransformerEncoder(vocab_size,
                                    ff_sparsity_type='1inN',
                                    attention_chunk_size=0,
                                    attention_type=tl.Attention,
-                                   axial_pos_shape=None,
-                                   d_axial_pos_embs=None):
+                                   pos_type=None,
+                                   pos_axial_shape=None,
+                                   pos_d_axial_embs=None):
   """Returns a Transformer encoder merged with an N-way categorization head.
 
   This model performs text categorization:
@@ -348,10 +352,11 @@ def ConfigurableTransformerEncoder(vocab_size,
       use BlockSparseFF if ff_sparsity_type=`'Block'`
     attention_chunk_size: int, if > 0 run attention chunked at this size
     attention_type: The attention layer to use for the encoder part.
-    axial_pos_shape: tuple of ints: input shape to use for the axial position
+    pos_type: string, the type of positional embeddings to use.
+    pos_axial_shape: tuple of ints: input shape to use for the axial position
       encoding. If unset, axial position encoding is disabled.
-    d_axial_pos_embs: tuple of ints: depth of position embedding for each axis.
-      Tuple length must match axial_pos_shape, and values must sum to d_model.
+    pos_d_axial_embs: tuple of ints: depth of position embedding for each axis.
+      Tuple length must match pos_axial_shape, and values must sum to d_model.
 
   Returns:
     A Transformer model that maps strings (conveyed via token IDs) to
@@ -361,7 +366,7 @@ def ConfigurableTransformerEncoder(vocab_size,
       tl.Embedding(vocab_size, d_model),
       tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode),
       PositionalEncoder(
-          mode, dropout, max_len, axial_pos_shape, d_axial_pos_embs)
+          mode, dropout, max_len, pos_type, pos_axial_shape, pos_d_axial_embs)
   ]
 
   # pylint: disable=g-complex-comprehension
@@ -410,8 +415,9 @@ def ConfigurableTransformerLM(vocab_size,
                               loss_sparsity_prob=None,
                               attention_chunk_size=0,
                               attention_type=tl.CausalAttention,
-                              axial_pos_shape=None,
-                              d_axial_pos_embs=None):
+                              pos_type=None,
+                              pos_axial_shape=None,
+                              pos_d_axial_embs=None):
   """Returns a Transformer language model.
 
   This model performs autoregressive language modeling:
@@ -466,10 +472,11 @@ def ConfigurableTransformerLM(vocab_size,
       used. If None, only sparse version is used.
     attention_chunk_size: int, if > 0 run attention chunked at this size
     attention_type: The attention layer to use for the decoder part.
-    axial_pos_shape: tuple of ints: input shape to use for the axial position
+    pos_type: string, the type of positional embeddings to use.
+    pos_axial_shape: tuple of ints: input shape to use for the axial position
       encoding. If unset, axial position encoding is disabled.
-    d_axial_pos_embs: tuple of ints: depth of position embedding for each axis.
-      Tuple length must match axial_pos_shape, and values must sum to d_model.
+    pos_d_axial_embs: tuple of ints: depth of position embedding for each axis.
+      Tuple length must match pos_axial_shape, and values must sum to d_model.
 
   Returns:
     A Transformer language model as a layer that maps from a tensor of tokens
@@ -479,7 +486,7 @@ def ConfigurableTransformerLM(vocab_size,
       tl.Embedding(vocab_size, d_model),
       tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode),
       PositionalEncoder(
-          mode, dropout, max_len, axial_pos_shape, d_axial_pos_embs)
+          mode, dropout, max_len, pos_type, pos_axial_shape, pos_d_axial_embs)
   ]
 
   # pylint: disable=g-complex-comprehension
@@ -529,8 +536,9 @@ def ConfigurableTransformer(input_vocab_size,
                             attention_chunk_size=0,
                             encoder_attention_type=tl.Attention,
                             encoder_decoder_attention_type=tl.CausalAttention,
-                            axial_pos_shape=None,
-                            d_axial_pos_embs=None):
+                            pos_type=None,
+                            pos_axial_shape=None,
+                            pos_d_axial_embs=None):
   """Returns a full Transformer model.
 
   This model is an encoder-decoder that performs tokenized string-to-string
@@ -600,10 +608,11 @@ def ConfigurableTransformer(input_vocab_size,
     encoder_attention_type: The attention layer to use for the encoder part.
     encoder_decoder_attention_type: The attention layer to use for the
       encoder-decoder attention.
-    axial_pos_shape: tuple of ints: input shape to use for the axial position
+    pos_type: string, the type of positional embeddings to use.
+    pos_axial_shape: tuple of ints: input shape to use for the axial position
       encoding. If unset, axial position encoding is disabled.
-    d_axial_pos_embs: tuple of ints: depth of position embedding for each axis.
-      Tuple length must match axial_pos_shape, and values must sum to d_model.
+    pos_d_axial_embs: tuple of ints: depth of position embedding for each axis.
+      Tuple length must match pos_axial_shape, and values must sum to d_model.
 
   Returns:
     A Transformer model as a layer that maps from a source-target tokenized
@@ -618,8 +627,9 @@ def ConfigurableTransformer(input_vocab_size,
           dropout_shared_axes,
           max_len,
           output_vocab_size=output_vocab_size,
-          axial_pos_shape=axial_pos_shape,
-          d_axial_pos_embs=d_axial_pos_embs)
+          pos_type=pos_type,
+          pos_axial_shape=pos_axial_shape,
+          pos_d_axial_embs=pos_d_axial_embs)
   )
 
   # pylint: disable=g-complex-comprehension

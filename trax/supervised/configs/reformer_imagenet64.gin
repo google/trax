@@ -90,8 +90,8 @@ ReformerLM.mode = 'train'
 ReformerLM.n_heads = 8
 ReformerLM.n_layers = %n_layers
 ReformerLM.vocab_size = 256
-ReformerLM.axial_pos_shape = (64, 64, 3)
-ReformerLM.d_axial_pos_embs= (384, 384, 256)
+ReformerLM.pos_axial_shape = (64, 64, 3)
+ReformerLM.pos_d_axial_embs= (384, 384, 256)
 
 # Parameters for ReformerShortenLM:
 # ==============================================================================
@@ -109,5 +109,5 @@ ReformerShortenLM.mode = 'train'
 ReformerShortenLM.n_heads = 8
 ReformerShortenLM.n_layers = %n_layers
 ReformerShortenLM.vocab_size = 256
-ReformerShortenLM.axial_pos_shape = (64, 64, 3)
-ReformerShortenLM.d_axial_pos_embs= (96, 96, 64)
+ReformerShortenLM.pos_axial_shape = (64, 64, 3)
+ReformerShortenLM.pos_d_axial_embs= (96, 96, 64)

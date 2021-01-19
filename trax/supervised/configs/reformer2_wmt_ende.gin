@@ -104,5 +104,5 @@ Reformer2.d_attention_key = 64     # d_model // n_heads
 Reformer2.d_attention_value = 64     # d_model // n_heads
 Reformer2.encoder_attention_type = @encoder/LSHSelfAttention
 Reformer2.encoder_decoder_attention_type = @LSHSelfAttention
-Reformer2.axial_pos_shape  = (32, 16)  # should multiply out to max_len
-Reformer2.d_axial_pos_embs = (256, 256)  # should sum to d_model
+Reformer2.pos_axial_shape  = (32, 16)  # should multiply out to max_len
+Reformer2.pos_d_axial_embs = (256, 256)  # should sum to d_model

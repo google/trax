@@ -88,8 +88,9 @@ def ReformerLM(vocab_size,
                dropout=0.1,
                max_len=2048,
                attention_type=tl.SelfAttention,
-               axial_pos_shape=(),
-               d_axial_pos_embs=None,
+               pos_type=None,
+               pos_axial_shape=(),
+               pos_d_axial_embs=None,
                ff_activation=tl.FastGelu,
                ff_use_sru=0,
                ff_chunk_size=0,
@@ -113,10 +114,11 @@ def ReformerLM(vocab_size,
     dropout: float: dropout rate (how much to drop out)
     max_len: int: maximum symbol length for positional encoding
     attention_type: class: attention class to use, such as SelfAttention.
-    axial_pos_shape: tuple of ints: input shape to use for the axial position
+    pos_type: string, the type of positional embeddings to use.
+    pos_axial_shape: tuple of ints: input shape to use for the axial position
       encoding. If unset, axial position encoding is disabled.
-    d_axial_pos_embs: tuple of ints: depth of position embedding for each axis.
-      Tuple length must match axial_pos_shape, and values must sum to d_model.
+    pos_d_axial_embs: tuple of ints: depth of position embedding for each axis.
+      Tuple length must match pos_axial_shape, and values must sum to d_model.
     ff_activation: the non-linearity in feed-forward layer
     ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
@@ -134,7 +136,7 @@ def ReformerLM(vocab_size,
     the layer.
   """
   positional_encoding = ct.PositionalEncoder(
-      mode, dropout, max_len, axial_pos_shape, d_axial_pos_embs)
+      mode, dropout, max_len, pos_type, pos_axial_shape, pos_d_axial_embs)
 
   positional_embedder = [
       tl.Embedding(vocab_size, d_model),
@@ -198,8 +200,9 @@ def ReformerShortenLM(vocab_size,
                       dropout=0.1,
                       max_len=2048,
                       attention_type=tl.SelfAttention,
-                      axial_pos_shape=(),
-                      d_axial_pos_embs=None,
+                      pos_type=None,
+                      pos_axial_shape=(),
+                      pos_d_axial_embs=None,
                       ff_activation=tl.FastGelu,
                       ff_use_sru=0,
                       ff_chunk_size=0,
@@ -231,10 +234,11 @@ def ReformerShortenLM(vocab_size,
     dropout: float: dropout rate (how much to drop out)
     max_len: int: maximum symbol length for positional encoding
     attention_type: class: attention class to use, such as SelfAttention.
-    axial_pos_shape: tuple of ints: input shape to use for the axial position
+    pos_type: string, the type of positional embeddings to use.
+    pos_axial_shape: tuple of ints: input shape to use for the axial position
       encoding. If unset, axial position encoding is disabled.
-    d_axial_pos_embs: tuple of ints: depth of position embedding for each axis.
-      Tuple length must match axial_pos_shape, values must sum to d_embedding.
+    pos_d_axial_embs: tuple of ints: depth of position embedding for each axis.
+      Tuple length must match pos_axial_shape, values must sum to d_embedding.
     ff_activation: the non-linearity in feed-forward layer
     ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
@@ -248,7 +252,7 @@ def ReformerShortenLM(vocab_size,
   assert mode != 'predict'  # TODO(lukaszkaiser,kitaev): fast inference
 
   positional_encoding = ct.PositionalEncoder(
-      mode, dropout, max_len, axial_pos_shape, d_axial_pos_embs)
+      mode, dropout, max_len, pos_type, pos_axial_shape, pos_d_axial_embs)
 
   positional_embedder = [
       tl.Embedding(vocab_size, d_embedding),
@@ -448,8 +452,9 @@ def Reformer(input_vocab_size,
              ff_activation=tl.Relu,
              ff_dropout=None,
              mode='train',
-             axial_pos_shape=None,
-             d_axial_pos_embs=None,
+             pos_type=None,
+             pos_axial_shape=None,
+             pos_d_axial_embs=None,
              ff_use_sru=0,
              ff_chunk_size=0,
              ff_sparsity=0):
@@ -475,10 +480,11 @@ def Reformer(input_vocab_size,
     ff_dropout: float: (optional) separate dropout rate at feed-forward
       nonlinearity. This is called relu_dropout in T2T.
     mode: str: 'train' or 'eval'
-    axial_pos_shape: tuple of ints: input shape to use for the axial position
+    pos_type: string, the type of positional embeddings to use.
+    pos_axial_shape: tuple of ints: input shape to use for the axial position
       encoding. If unset, axial position encoding is disabled.
-    d_axial_pos_embs: tuple of ints: depth of position embedding for each axis.
-      Tuple length must match axial_pos_shape, and values must sum to d_model.
+    pos_d_axial_embs: tuple of ints: depth of position embedding for each axis.
+      Tuple length must match pos_axial_shape, and values must sum to d_model.
     ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
     ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
@@ -496,8 +502,9 @@ def Reformer(input_vocab_size,
           [-2],  # dropout_shared_axes
           max_len,
           output_vocab_size=output_vocab_size,
-          axial_pos_shape=axial_pos_shape,
-          d_axial_pos_embs=d_axial_pos_embs)
+          pos_type=pos_type,
+          pos_axial_shape=pos_axial_shape,
+          pos_d_axial_embs=pos_d_axial_embs)
   )
 
   # pylint: disable=g-complex-comprehension
@@ -570,8 +577,9 @@ def Reformer2(input_vocab_size,
               max_len=2048,
               encoder_attention_type=tl.SelfAttention,
               encoder_decoder_attention_type=tl.SelfAttention,
-              axial_pos_shape='fixed-base',
-              d_axial_pos_embs=None,
+              pos_type='fixed-base',
+              pos_axial_shape=(),
+              pos_d_axial_embs=None,
               ff_activation=tl.Relu,
               ff_use_sru=0,
               ff_chunk_size=0,
@@ -611,10 +619,11 @@ def Reformer2(input_vocab_size,
     encoder_attention_type: class: attention class to use, such as SelfAttention
     encoder_decoder_attention_type: class: attention class to use, such as
       SelfAttention
-    axial_pos_shape: tuple of ints: input shape to use for the axial position
+    pos_type: string, the type of positional embeddings to use.
+    pos_axial_shape: tuple of ints: input shape to use for the axial position
       encoding. If unset, axial position encoding is disabled.
-    d_axial_pos_embs: tuple of ints: depth of position embedding for each axis.
-      Tuple length must match axial_pos_shape, and values must sum to d_model.
+    pos_d_axial_embs: tuple of ints: depth of position embedding for each axis.
+      Tuple length must match pos_axial_shape, and values must sum to d_model.
     ff_activation: the non-linearity in feed-forward layer
     ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
@@ -660,8 +669,9 @@ def Reformer2(input_vocab_size,
           [-2],  # dropout_shared_axes
           max_len,
           output_vocab_size=output_vocab_size,
-          axial_pos_shape=axial_pos_shape,
-          d_axial_pos_embs=d_axial_pos_embs,
+          pos_type=pos_type,
+          pos_axial_shape=pos_axial_shape,
+          pos_d_axial_embs=pos_d_axial_embs,
           use_bfloat16=use_bfloat16)
   )
 

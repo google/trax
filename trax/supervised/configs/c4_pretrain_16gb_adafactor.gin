@@ -147,4 +147,4 @@ Reformer2.d_attention_value = %attn_kv  # d_model // n_heads
 Reformer2.encoder_attention_type = %enc_attn_type
 Reformer2.encoder_decoder_attention_type = %dec_attn_type
 Reformer2.n_layers_forget = 0
-Reformer2.axial_pos_shape = None
+Reformer2.pos_type = None
