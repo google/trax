@@ -15,7 +15,7 @@
 # -*-Python-*-
 
 import trax.data.tf_inputs
-include 'transformer_c4_pretrain_16gb_adafactor.gin'
+include 'c4_pretrain_16gb_adafactor.gin'
 
 
 # Parameters for train:
