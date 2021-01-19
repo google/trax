@@ -401,6 +401,41 @@ def SmoothL1Loss():
   return base.Fn('SmoothL1Loss', f)
 
 
+def MacroAveragedFScore(beta=1., initial_category_index=0):
+  r"""Returns a layer that computes a macro-averaged F-score.
+
+  Args:
+    beta: a parameter that determines the weight of recall in the F-score.
+    initial_category_index: an index of the initial category.
+
+  The layer takes two inputs:
+
+    - Model output from one batch, an ndarray of float-valued elements.
+
+    - A batch of element-wise target values, which matches the shape of the
+      model output.
+
+  The layer returns an macro-averaged F-score across all the classes.
+  """
+  def f(model_output, targets):  # pylint: disable=invalid-name
+    def non_nan(x):
+      return jnp.where(jnp.isnan(x), 0., x)
+
+    beta2 = beta ** 2
+    predictions = jnp.argmax(model_output, axis=-1)
+    n_categories = model_output.shape[-1]
+    f_scores = jnp.empty(0)
+    for k in range(initial_category_index, n_categories):
+      n_correct = sum((predictions == k) & (targets == k))
+      precision = non_nan(n_correct / sum(predictions == k))
+      recall = non_nan(n_correct / sum(targets == k))
+      f_score = non_nan((beta2 + 1) * (precision * recall) / ((beta2 * precision) + recall))
+      f_scores = jnp.append(f_scores, f_score)
+    return jnp.mean(f_scores)
+
+  return base.Fn("MacroAveragedFScore", f)
+
+
 def WeightedSum():
   """Returns a layer that computes a weighted sum of the given values."""
   def f(values, weights):  # pylint: disable=invalid-name
