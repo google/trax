@@ -95,6 +95,29 @@ class MetricsTest(absltest.TestCase):
     loss = layer([model_outputs, targets])
     self.assertAlmostEqual(loss, .333, places=3)
 
+  def test_category_cross_entropy_with_label_smoothing(self):
+    epsilon = 0.01
+    layer = tl.CategoryCrossEntropy(label_smoothing=epsilon)
+    targets = np.array([0, 1])
+
+    # Near-perfect prediction (for both items in batch).
+    model_outputs = np.array([[9., 2., 0., -2.],
+                              [2., 9., 0., -2.]])
+    loss = layer([model_outputs, targets])
+    self.assertAlmostEqual(loss, .069, places=3)
+
+    # More right than wrong (for both items in batch).
+    model_outputs = np.array([[2.2, 2., 0., -2.],
+                              [2., 2.2, 0., -2.]])
+    loss = layer([model_outputs, targets])
+    self.assertAlmostEqual(loss, .682, places=3)
+
+    # First item near perfect, second item more right than wrong.
+    model_outputs = np.array([[9., 2., 0., -2.],
+                              [2., 2.2, 0., -2.]])
+    loss = layer([model_outputs, targets])
+    self.assertAlmostEqual(loss, .375, places=3)
+
   def test_weighted_category_cross_entropy(self):
     layer = tl.WeightedCategoryCrossEntropy()
     targets = np.array([0, 1])
@@ -117,6 +140,30 @@ class MetricsTest(absltest.TestCase):
                               [2., 2.2, 0., -2.]])
     loss = layer([model_outputs, targets, weights])
     self.assertAlmostEqual(loss, .167, places=3)
+
+  def test_weighted_category_cross_entropy_with_label_smoothing(self):
+    epsilon = 0.01
+    layer = tl.WeightedCategoryCrossEntropy(label_smoothing=epsilon)
+    targets = np.array([0, 1])
+    weights = np.array([30, 10])
+
+    # Near-perfect prediction (for both items in batch).
+    model_outputs = np.array([[9., 2., 0., -2.],
+                              [2., 9., 0., -2.]])
+    loss = layer([model_outputs, targets, weights])
+    self.assertAlmostEqual(loss, .069, places=3)
+
+    # More right than wrong (for both items in batch).
+    model_outputs = np.array([[2.2, 2., 0., -2.],
+                              [2., 2.2, 0., -2.]])
+    loss = layer([model_outputs, targets, weights])
+    self.assertAlmostEqual(loss, .682, places=3)
+
+    # First item (with 75% weight) near perfect, second more right than wrong.
+    model_outputs = np.array([[9., 2., 0., -2.],
+                              [2., 2.2, 0., -2.]])
+    loss = layer([model_outputs, targets, weights])
+    self.assertAlmostEqual(loss, .222, places=3)
 
   def test_masked_sequence_accuracy(self):
     layer = tl.MaskedSequenceAccuracy()

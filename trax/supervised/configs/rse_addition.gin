@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import trax.layers
 import trax.models
 import trax.optimizers
 import trax.data.inputs
@@ -19,6 +20,9 @@ import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
 vocab_size = 5  #  For arithmetic operations, base = vocab_size - 3.
+
+Adam = @trax.optimizers.Adam
+Adafactor = @trax.optimizers.Adafactor
 
 # Parameters for addition_inputs:
 # ==============================================================================
@@ -44,11 +48,17 @@ ResidualShuffleExchange.dropout = 0.05
 ResidualShuffleExchange.mode = 'train'
 ResidualShuffleExchange.n_blocks = 2
 
+# Parameters for loss:
+# ==============================================================================
+WeightedCategoryCrossEntropy.label_smoothing = None
+
 # Parameters for train:
 # ==============================================================================
 train.inputs = @trax.data.inputs.addition_inputs
 train.eval_frequency = 1000
 train.eval_steps = 50
-train.optimizer = @trax.optimizers.Adam
+train.optimizer = %Adam
+train.loss_fn = @trax.layers.WeightedCategoryCrossEntropy()
 train.steps = 30000
 train.model = @trax.models.ResidualShuffleExchange
+train.checkpoint_highest = 'accuracy'

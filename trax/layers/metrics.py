@@ -114,7 +114,7 @@ def WeightedCategoryAccuracy():
   return base.Fn('WeightedCategoryAccuracy', f)
 
 
-def CategoryCrossEntropy():
+def CategoryCrossEntropy(label_smoothing=None):
   r"""Returns a layer that computes cross-entropy from activations and integers.
 
   The layer takes two inputs:
@@ -133,7 +133,9 @@ def CategoryCrossEntropy():
 
     - from model output (vectors): :math:`\ q = \text{softmax}(v)`
 
-    - from target categories (integers): :math:`\ p = \text{one_hot}(n)`
+    - from target categories (integers): :math:`\ p = \text{one_hot}(n)` or
+      :math:`p = (1-\varepsilon)\cdot\text{one_hot}(n) + \frac{\varepsilon}{N}`,
+      where :math:`\varepsilon` is the label smoothing factor.
 
   (The conversion of integer category targets to one-hot vectors amounts to
   assigning all the probability mass to the target category.) Cross-entropy
@@ -144,15 +146,19 @@ def CategoryCrossEntropy():
 
   The layer returns the average of these cross-entropy values over all items in
   the batch.
+
+  Args:
+    label_smoothing: Creates soft targets if provided. Must be between 0 and 1.
   """
   def f(model_output, targets):  # pylint: disable=invalid-name
-    cross_entropies = _category_cross_entropy(model_output, targets)
+    cross_entropies = _category_cross_entropy(
+        model_output, targets, label_smoothing)
     return jnp.average(cross_entropies)
 
   return base.Fn('CategoryCrossEntropy', f)
 
 
-def WeightedCategoryCrossEntropy():
+def WeightedCategoryCrossEntropy(label_smoothing=None):
   r"""Returns a layer like ``CategoryCrossEntropy``, with weights as third input.
 
   The layer takes three inputs:
@@ -173,9 +179,13 @@ def WeightedCategoryCrossEntropy():
 
   The layer returns the weighted average of these cross-entropy values over all
   items in the batch.
+
+  Args:
+    label_smoothing: Creates soft targets if provided. Must be between 0 and 1.
   """
   def f(model_output, targets, weights):  # pylint: disable=invalid-name
-    cross_entropies = _category_cross_entropy(model_output, targets)
+    cross_entropies = _category_cross_entropy(
+        model_output, targets, label_smoothing)
     return jnp.sum(cross_entropies * weights) / jnp.sum(weights)
 
   return base.Fn('WeightedCategoryCrossEntropy', f)
@@ -469,7 +479,16 @@ def _WeightedSequenceMean():
   return base.Fn('_WeightedSequenceMean', f)
 
 
-def _category_cross_entropy(model_output, targets):  # pylint: disable=invalid-name
-  target_distributions = core.one_hot(targets, model_output.shape[-1])
+def _category_cross_entropy(  # pylint: disable=invalid-name
+    model_output, targets, label_smoothing):
+  """Computes category cross entropy with label smoothing."""
+  n_categories = model_output.shape[-1]
+  target_distributions = core.one_hot(targets, n_categories)
+  if label_smoothing:
+    if label_smoothing < 0. or label_smoothing > 1.:
+      raise ValueError(
+          f'Arg label_smoothing ({label_smoothing}) must be between 0 and 1.')
+    target_distributions *= (1. - label_smoothing)
+    target_distributions += label_smoothing / n_categories
   model_log_distributions = core.log_softmax(model_output)
   return - jnp.sum(target_distributions * model_log_distributions, axis=-1)
