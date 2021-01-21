@@ -17,6 +17,7 @@
 """Accelerate layer that allows for fast computation on accelerators."""
 
 import jax
+import numpy as np
 from trax import fastmath
 from trax.fastmath import numpy as jnp
 from trax.layers import base
@@ -210,7 +211,7 @@ def _accelerate(f, n_devices):
   return fastmath.pmap(f, axis_name='batch')
 
 
-def reshape_by_device(x, n_devices):
+def reshape_by_device(x, n_devices, pure_np=False):
   """Reshapes possibly nested `x` into a shape `(n_devices, ...)`."""
   def f(x):
     x_shape = list(x.shape)
@@ -220,7 +221,10 @@ def reshape_by_device(x, n_devices):
       raise ValueError(f'Number of devices ({n_devices}) does not evenly '
                        f'divide batch size ({batch_size}).')
     new_shape_prefix = [n_devices, batch_size_per_device]
-    return jnp.reshape(x, new_shape_prefix + x_shape[1:])
+    if pure_np:
+      return np.reshape(x, new_shape_prefix + x_shape[1:])
+    else:
+      return jnp.reshape(x, new_shape_prefix + x_shape[1:])
   return fastmath.nested_map(f, x)
 
 

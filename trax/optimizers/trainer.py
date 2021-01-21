@@ -256,6 +256,7 @@ class ReversibleSerialTrainer:
     self._n_devices = n_devices or fastmath.device_count()
     self._n_layers = 1 + sum([len(revs) + 1 for (_, revs) in self._blocks])
     self._n_steps_per_log = 100  # Log layers and stats every 100 steps.
+    self._n_async_layers = 1  # How many layers to run asynchronously.
     self._jit_memory = {} if memoize_jit else None
     self._jit_per_device_rngs = fastmath.jit(
         self._per_device_rngs, backend='cpu')
@@ -362,6 +363,16 @@ class ReversibleSerialTrainer:
       return tl.on_cpu(x)
     return tl.on_cpu(fastmath.nested_map(lambda x: x[0], x))
 
+  def _lazy_unreplicate(self, x):
+    def unreplicate_and_start_async_copy(y):
+      unreplicated = y if self._n_devices == 1 else y[0]
+      unreplicated.copy_to_host_async()
+      return unreplicated
+    return fastmath.nested_map(unreplicate_and_start_async_copy, x)
+
+  def _collect_weights(self, layer):
+    layer.weights = fastmath.nested_map(np.asarray, layer.weights)
+
   def _per_device_rngs(self, rng):
     """Create per-device RNGs from a given rng."""
     # Splitting by device first to be identical with default trainer.
@@ -400,7 +411,7 @@ class ReversibleSerialTrainer:
     # broadcasts/replicates to n_devices dimension.
     step_int = step
     if self._n_devices > 1:
-      batch = tl.reshape_by_device(batch, self._n_devices)
+      batch = tl.reshape_by_device(batch, self._n_devices, pure_np=True)
       step = np.repeat(step, self._n_devices)
 
     # Create separate rng for each device and layer.
@@ -447,6 +458,7 @@ class ReversibleSerialTrainer:
         None, step, self._loss_layer, loss_inputs,
         loss_state, self._loss_fbo, rngs[-1], self._loss_opt,
         self._replicated_loss_opt_params)
+    self._collect_weights(self._loss_layer)
     stats = [loss_stats]
 
     # Run the layers backward and run optimizer updates.
@@ -475,6 +487,11 @@ class ReversibleSerialTrainer:
       stack = cb.outputs_onto_stack(  # Put layer inputs on the stack.
           std_inputs, stack, std_layer.n_out)
       stats.append(std_layer_stats)
+
+      # Collect lazily unreplicated layer weights.
+      for rev_layer_id in range(self._n_async_layers):
+        self._collect_weights(rev_layers[rev_layer_id])
+      self._collect_weights(std_layer)
 
     # Join stats from different optimizers into one.
     joint_stats = {}
@@ -526,7 +543,7 @@ class ReversibleSerialTrainer:
     weights = self._replicate(layer.weights)
     new_weights, new_state, new_slots, new_grads, stats = fbo_fn(
         inp, weights, grads, state, slots, replicated_opt_params, rng, step)
-    layer.weights = self._unreplicate(new_weights)
+    layer.weights = self._lazy_unreplicate(new_weights)
     layer.state = self._unreplicate(new_state)
     optimizer.slots = self._unreplicate(new_slots)
     if grad_stack is not None:
@@ -553,6 +570,8 @@ class ReversibleSerialTrainer:
           layer, stack, grad_stack, step, rng, optimizers[counter],
           replicated_opt_params[counter], reverse_and_fbo, old_state, new_state)
       stats.append(layer_stats)
+      if counter + self._n_async_layers < 0:
+        self._collect_weights(rev_layers[counter + self._n_async_layers])
     return stack, grad_stack, stats
 
   def _run_backward_one_reversible(self, layer, stack, grad_stack, step, rng,
@@ -567,7 +586,7 @@ class ReversibleSerialTrainer:
     new_weights, new_slots, inputs, grads, layer_stats = reverse_and_fbo(
         outputs, weights, grads, old_state, new_state,
         slots, opt_params, rng, step)
-    layer.weights = self._unreplicate(new_weights)  # accelerator -> cpu
+    layer.weights = self._lazy_unreplicate(new_weights)  # accelerator -> cpu
     layer.state = self._unreplicate(new_state)
     optimizer.slots = self._unreplicate(new_slots)
     stack = cb.outputs_onto_stack(inputs, stack, layer.n_out)

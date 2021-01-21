@@ -273,6 +273,49 @@ class TrainerTest(absltest.TestCase):
       self.assertLess(float(loss.sum()), 10000.0)  # Just to get the loss.
       print('Took %.3f seconds to run, loss %s' % (time.time() - t, loss))
 
+  def test_run_reversible_weights_trainsfer_xprof(self):
+    """Runs the reversible trainer and profiles weight transfer stats."""
+    run_this_test = False  # We only run this test manually.
+    if fastmath.device_count() == 1 and run_this_test:  # TPU only
+      return
+
+    # Create inputs and rngs.
+    inputs_batch = np.ones((1024, 128), dtype=np.int32)
+    targets_batch = inputs_batch
+    labeled_batch = (inputs_batch, targets_batch, np.ones_like(targets_batch))
+    first_layer = tl.Serial(tl.Embedding(4, 1024), tl.Dup())
+    rng_init = fastmath.random.get_prng(12)
+    rng_step = fastmath.random.get_prng(13)
+
+    # Initialize layers.
+    first_layer.init(labeled_batch, rng=rng_init)
+    n_layers = 6
+    rev_layers = []
+    int_shape = shapes.ShapeDtype((1024, 128), dtype=np.int32)
+    shape = shapes.ShapeDtype((1024, 128, 1024))
+    sig = (shape, shape)
+    for _ in range(n_layers):
+      layer = tl.ReversibleHalfResidual(tl.Dense(1024))
+      layer.init(sig, rng=rng_init)
+      layer.weights = tl.on_cpu(layer.weights)  # store weights in cpu memory
+      rev_layers.append(layer)
+      rev_layers.append(tl.ReversibleSwap())
+    loss_layer = tl.Serial(tl.Concatenate(), tl.Dense(9),
+                           tl.LogSoftmax(), tl.CrossEntropyLoss())
+    loss_layer.init((shape, shape, int_shape, int_shape))
+    optimizer_fn = optimizers.SGD
+
+    # Make a step with reversible trainer.
+    trainer = optimizers.ReversibleSerialTrainer(
+        [(first_layer, rev_layers)], loss_layer, optimizer_fn)
+    loss, _ = trainer.one_step(labeled_batch, rng_step)
+    self.assertLess(float(loss.sum()), 10000.0)  # Just to get the loss.
+    # We profile here.
+    t = time.time()
+    loss, _ = trainer.one_step(labeled_batch, rng_step)
+    self.assertLess(float(loss.sum()), 10000.0)  # Just to get the loss.
+    print('Took %.3f seconds to run, loss %s' % (time.time() - t, loss))
+
 
 if __name__ == '__main__':
   config.config_with_absl()
