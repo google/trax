@@ -827,6 +827,13 @@ class SparseFF(base.Layer):
     if self._mode != 'predict':
       w1 = jnp.reshape(w1.T, (-1, self._d_ff))
       w2 = jnp.reshape(w2, (self._d_ff, -1))
+    else:
+      # This is a work-around of a bug in the previous if statement, which makes
+      # w1 array shuffled. Fixing it properly would invalidate previous
+      # checkpoints, so this is a temporary work-around.
+      w1 = jnp.transpose(w1, (1, 0, 2))
+      w1 = jnp.reshape(w1, (self._d1, self._d2, -1))
+
     x_shape = x.shape
     x = jnp.reshape(x, [-1, x_shape[-1]])  # Easier to operate on flattened x.
 
@@ -865,7 +872,7 @@ class SparseFF(base.Layer):
       # size of joint_batch, but at inference that will be 1 most of the time.
       # Shapes:
       # quant_mask is [joint_batch, self._d1]
-      # w1 is [d_model, self._d1, self._d2]
+      # w1 is [self._d1, self._d2, d_model]
       # we'll index w1 with advanced numpy indexing, first range over
       # self._d1 times the batch size, second range being quant_mask
       batch_size = quant_mask.shape[0]
