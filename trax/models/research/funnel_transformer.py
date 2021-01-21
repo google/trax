@@ -525,6 +525,7 @@ def _FunnelRelativeDecoderBlock(shorten_factor, d_model, d_ff, n_heads,
         tl.Dense(shorten_factor * d_model),
         tl.Fn('ProlongBack', lambda x: jnp.reshape(  # Prolong back.
             x, (x.shape[0], x.shape[1] * shorten_factor, -1)), n_out=1),
+        tl.LayerNorm()
     )
   else:
     funnel_upsampling_downsampling = tl.Serial(
@@ -544,11 +545,8 @@ def _FunnelRelativeDecoderBlock(shorten_factor, d_model, d_ff, n_heads,
       rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
 
   return [
+      tl.LayerNorm(),  # h
       tl.Branch(funnel_upsampling_downsampling, None),  # h', h
-      tl.Parallel(
-          tl.LayerNorm(),
-          tl.LayerNorm()
-      ),
       tl.Residual(
           tl.Select([0, 1, 1]),  # h', h, h
           attention,
@@ -640,7 +638,7 @@ def FunnelTransformerLM(vocab_size,
   total_pooling_acc = 1
   pre_decoder_blocks = create_decoder_blocks(n_pre_decoder_blocks,
                                              total_pooling_acc)
-  
+
   total_shorten_factor = functools.reduce(lambda x, y: x * y, shorten_factors)
 
   funnel_blocks = []
@@ -666,7 +664,7 @@ def FunnelTransformerLM(vocab_size,
       separate_cls=separate_cls,
       context_bias_layer=context_bias_layer,
       location_bias_layer=location_bias_layer,
-      total_pooling=total_pooling_acc,
+      total_pooling=total_shorten_factor,
       upsampling=True)
 
   conv_layer = tl.Serial(
@@ -691,6 +689,5 @@ def FunnelTransformerLM(vocab_size,
       tl.Concatenate(),
       conv_layer,
       post_decoder_blocks,
-      tl.LayerNorm(),
       tl.Dense(vocab_size),  # vecs
   )
