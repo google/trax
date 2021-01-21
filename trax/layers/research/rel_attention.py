@@ -40,24 +40,38 @@ from trax.layers.attention import SplitIntoHeads, MergeHeads
 
 @assert_shape('bSq,blk,blv,b1xl->bSd,b1xl')
 def RelativeAttentionLayer(d_feature, context_bias_layer, location_bias_layer,
-                           separate_cls, total_pooling,
+                           separate_cls, total_kv_pooling,
                            n_heads=1, dropout=0.0, mode='train'):
-  """Returns a layer that maps (q, k, v, mask) to (activations, mask).
-  See Transformer XL paper for further context/details.
+  """Returns a layer that maps (q, k, v, masks) to (activations, masks).
+  For number of keys being smaller than number of queries layer works in O(q^2*d).
+  Otherwise it is O(q*k*d). That is because we need to shift relative distances
+  by a fraction of 1 / current_upsampling_rate.
+  Visual explanation:
+  [01][23][45][67] -> [0][1][2][3][4][5][6][7]
+  For token [0] we calculate relative distances as follows:
+  * 0 2 4 6
+  However for token [1] we need relative distances changed by 1, more specifically:
+  * -1 1 3 5
+  So we not only need calculate the distances that corresponds to spacing between
+  the keys but also for the ones in between because there are more than one query
+  tokens for single key token.
   Args:
     d_feature: Depth/dimensionality of feature embedding.
     context_bias_layer: Global context bias from Transformer XL's attention.
+      !!! There should be one such layer shared for all relative attention layers.
     location_bias_layer: Global location bias from Transformer XL's attention.
+      !!! There should be one such layer shared for all relative attention layers.
     separate_cls: True/False if we separate_cls in calculations.
-    total_pooling: The combined pool size of previously used funnel blocks.
+    total_kv_pooling: Accumulated pool size of keys/values used at this layer
     n_heads: Number of attention heads.
     dropout: Probabilistic rate for internal dropout applied to attention
         activations (based on query-key pairs) before dotting them with values.
     mode: One of `'train'`, `'eval'`, or `'predict'`.
   """
+
   return cb.Serial(
       cb.Branch(
-          PositionalEmbeddings(d_feature, separate_cls, total_pooling),
+          PositionalEmbeddings(d_feature, separate_cls, total_kv_pooling),
           cb.Select([0]),
           cb.Select([1])
       ),
@@ -73,6 +87,39 @@ def RelativeAttentionLayer(d_feature, context_bias_layer, location_bias_layer,
           separate_cls=separate_cls, n_heads=n_heads,
           dropout=dropout, mode=mode),
       core.Dense(d_feature),
+  )
+
+
+@assert_shape('bSq,blk,blv->bSd')
+def RelativeAttentionLMLayer(d_feature, context_bias_layer, location_bias_layer,
+                             separate_cls, total_kv_pooling,
+                             n_heads=1, dropout=0.0, mode='train'):
+  """Returns a layer that maps (q, k, v) to (activations).
+  Same as standard Relative attention layer but additionally based on sizes
+  of queries and keys prepares a mask that masks out the future.
+  Masking the future is the concept primarily used for Language Modelling.
+  Args:
+    d_feature: Depth/dimensionality of feature embedding.
+    context_bias_layer: Global context bias from Transformer XL's attention.
+      !!! There should be one such layer shared for all relative attention layers.
+    location_bias_layer: Global location bias from Transformer XL's attention.
+      !!! There should be one such layer shared for all relative attention layers.
+    separate_cls: True/False if we separate_cls in calculations.
+    total_kv_pooling: Accumulated pool size of keys/values used at this layer
+    n_heads: Number of attention heads.
+    dropout: Probabilistic rate for internal dropout applied to attention
+        activations (based on query-key pairs) before dotting them with values.
+    mode: One of `'train'`, `'eval'`, or `'predict'`.
+  """
+
+  attention = RelativeAttentionLayer(
+      d_feature, context_bias_layer, location_bias_layer, separate_cls,
+      total_kv_pooling, n_heads=n_heads, dropout=dropout, mode=mode)
+
+  return cb.Serial(
+      CreateAttentionMaskLayer(),  # q, k, v, mask
+      attention,  # vecs, mask
+      cb.Select([0], n_in=2),  # vecs
   )
 
 
@@ -165,11 +212,12 @@ def DotProductAttention(queries, keys, values, pos_emb, context_bias,
       sum of per-head values.
     """
   d_feature = queries.shape[-1]
-  funnels_shift = keys.shape[-2] // queries.shape[-2]
+  keys_len, queries_len = keys.shape[-2], queries.shape[-2]
+  funnel_factor, upsampling = calc_funnel_ratio(keys_len, queries_len)
 
   ac = jnp.einsum('bnid,bnjd->bnij', queries + context_bias, keys)
   bd = jnp.einsum('bnid,jnd->bnij', queries + location_bias, pos_emb)
-  bd = _fast_matrix_shift(bd, shift=funnels_shift)
+  bd = _fast_matrix_shift(bd, funnel_factor, upsampling=upsampling)
 
   if separate_cls:
     # Masking out location part of attention for cls token
@@ -204,8 +252,16 @@ def PositionalEmbeddings(d_feature, separate_cls, total_pooling):
 
   def CalculatePositionalEmbeddings(queries, keys):
     is_funnel_layer = queries.shape != keys.shape
-    keys_len = keys.shape[1]
-    positions = np.arange(-keys_len + 1, keys_len, 1.0) * total_pooling
+    keys_len, queries_len = keys.shape[1], queries.shape[1]
+    current_pooling_ratio = keys_len // queries_len
+
+    # Special case of upsampling
+    if is_funnel_layer and current_pooling_ratio < 1:
+      assert separate_cls is False  # TODO
+      positions = np.arange(-queries_len + 1, queries_len, 1.0) * \
+                  (total_pooling * current_pooling_ratio)
+    else:
+      positions = np.arange(-keys_len + 1, keys_len, 1.0) * total_pooling
 
     if is_funnel_layer and separate_cls:
       # For pool_size 2 without separating cls we have got
@@ -216,8 +272,7 @@ def PositionalEmbeddings(d_feature, separate_cls, total_pooling):
       # First group always will always consist of one token after pooling
       # instead of (pool_size) tokens. We need to add proper offset so
       # that our shift later on in calculating attention works properly
-      single_pooling_ratio = keys.shape[1] // queries.shape[1]
-      cls_offset = (single_pooling_ratio - 1) * total_pooling
+      cls_offset = (current_pooling_ratio - 1) * total_pooling
       positions = positions + cls_offset
 
     return encode_sequence(positions)
@@ -233,9 +288,30 @@ def PositionalEmbeddings(d_feature, separate_cls, total_pooling):
                n_out=1)
 
 
-def _fast_matrix_shift(x, shift):
+def calc_funnel_ratio(keys_len, queries_len):
+  # Upsampling
+  if queries_len > keys_len:
+    assert queries_len % keys_len == 0
+    funnel_factor = queries_len // keys_len
+    upsampling = True
+  else:
+    assert keys_len % queries_len == 0
+    funnel_factor = keys_len // queries_len
+    upsampling = False
+
+  return funnel_factor, upsampling
+
+
+def _fast_matrix_shift(x, funnel_factor, upsampling=False):
   # This function shifts i-th row by i * shift elements to the left.
   # It implements necessary shift for relative positional attention calculation.
+
+  if upsampling is True:
+    interval = funnel_factor
+    shift = 1
+  else:
+    interval = 1
+    shift = funnel_factor
 
   bsz, n_head = x.shape[0], x.shape[1]
   qlen, klen = x.shape[2], (x.shape[3] + 1) // 2
@@ -245,8 +321,95 @@ def _fast_matrix_shift(x, shift):
   x = x.reshape(bsz, n_head, 2 * klen - 1 + shift, qlen)
   x = x[:, :, shift:, :]
   x = x.reshape(bsz, n_head, qlen, klen * 2 - 1)
-  x = x[:, :, :, shift - 1: shift - 1 + klen]
+  x = x[:, :, :, shift - 1: shift - 1 + klen: interval]
   return x
+
+
+@assert_shape('bqd,bkd,bvd->bqd,bkd,bvd,b1qk')
+def CreateAttentionMaskLayer():
+  """Returns a layer that based of queries and keys and a combined pool size
+     before in the funnel transformer computes positional embeddings for
+     causal relative attention calculations.
+
+     Takes q, k, v and appends proper mask in the end.
+
+     Causal attention uses masking to prevent a given sequence position from
+     attending to positions greater than / following it. This is used, for
+     example, when training autoregressive sequence models, or when decoding a
+     sequence symbol by symbol.
+  """
+
+  def calculate_mask(queries, keys):
+    batch_size = queries.shape[0]
+    keys_len, queries_len = keys.shape[-2], queries.shape[-2]
+    funnel_factor, upsampling = calc_funnel_ratio(keys_len, queries_len)
+
+    return _funnel_mask(batch_size, keys_len, queries_len, funnel_factor,
+                        upsampling)
+
+  def _funnel_mask(batch_size, keys_len, queries_len, funnel_factor,
+                   upsampling=False):
+    """
+    Given function based on shorten factor argument creates a triangle
+    mask that prevents tokens from attending to positions following it.
+
+    If funnel_factor is not equal to 1 due to funnel downsampling or
+    downsampling it adjusts created mask for funnel attention
+    by repeating each element funnel_factor times.
+
+    This is because after funnel layer one token attends to funnel_factor
+    different embeddings.
+    """
+    numpy_ = jnp if fastmath.is_backend(fastmath.Backend.JAX) else np
+
+    if funnel_factor != 1:
+      if upsampling is False:
+        mask = numpy_.tril(numpy_.ones((queries_len, queries_len),
+                                       dtype=np.bool_))
+        mask = numpy_.repeat(mask, funnel_factor, axis=-1)
+      else:
+        mask = numpy_.tril(numpy_.ones((keys_len, keys_len),
+                                       dtype=np.bool_))
+        mask = numpy_.repeat(mask, funnel_factor, axis=-2)
+    else:
+      mask = numpy_.tril(numpy_.ones((queries_len, queries_len),
+                                     dtype=np.bool_))
+
+    return numpy_.repeat(mask[None, None, :, :], batch_size, axis=0)
+
+  return cb.Branch(
+      cb.Select([0]),
+      cb.Select([1]),
+      cb.Select([2]),
+      cb.Fn('create attention mask layer', calculate_mask, n_out=1)
+  )
+
+
+def ZeroPadding(n_positions, embedding_layer, axis=1):
+  """
+  Instead of standard zero padding this layer pads tokens with
+  trainable embeddings for zero tokens.
+  """
+
+  def create_zero_pad(vecs):
+    input_shape = np.array(vecs.shape)[:-1]  # cut embeddings
+    input_shape[axis] = n_positions
+    padding = np.zeros(input_shape, dtype=np.int)
+    return padding
+
+  def cut_vecs(vecs):
+    return vecs[:, :-n_positions, :]
+
+  return cb.Serial(
+      cb.Branch(
+          cb.Serial(
+              cb.Fn('Create zero padding', create_zero_pad, n_out=1),
+              embedding_layer
+          ),
+          cb.Fn('Cut vecs', cut_vecs, n_out=1),
+      ),
+      cb.Concatenate(axis=axis)
+  ),
 
 
 @assert_shape('...d->...d')
