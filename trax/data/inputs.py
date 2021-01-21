@@ -1037,6 +1037,10 @@ def addition_inputs(
       x = [i + 1 for i in inp]
       y = [i + 1 for i in tgt]
       weights = [1] * len(tgt)
+      candidate_example = (np.array(x), np.array(y), np.array(weights))
+      if any(len(sample) > max_length for sample in candidate_example):
+        # sample too long, try again
+        return single_example(max_length, min_length)
       return (np.array(x), np.array(y), np.array(weights))
     else:
       x = [base+2] + [i+1 for i in inp] + [base+2] + [i+1 for i in tgt]
@@ -1045,8 +1049,8 @@ def addition_inputs(
 
   def batches(max_length, min_length):
     """Batches of examples."""
-    if max_length < 3:
-      raise ValueError('Maximum length must be at least 3.')
+    if max_length < 3 or min_length < 3:
+      raise ValueError('Maximum/minimum length must be at least 3.')
     while True:
       ex = [single_example(max_length, min_length) for _ in range(batch_size)]
       padded_batch = [pad_to_max_dims(x, boundary=pad_to_multiple,

@@ -257,5 +257,71 @@ class InputsTest(parameterized.TestCase):
     self.assertEqual((2, 20), batches[0][0].shape)
     self.assertEqual((2, 20), batches[0][1].shape)
 
+  @parameterized.named_parameters(
+      ('encdec_on', True),
+      ('encdec_off', False),
+  )
+  def test_addition_inputs_exceptions(self, encdec):
+    vocab_size = 5
+    batch_size = 256
+    seq_length = 64
+    # Check if max/min lengths are validated for train stream
+    with self.assertRaises(ValueError):
+      inputs = data.inputs.addition_inputs(
+          vocab_size=vocab_size,
+          batch_size=batch_size,
+          train_length=2,
+          eval_min_length=1,
+          eval_max_length=seq_length,
+          pad_to_multiple=seq_length,
+          encdec=encdec)
+      train_stream = inputs.train_stream(n_devices=1)
+      for _ in range(10):
+        next(train_stream)
+
+    # Check if max/min lengths are validated for eval stream
+    with self.assertRaises(ValueError):
+      inputs = data.inputs.addition_inputs(
+          vocab_size=vocab_size,
+          batch_size=batch_size,
+          train_length=seq_length,
+          eval_min_length=1,
+          eval_max_length=seq_length,
+          pad_to_multiple=seq_length,
+          encdec=True)
+      eval_stream = inputs.eval_stream(n_devices=1)
+      for _ in range(10):
+        next(eval_stream)
+
+  def test_addition_inputs_constraints(self):
+    vocab_size = 5
+    batch_size = 256
+    seq_length = 64
+    inputs = data.inputs.addition_inputs(
+        vocab_size=vocab_size,
+        batch_size=batch_size,
+        train_length=seq_length,
+        eval_min_length=seq_length,
+        eval_max_length=seq_length,
+        pad_to_multiple=seq_length,
+        encdec=True)
+
+    # Check if max length is respected for train stream
+    train_stream = inputs.train_stream(n_devices=1)
+    for _ in range(10):
+      x, y, weights = next(train_stream)
+      self.assertEqual(x.shape[1], seq_length)
+      self.assertEqual(y.shape[1], seq_length)
+      self.assertEqual(weights.shape[1], seq_length)
+
+    # Check if max length is respected for eval stream
+    eval_stream = inputs.eval_stream(n_devices=1)
+    for _ in range(10):
+      x, y, weights = next(eval_stream)
+      self.assertEqual(x.shape[1], seq_length)
+      self.assertEqual(y.shape[1], seq_length)
+      self.assertEqual(weights.shape[1], seq_length)
+
+
 if __name__ == '__main__':
   absltest.main()
