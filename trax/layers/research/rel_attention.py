@@ -253,13 +253,14 @@ def PositionalEmbeddings(d_feature, separate_cls, total_pooling):
   def CalculatePositionalEmbeddings(queries, keys):
     is_funnel_layer = queries.shape != keys.shape
     keys_len, queries_len = keys.shape[1], queries.shape[1]
-    current_pooling_ratio = keys_len // queries_len
+    current_pooling_ratio = keys_len / queries_len
 
     # Special case of upsampling
     if is_funnel_layer and current_pooling_ratio < 1:
       assert separate_cls is False  # TODO
-      positions = np.arange(-queries_len + 1, queries_len, 1.0) * \
-                  (total_pooling * current_pooling_ratio)
+      multiplier = ((total_pooling * keys_len) // queries_len)
+      assert multiplier > 0
+      positions = np.arange(-queries_len + 1, queries_len, 1.0) * multiplier
     else:
       positions = np.arange(-keys_len + 1, keys_len, 1.0) * total_pooling
 
