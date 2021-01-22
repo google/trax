@@ -622,9 +622,6 @@ def FunnelTransformerLM(vocab_size,
   n_pre_decoder_blocks, n_post_decoder_blocks = vanilla_layers
 
   def create_decoder_blocks(n_layers, total_pooling):
-    if n_layers == 0:
-      return []
-
     decoder_blocks = [
         # pylint: disable=g-complex-comprehension
         _RelativeDecoderBlock(d_model, d_ff, n_heads, dropout,
