@@ -448,7 +448,8 @@ class PositionalEncoding(base.Layer):
   """
 
   def __init__(self, max_len=2048, dropout=0.0, dropout_broadcast_dims=(-2,),
-               use_bfloat16=False, mode='train'):
+               use_bfloat16=False, start_from_zero_prob=1.0,
+               max_offset_to_add=0, mode='train'):
     """Creates a PositionalEncoding instance.
 
     Args:
@@ -459,6 +460,11 @@ class PositionalEncoding(base.Layer):
           broadcast rather than individually set at random.
       use_bfloat16: If `True`, use bfloat16 weights instead of the default
         float32; this can save memory but may (rarely) lead to numerical issues.
+      start_from_zero_prob: how often to start from 0 during training,
+          (if 1.0, we always start from position 0, if less, we randomize).
+      max_offset_to_add: maximum offset to add to the positions during training
+        when randomizing; this offset plus input length must still be less than
+        max_len for all training examples.
       mode: One of `'train'`, `'eval'`, or `'predict'`.
     """
     super().__init__()
@@ -471,6 +477,8 @@ class PositionalEncoding(base.Layer):
       self._dropout = 0.0
     self._dropout_broadcast_dims = dropout_broadcast_dims
     self._use_bfloat16 = use_bfloat16
+    self._start_from_zero_prob = start_from_zero_prob
+    self._max_offset_to_add = max_offset_to_add
     self._mode = mode
 
   def forward(self, inputs):
@@ -478,7 +486,16 @@ class PositionalEncoding(base.Layer):
     if self._mode != 'predict':
       x = inputs
       symbol_size = jnp.shape(x)[1]
-      px = self.weights[:, :symbol_size, :]
+      if self._mode != 'train' or self._start_from_zero_prob >= 1.0:
+        px = self.weights[:, :symbol_size, :]
+      else:
+        rng1, rng2 = fastmath.random.split(self.rng, 2)
+        start = fastmath.random.randint(rng1, (), 0, self._max_offset_to_add)
+        start_from_zero = fastmath.random.uniform(rng2, (), jnp.float32, 0, 1)
+        start = jnp.where(start_from_zero < self._start_from_zero_prob,
+                          jnp.zeros((), dtype=jnp.int32), start)
+        px = fastmath.dynamic_slice_in_dim(self.weights, start, symbol_size,
+                                           axis=1)
       if self._dropout == 0:
         return x + px
       else:

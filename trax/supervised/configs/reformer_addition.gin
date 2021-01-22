@@ -74,7 +74,7 @@ LSHSelfAttention.max_length_for_buckets = 1024
 ReformerLM.d_model = 256
 ReformerLM.d_ff = 512
 ReformerLM.dropout = 0.2
-ReformerLM.max_len = 256
+ReformerLM.max_len = 2048
 ReformerLM.n_heads = 4
 ReformerLM.n_layers = 8
 ReformerLM.ff_use_sru = 2
@@ -87,15 +87,17 @@ ReformerLM.vocab_size = %vocab_size
 Reformer2.d_model = 256
 Reformer2.d_ff = 512
 Reformer2.dropout = 0.3
-Reformer2.max_len = 256
+Reformer2.max_len = 2048
 Reformer2.n_heads = 4
 Reformer2.n_encoder_layers = 12
 Reformer2.n_decoder_layers = 4
-Reformer2.ff_use_sru = 2
+Reformer2.ff_use_sru = 1
 Reformer2.encoder_attention_type = @Attention
 Reformer2.encoder_decoder_attention_type = @CausalAttention
 Reformer2.input_vocab_size = %vocab_size
-Reformer2.pos_axial_shape  = 'fixed-base'
+Reformer2.pos_type = None
+Reformer2.pos_start_from_zero_prob = 0.95
+Reformer2.pos_max_offset_to_add = 300
 
 # Parameters for train:
 # ==============================================================================
@@ -104,5 +106,5 @@ train.inputs = @trax.data.inputs.addition_inputs
 train.eval_frequency = 1000
 train.eval_steps = 50
 train.optimizer = @trax.optimizers.Adafactor
-train.steps = 100000
+train.steps = 300000
 train.model = @trax.models.Reformer2

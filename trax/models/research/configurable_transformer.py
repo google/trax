@@ -145,6 +145,7 @@ def ApplyAttentionLayer(attention_type, d_model, n_heads, d_qk, d_v, causal,
 
 def PositionalEncoder(mode, dropout=None, max_len=None, pos_type=None,
                       pos_axial_shape=None, pos_d_axial_embs=None,
+                      pos_start_from_zero_prob=1.0, pos_max_offset_to_add=0,
                       use_bfloat16=False):
   """Returns the positional encoding layer depending on the arguments.
 
@@ -160,6 +161,11 @@ def PositionalEncoder(mode, dropout=None, max_len=None, pos_type=None,
       encoding. If unset, axial position encoding is disabled.
     pos_d_axial_embs: tuple of ints: depth of position embedding for each axis.
       Tuple length must match pos_axial_shape, and values must sum to d_model.
+    pos_start_from_zero_prob: how often to start from 0 during training,
+          (if 1.0, we always start from position 0, if less, we randomize).
+    pos_max_offset_to_add: maximum offset to add to positions during training
+        when randomizing; this offset plus input length must still be less than
+        max_len for all training examples.
     use_bfloat16: If `True`, use bfloat16 weights instead of the default
       float32; this can save memory but may (rarely) lead to numerical issues.
 
@@ -168,7 +174,9 @@ def PositionalEncoder(mode, dropout=None, max_len=None, pos_type=None,
   """
   if not pos_type:
     positional_encoding = tl.PositionalEncoding(
-        max_len=max_len, dropout=dropout, mode=mode, use_bfloat16=use_bfloat16)
+        max_len=max_len, dropout=dropout, use_bfloat16=use_bfloat16,
+        start_from_zero_prob=pos_start_from_zero_prob,
+        max_offset_to_add=pos_max_offset_to_add, mode=mode)
   elif pos_type == 'sin-cos':
     positional_encoding = tl.SinCosPositionalEncoding(mode=mode)
   elif pos_type == 'fixed-base':
@@ -199,6 +207,8 @@ def EmbeddingAndPositionalEncodings(input_vocab_size,
                                     pos_type=None,
                                     pos_axial_shape=None,
                                     pos_d_axial_embs=None,
+                                    pos_start_from_zero_prob=1.0,
+                                    pos_max_offset_to_add=0,
                                     use_bfloat16=False):
   """Returns the embedder and positional encoder.
 
@@ -226,6 +236,11 @@ def EmbeddingAndPositionalEncodings(input_vocab_size,
       encoding. If unset, axial position encoding is disabled.
     pos_d_axial_embs: tuple of ints: depth of position embedding for each axis.
       Tuple length must match pos_axial_shape, and values must sum to d_model.
+    pos_start_from_zero_prob: how often to start from 0 during training,
+          (if 1.0, we always start from position 0, if less, we randomize).
+    pos_max_offset_to_add: maximum offset to add to positions during training
+        when randomizing; this offset plus input length must still be less than
+        max_len for all training examples.
     use_bfloat16: If `True`, use bfloat16 weights instead of the default
       float32; this can save memory but may (rarely) lead to numerical issues.
 
@@ -257,6 +272,8 @@ def EmbeddingAndPositionalEncodings(input_vocab_size,
                         pos_type=pos_type,
                         pos_axial_shape=pos_axial_shape,
                         pos_d_axial_embs=pos_d_axial_embs,
+                        pos_start_from_zero_prob=pos_start_from_zero_prob,
+                        pos_max_offset_to_add=pos_max_offset_to_add,
                         use_bfloat16=use_bfloat16)
   ]
 
@@ -274,6 +291,8 @@ def EmbeddingAndPositionalEncodings(input_vocab_size,
                         pos_type=pos_type,
                         pos_axial_shape=pos_axial_shape,
                         pos_d_axial_embs=pos_d_axial_embs,
+                        pos_start_from_zero_prob=pos_start_from_zero_prob,
+                        pos_max_offset_to_add=pos_max_offset_to_add,
                         use_bfloat16=use_bfloat16)
   ]
 

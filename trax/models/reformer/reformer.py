@@ -580,6 +580,8 @@ def Reformer2(input_vocab_size,
               pos_type='fixed-base',
               pos_axial_shape=(),
               pos_d_axial_embs=None,
+              pos_start_from_zero_prob=1.0,
+              pos_max_offset_to_add=0,
               ff_activation=tl.Relu,
               ff_use_sru=0,
               ff_chunk_size=0,
@@ -624,6 +626,11 @@ def Reformer2(input_vocab_size,
       encoding. If unset, axial position encoding is disabled.
     pos_d_axial_embs: tuple of ints: depth of position embedding for each axis.
       Tuple length must match pos_axial_shape, and values must sum to d_model.
+    pos_start_from_zero_prob: how often to start from 0 during training,
+          (if 1.0, we always start from position 0, if less, we randomize).
+    pos_max_offset_to_add: maximum offset to add to positions during training
+        when randomizing; this offset plus input length must still be less than
+        max_len for all training examples.
     ff_activation: the non-linearity in feed-forward layer
     ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
@@ -672,6 +679,8 @@ def Reformer2(input_vocab_size,
           pos_type=pos_type,
           pos_axial_shape=pos_axial_shape,
           pos_d_axial_embs=pos_d_axial_embs,
+          pos_start_from_zero_prob=pos_start_from_zero_prob,
+          pos_max_offset_to_add=pos_max_offset_to_add,
           use_bfloat16=use_bfloat16)
   )
 
