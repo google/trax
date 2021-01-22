@@ -74,6 +74,22 @@ class DecodingTest(test.TestCase):
         predict_mem_len=1024,
     )
 
+  def _pure_lsh_self_attention_fn(self):
+    return functools.partial(
+        tl.PureLSHSelfAttentionWrapper,
+        attention_dropout=0.0,
+        chunk_len=16,
+        n_buckets=[32, 32],
+        n_chunks_after=0,
+        n_chunks_before=1,
+        n_hashes=2,
+        n_parallel_heads=1,
+        max_length_for_buckets=1024,
+        predict_drop_len=128,
+        predict_mem_len=1024,
+        pure_lsh_implementation=tl.PureLSHSelfAttention,
+    )
+
   def _timebin_self_attention_fn(self, use_reference_code=False, chunk_len=64):
     return functools.partial(
         tl.SelfAttention,
@@ -305,6 +321,80 @@ class DecodingTest(test.TestCase):
 
     np.testing.assert_equal(s[0], inputs[0, 1:inp_len-1])
     # pylint: enable=unreachable
+
+  def test_autoregressive_sample_reformer2_pure_lsh(self):
+    max_len = 128
+
+    pred_model = models.Reformer2(
+        mode='predict',
+        d_model=256,
+        d_ff=512,
+        dropout=0.05,
+        max_len=max_len,
+        n_heads=4,
+        n_encoder_layers=1,
+        n_decoder_layers=1,
+        ff_use_sru=1,
+        d_attention_key=64,
+        d_attention_value=64,
+        encoder_attention_type=self._pure_lsh_self_attention_fn(),
+        encoder_decoder_attention_type=self._pure_lsh_self_attention_fn(),
+        input_vocab_size=256,
+        pos_axial_shape=None,
+    )
+
+    shape11 = shapes.ShapeDtype((1, 1), dtype=np.int32)
+    shape1l = shapes.ShapeDtype((1, max_len), dtype=np.int32)
+    pred_model.init(input_signature=(shape1l, shape11))
+
+    # 0w0w
+    inputs = np.array(
+        [[0, 3, 7, 5, 3, 2, 4, 1, 8, 0, 3, 7, 5, 3, 2, 4, 1, 8]],
+        dtype=np.int32)
+    inputs = np.pad(inputs, [(0, 0), (0, max_len - inputs.shape[1])],
+                    mode='constant', constant_values=0)
+    s = decoding.autoregressive_sample(
+        pred_model, inputs=inputs, eos_id=-1, max_length=10, temperature=0.0)
+
+    self.assertEqual(s.shape[0], 1)
+    self.assertEqual(s.shape[1], 10)
+
+  def test_autoregressive_sample_reformer2_pure_lsh_attn_quality(self):
+    gin.add_config_file_search_path(_CONFIG_DIR)
+    max_len = 32  # 32 is the max length we trained the checkpoint for.
+    test_lengths = [8, 16, 32]
+    vocab_size = 13
+    # The checkpoint is correct on ~90% sequences, set random seed to deflake.
+    np.random.seed(0)
+    for test_len in test_lengths:
+      gin.clear_config()
+      gin.parse_config_file('reformer2_purelsh_copy.gin')
+      gin.bind_parameter('PureLSHSelfAttention.predict_mem_len', 2 * max_len)
+      gin.bind_parameter('PureLSHSelfAttention.predict_drop_len', 2 * max_len)
+
+      pred_model = models.Reformer2(mode='predict')
+
+      shape11 = shapes.ShapeDtype((1, 1), dtype=np.int32)
+      shape1l = shapes.ShapeDtype((1, max_len), dtype=np.int32)
+
+      model_path = os.path.join(_TESTDATA, 'reformer2_purelsh_copy.pkl.gz')
+      pred_model.init_from_file(model_path, weights_only=True,
+                                input_signature=(shape1l, shape11))
+      initial_state = pred_model.state
+
+      for _ in range(2):  # Set low to make the test run reasonably fast.
+        # Pick a length in [1, test_len] at random.
+        inp_len = np.random.randint(low=1, high=test_len + 1)
+        inputs = np.random.randint(low=1, high=vocab_size-1, size=(1, inp_len))
+        inputs = np.pad(inputs, [(0, 0), (0, max_len - inp_len)],
+                        mode='constant', constant_values=0)
+        s = decoding.autoregressive_sample(
+            pred_model, inputs=inputs, eos_id=-1, max_length=inp_len,
+            temperature=0.0)
+
+        np.testing.assert_equal(s[0], inputs[0, :inp_len])
+        pred_model.state = initial_state
+    gin.clear_config()  # Make sure to not affect other tests.
 
 
 if __name__ == '__main__':

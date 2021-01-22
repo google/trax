@@ -2647,17 +2647,18 @@ class PureLSHSelfAttention(base.Layer):
 
     # Each of qk, v are shaped - (batch * heads, length, d_head)
     # mask is shaped: (batch, length)
-    query_signature = input_signature[0]
+    qk_signature = input_signature[0]
+    v_signature = input_signature[1]
     # mask_signature = input_signature[2]
     # batch = mask_signature.shape[0]
-    batch_x_heads = query_signature.shape[0]
+    batch_x_heads = qk_signature.shape[0]
 
     assert batch_x_heads % self.n_heads == 0
     batch = batch_x_heads // self.n_heads
 
     query_signature_unbatched = fastmath.nested_map(
         lambda x: type(x)(shape=x.shape[1:], dtype=x.dtype),
-        query_signature)
+        qk_signature)
 
     state_rngs = fastmath.random.split(self.rng, batch_x_heads)
     state = [self.create_state_unbatched(query_signature_unbatched, rng)
@@ -2671,7 +2672,7 @@ class PureLSHSelfAttention(base.Layer):
           lambda x: np.zeros(  # pylint: disable=g-long-lambda
               x.shape[:1] + (self.predict_mem_len,) + x.shape[2:],
               dtype=x.dtype),
-          query_signature)
+          (qk_signature, v_signature))
       mem_end = np.zeros((), dtype=np.int32)
       state = (mem_end, mem, state)
 
@@ -2810,29 +2811,29 @@ class PureLSHSelfAttention(base.Layer):
     out = o
     return out, state
 
-  # TODO(afrozm): This needs to be re-written. Incremental mode doesn't work
-  # right now in PureLSHSelfAttention.
-  # pylint: disable=unexpected-keyword-arg,no-value-for-parameter
-  def incremental_forward_unbatched(self, x, *,
+  def incremental_forward_unbatched(self, qk, v, mask=None, *,
                                     q_start, q_len,
-                                    weights, state, rng, update_state):
+                                    state, rng, update_state):
+    x = (qk, v)
+    length = x[0].shape[0]
     assert update_state, (
         'This setting not supported (e.g. no backprop for fast inference)')
     if q_len > 1:
       if isinstance(q_start, int):
         assert q_start == 0, 'Chunks larger than 1 only work at start for now.'
-      if x.shape[0] % self.chunk_len == 0:
+      if length % self.chunk_len == 0:
         x_padded = x
       else:
-        pad_amount = self.chunk_len - (x.shape[0] % self.chunk_len)
-        x_padded = np.pad(x, ((0, pad_amount), (0, 0)), mode='constant')
+        pad_amount = self.chunk_len - (length % self.chunk_len)
+        x_padded = fastmath.nested_map(
+            lambda x: np.pad(x, ((0, pad_amount), (0, 0)), mode='constant'), x)
       buckets, buckets_idx, hash_rng = state
-      q = np.matmul(x_padded, weights[0])
-      buckets_update = self.hash_vectors(q, hash_rng)
+      qk, v = x_padded
+      buckets_update = self.hash_vectors(qk, hash_rng)
 
       out, _ = self.forward_unbatched(
-          x_padded, weights=weights, state=(buckets_update, hash_rng),
-          rng=rng, update_state=False)
+          qk, v, mask=mask, state=(buckets_update, hash_rng), rng=rng,
+          update_state=False)
 
       out = out[:q_len]
       buckets = np.reshape(buckets, (self.n_hashes, -1))
@@ -2869,8 +2870,7 @@ class PureLSHSelfAttention(base.Layer):
         false_fun=lambda x: x,
     )
 
-    attend_rng, output_rng = fastmath.random.split(rng)
-    w_q, w_v, w_o = weights
+    attend_rng, unused_output_rng = fastmath.random.split(rng)
 
     q_range = q_start + np.arange(q_len, dtype=np.int32)
     # On TPU, np.matmul(a[:1], b) and np.matmul(a, b)[:1] are not
@@ -2878,7 +2878,7 @@ class PureLSHSelfAttention(base.Layer):
     # discrepancy by duplicating the slice. Floating-point noise may not be
     # an issue when using models, but it makes it harder to write tests that
     # compare fast and slow inference code for equivalence.
-    q = np.matmul(np.concatenate([x[q_range]] * 2, 0), w_q)
+    q = np.concatenate([qk[q_range]] * 2, 0)
 
     q_buckets = self.hash_vectors(q, hash_rng)
     q_buckets = np.reshape(q_buckets, (self.n_hashes, 2))[:, :q_len]
@@ -2890,20 +2890,19 @@ class PureLSHSelfAttention(base.Layer):
     is_valid_target = np.any(unflattened_buckets == q_buckets, axis=0)
 
     assert q_buckets.shape[-1] == 1  # Is true when q_len == 1
-    seqlen = x.shape[0]
-    arange_seqlen = np.arange(seqlen, dtype=np.int32)
+    length = qk.shape[0]
+    arange_seqlen = np.arange(length, dtype=np.int32)
     kv_priorities = np.where(
         arange_seqlen > (q_start + q_len),
-        -(seqlen + arange_seqlen), arange_seqlen)
-    kv_priorities = kv_priorities + seqlen * is_valid_target.astype(np.int32)
+        -(length + arange_seqlen), arange_seqlen)
+    kv_priorities = kv_priorities + length * is_valid_target.astype(np.int32)
     _, kv_indices = fastmath.sort_key_val(kv_priorities, arange_seqlen)
     kv_indices = kv_indices[
         -self.n_hashes * self.chunk_len * (1 + self.n_chunks_before):]
     assert self.n_chunks_after == 0
 
-    x_attend_to = x[kv_indices]
-    k = length_normalized(np.matmul(x_attend_to, w_q))
-    v = np.matmul(x_attend_to, w_v)
+    k = length_normalized(qk[kv_indices])
+    v = v[kv_indices]
 
     mask_fn = functools.partial(
         mask_self_attention, causal=True, masked=True, exclude_self=True)
@@ -2918,13 +2917,11 @@ class PureLSHSelfAttention(base.Layer):
         dropout=self.attention_dropout, rng=attend_rng,
         )
 
-    out = np.matmul(o, w_o)
+    out = o
     if q_len == 1:
       out = out[:1]
-    out = apply_broadcasted_dropout(out, self.output_dropout, output_rng)
     buckets_idx = np.array(q_start + q_len, dtype=buckets_idx.dtype)
     return out, (buckets, buckets_idx, hash_rng)
-  # pylint: enable=unexpected-keyword-arg,no-value-for-parameter
 
   def forward(self, inputs):
     """Computes this layer's output as part of a forward pass through the model.
@@ -2946,12 +2943,10 @@ class PureLSHSelfAttention(base.Layer):
     self.state = new_state
     return output
 
-  # TODO(afrozm): This needs to be re-written. Incremental mode doesn't work
-  # right now in PureLSHSelfAttention.
   def use_predict_mem(self, inputs, state):
     """Update input cache for fast inference."""
 
-    # inputs is (qk, v, mask) or (qk, v)
+    # inputs is (qk, v). mask isn't passed in.
     # where qk/v are shaped - (batch * n_heads, seq_len, d_head)
 
     mem_end, mem, state = state
@@ -3102,9 +3097,6 @@ class PureLSHSelfAttention(base.Layer):
     #                 forward(example, head)
     #               for example, head in zip(examples, heads):
     #                 backward(example, head)
-    if self.incremental:
-      raise NotImplementedError(
-          'PureLSHAttention for inference is unimplemented')
 
     if self.masked:
       qk, v, mask = inputs
@@ -3113,7 +3105,7 @@ class PureLSHSelfAttention(base.Layer):
       qk, v = inputs
       mask = None
       batch_size = qk.shape[0] // self.n_heads
-    unused_batch_x_heads, seqlen, unused_d_model = qk.shape
+    batch_x_heads, seqlen, d_model = qk.shape
 
     compute_grad = (output_grad is not None)
     assert compute_output or compute_grad, 'No work to perform!'
@@ -3122,6 +3114,11 @@ class PureLSHSelfAttention(base.Layer):
       forward_unbatched = functools.partial(
           self.forward_unbatched, rng=rng, update_state=update_state)
     else:
+      assert not compute_grad
+
+      # The input to use_predict_mem is (qk, v)
+      inputs = (qk, v)
+
       if update_state:
         inputs, state, q_start, new_mem, new_mem_end = self.use_predict_mem(
             inputs, state)
@@ -3130,6 +3127,9 @@ class PureLSHSelfAttention(base.Layer):
         # be valid if doing backprop in mode 'predict' with long lengths.
         new_mem_end, inputs, state = state
         q_start = new_mem_end - seqlen
+
+      # Reset qk and v to what use_predict_mem/state gave us.
+      qk, v = inputs
 
       forward_unbatched = functools.partial(
           self.incremental_forward_unbatched,
@@ -3226,7 +3226,7 @@ class PureLSHSelfAttention(base.Layer):
 
     o_all = s_all = i_ct_all = None
     if compute_output:
-      o_all = np.zeros(v.shape, dtype=v.dtype)
+      o_all = np.zeros((batch_x_heads, seqlen, d_model), dtype=v.dtype)
     if update_state:
       s_all = state
     if compute_grad:
