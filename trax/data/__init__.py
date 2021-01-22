@@ -42,6 +42,7 @@ ConcatenateToLMInput = data_configure(inputs.ConcatenateToLMInput)
 FilterEmptyExamples = data_configure(inputs.FilterEmptyExamples)
 Log = data_configure(inputs.Log)
 Serial = data_configure(inputs.Serial)
+Parallel = data_configure(inputs.Parallel)
 Shuffle = data_configure(inputs.Shuffle)
 shuffle = inputs.shuffle
 TFDS = data_configure(tf_inputs.TFDS)

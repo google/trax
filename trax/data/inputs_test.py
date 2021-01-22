@@ -95,6 +95,18 @@ class InputsTest(parameterized.TestCase):
     self.assertLen(batch, 2)
     self.assertEqual(batch[0].shape, (10,))
 
+  def test_parallel(self):
+    """Check that data.Serial works inside another data.Serial."""
+    dataset1 = lambda _: (i for i in range(10))
+    dataset2 = lambda _: (i for i in range(10, 20))
+    parallel = data.Parallel(dataset1, dataset2)
+    generator = parallel()
+
+    self.assertEqual(next(generator), 0)
+    self.assertEqual(next(generator), 10)
+    self.assertEqual(next(generator), 1)
+    self.assertEqual(next(generator), 11)
+
   def test_serial_with_python(self):
     dataset = lambda _: ((i, i+1) for i in range(10))
     batches = data.Serial(

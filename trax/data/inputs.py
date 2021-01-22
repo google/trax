@@ -83,12 +83,24 @@ from trax.fastmath import numpy as jnp
 
 
 def Serial(*fns):  # pylint: disable=invalid-name
-  """Combines generator functions into one that runs them in turn."""
+  """Combines generator functions into one that runs them serially."""
   def composed_fns(generator=None):
     for f in fastmath.tree_flatten(fns):
       generator = f(generator)
     return generator
   return composed_fns
+
+
+def Parallel(*fns):  # pylint: disable=invalid-name
+  """Combines generator functions into one that runs them in parallel."""
+  def parallel_generator(generator=None):
+    generators = []
+    for f in fastmath.tree_flatten(fns):
+      generators.append(f(generator))
+    while True:
+      for generator in generators:
+        yield next(generator)
+  return parallel_generator
 
 
 def Log(n_steps_per_example=1, only_shapes=True):  # pylint: disable=invalid-name
