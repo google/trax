@@ -1649,7 +1649,12 @@ def CreateMathQAInputs(  # pylint: disable=invalid-name
     dataset_path=None,
     train=True,
     tolerance=0.01,
-    cumulative=True):
+    cumulative=True,
+    partial_results=True,
+    nlp_rationale=False,
+    correct_answer=False,
+    category=False,
+    qed=False):
   """Prepares MathQA inputs.
 
   The generation procedure leaves a lot parameters to be set by the user.
@@ -1673,13 +1678,23 @@ def CreateMathQAInputs(  # pylint: disable=invalid-name
       problem + numbers + op1 + op2 + op3 target - op4 If set to False, then
       examples are in the format input - problem + numbers target - all
       operations
+    partial_results: if set to True, then partial results will be reported as
+      part of the input, e.g. input - problem + numbers + op1 + #1 + op2 + #2 +
+      op3 + #3, target - op4, where #k is the partial results from operation
+      opk. Activated only in cumulative set to True.
+    nlp_rationale: if set to True, then input is the problem and the target is
+      the nlp rationale.
+    correct_answer: if set to True, then input is the problem plus all possible
+      answers and the target is the correct answer.
+    category: if set to True, then input is the problem and the target is its
+      category.
+    qed: if set to True, then the reasoning is finished with an additional
+      operation qed.
 
   Returns:
     mathqa_yield_examples: a generator of MathQA examples; the generator yields
     non-tokenized examples - they can be further processed using for example
     the tokenize function from this module
-
-    tokenize(mathqa_yield_examples, keys = [0, 1], vocab_file='en_32k.subword')
   """
   if train:
     dataset_path = os.path.join(dataset_path, 'train.json')
@@ -1701,18 +1716,39 @@ def CreateMathQAInputs(  # pylint: disable=invalid-name
         answer_num, python_result, list_op, list_num = result
         if not answer_num or not python_result[-1]:
           continue
+        if qed:
+          list_op.append('qed')
         if math.isclose(answer_num, python_result[-1], rel_tol=tolerance):
-          input_prefix = example['Problem'] + ' ' + ' '.join(
-              [str(num) for num in list_num])
+          input_prefix = example['Problem']
+          for i in range(len(list_num)):
+            input_prefix += ' n{} = {}'.format(i, list_num[i])
           if cumulative:
-            for op in list_op:
+            for i in range(len(list_op)):
               input_values = input_prefix
-              target_values = op
-              input_prefix += ' ' + op
+              target_values = list_op[i]
+              input_prefix += ' ' + list_op[i]
+              if partial_results:
+                input_prefix += ' #{} = {}'.format(i, answer_num)
               yield input_values, target_values, np.array([1] *
                                                           len(target_values))
+          elif nlp_rationale:
+            input_values = 'infer full rationale: ' + input_prefix
+            target_values = example['Rationale']
+            yield input_values, target_values, np.array([1] *
+                                                        len(target_values))
+          elif correct_answer:
+            input_values = 'infer correct answer: ' + input_prefix
+            input_values += ' ' + example['options']
+            target_values = example['correct']
+            yield input_values, target_values, np.array([1] *
+                                                        len(target_values))
+          elif category:
+            input_values = 'infer category: ' + input_prefix
+            target_values = example['category']
+            yield input_values, target_values, np.array([1] *
+                                                        len(target_values))
           else:
-            input_values = input_prefix
+            input_values = 'infer full calculation: ' + input_prefix
             target_values = example['linear_formula']
             yield input_values, target_values, np.array([1] *
                                                         len(target_values))

@@ -532,6 +532,7 @@ def train(output_dir,
           use_memory_efficient_trainer=False,
           init_checkpoint=None,
           callbacks=None,
+          additional_train_tasks=None,
           additional_eval_tasks=None):
   """Train the model on the inputs.
 
@@ -566,6 +567,8 @@ def train(output_dir,
     use_memory_efficient_trainer: whether to use memory-efficient trainer..
     init_checkpoint: a checkpoint for fine tuning.
     callbacks: a list of callbacks to call during training.
+    additional_train_tasks: additional tasks which should be performed during
+      training.
     additional_eval_tasks: additional tasks which should be performed during
       evaluation.
 
@@ -615,7 +618,8 @@ def train(output_dir,
       model_train.init_from_file(init_checkpoint, weights_only=True)
       model_predict_eval.init_from_file(init_checkpoint, weights_only=True)
     loop = training.Loop(
-        model_train, [train_task],
+        model_train, [train_task] +
+        (additional_train_tasks if additional_train_tasks is not None else []),
         eval_model=model_predict_eval,
         eval_tasks=[eval_task] +
         (additional_eval_tasks if additional_eval_tasks is not None else []),

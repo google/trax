@@ -200,9 +200,9 @@ class Loop:
     self._permanent_checkpoint_at = (
         permanent_checkpoint_at or permanent_default_at)
     if which_task is None:
-      if len(tasks) > 1:
-        raise ValueError('Must provide which_task for multitask training.')
-      which_task = lambda _: 0
+      # If which task is not passed, then we permute tasks one by one.
+      # If len(tasks) = 1, then which_task is a constant function equal to 0.
+      which_task = lambda n: n % len(tasks)
     self._which_task = which_task
 
     # Initialize using the given random seed.
@@ -939,6 +939,7 @@ def _model_with_metrics(model, eval_task):
   )
 
 
+@gin.configurable()
 class TrainTask:
   """A supervised task (labeled data + feedback mechanism) for training."""
 
