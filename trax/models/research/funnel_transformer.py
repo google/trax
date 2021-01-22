@@ -525,7 +525,6 @@ def _FunnelRelativeDecoderBlock(shorten_factor, d_model, d_ff, n_heads,
         tl.Dense(shorten_factor * d_model),
         tl.Fn('ProlongBack', lambda x: jnp.reshape(  # Prolong back.
             x, (x.shape[0], x.shape[1] * shorten_factor, -1)), n_out=1),
-        tl.LayerNorm()
     )
   else:
     funnel_upsampling_downsampling = tl.Serial(
@@ -546,7 +545,10 @@ def _FunnelRelativeDecoderBlock(shorten_factor, d_model, d_ff, n_heads,
 
   return [
       tl.LayerNorm(),  # h
-      tl.Branch(funnel_upsampling_downsampling, None),  # h', h
+      tl.Branch(tl.Serial(
+          funnel_upsampling_downsampling,
+          tl.LayerNorm(),
+      ), None),  # h', h
       tl.Residual(
           tl.Select([0, 1, 1]),  # h', h, h
           attention,
