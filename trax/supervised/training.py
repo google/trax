@@ -200,9 +200,9 @@ class Loop:
     self._permanent_checkpoint_at = (
         permanent_checkpoint_at or permanent_default_at)
     if which_task is None:
-      if len(tasks) > 1:
-        raise ValueError('Must provide which_task for multitask training.')
-      which_task = lambda _: 0
+      # If which task is not passed, then we permute tasks one by one.
+      # If len(tasks) = 1, then which_task is a constant function equal to 0.
+      which_task = lambda n: n % len(tasks)
     self._which_task = which_task
 
     # Initialize using the given random seed.
@@ -233,6 +233,9 @@ class Loop:
 
     # Create the optimizer for the training loss function.
     self._trainer_per_task = tuple(self._init_trainer(task) for task in tasks)
+    # The version below also does not work:
+    # self._trainer_per_task = tuple(
+    #     self._init_trainer(task, task.optimizer) for task in tasks)
     self.load_checkpoint()
 
     # Prepare eval components.
@@ -271,6 +274,7 @@ class Loop:
         callback_class(self) for callback_class in callbacks
     ]
 
+#  def _init_trainer(self, task, optimizer):
   def _init_trainer(self, task):
     """Initializes the per-task trainer."""
     # Build the per-task model, sharing weights with other tasks.
@@ -280,8 +284,13 @@ class Loop:
           [task.loss_layer],
           shapes.signature(task.sample_batch)
       )
+      # We are calling optimizer.tree_init instead of
+      # task.optimizer.tree_init, because the tree_method may become
+      # unbound in the case of additional training tasks.
       task.optimizer.tree_init(model_in_training.weights)
       return optimizers.Trainer(model_in_training, task.optimizer)
+      # optimizer.tree_init(model_in_training.weights)
+      # return optimizers.Trainer(model_in_training, optimizer)
     # In the memory-efficient path, we initialize the model here.
     blocks, loss_layer = optimizers.trainer.extract_reversible_blocks(
         [self._model, task.loss_layer], loss_chunk_size=self._loss_chunk_size)
@@ -939,6 +948,7 @@ def _model_with_metrics(model, eval_task):
   )
 
 
+@gin.configurable()
 class TrainTask:
   """A supervised task (labeled data + feedback mechanism) for training."""
 

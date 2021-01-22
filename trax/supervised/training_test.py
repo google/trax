@@ -49,6 +49,18 @@ class TrainingTest(absltest.TestCase):
     # Loop should initialize and run successfully, even with no eval task.
     training_session.run(n_steps=5)
 
+  def test_loop_two_training_tasks_no_eval_task(self):
+    """Runs a training loop with no eval task(s)."""
+    model = tl.Serial(tl.Dense(1))
+    task1 = training.TrainTask(
+        _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01))
+    task2 = training.TrainTask(
+        _very_simple_data(), tl.WeightedCategoryCrossEntropy(),
+        optimizers.SGD(.01))
+    training_session = training.Loop(model, [task1, task2])
+    # Loop should initialize and run successfully, even with no eval task.
+    training_session.run(n_steps=5)
+
   def test_loop_no_eval_task_tfnp(self):
     """Runs a training loop with no eval task(s), TFNP backend."""
     with fastmath.use_backend(fastmath.Backend.TFNP):
@@ -89,6 +101,48 @@ class TrainingTest(absltest.TestCase):
         [tl.L2Loss()],
         metric_names=['SGD.L2Loss'])
     loop = training.Loop(model, [task], eval_tasks=[eval_task],
+                         eval_at=lambda step_n: step_n % 2 == 0)
+    self.assertEqual(0, loop.step)
+    self.assertEqual(loop.model.weights[0][0], w)
+
+  def test_loop_with_initialized_model_and_two_tasks(self):
+    """Check that loop does not re-initialize an already initialized model."""
+    model = tl.Serial(tl.Dense(1))
+    example_data = next(_very_simple_data())
+    model.init(example_data)
+    w = model.weights[0][0]
+    task1 = training.TrainTask(
+        _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01))
+    task2 = training.TrainTask(
+        _very_simple_data(), tl.WeightedCategoryCrossEntropy(),
+        optimizers.SGD(.01))
+    eval_task = training.EvalTask(
+        _very_simple_data(),  # deliberately re-using training data
+        [tl.L2Loss()],
+        metric_names=['SGD.L2Loss'])
+    loop = training.Loop(model, [task1, task2], eval_tasks=[eval_task],
+                         eval_at=lambda step_n: step_n % 2 == 0)
+    self.assertEqual(0, loop.step)
+    self.assertEqual(loop.model.weights[0][0], w)
+
+  def test_loop_with_initialized_optimizer_and_two_tasks(self):
+    """Check that loop does not re-initialize an already initialized model."""
+    model = tl.Serial(tl.Dense(1))
+    example_data = next(_very_simple_data())
+    model.init(example_data)
+    w = model.weights[0][0]
+    task1 = training.TrainTask(
+        _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01))
+    task2 = training.TrainTask(
+        _very_simple_data(), tl.WeightedCategoryCrossEntropy(),
+        optimizers.SGD(.01))
+    optimizer = optimizers.SGD(.01)
+    task2._optimizer = optimizer
+    eval_task = training.EvalTask(
+        _very_simple_data(),  # deliberately re-using training data
+        [tl.L2Loss()],
+        metric_names=['SGD.L2Loss'])
+    loop = training.Loop(model, [task1, task2], eval_tasks=[eval_task],
                          eval_at=lambda step_n: step_n % 2 == 0)
     self.assertEqual(0, loop.step)
     self.assertEqual(loop.model.weights[0][0], w)
@@ -141,6 +195,44 @@ class TrainingTest(absltest.TestCase):
       m = transformer.TransformerLM(
           vocab_size, d_model=4, d_ff=4, n_layers=1, n_heads=2, dropout=0.)
       ts = training.Loop(m, [task], eval_tasks=[eval_task],
+                         eval_at=lambda step_n: step_n % 2 == 0,
+                         output_dir=tmp_dir)
+      return m, ts
+
+    model, training_session = _make_model_and_session()
+    self.assertEqual(0, training_session.step)
+    training_session.run(n_steps=1)
+    training_session.save_checkpoint()
+    model2, training_session2 = _make_model_and_session()
+
+    x = np.ones((2, 2)).astype(np.int32)
+    y1 = model(x, rng=fastmath.random.get_prng(0))
+    y2 = model2(x, rng=fastmath.random.get_prng(0))
+    self.assertEqual(str(y1), str(y2))
+
+    training_session2.run(n_steps=1)
+    y1 = model(x, rng=fastmath.random.get_prng(0))
+    y2 = model2(x, rng=fastmath.random.get_prng(0))
+    self.assertNotEqual(str(y1), str(y2))
+
+  def test_train_save_restore_transformer_two_tasks(self):
+    """Saves and restores a checkpoint to check for equivalence."""
+    vocab_size = 8
+    task1 = training.TrainTask(
+        _very_simple_transformer_data(), tl.L2Loss(), optimizers.SGD(.01))
+    task2 = training.TrainTask(
+        _very_simple_transformer_data(), tl.WeightedCategoryCrossEntropy(),
+        optimizers.SGD(.01))
+    eval_task = training.EvalTask(
+        _very_simple_transformer_data(),  # deliberately re-using training data
+        [tl.L2Loss()],
+        metric_names=['SGD.L2Loss'])
+    tmp_dir = self.create_tempdir().full_path
+
+    def _make_model_and_session():
+      m = transformer.TransformerLM(
+          vocab_size, d_model=4, d_ff=4, n_layers=1, n_heads=2, dropout=0.)
+      ts = training.Loop(m, [task1, task2], eval_tasks=[eval_task],
                          eval_at=lambda step_n: step_n % 2 == 0,
                          output_dir=tmp_dir)
       return m, ts
