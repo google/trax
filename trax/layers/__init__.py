@@ -86,6 +86,9 @@ MultiplicativeConvCausalAttention = layer_configure(
     MultiplicativeConvCausalAttention, denylist=['mode'])
 ConvTranspose = layer_configure(ConvTranspose)
 LSHSelfAttention = layer_configure(LSHSelfAttention, denylist=['mode'])
+PureLSHSelfAttention = layer_configure(PureLSHSelfAttention, denylist=['mode'])
+PureLSHSelfAttentionWrapper = layer_configure(
+    PureLSHSelfAttentionWrapper, denylist=['mode'])
 EncDecAttention = layer_configure(EncDecAttention, denylist=['mode'])
 
 InfinitePositionalEncoding = layer_configure(

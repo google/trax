@@ -16,6 +16,7 @@
 # Lint as: python3
 """Tests for trax.layers.research.efficient_attention."""
 
+from absl.testing import parameterized
 import jax
 import numpy as np
 from tensorflow import test
@@ -26,7 +27,7 @@ from trax.fastmath import numpy as jnp
 from trax.layers.research import efficient_attention
 
 
-class EfficientAttentionTest(test.TestCase):
+class EfficientAttentionTest(test.TestCase, parameterized.TestCase):
 
   def test_self_attention(self):
     with fastmath.use_backend(fastmath.Backend.JAX):
@@ -292,6 +293,162 @@ class EfficientAttentionTest(test.TestCase):
         self.assertGreater(
             np.mean(np.abs(y[i, rngs[i]:] - y2[i, rngs[i]:])), 1e-5)
 
+  @parameterized.named_parameters(('_weights_2', 2), ('_weights_3', 3))
+  def test_pure_lsh_wrapper_causal_non_masked(self, num_weights):
+    with fastmath.use_backend(fastmath.Backend.JAX):
+      n_heads = 5
+      batch, seqlen, d_head = 3, 32, 8
+      num_weights = 2
+      n_hashes = 2
+      d_model = n_heads * d_head
+      layer = efficient_attention.PureLSHSelfAttentionWrapper(
+          n_heads=n_heads, d_qk=d_head, d_v=d_head, causal=True, masked=False,
+          chunk_len=8, n_chunks_before=1, n_chunks_after=0,
+          n_hashes=n_hashes, n_buckets=4,
+          pure_lsh_implementation=efficient_attention.PureLSHSelfAttention,
+          mode='train', num_weights=num_weights)
+
+      rng = jax.random.PRNGKey(0)
+      rng, x_rng = jax.random.split(rng)
+
+      input_shape = (batch, seqlen, d_model)
+      x = jax.random.uniform(x_rng, input_shape, dtype=jnp.float32)
+
+      inp = x
+      w, s = layer.init(shapes.signature(inp))
+      o = layer(inp)
+
+      # Get the actual weights.
+      weights = fastmath.tree_leaves(w)
+      # Assert number of weights is as expected, the extra 1 is for output.
+      self.assertLen(weights, num_weights + 1)
+
+      # Assert each weight is of the expected shape.
+      for i in range(num_weights + 1):
+        self.assertEqual(weights[i].shape, (d_model, d_model))
+
+      # Test that the output and the input shape match.
+      self.assertEqual(inp.shape, o.shape)
+
+      # Assert state is the shape expected.
+      state = fastmath.tree_leaves(s)
+      self.assertLen(state, 2)
+      # buckets
+      self.assertEqual(state[0].shape, (batch * n_heads, n_hashes * seqlen))
+      # rngs
+      self.assertEqual(state[1].shape, (batch * n_heads, 2))
+
+  @parameterized.named_parameters(('_weights_2', 2), ('_weights_3', 3))
+  def test_pure_lsh_wrapper_non_causal_masked(self, num_weights):
+    with fastmath.use_backend(fastmath.Backend.JAX):
+      n_heads = 5
+      batch, seqlen, d_head = 3, 32, 8
+      num_weights = 2
+      n_hashes = 2
+      d_model = n_heads * d_head
+      layer = efficient_attention.PureLSHSelfAttentionWrapper(
+          n_heads=n_heads, d_qk=d_head, d_v=d_head, causal=False, masked=True,
+          chunk_len=8, n_chunks_before=1, n_chunks_after=0,
+          n_hashes=n_hashes, n_buckets=4,
+          pure_lsh_implementation=efficient_attention.PureLSHSelfAttention,
+          mode='train', num_weights=num_weights)
+
+      rng = jax.random.PRNGKey(0)
+      rng, x_rng = jax.random.split(rng)
+
+      input_shape = (batch, seqlen, d_model)
+      x = jax.random.uniform(x_rng, input_shape, dtype=jnp.float32)
+      mask = jnp.ones((batch, seqlen), dtype=jnp.int32)
+
+      inp = (x, mask)
+      w, s = layer.init(shapes.signature(inp))
+      o = layer(inp)
+
+      # Get the actual weights.
+      weights = fastmath.tree_leaves(w)
+      # Assert number of weights is as expected, the extra 1 is for output.
+      self.assertLen(weights, num_weights + 1)
+
+      # Assert each weight is of the expected shape.
+      for i in range(num_weights + 1):
+        self.assertEqual(weights[i].shape, (d_model, d_model))
+
+      # Test that the output and the x's shape match.
+      self.assertEqual(x.shape, o.shape)
+
+      # Assert state is the shape expected.
+      state = fastmath.tree_leaves(s)
+      self.assertLen(state, 2)
+      # buckets
+      self.assertEqual(state[0].shape, (batch * n_heads, n_hashes * seqlen))
+      # rngs
+      self.assertEqual(state[1].shape, (batch * n_heads, 2))
+
+  def test_lsh_and_pure_lsh_self_attention_equivalence(self):
+    # Given the same weight matrices and random numbers, do these produce the
+    # same output.
+    with fastmath.use_backend(fastmath.Backend.JAX):
+      n_heads = 4
+      d_head = 4
+      d_model = n_heads * d_head
+      pure_lsh_layer = efficient_attention.PureLSHSelfAttention(
+          n_heads=n_heads, d_qk=d_head, d_v=d_head, causal=True, masked=False,
+          chunk_len=8, n_chunks_before=1, n_chunks_after=0,
+          n_hashes=4, n_buckets=8,
+          use_reference_code=False,
+          attention_dropout=0.0,
+          use_python_loop=True,
+          mode='train')
+      lsh_layer = efficient_attention.LSHSelfAttention(
+          n_heads=n_heads, d_qk=d_head, d_v=d_head, causal=True, masked=False,
+          chunk_len=8, n_chunks_before=1, n_chunks_after=0,
+          n_hashes=4, n_buckets=8,
+          use_reference_code=False,
+          attention_dropout=0.0,
+          use_python_loop=True,
+          mode='train')
+
+      batch, seqlen = 3, 32
+      input_shape = (batch, seqlen, d_model)
+
+      x = jax.random.uniform(jax.random.PRNGKey(0), input_shape,
+                             dtype=jnp.float32)
+      lsh_layer_input = x
+
+      call_rng = jax.random.PRNGKey(42)
+
+      lsh_layer_weights, lsh_layer_state = lsh_layer.init(
+          shapes.signature(lsh_layer_input))
+      lsh_layer.rng = call_rng
+      lsh_layer_output = lsh_layer(lsh_layer_input)
+
+      # Shapes are: (n_heads, d_model, d_head), (n_heads, d_model, d_head),
+      # (n_heads, d_head, d_model)
+      # Abbreviated as - hmn, hmn, hnm
+      w_qk, w_v, w_o = lsh_layer_weights
+
+      qk = jnp.einsum('blm,hmn->bhln', x, w_qk)
+      qk = qk.reshape((-1, qk.shape[2], qk.shape[3]))
+
+      v = jnp.einsum('blm,hmn->bhln', x, w_v)
+      v = v.reshape((-1, v.shape[2], v.shape[3]))
+
+      pure_lsh_layer_input = (qk, v)
+      _, _ = pure_lsh_layer.init(shapes.signature(pure_lsh_layer_input))
+      pure_lsh_layer.rng = call_rng
+      pure_lsh_layer.state = lsh_layer_state
+      pure_lsh_layer_output = pure_lsh_layer(pure_lsh_layer_input)
+
+      # b*h,l,n
+      pure_lsh_layer_output = pure_lsh_layer_output.reshape(
+          (batch, -1) + pure_lsh_layer_output.shape[1:])
+      pure_lsh_layer_output_projected = (
+          jnp.einsum('bhld,hdm->blm', pure_lsh_layer_output, w_o))
+
+      diff = pure_lsh_layer_output_projected - lsh_layer_output
+      avg_diff = jnp.sum(jnp.abs(diff)) / jnp.sum(jnp.ones_like(diff))
+
+      self.assertLess(avg_diff, 1e-5)
 
 if __name__ == '__main__':
   test.main()

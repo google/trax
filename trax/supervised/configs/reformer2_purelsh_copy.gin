@@ -1,0 +1,52 @@
+# Copyright 2021 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# -*-Python-*-
+
+include 'reformer2_copy.gin'
+
+import trax.models
+import trax.optimizers
+import trax.data.inputs
+import trax.data.tf_inputs
+import trax.supervised.trainer_lib
+
+
+# Parameters for PureLSHSelfAttention:
+# ==============================================================================
+PureLSHSelfAttention.attention_dropout = 0.0
+PureLSHSelfAttention.chunk_len = 16
+PureLSHSelfAttention.n_buckets = [32, 32]
+PureLSHSelfAttention.n_chunks_after = 0
+PureLSHSelfAttention.n_chunks_before = 1
+PureLSHSelfAttention.n_hashes = 2
+PureLSHSelfAttention.n_parallel_heads = 1
+PureLSHSelfAttention.max_length_for_buckets = 1024
+# 0 < predict_drop_len <= predict_mem_len
+PureLSHSelfAttention.predict_mem_len = %max_len
+PureLSHSelfAttention.predict_drop_len = %max_len
+
+# Parameters for PureLSHSelfAttentionWrapper:
+# ==============================================================================
+PureLSHSelfAttentionWrapper.pure_lsh_implementation = @PureLSHSelfAttention
+
+# Parameters for Reformer2:
+# ==============================================================================
+Reformer2.encoder_attention_type = @PureLSHSelfAttentionWrapper
+Reformer2.encoder_decoder_attention_type = @PureLSHSelfAttentionWrapper
+
+# Parameters for train:
+# ==============================================================================
+train.inputs = @trax.data.inputs.simple_sequence_copy_inputs
+train.model = @trax.models.Reformer2
