@@ -19,8 +19,8 @@ r"""Attention-related layers, as used in Transformer(-like) models.
 Attention is a trainable mechanism for mapping between collections of vectors:
 
 .. math::
-    \text{\it Attention}: \bold{X}^{M} \rightarrow \bold{Y}^{N}\!,
-    \ \text{for} \ \bold{X} \in \mathbb{R}^k\!, \bold{Y} \in \mathbb{R}^l
+    \text{Attention}: \mathbf{X}^{M} \rightarrow \mathbf{Y}^{N}\!,
+    \ \text{for} \ \mathbf{X} \in \mathbb{R}^k\!, \mathbf{Y} \in \mathbb{R}^l
 
 Whereas classic neural networks assemble nodes of real numbers with
 weighted connections:
