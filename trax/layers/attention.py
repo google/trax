@@ -18,7 +18,7 @@ r"""Attention-related layers, as used in Transformer(-like) models.
 
 Attention is a trainable mechanism for mapping between collections of vectors:
 
-..math::
+.. math::
     \text{\it Attention}: \bold{X}^{M} \rightarrow \bold{Y}^{N}\!,
     \ \text{for} \ \bold{X} \in \mathbb{R}^k\!, \bold{Y} \in \mathbb{R}^l
 
