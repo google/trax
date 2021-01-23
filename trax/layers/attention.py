@@ -14,30 +14,35 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Attention-related layers.
+r"""Attention-related layers, as used in Transformer(-like) models.
 
-Attention is a powerful extension of basic neural network ideas.
-In a classic neural network:
+Attention is a trainable mechanism for mapping between collections of vectors:
 
-    - node activations are floating point values (one float per node), and
-    - inter-node connections are trainable weights (one float per connection).
+..math::
+    \text{\it Attention}: \bold{X}^{M} \rightarrow \bold{Y}^{N}\!,
+    \ \text{for} \ \bold{X} \in \mathbb{R}^k\!, \bold{Y} \in \mathbb{R}^l
 
-Attention assembles networks of *vectors* and uses vector calculations to
-derive connection strength; in other words:
+Whereas classic neural networks assemble nodes of real numbers with
+weighted connections:
 
-    - node activations are floating point vectors, and
-    - inter-node connections come from trainable vector computations.
+    - node activations: floating point values (one float per node)
+    - inter-node connections: trainable weights (one float per connection),
 
-Attention thus involves extra concepts/mechanisms -- queries, keys, values,
-masks, attention heads -- that factor heavily into this module's API. See
-specific classes and functions for details.
+attention lets one assemble nodes of *vectors* and use further vectors to
+calculate connection strengths:
 
-NOTE: Attention layers in this module include `mode`-dependent behavior.
+    - node activations: floating point vectors, and
+    - inter-node connections: computed using trainable vectors.
+
+Computing connection strengths involves several concepts -- queries, keys,
+values, masks, attention heads -- that factor heavily into the API below.
+
+NOTE: Attention layers in this module include ``mode``-dependent behavior.
 The possible modes are:
 
-    - `'train'`: in training -- dropouts and position shifts active
-    - `'eval'`:  in evals -- dropouts inactive, position shifts active
-    - `'predict'`: in prediction -- dropouts and position shifts inactive
+    - ``'train'``: in training -- dropouts and position shifts active
+    - ``'eval'``:  in evals -- dropouts inactive, position shifts active
+    - ``'predict'``: in prediction -- dropouts and position shifts inactive
 """
 
 import numpy as np
@@ -68,7 +73,7 @@ def Attention(d_feature, n_heads=1, dropout=0.0, mode='train'):
     - splits queries, keys, and values into multiple 'heads',
     - computes per-head attention weights from per-head (queries, keys),
     - applies mask to screen out positions that come from padding tokens,
-    - [in `'train'` mode] applies dropout to attention weights,
+    - [in ``'train'`` mode] applies dropout to attention weights,
     - uses attention weights to combine per-head values vectors, and
     - fuses per-head results into outgoing activations matching original input
       activation shapes.
@@ -78,7 +83,7 @@ def Attention(d_feature, n_heads=1, dropout=0.0, mode='train'):
     n_heads: Number of attention heads.
     dropout: Probababilistic rate for internal dropout applied to attention
         activations (based on query-key pairs) before dotting them with values.
-    mode: One of `'train'`, `'eval'`, or `'predict'`.
+    mode: One of ``'train'``, ``'eval'``, or ``'predict'``.
   """
   return cb.Serial(
       cb.Select([0, 0, 0]),
@@ -90,14 +95,14 @@ def Attention(d_feature, n_heads=1, dropout=0.0, mode='train'):
 def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train'):
   """Returns a layer that maps (q, k, v, mask) to (activations, mask).
 
-  See `Attention` above for further context/details.
+  See ``Attention`` above for further context/details.
 
   Args:
     d_feature: Depth/dimensionality of feature embedding.
     n_heads: Number of attention heads.
     dropout: Probababilistic rate for internal dropout applied to attention
         activations (based on query-key pairs) before dotting them with values.
-    mode: One of `'train'`, `'eval'`, or `'predict'`.
+    mode: One of ``'train'``, ``'eval'``, or ``'predict'``.
   """
   return cb.Serial(
       cb.Parallel(
@@ -123,7 +128,7 @@ class PureAttention(base.Layer):
     - splits queries, keys, and values into multiple 'heads',
     - computes per-head attention weights from per-head (queries, keys),
     - applies mask to screen out positions that come from padding tokens,
-    - [in `'train'` mode] applies dropout to attention weights,
+    - [in ``'train'`` mode] applies dropout to attention weights,
     - uses attention weights to combine per-head values vectors, and
     - merges per-head results into outgoing activations matching original input
       activation vector shapes.
@@ -136,7 +141,7 @@ class PureAttention(base.Layer):
       n_heads: Number of attention heads.
       dropout: Probababilistic rate for dropout applied to attention strengths
           (based on query-key pairs) before applying them to values.
-      mode: One of `'train'`, `'eval'`, or `'predict'`.
+      mode: One of ``'train'``, ``'eval'``, or ``'predict'``.
     """
     super().__init__(n_in=4, n_out=2)
     self._n_heads = n_heads
@@ -177,10 +182,11 @@ def DotProductAttention(queries, keys, values, mask, dropout, mode, rng):
   """Computes new activations via masked attention-weighted sum of values.
 
   This function is the core of the attention mechanism. It:
-    - computes per-head attention weights from per-head `queries` and `keys`,
-    - applies `mask` to screen out positions that come from padding tokens,
+    - computes per-head attention weights from per-head ``queries`` and
+      ``keys``,
+    - applies ``mask`` to screen out positions that come from padding tokens,
     - optionally applies dropout to attention weights, and
-    - uses attention weights to combine per-head `values` vectors.
+    - uses attention weights to combine per-head ``values`` vectors.
 
   Args:
     queries: Per-head activations representing attention queries.
@@ -189,7 +195,7 @@ def DotProductAttention(queries, keys, values, mask, dropout, mode, rng):
     mask: Mask that distinguishes positions with real content vs. padding.
     dropout: Probababilistic rate for dropout applied to attention strengths
         (based on query-key pairs) before applying them to values.
-    mode: One of `'train'`, `'eval'`, or `'predict'`.
+    mode: One of ``'train'``, ``'eval'``, or ``'predict'``.
     rng: Single-use random number generator (JAX PRNG key).
 
   Returns:
@@ -277,7 +283,7 @@ def CausalAttention(d_feature, n_heads=1, dropout=0.0,
                     max_inference_length=2048, mode='train'):
   """Returns a layer that maps activations to activations, with causal masking.
 
-  Like `Attention`, this layer type represents one pass of multi-head
+  Like ``Attention``, this layer type represents one pass of multi-head
   self-attention, but with causal masking rather than padding-based masking.
 
   Args:
@@ -286,7 +292,7 @@ def CausalAttention(d_feature, n_heads=1, dropout=0.0,
     dropout: Probababilistic rate for internal dropout applied to attention
         activations (based on query-key pairs) before dotting them with values.
     max_inference_length: maximum length for inference.
-    mode: One of `'train'`, `'eval'`, or `'predict'`.
+    mode: One of ``'train'``, ``'eval'``, or ``'predict'``.
   """
   if d_feature % n_heads != 0:
     raise ValueError(
@@ -322,7 +328,7 @@ class DotProductCausalAttention(base.Layer):
       dropout: Probababilistic rate for dropout applied to attention strengths
           (based on query-key pairs) before applying them to values.
       max_inference_length: maximum length of sequences during inference.
-      mode: One of `'train'`, `'eval'`, or `'predict'`.
+      mode: One of ``'train'``, ``'eval'``, or ``'predict'``.
     """
     super().__init__(n_in=3, n_out=1)
     self._dropout = dropout
@@ -359,7 +365,7 @@ class DotProductCausalAttention(base.Layer):
     return res
 
   def init_weights_and_state(self, input_signature):
-    """Initializes this layer for fast inference, if in `'predict'` mode."""
+    """Initializes this layer for fast inference, if in ``'predict'`` mode."""
     if self._mode == 'predict':
       self.state = _fast_inference_init_state(input_signature, self._max_len)
 
@@ -371,7 +377,7 @@ def ShiftRight(n_positions=1, mode='train'):
   Args:
     n_positions: Number of positions to shift the input sequence rightward;
         initial positions freed by the shift get padded with zeros.
-    mode: One of `'train'`, `'eval'`, or `'predict'`.
+    mode: One of ``'train'``, ``'eval'``, or ``'predict'``.
   """
   # TODO(jonni): Include pad arg, like PaddingMask, to allow non-default pads?
   def f(x):
@@ -388,7 +394,7 @@ def PaddingMask(pad=0):
 
   The layer expects as input a batch of integer sequences. The layer output is
   a tensor that marks for each sequence position whether the integer (e.g., a
-  token ID) in that position represents padding -- value `pad` -- versus
+  token ID) in that position represents padding -- value ``pad`` -- versus
   text/content -- all other values. The padding mask shape is
   (batch_size, 1, 1, encoder_sequence_length), such that axis 1 will broadcast
   to cover any number of attention heads and axis 2 will broadcast to cover
@@ -442,7 +448,7 @@ class PositionalEncoding(base.Layer):
   """Implements bare positional encoding.
 
   Positional encoding includes a kind of dropout, if the layer is created in
-  `'train'` mode with a nonzero `dropout` value. For such a layer, on each
+  ``'train'`` mode with a nonzero ``dropout`` value. For such a layer, on each
   forward pass a subset of sequence positions selected at random will *not*
   receive positional marking.
   """
@@ -458,14 +464,14 @@ class PositionalEncoding(base.Layer):
           position.
       dropout_broadcast_dims: Axes along which dropout mask values are
           broadcast rather than individually set at random.
-      use_bfloat16: If `True`, use bfloat16 weights instead of the default
+      use_bfloat16: If ``True``, use bfloat16 weights instead of the default
         float32; this can save memory but may (rarely) lead to numerical issues.
       start_from_zero_prob: how often to start from 0 during training,
           (if 1.0, we always start from position 0, if less, we randomize).
       max_offset_to_add: maximum offset to add to the positions during training
         when randomizing; this offset plus input length must still be less than
         max_len for all training examples.
-      mode: One of `'train'`, `'eval'`, or `'predict'`.
+      mode: One of ``'train'``, ``'eval'``, or ``'predict'``.
     """
     super().__init__()
     self._max_len = max_len
@@ -533,7 +539,7 @@ class PositionalEncoding(base.Layer):
     """Randomly initializes the positional encoding vectors.
 
     Args:
-      input_signature: `ShapeDtype` instance characterizing the input this
+      input_signature: ``ShapeDtype`` instance characterizing the input this
           layer should compute on.
     """
     d_feature = input_signature.shape[-1]
