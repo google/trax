@@ -1,0 +1,278 @@
+# Copyright 2021 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.layers
+import trax.models
+import trax.data
+import trax.optimizers
+import trax.supervised.lr_schedules
+import trax.supervised.trainer_lib
+import trax.models.research.bert
+import trax.layers.metrics
+
+include 'c4.gin'
+
+# See https://math-qa.github.io/ for more details about the MathQA dataset.
+
+# Under the dataset_path should be located train.json and dev.json
+# downloaded from the above site.
+dataset_path = 'path_to_the_dataset'
+
+# Corresponds roughly to T5 'large' ~ 770m params, i.e. T5's `bi_v1_large.gin`.
+d_model = 1024
+d_ff = 4096
+n_heads = 16
+n_layers = 24
+attn_kv = 64
+dropout = 0.1
+vocab_size = 32000
+
+ff_chunk_size = 0
+ff_sparsity = 0
+loss_sparsity = 0
+
+enc_attn_type = @Attention
+
+MultiplicativeModularCausalAttention.sparsity = 16
+MultiplicativeConvCausalAttention.sparsity = 16
+MultiplicativeConvCausalAttention.length_kernel_size = 3
+
+dec_attn_type = @CausalAttention
+
+trax.data.Tokenize.keys = [0,1]
+trax.data.Tokenize.vocab_file = 'en_32k.subword'
+
+
+# Parameters for TFDS data pipeline:
+# ==============================================================================
+make_inputs.eval_stream = [
+  @eval/data.CreateMathQAInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+train_full_inference/make_additional_stream.stream = [
+  @train_full_inference/data.CreateMathQAInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+eval_full_inference/make_additional_stream.stream = [
+  @eval_full_inference/data.CreateMathQAInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+train_basic_task/make_additional_stream.stream = [
+  @train_basic_task/data.CreateMathQAInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+eval_basic_task/make_additional_stream.stream = [
+  @eval_basic_task/data.CreateMathQAInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+train_rationale_task/make_additional_stream.stream = [
+  @train_rationale_task/data.CreateMathQAInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+eval_rationale_task/make_additional_stream.stream = [
+  @eval_rationale_task/data.CreateMathQAInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+train_category_task/make_additional_stream.stream = [
+  @train_category_task/data.CreateMathQAInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+eval_category_task/make_additional_stream.stream = [
+  @eval_category_task/data.CreateMathQAInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+train_correct_answer_task/make_additional_stream.stream = [
+  @train_correct_answer_task/data.CreateMathQAInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+eval_correct_answer_task/make_additional_stream.stream = [
+  @eval_correct_answer_task/data.CreateMathQAInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+make_parallel_stream.streams = [
+  @train_basic_task/make_additional_stream,
+  @train_rationale_task/make_additional_stream,
+  @train_category_task/make_additional_stream,
+  @train_full_inference/make_additional_stream,
+  @train_correct_answer_task/make_additional_stream
+]
+make_inputs.train_stream = @make_parallel_stream()
+
+# This eval is not going to be very useful - it gives numbers for a mix of
+# tasks. Separate evals take care of specfic tasks
+eval/data.CreateMathQAInputs.dataset_path = %dataset_path
+eval/data.CreateMathQAInputs.train = False
+eval/data.CreateMathQAInputs.tolerance = 0.01
+eval/data.CreateMathQAInputs.cumulative = True
+
+train_basic_task/data.CreateMathQAInputs.dataset_path = %dataset_path
+train_basic_task/data.CreateMathQAInputs.train = True
+train_basic_task/data.CreateMathQAInputs.tolerance = 0.01
+train_basic_task/data.CreateMathQAInputs.cumulative = True
+
+eval_basic_task/data.CreateMathQAInputs.dataset_path = %dataset_path
+eval_basic_task/data.CreateMathQAInputs.train = False
+eval_basic_task/data.CreateMathQAInputs.tolerance = 0.01
+eval_basic_task/data.CreateMathQAInputs.cumulative = False
+eval_basic_task/trax.supervised.training.EvalTask.labeled_data = @eval_basic_task/trax.data.inputs.make_additional_stream()
+eval_basic_task/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
+eval_basic_task/trax.supervised.training.EvalTask.metric_names = ['Single instruction accuracy', 'Single instruction sequence accuracy']
+
+train_rationale_task/data.CreateMathQAInputs.dataset_path = %dataset_path
+train_rationale_task/data.CreateMathQAInputs.train = True
+train_rationale_task/data.CreateMathQAInputs.tolerance = 0.01
+train_rationale_task/data.CreateMathQAInputs.cumulative = False
+train_rationale_task/data.CreateMathQAInputs.nlp_rationale = True
+
+eval_rationale_task/data.CreateMathQAInputs.dataset_path = %dataset_path
+eval_rationale_task/data.CreateMathQAInputs.train = False
+eval_rationale_task/data.CreateMathQAInputs.tolerance = 0.01
+eval_rationale_task/data.CreateMathQAInputs.cumulative = False
+eval_rationale_task/data.CreateMathQAInputs.nlp_rationale = True
+eval_rationale_task/trax.supervised.training.EvalTask.labeled_data = @eval_rationale_task/trax.data.inputs.make_additional_stream()
+eval_rationale_task/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
+eval_rationale_task/trax.supervised.training.EvalTask.metric_names = ['Rationale accuracy', 'Rationale sequence accuracy']
+
+train_category_task/data.CreateMathQAInputs.dataset_path = %dataset_path
+train_category_task/data.CreateMathQAInputs.train = True
+train_category_task/data.CreateMathQAInputs.tolerance = 0.01
+train_category_task/data.CreateMathQAInputs.cumulative = False
+train_category_task/data.CreateMathQAInputs.category = True
+
+eval_category_task/data.CreateMathQAInputs.dataset_path = %dataset_path
+eval_category_task/data.CreateMathQAInputs.train = False
+eval_category_task/data.CreateMathQAInputs.tolerance = 0.01
+eval_category_task/data.CreateMathQAInputs.cumulative = False
+eval_category_task/data.CreateMathQAInputs.category = True
+eval_category_task/trax.supervised.training.EvalTask.labeled_data = @eval_category_task/trax.data.inputs.make_additional_stream()
+eval_category_task/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
+eval_category_task/trax.supervised.training.EvalTask.metric_names = ['Category accuracy', 'Category sequence accuracy']
+
+train_full_inference/data.CreateMathQAInputs.dataset_path = %dataset_path
+train_full_inference/data.CreateMathQAInputs.train = True
+train_full_inference/data.CreateMathQAInputs.tolerance = 0.01
+train_full_inference/data.CreateMathQAInputs.cumulative = False
+
+eval_full_inference/data.CreateMathQAInputs.dataset_path = %dataset_path
+eval_full_inference/data.CreateMathQAInputs.train = False
+eval_full_inference/data.CreateMathQAInputs.tolerance = 0.01
+eval_full_inference/data.CreateMathQAInputs.cumulative = False
+eval_full_inference/trax.supervised.training.EvalTask.labeled_data = @eval_full_inference/trax.data.inputs.make_additional_stream()
+eval_full_inference/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
+eval_full_inference/trax.supervised.training.EvalTask.metric_names = ['Full program accuracy', 'Full program sequence accuracy']
+
+train_correct_answer_task/data.CreateMathQAInputs.dataset_path = %dataset_path
+train_correct_answer_task/data.CreateMathQAInputs.train = True
+train_correct_answer_task/data.CreateMathQAInputs.tolerance = 0.01
+train_correct_answer_task/data.CreateMathQAInputs.cumulative = False
+train_correct_answer_task/data.CreateMathQAInputs.correct_answer = True
+
+eval_correct_answer_task/data.CreateMathQAInputs.dataset_path = %dataset_path
+eval_correct_answer_task/data.CreateMathQAInputs.train = False
+eval_correct_answer_task/data.CreateMathQAInputs.tolerance = 0.01
+eval_correct_answer_task/data.CreateMathQAInputs.cumulative = False
+eval_correct_answer_task/data.CreateMathQAInputs.correct_answer = True
+eval_correct_answer_task/trax.supervised.training.EvalTask.labeled_data = @eval_correct_answer_task/trax.data.inputs.make_additional_stream()
+eval_correct_answer_task/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
+eval_correct_answer_task/trax.supervised.training.EvalTask.metric_names = ['Correct answer accuracy', 'Correct answer sequence accuracy']
+
+data.PadToLength.len_map = {0: 512, 1: 512, 2: 512}
+data.PadToLength.pad_value = {0: 0, 1: 0, 2:0}
+data.TruncateToLength.len_map = {0: (256,), 1: (256,), 2: (256,)}
+data.Batch.batch_size = 4
+
+# Parameters for train:
+# ==============================================================================
+train.init_checkpoint = None
+train.optimizer = @trax.optimizers.Adafactor
+train.eval_frequency = 20
+train.eval_steps = 10
+train.inputs = @trax.data.inputs.make_inputs
+train.model = @trax.models.ConfigurableTransformer
+train.steps = 1000000
+train.checkpoint_highest = 'accuracy'
+train.additional_eval_tasks = [
+  @eval_basic_task/trax.supervised.training.EvalTask(),
+  @eval_rationale_task/trax.supervised.training.EvalTask(),
+  @eval_category_task/trax.supervised.training.EvalTask(),
+  @eval_full_inference/trax.supervised.training.EvalTask(),
+  @eval_correct_answer_task/trax.supervised.training.EvalTask(),
+]
+
+# Parameters for ConfigurableTransformer:
+# ==============================================================================
+ConfigurableTransformer.d_model = %d_model
+ConfigurableTransformer.d_ff = %d_ff
+ConfigurableTransformer.dropout = %dropout
+ConfigurableTransformer.ff_dropout = %dropout
+ConfigurableTransformer.ff_chunk_size = %ff_chunk_size
+ConfigurableTransformer.ff_sparsity = %ff_sparsity
+ConfigurableTransformer.max_len = %max_length
+ConfigurableTransformer.mode = 'train'
+ConfigurableTransformer.n_heads = %n_heads
+ConfigurableTransformer.n_encoder_layers = %n_layers
+ConfigurableTransformer.n_decoder_layers = %n_layers
+ConfigurableTransformer.input_vocab_size = %vocab_size
+ConfigurableTransformer.encoder_attention_type = %enc_attn_type
+ConfigurableTransformer.encoder_decoder_attention_type = %dec_attn_type
+ConfigurableTransformer.loss_sparsity = %loss_sparsity
+
+# Parameters for multifactor:
+# ==============================================================================
+multifactor.constant = 1e-3
+multifactor.factors = 'constant'

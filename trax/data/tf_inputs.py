@@ -1320,15 +1320,16 @@ def get_glue_t5_labels(dataset_name):
         'glue/sst2': ('negative', 'positive'),
         'glue/mrpc': ('not_equivalent', 'equivalent'),
         'glue/qqp': ('not_duplicate', 'duplicate'),
-        # Requires processing of floats
-        # 'glue/stsb': ('sentence1', 'sentence2'),
+        # Requires processing of floats, though one can still measure
+        # performance for the sequence accuracy task.
+        'glue/stsb': ('sentence1', 'sentence2'),
         'glue/mnli': ('entailment', 'neutral', 'contradiction'),
         'glue/qnli': ('entailment', 'not_entailment'),
         'glue/rte': ('entailment', 'not_entailment'),
         # Used for evaluation and for training of T5.
         # As explained in Section 2.4 of https://arxiv.org/pdf/1910.10683.pdf
         # it has an overlap with WSC from Super-GLUE.
-        # 'glue/wnli': ('sentence1', 'sentence2'),
+        'glue/wnli': ('sentence1', 'sentence2'),
     }
     return glue_t5_labels[ext_task_name]
   except KeyError:
@@ -1654,6 +1655,7 @@ def CreateMathQAInputs(  # pylint: disable=invalid-name
     nlp_rationale=False,
     correct_answer=False,
     category=False,
+    order_prediction=False,
     qed=False):
   """Prepares MathQA inputs.
 
@@ -1688,6 +1690,11 @@ def CreateMathQAInputs(  # pylint: disable=invalid-name
       answers and the target is the correct answer.
     category: if set to True, then input is the problem and the target is its
       category.
+    order_prediction: if set to True, then input is the problem and a list of
+      all operations; with probability 0.5 two operations are swapped; the task
+      conists in detecting whether the operations were swapped. A similar
+      additional task was considered in https://arxiv.org/pdf/1909.11942.pdf and
+      in a recent work of Piotr Piękos, henrykm@ and mateuszm@.
     qed: if set to True, then the reasoning is finished with an additional
       operation qed.
 
@@ -1745,6 +1752,18 @@ def CreateMathQAInputs(  # pylint: disable=invalid-name
           elif category:
             input_values = 'infer category: ' + input_prefix
             target_values = example['category']
+            yield input_values, target_values, np.array([1] *
+                                                        len(target_values))
+          elif order_prediction:
+            if np.random.uniform() < 0.5 and len(list_op) >= 2:
+              idx = range(len(list_op))
+              i1, i2 = random.sample(idx, 2)
+              list_op[i1], list_op[i2] = list_op[i2], list_op[i1]
+              target_values = 'not_ordered'
+            else:
+              target_values = 'ordered'
+            input_values = 'order prediction: ' + input_prefix + ' ' + ' '.join(
+                list_op)
             yield input_values, target_values, np.array([1] *
                                                         len(target_values))
           else:
