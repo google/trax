@@ -317,10 +317,13 @@ class Layer:
     `'flat_state'` item and the state it not restored either.
 
     Args:
-      file_name: Name/path of the pickeled weights/state file.
+      file_name: Name/path of the pickled weights/state file.
       weights_only: If `True`, initialize only the layer's weights. Else
           initialize both weights and state.
       input_signature: Input signature to be used instead of the one from file.
+
+    Returns:
+      A `(weights, state)` tuple.
     """
     with tf.io.gfile.GFile(file_name, 'rb') as f:
       with gzip.GzipFile(fileobj=f, compresslevel=2) as gzipf:
@@ -336,6 +339,33 @@ class Layer:
     elif input_signature is not None:
       self.init(input_signature)
     self.weights = weights
+    return (self.weights, self.state)
+
+  def save_to_file(self, file_name, weights_only=False, input_signature=None):
+    """Saves this layer and its sublayers to a pickled checkpoint.
+
+    Args:
+      file_name: Name/path of the pickled weights/state file.
+      weights_only: If `True`, save only the layer's weights. Else
+          save both weights and state.
+      input_signature: Input signature to be used.
+    """
+    flat_weights, flat_state = flatten_weights_and_state(
+        self.weights, self.state)
+    dictionary = {
+        'flat_weights': flat_weights,
+    }
+    if not weights_only:
+      dictionary['flat_state'] = flat_state
+    if input_signature is not None:
+      dictionary['input_signature'] = input_signature
+
+    tmp_file_path = file_name + '._tmp_'
+    with tf.io.gfile.GFile(tmp_file_path, 'wb') as f:
+      with gzip.GzipFile(fileobj=f, compresslevel=2) as gzipf:
+        pickle.dump(dictionary, gzipf, protocol=pickle.HIGHEST_PROTOCOL)
+    # Moving a file is much less error-prone than pickling large files.
+    tf.io.gfile.rename(tmp_file_path, file_name, overwrite=True)
 
   # End of public callable methods.
   # Methods and properties below are reserved for internal use.

@@ -112,6 +112,18 @@ class DenseTest(absltest.TestCase):
     self.assertEqual(w1.shape, (2, 4))
     self.assertEqual(w2.shape, (2, 4))
 
+  def test_save_to_file_and_init_to_file(self):
+    layer1 = tl.Dense(4, use_bias=False)
+    layer2 = tl.Dense(4, use_bias=False)
+    x = np.array([1, 2])
+    w1, _ = layer1.init(shapes.signature(x))
+    layer1.save_to_file('/tmp/dense_weights',
+                        input_signature=shapes.signature(x))
+    w2, _ = layer2.init_from_file('/tmp/dense_weights')
+    self.assertEqual(w1.shape, (2, 4))
+    self.assertEqual(w2.shape, (2, 4))
+    self.assertEqual(w1.tolist(), w2.tolist())
+
 
 class EmbeddingTest(absltest.TestCase):
 
