@@ -217,7 +217,8 @@ def LSTMSeq2SeqAttn(input_vocab_size=256,
       PrepareAttentionInputs(),  # q, k, v, mask, target-toks
       tl.Residual(
           tl.AttentionQKV(d_model, n_heads=n_attention_heads,
-                          dropout=attention_dropout, mode=mode)
+                          dropout=attention_dropout, mode=mode,
+                          cache_KV_in_predict=True)
       ),                         # decoder-vecs, mask, target-toks
       tl.Select([0, 2]),         # decoder-vecs, target-toks
       [tl.LSTM(d_model) for _ in range(n_decoder_layers)],

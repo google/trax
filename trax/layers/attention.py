@@ -92,7 +92,8 @@ def Attention(d_feature, n_heads=1, dropout=0.0, mode='train'):
 
 
 @assert_shape('bSq,blk,blv,b1xl->bSd,b1xl')
-def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train'):
+def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train',
+                 cache_KV_in_predict=False):
   """Returns a layer that maps (q, k, v, mask) to (activations, mask).
 
   See ``Attention`` above for further context/details.
@@ -103,12 +104,19 @@ def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train'):
     dropout: Probababilistic rate for internal dropout applied to attention
         activations (based on query-key pairs) before dotting them with values.
     mode: One of ``'train'``, ``'eval'``, or ``'predict'``.
+    cache_KV_in_predict: Whether to cache K/V tensors in predict mode.
   """
+  k_processor = core.Dense(d_feature)
+  v_processor = core.Dense(d_feature)
+  if cache_KV_in_predict and mode == 'predict':
+    k_processor = cb.Cache(k_processor)
+    v_processor = cb.Cache(v_processor)
+
   return cb.Serial(
       cb.Parallel(
           core.Dense(d_feature),
-          core.Dense(d_feature),
-          core.Dense(d_feature),
+          k_processor,
+          v_processor,
       ),
       PureAttention(  # pylint: disable=no-value-for-parameter
           n_heads=n_heads, dropout=dropout, mode=mode),

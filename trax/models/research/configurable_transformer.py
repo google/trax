@@ -934,7 +934,8 @@ def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
   # some variants of FAVOR can do it, so maybe in the future,
   # but we don't have them yet).
   attention_qkv = tl.AttentionQKV(
-      d_model, n_heads=n_heads, dropout=dropout, mode=mode)
+      d_model, n_heads=n_heads, dropout=dropout, mode=mode,
+      cache_KV_in_predict=True)
 
   causal_attention = ApplyAttentionLayer(
       attention_type,

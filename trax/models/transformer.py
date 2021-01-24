@@ -511,7 +511,8 @@ def _EncoderDecoderBlock(d_model, d_ff, n_heads,
     return tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
 
   attention_qkv = tl.AttentionQKV(
-      d_model, n_heads=n_heads, dropout=dropout, mode=mode)
+      d_model, n_heads=n_heads, dropout=dropout, mode=mode,
+      cache_KV_in_predict=True)
 
   causal_attention = tl.CausalAttention(
       d_model, n_heads=n_heads, mode=mode)
