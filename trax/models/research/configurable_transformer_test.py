@@ -64,6 +64,9 @@ class ConfigurableTransformerTest(parameterized.TestCase):
     self._test_transformer_forward_shape(input_vocab_size, output_vocab_size)
 
 
+  def test_dot_product_causal_attention_fast_inference(self):
+    self._test_fast_inference(length=5)
+
   def _test_fast_inference(self, length):
     with fastmath.use_backend(fastmath.Backend.JAX):
       vocab_size = 16
@@ -98,8 +101,64 @@ class ConfigurableTransformerTest(parameterized.TestCase):
         next_sym = np.random.randint(vocab_size, size=(batch_size, 1))
         buf[:, index] = next_sym[:, 0]
 
-  def test_dot_product_causal_attention_fast_inference(self):
-    self._test_fast_inference(length=5)
+  def test_sparse_configurable_transformer_fast_inference(self):
+    self._test_sparse_fast_inference(length=3)
+
+  def _test_sparse_fast_inference(self, length):
+    with fastmath.use_backend(fastmath.Backend.JAX):
+      vocab_size = 16
+      d_model = 4
+
+      encoder_decoder_attention_type = functools.partial(
+          tl.MultiplicativeConvCausalAttention,
+          sparsity=2,
+          length_kernel_size=1,
+          )
+
+      model_fn = functools.partial(
+          ct.ConfigurableTransformer,
+          input_vocab_size=vocab_size,
+          d_model=d_model,
+          d_ff=8,
+          n_encoder_layers=2,
+          n_decoder_layers=2,
+          n_heads=2,
+          loss_sparsity=2,
+          ff_sparsity=2,
+          encoder_decoder_attention_type=encoder_decoder_attention_type,
+
+          # SRU currently doesn't work for second token and further.
+          # ff_use_sru=(1, 4),
+      )
+
+      model_slow = model_fn(mode='eval')
+      model_fast = model_fn(mode='predict')
+      rng = fastmath.random.get_prng(0)
+      batch_size = 2
+      input_signature = (
+          shapes.ShapeDtype((batch_size, length), np.int32),
+          shapes.ShapeDtype((batch_size, 1), np.int32))
+      model_slow.init(input_signature)
+      model_fast.init(input_signature)
+      model_slow.save_to_file('/tmp/unique_weights')
+      model_fast.init_from_file('/tmp/unique_weights', weights_only=True,
+                                input_signature=input_signature)
+
+      inp = np.random.randint(vocab_size, size=(batch_size, length))
+      buf = np.zeros((batch_size, length), dtype=np.int32)
+      next_sym = np.zeros((batch_size, 1), dtype=np.int32)
+
+      for index in range(length):
+        logits_slow = model_slow((inp, buf), rng=rng)[0]
+        logits_fast = model_fast((inp, next_sym), rng=rng)[0]
+        np.testing.assert_array_almost_equal(
+            logits_slow[:, index, :],
+            logits_fast[:, 0, :],
+            decimal=5,
+            err_msg='Error on token {} out of {}.'.format(index+1, length)
+        )
+        next_sym = np.random.randint(vocab_size, size=(batch_size, 1))
+        buf[:, index] = next_sym[:, 0]
 
   @parameterized.named_parameters(
       ('positional_encoding', None),

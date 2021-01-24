@@ -136,7 +136,7 @@ def SplitLastAxis(num_splits):
 
 @assert_shape('...ab->...c')
 def MergeLastTwoAxes():
-  return tl.Fn('SplitLastAxis',
+  return tl.Fn('MergeLastTwoAxes',
                lambda x: jnp.reshape(x, x.shape[:-2] + (-1,)))
 
 
@@ -214,8 +214,52 @@ def ModularCausalAttention(d_feature, n_heads=1, sparsity=None, dropout=0.0,
           mode=mode))
 
 
+class _RememberPad(base.Layer):
+  """Layer which remembers last N elements in predict mode."""
+
+  def __init__(self, n_items_to_remember, mode):
+    """Returns a layer which remembers last N elements in predict mode.
+
+    For predict mode, the layer remembers last N elements and pads with them.
+    For other modes, it pads with zeros. The layer pads/remembers elements from
+    the second axis.
+
+    Args:
+      n_items_to_remember: Number of items to remember/pad with.
+      mode: One of `'train'`, `'eval'`, or `'predict'`.
+    """
+    super().__init__(name='_RememberPad')
+    self._n_items_to_remember = n_items_to_remember
+    self._mode = mode
+
+  def forward(self, x):
+    if self._n_items_to_remember == 0:
+      return x
+    if self._mode == 'predict':
+      x = jnp.concatenate([self.state, x], axis=1)
+      self.state = x[:, -self._n_items_to_remember:, ...]
+    else:
+      pad_widths = [[0, 0] for _ in range(len(x.shape))]
+      pad_widths[1][0] = self._n_items_to_remember
+      x = jnp.pad(x, pad_width=pad_widths)
+    return x
+
+  def init_weights_and_state(self, input_signature):
+    """Initializes this layer's weights."""
+    if isinstance(input_signature, (list, tuple)):
+      input_signature = input_signature[0]
+    self.weights = ()
+    if self._mode == 'predict':
+      shape = list(input_signature.shape)
+      shape[1] = self._n_items_to_remember
+      self.state = jnp.zeros(shape, dtype=jnp.float32)
+    else:
+      self.state = ()
+
+
 @assert_shape('...a->...b')
-def LocallyConvDense(n_modules, n_units, kernel_size=1, length_kernel_size=1):
+def LocallyConvDense(n_modules, n_units, mode, kernel_size=1,
+                     length_kernel_size=1):
   """Layer using local convolutions for approximation of Dense layer.
 
   The layer splits the last axis of a tensor into `n_modules`, then runs
@@ -226,6 +270,7 @@ def LocallyConvDense(n_modules, n_units, kernel_size=1, length_kernel_size=1):
     n_modules: Indicates how many modules (pixels) should be input and output
         split into for processing.
     n_units: how many outputs (filters) should each module generate.
+    mode: One of `'train'`, `'eval'`, or `'predict'`.
     kernel_size: The size of the kernel to be used.
     length_kernel_size: If > 1, also do causal convolution on the previous axis,
       which is often the sentence length in sequence models.
@@ -238,10 +283,11 @@ def LocallyConvDense(n_modules, n_units, kernel_size=1, length_kernel_size=1):
   if kernel_size % 2 != 1:
     raise ValueError('Currently we only handle odd kernel sizes.')
   half = (kernel_size - 1) // 2
-  pad_widths = [[0, 0], [length_kernel_size - 1, 0], [half, half], [0, 0]]
+  pad_widths = [[0, 0], [0, 0], [half, half], [0, 0]]
   return tl.Serial(
       tl.SplitLastAxis(n_modules),
       tl.Fn('Pad', lambda x: jnp.pad(x, pad_width=pad_widths)),
+      _RememberPad(length_kernel_size-1, mode=mode),
       tl.Conv(n_units, kernel_size=(length_kernel_size, kernel_size)),
       tl.MergeLastTwoAxes()
   )
@@ -271,7 +317,7 @@ def ConvCausalAttention(d_feature, n_heads=1, sparsity=None, dropout=0.0,
   @assert_shape('...a->...b')
   def ProcessingLayer():
     assert d_feature % n_modules == 0
-    return LocallyConvDense(n_modules, d_feature // n_modules,
+    return LocallyConvDense(n_modules, d_feature // n_modules, mode=mode,
                             kernel_size=kernel_size)
 
   return tl.ConfigurableAttention(
@@ -578,14 +624,14 @@ def MultiplicativeConvCausalAttention(
       MultiplicativeSparseDense(sparsity, d_feature, d_feature),  # shared q, k
       tl.Select([0, 0, 0]),  # use for q, k, v
       tl.Parallel(
-          [LocallyConvDense(sparsity, d_module, kernel_size=3,
+          [LocallyConvDense(sparsity, d_module, mode=mode, kernel_size=3,
                             length_kernel_size=length_kernel_size),
            tl.SplitIntoHeads(n_heads)],
-          [LocallyConvDense(sparsity, d_module, kernel_size=3,
+          [LocallyConvDense(sparsity, d_module, mode=mode, kernel_size=3,
                             length_kernel_size=length_kernel_size),
            tl.SplitIntoHeads(n_heads)],
           [tl.Concatenate(),  # use permuted and original for v
-           LocallyConvDense(sparsity, d_module, kernel_size=1,
+           LocallyConvDense(sparsity, d_module, mode=mode, kernel_size=1,
                             length_kernel_size=length_kernel_size),
            tl.SplitIntoHeads(n_heads)],
       ),
@@ -792,7 +838,7 @@ class SparseFF(base.Layer):
 
   def __init__(self, d_ff, n_elements_in_block=32, d_lowrank=64,
                temperature=0.1, quant_prob=0.3, use_bfloat16=False,
-               big_weights_in_bfloat16=True, mode='train',
+               big_weights_in_bfloat16=False, mode='train',
                kernel_initializer=init.GlorotUniformInitializer(),
                bias_initializer=init.RandomNormalInitializer(1e-6)):
     """Returns a sparse feed-forward block."""
