@@ -93,10 +93,10 @@ def Serial(*fns):  # pylint: disable=invalid-name
 
 def Parallel(*fns):  # pylint: disable=invalid-name
   """Combines generator functions into one that runs them in parallel."""
-  def parallel_generator(generator=None):
+  def parallel_generator():
     generators = []
     for f in fastmath.tree_flatten(fns):
-      generators.append(f(generator))
+      generators.append(f())
     while True:
       for generator in generators:
         yield next(generator)
@@ -779,6 +779,12 @@ def make_inputs(train_stream=gin.REQUIRED, eval_stream=None):
 def make_additional_stream(stream=gin.REQUIRED):
   """Create a stream mostly for use in gin configs for additional tasks."""
   return Serial(stream)()
+
+
+@gin.configurable()
+def make_parallel_stream(streams=gin.REQUIRED):
+  """Create a parallel stream for use in gin configs for additional tasks."""
+  return Parallel(streams)()
 
 
 @gin.configurable()
