@@ -63,8 +63,8 @@ class FunnelTransformerTest(parameterized.TestCase):
     self.assertEqual(y_cls.shape, long.shape)
     self.assertEqual(y.shape, long.shape)
 
-    self.assertEqual(y_cls.squeeze().tolist(), 5*[2] + 3*[1])
-    self.assertEqual(y.squeeze().tolist(), 8*[2])
+    self.assertEqual(y_cls.squeeze().tolist(), 5 * [2] + 3 * [1])
+    self.assertEqual(y.squeeze().tolist(), 8 * [2])
 
   def test_funnel_block_forward_shape(self):
     n_even = 4
@@ -116,14 +116,31 @@ class FunnelTransformerTest(parameterized.TestCase):
 
     self.assertEqual(y.shape, (batch_size, n_tokens, vocab_size))
 
-  def test_transformer_lm_forward_shape(self):
+  def test_funnel_transformer_lm_forward_shape(self):
     d_model = 8
     vocab_size = 7
-    model = ft.FunnelTransformerLM(
-        vocab_size, d_model=d_model, d_ff=d_model, n_heads=2)
     x = np.ones((3, 6)).astype(np.int32)
-    _, _ = model.init(shapes.signature(x))
-    y = model(x)
+
+    simple_funnel = ft.FunnelTransformerLM(
+        vocab_size,
+        shorten_factors=(3,),
+        n_funnel_blocks=(1,),
+        vanilla_layers=(1, 1),
+        d_model=d_model, d_ff=d_model, n_heads=2
+    )
+    _, _ = simple_funnel.init(shapes.signature(x))
+    y = simple_funnel(x)
+    self.assertEqual(y.shape, (3, 6, vocab_size))
+
+    multi_stage_funnel = ft.FunnelTransformerLM(
+        vocab_size,
+        shorten_factors=(3, 2),
+        n_funnel_blocks=(0, 0),
+        vanilla_layers=(0, 0),
+        d_model=d_model, d_ff=d_model, n_heads=2)
+
+    _, _ = multi_stage_funnel.init(shapes.signature(x))
+    y = multi_stage_funnel(x)
     self.assertEqual(y.shape, (3, 6, vocab_size))
 
 
