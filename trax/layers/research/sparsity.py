@@ -822,34 +822,121 @@ def CausalFavor(d_feature, n_heads=1, dropout=0.0,
       qkv_attention_layer=base.Fn('CausalFAVOR', favor))
 
 
-class SparseFF(base.Layer):
-  """Feed-forward block with sparsity.
+class _RememberInReverse(base.Layer):
+  """Layer remembering the input in forward pass. For reversible models."""
 
-  The original (non-sparse) FF block is a triple Dense(d_ff)-Relu-Dense
-  that takes an input, makes it of size d_ff (usually larger than it was) and
-  then brings it back to the original size after Relu. It is commonly used in
-  Transformer models where it often accounts for most of the trainable weights.
+  def __init__(self):
+    """Layer remembering the input in forward pass. For reversible models.
 
-  The original block can be slow in decoding due to the need to fetch a lot of
-  weights from memory. This sparse block only allows one non-zero element
-  in a block of a specified size. This is trained with straight-through Gumbel
-  softmax trick.
-  """
+    During the first pass through the model this layer saves the input as
+    state, and returns the input unmodified. During the second pass through the
+    model the layer outputs the input from the first pass. This is used to
+    combat numerical stability problems in Reformer2. It doesn't do anything in
+    non-reversible models.
+    """
+    super().__init__(name='_RememberInReverse')
 
-  def __init__(self, d_ff, n_elements_in_block=32, d_lowrank=64,
-               temperature=0.1, quant_prob=0.3, use_bfloat16=False,
-               big_weights_in_bfloat16=False, mode='train',
-               kernel_initializer=init.GlorotUniformInitializer(),
-               bias_initializer=init.RandomNormalInitializer(1e-6)):
+  def forward(self, x):
+    if 'running_second_time_yes' in self.state[1]:
+      result = self.state[0]
+    else:
+      result = x
+    self.state = (x, {'running_second_time': ()})
+
+    return result
+
+  def init_weights_and_state(self, input_signature):
+    """Initializes this layer's weights."""
+    if isinstance(input_signature, (list, tuple)):
+      input_signature = input_signature[0]
+    self.weights = ()
+    self.state = (jnp.zeros(input_signature.shape, dtype=jnp.int32),
+                  {'running_second_time': ()})
+
+
+class _SparseFFController(base.Layer):
+  """The controller part of Sparse Feed-Forward layer."""
+
+  def __init__(self, d_ff, n_elements_in_block, d_lowrank, temperature,
+               use_bfloat16, mode, kernel_initializer, bias_initializer):
     """Returns a sparse feed-forward block."""
-    super().__init__(name=f'SparseFF_{d_ff}')
+    super().__init__(name=f'_SparseFFController_{d_ff}', n_out=2)
+    self._mode = mode
+    self._use_bfloat16 = use_bfloat16
+    self._d_ff = d_ff
+    self._d_lowrank = d_lowrank
+    # Q: what temperature is actually most useful in training?
+    self._temperature = temperature if mode == 'train' else 0.0
+    self._n_elements_in_block = n_elements_in_block
+    self._kernel_initializer = kernel_initializer
+    self._bias_initializer = bias_initializer
+    # Helper numbers as d_ff will be divided by n_elements_in_block.
+    assert self._d_ff % self._n_elements_in_block == 0
+    self._d1 = self._d_ff // self._n_elements_in_block
+    self._d2 = self._n_elements_in_block
+
+  def forward(self, x):
+    """Executes this layer as part of a forward pass through the model.
+
+    Args:
+      x: Tensor of same shape and dtype as the input signature used to
+          initialize this layer.
+
+    Returns:
+      Tensor of same shape and dtype as the input.
+    """
+
+    m1, m2, mb = self.weights
+
+    x_shape = x.shape
+    x = jnp.reshape(x, [-1, x_shape[-1]])  # Easier to operate on flattened x.
+
+    # Q: should we add bias and/or put relu after the low-rank m1 dot?
+    mask_logits = jnp.dot(jnp.dot(x, m1), m2) + mb
+    mask_logits = jnp.reshape(mask_logits, [-1, self._d1, self._d2])
+    # Softmax.
+    mask_logsumexp = fastmath.logsumexp(mask_logits, axis=-1, keepdims=True)
+    log_mask = mask_logits - mask_logsumexp
+    mask = jnp.exp(log_mask)
+    # Gumbel-softmax with straight-through discretization.
+    u = fastmath.random.uniform(self.rng, mask.shape, jnp.float32,
+                                1e-6, 1.0 - 1e-6)
+    g = -jnp.log(-jnp.log(u))
+    quant_mask = jnp.argmax(log_mask + g * self._temperature, axis=-1)
+    return quant_mask, mask
+
+  def init_weights_and_state(self, input_signature):
+    """Randomly initializes this layer's weights."""
+    d_model = input_signature.shape[-1]
+    shape_m1 = (d_model, self._d_lowrank)
+    shape_m2 = (self._d_lowrank, self._d_ff)
+    shape_mb = (self._d_ff,)
+
+    rng_m1, rng_m2, rng_mb = fastmath.random.split(self.rng, 3)
+    m1 = self._kernel_initializer(shape_m1, rng_m1)
+    m2 = self._kernel_initializer(shape_m2, rng_m2)
+    mb = self._bias_initializer(shape_mb, rng_mb)
+    if self._use_bfloat16:
+      m1 = m1.astype(jnp.bfloat16)
+      m2 = m2.astype(jnp.bfloat16)
+      mb = mb.astype(jnp.bfloat16)
+
+    self.weights = (m1, m2, mb)
+
+
+class _SparseFFMain(base.Layer):
+  """The main (non-controller) part of Sparse Feed-Forward layer."""
+
+  def __init__(self, d_ff, n_elements_in_block, d_lowrank, quant_prob,
+               use_bfloat16, big_weights_in_bfloat16, mode, kernel_initializer,
+               bias_initializer):
+    """Returns a sparse feed-forward block."""
+    super().__init__(name=f'_SparseFFMain_{d_ff}', n_in=3)
     self._mode = mode
     self._use_bfloat16 = use_bfloat16
     self._big_weights_in_bfloat16 = big_weights_in_bfloat16
     self._d_ff = d_ff
     self._d_lowrank = d_lowrank
-    # Q: what temperature is actually most useful in training?
-    self._temperature = temperature if mode == 'train' else 0.0
     self._quant_prob = quant_prob
     self._n_elements_in_block = n_elements_in_block
     self._kernel_initializer = kernel_initializer
@@ -869,7 +956,9 @@ class SparseFF(base.Layer):
     Returns:
       Tensor of same shape and dtype as the input.
     """
-    m1, m2, mb, w1, w2, b2 = self.weights
+    quant_mask, mask, x = x
+
+    w1, w2, b2 = self.weights
     if self._mode != 'predict':
       w1 = jnp.reshape(w1.T, (-1, self._d_ff))
       w2 = jnp.reshape(w2, (self._d_ff, -1))
@@ -879,22 +968,9 @@ class SparseFF(base.Layer):
       # checkpoints, so this is a temporary work-around.
       w1 = jnp.transpose(w1, (1, 0, 2))
       w1 = jnp.reshape(w1, (self._d1, self._d2, -1))
-
     x_shape = x.shape
     x = jnp.reshape(x, [-1, x_shape[-1]])  # Easier to operate on flattened x.
 
-    # Q: should we add bias and/or put relu after the low-rank m1 dot?
-    mask_logits = jnp.dot(jnp.dot(x, m1), m2) + mb
-    mask_logits = jnp.reshape(mask_logits, [-1, self._d1, self._d2])
-    # Softmax.
-    mask_logsumexp = fastmath.logsumexp(mask_logits, axis=-1, keepdims=True)
-    log_mask = mask_logits - mask_logsumexp
-    mask = jnp.exp(log_mask)
-    # Gumbel-softmax with straight-through discretization.
-    rng1, rng2 = fastmath.random.split(self.rng, 2)
-    u = fastmath.random.uniform(rng1, mask.shape, jnp.float32, 1e-6, 1.0 - 1e-6)
-    g = -jnp.log(-jnp.log(u))
-    quant_mask = jnp.argmax(log_mask + g * self._temperature, axis=-1)
     if self._mode == 'train':
       # Tricks from Section 2.1 in https://arxiv.org/abs/1801.09797
       quant_mask = tl.one_hot(quant_mask, self._n_elements_in_block)
@@ -902,7 +978,7 @@ class SparseFF(base.Layer):
       quant_mask += mask - fastmath.stop_gradient(mask)  # straight-through
       # We will sometimes (quant_prob of the batches) use the soft-mask instead
       # of the quantized mask to improve training stability (see paper above).
-      select = fastmath.random.uniform(rng2, (), jnp.float32, 0.0, 1.0)
+      select = fastmath.random.uniform(self.rng, (), jnp.float32, 0.0, 1.0)
       quant_mask = jnp.where(select < self._quant_prob, quant_mask, mask)
       quant_mask = jnp.reshape(quant_mask, [-1, self._d_ff])
 
@@ -918,7 +994,7 @@ class SparseFF(base.Layer):
       # size of joint_batch, but at inference that will be 1 most of the time.
       # Shapes:
       # quant_mask is [joint_batch, self._d1]
-      # w1 is [self._d1, self._d2, d_model]
+      # w1 is [d_model, self._d1, self._d2]
       # we'll index w1 with advanced numpy indexing, first range over
       # self._d1 times the batch size, second range being quant_mask
       batch_size = quant_mask.shape[0]
@@ -945,26 +1021,16 @@ class SparseFF(base.Layer):
 
   def init_weights_and_state(self, input_signature):
     """Randomly initializes this layer's weights."""
-    d_model = input_signature.shape[-1]
-    shape_m1 = (d_model, self._d_lowrank)
-    shape_m2 = (self._d_lowrank, self._d_ff)
-    shape_mb = (self._d_ff,)
+    d_model = input_signature[-1].shape[-1]
     shape_w1 = (d_model, self._d_ff)
     shape_w2 = (self._d_ff, d_model)
     shape_b2 = (d_model,)
 
-    rng_m1, rng_m2, rng_mb, rng_w1, rng_w2, rng_b2 = fastmath.random.split(
-        self.rng, 6)
-    m1 = self._kernel_initializer(shape_m1, rng_m1)
-    m2 = self._kernel_initializer(shape_m2, rng_m2)
-    mb = self._bias_initializer(shape_mb, rng_mb)
+    rng_w1, rng_w2, rng_b2 = fastmath.random.split(self.rng, 3)
     w1 = self._kernel_initializer(shape_w1, rng_w1)
     w2 = self._kernel_initializer(shape_w2, rng_w2)
     b2 = self._bias_initializer(shape_b2, rng_b2)
     if self._use_bfloat16:
-      m1 = m1.astype(jnp.bfloat16)
-      m2 = m2.astype(jnp.bfloat16)
-      mb = mb.astype(jnp.bfloat16)
       b2 = b2.astype(jnp.bfloat16)
     if self._use_bfloat16 or self._big_weights_in_bfloat16:
       w1 = w1.astype(jnp.bfloat16)
@@ -972,7 +1038,79 @@ class SparseFF(base.Layer):
 
     w1 = jnp.reshape(w1.T, (self._d1, self._d2, -1))
     w2 = jnp.reshape(w2, (self._d1, self._d2, -1))
-    self.weights = (m1, m2, mb, w1, w2, b2)
+
+    self.weights = (w1, w2, b2)
+
+
+def SparseFF(
+    d_ff, n_elements_in_block=32, d_lowrank=64, temperature=0.1, quant_prob=0.3,
+    use_bfloat16=False, big_weights_in_bfloat16=False, mode='train',
+    kernel_initializer=init.GlorotUniformInitializer(),
+    bias_initializer=init.RandomNormalInitializer(1e-6),
+    dropout_rate=0.0, dropout_shared_axes=None, ff_chunk_size=0):
+  """Returns Feed-forward block with sparsity.
+
+  The original (non-sparse) FF block is a triple Dense(d_ff)-Relu-Dense
+  that takes an input, makes it of size d_ff (usually larger than it was) and
+  then brings it back to the original size after Relu. It is commonly used in
+  Transformer models where it often accounts for most of the trainable weights.
+
+  The original block can be slow in decoding due to the need to fetch a lot of
+  weights from memory. This sparse block only allows one non-zero element
+  in a block of a specified size. This is trained with straight-through Gumbel
+  softmax trick.
+
+  Args:
+    d_ff: Depth/dimensionality of FeedForward layer.
+    n_elements_in_block: The sparsity level. The layer is divided into blocks of
+      this size, and each block has only a single element active.
+    d_lowrank: The dimensionality of low-rank controller.
+    temperature: The temperature of the controller during training.
+    quant_prob: During training this proportion of blocks will have quantized
+      mask (i.e. a single element active). The rest will use a soft mask.
+    use_bfloat16: Whether to use bfloat16 for weights.
+    big_weights_in_bfloat16: : Whether to use bfloat16 for main weights of the
+      FeedForward layer.
+    mode: One of `'train'`, `'eval'`, or `'predict'`.
+    kernel_initializer: Function that creates a matrix of (random) initial
+        connection weights `W` for the layer.
+    bias_initializer: Function that creates a vector of (random) initial
+        bias weights `b` for the layer.
+    dropout_rate: Probability for dropping an activation value.
+    dropout_shared_axes: Tensor axes on which to share a dropout mask. Sharing
+      along batch and sequence axes (`dropout_shared_axes=(0,1)`) is a useful
+      way to save memory and apply consistent masks to activation vectors at
+      different sequence positions.
+    ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks.
+  """
+
+  controller = _SparseFFController(
+      d_ff=d_ff, n_elements_in_block=n_elements_in_block,
+      d_lowrank=d_lowrank, temperature=temperature,
+      use_bfloat16=use_bfloat16, mode=mode,
+      kernel_initializer=kernel_initializer,
+      bias_initializer=bias_initializer)
+
+  main = [
+      _SparseFFMain(
+          d_ff=d_ff, n_elements_in_block=n_elements_in_block,
+          d_lowrank=d_lowrank, quant_prob=quant_prob, use_bfloat16=use_bfloat16,
+          big_weights_in_bfloat16=big_weights_in_bfloat16, mode=mode,
+          kernel_initializer=kernel_initializer,
+          bias_initializer=bias_initializer),
+      tl.Dropout(rate=dropout_rate, shared_axes=dropout_shared_axes, mode=mode),
+  ]
+
+  if ff_chunk_size > 0:
+    main = [tl.BatchLeadingAxes(tl.Chunk(tl.Serial(main), ff_chunk_size))]
+
+  return tl.Serial(
+      # emb
+      tl.Dup(),  # emb, emb
+      controller,  # quant_mask, mask, emb
+      _RememberInReverse(),  # quant_mask, mask, emb
+      main,  # emb/output
+      )
 
 
 class BlockSparseFF(base.Layer):

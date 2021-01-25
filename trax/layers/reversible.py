@@ -298,8 +298,25 @@ class ReversibleHalfResidual(ReversibleLayer):
     # Forward pass through self.compute_residual. Outputs that will not receive
     # a gradient signal from subsequent layers are moved to aux.
     def call_compute_residual(x, weights):
+      state_to_pass = state[0]  # old_state
+
+      # _replace_second_time is currently used exclusively in _RememberInReverse
+      # layer to combat numerical instability in Reformer2 when quantizing
+      # the mask in SparseFF.
+      def _replace_second_time(stt, nstt):
+        if (isinstance(stt, tuple) and len(stt) == 2 and
+            isinstance(stt[1], dict) and 'running_second_time' in stt[1]):
+          return (nstt[0], {'running_second_time_yes': ()})
+        elif isinstance(stt, (tuple, list)):
+          assert isinstance(nstt, (tuple, list)) and len(nstt) == len(stt)
+          return type(stt)([
+              _replace_second_time(s, ns) for s, ns in zip(stt, nstt)])
+        else:
+          return stt
+
+      state_to_pass = _replace_second_time(state_to_pass, new_state[0])
       res, _ = self.compute_residual.pure_fn(
-          x, weights=weights, state=state[0], rng=rngs[0])
+          x, weights=weights, state=state_to_pass, rng=rngs[0])
       if not isinstance(res, (tuple, list)):
         return res, None
       else:

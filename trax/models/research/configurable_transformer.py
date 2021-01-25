@@ -100,17 +100,22 @@ def FeedForwardWithOptions(d_model,
         temperature=temperature,
         quant_prob=quant_prob,
         use_bfloat16=use_bfloat16,
-        mode=mode)
+        mode=mode,
+        dropout_rate=dropout,
+        dropout_shared_axes=dropout_shared_axes,
+        ff_chunk_size=ff_chunk_size)
   elif ff_sparsity and ff_sparsity_type == 'Block':
-    ff = tl.BlockSparseFF(d_ff, num_experts=ff_sparsity, mode=mode),
+    ff = tl.BlockSparseFF(d_ff, num_experts=ff_sparsity, mode=mode)
   else:
     ff = _FeedForward(d_model, d_ff, dropout, ff_activation, ff_dropout,
                       use_bfloat16, mode)
-  res = [tl.LayerNorm(),
-         ff,
-         tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)]
-  if ff_chunk_size > 0:
-    res = tl.BatchLeadingAxes(tl.Chunk(tl.Serial(res), ff_chunk_size))
+  res = [tl.LayerNorm(), ff]
+  if ff_sparsity_type != '1inN' or ff_sparsity == 0:
+    # SparseFF has Dropout and BatchLeadingAxes built-in.
+    res.append(tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes,
+                          mode=mode))
+    if ff_chunk_size > 0:
+      res = tl.BatchLeadingAxes(tl.Chunk(tl.Serial(res), ff_chunk_size))
   if ff_use_sru:
     if isinstance(ff_use_sru, (list, tuple)):
       sru_n_layers, sru_n_units = ff_use_sru

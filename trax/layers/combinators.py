@@ -908,9 +908,9 @@ class BatchLeadingAxes(base.Layer):
   """
 
   def __init__(self, layer, n_last_axes_to_keep=1):
-    if layer.n_in != 1 or layer.n_out != 1:
+    if layer.n_out != 1:
       raise ValueError('BatchLeadingAxes currently only works for layers with '
-                       f'n_in = n_out = 1, got {(layer.n_in, layer.n_out)}.')
+                       f'n_out = 1, got {layer.n_out}.')
     super().__init__(n_in=layer.n_in, n_out=layer.n_out)
     self._sublayers = [layer]
     self._n_last_axes_to_keep = n_last_axes_to_keep
@@ -924,22 +924,36 @@ class BatchLeadingAxes(base.Layer):
 
   def forward(self, inputs):
     """Executes this layer as part of a forward pass through the model."""
-    batched_axes_shape = list(inputs.shape[:-self._n_last_axes_to_keep])
-    batched_shape = [-1] + list(inputs.shape[-self._n_last_axes_to_keep:])
-    inputs = jnp.reshape(inputs, batched_shape)
+    if self._n_in == 1:
+      inputs = [inputs]
+    new_inputs = []
+    for old_input in inputs:
+      batched_axes_shape = list(old_input.shape[:-self._n_last_axes_to_keep])
+      batched_shape = [-1] + list(old_input.shape[-self._n_last_axes_to_keep:])
+      new_inputs.append(jnp.reshape(old_input, batched_shape))
+    new_inputs = tuple(new_inputs)
+    if self._n_in == 1:
+      new_inputs = new_inputs[0]
     res, layer_state = self.sublayer.pure_fn(
-        inputs, self.weights[0], self.state[0], self.rng)
+        new_inputs, self.weights[0], self.state[0], self.rng)
     self.state = (layer_state,)
     return jnp.reshape(res, batched_axes_shape + list(res.shape[1:]))
 
   def init_weights_and_state(self, input_signature):
     """Initializes weights and state for inputs with the given signature."""
-    batched_size = 1
-    for d in input_signature.shape[:-self._n_last_axes_to_keep]:
-      batched_size *= d
-    batched_shape = [batched_size] + list(
-        input_signature.shape[-self._n_last_axes_to_keep:])
-    batched_signature = ShapeDtype(batched_shape, input_signature.dtype)
+    if self._n_in == 1 and not isinstance(input_signature, (list, tuple)):
+      input_signature = (input_signature,)
+    batched_signature = []
+    for sub_input_signature in input_signature:
+      batched_size = 1
+      for d in sub_input_signature.shape[:-self._n_last_axes_to_keep]:
+        batched_size *= d
+      batched_shape = [batched_size] + list(
+          sub_input_signature.shape[-self._n_last_axes_to_keep:])
+      batched_signature.append(ShapeDtype(batched_shape,
+                                          sub_input_signature.dtype))
+    if self._n_in == 1:
+      batched_signature = batched_signature[0]
     weights, layer_state = self.sublayer.init(batched_signature, use_cache=True)
     self.state = (layer_state,)
     self.weights = (weights,)
