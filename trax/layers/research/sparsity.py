@@ -1102,15 +1102,15 @@ def SparseFF(
   ]
 
   if ff_chunk_size > 0:
-    main = [tl.BatchLeadingAxes(tl.Chunk(tl.Serial(main), ff_chunk_size))]
+    main = [tl.Chunk(tl.Serial(main), ff_chunk_size)]
 
-  return tl.Serial(
+  return tl.BatchLeadingAxes(tl.Serial(
       # emb
       tl.Dup(),  # emb, emb
       controller,  # quant_mask, mask, emb
       _RememberInReverse(),  # quant_mask, mask, emb
       main,  # emb/output
-      )
+      ))
 
 
 class BlockSparseFF(base.Layer):
