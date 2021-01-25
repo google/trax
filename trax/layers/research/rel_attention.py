@@ -40,8 +40,8 @@ from trax.layers.attention import SplitIntoHeads, MergeHeads
 
 @assert_shape('bSq,blk,blv,b1xl->bSd,b1xl')
 def RelativeAttentionLayer(d_feature, context_bias_layer, location_bias_layer,
-                           separate_cls, total_kv_pooling,
-                           n_heads=1, dropout=0.0, mode='train'):
+                           total_kv_pooling, separate_cls, n_heads=1,
+                           dropout=0.0, mode='train'):
   """Returns a layer that maps (q, k, v, masks) to (activations, masks).
   For number of keys being smaller than number of queries layer works in O(q^2*d).
   Otherwise it is O(q*k*d). That is because we need to shift relative distances
@@ -92,7 +92,7 @@ def RelativeAttentionLayer(d_feature, context_bias_layer, location_bias_layer,
 
 @assert_shape('bSq,blk,blv->bSd')
 def RelativeAttentionLMLayer(d_feature, context_bias_layer, location_bias_layer,
-                             separate_cls, total_kv_pooling,
+                             total_kv_pooling, separate_cls=False,
                              n_heads=1, dropout=0.0, mode='train'):
   """Returns a layer that maps (q, k, v) to (activations).
   Same as standard Relative attention layer but additionally based on sizes
@@ -112,9 +112,10 @@ def RelativeAttentionLMLayer(d_feature, context_bias_layer, location_bias_layer,
     mode: One of `'train'`, `'eval'`, or `'predict'`.
   """
 
-  attention = RelativeAttentionLayer(
-      d_feature, context_bias_layer, location_bias_layer, separate_cls,
-      total_kv_pooling, n_heads=n_heads, dropout=dropout, mode=mode)
+  attention = RelativeAttentionLayer(d_feature, context_bias_layer,
+                                     location_bias_layer, total_kv_pooling,
+                                     separate_cls, n_heads=n_heads,
+                                     dropout=dropout, mode=mode)
 
   return cb.Serial(
       CreateAttentionMaskLayer(),  # q, k, v, mask
