@@ -415,7 +415,7 @@ def FunnelTransformer(vocab_size,
   )
 
 
-def get_rel_att_inputs(d_model, n_heads):
+def _get_rel_att_inputs(d_model, n_heads):
   # Global relative attentions bias initialization shared across the layers
   assert d_model % n_heads == 0 and d_model % 2 == 0
   d_head = d_model // n_heads
@@ -612,7 +612,7 @@ def FunnelTransformerLM(vocab_size,
       tl.Embedding(vocab_size, d_model),
       tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)]
 
-  context_bias_layer, location_bias_layer = get_rel_att_inputs(d_model, n_heads)
+  context_bias_layer, location_bias_layer = _get_rel_att_inputs(d_model, n_heads)
 
   n_pre_decoder_blocks, n_post_decoder_blocks = vanilla_layers
 
