@@ -41,9 +41,13 @@ PureLSHSelfAttention.predict_drop_len = %max_len
 # ==============================================================================
 PureLSHSelfAttentionWrapper.pure_lsh_implementation = @PureLSHSelfAttention
 
+# We need something special for the encoder.
+enc/PureLSHSelfAttention.n_chunks_after = 1
+encoder/PureLSHSelfAttentionWrapper.pure_lsh_implementation = @enc/PureLSHSelfAttention
+
 # Parameters for Reformer2:
 # ==============================================================================
-Reformer2.encoder_attention_type = @PureLSHSelfAttentionWrapper
+Reformer2.encoder_attention_type = @encoder/PureLSHSelfAttentionWrapper
 Reformer2.encoder_decoder_attention_type = @PureLSHSelfAttentionWrapper
 
 # Parameters for train:

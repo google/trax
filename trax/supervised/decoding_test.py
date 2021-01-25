@@ -74,13 +74,13 @@ class DecodingTest(test.TestCase):
         predict_mem_len=1024,
     )
 
-  def _pure_lsh_self_attention_fn(self):
+  def _pure_lsh_self_attention_fn(self, n_chunks_after=0):
     return functools.partial(
         tl.PureLSHSelfAttentionWrapper,
         attention_dropout=0.0,
         chunk_len=16,
         n_buckets=[32, 32],
-        n_chunks_after=0,
+        n_chunks_after=n_chunks_after,
         n_chunks_before=1,
         n_hashes=2,
         n_parallel_heads=1,
@@ -337,7 +337,8 @@ class DecodingTest(test.TestCase):
         ff_use_sru=1,
         d_attention_key=64,
         d_attention_value=64,
-        encoder_attention_type=self._pure_lsh_self_attention_fn(),
+        encoder_attention_type=self._pure_lsh_self_attention_fn(
+            n_chunks_after=1),
         encoder_decoder_attention_type=self._pure_lsh_self_attention_fn(),
         input_vocab_size=256,
         pos_axial_shape=None,
