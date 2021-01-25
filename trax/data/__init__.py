@@ -60,3 +60,4 @@ detokenize = tf_inputs.detokenize
 vocab_size = tf_inputs.vocab_size
 debug_pipeline = debug_data_pipeline.debug_pipeline
 CreateMathQAInputs = data_configure(tf_inputs.CreateMathQAInputs)
+CreateAquaInputs = data_configure(tf_inputs.CreateAquaInputs)
