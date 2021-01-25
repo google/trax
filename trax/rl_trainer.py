@@ -49,46 +49,17 @@ FLAGS = flags.FLAGS
 
 
 # Not just 'train' to avoid a conflict with trax.train in GIN files.
-@gin.configurable(denylist=[
-    'output_dir', 'train_batch_size', 'eval_batch_size', 'trajectory_dump_dir'
-])
+@gin.configurable(denylist=['output_dir'])
 def train_rl(
     output_dir,
-    train_batch_size,
-    eval_batch_size,
-    env_name='Acrobot-v1',
-    max_timestep=None,
-    clip_rewards=False,
-    rendered_env=False,
-    resize=False,
-    resize_dims=(105, 80),
-    trainer_class=None,
     n_epochs=10000,
-    trajectory_dump_dir=None,
-    num_actions=None,
     light_rl=True,
-    light_rl_trainer=light_trainers.PolicyGradient,
-):
+    light_rl_trainer=light_trainers.PolicyGradient):
   """Train the RL agent.
 
   Args:
     output_dir: Output directory.
-    train_batch_size: Number of parallel environments to use for training.
-    eval_batch_size: Number of parallel environments to use for evaluation.
-    env_name: Name of the environment.
-    max_timestep: Int or None, the maximum number of timesteps in a trajectory.
-      The environment is wrapped in a TimeLimit wrapper.
-    clip_rewards: Whether to clip and discretize the rewards.
-    rendered_env: Whether the environment has visual input. If so, a
-      RenderedEnvProblem will be used.
-    resize: whether to do resize or not
-    resize_dims: Pair (height, width), dimensions to resize the visual
-      observations to.
-    trainer_class: RLTrainer class to use.
     n_epochs: Number epochs to run the training for.
-    trajectory_dump_dir: Directory to dump trajectories to.
-    num_actions: None unless one wants to use the discretization wrapper. Then
-      num_actions specifies the number of discrete actions.
     light_rl: deprecated, always True, left out for old gin configs.
     light_rl_trainer: which light RL trainer to use (experimental).
   """
@@ -141,12 +112,7 @@ def main(argv):
   logging.info('Gin config:')
   logging.info(gin_configs)
 
-  train_rl(
-      output_dir=FLAGS.output_dir,
-      train_batch_size=FLAGS.train_batch_size,
-      eval_batch_size=FLAGS.eval_batch_size,
-      trajectory_dump_dir=(FLAGS.trajectory_dump_dir or None),
-  )
+  train_rl(output_dir=FLAGS.output_dir)
 
   # TODO(afrozm): This is for debugging.
   logging.info('Dumping stack traces of all stacks.')
