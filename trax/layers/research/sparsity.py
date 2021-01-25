@@ -894,15 +894,21 @@ class _SparseFFController(base.Layer):
     # Q: should we add bias and/or put relu after the low-rank m1 dot?
     mask_logits = jnp.dot(jnp.dot(x, m1), m2) + mb
     mask_logits = jnp.reshape(mask_logits, [-1, self._d1, self._d2])
-    # Softmax.
-    mask_logsumexp = fastmath.logsumexp(mask_logits, axis=-1, keepdims=True)
-    log_mask = mask_logits - mask_logsumexp
-    mask = jnp.exp(log_mask)
-    # Gumbel-softmax with straight-through discretization.
-    u = fastmath.random.uniform(self.rng, mask.shape, jnp.float32,
-                                1e-6, 1.0 - 1e-6)
-    g = -jnp.log(-jnp.log(u))
-    quant_mask = jnp.argmax(log_mask + g * self._temperature, axis=-1)
+
+    if self._mode == 'train':
+      # Softmax.
+      mask_logsumexp = fastmath.logsumexp(mask_logits, axis=-1, keepdims=True)
+      log_mask = mask_logits - mask_logsumexp
+      mask = jnp.exp(log_mask)
+      # Gumbel-softmax with straight-through discretization.
+      u = fastmath.random.uniform(self.rng, mask.shape, jnp.float32, 1e-6,
+                                  1.0 - 1e-6)
+      g = -jnp.log(-jnp.log(u))
+      quant_mask = jnp.argmax(log_mask + g * self._temperature, axis=-1)
+    else:
+      quant_mask = jnp.argmax(mask_logits, axis=-1)
+      mask = None  # This won't be used in non-train modes anyway.
+
     return quant_mask, mask
 
   def init_weights_and_state(self, input_signature):
