@@ -49,7 +49,7 @@ FLAGS = flags.FLAGS
 
 
 # Not just 'train' to avoid a conflict with trax.train in GIN files.
-@gin.configurable(denylist=['output_dir'])
+@gin.configurable(denylist=['output_dir'], module='trax')
 def train_rl(
     output_dir,
     n_epochs=10000,
@@ -107,7 +107,9 @@ def main(argv):
   logging.info('Starting RL training.')
 
   gin_configs = FLAGS.config if FLAGS.config is not None else []
+  gin.enter_interactive_mode()
   gin.parse_config_files_and_bindings(FLAGS.config_file, gin_configs)
+  gin.exit_interactive_mode()
 
   logging.info('Gin config:')
   logging.info(gin_configs)

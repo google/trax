@@ -154,6 +154,6 @@ SamplingAWR.reweight = False
 
 # Parameters for train_rl:
 # ==============================================================================
-rl_trainer.train_rl.light_rl = True
-rl_trainer.train_rl.light_rl_trainer = @trax.rl.SamplingAWR
-rl_trainer.train_rl.n_epochs = 10000000
+train_rl.light_rl = True
+train_rl.light_rl_trainer = @trax.rl.SamplingAWR
+train_rl.n_epochs = 10000000

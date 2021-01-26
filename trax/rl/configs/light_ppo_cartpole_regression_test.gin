@@ -60,6 +60,6 @@ PPOJoint.entropy_coeff = 0
 
 # Parameters for train_rl:
 # ==============================================================================
-rl_trainer.train_rl.light_rl = True
-rl_trainer.train_rl.light_rl_trainer = @trax.rl.PPOJoint
-rl_trainer.train_rl.n_epochs = 500
+train_rl.light_rl = True
+train_rl.light_rl_trainer = @trax.rl.PPOJoint
+train_rl.n_epochs = 500
