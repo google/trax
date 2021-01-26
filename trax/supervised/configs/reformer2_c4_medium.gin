@@ -130,3 +130,25 @@ Reformer2.n_layers_forget = 0
 Reformer2.pos_type = None
 Reformer2.attention_chunk_size = 0  # use 4 if it OOMs
 Reformer2.use_bfloat16 = False
+
+# Parameters for Transformer2:
+# ==============================================================================
+Transformer2.d_model = %d_model  # was  512
+Transformer2.d_ff = %d_ff        # was 2048
+Transformer2.dropout = %dropout  # was  0.1
+Transformer2.dropout_shared_axes = [-2]
+Transformer2.ff_activation = @trax.layers.Relu
+Transformer2.ff_dropout = 0.1
+Transformer2.ff_chunk_size = %ff_chunk_size
+Transformer2.ff_sparsity = %ff_sparsity
+Transformer2.ff_use_sru = (1, 32)
+Transformer2.max_len = 32768  # 32*1024
+Transformer2.mode = 'train'
+Transformer2.n_heads = %n_heads
+Transformer2.n_encoder_layers = %n_layers
+Transformer2.n_decoder_layers = %n_layers
+Transformer2.input_vocab_size = %vocab_size
+Transformer2.encoder_attention_type = %enc_attn_type
+Transformer2.decoder_attention_type = %dec_attn_type
+Transformer2.pos_type = None
+Transformer2.attention_chunk_size = 0  # use 4 if it OOMs

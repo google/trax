@@ -87,6 +87,8 @@ class DecodingTest(test.TestCase):
         max_length_for_buckets=1024,
         predict_drop_len=128,
         predict_mem_len=1024,
+        num_weights=2,
+        bias=False,
         pure_lsh_implementation=tl.PureLSHSelfAttention,
     )
 
@@ -372,6 +374,8 @@ class DecodingTest(test.TestCase):
       gin.parse_config_file('reformer2_purelsh_copy.gin')
       gin.bind_parameter('PureLSHSelfAttention.predict_mem_len', 2 * max_len)
       gin.bind_parameter('PureLSHSelfAttention.predict_drop_len', 2 * max_len)
+      gin.bind_parameter('PureLSHSelfAttentionWrapper.bias', False)
+      gin.bind_parameter('PureLSHSelfAttentionWrapper.num_weights', 2)
 
       pred_model = models.Reformer2(mode='predict')
 

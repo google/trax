@@ -858,19 +858,28 @@ class Loop:
     input_signature = d['input_signature']
     weights_and_state_sig = self._model.weights_and_state_signature(
         input_signature)
-    weights, state = tl.unflatten_weights_and_state(
-        d['flat_weights'], d['flat_state'], weights_and_state_sig)
-    self._model.state = state
+    try:
+      restored_state = True
+      weights, state = tl.unflatten_weights_and_state(
+          d['flat_weights'], d['flat_state'], weights_and_state_sig)
+      self._model.state = state
+    except IndexError:
+      _log('Failed restoring model state from checkpoint, trying weights only.')
+      restored_state = False
+      weights, _ = tl.unflatten_weights_and_state(
+          d['flat_weights'], d['flat_state'], weights_and_state_sig,
+          weights_only=True)
     self._model.weights = weights
     self._eval_model.weights = self._model.weights
     # Restore eval model state; note: it's not always the same as train state.
-    if 'flat_eval_state' in d:
-      flat_eval_state = d['flat_eval_state']
-    else:  # It wasn't saved in old checkpoints; remove this branch once ported.
-      flat_eval_state = d['flat_state']
-    _, eval_state = tl.unflatten_weights_and_state(
-        d['flat_weights'], flat_eval_state, weights_and_state_sig)
-    self._eval_model.state = eval_state
+    if restored_state:
+      if 'flat_eval_state' in d:
+        flat_eval_state = d['flat_eval_state']
+      else:  # It wasn't saved in old checkpoints; remove this branch once done.
+        flat_eval_state = d['flat_state']
+      _, eval_state = tl.unflatten_weights_and_state(
+          d['flat_weights'], flat_eval_state, weights_and_state_sig)
+      self._eval_model.state = eval_state
     _log('Checkpoint loaded from %s.' % path, stdout=False)
 
   @contextlib.contextmanager

@@ -330,7 +330,8 @@ class Layer:
         dictionary = pickle.load(gzipf)
     if input_signature is None:
       input_signature = dictionary['input_signature']
-    weights_and_state_sig = self.weights_and_state_signature(input_signature)
+    weights_and_state_sig = self.weights_and_state_signature(
+        input_signature, unsafe=True)
     weights, state = unflatten_weights_and_state(
         dictionary['flat_weights'], dictionary['flat_state'],
         weights_and_state_sig, weights_only=weights_only)
@@ -486,12 +487,15 @@ class Layer:
       for sublayer, sublayer_state in zip(self.sublayers, state):
         sublayer.state = sublayer_state
 
-  def weights_and_state_signature(self, input_signature):
+  def weights_and_state_signature(self, input_signature, unsafe=False):
     """Return a pair containing the signatures of weights and state."""
-    rng = self.rng
+    rng, state, weights = self.rng, self.state, self.weights
     abstract_init = fastmath.abstract_eval(self.init)
+    sig = abstract_init(input_signature)
     self.rng = rng
-    return abstract_init(input_signature)
+    if not unsafe:
+      self.state, self.weights = state, weights
+    return sig
 
   @property
   def rng(self):

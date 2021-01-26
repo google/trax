@@ -3284,9 +3284,9 @@ def _ProjectAndSplitHeads(d_model, n_heads, use_bias, num_weights=2,  # pylint: 
         core.Fn('QKAvg', lambda x, y: (x + y) / 2.0, n_out=1),  # qk,   v
         # Split heads and combine with batch dimension to get two tensors of
         # (batch * n_heads, seq_len, d_head) shape.
-        cb.Branch(attention.SplitIntoHeads(n_heads),
-                  attention.SplitIntoHeads(n_heads))            # qk,   v
-        )
+        cb.Parallel(attention.SplitIntoHeads(n_heads),
+                    attention.SplitIntoHeads(n_heads))          # qk,   v
+    )
 
   # We want to train from scratch and have only two weights, w_qk and w_v.
   if weights_format == 'model' and num_weights == 2:
@@ -3316,9 +3316,9 @@ class PureLSHSelfAttentionWrapper(cb.Serial):
                output_dropout=0.0,
                attention_dropout=0.0,
                pure_lsh_implementation=None,
-               bias=False,
+               bias=True,
                mode='train',
-               num_weights=2,
+               num_weights=3,
                weights_format='model',
                **pure_lsh_implementation_kwargs):
     d_model = d_qk * n_heads

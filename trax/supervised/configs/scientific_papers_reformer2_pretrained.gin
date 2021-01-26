@@ -1,0 +1,165 @@
+# Copyright 2021 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.models
+import trax.optimizers
+import trax.data.inputs
+import trax.data.tf_inputs
+import trax.supervised.trainer_lib
+
+# Macros:
+# ==============================================================================
+# Maximum length of an input sequence.
+max_len = 16384
+pos_axial_shape  = (128, 128)  # should multiply out to max_len
+attn_kv = 64
+n_layers = 24
+dropout = 0.2
+d_model = 1024
+pos_d_axial_embs = (512, 512)
+d_ff = 4096
+n_heads = 16
+ff_chunk_size = 0
+
+# Parameters for TFDS data pipeline:
+# ==============================================================================
+# TODO(wgaj): Add shuffling.
+make_inputs.train_stream = [
+  @train/data.TFDS(),
+  @data.ConvertToUnicode(),
+  @data.Tokenize(),
+  @data.FilterEmptyExamples(),
+  @data.TruncateToLength(),
+  @data.AppendValue(),
+  @data.PadToLength(),
+  @data.AddLossWeights(),
+  @data.Batch(),
+]
+train/data.TFDS.dataset_name = 'scientific_papers/arxiv:1.1.1'
+train/data.TFDS.keys = ('article', 'abstract')
+train/data.TFDS.train = True
+data.ConvertToUnicode.keys = [0, 1]
+data.Tokenize.vocab_file = 'gs://t5-data/vocabs/cc_all.32000/sentencepiece.model'
+data.Tokenize.keys = [0, 1]
+data.Tokenize.vocab_type = 'sentencepiece'
+data.TruncateToLength.len_map = {0: (15359, ), 1: (1023, )}
+data.AppendValue.val = {0:[0], 1:[1]}
+data.PadToLength.len_map = {0: 15360, 1: 1024}
+data.PadToLength.pad_value = {0: 0, 1: 0}
+data.Batch.batch_size = 4  # set to the number of accelerators on machine
+data.AddLossWeights.id_to_mask = 0
+
+make_inputs.eval_stream = [
+  @eval/data.TFDS(),
+  @data.ConvertToUnicode(),
+  @data.Tokenize(),
+  @data.FilterEmptyExamples(),
+  @data.TruncateToLength(),
+  @data.AppendValue(),
+  @data.PadToLength(),
+  @data.AddLossWeights(),
+  @data.Batch(),
+]
+eval/data.TFDS.dataset_name = 'scientific_papers/arxiv:1.1.1'
+eval/data.TFDS.keys = ('article', 'abstract')
+eval/data.TFDS.train = False
+
+
+# Parameters for batcher:
+# ==============================================================================
+batcher.data_streams = @tf_inputs.data_streams
+batcher.max_eval_length = %max_len
+# batcher.buckets = ([16384], [8, 1])   # 2x2s
+batcher.buckets = ([16384], [32, 1])  # 4x4s
+batcher.strict_pad_on_len = False
+batcher.id_to_mask = 0
+
+
+# Parameters for multifactor:
+# ==============================================================================
+multifactor.constant = 1.0
+multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
+multifactor.warmup_steps = 10000
+
+
+# Parameters for Adafactor:
+# ==============================================================================
+Adafactor.beta1 = 0.0
+Adafactor.decay_rate = 0.9  # Used to be 0.8
+Adafactor.clipping_threshold = 1.0
+Adafactor.epsilon1 = 1e-16
+Adafactor.epsilon2 = 0.001
+Adafactor.factored = True
+Adafactor.multiply_by_parameter_scale = True
+
+
+# Parameters for train:
+# ==============================================================================
+train.eval_frequency = 500
+train.eval_steps = 10
+train.model = @trax.models.Reformer2
+train.steps = 1000000
+train.optimizer = @trax.optimizers.Adafactor
+train.checkpoint_highest = 'neg_log_perplexity'
+train.checkpoint_lowest = 'loss'
+train.use_memory_efficient_trainer = False
+train.inputs = @trax.data.inputs.make_inputs
+
+
+# We are using T5's 32k SPM model by default.
+vocab_size = 32000
+
+
+# Parameters for PureLSHSelfAttention:
+# ==============================================================================
+PureLSHSelfAttention.attention_dropout = 0.2
+PureLSHSelfAttention.chunk_len = 128
+PureLSHSelfAttention.n_buckets = 128
+PureLSHSelfAttention.n_chunks_after = 0
+PureLSHSelfAttention.n_chunks_before = 1
+PureLSHSelfAttention.n_hashes = 2
+PureLSHSelfAttention.n_parallel_heads = 1
+PureLSHSelfAttention.predict_drop_len = %max_len
+PureLSHSelfAttention.predict_mem_len = %max_len
+# Reformer2's *encoder* is bidirectional.
+ref2_encoder/PureLSHSelfAttention.n_chunks_after = 1
+
+# Parameters for PureLSHSelfAttentionWrapper:
+# ==============================================================================
+PureLSHSelfAttentionWrapper.pure_lsh_implementation = @PureLSHSelfAttention
+ref2_encoder/PureLSHSelfAttentionWrapper.pure_lsh_implementation = @ref2_encoder/PureLSHSelfAttention
+
+
+# Parameters for Reformer2:
+# ==============================================================================
+Reformer2.d_model = %d_model  # was  512
+Reformer2.d_ff = %d_ff        # was 2048
+Reformer2.dropout = %dropout  # was  0.1
+Reformer2.ff_activation = @trax.layers.Relu
+Reformer2.ff_dropout = 0.1
+Reformer2.ff_chunk_size = %ff_chunk_size
+Reformer2.max_len = 32768
+Reformer2.mode = 'train'
+Reformer2.n_heads = %n_heads
+Reformer2.n_encoder_layers = %n_layers
+Reformer2.n_decoder_layers = %n_layers
+Reformer2.input_vocab_size = %vocab_size
+Reformer2.d_attention_key = %attn_kv    # d_model // n_heads
+Reformer2.d_attention_value = %attn_kv  # d_model // n_heads
+Reformer2.encoder_attention_type = @ref2_encoder/PureLSHSelfAttentionWrapper
+Reformer2.encoder_decoder_attention_type = @PureLSHSelfAttentionWrapper
+Reformer2.use_two_swaps_per_encoder_block = False
+Reformer2.reversible_encoder = True
+Reformer2.pos_type = None
+Reformer2.pos_d_axial_embs = %pos_d_axial_embs

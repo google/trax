@@ -304,7 +304,7 @@ class EfficientAttentionTest(test.TestCase, parameterized.TestCase):
       layer = efficient_attention.PureLSHSelfAttentionWrapper(
           n_heads=n_heads, d_qk=d_head, d_v=d_head, causal=True, masked=False,
           chunk_len=8, n_chunks_before=1, n_chunks_after=0,
-          n_hashes=n_hashes, n_buckets=4,
+          n_hashes=n_hashes, n_buckets=4, bias=False,
           pure_lsh_implementation=efficient_attention.PureLSHSelfAttention,
           mode='train', num_weights=num_weights)
 
@@ -349,7 +349,7 @@ class EfficientAttentionTest(test.TestCase, parameterized.TestCase):
       layer = efficient_attention.PureLSHSelfAttentionWrapper(
           n_heads=n_heads, d_qk=d_head, d_v=d_head, causal=False, masked=True,
           chunk_len=8, n_chunks_before=1, n_chunks_after=0,
-          n_hashes=n_hashes, n_buckets=4,
+          n_hashes=n_hashes, n_buckets=4, bias=False,
           pure_lsh_implementation=efficient_attention.PureLSHSelfAttention,
           mode='train', num_weights=num_weights)
 
@@ -398,7 +398,7 @@ class EfficientAttentionTest(test.TestCase, parameterized.TestCase):
           use_reference_code=False,
           attention_dropout=0.0,
           use_python_loop=True,
-          mode='train')
+          bias=False, mode='train')
       lsh_layer = efficient_attention.LSHSelfAttention(
           n_heads=n_heads, d_qk=d_head, d_v=d_head, causal=True, masked=False,
           chunk_len=8, n_chunks_before=1, n_chunks_after=0,

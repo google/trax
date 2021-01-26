@@ -88,7 +88,7 @@ class Serial(base.Layer):
       outputs, s = layer.pure_fn(inputs, w, s, rng, use_cache=True)
       stack = outputs_onto_stack(outputs, stack, layer.n_in)
       new_state.append(s)
-    self.state = new_state
+    self.state = tuple(new_state)
     return stack
 
   # pylint: disable=protected-access
@@ -108,8 +108,8 @@ class Serial(base.Layer):
 
       weights.append(weights_or_cache_marker)
       states.append(state_or_cache_marker)
-    self.state = states
-    self.weights = weights
+    self.state = tuple(states)
+    self.weights = tuple(weights)
   # pylint: enable=protected-access
 
   def _n_inputs_n_outputs(self, layers):
