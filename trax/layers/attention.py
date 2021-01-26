@@ -54,6 +54,7 @@ from trax.layers import combinators as cb
 from trax.layers import core
 from trax.layers.assert_shape import assert_shape
 from trax.layers.base import Fn
+from trax.layers.research import sparsity
 
 
 # Layers are always CamelCase, but functions in general are snake_case
@@ -93,7 +94,8 @@ def Attention(d_feature, n_heads=1, dropout=0.0, mode='train'):
 
 @assert_shape('bSq,blk,blv,b1xl->bSd,b1xl')
 def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train',
-                 cache_KV_in_predict=False):
+                 cache_KV_in_predict=False, q_sparsity=None,
+                 result_sparsity=None):
   """Returns a layer that maps (q, k, v, mask) to (activations, mask).
 
   See ``Attention`` above for further context/details.
@@ -105,6 +107,10 @@ def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train',
         activations (based on query-key pairs) before dotting them with values.
     mode: One of ``'train'``, ``'eval'``, or ``'predict'``.
     cache_KV_in_predict: Whether to cache K/V tensors in predict mode.
+    q_sparsity: Sparsity with which to process queries. If None, Dense is
+        used. If 'noop' then no processing is used.
+    result_sparsity: Sparsity with which to process result of the attention. If
+        None, Dense is used. If 'noop' then no processing is used.
   """
   k_processor = core.Dense(d_feature)
   v_processor = core.Dense(d_feature)
@@ -112,15 +118,38 @@ def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train',
     k_processor = cb.Cache(k_processor)
     v_processor = cb.Cache(v_processor)
 
+  if q_sparsity is None:
+    q_processor = core.Dense(d_feature)
+  elif q_sparsity == 'noop':
+    q_processor = cb.Serial()
+  else:
+    d_module = d_feature // q_sparsity
+    q_processor = cb.Serial(
+        sparsity.MultiplicativeSparseDense(q_sparsity, d_feature, d_feature),
+        sparsity.LocallyConvDense(q_sparsity, d_module, mode=mode,
+                                  kernel_size=3, length_kernel_size=3))
+
+  if result_sparsity is None:
+    result_processor = core.Dense(d_feature)
+  elif result_sparsity == 'noop':
+    result_processor = cb.Serial()
+  else:
+    d_module = d_feature // result_sparsity
+    result_processor = cb.Serial(
+        sparsity.MultiplicativeSparseDense(result_sparsity, d_feature,
+                                           d_feature),
+        sparsity.LocallyConvDense(result_sparsity, d_module, mode=mode,
+                                  kernel_size=3, length_kernel_size=3))
+
   return cb.Serial(
       cb.Parallel(
-          core.Dense(d_feature),
+          q_processor,
           k_processor,
           v_processor,
       ),
       PureAttention(  # pylint: disable=no-value-for-parameter
           n_heads=n_heads, dropout=dropout, mode=mode),
-      core.Dense(d_feature),
+      result_processor
   )
 
 

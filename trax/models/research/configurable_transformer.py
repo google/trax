@@ -562,7 +562,8 @@ def ConfigurableTransformer(input_vocab_size,
                             encoder_decoder_attention_type=tl.CausalAttention,
                             pos_type=None,
                             pos_axial_shape=None,
-                            pos_d_axial_embs=None):
+                            pos_d_axial_embs=None,
+                            enc_dec_attention_sparsity=0):
   """Returns a full Transformer model.
 
   This model is an encoder-decoder that performs tokenized string-to-string
@@ -637,6 +638,7 @@ def ConfigurableTransformer(input_vocab_size,
       encoding. If unset, axial position encoding is disabled.
     pos_d_axial_embs: tuple of ints: depth of position embedding for each axis.
       Tuple length must match pos_axial_shape, and values must sum to d_model.
+    enc_dec_attention_sparsity: int, if > 0 use this sparsity in attention.
 
   Returns:
     A Transformer model as a layer that maps from a source-target tokenized
@@ -675,7 +677,8 @@ def ConfigurableTransformer(input_vocab_size,
       EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
                           mode, ff_activation, ff_dropout, ff_chunk_size,
                           ff_use_sru, ff_sparsity, ff_sparsity_type,
-                          attention_chunk_size, encoder_decoder_attention_type)
+                          attention_chunk_size, encoder_decoder_attention_type,
+                          enc_dec_attention_sparsity)
       for i in range(n_decoder_layers)
   ]
   # pylint: enable=g-complex-comprehension
@@ -890,7 +893,8 @@ def DecoderBlock(d_model,
 def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
                         mode, ff_activation, ff_dropout, ff_chunk_size,
                         ff_use_sru, ff_sparsity, ff_sparsity_type,
-                        attention_chunk_size, attention_type):
+                        attention_chunk_size, attention_type,
+                        enc_dec_attention_sparsity=0):
   """Returns a list of layers implementing a Transformer encoder-decoder block.
 
   The input is a triple (decoder_activations, mask, encoder_activiations) where
@@ -923,6 +927,7 @@ def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
       use BlockSparseFF if ff_sparsity_type=`'Block'`
     attention_chunk_size: int, if > 0 run attention chunked at this size
     attention_type: The attention layer to use.
+    enc_dec_attention_sparsity: Sparsity to use in encoder-decoder attention.
 
   Returns:
     A list of layers which maps triples (decoder_activations, mask,
@@ -938,9 +943,18 @@ def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
   # setting where we don't know what in input is local to what in output;
   # some variants of FAVOR can do it, so maybe in the future,
   # but we don't have them yet).
+  if isinstance(enc_dec_attention_sparsity, tuple):
+    q_sparsity, result_sparsity = enc_dec_attention_sparsity
+  elif enc_dec_attention_sparsity > 0:
+    q_sparsity = enc_dec_attention_sparsity
+    result_sparsity = 'noop'  # We simply skip Dense layer after attention.
+  else:
+    q_sparsity = None
+    result_sparsity = None
   attention_qkv = tl.AttentionQKV(
       d_model, n_heads=n_heads, dropout=dropout, mode=mode,
-      cache_KV_in_predict=True)
+      cache_KV_in_predict=True,
+      q_sparsity=q_sparsity, result_sparsity=result_sparsity)
 
   causal_attention = ApplyAttentionLayer(
       attention_type,
