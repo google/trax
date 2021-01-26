@@ -16,6 +16,7 @@
 # Lint as: python3
 """Tests for trax.layers.research.efficient_attention."""
 
+from absl.testing import parameterized
 import jax
 import numpy as np
 from tensorflow import test
@@ -26,7 +27,7 @@ import trax.layers as tl
 from trax.layers.research import sparsity
 
 
-class EfficientFeedForwardTest(test.TestCase):
+class EfficientFeedForwardTest(test.TestCase, parameterized.TestCase):
 
   def test_blocksparse_ff_train(self):
     d_model = 1024
@@ -97,7 +98,10 @@ class EfficientFeedForwardTest(test.TestCase):
       # eval_out and pred_out should be identical.
       np.testing.assert_array_almost_equal(eval_out[0, 0, :], pred_out[0, 0, :])
 
-  def test_sparse_ff_with_chunking(self):
+  @parameterized.named_parameters(('_mode_train', 'train'),
+                                  ('_mode_eval', 'eval'),
+                                  ('_mode_predict', 'predict'))
+  def test_sparse_ff_with_chunking(self, mode):
     d_model = 8
     n_elements_in_block = 2
     d_ff = 16
@@ -111,7 +115,7 @@ class EfficientFeedForwardTest(test.TestCase):
           n_elements_in_block=n_elements_in_block,
           temperature=temperature,
           ff_chunk_size=4,
-          mode='train')
+          mode=mode)
       weights, state = model.init(input_signature)
       out, _ = model.pure_fn(
           x, weights, state, rng=jax.random.PRNGKey(0))

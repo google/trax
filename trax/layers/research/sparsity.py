@@ -860,7 +860,8 @@ class _SparseFFController(base.Layer):
   def __init__(self, d_ff, n_elements_in_block, d_lowrank, temperature,
                use_bfloat16, mode, kernel_initializer, bias_initializer):
     """Returns a sparse feed-forward block."""
-    super().__init__(name=f'_SparseFFController_{d_ff}', n_out=2)
+    n_out = 2 if mode == 'train' else 1
+    super().__init__(name=f'_SparseFFController_{d_ff}', n_out=n_out)
     self._mode = mode
     self._use_bfloat16 = use_bfloat16
     self._d_ff = d_ff
@@ -905,11 +906,10 @@ class _SparseFFController(base.Layer):
                                   1.0 - 1e-6)
       g = -jnp.log(-jnp.log(u))
       quant_mask = jnp.argmax(log_mask + g * self._temperature, axis=-1)
+      return quant_mask, mask
     else:
       quant_mask = jnp.argmax(mask_logits, axis=-1)
-      mask = None  # This won't be used in non-train modes anyway.
-
-    return quant_mask, mask
+      return quant_mask
 
   def init_weights_and_state(self, input_signature):
     """Randomly initializes this layer's weights."""
@@ -937,7 +937,8 @@ class _SparseFFMain(base.Layer):
                use_bfloat16, big_weights_in_bfloat16, mode, kernel_initializer,
                bias_initializer):
     """Returns a sparse feed-forward block."""
-    super().__init__(name=f'_SparseFFMain_{d_ff}', n_in=3)
+    n_in = 3 if mode == 'train' else 2
+    super().__init__(name=f'_SparseFFMain_{d_ff}', n_in=n_in)
     self._mode = mode
     self._use_bfloat16 = use_bfloat16
     self._big_weights_in_bfloat16 = big_weights_in_bfloat16
@@ -962,7 +963,10 @@ class _SparseFFMain(base.Layer):
     Returns:
       Tensor of same shape and dtype as the input.
     """
-    quant_mask, mask, x = x
+    if self._mode == 'train':
+      quant_mask, mask, x = x
+    else:
+      quant_mask, x = x
 
     w1, w2, b2 = self.weights
     if self._mode != 'predict':
