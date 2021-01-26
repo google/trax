@@ -624,8 +624,7 @@ def FunnelTransformerLM(vocab_size,
                               context_bias_layer, location_bias_layer,
                               total_pooling)
         for _ in range(n_layers)]
-    ln = tl.LayerNorm()
-    return decoder_blocks + [ln]
+    return decoder_blocks + [tl.LayerNorm()]
 
   total_pooling_acc = 1
   pre_decoder_blocks = create_decoder_blocks(n_pre_decoder_blocks,
