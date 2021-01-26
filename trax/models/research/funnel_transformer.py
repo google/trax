@@ -560,7 +560,7 @@ def FunnelTransformerLM(vocab_size,
                         dropout=0.1,
                         dropout_shared_axes=None,
                         mode='train',
-                        ff_activation=tl.Relu):
+                        ff_activation=tl.FastGelu):
   """Returns a Transformer language model.
 
   This model performs autoregressive language modeling:
