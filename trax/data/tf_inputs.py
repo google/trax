@@ -56,7 +56,6 @@ def data_streams(dataset_name,
                  preprocess_fn=no_preprocess,
                  bare_preprocess_fn=None,
                  shuffle_buffer_size=1024,
-                 shuffle_on_eval=True,
                  eval_holdout_size=0,
                  input_name=None,
                  target_name=None):
@@ -71,7 +70,6 @@ def data_streams(dataset_name,
     bare_preprocess_fn: function to use for pre-processing before appending
       targets to inputs.
     shuffle_buffer_size: size of the shuffle buffer.
-    shuffle_on_eval: disable it to have reproducible evaluation across runs
     eval_holdout_size: float from 0 to <1; if >0 use this much of training data
       for evaluation (instead of looking for a pre-specified VALIDATION split).
     input_name: optional, name of the inputs from the dictionary.
@@ -91,8 +89,7 @@ def data_streams(dataset_name,
       cache.append(
           _train_and_eval_streams(dataset_name, data_dir, preprocess_fn,
                                   bare_preprocess_fn, shuffle_buffer_size,
-                                  eval_holdout_size, input_name, target_name,
-                                  shuffle_on_eval))
+                                  eval_holdout_size, input_name, target_name))
 
     (train_ds, eval_ds, input_name_c) = cache[0]
     dataset = eval_ds if which == 'eval' else train_ds
@@ -120,8 +117,7 @@ def dataset_to_stream(dataset, input_name):
 
 def _train_and_eval_streams(dataset, data_dir, preprocess_fn,
                             bare_preprocess_fn, shuffle_buffer_size,
-                            eval_holdout_size, input_name, target_name,
-                            shuffle_on_eval):
+                            eval_holdout_size, input_name, target_name):
   """Return train and eval batches with input name and shape."""
   (train_data, eval_data,
    keys) = _train_and_eval_dataset(dataset, data_dir, eval_holdout_size)
@@ -134,15 +130,15 @@ def _train_and_eval_streams(dataset, data_dir, preprocess_fn,
 
   train_batches = _shuffle_data(train_data, target_names, True,
                                 shuffle_buffer_size, preprocess_fn,
-                                bare_preprocess_fn, shuffle_on_eval)
+                                bare_preprocess_fn)
   eval_batches = _shuffle_data(eval_data, target_names, False,
                                shuffle_buffer_size, preprocess_fn,
-                               bare_preprocess_fn, shuffle_on_eval)
+                               bare_preprocess_fn)
   return (train_batches, eval_batches, input_names[0])
 
 
 def _shuffle_data(dataset, target_names, training, shuffle_buffer_size,
-                  preprocess_fn, bare_preprocess_fn, shuffle_on_eval):
+                  preprocess_fn, bare_preprocess_fn):
   """Shuffle the given dataset and run pre-processing."""
 
   def append_targets(example):
@@ -169,8 +165,7 @@ def _shuffle_data(dataset, target_names, training, shuffle_buffer_size,
     # replicas reading the same data in lock-step.
     dataset = dataset.skip(random.randint(0, _MAX_SKIP_EXAMPLES))
   dataset = preprocess_fn(dataset, training)
-  if training or shuffle_on_eval:
-    dataset = dataset.shuffle(shuffle_buffer_size)
+  dataset = dataset.shuffle(shuffle_buffer_size)
   return dataset.prefetch(8)
 
 
