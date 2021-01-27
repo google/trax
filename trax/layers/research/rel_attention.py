@@ -43,7 +43,7 @@ def RelativeAttentionLayer(d_feature, context_bias_layer, location_bias_layer,
   """Returns a layer that maps (q, k, v, masks) to (activations, masks).
   When number of keys is smaller than number of queries layer works in O(q^2*d).
   Otherwise it is O(q*k*d). That is because we need to shift relative distances
-  by a fraction of 1 / current_upsampling_rate.
+  by current_pooling. When we upsample this is current pooling is a fraction < 1
   Visual explanation:
   [01][23][45][67] -> [0][1][2][3][4][5][6][7]
   For token [0] we calculate relative distances as follows:
@@ -52,7 +52,8 @@ def RelativeAttentionLayer(d_feature, context_bias_layer, location_bias_layer,
   * -1 1 3 5
   So we not only need to calculate the distances that corresponds to spacing
   between the keys but also for the ones in between because there are more than
-  one query tokens for single key token.
+  one query tokens (on different positions which means different relative
+  distances) for single key token.
   Args:
     d_feature: Depth/dimensionality of feature embedding.
     context_bias_layer: Global context bias from Transformer XL's attention.
@@ -99,9 +100,9 @@ def RelativeAttentionLMLayer(d_feature, context_bias_layer, location_bias_layer,
   Args:
     d_feature: Depth/dimensionality of feature embedding.
     context_bias_layer: Global context bias from Transformer XL's attention.
-    !!! There should be one such layer shared for all relative attention layers.
+    !!! There should be one such layer shared for all relative attention layers
     location_bias_layer: Global location bias from Transformer XL's attention.
-    !!! There should be one such layer shared for all relative attention layers.
+    !!! There should be one such layer shared for all relative attention layers
     separate_cls: True/False if we separate_cls in calculations.
     total_kv_pooling: Accumulated pool size of keys/values used at this layer
     n_heads: Number of attention heads.
@@ -239,14 +240,16 @@ def DotProductAttention(queries, keys, values, pos_emb, context_bias,
   return out, dots
 
 
-def PositionalEmbeddings(d_feature, separate_cls, total_pooling):
-  """Returns a layer that based of queries and keys and a combined pool size
-     before in the funnel transformer computes positional embeddings for
+def PositionalEmbeddings(d_feature, separate_cls, total_kv_pooling):
+  """Returns a layer that based on queries, keys and (a combined pool size
+     before in the funnel transformer) - na opis total_kv_pooling computes #TODO
+     sinusoidal
+     positional embeddings for
      relative attention calculations.
     Args:
-        d_feature: Depth/dimensionality of feature embedding.
-        separate_cls: True/False if we separate_cls in calculations.
-        total_pooling: The combined pool size of previously used funnel blocks.
+      - d_feature: Depth/dimensionality of feature embedding.
+      - separate_cls: True/False if we separate_cls in calculations.
+      - total_kv_pooling: Accumulated pool size of keys/values used at this layer
     """
 
   def PositionsVectors(queries, keys):
@@ -256,12 +259,14 @@ def PositionalEmbeddings(d_feature, separate_cls, total_pooling):
 
     # Special case of upsampling
     if is_funnel_layer and current_pooling_ratio < 1:
-      assert separate_cls is False  # TODO
-      multiplier = ((total_pooling * keys_len) // queries_len)
-      assert multiplier > 0 and (total_pooling * keys_len) % queries_len == 0
+      # We should not be doing standard upsampling when we use separate_cls
+      # Cls token is being used for classification
+      assert separate_cls is False
+      assert (total_kv_pooling * keys_len) % queries_len == 0
+      multiplier = ((total_kv_pooling * keys_len) // queries_len)
       positions = jnp.arange(-queries_len + 1, queries_len, 1.0) * multiplier
     else:
-      positions = jnp.arange(-keys_len + 1, keys_len, 1.0) * total_pooling
+      positions = jnp.arange(-keys_len + 1, keys_len, 1.0) * total_kv_pooling
 
     if is_funnel_layer and separate_cls:
       # For pool_size 2 without separating cls we have got
@@ -272,7 +277,7 @@ def PositionalEmbeddings(d_feature, separate_cls, total_pooling):
       # First group always will always consist of one token after pooling
       # instead of (pool_size) tokens. We need to add proper offset so
       # that our shift later on in calculating attention works properly
-      cls_offset = (current_pooling_ratio - 1) * total_pooling
+      cls_offset = (current_pooling_ratio - 1) * total_kv_pooling
       positions = positions + cls_offset
 
     return positions
@@ -291,12 +296,11 @@ def PositionalEmbeddings(d_feature, separate_cls, total_pooling):
 
 
 def calc_funnel_ratio(keys_len, queries_len):
-  # Upsampling
-  if queries_len > keys_len:
+  if queries_len > keys_len: # Upsampling
     assert queries_len % keys_len == 0
     funnel_factor = queries_len // keys_len
     upsampling = True
-  else:
+  else: # Downsampling
     assert keys_len % queries_len == 0
     funnel_factor = keys_len // queries_len
     upsampling = False
@@ -305,8 +309,12 @@ def calc_funnel_ratio(keys_len, queries_len):
 
 
 def _fast_matrix_shift(x, funnel_factor, upsampling=False):
-  # This function shifts i-th row by i * shift elements to the left.
-  # It implements necessary shift for relative positional attention calculation.
+ # This internal function implements necessary shift for relative positional
+ # attention calculations. Based on funnel_factor and information whether we
+ # perform upsampling or downsampling it calculates necessary shift and interval
+ # at which we pick correct values for attention.
+ # shift - i-th row is shifted by i * shift elements to the left.
+ # interval - after shift, we pick every second element #TODO poprawić
 
   if upsampling is True:
     interval = funnel_factor
@@ -329,11 +337,11 @@ def _fast_matrix_shift(x, funnel_factor, upsampling=False):
 
 @assert_shape('bqd,bkd,bvd->bqd,bkd,bvd,b1qk')
 def CreateAttentionMaskLayer():
-  """Returns a layer that based of queries and keys and a combined pool size
+  """Returns a layer that based of queries and keys and a combined pool size #TODO
      before in the funnel transformer computes positional embeddings for
      causal relative attention calculations.
 
-     Takes q, k, v and appends proper mask in the end.
+     Takes as input q, k, v and appends proper mask in the end.
 
      Causal attention uses masking to prevent a given sequence position from
      attending to positions greater than / following it. This is used, for
@@ -350,17 +358,18 @@ def CreateAttentionMaskLayer():
                         upsampling)
 
   def _funnel_mask(batch_size, keys_len, queries_len, funnel_factor,
-                   upsampling=False):
+                   upsampling):
     """
-    Given function based on shorten factor argument creates a triangle
+    This function based on keys/queries lengths creates a triangle
     mask that prevents tokens from attending to positions following it.
 
-    If funnel_factor is not equal to 1 due to funnel downsampling or
+    If funnel_factor is not equal to 1 due to funnel upsampling or
     downsampling it adjusts created mask for funnel attention
     by repeating each element funnel_factor times.
 
     This is because after funnel layer one token attends to funnel_factor
-    different embeddings.
+    different tokens in downsampling. During upsampling on the other hand
+    funnel_factor tokens are attending to single token before upsampling.
     """
 
     if funnel_factor != 1:
