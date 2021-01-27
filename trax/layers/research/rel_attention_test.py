@@ -48,7 +48,7 @@ class RelAttentionTest(absltest.TestCase):
                     [-3., -2., -1., 0., 1., 2., 3.],
                     [-3., -2., -1., 0., 1., 2., 3.]]]]).astype(np.float32)
 
-    y = layer(x, funnel_factor=1, upsampling=False)
+    y = layer(x, funnel_factor=1, is_upsampling=False)
     self.assertEqual(y.dtype, np.float32)
     self.assertEqual(tl.to_list(y), [[[[0., 1., 2., 3.],
                                        [-1., 0., 1., 2.],
@@ -60,7 +60,7 @@ class RelAttentionTest(absltest.TestCase):
     x = np.array([[[[-3., -2., -1., 0., 1., 2., 3.],
                     [-3., -2., -1., 0., 1., 2., 3.]]]]).astype(np.float32)
 
-    y = layer(x, funnel_factor=2, upsampling=False)
+    y = layer(x, funnel_factor=2, is_upsampling=False)
     self.assertEqual(y.dtype, np.float32)
     self.assertEqual(tl.to_list(y), [[[[0., 1., 2., 3.],
                                        [-2., -1., 0., 1.]]]])
@@ -72,7 +72,7 @@ class RelAttentionTest(absltest.TestCase):
                     [-3., -2., -1., 0., 1., 2., 3.],
                     [-3., -2., -1., 0., 1., 2., 3.], ]]]).astype(np.float32)
 
-    y = layer(x, funnel_factor=2, upsampling=True)
+    y = layer(x, funnel_factor=2, is_upsampling=True)
     self.assertEqual(y.dtype, np.float32)
     self.assertEqual(tl.to_list(y), [[[[0., 2.],
                                        [-1., 1.],
