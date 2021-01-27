@@ -303,7 +303,7 @@ def calc_funnel_ratio(keys_len, queries_len):
     funnel_factor = keys_len // queries_len
     is_upsampling = False
 
-  return funnel_factor, upsampling
+  return funnel_factor, is_upsampling
 
 
 def _fast_matrix_shift(x, funnel_factor, is_upsampling=False):
