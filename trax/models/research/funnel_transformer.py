@@ -19,8 +19,6 @@
 Funnel-Transformer: Filtering out Sequential Redundancy for Efficient
 Language Processing https://arxiv.org/abs/2006.03236
 """
-import functools
-
 from trax import layers as tl
 from trax.fastmath import numpy as jnp
 from trax.fastmath.ops import index_add
@@ -612,7 +610,8 @@ def FunnelTransformerLM(vocab_size,
       tl.Embedding(vocab_size, d_model),
       tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)]
 
-  context_bias_layer, location_bias_layer = _get_rel_att_inputs(d_model, n_heads)
+  context_bias_layer, location_bias_layer = _get_rel_att_inputs(d_model,
+                                                                n_heads)
 
   n_pre_decoder_blocks, n_post_decoder_blocks = vanilla_layers
 
@@ -630,8 +629,6 @@ def FunnelTransformerLM(vocab_size,
   pre_decoder_blocks = create_decoder_blocks(n_pre_decoder_blocks,
                                              total_pooling_acc)
 
-  total_shorten_factor = functools.reduce(lambda x, y: x * y, shorten_factors)
-
   funnel_blocks = []
 
   for shorten_factor, block_len in zip(shorten_factors, n_funnel_blocks):
@@ -648,12 +645,12 @@ def FunnelTransformerLM(vocab_size,
                                                           total_pooling_acc)
 
   upsampling_layer = _FunnelRelativeDecoderBlock(
-      total_shorten_factor, d_model, d_ff, n_heads, dropout,
+      total_pooling_acc, d_model, d_ff, n_heads, dropout,
       dropout_shared_axes, mode,
       ff_activation,
       context_bias_layer=context_bias_layer,
       location_bias_layer=location_bias_layer,
-      total_pooling=total_shorten_factor,
+      total_pooling=total_pooling_acc,
       upsampling=True)
 
   conv_layer = tl.Serial(
