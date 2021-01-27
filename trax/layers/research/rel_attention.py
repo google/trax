@@ -213,11 +213,11 @@ def DotProductAttention(queries, keys, values, pos_emb, context_bias,
     """
   d_feature = queries.shape[-1]
   keys_len, queries_len = keys.shape[-2], queries.shape[-2]
-  funnel_factor, upsampling = calc_funnel_ratio(keys_len, queries_len)
+  funnel_factor, is_upsampling = calc_funnel_ratio(keys_len, queries_len)
 
   ac = jnp.einsum('bnid,bnjd->bnij', queries + context_bias, keys)
   bd = jnp.einsum('bnid,jnd->bnij', queries + location_bias, pos_emb)
-  bd = _fast_matrix_shift(bd, funnel_factor, upsampling=upsampling)
+  bd = _fast_matrix_shift(bd, funnel_factor, is_upsampling)
 
   if separate_cls:
     # Masking out location part of attention for cls token
@@ -241,15 +241,13 @@ def DotProductAttention(queries, keys, values, pos_emb, context_bias,
 
 
 def PositionalEmbeddings(d_feature, separate_cls, total_kv_pooling):
-  """Returns a layer that based on queries, keys and (a combined pool size
-     before in the funnel transformer) - na opis total_kv_pooling computes #TODO
-     sinusoidal
-     positional embeddings for
-     relative attention calculations.
+  """Returns a layer that based on queries, keys and accumulated pool size of
+     keys/values until this layer calculates sinusoidal positional embeddings
+     for relative attention calculations.
     Args:
       - d_feature: Depth/dimensionality of feature embedding.
       - separate_cls: True/False if we separate_cls in calculations.
-      - total_kv_pooling: Accumulated pool size of keys/values used at this layer
+      - total_kv_pooling: Accumulated pool size of keys/values until this layer
     """
 
   def PositionsVectors(queries, keys):
@@ -296,31 +294,33 @@ def PositionalEmbeddings(d_feature, separate_cls, total_kv_pooling):
 
 
 def calc_funnel_ratio(keys_len, queries_len):
-  if queries_len > keys_len: # Upsampling
+  if queries_len > keys_len:  # Upsampling
     assert queries_len % keys_len == 0
     funnel_factor = queries_len // keys_len
-    upsampling = True
-  else: # Downsampling
+    is_upsampling = True
+  else:  # Downsampling
     assert keys_len % queries_len == 0
     funnel_factor = keys_len // queries_len
-    upsampling = False
+    is_upsampling = False
 
   return funnel_factor, upsampling
 
 
-def _fast_matrix_shift(x, funnel_factor, upsampling=False):
- # This internal function implements necessary shift for relative positional
- # attention calculations. Based on funnel_factor and information whether we
- # perform upsampling or downsampling it calculates necessary shift and interval
- # at which we pick correct values for attention.
- # shift - i-th row is shifted by i * shift elements to the left.
- # interval - after shift, we pick every second element #TODO poprawić
+def _fast_matrix_shift(x, funnel_factor, is_upsampling=False):
+  """
+  Implements necessary shift for relative positional attention calculations.
+  Based on funnel_factor and information whether we perform upsampling
+  or downsampling it calculates necessary shift and interval at which
+  we pick correct values for attention.
+  """
+  #  shift: i-th row is shifted by i * shift elements to the left
+  #  k: after shift, we pick every kth element
 
-  if upsampling is True:
-    interval = funnel_factor
+  if is_upsampling is True:
+    k = funnel_factor
     shift = 1
   else:
-    interval = 1
+    k = 1
     shift = funnel_factor
 
   bsz, n_head = x.shape[0], x.shape[1]
@@ -331,14 +331,14 @@ def _fast_matrix_shift(x, funnel_factor, upsampling=False):
   x = x.reshape(bsz, n_head, 2 * klen - 1 + shift, qlen)
   x = x[:, :, shift:, :]
   x = x.reshape(bsz, n_head, qlen, klen * 2 - 1)
-  x = x[:, :, :, shift - 1: shift - 1 + klen: interval]
+  x = x[:, :, :, shift - 1: shift - 1 + klen: k]
   return x
 
 
 @assert_shape('bqd,bkd,bvd->bqd,bkd,bvd,b1qk')
 def CreateAttentionMaskLayer():
-  """Returns a layer that based of queries and keys and a combined pool size #TODO
-     before in the funnel transformer computes positional embeddings for
+  """Returns a layer that based on queries, keys and accumulated pool size of
+     keys/values until this layer calculates positional embeddings for
      causal relative attention calculations.
 
      Takes as input q, k, v and appends proper mask in the end.
@@ -352,13 +352,13 @@ def CreateAttentionMaskLayer():
   def calculate_mask(queries, keys):
     batch_size = queries.shape[0]
     keys_len, queries_len = keys.shape[-2], queries.shape[-2]
-    funnel_factor, upsampling = calc_funnel_ratio(keys_len, queries_len)
+    funnel_factor, is_upsampling = calc_funnel_ratio(keys_len, queries_len)
 
     return _funnel_mask(batch_size, keys_len, queries_len, funnel_factor,
-                        upsampling)
+                        is_upsampling)
 
   def _funnel_mask(batch_size, keys_len, queries_len, funnel_factor,
-                   upsampling):
+                   is_upsampling):
     """
     This function based on keys/queries lengths creates a triangle
     mask that prevents tokens from attending to positions following it.
@@ -373,7 +373,7 @@ def CreateAttentionMaskLayer():
     """
 
     if funnel_factor != 1:
-      if upsampling is False:
+      if is_upsampling is False:
         mask = jnp.tril(jnp.ones((queries_len, queries_len),
                                        dtype=jnp.bool_))
         mask = jnp.repeat(mask, funnel_factor, axis=-1)
