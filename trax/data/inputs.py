@@ -70,6 +70,8 @@ lines from `my_file.txt` as follows::
 
 import math
 import random
+import string
+from operator import itemgetter
 
 from absl import logging
 
@@ -915,6 +917,72 @@ def _pad_to_multiple_of(x, y, axis):
   pad_widths[axis] = (0, int(pad_len - x.shape[axis]))
   return np.pad(x, pad_widths, mode='constant',
                 constant_values=x.dtype.type(0))
+
+
+@gin.configurable()
+def random_sequence_inputs(
+    batch_size=gin.REQUIRED, vocab_size=gin.REQUIRED,
+    train_length=gin.REQUIRED, input_dtype=jnp.int32):
+  """Random inputs for TransformerLM debugging (testing leakage)
+
+  Args:
+    input_dtype: the type of the inputs (int32 by default).
+
+  Returns:
+    trax.inputs.Inputs
+  """
+
+  def random_minibatches(n_devices):
+    """Generate a stream of random mini-batches."""
+    assert batch_size % n_devices == 0
+    rand = np.random.randint
+    input_shape = (batch_size, train_length)
+    mask = np.ones((batch_size, train_length))
+
+    while True:
+      inp = rand(1, vocab_size, input_shape)
+      inp = inp.astype(input_dtype)
+      yield inp, inp, mask
+
+  return Inputs(random_minibatches)
+
+
+def dictionary_lookup(vocab_size, k):
+  my_dict = {x: np.random.randint(1, vocab_size) for x in
+             range(1, vocab_size)}
+  my_dict_str = [(k, v) for k, v in my_dict.items()]
+  np.random.shuffle(my_dict_str)
+  my_dict_str = np.concatenate(my_dict_str)
+  key = np.random.randint(1, vocab_size, (k,))
+  value = itemgetter(*key)(my_dict)
+  target = np.concatenate([(k, v) for k, v in zip(key, value)])
+
+  return my_dict_str, target
+
+
+@gin.configurable()
+def dictionary_lookup_inputs(vocab_size=gin.REQUIRED,
+                             batch_size=gin.REQUIRED, n_queries=gin.REQUIRED,
+                             pad_to_multiple=32):
+  def random_minibatches(n_devices):
+    assert batch_size % n_devices == 0
+
+    masks = np.concatenate([np.zeros((batch_size, 2 * vocab_size)),  # + zeros
+                            np.ones((batch_size, 2 * n_queries))], axis=1)
+
+    masks = _pad_to_multiple_of(masks, pad_to_multiple, 1)
+
+    while True:
+      dicts, queries = map(np.array, zip(
+          *[dictionary_lookup(vocab_size, n_queries) for _ in
+            range(batch_size)]))
+      zeros = np.zeros((batch_size, 1), dtype=np.int64)
+      inputs = np.concatenate([zeros, dicts, zeros, queries], axis=1)
+      inputs = _pad_to_multiple_of(inputs, pad_to_multiple, 1)
+
+      yield inputs, inputs, masks
+
+  return Inputs(random_minibatches)
 
 
 @gin.configurable()
