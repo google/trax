@@ -23,8 +23,6 @@ Funnel Transformer model from:
   Language Processing https://arxiv.org/abs/2006.03236
 """
 
-import numpy as np
-
 from trax import fastmath
 from trax.fastmath import numpy as jnp
 from trax.layers import base
@@ -261,9 +259,9 @@ def PositionalEmbeddings(d_feature, separate_cls, total_pooling):
       assert separate_cls is False  # TODO
       multiplier = ((total_pooling * keys_len) // queries_len)
       assert multiplier > 0 and (total_pooling * keys_len) % queries_len == 0
-      positions = np.arange(-queries_len + 1, queries_len, 1.0) * multiplier
+      positions = jnp.arange(-queries_len + 1, queries_len, 1.0) * multiplier
     else:
-      positions = np.arange(-keys_len + 1, keys_len, 1.0) * total_pooling
+      positions = jnp.arange(-keys_len + 1, keys_len, 1.0) * total_pooling
 
     if is_funnel_layer and separate_cls:
       # For pool_size 2 without separating cls we have got
@@ -280,10 +278,10 @@ def PositionalEmbeddings(d_feature, separate_cls, total_pooling):
     return positions
 
   def Sinusoidal_Embeddings(positions):
-    inv_freq = 1 / (10000 ** (np.arange(0.0, d_feature, 2.0) / d_feature))
-    sinusoid_freq = np.einsum('i,j->ij', positions, inv_freq)
-    pos_emb = np.concatenate([np.sin(sinusoid_freq),
-                              np.cos(sinusoid_freq)], axis=1)
+    inv_freq = 1 / (10000 ** (jnp.arange(0.0, d_feature, 2.0) / d_feature))
+    sinusoid_freq = jnp.einsum('i,j->ij', positions, inv_freq)
+    pos_emb = jnp.concatenate([jnp.sin(sinusoid_freq),
+                              jnp.cos(sinusoid_freq)], axis=1)
     return pos_emb
 
   return cb.Serial(
@@ -364,22 +362,21 @@ def CreateAttentionMaskLayer():
     This is because after funnel layer one token attends to funnel_factor
     different embeddings.
     """
-    numpy_ = jnp if fastmath.is_backend(fastmath.Backend.JAX) else np
 
     if funnel_factor != 1:
       if upsampling is False:
-        mask = numpy_.tril(numpy_.ones((queries_len, queries_len),
-                                       dtype=np.bool_))
-        mask = numpy_.repeat(mask, funnel_factor, axis=-1)
+        mask = jnp.tril(jnp.ones((queries_len, queries_len),
+                                       dtype=jnp.bool_))
+        mask = jnp.repeat(mask, funnel_factor, axis=-1)
       else:
-        mask = numpy_.tril(numpy_.ones((keys_len, keys_len),
-                                       dtype=np.bool_))
-        mask = numpy_.repeat(mask, funnel_factor, axis=-2)
+        mask = jnp.tril(jnp.ones((keys_len, keys_len),
+                                       dtype=jnp.bool_))
+        mask = jnp.repeat(mask, funnel_factor, axis=-2)
     else:
-      mask = numpy_.tril(numpy_.ones((queries_len, queries_len),
-                                     dtype=np.bool_))
+      mask = jnp.tril(jnp.ones((queries_len, queries_len),
+                                     dtype=jnp.bool_))
 
-    return numpy_.repeat(mask[None, None, :, :], batch_size, axis=0)
+    return jnp.repeat(mask[None, None, :, :], batch_size, axis=0)
 
   return cb.Branch(
       cb.Select([0]),
