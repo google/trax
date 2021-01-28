@@ -211,6 +211,7 @@ JAX_BACKEND = {
     'sort_key_val': jax.lax.sort_key_val,
     'stop_gradient': lax.stop_gradient,
     'sum_pool': jax_sum_pool,
+    'top_k': lax.top_k,
     'vjp': jax.vjp,
     'vmap': jax.vmap,
 }

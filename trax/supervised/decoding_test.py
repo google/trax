@@ -155,6 +155,21 @@ class DecodingTest(test.TestCase):
                                        max_length=6, temperature=0.0)
     self.assertEqual(str(s[0]), '[3 7 5 3 2 4]')
 
+  def test_autoregressive_sample_transformerlm_quality_beam(self):
+    pred_model = models.TransformerLM(
+        d_model=64, d_ff=128, dropout=0.05, max_len=256, n_heads=2,
+        n_layers=2, vocab_size=13, mode='predict')
+    shape11 = shapes.ShapeDtype((1, 1), dtype=np.int32)
+    model_path = os.path.join(_TESTDATA, 'transformerlm_copy.pkl.gz')
+    pred_model.init_from_file(model_path, weights_only=True,
+                              input_signature=(shape11, shape11))
+    inputs = np.array([[0, 3, 7, 5, 3, 2, 4, 0]], dtype=np.int32)
+    s = decoding.beam_search(pred_model, inputs, n_beams=3, max_length=6)
+    self.assertEqual(len(s), 3)  # 3 beams
+    self.assertEqual(str(s[0][0][0]), '[3 7 5 3 2 4]')
+    self.assertEqual(str(s[1][0][0]), '[7 5 3 2 4 4]')  # different from above
+    self.assertEqual(str(s[2][0][0]), '[7 5 3 2 4 3]')  # different from above
+
   def test_autoregressive_sample_transformer_quality(self):
     pred_model = models.Transformer(
         d_model=64, d_ff=128, dropout=0.05, max_len=256, n_heads=2,

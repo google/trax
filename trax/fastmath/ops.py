@@ -129,6 +129,11 @@ def sum_pool(*args, **kwargs):
   return backend()['sum_pool'](*args, **kwargs)
 
 
+def top_k(*args, **kwargs):
+  """Top k."""
+  return backend()['top_k'](*args, **kwargs)
+
+
 def sort_key_val(*args, **kwargs):
   """Sorts keys along dimension and applies same permutation to values."""
   return backend()['sort_key_val'](*args, **kwargs)
