@@ -61,6 +61,8 @@ def multifactor(factors='constant * linear_warmup * rsqrt_decay',
                 decay_factor=0.5,
                 steps_per_decay=20000,
                 steps_per_cycle=100000,
+                second_constant=0.01,
+                second_constant_step=10000,
                 minimum=0):
   """Factor-based learning rate schedule.
 
@@ -70,6 +72,8 @@ def multifactor(factors='constant * linear_warmup * rsqrt_decay',
   * rsqrt_decay: divide by square root of max(step, warmup_steps)
   * decay_every: Every k steps decay the learning rate by decay_factor.
   * cosine_deay: Cyclic cosine decay, uses steps_per_cycle parameter.
+  * two_constants: constant until second_constant_step, then switch to
+    second_constant.
 
   Args:
     factors: a string with factors separated by '*' that defines the schedule.
@@ -78,6 +82,8 @@ def multifactor(factors='constant * linear_warmup * rsqrt_decay',
     decay_factor: The amount to decay the learning rate by.
     steps_per_decay: How often to decay the learning rate.
     steps_per_cycle: Steps per cycle when using cosine decay.
+    second_constant: float, the second constant for the learning rate schedule.
+    second_constant_step: the step when the second_constant is triggered.
     minimum: if the computed rate is below the minimum, then return the minimum.
 
   Returns:
@@ -92,6 +98,11 @@ def multifactor(factors='constant * linear_warmup * rsqrt_decay',
     for name in factors:
       if name == 'constant':
         ret *= constant
+      elif name == 'two_constants':
+        if step < second_constant_step:
+          ret *= constant
+        else:
+          ret *= second_constant
       elif name == 'linear_warmup':
         ret *= jnp.minimum(1.0, step / warmup_steps)
       elif name == 'rsqrt_decay':
