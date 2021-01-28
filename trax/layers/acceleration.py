@@ -37,20 +37,19 @@ class Accelerate(base.Layer):
   if it relies on layers like batch normalization.
 
   This layer does not require calling ``init`` if the underlying layer has
-  already been initialized, so it can be used as follows:
-  ```
-  layer = tl.Serial(...)
-  layer.init(...)
-  fast_layer = tl.Accelerate(layer)
-  y = fast_layer(x)  # Computes y splitting x on batch and running data-parallel
-  ```
+  already been initialized, so it can be used as follows::
+
+      layer = tl.Serial(...)
+      layer.init(...)
+      fast_layer = tl.Accelerate(layer)
+      y = fast_layer(x)  # Split x on batch and run data-parallel
 
   In case the weights of this layer need to be set using the weights of
-  the sublayer, use the ``replicate_weights`` function:
-  ```
-  # Instead of layer.weights = new_weights:
-  fast_layer.replicate_weights(new_weights)
-  ```
+  the sublayer, use the ``replicate_weights`` function::
+
+      # Instead of layer.weights = new_weights:
+      fast_layer.replicate_weights(new_weights)
+
   """
 
   def __init__(self, layer, n_devices=None):
@@ -66,7 +65,7 @@ class Accelerate(base.Layer):
     return self._sublayers[0]
 
   def pure_fn(self, x, weights, state, rng, use_cache=False):
-    """Calls self.sublayer.pure_fn in an accelerated way."""
+    """Calls ``self.sublayer.pure_fn`` in an accelerated way."""
     # Check if we can divide x evenly across devices.
     # Note: x can be a list/tuple because the underlying layer may take
     # its input as a list/tuple, ex: (inputs, targets, weight).
@@ -93,7 +92,7 @@ class Accelerate(base.Layer):
     return y, state
 
   def init(self, input_signature):
-    """Calls self.sublayer.init and replicated on multiple devices."""
+    """Calls ``self.sublayer.init`` and replicates its values onto devices."""
     weights, state = self.sublayer.init(input_signature, use_cache=True)
     self._weights = for_n_devices(weights, self._n_devices)
     self._state = for_n_devices(state, self._n_devices)
@@ -109,7 +108,7 @@ class Accelerate(base.Layer):
     self._state = for_n_devices(state, self._n_devices)
 
   def _unreplicate(self, x):
-    """Return a single-device version of x using the first component only."""
+    """Returns a single-device version of ``x``."""
     if self._n_devices < 2:
       return x
     return fastmath.nested_map(lambda y: y[0], x)
@@ -139,18 +138,14 @@ class Accelerate(base.Layer):
     self.sublayer.state = self._unreplicate(state)
 
 
+# TODO(jonni): Rename, since implementation does not use pmean.
 def mean_or_pmean(n_devices, x, axis=None):
-  """jnp.mean or pmean.
-
-  ``x`` is a distributed value. Directly calling jnp.mean on ``x`` means
-  stacking x's components together to form a large array and then doing
-  jnp.mean on it. In TF, stacking ``x`` will introduce D2H copy, so we use a
-  collective (pmean) here instead of directly calling jnp.mean for TF.
+  """Computes the mean of a distributed value ``x``.
 
   Args:
-    n_devices: number of devices.
-    x: a distributed array.
-    axis: the axis to reduce. Can only be 0 or None.
+    n_devices: Number of devices.
+    x: Distributed array.
+    axis: Axis along which to compute means; can only be ``0`` or ``None``.
 
   Returns:
     A local array.
@@ -201,7 +196,7 @@ def _combine_devices(x_tuple):
 
 
 def _accelerate(f, n_devices):
-  """JIT-compiled version of ``f`` running on ``n_devices``."""
+  """Returns an accelerated version of ``f`` running on ``n_devices``."""
   if n_devices == 0:  # no accelerators - run on CPU
     return fastmath.jit(f, device=jax.devices('cpu')[0])
 
@@ -241,12 +236,12 @@ def for_n_devices(x, n_devices):
 
 
 def on_cpu(x):
-  """Put the tensor x in CPU memory in JAX."""
+  """Puts ``x`` in CPU memory in JAX."""
   return jax.device_put(x, jax.devices('cpu')[0])
 
 
 def on_accelerator(x):
-  """Put the tensor x in (single) accelerator memory in JAX."""
+  """Puts ``x`` in (single) accelerator memory in JAX."""
   try:
     accelerator_devices = jax.devices('gpu')
   except RuntimeError:
