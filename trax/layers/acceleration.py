@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Accelerate layer that allows for fast computation on accelerators."""
+"""Modifications to data and computation to use accelerators (better)."""
 
 import jax
 import numpy as np
@@ -232,7 +232,7 @@ def for_n_devices(x, n_devices):
   """Replicates/broadcasts `x` for `n_devices`."""
   def f(x):
     if n_devices > 1 and fastmath.is_backend(fastmath.Backend.JAX):
-      return _multi_device_put(x)
+      return jax.device_put_replicated(x, jax.local_devices())
     elif n_devices > 1:
       return jnp.broadcast_to(x, (n_devices,) + jnp.asarray(x).shape)
     else:
@@ -258,38 +258,3 @@ def on_accelerator(x):
     return x
   assert len(accelerator_devices) == 1
   return jax.device_put(x, accelerator_devices[0])
-
-
-def _multi_device_put(x, devices=None):
-  """Memory efficient multi-device replication / broadcast in JAX.
-
-  JAX uses a ShardedDeviceArray class that holds a list of device buffers
-  on separate devices for use with pmap'd computations.  Sharded arrays
-  are explicitly used to eliminate unnecessary inter-device transfer of
-  memory buffers between use in pmap'd computations.  The JAX API currently
-  does not have a multi-device 'put' function that copies a buffer onto
-  N devices in a memory-efficient fashion, so we implement our own here.
-
-  Args:
-    x: jax DeviceArray or numpy ndarray to be replicated.
-    devices: a jax.devices() list or subset thereof of devices to
-      replicate onto.  Should match the list passed to any pmaps
-      ingesting the replicated array.
-
-  Returns:
-    A ShardedDeviceArray with
-    dtype = x.dtype and shape = (n_devices,) + x.shape
-    that's backed by replicated device_buffers on each local device.
-  """
-  # Calculate the abstract shape of the replicated array.
-  if not devices:
-    devices = jax.local_devices()
-  # The code below is equivalent to:
-  #   jax.api.device_put_sharded(len(devices) * [x], devices)
-  # but it does one PCI transfer and later uses ICI.
-  # TODO(lukaszkaiser): remove once JAX has a core function to do the same.
-  aval = jax.core.unmapped_aval(len(devices), 0,
-                                jax.core.raise_to_shaped(jax.core.get_aval(x)))
-  buf, = jax.xla.device_put(x, devices[0])  # assuming single-buf repr
-  rest_bufs = [buf.copy_to_device(d) for d in devices[1:]]
-  return jax.pxla.ShardedDeviceArray(aval, [buf, *rest_bufs])
