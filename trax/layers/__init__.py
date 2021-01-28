@@ -82,6 +82,7 @@ MultiplicativeCausalAttention = layer_configure(MultiplicativeCausalAttention,
                                                 denylist=['mode'])
 MultiplicativeModularCausalAttention = layer_configure(
     MultiplicativeModularCausalAttention, denylist=['mode'])
+ConvCausalAttention = layer_configure(ConvCausalAttention, denylist=['mode'])
 MultiplicativeConvCausalAttention = layer_configure(
     MultiplicativeConvCausalAttention, denylist=['mode'])
 ConvTranspose = layer_configure(ConvTranspose)
