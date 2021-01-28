@@ -1,6 +1,11 @@
 trax.layers
 ===========
 
+acceleration
+------------
+
+.. automodule:: trax.layers.acceleration
+
 activation\_fns
 ---------------
 

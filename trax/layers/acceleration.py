@@ -36,7 +36,7 @@ class Accelerate(base.Layer):
   then 0-padding is added to make it divisible and the output may be affected
   if it relies on layers like batch normalization.
 
-  This layer does not require calling `init` if the underlying layer has
+  This layer does not require calling ``init`` if the underlying layer has
   already been initialized, so it can be used as follows:
   ```
   layer = tl.Serial(...)
@@ -46,7 +46,7 @@ class Accelerate(base.Layer):
   ```
 
   In case the weights of this layer need to be set using the weights of
-  the sublayer, use the `replicate_weights` function:
+  the sublayer, use the ``replicate_weights`` function:
   ```
   # Instead of layer.weights = new_weights:
   fast_layer.replicate_weights(new_weights)
@@ -142,10 +142,10 @@ class Accelerate(base.Layer):
 def mean_or_pmean(n_devices, x, axis=None):
   """jnp.mean or pmean.
 
-  `x` is a distributed value. Directly calling jnp.mean on `x` means stacking
-  x's components together to form a large array and then doing jnp.mean on
-  it. In TF, stacking `x` will introduce D2H copy, so we use a collective
-  (pmean) here instead of directly calling jnp.mean for TF.
+  ``x`` is a distributed value. Directly calling jnp.mean on ``x`` means
+  stacking x's components together to form a large array and then doing
+  jnp.mean on it. In TF, stacking ``x`` will introduce D2H copy, so we use a
+  collective (pmean) here instead of directly calling jnp.mean for TF.
 
   Args:
     n_devices: number of devices.
@@ -167,7 +167,7 @@ def mean_or_pmean(n_devices, x, axis=None):
 
 
 def jit_forward(forward, n_devices, do_mean=True):
-  """Returns a JIT-compiled forward function running on `n_devices`."""
+  """Returns a JIT-compiled forward function running on ``n_devices``."""
   model_predict = _accelerate(forward, n_devices)
   # n_devices == 0 => CPU
   if n_devices < 2:
@@ -201,7 +201,7 @@ def _combine_devices(x_tuple):
 
 
 def _accelerate(f, n_devices):
-  """JIT-compiled version of `f` running on `n_devices`."""
+  """JIT-compiled version of ``f`` running on ``n_devices``."""
   if n_devices == 0:  # no accelerators - run on CPU
     return fastmath.jit(f, device=jax.devices('cpu')[0])
 
@@ -212,7 +212,7 @@ def _accelerate(f, n_devices):
 
 
 def reshape_by_device(x, n_devices, pure_np=False):
-  """Reshapes possibly nested `x` into a shape `(n_devices, ...)`."""
+  """Reshapes possibly nested ``x`` into a shape ``(n_devices, ...)``."""
   def f(x):
     x_shape = list(x.shape)
     batch_size = x_shape[0]
@@ -229,7 +229,7 @@ def reshape_by_device(x, n_devices, pure_np=False):
 
 
 def for_n_devices(x, n_devices):
-  """Replicates/broadcasts `x` for `n_devices`."""
+  """Replicates/broadcasts ``x`` for ``n_devices``."""
   def f(x):
     if n_devices > 1 and fastmath.is_backend(fastmath.Backend.JAX):
       return jax.device_put_replicated(x, jax.local_devices())
