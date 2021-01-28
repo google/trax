@@ -659,7 +659,7 @@ def FunnelTransformerLM(vocab_size,
       resampler_fn=_UpsamplerLM(total_pooling_acc, d_model))
 
   conv_layer = tl.Serial(
-      tl.CausalConv(d_model, shorten_factors[0]),
+      tl.CausalConv(d_model, total_pooling_acc),
       tl.BatchNorm(axis=(0, 1)),
       ff_activation()
   )
