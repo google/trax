@@ -14,10 +14,6 @@
 # limitations under the License.
 
 """Dtypes and dtype utilities."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 # We use numpy's dtypes instead of TF's, because the user expects to use them

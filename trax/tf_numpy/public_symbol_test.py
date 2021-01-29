@@ -14,11 +14,6 @@
 # limitations under the License.
 
 """Tests different ways to use the public tf-numpy module."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as onp
 
 import tensorflow as tf

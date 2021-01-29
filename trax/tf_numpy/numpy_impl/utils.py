@@ -14,9 +14,6 @@
 # limitations under the License.
 
 """Utility functions for internal use."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 # TODO(wangpeng): Use tf_inspect once we move into TF.
 import funcsigs

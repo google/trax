@@ -14,11 +14,6 @@
 # limitations under the License.
 
 """Extensions such as `jit`, `grad`, `logsumexp`, etc."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import bisect
 import contextlib
 import copy
