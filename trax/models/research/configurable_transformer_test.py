@@ -102,7 +102,7 @@ class ConfigurableTransformerTest(parameterized.TestCase):
         buf[:, index] = next_sym[:, 0]
 
   def test_sparse_configurable_transformer_fast_inference(self):
-    self._test_sparse_fast_inference(length=3)
+    self._test_sparse_fast_inference(length=8)
 
   def _test_sparse_fast_inference(self, length):
     with fastmath.use_backend(fastmath.Backend.JAX):
@@ -126,9 +126,8 @@ class ConfigurableTransformerTest(parameterized.TestCase):
           loss_sparsity=2,
           ff_sparsity=2,
           encoder_decoder_attention_type=encoder_decoder_attention_type,
-
-          # SRU currently doesn't work for second token and further.
-          # ff_use_sru=(1, 4),
+          ff_chunk_size=2,
+          ff_use_sru=(1, 4),
       )
 
       model_slow = model_fn(mode='eval')
@@ -143,6 +142,7 @@ class ConfigurableTransformerTest(parameterized.TestCase):
       model_slow.save_to_file('/tmp/unique_weights')
       model_fast.init_from_file('/tmp/unique_weights', weights_only=True,
                                 input_signature=input_signature)
+      model_fast = tl.Accelerate(model_fast)
 
       inp = np.random.randint(vocab_size, size=(batch_size, length))
       buf = np.zeros((batch_size, length), dtype=np.int32)
