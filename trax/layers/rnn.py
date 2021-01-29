@@ -90,12 +90,12 @@ def MakeZeroState(depth_multiplier=1):
   return base.Fn('MakeZeroState', f)
 
 
-def LSTM(n_units):
+def LSTM(n_units, mode='train'):
   """LSTM running on axis 1."""
   zero_state = MakeZeroState(depth_multiplier=2)  # pylint: disable=no-value-for-parameter
   return cb.Serial(
       cb.Branch([], zero_state),
-      cb.Scan(LSTMCell(n_units=n_units), axis=1),
+      cb.Scan(LSTMCell(n_units=n_units), axis=1, mode=mode),
       cb.Select([0], n_in=2),  # Drop RNN state.
       # Set the name to LSTM and don't print sublayers.
       name=f'LSTM_{n_units}', sublayers_to_print=[]
@@ -151,12 +151,12 @@ class GRUCell(base.Layer):
     self.weights = (w1, b1, w2, b2)
 
 
-def GRU(n_units):
+def GRU(n_units, mode='train'):
   """GRU running on axis 1."""
   zero_state = MakeZeroState(depth_multiplier=1)  # pylint: disable=no-value-for-parameter
   return cb.Serial(
       cb.Branch([], zero_state),
-      cb.Scan(GRUCell(n_units=n_units), axis=1),
+      cb.Scan(GRUCell(n_units=n_units), axis=1, mode=mode),
       cb.Select([0], n_in=2),  # Drop RNN state.
       # Set the name to GRU and don't print sublayers.
       name=f'GRU_{n_units}', sublayers_to_print=[]
@@ -258,7 +258,7 @@ def InnerSRUCell():
   return base.Fn('InnerSRUCell', f, n_out=2)
 
 
-def SRU(n_units, activation=None):
+def SRU(n_units, activation=None, mode='train'):
   r"""SRU (Simple Recurrent Unit) layer as in https://arxiv.org/abs/1709.02755.
 
   As defined in the paper:
@@ -277,6 +277,7 @@ def SRU(n_units, activation=None):
   Args:
     n_units: output depth of the SRU layer.
     activation: Optional activation function.
+    mode: if 'predict' then we save the previous state for one-by-one inference
 
   Returns:
     The SRU layer.
@@ -290,7 +291,7 @@ def SRU(n_units, activation=None):
               lambda r, f, y: (y * (1.0 - f), f, r),    # y * (1 - f), f, r, x
               n_out=3),
       cb.Parallel([], [], cb.Branch(MakeZeroState(), [])),
-      cb.Scan(InnerSRUCell(), axis=1),
+      cb.Scan(InnerSRUCell(), axis=1, mode=mode),
       cb.Select([0], n_in=2),                               # act(c), r, x
       activation if activation is not None else [],
       base.Fn('FinalSRUGate', lambda c, r, x: c * r + x * (1 - r) * (3**0.5)),

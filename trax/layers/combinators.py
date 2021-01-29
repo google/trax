@@ -384,19 +384,33 @@ class Scan(base.Layer):
     Scan(add)([1, 2, 3], 0) = [1, 3, 6], 6
   """
 
-  def __init__(self, layer, axis=0, n_carry=1, remat=False):
+  def __init__(self, layer, axis=0, n_carry=1, remat=False, mode='train'):
     super().__init__(n_in=layer.n_in, n_out=layer.n_out)
     self._sublayers = [layer]
     self._n_carry = n_carry
     self._axis = axis
     self._remat = remat
     self._weights = (None,)
-    self._state = (None,)
+    self._state = (None, ())
+    self._mode = mode
 
   @property
   def sublayer(self):
     """Returns the unique sublayer managed by this layer."""
     return self._sublayers[0]
+
+  @property
+  def state(self):
+    """Returns a tuple containing this layer's state."""
+    return (self.sublayer.state, self._state[1])
+
+  @state.setter
+  def state(self, state):
+    """Recursively sets state on this layer the sublayer."""
+    if isinstance(state, dict) and state == base.GET_STATE_FROM_CACHE:
+      return
+    self._state = (None, state[1])
+    self.sublayer.state = state[0]
 
   def forward(self, inputs):
     """Executes this layer as part of a forward pass through the model."""
@@ -417,13 +431,18 @@ class Scan(base.Layer):
 
     if n_carry > 0:
       xs = inputs[:-n_carry]  # Split input stack into inputs and carry.
-      init = (inputs[-n_carry:], self.state[0], jnp.array(0, dtype=jnp.int32))
+      xs_carry = inputs[-n_carry:]
+      if self._mode == 'predict' and self._state[1] is not ():  # pylint: disable=literal-comparison
+        xs_carry = self._state[1]
+      init = (xs_carry, self.state[0], jnp.array(0, dtype=jnp.int32))
     else:
+      xs_carry = ()
       xs, init = inputs, ([], self.state[0], jnp.array(0, dtype=jnp.int32))
     ys, (carry, new_state, _) = _scan(scannable_fn, xs, init,
                                       axis=self._axis, remat=self._remat)
     res = ys + carry if n_carry > 0 else ys
-    self.state = (new_state,)
+    state_carry = carry if self._mode == 'predict' and n_carry > 0 else ()
+    self.state = (new_state, state_carry)
     return res  # Put outputs and carry back on stack.
 
   def init_weights_and_state(self, input_signature):
@@ -438,7 +457,7 @@ class Scan(base.Layer):
         layer_sig = ShapeDtype(_shape_without_axis(input_signature, self._axis),
                                input_signature.dtype)
       weights, state = self.sublayer.init(layer_sig)
-      self.state = (state,)
+      self.state = (state, ())
       self.weights = (weights,)
     else:
       xs = input_signature[:-n_carry]
@@ -447,7 +466,7 @@ class Scan(base.Layer):
                    for x in xs]
       layer_signature = tuple(xs_slices + list(init))
       weights, state = self.sublayer.init(layer_signature, use_cache=True)
-      self.state = (state,)
+      self.state = (state, ())
       self.weights = (weights,)
 
 

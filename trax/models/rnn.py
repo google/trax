@@ -80,7 +80,7 @@ def RNNLM(vocab_size,
       tl.Embedding(vocab_size, d_model),
       tl.Dropout(rate=dropout, mode=mode),
       tl.Branch([], zero_state),
-      tl.Scan(MultiRNNCell(), axis=1),
+      tl.Scan(MultiRNNCell(), axis=1, mode=mode),
       tl.Select([0], n_in=2),  # Drop RNN state.
       tl.Dense(vocab_size),
   )
@@ -118,7 +118,7 @@ def GRULM(vocab_size=256,
   return tl.Serial(
       tl.ShiftRight(mode=mode),
       tl.Embedding(vocab_size, d_model),
-      [tl.GRU(d_model) for _ in range(n_layers)],
+      [tl.GRU(d_model, mode=mode) for _ in range(n_layers)],
       tl.Dense(vocab_size),
   )
 
@@ -193,7 +193,7 @@ def LSTMSeq2SeqAttn(input_vocab_size=256,
   pre_attention_decoder = tl.Serial(
       tl.ShiftRight(mode=mode),
       tl.Embedding(target_vocab_size, d_model),
-      tl.LSTM(d_model),
+      tl.LSTM(d_model, mode=mode),
   )
 
   def PrepareAttentionInputs():
@@ -221,7 +221,7 @@ def LSTMSeq2SeqAttn(input_vocab_size=256,
                           cache_KV_in_predict=True)
       ),                         # decoder-vecs, mask, target-toks
       tl.Select([0, 2]),         # decoder-vecs, target-toks
-      [tl.LSTM(d_model) for _ in range(n_decoder_layers)],
+      [tl.LSTM(d_model, mode=mode) for _ in range(n_decoder_layers)],
       tl.Dense(target_vocab_size),
       tl.LogSoftmax()
   )

@@ -570,6 +570,22 @@ class ScanTest(parameterized.TestCase):
                          7600]
                        ])
 
+  def test_predict(self, backend):
+    with fastmath.use_backend(backend):
+      layer = tl.Scan(self._AddWithCarry(), axis=1, mode='predict')
+      xs = [np.array([[0, 1, 2]]),
+            np.array([90])]
+      ys = layer(xs)
+      self.assertEqual(as_list(ys),
+                       [[[90, 91, 93]],
+                        [93]])
+      xs = [np.array([[3, 4]]),
+            np.array([90])]
+      ys = layer(xs)
+      self.assertEqual(as_list(ys),
+                       [[[96, 100]],
+                        [100]])
+
   def test_multi_input(self, backend):
     def _MultiInputFn():  # pylint: disable=invalid-name
       def f(a, b, carry):
