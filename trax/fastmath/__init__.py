@@ -15,9 +15,6 @@
 
 """Trax fast math -- NumPy-style math on accelerators."""
 
-from trax.fastmath import jax as jax_math
-from trax.fastmath import numpy as numpy_math
-from trax.fastmath import tf as tf_math
 from trax.fastmath.numpy import nested_map
 from trax.fastmath.numpy import nested_map_multiarg
 from trax.fastmath.numpy import nested_stack

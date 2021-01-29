@@ -372,10 +372,10 @@ class TraxTest(parameterized.TestCase):
   def test_tf_xla_forced_compile(self):
     # TODO(wangpeng): re-enable this test
     self.skipTest('Needs --config=cuda to pass this test')
-    old_flag = fastmath.tf_math.tf_xla_forced_compile_enabled()
-    fastmath.tf_math.set_tf_xla_forced_compile(True)
+    old_flag = fastmath.tf.tf_xla_forced_compile_enabled()
+    fastmath.tf.set_tf_xla_forced_compile(True)
     self._test_train_eval_predict('tf')
-    fastmath.tf_math.set_tf_xla_forced_compile(old_flag)
+    fastmath.tf.set_tf_xla_forced_compile(old_flag)
 
   def test_no_int32_or_uint32_returned(self):
     """Tests that Trainer._jit_update_fn doesn't return int32 or uint32.
