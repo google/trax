@@ -1,0 +1,181 @@
+# Copyright 2021 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.layers
+import trax.models
+import trax.data
+import trax.optimizers
+import trax.supervised.lr_schedules
+import trax.supervised.trainer_lib
+import trax.models.research.bert
+import trax.layers.metrics
+
+include 'c4.gin'
+
+# See https://allennlp.org/drop for a description of the dataset
+
+# Corresponds roughly to T5 'large' ~ 770m params, i.e. T5's `bi_v1_large.gin`.
+d_model = 1024
+d_ff = 4096
+n_heads = 16
+n_layers = 24
+attn_kv = 64
+dropout = 0.1
+vocab_size = 32000
+
+ff_chunk_size = 0
+ff_sparsity = 0
+loss_sparsity = 0
+
+enc_attn_type = @Attention
+
+MultiplicativeModularCausalAttention.sparsity = 16
+MultiplicativeConvCausalAttention.sparsity = 16
+MultiplicativeConvCausalAttention.length_kernel_size = 3
+
+dec_attn_type = @CausalAttention
+
+trax.data.Tokenize.keys = [0,1]
+trax.data.Tokenize.vocab_file = 'en_32k.subword'
+
+# Parameters for TFDS data pipeline:
+# ==============================================================================
+make_inputs.train_stream = [
+  @train/data.CreateDropInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+make_inputs.eval_stream = [
+  @eval/data.CreateDropInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+train/data.CreateDropInputs.train = True
+eval/data.CreateDropInputs.train = False
+
+data.PadToLength.len_map = {0: 512, 1: 512, 2: 512}
+data.PadToLength.pad_value = {0: 0, 1: 0, 2:0}
+data.TruncateToLength.len_map = {0: (512,), 1: (512,), 2: (512,)}
+data.Batch.batch_size = 4
+
+# Parameters for train:
+# ==============================================================================
+train.init_checkpoint = None
+train.optimizer = @trax.optimizers.Adafactor
+train.eval_frequency = 20
+train.eval_steps = 10
+train.inputs = @trax.data.inputs.make_inputs
+train.model = @trax.models.ConfigurableTransformer
+train.steps = 200000
+train.checkpoint_highest = 'accuracy'
+
+# Parameters for ConfigurableTransformer:
+# ==============================================================================
+ConfigurableTransformer.d_model = %d_model
+ConfigurableTransformer.d_ff = %d_ff
+ConfigurableTransformer.dropout = %dropout
+ConfigurableTransformer.ff_dropout = %dropout
+ConfigurableTransformer.ff_chunk_size = %ff_chunk_size
+ConfigurableTransformer.ff_sparsity = %ff_sparsity
+ConfigurableTransformer.max_len = %max_length
+ConfigurableTransformer.mode = 'train'
+ConfigurableTransformer.n_heads = %n_heads
+ConfigurableTransformer.n_encoder_layers = %n_layers
+ConfigurableTransformer.n_decoder_layers = %n_layers
+ConfigurableTransformer.input_vocab_size = %vocab_size
+ConfigurableTransformer.encoder_attention_type = %enc_attn_type
+ConfigurableTransformer.encoder_decoder_attention_type = %dec_attn_type
+ConfigurableTransformer.loss_sparsity = %loss_sparsity
+
+# Parameters for Transformer2:
+# ==============================================================================
+Transformer2.d_model = %d_model
+Transformer2.d_ff = %d_ff
+Transformer2.dropout = %dropout
+Transformer2.max_len = %max_length
+Transformer2.mode = 'train'
+Transformer2.n_heads = %n_heads
+Transformer2.n_encoder_layers = %n_layers
+Transformer2.n_decoder_layers = %n_layers
+Transformer2.input_vocab_size = %vocab_size
+
+# Parameters for SelfAttention:
+# ==============================================================================
+SelfAttention.attention_dropout = %dropout
+SelfAttention.chunk_len = None  # full attention
+
+# Parameters for LSHSelfAttention:
+# ==============================================================================
+LSHSelfAttention.attention_dropout = %dropout
+LSHSelfAttention.chunk_len = 128
+LSHSelfAttention.n_buckets = None
+LSHSelfAttention.n_chunks_after = 0
+LSHSelfAttention.n_chunks_before = 1
+LSHSelfAttention.n_hashes = 2
+LSHSelfAttention.n_parallel_heads = 1
+LSHSelfAttention.predict_drop_len = %max_length
+LSHSelfAttention.predict_mem_len = %max_length
+# Reformer2's *encoder* is bidirectional.
+ref2_encoder/LSHSelfAttention.n_chunks_after = 1
+
+# Parameters for Reformer2:
+# ==============================================================================
+ff_chunk_size = 0
+# enc_attn_type = @LSHSelfAttention
+# dec_attn_type = @ref2_encoder/LSHSelfAttention
+enc_attn_type = @Attention
+dec_attn_type = @CausalAttention
+Reformer2.d_model = %d_model  # was  512
+Reformer2.d_ff = %d_ff        # was 2048
+Reformer2.dropout = %dropout  # was  0.1
+Reformer2.ff_activation = @trax.layers.Relu
+Reformer2.ff_dropout = 0.1
+Reformer2.ff_chunk_size = %ff_chunk_size
+Reformer2.ff_sparsity = 0
+Reformer2.max_len = %max_length
+Reformer2.mode = 'train'
+Reformer2.n_heads = %n_heads
+Reformer2.n_encoder_layers = %n_layers
+Reformer2.n_decoder_layers = %n_layers
+Reformer2.input_vocab_size = %vocab_size
+Reformer2.d_attention_key = %attn_kv    # d_model // n_heads
+Reformer2.d_attention_value = %attn_kv  # d_model // n_heads
+Reformer2.encoder_attention_type = %enc_attn_type
+Reformer2.encoder_decoder_attention_type = %dec_attn_type
+Reformer2.n_layers_forget = 0
+Reformer2.pos_type = None
+
+# Parameters for Adafactor:
+# ==============================================================================
+Adafactor.weight_decay_rate = 1e-5
+Adafactor.weight_decay_n_steps = 100000
+Adafactor.beta1 = 0.0
+Adafactor.decay_rate = 0.8
+Adafactor.clipping_threshold = 1.0
+Adafactor.epsilon1 = 1e-16
+Adafactor.epsilon2 = 0.001
+Adafactor.factored = True
+Adafactor.multiply_by_parameter_scale = True
+
+# Parameters for multifactor:
+# ==============================================================================
+multifactor.constant = 1e-3
+multifactor.factors = 'two_constants * linear_warmup'
+multifactor.warmup_steps = 1000  # default is 400

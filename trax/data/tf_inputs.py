@@ -1796,6 +1796,7 @@ def CreateAquaInputs(  # pylint: disable=invalid-name
     rationale=False,
     correct_answer=False,
     correct_answer_given_reasoning=False,
+    partial_reasoning=True,
     order_prediction=False):
   """Prepares Aqua inputs.
 
@@ -1813,6 +1814,9 @@ def CreateAquaInputs(  # pylint: disable=invalid-name
     correct_answer_given_reasoning: if set to True, then input is the problem
       plus reasoning (aka rationale) plus all possible answers and the target is
       the correct answer.
+    partial_reasoning: an additional option related to
+      correct_answer_given_reasoning; if set to True, then we take a random
+      prefix of the reasoning.
     order_prediction: if set to True, then input is the problem and a list of
       all operations; with probability 0.5 two operations are swapped; the task
       consists in detecting whether the operations were swapped. A similar
@@ -1859,6 +1863,13 @@ def CreateAquaInputs(  # pylint: disable=invalid-name
           yield input_values, target_values, np.array([1] * len(target_values))
         elif correct_answer_given_reasoning:
           input_values = 'infer correct answer given reasoning: ' + input_prefix
+          if partial_reasoning:
+            reasoning_list = example['rationale'].split('\n')
+            reasoning_list = reasoning_list[0:np.random
+                                            .randint(0, len(reasoning_list))]
+            reasoning = '\n'.join(reasoning_list)
+          else:
+            reasoning = example['rationale']
           input_values += ' ' + example['rationale'] + ' ' + ' '.join(
               example['options'])
           target_values = example['correct']
@@ -1880,3 +1891,39 @@ def CreateAquaInputs(  # pylint: disable=invalid-name
           )
 
   return aqua_yield_examples
+
+
+def CreateDropInputs(  # pylint: disable=invalid-name
+    train=True):
+  """Prepares Drop inputs.
+
+  Args:
+    train: if True, then generate training examples, otherwhise generate
+      validation examples (the dataset has also a test set).
+
+  Returns:
+    drop_yield_examples: a generator of Drop examples; the generator yields
+    non-tokenized examples - they can be further processed using for example
+    the tokenize function from this module
+  """
+  if train:
+    dataset = tfds.load(name='drop', split='train')
+  else:
+    dataset = tfds.load(name='drop', split='dev')
+
+  def drop_yield_examples(generator=None):
+    del generator
+    while True:
+      for example in itertools.cycle(dataset):
+        input_values = 'drop question: ' + example['passage'].numpy().decode(
+            'utf-8') + ' ' + example['question'].numpy().decode('utf-8')
+        target_values = str(example['answer'].numpy().decode('utf-8'))
+        # Apparently the dataset has some empty "target values" -
+        # when such a value is encountered, the Tokenizer decides to assign
+        # to it a float32 tensor and the training fails.
+        if not target_values:
+          continue
+        yield input_values, target_values, np.array(
+            [1] * len(target_values), dtype=np.int32)
+
+  return drop_yield_examples
