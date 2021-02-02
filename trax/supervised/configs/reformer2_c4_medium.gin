@@ -101,7 +101,29 @@ LSHSelfAttention.n_parallel_heads = 1
 LSHSelfAttention.predict_drop_len = %max_length
 LSHSelfAttention.predict_mem_len = %max_length
 # Reformer2's *encoder* is bidirectional.
-ref2_encoder/LSHSelfAttention.n_chunks_after = 1
+encoder/LSHSelfAttention.n_chunks_after = 1
+
+# Parameters for PureLSHSelfAttention:
+# ==============================================================================
+PureLSHSelfAttention.attention_dropout = 0.2
+PureLSHSelfAttention.chunk_len = 128
+PureLSHSelfAttention.n_buckets = None
+PureLSHSelfAttention.n_chunks_after = 0
+PureLSHSelfAttention.n_chunks_before = 1
+PureLSHSelfAttention.n_hashes = 4
+PureLSHSelfAttention.n_parallel_heads = 1
+PureLSHSelfAttention.predict_drop_len = %max_length
+PureLSHSelfAttention.predict_mem_len = %max_length
+# Reformer2's *encoder* is bidirectional.
+encoder/PureLSHSelfAttention.n_chunks_after = 1
+
+# Parameters for PureLSHSelfAttentionWrapper:
+# ==============================================================================
+PureLSHSelfAttentionWrapper.pure_lsh_implementation = @PureLSHSelfAttention
+PureLSHSelfAttentionWrapper.weights_format = 'sparse'
+encoder/PureLSHSelfAttentionWrapper.pure_lsh_implementation = @encoder/PureLSHSelfAttention
+encoder/PureLSHSelfAttentionWrapper.weights_format = 'model'
+
 
 # Parameters for Reformer2:
 # ==============================================================================

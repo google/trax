@@ -45,6 +45,7 @@ from trax.layers import base
 from trax.layers import combinators as cb
 from trax.layers import core
 from trax.layers import initializers as init
+from trax.layers import sparsity as sp
 
 
 ####################################################### Functions
@@ -3256,7 +3257,8 @@ class PureLSHSelfAttention(base.Layer):
 
 
 def _ProjectAndSplitHeads(d_model, n_heads, use_bias, num_weights=2,  # pylint: disable=invalid-name
-                          weights_format='model'):
+                          sparsity=16, length_kernel_size=3,
+                          weights_format='sparse', mode='train'):
   """Creates the QK and V activations from input."""
   # There can be either two or three weights:
   # two - qk and v or three - q, k, v
@@ -3270,7 +3272,7 @@ def _ProjectAndSplitHeads(d_model, n_heads, use_bias, num_weights=2,  # pylint: 
   # tl.Attention/CausalAttention etc use -- so use this format if we pretrain a
   # model trained with those and finetuning with PureLSHSelfAttention.
 
-  assert weights_format in ('heads', 'model')
+  assert weights_format in ('heads', 'model', 'sparse')
 
   # When an earlier model was trained with 3 separate weights for Q, K, V
   # projections with tl.Attention/tl.CausalAttention etc.
@@ -3286,6 +3288,32 @@ def _ProjectAndSplitHeads(d_model, n_heads, use_bias, num_weights=2,  # pylint: 
         # (batch * n_heads, seq_len, d_head) shape.
         cb.Parallel(attention.SplitIntoHeads(n_heads),
                     attention.SplitIntoHeads(n_heads))          # qk,   v
+    )
+
+  if weights_format == 'sparse' and num_weights == 3:
+    d_module = d_model // sparsity
+    # This layer matches sparsity.MultiplicativeConvCausalAttention,
+    # see there for more explanation.
+    # TODO(lukaszkaiser): unify code so that we don't duplicate so much.
+    return cb.Serial(
+        cb.Select([0, 0]),  # duplicate activations
+        sp.MultiplicativeSparseDense(sparsity, d_model, d_model),
+        cb.Select([0, 0, 0]),  # use for q, k, v
+        cb.Parallel(
+            [sp.LocallyConvDense(sparsity, d_module, mode=mode,
+                                 kernel_size=3,
+                                 length_kernel_size=length_kernel_size),
+             attention.SplitIntoHeads(n_heads)],
+            [sp.LocallyConvDense(sparsity, d_module, mode=mode,
+                                 kernel_size=3,
+                                 length_kernel_size=length_kernel_size),
+             attention.SplitIntoHeads(n_heads)],
+            [cb.Concatenate(),  # use permuted and original for v
+             sp.LocallyConvDense(sparsity, d_module, mode=mode, kernel_size=1,
+                                 length_kernel_size=length_kernel_size),
+             attention.SplitIntoHeads(n_heads)],
+        ),
+        core.Fn('QKAvg', lambda x, y: (x + y) / 2.0, n_out=1),
     )
 
   # We want to train from scratch and have only two weights, w_qk and w_v.
@@ -3324,7 +3352,7 @@ class PureLSHSelfAttentionWrapper(cb.Serial):
     d_model = d_qk * n_heads
     self._qkv = _ProjectAndSplitHeads(d_model, n_heads, bias,
                                       num_weights=num_weights,
-                                      weights_format=weights_format)
+                                      weights_format=weights_format, mode=mode)
     self._attn = pure_lsh_implementation(n_heads=n_heads,
                                          d_qk=d_qk,
                                          d_v=d_v,
@@ -3335,8 +3363,12 @@ class PureLSHSelfAttentionWrapper(cb.Serial):
                                          attention_dropout=attention_dropout,
                                          **pure_lsh_implementation_kwargs)
     self._merge = attention.MergeHeads(n_heads)
-    self._dense = core.Dense(d_model, use_bias=bias)
-    super().__init__(self._qkv, self._attn, self._merge, self._dense)
+    if weights_format != 'sparse':
+      self._dense = core.Dense(d_model, use_bias=bias)
+      super().__init__(self._qkv, self._attn, self._merge, self._dense)
+    else:
+      self._dense = None
+      super().__init__(self._qkv, self._attn, self._merge)
 
   def forward_and_or_backward(self, inputs, weights, state, rng,
                               output_grad=None,
@@ -3382,13 +3414,17 @@ class PureLSHSelfAttentionWrapper(cb.Serial):
         self._merge.pure_fn, attn_output, weights[2], state[2], rngs[2],
         has_aux=True)
 
-    dense_output, dense_vjp_fn, unused_dense_new_state = fastmath.vjp(
-        self._dense.pure_fn, merge_output, weights[3], state[3],
-        rngs[3], has_aux=True)
+    if self._dense is not None:
+      dense_output, dense_vjp_fn, unused_dense_new_state = fastmath.vjp(
+          self._dense.pure_fn, merge_output, weights[3], state[3],
+          rngs[3], has_aux=True)
 
     # Now backward.
-    dense_grads_inputs, dense_grads_weights, _, _ = dense_vjp_fn(
-        output_grad)
+    if self._dense is not None:
+      dense_grads_inputs, dense_grads_weights, _, _ = dense_vjp_fn(
+          output_grad)
+    else:
+      dense_grads_inputs = output_grad
     merge_grads_inputs, merge_grads_weights, _, _ = merge_vjp_fn(
         dense_grads_inputs)
 
@@ -3400,14 +3436,22 @@ class PureLSHSelfAttentionWrapper(cb.Serial):
     # Backward for qkv layer.
     qkv_grad_inputs, qkv_grads_weights, _, _ = qkv_vjp_fn(attn_grads_inputs)
 
-    grads_weights = (qkv_grads_weights,
-                     (),
-                     merge_grads_weights,
-                     dense_grads_weights)
+    if self._dense is None:
+      grads_weights = (qkv_grads_weights,
+                       (),
+                       merge_grads_weights)
+    else:
+      grads_weights = (qkv_grads_weights,
+                       (),
+                       merge_grads_weights,
+                       dense_grads_weights)
 
     # Output is  (output, new_state,  inputs_grad, weights_grad).
     # new_state is None because update_state is False.
-    return (dense_output, None, qkv_grad_inputs, grads_weights)
+    if self._dense is None:
+      return (merge_output, None, qkv_grad_inputs, grads_weights)
+    else:
+      return (dense_output, None, qkv_grad_inputs, grads_weights)
 
 
 class EncDecAttention(EfficientAttentionBase):
