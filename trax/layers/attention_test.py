@@ -112,5 +112,34 @@ class CausalAttentionTest(absltest.TestCase):
     self.assertEqual(y.shape, (1, 3, 4))
 
 
+class PositionalEncodingTest(absltest.TestCase):
+
+  def test_simple_call(self):
+    layer = tl.PositionalEncoding(max_len=8)
+    x = np.array([[[2.0, 3.0, 4.0, 5.0], [1.0, 2.0, 3.0, 4.0]]])
+    layer.init(shapes.signature(x))
+    y = layer(x)
+    self.assertEqual(y.shape, (1, 2, 4))
+
+  def test_predict(self):
+    layer = tl.PositionalEncoding(max_len=8)
+    x = np.array([[[2.0, 3.0], [1.0, 2.0], [0.0, 1.0], [3.0, 4.0]]])
+    self.assertEqual(x.shape, (1, 4, 2))
+    layer.init(shapes.signature(x))
+    y = layer(x)
+    self.assertEqual(y.shape, (1, 4, 2))
+    layer = tl.PositionalEncoding(max_len=8, mode='predict')
+    layer.init(shapes.signature(x[:, :1, :]))
+    y0 = layer(x[:, :1, :])   # just the first token
+    self.assertEqual(y0.shape, (1, 1, 2))
+    self.assertTrue(np.array_equal(y0, y[:, :1, :]))
+    y1 = layer(x[:, 1:3, :])  # now the next 2 tokens
+    self.assertEqual(y1.shape, (1, 2, 2))
+    self.assertTrue(np.array_equal(y1, y[:, 1:3, :]))
+    y2 = layer(x[:, 3:4, :])  # final one token
+    self.assertEqual(y2.shape, (1, 1, 2))
+    self.assertTrue(np.array_equal(y2, y[:, 3:4, :]))
+
+
 if __name__ == '__main__':
   absltest.main()
