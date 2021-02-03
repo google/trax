@@ -16,22 +16,23 @@
 # Lint as: python3
 """Simplified API (under development) for supervised learning/training in Trax.
 
-Trax authors expect that this module will replace `trainer_lib.Trainer`.
+This module will eventually replace :py:class:`trainer_lib.Trainer`.
 
 Key classes:
 
-  - Loop: Core training loop for an n-step training session, starting from
-    random initialization.
+  - :py:class:`Loop`: Core training loop for an n-step training session,
+    starting from random initialization.
 
-  - TrainTask: Labeled data + feedback mechanism (loss function w/ optimizer)
-    for modifying a model's weights.
+  - :py:class:`TrainTask`: Labeled data + feedback mechanism (loss function w/
+    optimizer) for modifying a model's weights.
 
-  - Optimizer: How to compute model weight updates using loss-derived gradients.
-    May contain state ("slots", 1-1 with model weights) that accumulates across
-    training steps. (This class is defined in the optimizers package.)
+  - :py:class:`Optimizer`: How to compute model weight updates using
+    loss-derived gradients. May contain state ("slots", 1-1 with model weights)
+    that accumulates across training steps. (This class is defined in the
+    :py:class:`trax.optimizers`.)
 
-  - EvalTask: How and when to measure model performance as a function of
-    training step number.
+  - :py:class:`EvalTask`: How and when to measure model performance as a
+    function of training step number.
 """
 import collections
 import contextlib
@@ -69,7 +70,7 @@ class Loop:
   """Loop that can run for a given number of steps to train a supervised model.
 
   Can train the model on multiple tasks by interleaving updates according to the
-  which_task() argument.
+  ``which_task`` argument.
 
   The typical supervised training process randomly initializes a model and
   updates its weights via feedback (loss-derived gradients) from a training
@@ -77,11 +78,11 @@ class Loop:
   be configured to run periodic evals and save intermediate checkpoints.
 
   For speed, the implementation takes advantage of JAX's composable function
-  transformations (specifically, `jit` and `grad`). It creates JIT-compiled
+  transformations (specifically, ``jit`` and ``grad``). It creates JIT-compiled
   pure functions derived from variants of the core model; schematically:
 
-    - training variant: jit(grad(pure_function(model+loss)))
-    - evals variant: jit(pure_function(model+evals))
+    - training variant: `jit(grad(pure_function(model+loss)))`
+    - evals variant: `jit(pure_function(model+evals))`
 
   In training or during evals, these variants are called with explicit
   arguments for all relevant input data, model weights/state, optimizer slots,
@@ -113,42 +114,47 @@ class Loop:
       use_memory_efficient_trainer=False,
       callbacks=None,
   ):
-    """Configures a training `Loop`, including a random initialization.
+    """Configures a training ``Loop``, including a random initialization.
 
     Args:
       model: Trax layer, representing the core model to be trained. Loss
           functions and eval functions (a.k.a. metrics) are considered to be
           outside the core model, taking core model output and data labels as
           their two inputs.
-      tasks: List of TrainTask instances, which define the training data, loss
-          function, and optimizer to be used in respective tasks in this
-          training loop. It can also be a single TrainTask instance which is
-          treated in the same way as a singleton list.
+      tasks: List of :py:class:`TrainTask` instances, which define the training
+          data, loss function, and optimizer to be used in respective tasks in
+          this training loop. It can also be a single :py:class:`TrainTask`
+          instance which is treated in the same way as a singleton list.
       eval_model: Optional Trax layer, representing model used for evaluation,
-        e.g., with dropout turned off. If None, the training model (model)
-        will be used.
-      eval_tasks: List of EvalTask instances which define how to evaluate
-        the model: which validation data to use and which metrics to report.
-        Evaluation on each of the tasks and will run and be reported separately
-        which allows to score a model on different subtasks. This argument can
-        also be None, in which case no evals will be run, or a single
-        EvalTask, which wil be treated in the same way as a singleton list.
+          e.g., with dropout turned off. If ``None``, the training model (model)
+          will be used.
+      eval_tasks: List of :py:class:`EvalTask` instances which define how to
+          evaluate the model: which validation data to use and which metrics to
+          report. Evaluation on each of the tasks and will run and be reported
+          separately which allows to score a model on different subtasks. This
+          argument can also be ``None``, in which case no evals will be run, or
+          a single :py:class:`EvalTask`, which wil be treated in the same way
+          as a singleton list.
       output_dir: Path telling where to save outputs (evals and checkpoints).
-          Can be None if both `eval_task` and `checkpoint_at` are None.
+          Can be ``None`` if both ``eval_task`` and ``checkpoint_at`` are
+          ``None``.
       checkpoint_at: Function (integer --> boolean) telling, for step n, whether
-          that step should have its checkpoint saved. If None, the default is
-          periodic checkpointing at `task.n_steps_per_checkpoint`.
+          that step should have its checkpoint saved. If ``None``, the default
+          is periodic checkpointing at ``task.n_steps_per_checkpoint``.
       permanent_checkpoint_at: Function (integer --> boolean) telling,
           for step n, whether that step should have its checkpoint saved
-          permanently. If None, the default is periodic checkpointing at
-          `task.n_steps_per_permanent_checkpoint`.
+          permanently. If ``None``, the default is periodic checkpointing at
+          ``task.n_steps_per_permanent_checkpoint``.
       eval_at: Function (integer --> boolean) that says, for training step n,
-          whether that step should run evals. If None, run when checkpointing.
+          whether that step should run evals. If ``None``, run when
+          checkpointing.
       which_task: Function (integer --> integer) indicating which task should be
-          used at which training step. Can be set to None in single-task
+          used at which training step. Can be set to ``None`` in single-task
           training.
-      n_devices: integer or None, the number of devices for this computation.
-      random_seed: the random seed to use; time/os dependent if None (default).
+      n_devices: integer or ``None``, the number of devices for this
+          computation.
+      random_seed: the random seed to use; time/os dependent if ``None``
+          (default).
       loss_chunk_size: int, if > 0 use chunks of this size to make loss
         computation more more memory-efficient.
       use_memory_efficient_trainer: whether to use a special memory-efficient
@@ -206,7 +212,7 @@ class Loop:
     self._which_task = which_task
 
     # Initialize using the given random seed.
-    # NOTE: If `random_seed` is `None` then `self._rng` will be different on
+    # NOTE: If random_seed is None then self._rng will be different on
     # different hosts, leading to different weights on the different hosts.
     self._batch_signature = shapes.signature(tasks[0].sample_batch)
     self._model.rng = self.new_rng()
@@ -384,14 +390,14 @@ class Loop:
           optimizer_metrics_acc[metric_name] += value
 
         # TODO(yuwenyan): Finds a way to log the last round eval step in
-        # `history`.
+        # history.
         #
-        # Right now, the last round eval log is missing in `history` since the
+        # Right now, the last round eval log is missing in history since the
         # checkpoint is saved before it. However sometimes the eval step will
         # fail for some reasons, and it's not acceptable to loose the whole
         # checkpoint in this case. Stays with the old way for now, and fixes it
         # when the checkpoint format is changed to storing weights separately
-        # from a small file with `history` and other data.
+        # from a small file with history and other data.
         if self._checkpoint_at(self.step):
           self.save_checkpoint()
         if self._permanent_checkpoint_at(self.step):
@@ -417,8 +423,8 @@ class Loop:
     # or other inspection/use.
 
     # We keep the standard model weights/state unreplicated and
-    # `tl.Accelerate(model)` will carry the replicated weights/state.
-    # TODO(afrozm): Try to use `tl.Accelerate(model)` everywhere in the Loop.
+    # tl.Accelerate(model) will carry the replicated weights/state.
+    # TODO(afrozm): Try to use tl.Accelerate(model) everywhere in the Loop.
     self._eval_model.weights = self._model.weights
 
   @property
@@ -472,7 +478,7 @@ class Loop:
     return rng
 
   def _for_n_devices(self, x):
-    """Replicates/broadcasts `x` for n devices if `self.n_devicess > 1`."""
+    """Replicates/broadcasts ``x`` for n devices if ``self.n_devicess > 1``."""
     return tl.for_n_devices(x, self.n_devices)
 
   def _unreplicate(self, x):
@@ -497,8 +503,8 @@ class Loop:
     during data collection in RL agents.
 
     Args:
-      weights: Model weights or None. If None, don't set.
-      state: Model state or None. If None, don't set.
+      weights: Model weights or ``None``. If ``None``, don't set.
+      state: Model state or ``None``. If ``None``, don't set.
     """
     for trainer in self._trainer_per_task:
       acc_model_with_loss = trainer.accelerated_model_with_loss
@@ -555,7 +561,7 @@ class Loop:
     to the provided summary writer. Training loss is also logged to stdout.
 
     Args:
-      task (TrainTask): The current task.
+      task: Current training task.
       total_loss: Total training loss accumulated over n_steps training steps.
       n_steps: Number of steps over which the metrics were accumulated.
       elapsed_time: Time of execution of n_steps training steps.
@@ -921,7 +927,7 @@ def _model_with_ends(model, end_layers, batch_signature):
 
   Returns:
     An initialized, combined model+ends layer, preserving the initialization
-    of `model`.
+    of ``model``.
   """
   # TODO(jonni): Redo this function as part of an initialization refactor?
   metrics_layer = tl.Branch(*end_layers)
@@ -937,11 +943,11 @@ def _model_with_metrics(model, eval_task):
 
   Args:
     model: Layer with initialized weights and state.
-    eval_task: EvalTask instance.
+    eval_task: :py:class:`EvalTask` instance.
 
   Returns:
     An initialized, combined model+metrics layer, preserving the initialization
-    of `model`.
+    of ``model``.
   """
   return _model_with_ends(
       model, eval_task.metrics, shapes.signature(eval_task.sample_batch)
@@ -972,7 +978,7 @@ class TrainTask:
           checkpoints.
       loss_name: Name for the loss metric.
       sample_batch: Optional sample batch for model initialization. If not
-          provided, it will be taken from `labeled_data`.
+          provided, it will be taken from ``labeled_data``.
     """
     self._labeled_data = labeled_data
     self._loss_layer = loss_layer
@@ -1031,10 +1037,11 @@ class TrainTask:
 class EvalTask:
   """Labeled data plus scalar functions for (periodically) measuring a model.
 
-  An eval task specifies how (`labeled_data` + `metrics`) and with what
-  precision (`n_eval_batches`) to measure a model as it is training.
+  An eval task specifies how (``labeled_data`` + ``metrics``) and with what
+  precision (``n_eval_batches``) to measure a model as it is training.
   The variance of each scalar output is reduced by measuring over multiple
-  (`n_eval_batches`) batches and reporting the average from those measurements.
+  (``n_eval_batches``) batches and reporting the average from those
+  measurements.
   """
 
   def __init__(self, labeled_data, metrics,
@@ -1047,13 +1054,13 @@ class EvalTask:
           tensor.
       metrics: List of layers; each computes a scalar value per batch by
           comparing model output :math:`\hat{y}=f(x)` to the target :math:`y`.
-      metric_names: List of names, one for each item in `metrics`, in matching
-           order, to be used when recording/reporting eval output. If None,
+      metric_names: List of names, one for each item in ``metrics``, in matching
+           order, to be used when recording/reporting eval output. If ``None``,
            generate default names using layer names from metrics.
       n_eval_batches: Integer N that specifies how many eval batches to run;
           the output is then the average of the outputs from the N batches.
       sample_batch: Optional sample batch for model initialization. If not
-          provided, it will be taken from `labeled_data`.
+          provided, it will be taken from ``labeled_data``.
     """
     self._labeled_data = labeled_data
     self._metrics = metrics
@@ -1160,10 +1167,10 @@ def init_host_and_devices(n_devices=None, random_seed=None):
   """Initializes host and device attributes for this trainer.
 
   Args:
-    n_devices: Number of devices this trainer will use. If `None`, get the
+    n_devices: Number of devices this trainer will use. If ``None``, get the
         number from the backend.
     random_seed: Random seed as the starting point for all random numbers used
-        by the trainer. If `None`, calculate one from system time and host id.
+        by the trainer. If ``None``, calculate one from system time and host id.
 
   Returns:
     is_chief: True if this trainer has special chief responsibilities.
