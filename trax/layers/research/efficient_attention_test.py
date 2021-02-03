@@ -298,7 +298,6 @@ class EfficientAttentionTest(test.TestCase, parameterized.TestCase):
     with fastmath.use_backend(fastmath.Backend.JAX):
       n_heads = 5
       batch, seqlen, d_head = 3, 32, 8
-      num_weights = 2
       n_hashes = 2
       d_model = n_heads * d_head
       layer = efficient_attention.PureLSHSelfAttentionWrapper(
