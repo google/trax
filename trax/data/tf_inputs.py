@@ -222,7 +222,7 @@ def _train_and_eval_dataset(dataset_name,
   else:
     if tfds.Split.VALIDATION not in splits and 'test' not in splits:
       raise ValueError('We require a validation or test split in the dataset.')
-    eval_split = tfds.Split.VALIDATION
+    eval_split = tfds.Split.TEST
     if tfds.Split.VALIDATION not in splits:
       eval_split = tfds.Split.TEST
   train = tfds.load(
