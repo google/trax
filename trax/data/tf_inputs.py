@@ -1646,6 +1646,18 @@ def process_single_mathqa_example(example):
   return answer_num, python_result, list_op, list_num
 
 
+def convert_float_to_mathqa(number):
+  floor = int(float(number))
+  if floor == number:
+    return 'const_' + str(floor)
+  else:
+    return 'const_' + str(floor) + '_' + str(number)[len(str(floor)) + 1:]
+
+
+def convert_to_subtract(const_string):
+  return 'subtract({},const_0)'.format(const_string)
+
+
 def CreateMathQAInputs(  # pylint: disable=invalid-name
     dataset_path=None,
     train=True,
@@ -1654,6 +1666,7 @@ def CreateMathQAInputs(  # pylint: disable=invalid-name
     partial_results=True,
     nlp_rationale=False,
     correct_answer=False,
+    answer_in_mathqa_format=True,
     correct_answer_given_reasoning=False,
     category=False,
     order_prediction=False,
@@ -1690,6 +1703,9 @@ def CreateMathQAInputs(  # pylint: disable=invalid-name
       the nlp rationale.
     correct_answer: if set to True, then input is the problem plus all possible
       answers and the target is the correct answer.
+    answer_in_mathqa_format: if set to True, then convert numerical answer to
+      the MathQA format and wrap it in the subtract operation.
+      E.g. "3.13" is converted to "subtract(const_3_13,const_0)".
     correct_answer_given_reasoning: if set to True, then input is the problem
       plus linear formula plus all possible answers and the target is the
       correct answer.
@@ -1752,7 +1768,12 @@ def CreateMathQAInputs(  # pylint: disable=invalid-name
           elif correct_answer:
             input_values = 'infer correct answer: ' + input_prefix
             input_values += ' ' + example['options']
-            target_values = example['correct']
+            if answer_in_mathqa_format:
+              target_values = str(answer_num)
+              target_values = convert_to_subtract(
+                  convert_float_to_mathqa(target_values))
+            else:
+              target_values = example['correct']
             yield input_values, target_values, np.array([1] *
                                                         len(target_values))
           elif correct_answer_given_reasoning:
@@ -1894,12 +1915,15 @@ def CreateAquaInputs(  # pylint: disable=invalid-name
 
 
 def CreateDropInputs(  # pylint: disable=invalid-name
-    train=True):
+    train=True, mathqa_format=False):
   """Prepares Drop inputs.
 
   Args:
     train: if True, then generate training examples, otherwhise generate
       validation examples (the dataset has also a test set).
+    mathqa_format: if True, then floats in targets are converted to the
+      the MathQA convention and wrapped in the subtract operation.
+      E.g. "3.13" is converted to "subtract(const_3_13,const_0)".
 
   Returns:
     drop_yield_examples: a generator of Drop examples; the generator yields
@@ -1923,7 +1947,96 @@ def CreateDropInputs(  # pylint: disable=invalid-name
         # to it a float32 tensor and the training fails.
         if not target_values:
           continue
+        if mathqa_format:
+          if target_values.replace('.', '', 1).isdigit():
+            target_values = convert_to_subtract(
+                convert_float_to_mathqa(target_values))
         yield input_values, target_values, np.array(
             [1] * len(target_values), dtype=np.int32)
 
   return drop_yield_examples
+
+
+def CreateAnnotatedDropInputs(  # pylint: disable=invalid-name
+    dataset_path=None,
+    train=True,
+    percentile=1.):
+  r"""Prepares annotated Drop inputs.
+
+  Example of an annotated input which can be used with this interface:
+
+  {
+    'passage': 'The Armenian Prelature of Cyprus was established in 973 by
+    Catholicos Khatchig I. Historically, the Prelature has been under the
+    jurisdiction of the Catholicosate of the Great House of Cilicia, while today
+    it is the oldest theme that falls under its jurisdiction. Since 2014 the
+    Prelate, a Catholicosal Vicar General, has been Archbishop Nareg Alemezian.
+    The parish priest in Nicosia is Fr. Momik Habeshian, while the parish priest
+    in Larnaca and Limassol is Fr. Mashdots Ashkarian. For centuries, the
+    Prelature building was located within the Armenian compound in Victoria
+    street in walled Nicosia; when that area was taken over by Turkish-Cypriot
+    extremists in 1963-1964, the Prelature was temporarily housed in Aram
+    Ouzounian street and, later on, in Kyriakos Matsis street in Ayios
+    Dhometios. Thanks to the efforts of Bishop Zareh Aznavorian and with
+    financial aid from the Evangelical Church of Westphalia, the new Prelature
+    building was erected in 1983, next to the Virgin Mary church and the Nareg
+    school in Nicosia, by architects Athos Dikaios & Alkis Dikaios; it was
+    officially inaugurated on 4 March 1984, during the pastoral visit of
+    Catholicos Karekin II. By initiative of Archbishop Varoujan Hergelian, in
+    1998 the basement of the building was renovated and the "Vahram Utidjian"
+    Hall was formed; previously a store room, it became a reality from the
+    proceeds of the auction in 1994 of the art collection that Vahram Utidjian
+    had donated to the Prelature in 1954. It was inaugurated on 3 February 1999
+    by Catholicos Aram I; numerous charity, communal and cultural events take
+    place there. The Prelature\'s consistory houses a collection of
+    ecclesiastical relics, some of which were previously in the old Virgin Mary
+    church or the Magaravank.',
+    'question': 'How many years after the Vahram Utidjian was donated to the
+    Prelature was it sold at an auction?',
+    'answer': 40,
+    'calculation': 'subtract(n8,n9)'
+  }
+
+  In this example the calculation is formulated using the notation from the
+  MathQA dataset, but this is not required. subtract(n8,n9) means that the
+  answer 40 can be obtained through the substraction of the 9th and and the 10th
+  number in the input. The input consists of the passage concatened with the
+  question. The annotations can be generated using, for example, a method
+  from the paper https://arxiv.org/abs/1909.00109.
+
+  Args:
+    dataset_path: a path with the Aqua dataset.
+    train: if True, then generate training examples, otherwhise generate
+      validation examples (the dataset has also a test set).
+    percentile: the percentile of the train dataset used for training; default
+      set to 1., though setting to a lower value can be interesting when
+      combined train is combined with another source of data.
+
+  Returns:
+    drop_annotated_yield_examples: a generator of annotated Drop examples;
+    the generator yields non-tokenized examples - they can be further processed
+    using for example the tokenize function from this module.
+  """
+  if train:
+    dataset_path = os.path.join(dataset_path, 'train_annotated.json')
+  else:
+    dataset_path = os.path.join(dataset_path, 'dev_annotated.json')
+  # Opening with GFile allows to use remotely stored files, e.g.
+  # in a gs bucket.
+  dataset_handle = tf.io.gfile.GFile(dataset_path, 'r')
+  dataset = []
+  for line in dataset_handle:
+    dataset.append(json.loads(line))
+  dataset = dataset[:int(len(dataset) * percentile)]
+
+  def drop_annotated_yield_examples(generator=None):
+    del generator
+    while True:
+      for example in itertools.cycle(dataset):
+        input_values = 'drop annotated question: ' + example[
+            'passage'] + ' ' + example['question']
+        target_values = example['calculation']
+        yield input_values, target_values, np.array(
+            [1] * len(target_values), dtype=np.int32)
+
+  return drop_annotated_yield_examples

@@ -62,3 +62,4 @@ debug_pipeline = debug_data_pipeline.debug_pipeline
 CreateMathQAInputs = data_configure(tf_inputs.CreateMathQAInputs)
 CreateAquaInputs = data_configure(tf_inputs.CreateAquaInputs)
 CreateDropInputs = data_configure(tf_inputs.CreateDropInputs)
+CreateAnnotatedDropInputs = data_configure(tf_inputs.CreateAnnotatedDropInputs)
