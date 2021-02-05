@@ -18,6 +18,7 @@
 
 from absl import logging
 import numpy as np
+import tensorflow as tf
 
 from trax import fastmath
 from trax.fastmath import numpy as jnp
@@ -631,7 +632,10 @@ def Flatten(n_axes_to_keep=1):
     if in_rank <= n_axes_to_keep:
       raise ValueError(f'Input rank ({in_rank}) must exceed the number of '
                        f'axes to keep ({n_axes_to_keep}) after flattening.')
-    return jnp.reshape(x, (x.shape[:n_axes_to_keep] + (-1,)))
+    shape = x.shape
+    if isinstance(shape, tf.TensorShape):
+      shape = tuple(shape.as_list())
+    return jnp.reshape(x, (shape[:n_axes_to_keep] + (-1,)))
   return Fn(layer_name, f)
 
 

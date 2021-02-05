@@ -39,6 +39,8 @@ class ShapeDtype:
       `dtype` object.
     """
     # Canonicalize shape and dtype.
+    if isinstance(shape, tf.TensorShape):
+      shape = shape.as_list()
     if isinstance(shape, list):
       shape = tuple(shape)
     if not isinstance(shape, tuple):
