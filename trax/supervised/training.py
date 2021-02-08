@@ -728,10 +728,7 @@ class Loop:
     _log('Saving checkpoint to %s.' % ckpt_file, stdout=False)
     weights = self._model.weights
     state = self._model.state
-    if self._use_memory_efficient_trainer:
-      slots_per_task = [trainer.slots for trainer in self._trainer_per_task]
-    else:
-      slots_per_task = tuple(task.optimizer.slots for task in self._tasks)
+    slots_per_task = [trainer.slots for trainer in self._trainer_per_task]
     # We only need the input signature for the body, not for the loss layers.
     # That part is the same across tasks - take it from the first one.
     input_signature = self._batch_signature[:self._model.n_in]
@@ -854,12 +851,8 @@ class Loop:
             'Can\'t load a single-task checkpoint into a multitask Loop.'
         )
       d['slots_per_task'] = [d['slots']]
-    if self._use_memory_efficient_trainer:
-      for (trainer, slots) in zip(self._trainer_per_task, d['slots_per_task']):
-        trainer.slots = slots
-    else:
-      for (task, slots) in zip(self._tasks, d['slots_per_task']):
-        task.optimizer.slots = slots
+    for (trainer, slots) in zip(self._trainer_per_task, d['slots_per_task']):
+      trainer.slots = slots
     # This is self._model.init_from_file but optimized to not re-read.
     input_signature = d['input_signature']
     weights_and_state_sig = self._model.weights_and_state_signature(

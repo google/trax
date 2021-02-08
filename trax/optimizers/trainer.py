@@ -95,6 +95,17 @@ class Trainer:
     """Returns the optimizer for this instance."""
     return self._optimizer
 
+  @property
+  def slots(self):
+    """Returns the slots of the optimizers."""
+    return self._optimizer.slots
+
+  @slots.setter
+  def slots(self, slots):
+    """Sets the slots of the optimizers and this class (replicated)."""
+    self._optimizer.slots = slots
+    self._slots = tl.for_n_devices(slots, self._n_devices)
+
   def one_step(self, batch, rng, step=0, learning_rate=None):
     """Runs one training step, to update model and optimizer parameters.
 

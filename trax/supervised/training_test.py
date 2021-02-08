@@ -96,7 +96,7 @@ class TrainingTest(absltest.TestCase):
   def test_train_save_restore_dense(self):
     """Saves and restores a checkpoint to check for equivalence."""
     task = training.TrainTask(
-        _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01))
+        _very_simple_data(), tl.L2Loss(), optimizers.Adam(.0001))
     eval_task = training.EvalTask(
         _very_simple_data(),  # deliberately re-using training data
         [tl.L2Loss()],
@@ -125,6 +125,10 @@ class TrainingTest(absltest.TestCase):
     y1 = model(x, rng=fastmath.random.get_prng(0))
     y2 = model2(x, rng=fastmath.random.get_prng(0))
     self.assertNotEqual(str(y1), str(y2))
+
+    slots1 = training_session._trainer_per_task[0].slots
+    slots2 = training_session2._trainer_per_task[0].slots
+    np.testing.assert_array_equal(slots1, slots2)
 
   def test_train_save_restore_transformer(self):
     """Saves and restores a checkpoint to check for equivalence."""
