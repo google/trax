@@ -557,21 +557,12 @@ class PositionalEncoding(base.Layer):
 
       # State in this class is only used for fast inference. In that case,
       # the model is called with consecutive elements position-by-position.
-      # This positional encoding layer needs to store the index of the current
-      # position then and increment it on each call -- that's how state is used
-      # and updated below.
-      state = self.state
-      if inputs.shape[1] == 1:
-        self.state = state + 1
-        return inputs + jnp.expand_dims(self.weights[0, state, :], 1)
-      else:
-        emb = []
-        for i in range(inputs.shape[0]):
-          emb.append(fastmath.dynamic_slice_in_dim(
-              self.weights[0], state[i], inputs.shape[1], axis=0))
-        self.state = state + inputs.shape[1]
-        res = inputs + jnp.stack(emb, 0)
-        return res
+      # This positional encoding layer stores the index of the current
+      # position and increments it on each call.
+      emb = fastmath.dynamic_slice_in_dim(
+          self.weights, self.state, inputs.shape[1], axis=1)
+      self.state += inputs.shape[1]
+      return inputs + emb
 
   def init_weights_and_state(self, input_signature):
     """Randomly initializes the positional encoding vectors.
@@ -592,8 +583,7 @@ class PositionalEncoding(base.Layer):
       pe = pe.astype(jnp.bfloat16)
     self.weights = jnp.array(pe)  # Trainable parameters, initialized above.
     if self._mode == 'predict':
-      batch_size = input_signature.shape[0]
-      self.state = jnp.zeros((batch_size,), dtype=jnp.int32)
+      self.state = jnp.zeros((), dtype=jnp.int32)
 
 
 def _zero_pad(x, pad, axis):
