@@ -376,6 +376,42 @@ class InputsTest(parameterized.TestCase):
       self.assertEqual(y.shape[1], seq_length)
       self.assertEqual(weights.shape[1], seq_length)
 
+  def _get_span_lengths(self, x):
+    span_lengths = []
+    curr_len = 0
+    for i in range(1, len(x)):
+      # 1 -> 0
+      if x[i] == 0 and x[i - 1] == 1:
+        span_lengths.append(curr_len)
+        curr_len = 0
+      # 1 -> 1 or 0 -> 1
+      elif ((x[i] == 1 and x[i - 1] == 1) or
+            (x[i] == 1 and x[i - 1] == 0)):
+        curr_len += 1
+    if curr_len != 0:
+      span_lengths.append(curr_len)
+    return span_lengths
+
+  def test_span_corruption(self):
+    length = 100
+    noise_density = 0.15
+    mean_noise_span_length = 3.0
+
+    # Take 5 random seed1, seed2 values.
+    for seed in np.random.randint(0, 100, (5, 2)):
+      is_noise = data.span_corruption(length,
+                                      noise_density,
+                                      mean_noise_span_length,
+                                      seed1=seed[0],
+                                      seed2=seed[1])
+      is_noise = is_noise.astype(np.int32)
+      # noise_density fraction of tokens are produced
+      self.assertEqual(np.sum(is_noise), noise_density * length)
+      # Get span lengths and make sure the average is what we expect.
+      actual_span_lengths = self._get_span_lengths(is_noise)
+      average_span_length = (
+          sum(actual_span_lengths) / len(actual_span_lengths))
+      self.assertEqual(mean_noise_span_length, average_span_length)
 
 if __name__ == '__main__':
   absltest.main()

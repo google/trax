@@ -45,6 +45,7 @@ Serial = data_configure(inputs.Serial)
 Parallel = data_configure(inputs.Parallel)
 Shuffle = data_configure(inputs.Shuffle)
 shuffle = inputs.shuffle
+span_corruption = inputs.span_corruption
 TFDS = data_configure(tf_inputs.TFDS)
 BertNextSentencePredictionInputs = data_configure(
     tf_inputs.BertNextSentencePredictionInputs)

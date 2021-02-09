@@ -1118,3 +1118,52 @@ def addition_inputs(
       train_stream=lambda _: batches(train_length, 3),
       eval_stream=lambda _: batches(eval_max_length, eval_min_length)
   )
+
+
+# This is a straightforward translation of T5's random_spans_noise_mask.
+def span_corruption(length,
+                    noise_density=0.15,
+                    mean_noise_span_length=3.0,
+                    seed1=None,
+                    seed2=None):
+  """Computes span corruption masks given input parameters."""
+
+  orig_length = length
+  # increase length to avoid degeneracy
+  length = max(length, 2)
+  num_noise_tokens = int(round(length * noise_density))
+  # avoid degeneracy by ensuring positive numbers of noise and nonnoise tokens.
+  num_noise_tokens = min(max(num_noise_tokens, 1), length - 1)
+  num_noise_spans = int(round(num_noise_tokens / mean_noise_span_length))
+  # avoid degeneracy by ensuring positive number of noise spans
+  num_noise_spans = max(num_noise_spans, 1)
+  num_nonnoise_tokens = length - num_noise_tokens
+
+  # Pick the lengths of the noise spans and the non-noise spans
+  def randomly_segment(num_items, num_segments, seed):
+    x = np.arange(num_items - 1) < num_segments - 1
+    np.random.seed(seed)
+    np.random.shuffle(x)
+    first_in_segment = np.pad(x, (1, 0), mode='constant')
+    segment_id = np.cumsum(first_in_segment)
+
+    y = np.roll(segment_id, 1)
+    y[0] = 0
+    idxs = np.pad(
+        np.squeeze(np.argwhere(segment_id - y)), (1, 0), mode='constant')
+    segment_lengths = np.add.reduceat(np.ones_like(segment_id), idxs, axis=0)
+    return segment_lengths
+
+  noise_span_lengths = randomly_segment(
+      num_noise_tokens, num_noise_spans, seed1)
+  nonnoise_span_lengths = randomly_segment(
+      num_nonnoise_tokens, num_noise_spans, seed2)
+  interleaved_span_lengths = np.reshape(
+      np.stack([nonnoise_span_lengths, noise_span_lengths], axis=1),
+      [num_noise_spans * 2])
+  span_starts = np.cumsum(interleaved_span_lengths)[:-1]
+  span_start_indicator = np.zeros(length)  # all 0s to begin with
+  span_start_indicator[span_starts] = 1
+  span_num = np.cumsum(span_start_indicator)
+  is_noise = np.equal(span_num % 2, 1)
+  return is_noise[:orig_length]
