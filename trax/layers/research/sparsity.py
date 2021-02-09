@@ -599,7 +599,8 @@ def MultiplicativeModularCausalAttention(
 @assert_shape('bld->bld')
 def MultiplicativeConvCausalAttention(
     d_feature, n_heads=1, sparsity=None, length_kernel_size=3,
-    dropout=0.0, max_inference_length=2048, share_qk=False, mode='train'):
+    dropout=0.0, max_inference_length=2048, share_qk=False,
+    output_layer_type='none', v_concat_type='original', mode='train'):
   """Returns a layer that maps activations to activations, with causal masking.
 
   Like `CausalAttention`, this layer type represents one pass of multi-head
@@ -616,10 +617,58 @@ def MultiplicativeConvCausalAttention(
         activations (based on query-key pairs) before dotting them with values.
     max_inference_length: maximum length for inference.
     share_qk: if True, average Q and K embeddings and share for both Q and K.
+    output_layer_type: Which sparse layers to use for processing output from the
+        attention mechanism. One of `'none'`, `'mult'`, `'conv'`,
+        or `'multconv'`.
+    v_concat_type: What kind of concatenation to use when computing V tensor.
+        One of `'original'`, `'fixed'`, or `'none'`. `'none'` means using just
+        output from mutliplicative layer shared by Q, K, V. `'fixed'` means
+        using output from multiplicative layer concatenated, for each module,
+        with the layer input. `'original'` means using concatenation without
+        properly taking modules into account; this method was used in
+        experiments previously, so it is included for backwards-compatibility.
     mode: One of `'train'`, `'eval'`, or `'predict'`.
   """
+  assert output_layer_type in ['none', 'mult', 'conv', 'multconv']
+  assert v_concat_type in ['original', 'fixed', 'none']
+
   sparsity = n_heads if sparsity is None else sparsity
   d_module = d_feature // sparsity
+
+  output_layers = []
+  if 'mult' in output_layer_type:
+    output_layers.append(MultiplicativeSparseDense(
+        sparsity, d_feature, d_feature))
+  if 'conv' in output_layer_type:
+    output_layers.append(LocallyConvDense(
+        sparsity, d_module, mode=mode, kernel_size=3,
+        length_kernel_size=length_kernel_size))
+
+  if v_concat_type == 'original':
+    # 'original'` uses concatenation without properly taking modules into
+    # account; this method was used in experiments previously, so it is included
+    # for backwards-compatibility.
+    concat_layers = [tl.Concatenate()]  # use permuted and original for v
+  elif v_concat_type == 'fixed':
+    # `'fixed'` uses the output from multiplicative layer concatenated, for each
+    # module, with the layer input. This means that every module in Conv layer
+    # has access both to parts of embeddings which were used to compute Q/K of
+    # this particular module, and it ha access to parts of the embedding which
+    # will be modified by this module.
+    concat_layers = [
+        tl.Parallel(
+            tl.Fn('Reshape1', lambda x: jnp.reshape(  # pylint: disable=g-long-lambda
+                x, (x.shape[0], x.shape[1], sparsity, d_module))),
+            tl.Fn('Reshape2', lambda x: jnp.reshape(  # pylint: disable=g-long-lambda
+                x, (x.shape[0], x.shape[1], sparsity, d_module)))),
+        tl.Concatenate(),
+        tl.Fn('Reshape3',
+              lambda x: jnp.reshape(x, (x.shape[0], x.shape[1], 2*d_feature))),
+    ]
+  elif v_concat_type == 'none':
+    # `'none'` doesn't use concatenation: we throw away the original layer
+    # input and pass to Conv only output of shared Multiplicative layer.
+    concat_layers = [tl.Select([0], n_in=2)]
 
   if share_qk:
     return tl.Serial(
@@ -633,7 +682,7 @@ def MultiplicativeConvCausalAttention(
         tl.Parallel(
             [],
             [],
-            [tl.Concatenate(),  # use permuted and original for v
+            [concat_layers,
              LocallyConvDense(sparsity, d_module, mode=mode, kernel_size=1,
                               length_kernel_size=length_kernel_size),
              tl.SplitIntoHeads(n_heads)],
@@ -642,6 +691,7 @@ def MultiplicativeConvCausalAttention(
             dropout=dropout, max_inference_length=max_inference_length,
             mode=mode),
         tl.MergeHeads(n_heads),
+        output_layers,
     )
   return tl.Serial(
       tl.Select([0, 0]),  # duplicate activations
@@ -654,7 +704,7 @@ def MultiplicativeConvCausalAttention(
           [LocallyConvDense(sparsity, d_module, mode=mode, kernel_size=3,
                             length_kernel_size=length_kernel_size),
            tl.SplitIntoHeads(n_heads)],
-          [tl.Concatenate(),  # use permuted and original for v
+          [concat_layers,
            LocallyConvDense(sparsity, d_module, mode=mode, kernel_size=1,
                             length_kernel_size=length_kernel_size),
            tl.SplitIntoHeads(n_heads)],
@@ -663,6 +713,7 @@ def MultiplicativeConvCausalAttention(
           dropout=dropout, max_inference_length=max_inference_length,
           mode=mode),
       tl.MergeHeads(n_heads),
+      output_layers,
   )
 
 
