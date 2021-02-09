@@ -106,6 +106,48 @@ class InputsTest(parameterized.TestCase):
     self.assertEqual(next(generator), 10)
     self.assertEqual(next(generator), 1)
     self.assertEqual(next(generator), 11)
+    self.assertEqual(next(generator), 2)
+    self.assertEqual(next(generator), 12)
+
+  def test_parallel_with_weights(self):
+    """Check that data.Serial works inside another data.Serial."""
+    dataset1 = lambda: (i for i in range(10))
+    dataset2 = lambda: (i for i in range(10, 20))
+    parallel = data.Parallel(dataset1, dataset2)
+    generator = parallel(counters=(2, 1))
+
+    self.assertEqual(next(generator), 0)
+    self.assertEqual(next(generator), 10)
+    self.assertEqual(next(generator), 1)
+    self.assertEqual(next(generator), 11)
+    self.assertEqual(next(generator), 2)
+    self.assertEqual(next(generator), 3)
+    self.assertEqual(next(generator), 12)
+    self.assertEqual(next(generator), 4)
+    self.assertEqual(next(generator), 5)
+    self.assertEqual(next(generator), 13)
+
+  def test_parallel_with_weights_three_datasets(self):
+    """Check that data.Serial works inside another data.Serial."""
+    dataset1 = lambda: (i for i in range(10))
+    dataset2 = lambda: (i for i in range(10, 20))
+    dataset3 = lambda: (i for i in range(20, 30))
+    parallel = data.Parallel(dataset1, dataset2, dataset3)
+    generator = parallel(counters=(2, 1, 3))
+
+    self.assertEqual(next(generator), 0)    # (1,0,0)
+    self.assertEqual(next(generator), 10)   # (1,1,0)
+    self.assertEqual(next(generator), 20)   # (1,1,1)
+    self.assertEqual(next(generator), 1)    # (2,1,1)
+    self.assertEqual(next(generator), 21)   # (2,1,2)
+    self.assertEqual(next(generator), 22)   # (2,1,3)
+    self.assertEqual(next(generator), 2)    # (1,0,0)
+    self.assertEqual(next(generator), 11)   # (1,1,0)
+    self.assertEqual(next(generator), 23)   # (1,1,1)
+    self.assertEqual(next(generator), 3)    # (2,1,1)
+    self.assertEqual(next(generator), 24)   # (2,1,2)
+    self.assertEqual(next(generator), 25)   # (2,1,3)
+    self.assertEqual(next(generator), 4)    # (1,0,0)
 
   def test_serial_with_python(self):
     dataset = lambda _: ((i, i+1) for i in range(10))

@@ -92,14 +92,52 @@ def Serial(*fns):  # pylint: disable=invalid-name
 
 
 def Parallel(*fns):  # pylint: disable=invalid-name
-  """Combines generator functions into one that runs them in parallel."""
-  def parallel_generator():
+  """Combines generator functions into one that runs them in parallel.
+
+  Args:
+    *fns: all datasets which are combined in parallel.
+  Returns:
+    parallel_generator: the generator yields samples according to given;
+    if counters are not given then samples are genereted uniformly.
+
+  Example 1:
+
+    parallel = data.Parallel(dataset1, dataset2, dataset3)
+    generator = parallel(counters=(2, 1, 3))
+
+  defines a generator that yields 33% examples from dataset1, 16% examples from
+  dataset2 and 50% examples from dataset3.
+
+  Example 2:
+
+    parallel = data.Parallel(dataset1, dataset2, dataset3)
+    generator = parallel(counters=(20, 50, 30))
+
+  defines a generator that yields 20% examples from dataset1, 50% examples from
+  dataset2 and 30% examples from dataset3.
+  """
+  def parallel_generator(counters=None):
     generators = []
     for f in fastmath.tree_flatten(fns):
       generators.append(f())
+    if counters:
+      assert len(counters) == len(generators)
+    else:
+      counters = [1]*len(generators)
+    # current_counters are increased step by step; they are reset to 0s when
+    # current_counters[idx] == counters[idx] for all idx. See
+    # test_parallel_with_weights_three_datasets for an example of how
+    # current_counters are changed during computation.
+    current_counters = [0]*len(generators)
     while True:
-      for generator in generators:
-        yield next(generator)
+      for idx, generator in enumerate(generators):
+        if current_counters[idx] < counters[idx]:
+          current_counters[idx] += 1
+          # instead of checking current_counters[idx] == counters[idx] for
+          # all idx, we check the equivalent condition:
+          if sum(current_counters) == sum(counters):
+            current_counters = [0]*len(generators)
+          yield next(generator)
   return parallel_generator
 
 
