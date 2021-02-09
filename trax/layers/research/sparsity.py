@@ -599,7 +599,7 @@ def MultiplicativeModularCausalAttention(
 @assert_shape('bld->bld')
 def MultiplicativeConvCausalAttention(
     d_feature, n_heads=1, sparsity=None, length_kernel_size=3,
-    dropout=0.0, max_inference_length=2048, mode='train'):
+    dropout=0.0, max_inference_length=2048, share_qk=False, mode='train'):
   """Returns a layer that maps activations to activations, with causal masking.
 
   Like `CausalAttention`, this layer type represents one pass of multi-head
@@ -615,10 +615,34 @@ def MultiplicativeConvCausalAttention(
     dropout: Probababilistic rate for internal dropout applied to attention
         activations (based on query-key pairs) before dotting them with values.
     max_inference_length: maximum length for inference.
+    share_qk: if True, average Q and K embeddings and share for both Q and K.
     mode: One of `'train'`, `'eval'`, or `'predict'`.
   """
   sparsity = n_heads if sparsity is None else sparsity
   d_module = d_feature // sparsity
+
+  if share_qk:
+    return tl.Serial(
+        tl.Select([0, 0]),  # pre-qkv, pre-v-for-concat
+        MultiplicativeSparseDense(sparsity, d_feature, d_feature),  # shared q k
+        tl.Select([0, 0]),  # pre-qk, pre-v, pre-v-for-concat
+        LocallyConvDense(sparsity, d_module, mode=mode, kernel_size=3,
+                         length_kernel_size=length_kernel_size),
+        tl.SplitIntoHeads(n_heads),
+        tl.Select([0, 0]),  # use for q and k
+        tl.Parallel(
+            [],
+            [],
+            [tl.Concatenate(),  # use permuted and original for v
+             LocallyConvDense(sparsity, d_module, mode=mode, kernel_size=1,
+                              length_kernel_size=length_kernel_size),
+             tl.SplitIntoHeads(n_heads)],
+        ),
+        tl.DotProductCausalAttention(
+            dropout=dropout, max_inference_length=max_inference_length,
+            mode=mode),
+        tl.MergeHeads(n_heads),
+    )
   return tl.Serial(
       tl.Select([0, 0]),  # duplicate activations
       MultiplicativeSparseDense(sparsity, d_feature, d_feature),  # shared q, k
