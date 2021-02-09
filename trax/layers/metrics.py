@@ -81,6 +81,35 @@ def CategoryAccuracy():
   return base.Fn('CategoryAccuracy', f)
 
 
+def _n_weights_per_core(weights):  # pylint: disable=invalid-name
+  """Calculates the number of weights per core.
+
+  In multi-device settings, gradients and losses are averaged over all devices.
+  When loss is weighted and the number of weights can differ by device, e.g.,
+  when the weights represent the number of tokens in a batch of sentences (which
+  can differ from device to device), we want to make sure each token on each
+  device is weighted in the same way. This function ensures that by reporting
+  the number of weights per core in multi-core settings (and simply
+  np.sum(weights) in a single-core setting).
+
+  Args:
+    weights: tensor with arbitrary shape
+
+  Returns:
+    a scalar equal to np.sum(weights) in 1-machine settings and to the sum
+    of weights over all cores divided by the number of cores otherwise
+  """
+  weights_sum = jnp.sum(weights)
+  if fastmath.device_count() < 2:
+    return weights_sum
+  else:
+    try:
+      n_devices_total = fastmath.psum(jnp.array(1.0), 'batch')
+      return fastmath.psum(weights_sum, 'batch') / n_devices_total
+    except (NameError, ValueError):  # running outside of pmap, e.g., on init
+      return weights_sum  # fall back to the sum
+
+
 def WeightedCategoryAccuracy():
   r"""Returns a layer that computes a weighted category prediction accuracy.
 
@@ -109,7 +138,7 @@ def WeightedCategoryAccuracy():
     predictions = jnp.argmax(model_output, axis=-1)
     shapes.assert_same_shape(predictions, targets)
     ones_and_zeros = jnp.equal(predictions, targets)
-    return jnp.sum(ones_and_zeros * weights) / jnp.sum(weights)
+    return jnp.sum(ones_and_zeros * weights) / _n_weights_per_core(weights)
 
   return base.Fn('WeightedCategoryAccuracy', f)
 
@@ -186,7 +215,7 @@ def WeightedCategoryCrossEntropy(label_smoothing=None):
   def f(model_output, targets, weights):  # pylint: disable=invalid-name
     cross_entropies = _category_cross_entropy(
         model_output, targets, label_smoothing)
-    return jnp.sum(cross_entropies * weights) / jnp.sum(weights)
+    return jnp.sum(cross_entropies * weights) / _n_weights_per_core(weights)
 
   return base.Fn('WeightedCategoryCrossEntropy', f)
 
@@ -459,7 +488,7 @@ def BinaryCrossEntropySum():
 def _WeightedMean():
   """Returns a layer that computes a weighted mean of the given values."""
   def f(values, weights):  # pylint: disable=invalid-name
-    return jnp.sum(values * weights) / jnp.sum(weights)
+    return jnp.sum(values * weights) / _n_weights_per_core(weights)
   return base.Fn('_WeightedMean', f)
 
 

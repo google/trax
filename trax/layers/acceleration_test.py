@@ -50,6 +50,19 @@ class AccelerationTest(absltest.TestCase):
       self.assertAlmostEqual(float(y[i, 0]), float(z[i, 0]), places=4)
       self.assertAlmostEqual(float(y[i, 1]), float(z[i, 1]), places=4)
 
+  def test_accelerated_weighted_category_accuracy(self):
+    """Test multi-device aggregation of weights."""
+    layer = tl.Accelerate(tl.WeightedCategoryAccuracy())
+    weights = np.array([1., 1., 1., 0.])
+    targets = np.array([0, 1, 2, 3])
+
+    model_outputs = np.array([[.2, .1, .7, 0.],
+                              [.2, .1, .7, 0.],
+                              [.2, .1, .7, 0.],
+                              [.2, .1, .7, 0.]])
+    accuracy = layer([model_outputs, targets, weights])
+    self.assertEqual(np.mean(accuracy), 1 / 3)
+
   def test_chunk_memory(self):
     """Test chunking here to exercise accelerator memory usage."""
     layer = tl.Serial(tl.Dense(1024*1024), tl.Dense(128))
