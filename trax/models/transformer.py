@@ -75,28 +75,23 @@ def TransformerEncoder(vocab_size,
     A Transformer model that maps strings (conveyed via token IDs) to
     probability-like activations over a range of output classes.
   """
-  positional_encoder = [
+  def _Dropout():
+    tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
+
+  def _EncBlock():
+    return _EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
+                         mode, ff_activation)
+
+  return tl.Serial(
+      tl.Branch([], tl.PaddingMask()),  # Creates masks from copy of the tokens.
       tl.Embedding(vocab_size, d_model),
-      tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode),
-      tl.PositionalEncoding(max_len=max_len)]
-
-  encoder_blocks = [
-      _EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
-                    mode, ff_activation)
-      for i in range(n_layers)]
-
-  # Assemble and return the model.
-  return tl.Serial(                               # toks
-      # Encode.
-      tl.Branch(
-          positional_encoder, tl.PaddingMask()),  # vecs masks
-      encoder_blocks,                             # vecs masks
-      tl.Select([0], n_in=2),                     # vecs
-      tl.LayerNorm(),                             # vecs
-
-      # Map to output categories.
-      tl.Mean(axis=1),                            # vecs
-      tl.Dense(n_classes),                        # vecs
+      _Dropout(),
+      tl.PositionalEncoding(max_len=max_len),
+      [_EncBlock() for _ in range(n_layers)],
+      tl.Select([0], n_in=2),  # Drops the masks.
+      tl.LayerNorm(),
+      tl.Mean(axis=1),
+      tl.Dense(n_classes),
   )
 
 
@@ -159,23 +154,23 @@ def TransformerDecoder(vocab_size=None,
     If `vocab_size` is None: a Transformer model that maps sequences of
     activation vectors to sequences of activation vectors.
   """
-  positional_encoder = [
-      (tl.Embedding(vocab_size, d_model) if vocab_size is not None
-       else tl.Dense(d_model)),
-      tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode),
-      tl.PositionalEncoding(max_len=max_len)]
+  def _EmbeddingOrDense():
+    return (tl.Embedding(vocab_size, d_model) if vocab_size is not None
+            else tl.Dense(d_model))
 
-  decoder_blocks = [
-      # pylint: disable=g-complex-comprehension
-      _DecoderBlock(d_model, d_ff, n_heads,
-                    dropout, dropout_shared_axes, mode, ff_activation)
-      for i in range(n_layers)]
+  def _Dropout():
+    return tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
 
-  # Assemble and return the model.
-  return tl.Serial(        # toks
-      positional_encoder,  # vecs
-      decoder_blocks,      # vecs
-      tl.LayerNorm(),      # vecs
+  def _DecBlock():
+    return _DecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
+                         mode, ff_activation)
+
+  return tl.Serial(
+      _EmbeddingOrDense(),
+      _Dropout(),
+      tl.PositionalEncoding(max_len=max_len),
+      [_DecBlock() for _ in range(n_layers)],
+      tl.LayerNorm(),
   )
 
 
@@ -231,24 +226,21 @@ def TransformerLM(vocab_size,
     A Transformer language model as a layer that maps from a tensor of tokens
     to activations over a vocab set.
   """
-  positional_encoder = [
+  def _Dropout():
+    return tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
+
+  def _DecBlock():
+    return _DecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
+                         mode, ff_activation)
+
+  return tl.Serial(
+      tl.ShiftRight(mode=mode),
       tl.Embedding(vocab_size, d_model),
-      tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode),
-      tl.PositionalEncoding(max_len=max_len, mode=mode)]
-
-  decoder_blocks = [
-      # pylint: disable=g-complex-comprehension
-      _DecoderBlock(d_model, d_ff, n_heads,
-                    dropout, dropout_shared_axes, mode, ff_activation)
-      for i in range(n_layers)]
-
-  # Assemble and return the model.
-  return tl.Serial(              # tokens (or chunked tuple of tokens)
-      tl.ShiftRight(mode=mode),  # toks
-      positional_encoder,        # vecs
-      decoder_blocks,            # vecs
-      tl.LayerNorm(),            # vecs
-      tl.Dense(vocab_size),      # vecs
+      _Dropout(),
+      tl.PositionalEncoding(max_len=max_len, mode=mode),
+      [_DecBlock() for _ in range(n_layers)],
+      tl.LayerNorm(),
+      tl.Dense(vocab_size),
   )
 
 
@@ -319,69 +311,60 @@ def Transformer(input_vocab_size,
     A Transformer model as a layer that maps from a source-target tokenized
     text pair to activations over a vocab set.
   """
-  def Embedder(vocab_size):  # tokens --> vectors
-    return [
-        tl.Embedding(vocab_size, d_model),
-        tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode),
-    ]
-
-  in_embedder = Embedder(input_vocab_size)
-  out_embedder = (in_embedder if output_vocab_size is None
-                  else Embedder(output_vocab_size))
-
-  # Positional encodings are not shared between encoder and decoder.
-  # Since encoder doesn't run stepwise, we do not use predict mode there.
+  # Avoid 'predict' mode in encoder, since encoder doesn't run stepwise.
   encoder_mode = 'eval' if mode == 'predict' else mode
-  in_encoder = in_embedder + [
-      tl.PositionalEncoding(max_len=max_len, mode=encoder_mode)
-  ]
-  out_encoder = out_embedder + [
-      tl.PositionalEncoding(max_len=max_len, mode=mode)
-  ]
 
+  # Share embedding weights if no separate output vocab size.
+  in_embedder = tl.Embedding(input_vocab_size, d_model)
   if output_vocab_size is None:
+    out_embedder = in_embedder
     output_vocab_size = input_vocab_size
+  else:
+    out_embedder = tl.Embedding(output_vocab_size, d_model)
 
-  encoder_blocks = [
-      _EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
-                    mode, ff_activation)
-      for i in range(n_encoder_layers)]
+  def _Dropout():
+    return tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
 
-  encoder = tl.Serial(
-      in_encoder,
-      encoder_blocks,
-      tl.LayerNorm()
-  )
-  if mode == 'predict':
-    encoder = tl.Cache(encoder)
+  def _EncBlock():
+    return _EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
+                         mode, ff_activation)
 
-  encoder_decoder_blocks = [
-      _EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
-                           mode, ff_activation)
-      for i in range(n_decoder_layers)]
+  def _Encoder():
+    encoder = tl.Serial(
+        in_embedder,
+        _Dropout(),
+        tl.PositionalEncoding(max_len=max_len, mode=encoder_mode),
+        [_EncBlock() for _ in range(n_encoder_layers)],
+        tl.LayerNorm(),
+    )
+    return tl.Cache(encoder) if mode == 'predict' else encoder
 
-  # Assemble and return the model.
+  def _EncDecBlock():
+    return _EncoderDecoderBlock(d_model, d_ff, n_heads, dropout,
+                                dropout_shared_axes, mode, ff_activation)
+
+  # Input to model is encoder-side tokens and decoder-side tokens: tok_d, tok_e
+  # Model output is decoder-side vectors and decoder-side tokens: vec_d  tok_d
   return tl.Serial(
-      # Input: encoder_side_tokens, decoder_side_tokens
-      # Copy decoder tokens for use in loss.
-      tl.Select([0, 1, 1]),               # tok_e tok_d tok_d
+      tl.Select([0, 1, 1]),  # Copies decoder tokens for use in loss.
 
       # Encode.
-      tl.Branch([], tl.PaddingMask()),    # tok_e masks ..... .....
-      encoder,                            # vec_e ..... ..... .....
+      tl.Branch([], tl.PaddingMask()),  # tok_e masks tok_d tok_d
+      _Encoder(),
 
       # Decode.
-      tl.Select([2, 1, 0]),               # tok_d masks vec_e .....
-      tl.ShiftRight(mode=mode),           # tok_d ..... ..... .....
-      out_encoder,                        # vec_d ..... ..... .....
-      tl.Branch(
-          [], tl.EncoderDecoderMask()),   # vec_d masks ..... .....
-      encoder_decoder_blocks,             # vec_d masks ..... .....
-      tl.LayerNorm(),                     # vec_d ..... ..... .....
+      tl.Select([2, 1, 0]),  # Re-orders inputs: tok_d masks vec_e .....
+      tl.ShiftRight(mode=mode),
+      out_embedder,
+      _Dropout(),
+      tl.PositionalEncoding(max_len=max_len, mode=mode),
+      tl.Branch([], tl.EncoderDecoderMask()),  # vec_d masks ..... .....
+      [_EncDecBlock() for _ in range(n_decoder_layers)],
+      tl.LayerNorm(),
+      tl.Select([0], n_in=3),  # Drops masks and encoding vectors.
 
-      # Map to output vocab.
-      tl.Select([0], n_in=3),             # vec_d tok_d
-      tl.Dense(output_vocab_size),        # vec_d .....
+      # Map vectors to match output vocab size.
+      tl.Dense(output_vocab_size),
   )
 
 
@@ -412,23 +395,24 @@ def _EncoderBlock(d_model, d_ff, n_heads,
   Returns:
     A list of layers that maps (activations, mask) to (activations, mask).
   """
-  attention = tl.Attention(
-      d_model, n_heads=n_heads, dropout=dropout, mode=mode)
+  def _Attention():
+    return tl.Attention(d_model, n_heads=n_heads, dropout=dropout, mode=mode)
 
-  feed_forward = _FeedForwardBlock(
-      d_model, d_ff, dropout, dropout_shared_axes, mode, ff_activation)
+  def _Dropout():
+    return tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
 
-  dropout_ = tl.Dropout(
-      rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
+  def _FFBlock():
+    return _FeedForwardBlock(d_model, d_ff, dropout, dropout_shared_axes, mode,
+                             ff_activation)
 
   return [
       tl.Residual(
           tl.LayerNorm(),
-          attention,
-          dropout_,
+          _Attention(),
+          _Dropout(),
       ),
       tl.Residual(
-          feed_forward
+          _FFBlock()
       ),
   ]
 
@@ -442,7 +426,7 @@ def _DecoderBlock(d_model, d_ff, n_heads,
   Args:
     d_model: Final dimension of tensors at most points in the model, including
         the initial embedding output.
-    d_ff: Size of special dense layer in the feed-forward part of each block.
+    d_ff: Size of special dense layer in the feedforward part of each block.
     n_heads: Number of attention heads.
     dropout: Stochastic rate (probability) for dropping an activation value
         when applying dropout within a block.
@@ -458,23 +442,25 @@ def _DecoderBlock(d_model, d_ff, n_heads,
   Returns:
     A list of layers that maps an activation tensor to an activation tensor.
   """
-  causal_attention = tl.CausalAttention(
-      d_model, n_heads=n_heads, dropout=dropout, mode=mode),
+  def _CausalAttention():
+    return tl.CausalAttention(d_model, n_heads=n_heads, dropout=dropout,
+                              mode=mode),
 
-  feed_forward = _FeedForwardBlock(
-      d_model, d_ff, dropout, dropout_shared_axes, mode, ff_activation)
+  def _FFBlock():
+    return _FeedForwardBlock(d_model, d_ff, dropout, dropout_shared_axes, mode,
+                             ff_activation)
 
-  dropout_ = tl.Dropout(
-      rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
+  def _Dropout():
+    return tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
 
   return [
       tl.Residual(
           tl.LayerNorm(),
-          causal_attention,
-          dropout_,
+          _CausalAttention(),
+          _Dropout(),
       ),
       tl.Residual(
-          feed_forward
+          _FFBlock()
       ),
   ]
 
@@ -490,7 +476,7 @@ def _EncoderDecoderBlock(d_model, d_ff, n_heads,
   Args:
     d_model: Final dimension of tensors at most points in the model, including
         the initial embedding output.
-    d_ff: Size of special dense layer in the feed-forward part of each block.
+    d_ff: Size of special dense layer in the feedforward part of each block.
     n_heads: Number of attention heads.
     dropout: Stochastic rate (probability) for dropping an activation value
         when applying dropout within a block.
@@ -510,42 +496,43 @@ def _EncoderDecoderBlock(d_model, d_ff, n_heads,
   def _Dropout():
     return tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
 
-  attention_qkv = tl.AttentionQKV(
-      d_model, n_heads=n_heads, dropout=dropout, mode=mode,
-      cache_KV_in_predict=True)
+  def _AttentionQKV():
+    return tl.AttentionQKV(d_model, n_heads=n_heads, dropout=dropout,
+                           mode=mode, cache_KV_in_predict=True)
 
-  causal_attention = tl.CausalAttention(
-      d_model, n_heads=n_heads, mode=mode)
+  def _CausalAttention():
+    return tl.CausalAttention(d_model, n_heads=n_heads, mode=mode)
 
-  feed_forward = _FeedForwardBlock(
-      d_model, d_ff, dropout, dropout_shared_axes, mode, ff_activation)
+  def _FFBlock():
+    return _FeedForwardBlock(d_model, d_ff, dropout, dropout_shared_axes, mode,
+                             ff_activation)
 
   return [                             # vec_d masks vec_e
       tl.Residual(
-          tl.LayerNorm(),              # vec_d ..... .....
-          causal_attention,            # vec_d ..... .....
-          _Dropout(),                  # vec_d ..... .....
+          tl.LayerNorm(),
+          _CausalAttention(),
+          _Dropout(),
       ),
       tl.Residual(
-          tl.LayerNorm(),              # vec_d ..... .....
+          tl.LayerNorm(),
           tl.Select([0, 2, 2, 1, 2]),  # vec_d vec_e vec_e masks vec_e
-          attention_qkv,               # vec_d masks vec_e
-          _Dropout(),                  # vec_d masks vec_e
+          _AttentionQKV(),             # vec_d masks vec_e
+          _Dropout(),
       ),
       tl.Residual(
-          feed_forward                 # vec_d masks vec_e
+          _FFBlock()
       ),
   ]
 
 
 def _FeedForwardBlock(d_model, d_ff, dropout, dropout_shared_axes,
                       mode, activation):
-  """Returns a list of layers implementing a feed-forward block.
+  """Returns a list of layers implementing a feedforward block.
 
   Args:
     d_model: Final dimension of tensors at most points in the model, including
         the initial embedding output.
-    d_ff: Size of special dense layer in the feed-forward part of each block.
+    d_ff: Size of special dense layer in the feedforward part of each block.
     dropout: Stochastic rate (probability) for dropping an activation value
         when applying dropout within a block.
     dropout_shared_axes: Tensor axes on which to share a dropout mask.
@@ -560,17 +547,15 @@ def _FeedForwardBlock(d_model, d_ff, dropout, dropout_shared_axes,
   Returns:
     A list of layers which maps vectors to vectors.
   """
-  dropout_middle = tl.Dropout(
-      rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
-  dropout_final = tl.Dropout(
-      rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
+  def _Dropout():
+    return tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
 
   return [
       tl.LayerNorm(),
       tl.Dense(d_ff),
       activation(),
-      dropout_middle,
+      _Dropout(),
       tl.Dense(d_model),
-      dropout_final,
+      _Dropout(),
   ]
 
