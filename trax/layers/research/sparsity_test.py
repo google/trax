@@ -83,6 +83,7 @@ class EfficientFeedForwardTest(test.TestCase, parameterized.TestCase):
           d_ff=d_ff,
           n_elements_in_block=n_elements_in_block,
           temperature=temperature,
+          multiply_by_controller_output=True,
       )
       eval_model = sparsity.SparseFF(
           mode='eval', **common_kwargs)
@@ -116,6 +117,30 @@ class EfficientFeedForwardTest(test.TestCase, parameterized.TestCase):
           temperature=temperature,
           ff_chunk_size=4,
           mode=mode)
+      weights, state = model.init(input_signature)
+      out, _ = model.pure_fn(
+          x, weights, state, rng=jax.random.PRNGKey(0))
+      self.assertEqual(out.shape, x.shape)
+
+  @parameterized.named_parameters(('_mode_train', 'train'),
+                                  ('_mode_eval', 'eval'),
+                                  ('_mode_predict', 'predict'))
+  def test_sparse_ff_multiply(self, mode):
+    d_model = 8
+    n_elements_in_block = 2
+    d_ff = 16
+    x_shape = (2, 8, d_model)
+    temperature = 0.7
+    with fastmath.use_backend(fastmath.Backend.JAX):
+      x = np.ones(x_shape).astype(np.float32)
+      input_signature = shapes.signature(x)
+      model = sparsity.SparseFF(
+          d_ff=d_ff,
+          n_elements_in_block=n_elements_in_block,
+          temperature=temperature,
+          ff_chunk_size=4,
+          mode=mode,
+          multiply_by_controller_output=True)
       weights, state = model.init(input_signature)
       out, _ = model.pure_fn(
           x, weights, state, rng=jax.random.PRNGKey(0))

@@ -933,11 +933,11 @@ class _SparseFFController(base.Layer):
   """The controller part of Sparse Feed-Forward layer."""
 
   def __init__(self, d_ff, n_elements_in_block, d_lowrank, temperature,
-               use_bfloat16, mode, kernel_initializer, bias_initializer):
+               use_bfloat16, mode, kernel_initializer, bias_initializer,
+               also_return_nondiscrete_output):
     """Returns a sparse feed-forward block."""
-    n_out = 2 if mode == 'train' else 1
+    n_out = 2 if also_return_nondiscrete_output else 1
     super().__init__(name=f'_SparseFFController_{d_ff}', n_out=n_out)
-    self._mode = mode
     self._use_bfloat16 = use_bfloat16
     self._d_ff = d_ff
     self._d_lowrank = d_lowrank
@@ -950,6 +950,7 @@ class _SparseFFController(base.Layer):
     assert self._d_ff % self._n_elements_in_block == 0
     self._d1 = self._d_ff // self._n_elements_in_block
     self._d2 = self._n_elements_in_block
+    self._also_return_nondiscrete_output = also_return_nondiscrete_output
 
   def forward(self, x):
     """Executes this layer as part of a forward pass through the model.
@@ -971,7 +972,7 @@ class _SparseFFController(base.Layer):
     mask_logits = jnp.dot(jnp.dot(x, m1), m2) + mb
     mask_logits = jnp.reshape(mask_logits, [-1, self._d1, self._d2])
 
-    if self._mode == 'train':
+    if self._also_return_nondiscrete_output:
       # Softmax.
       mask_logsumexp = fastmath.logsumexp(mask_logits, axis=-1, keepdims=True)
       log_mask = mask_logits - mask_logsumexp
@@ -1010,9 +1011,9 @@ class _SparseFFMain(base.Layer):
 
   def __init__(self, d_ff, n_elements_in_block, d_lowrank, quant_prob,
                use_bfloat16, big_weights_in_bfloat16, mode, kernel_initializer,
-               bias_initializer):
+               bias_initializer, multiply_by_controller_output):
     """Returns a sparse feed-forward block."""
-    n_in = 3 if mode == 'train' else 2
+    n_in = 3 if mode == 'train' or multiply_by_controller_output else 2
     super().__init__(name=f'_SparseFFMain_{d_ff}', n_in=n_in)
     self._mode = mode
     self._use_bfloat16 = use_bfloat16
@@ -1027,6 +1028,7 @@ class _SparseFFMain(base.Layer):
     assert self._d_ff % self._n_elements_in_block == 0
     self._d1 = self._d_ff // self._n_elements_in_block
     self._d2 = self._n_elements_in_block
+    self._multiply_by_controller_output = multiply_by_controller_output
 
   def forward(self, x):
     """Executes this layer as part of a forward pass through the model.
@@ -1038,7 +1040,7 @@ class _SparseFFMain(base.Layer):
     Returns:
       Tensor of same shape and dtype as the input.
     """
-    if self._mode == 'train':
+    if self._mode == 'train' or self._multiply_by_controller_output:
       quant_mask, mask, x = x
     else:
       quant_mask, x = x
@@ -1067,10 +1069,19 @@ class _SparseFFMain(base.Layer):
       quant_mask = jnp.where(select < self._quant_prob, quant_mask, mask)
       quant_mask = jnp.reshape(quant_mask, [-1, self._d_ff])
 
-    if self._mode == 'train':
       # In training, run full matmul to get benefits from the above tricks.
       mid = jnp.dot(x, w1) * quant_mask  # [joint_batch, d_ff]
       relu = jnp.where(mid <= 0, jnp.zeros_like(mid), mid)
+      if self._multiply_by_controller_output:
+        # We multiply only for quantized decisions, since for non-quantized
+        # decisions we've already multiplied the output.
+        mask_mult = jnp.where(select < self._quant_prob,
+                              mask, jnp.ones_like(mask))
+        # Stop-gradient is here, because we already have a pass-through gradient
+        # (for quantized decisions).
+        mask_mult = fastmath.stop_gradient(mask_mult)
+        mask_mult = jnp.reshape(mask_mult, [-1, self._d_ff])
+        relu = relu * mask_mult
       res = jnp.dot(relu, w2) + b2
     elif self._mode == 'predict':
       # w1 = jnp.reshape(w1.T, (self._d1, self._d2, -1))
@@ -1091,6 +1102,9 @@ class _SparseFFMain(base.Layer):
       w = jnp.reshape(w, [batch_size, self._d1, -1])
       mid = jnp.einsum('ai,aji->aj', x, w)
       relu = jnp.where(mid <= 0, jnp.zeros_like(mid), mid)
+      if self._multiply_by_controller_output:
+        mask_mult = jnp.take_along_axis(mask, quant_mask[..., None], -1)[..., 0]
+        relu = relu * mask_mult
       # w2 is [self._d1, self._d2, d_model]
       v = w2[idx1, idx2, :]
       v = jnp.reshape(v, [batch_size, self._d1, -1])
@@ -1100,6 +1114,9 @@ class _SparseFFMain(base.Layer):
       quant_mask = jnp.reshape(quant_mask, [-1, self._d_ff])
       mid = jnp.dot(x, w1) * quant_mask  # [joint_batch, d_ff]
       relu = jnp.where(mid <= 0, jnp.zeros_like(mid), mid)
+      if self._multiply_by_controller_output:
+        mask_mult = jnp.reshape(mask, [-1, self._d_ff])
+        relu = relu * mask_mult
       res = jnp.dot(relu, w2) + b2
 
     return jnp.reshape(res, x_shape)  # un-flatten if needed
@@ -1132,7 +1149,8 @@ def SparseFF(
     use_bfloat16=False, big_weights_in_bfloat16=False, mode='train',
     kernel_initializer=init.GlorotUniformInitializer(),
     bias_initializer=init.RandomNormalInitializer(1e-6),
-    dropout_rate=0.0, dropout_shared_axes=None, ff_chunk_size=0):
+    dropout_rate=0.0, dropout_shared_axes=None, ff_chunk_size=0,
+    multiply_by_controller_output=False):
   """Returns Feed-forward block with sparsity.
 
   The original (non-sparse) FF block is a triple Dense(d_ff)-Relu-Dense
@@ -1167,14 +1185,21 @@ def SparseFF(
       way to save memory and apply consistent masks to activation vectors at
       different sequence positions.
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks.
+    multiply_by_controller_output: whether to multiply the middle activation
+      layer of FF by controller output (i.e. softmax).
   """
 
+  if mode == 'train' or multiply_by_controller_output:
+    also_return_nondiscrete_output = True
+  else:
+    also_return_nondiscrete_output = False
   controller = _SparseFFController(
       d_ff=d_ff, n_elements_in_block=n_elements_in_block,
       d_lowrank=d_lowrank, temperature=temperature,
       use_bfloat16=use_bfloat16, mode=mode,
       kernel_initializer=kernel_initializer,
-      bias_initializer=bias_initializer)
+      bias_initializer=bias_initializer,
+      also_return_nondiscrete_output=also_return_nondiscrete_output)
 
   main = [
       _SparseFFMain(
@@ -1182,7 +1207,8 @@ def SparseFF(
           d_lowrank=d_lowrank, quant_prob=quant_prob, use_bfloat16=use_bfloat16,
           big_weights_in_bfloat16=big_weights_in_bfloat16, mode=mode,
           kernel_initializer=kernel_initializer,
-          bias_initializer=bias_initializer),
+          bias_initializer=bias_initializer,
+          multiply_by_controller_output=multiply_by_controller_output),
       tl.Dropout(rate=dropout_rate, shared_axes=dropout_shared_axes, mode=mode),
   ]
 
