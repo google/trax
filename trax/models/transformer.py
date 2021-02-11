@@ -23,17 +23,29 @@ The "Transformer" name and network architecture were introduced in the paper
 from trax import layers as tl
 
 
+# Defaults used across Transformer variants.
+MODE = 'train'
+D_MODEL = 512
+D_FF = 2048
+N_LAYERS = 6
+N_HEADS = 8
+MAX_SEQUENCE_LENGTH = 2048
+DROPOUT_RATE = .1
+DROPOUT_SHARED_AXES = None
+FF_ACTIVATION_TYPE = tl.Relu
+
+
 def TransformerEncoder(vocab_size,
                        n_classes=10,
-                       d_model=512,
-                       d_ff=2048,
-                       n_layers=6,
-                       n_heads=8,
-                       max_len=2048,
-                       dropout=0.1,
-                       dropout_shared_axes=None,
-                       mode='train',
-                       ff_activation=tl.Relu):
+                       d_model=D_MODEL,
+                       d_ff=D_FF,
+                       n_layers=N_LAYERS,
+                       n_heads=N_HEADS,
+                       max_len=MAX_SEQUENCE_LENGTH,
+                       dropout=DROPOUT_RATE,
+                       dropout_shared_axes=DROPOUT_SHARED_AXES,
+                       mode=MODE,
+                       ff_activation=FF_ACTIVATION_TYPE):
   """Returns a Transformer encoder merged with an N-way categorization head.
 
   This model performs text categorization:
@@ -96,15 +108,15 @@ def TransformerEncoder(vocab_size,
 
 
 def TransformerDecoder(vocab_size=None,
-                       d_model=512,
-                       d_ff=2048,
-                       n_layers=6,
-                       n_heads=8,
-                       max_len=2048,
-                       dropout=0.1,
-                       dropout_shared_axes=None,
-                       mode='train',
-                       ff_activation=tl.Relu):
+                       d_model=D_MODEL,
+                       d_ff=D_FF,
+                       n_layers=N_LAYERS,
+                       n_heads=N_HEADS,
+                       max_len=MAX_SEQUENCE_LENGTH,
+                       dropout=DROPOUT_RATE,
+                       dropout_shared_axes=DROPOUT_SHARED_AXES,
+                       mode=MODE,
+                       ff_activation=FF_ACTIVATION_TYPE):
   """Returns a Transformer decoder.
 
   This model maps sequential inputs to sequential outputs:
@@ -175,15 +187,15 @@ def TransformerDecoder(vocab_size=None,
 
 
 def TransformerLM(vocab_size,
-                  d_model=512,
-                  d_ff=2048,
-                  n_layers=6,
-                  n_heads=8,
-                  max_len=2048,
-                  dropout=0.1,
-                  dropout_shared_axes=None,
-                  mode='train',
-                  ff_activation=tl.Relu):
+                  d_model=D_MODEL,
+                  d_ff=D_FF,
+                  n_layers=N_LAYERS,
+                  n_heads=N_HEADS,
+                  max_len=MAX_SEQUENCE_LENGTH,
+                  dropout=DROPOUT_RATE,
+                  dropout_shared_axes=DROPOUT_SHARED_AXES,
+                  mode=MODE,
+                  ff_activation=FF_ACTIVATION_TYPE):
   """Returns a Transformer language model.
 
   This model performs autoregressive language modeling:
@@ -246,16 +258,16 @@ def TransformerLM(vocab_size,
 
 def Transformer(input_vocab_size,
                 output_vocab_size=None,
-                d_model=512,
-                d_ff=2048,
-                n_encoder_layers=6,
-                n_decoder_layers=6,
-                n_heads=8,
-                max_len=2048,
-                dropout=0.1,
-                dropout_shared_axes=None,
-                mode='train',
-                ff_activation=tl.Relu):
+                d_model=D_MODEL,
+                d_ff=D_FF,
+                n_encoder_layers=N_LAYERS,
+                n_decoder_layers=N_LAYERS,
+                n_heads=N_HEADS,
+                max_len=MAX_SEQUENCE_LENGTH,
+                dropout=DROPOUT_RATE,
+                dropout_shared_axes=DROPOUT_SHARED_AXES,
+                mode=MODE,
+                ff_activation=FF_ACTIVATION_TYPE):
   """Returns a full Transformer model.
 
   This model is an encoder-decoder that performs tokenized string-to-string
