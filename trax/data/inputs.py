@@ -1121,11 +1121,11 @@ def addition_inputs(
 
 
 # This is a straightforward translation of T5's random_spans_noise_mask.
-def span_corruption(length,
-                    noise_density=0.15,
-                    mean_noise_span_length=3.0,
-                    seed1=None,
-                    seed2=None):
+def random_spans_noise_mask(length,
+                            noise_density=0.15,
+                            mean_noise_span_length=3.0,
+                            seed1=None,
+                            seed2=None):
   """Computes span corruption masks given input parameters."""
 
   orig_length = length
@@ -1167,3 +1167,55 @@ def span_corruption(length,
   span_num = np.cumsum(span_start_indicator)
   is_noise = np.equal(span_num % 2, 1)
   return is_noise[:orig_length]
+
+
+def generate_sequential_chunks(max_length=None):
+  """Returns a function that generates chunks of atmost max_length length."""
+  def _f(generator):
+    for example in generator:
+      n_tokens = len(example)
+      if n_tokens <= max_length:
+        yield example
+      n_segments = int(math.ceil(float(n_tokens) / float(max_length)))
+      for i in range(n_segments):
+        start = max_length * i
+        end = min(start + max_length, n_tokens)
+        yield example[start:end]
+  return _f
+
+
+def generate_random_noise_mask(noise_density=0.15,
+                               mean_noise_span_length=3.0,
+                               seed1=None,
+                               seed2=None):
+  """Returns a function that generates a random noise mask."""
+  def _f(generator):
+    for example in generator:
+      length = len(example)
+      noise_mask = random_spans_noise_mask(
+          length, noise_density=noise_density,
+          mean_noise_span_length=mean_noise_span_length,
+          seed1=seed1, seed2=seed2)
+      yield (example, noise_mask)
+  return _f
+
+
+def consume_noise_mask(vocab_size=32100):
+  """Consumes (tokens, noise mask) and returns (inputs, targets)."""
+  def _noise_span_to_unique_sentinel(tokens, noise_mask):
+    prev_token_is_noise = np.pad(
+        noise_mask[:-1], [1, 0], mode='constant', constant_values=False)
+    first_noise_tokens = np.logical_and(noise_mask,
+                                        np.logical_not(prev_token_is_noise))
+    subsequent_noise_tokens = np.logical_and(noise_mask, prev_token_is_noise)
+    sentinel = vocab_size - np.cumsum(first_noise_tokens)
+    tokens = np.where(first_noise_tokens, sentinel, tokens)
+    return tokens[np.logical_not(subsequent_noise_tokens)]
+
+  def _f(generator):
+    for tokens, noise_mask in generator:
+      # Returns inputs and targets.
+      yield (_noise_span_to_unique_sentinel(tokens, noise_mask),
+             _noise_span_to_unique_sentinel(tokens, np.logical_not(noise_mask)))
+  return _f
+

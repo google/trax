@@ -16,10 +16,19 @@
 # Lint as: python3
 """Tests for trax.supervised.inputs."""
 
+import os
+
 from absl.testing import absltest
 from absl.testing import parameterized
 import numpy as np
 from trax import data
+
+pkg_dir, _ = os.path.split(__file__)
+_TESTDATA = os.path.join(pkg_dir, 'testdata')
+
+
+def _spm_path():
+  return os.path.join(_TESTDATA, 'sentencepiece.model')
 
 
 class InputsTest(parameterized.TestCase):
@@ -392,18 +401,18 @@ class InputsTest(parameterized.TestCase):
       span_lengths.append(curr_len)
     return span_lengths
 
-  def test_span_corruption(self):
+  def test_random_spans_noise_mask(self):
     length = 100
     noise_density = 0.15
     mean_noise_span_length = 3.0
 
     # Take 5 random seed1, seed2 values.
     for seed in np.random.randint(0, 100, (5, 2)):
-      is_noise = data.span_corruption(length,
-                                      noise_density,
-                                      mean_noise_span_length,
-                                      seed1=seed[0],
-                                      seed2=seed[1])
+      is_noise = data.random_spans_noise_mask(length,
+                                              noise_density,
+                                              mean_noise_span_length,
+                                              seed1=seed[0],
+                                              seed2=seed[1])
       is_noise = is_noise.astype(np.int32)
       # noise_density fraction of tokens are produced
       self.assertEqual(np.sum(is_noise), noise_density * length)
@@ -412,6 +421,61 @@ class InputsTest(parameterized.TestCase):
       average_span_length = (
           sum(actual_span_lengths) / len(actual_span_lengths))
       self.assertEqual(mean_noise_span_length, average_span_length)
+
+  def test_process_c4_with_span_corruption(self):
+    def process_c4_with_span_corruption(spm_path=None,
+                                        extra_ids=100,
+                                        train=False,
+                                        max_length=100,
+                                        noise_density=0.15,
+                                        mean_noise_span_length=3.0,
+                                        seed1=None,
+                                        seed2=None):
+      return data.Serial(
+          data.TFDS(
+              'c4/en:2.3.0', data_dir=_TESTDATA, keys=('text',), train=train),
+          lambda g: map(lambda x: x[0], g),
+          data.SentencePieceTokenize(spm_path=spm_path, extra_ids=extra_ids),
+          data.generate_sequential_chunks(max_length=max_length),
+          data.generate_random_noise_mask(
+              noise_density=noise_density,
+              mean_noise_span_length=mean_noise_span_length,
+              seed1=seed1, seed2=seed2),
+          # TODO(afrozm): Remove the hardcode.
+          data.consume_noise_mask(vocab_size=32100))
+
+    gen = process_c4_with_span_corruption(
+        spm_path=_spm_path(), seed1=0, seed2=1)
+
+    examples = []
+    for ex in gen():
+      examples.append(ex)
+      break
+
+    self.assertLen(examples, 1)
+
+    # Some sanity checking on the first example, since we fixed the seeds.
+    self.assertSequenceEqual(
+        examples[0][0].tolist(),  # inputs
+        [
+            37, 2335, 113, 3977, 227, 7306, 45, 3, 9, 4716, 147, 8, 71, 2658,
+            65, 118, 4313, 38, 3, 9, 13065, 32, 32099, 9, 5704, 26, 109, 6,
+            6862, 6, 4728, 45, 8, 3796, 24093, 11834, 4716, 30, 8, 1379, 13,
+            32098, 130, 718, 12, 8, 24124, 1343, 300, 4357, 1714, 32097, 1373,
+            47, 16487, 3168, 16, 321, 7943, 5, 3, 4868, 3856, 5700, 75, 7, 200,
+            2231, 6, 11163, 9, 6, 113, 47, 5330, 45, 14354, 6, 47, 32096, 20721,
+            3654, 44, 8, 3112, 5, 14599, 11, 8067, 32095
+        ],
+    )
+
+    self.assertSequenceEqual(
+        examples[0][1].tolist(),  # targets
+        [
+            32099, 1639, 7, 15480, 5, 11163, 32098, 2083, 9997, 5076, 32097,
+            265, 11, 8, 32096, 3, 32095, 1343, 2487, 106
+        ],
+    )
+
 
 if __name__ == '__main__':
   absltest.main()

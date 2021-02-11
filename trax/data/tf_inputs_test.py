@@ -717,6 +717,15 @@ class TFInputsTest(tf.test.TestCase):
                      ['divide(n0,n1)', 'subtract(const_1,#0)', 'divide(n2,#1)'])
     self.assertEqual(list_num, [2.0, 3.0, 90.0])
 
+  def test_sentencepiece_tokenize(self):
+    def dataset():
+      yield 'I have a cat.'
+
+    examples = []
+    for example in tf_inputs.sentencepiece_tokenize(dataset(), _spm_path()):
+      examples.append(example)
+    toks = list(examples[0])
+    self.assertSequenceEqual([27, 43, 3, 9, 1712, 5], toks)
 
 if __name__ == '__main__':
   tf.test.main()

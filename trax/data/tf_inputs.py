@@ -485,7 +485,8 @@ def vocab_size(vocab_type='subword',
   return vocab.vocab_size + n_reserved_ids
 
 
-def _get_vocab(vocab_type='subword', vocab_file=None, vocab_dir=None):
+def _get_vocab(vocab_type='subword', vocab_file=None, vocab_dir=None,
+               extra_ids=0):
   """Gets the vocabulary object for tokenization; see tokenize for details."""
   if vocab_type not in [
       'char', 'subword', 'sentencepiece', 'bert', 'bert-lowercase'
@@ -514,7 +515,7 @@ def _get_vocab(vocab_type='subword', vocab_file=None, vocab_dir=None):
 
   assert vocab_type == 'sentencepiece'
   return t5.data.SentencePieceVocabulary(sentencepiece_model_file=path,
-                                         extra_ids=0)
+                                         extra_ids=extra_ids)
 
 
 # Makes the function accessible in gin configs, even with all args denylisted.
@@ -745,7 +746,27 @@ def bair_robot_pushing_preprocess(dataset, training):
   return dataset
 
 
-DEFAULT_SPM_PATH = 'gs://t5-data/vocabs/cc_all.32000/sentencepiece.model'  # GCS
+def sentencepiece_tokenize(stream, spm_path=None, extra_ids=100):
+  spm_path = spm_path or t5.data.DEFAULT_SPM_PATH
+  vocab_file = os.path.basename(spm_path)
+  vocab_dir = os.path.dirname(spm_path)
+  vocab = _get_vocab(vocab_type='sentencepiece',
+                     vocab_file=vocab_file,
+                     vocab_dir=vocab_dir,
+                     extra_ids=extra_ids)
+  for example in stream:
+    yield np.array(vocab.encode(example))
+
+
+@gin.configurable()
+def SentencePieceTokenize(  # pylint: disable=invalid-name
+    spm_path=None,
+    extra_ids=100):
+  """Returns a function that maps text to integer arrays."""
+  return lambda g: sentencepiece_tokenize(  # pylint: disable=g-long-lambda
+      g,
+      spm_path=spm_path,
+      extra_ids=extra_ids)
 
 
 @gin.configurable(denylist=['dataset', 'training'])
