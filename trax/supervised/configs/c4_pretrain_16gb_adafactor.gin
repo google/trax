@@ -39,6 +39,10 @@ batcher.max_eval_length = %max_length
 batcher.buckets_include_inputs_in_length=True
 batcher.id_to_mask = 0
 
+# Comment out the batcher above and uncomment the following line to use the new
+# trax data pipeline.
+# include 'c4_trax_data.gin'
+
 # Parameters for multifactor:
 # ==============================================================================
 multifactor.constant = 1.0

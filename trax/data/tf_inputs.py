@@ -746,7 +746,8 @@ def bair_robot_pushing_preprocess(dataset, training):
   return dataset
 
 
-def sentencepiece_tokenize(stream, spm_path=None, extra_ids=100):
+def sentencepiece_tokenize(stream, spm_path=None, extra_ids=0):
+  """Sentencepiece tokenization."""
   spm_path = spm_path or t5.data.DEFAULT_SPM_PATH
   vocab_file = os.path.basename(spm_path)
   vocab_dir = os.path.dirname(spm_path)
@@ -755,13 +756,16 @@ def sentencepiece_tokenize(stream, spm_path=None, extra_ids=100):
                      vocab_dir=vocab_dir,
                      extra_ids=extra_ids)
   for example in stream:
+    # example could either be str or (str,)
+    if isinstance(example, tuple):
+      example = example[0]
     yield np.array(vocab.encode(example))
 
 
 @gin.configurable()
 def SentencePieceTokenize(  # pylint: disable=invalid-name
     spm_path=None,
-    extra_ids=100):
+    extra_ids=0):
   """Returns a function that maps text to integer arrays."""
   return lambda g: sentencepiece_tokenize(  # pylint: disable=g-long-lambda
       g,

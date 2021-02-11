@@ -1,0 +1,94 @@
+# Copyright 2021 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.data.inputs
+import trax.data.tf_inputs
+import trax.supervised.trainer_lib
+
+# Macros:
+# ==============================================================================
+max_length = 512
+mean_noise_span_length = 3.0
+noise_density = 0.15
+vocab_size = 32000
+
+# Parameters for TFDS data pipeline:
+# ==============================================================================
+make_inputs.train_stream = [
+  @training/data.TFDS(),
+  @data.SentencePieceTokenize(),
+  @data.generate_sequential_chunks(),
+  @data.generate_random_noise_mask(),
+  @data.consume_noise_mask(),
+  @data.FilterEmptyExamples(),
+  @data.AppendValue(),
+  @data.PadToLength(),
+  @data.AddLossWeights(),
+  @data.Batch(),
+]
+
+make_inputs.eval_stream = [
+  @validation/data.TFDS(),
+  @data.SentencePieceTokenize(),
+  @data.generate_sequential_chunks(),
+  @data.generate_random_noise_mask(),
+  @data.consume_noise_mask(),
+  @data.FilterEmptyExamples(),
+  @data.AppendValue(),
+  @data.PadToLength(),
+  @data.AddLossWeights(),
+  @data.Batch(),
+]
+
+# Parameters for data.TFDS:
+# ==============================================================================
+data.TFDS.dataset_name = 'c4/en:2.3.0'
+data.TFDS.keys = ('text',)
+training/data.TFDS.train = True
+validation/data.TFDS.train = False
+
+# Parameters for data.generate_sequential_chunks:
+# ==============================================================================
+data.generate_sequential_chunks.max_length = %max_length
+
+# Parameters for data.generate_random_noise_mask:
+# ==============================================================================
+data.generate_random_noise_mask.noise_density = %noise_density
+data.generate_random_noise_mask.mean_noise_span_length = %mean_noise_span_length
+
+# Parameters for data.consume_noise_mask:
+# ==============================================================================
+data.consume_noise_mask.vocab_size = %vocab_size
+
+# Parameters for data.AppendValue:
+# ==============================================================================
+data.AppendValue.val = {0:[1], 1:[1]}
+
+# Parameters for data.PadToLength:
+# ==============================================================================
+data.PadToLength.len_map = {0: 512, 1: 256}
+data.PadToLength.pad_value = {0: 0, 1: 0}
+
+# Parameters for data.AddLossWeights:
+# ==============================================================================
+data.AddLossWeights.id_to_mask = 0
+
+# Parameters for data.Batch:
+# ==============================================================================
+data.Batch.batch_size = 32  # On one 2x2, 8 chips, batch_size 4 per chip for 32.
+
+# Parameters for train:
+# ==============================================================================
+train.inputs = @trax.data.inputs.make_inputs
+

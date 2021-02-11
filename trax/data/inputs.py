@@ -70,6 +70,7 @@ lines from `my_file.txt` as follows::
 
 import math
 import random
+import zlib
 
 from absl import logging
 
@@ -207,6 +208,7 @@ def batch(generator, batch_size):
   if batch_size <= 0:
     raise ValueError(f'Batch size must be positive, but is {batch_size}.')
   buf = []
+  i = 0
   for example in generator:
     buf.append(example)  # Examples are tuples of tensors.
     if len(buf) == batch_size:
@@ -214,6 +216,14 @@ def batch(generator, batch_size):
       # batch is a tuple of arrays: ([in1, in2, in3], [tgt1, tgt2, tgt3])
       batched_example = tuple(np.stack(x) for x in zip(*buf))
       # Note that it's the same shape as each example with added batch dim.
+      i += 1
+      if i & (i - 1) == 0:
+        logging.info('Batch[%d] = %r', i, batched_example)
+        batched_inputs = batched_example[0]
+        for idx, inp in enumerate(batched_inputs):
+          logging.info('Input[%d][%d] = %r', i, idx, inp)
+        for idx, inp in enumerate(batched_inputs):
+          logging.info('Hash[%d][%d] = %r', i, idx, zlib.adler32(bytes(inp)))
       yield batched_example
       buf = []
 
@@ -1125,9 +1135,11 @@ def random_spans_noise_mask(length,
                             noise_density=0.15,
                             mean_noise_span_length=3.0,
                             seed1=None,
-                            seed2=None):
+                            seed2=None,
+                            example=None):
   """Computes span corruption masks given input parameters."""
-
+  # Passing this in case if we want to use for debugging/logging
+  del example
   orig_length = length
   # increase length to avoid degeneracy
   length = max(length, 2)
@@ -1142,15 +1154,18 @@ def random_spans_noise_mask(length,
   # Pick the lengths of the noise spans and the non-noise spans
   def randomly_segment(num_items, num_segments, seed):
     x = np.arange(num_items - 1) < num_segments - 1
-    np.random.seed(seed)
+    # Set random seed if passed (only in tests for now).
+    if seed is not None:
+      np.random.seed(seed)
     np.random.shuffle(x)
     first_in_segment = np.pad(x, (1, 0), mode='constant')
     segment_id = np.cumsum(first_in_segment)
 
     y = np.roll(segment_id, 1)
     y[0] = 0
-    idxs = np.pad(
-        np.squeeze(np.argwhere(segment_id - y)), (1, 0), mode='constant')
+    idxs = np.pad(np.squeeze(np.argwhere(segment_id - y), axis=1),
+                  (1, 0),
+                  mode='constant')
     segment_lengths = np.add.reduceat(np.ones_like(segment_id), idxs, axis=0)
     return segment_lengths
 
@@ -1195,7 +1210,7 @@ def generate_random_noise_mask(noise_density=0.15,
       noise_mask = random_spans_noise_mask(
           length, noise_density=noise_density,
           mean_noise_span_length=mean_noise_span_length,
-          seed1=seed1, seed2=seed2)
+          seed1=seed1, seed2=seed2, example=example)
       yield (example, noise_mask)
   return _f
 
