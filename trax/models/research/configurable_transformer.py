@@ -75,6 +75,7 @@ def FeedForwardWithOptions(d_model,
     ff_sparsity_type: string, if ff_sparsity >0,
       use SparseFF if ff_sparsity_type=`'1inN'` and
       use BlockSparseFF if ff_sparsity_type=`'Block'`
+      use SwitchSparseFF if ff_sparsity_type=`'Switch'`
 
   Returns:
     A list of layers which maps vectors to vectors.
@@ -105,7 +106,9 @@ def FeedForwardWithOptions(d_model,
         dropout_shared_axes=dropout_shared_axes,
         ff_chunk_size=ff_chunk_size)
   elif ff_sparsity and ff_sparsity_type == 'Block':
-    ff = tl.BlockSparseFF(d_ff, num_experts=ff_sparsity, mode=mode)
+    ff = tl.BlockSparseFF(d_ff, n_experts=ff_sparsity, mode=mode)
+  elif ff_sparsity and ff_sparsity_type == 'Switch':
+    ff = tl.SwitchSparseFF(d_ff, n_experts=ff_sparsity, mode=mode)
   else:
     ff = _FeedForward(d_model, d_ff, dropout, ff_activation, ff_dropout,
                       use_bfloat16, mode)

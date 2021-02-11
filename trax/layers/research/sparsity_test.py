@@ -31,12 +31,12 @@ class EfficientFeedForwardTest(test.TestCase, parameterized.TestCase):
 
   def test_blocksparse_ff_train(self):
     d_model = 1024
-    num_experts = 64
+    n_experts = 64
     d_ff = d_model * 8
     x_shape = (3, 7, d_model)
     with fastmath.use_backend(fastmath.Backend.JAX):
       layer = sparsity.BlockSparseFF(
-          d_ff=d_ff, num_experts=num_experts, temperature=0.7, mode='train')
+          d_ff=d_ff, n_experts=n_experts, temperature=0.7, mode='train')
       x = np.ones(x_shape).astype(np.float32)
       _, _ = layer.init(shapes.signature(x))
       y = layer(x)
@@ -44,7 +44,7 @@ class EfficientFeedForwardTest(test.TestCase, parameterized.TestCase):
 
   def test_blocksparse_ff_predict_equals_eval(self):
     d_model = 1024
-    num_experts = 64
+    n_experts = 64
     d_ff = d_model * 8
     x_shape = (1, 1, d_model)
     temperature = 0.7
@@ -53,7 +53,7 @@ class EfficientFeedForwardTest(test.TestCase, parameterized.TestCase):
       input_signature = shapes.signature(x)
       common_kwargs = dict(
           d_ff=d_ff,
-          num_experts=num_experts,
+          n_experts=n_experts,
           temperature=temperature,
       )
       eval_model = sparsity.BlockSparseFF(
@@ -145,6 +145,39 @@ class EfficientFeedForwardTest(test.TestCase, parameterized.TestCase):
       out, _ = model.pure_fn(
           x, weights, state, rng=jax.random.PRNGKey(0))
       self.assertEqual(out.shape, x.shape)
+
+  def test_switchsparse_ff_train(self):
+    d_model = 1024
+    n_experts = 64
+    d_ff = d_model * 8
+    x_shape = (3, 7, d_model)
+    layer = sparsity.SwitchSparseFF(
+        d_ff=d_ff, n_experts=n_experts, mode='train')
+    x = np.ones(x_shape).astype(np.float32)
+    layer.init(shapes.signature(x))
+    y = layer(x)
+    self.assertEqual(y.shape, x.shape)
+
+  def test_switchsparse_ff_predict_equals_eval(self):
+    d_model = 1024
+    n_experts = 64
+    d_ff = d_model * 8
+    x_shape = (1, 1, d_model)
+    x = np.ones(x_shape).astype(np.float32)
+    input_signature = shapes.signature(x)
+    eval_model = sparsity.SwitchSparseFF(
+        mode='eval', d_ff=d_ff, n_experts=n_experts)
+    weights, state = eval_model.init(input_signature)
+    eval_out, _ = eval_model.pure_fn(
+        x, weights, state, rng=jax.random.PRNGKey(0))
+    pred_model = sparsity.SwitchSparseFF(
+        mode='predict', d_ff=d_ff, n_experts=n_experts)
+    pred_model.init(input_signature)
+    pred_out, _ = pred_model.pure_fn(
+        x, weights, state, rng=jax.random.PRNGKey(0))
+    self.assertEqual(eval_out.shape, x.shape)
+    # eval_out and pred_out should be identical.
+    np.testing.assert_array_almost_equal(eval_out[0, 0, :], pred_out[0, 0, :])
 
 
 class ReversibleReshapePermuteTest(test.TestCase):

@@ -19,6 +19,7 @@
 import functools
 import math
 import random as pyrandom
+import numpy as np
 
 from trax import fastmath
 from trax import layers as tl
@@ -1234,13 +1235,13 @@ class BlockSparseFF(base.Layer):
 
   This block sparse layer mimics mixture of experts architecture.
   It divides the dimension of d_ff in each weight matrix to # of blocks equal to
-  num_experts and activates only one non-zero block from the weights matrix.
+  n_experts and activates only one non-zero block from the weights matrix.
   This is trained with straight-through Gumbel softmax trick.
   """
 
   def __init__(self,
                d_ff,
-               num_experts=64,
+               n_experts=64,
                temperature=0.7,
                mode='train',
                kernel_initializer=init.GlorotUniformInitializer(),
@@ -1249,12 +1250,12 @@ class BlockSparseFF(base.Layer):
     super().__init__(name=f'BlockSparseFF_{d_ff}')
     self._mode = mode
     self._d_ff = d_ff
-    self._num_experts = num_experts
+    self._n_experts = n_experts
     self._temperature = temperature if mode == 'train' else 0.0
-    self._n_elements_in_block = d_ff // num_experts
+    self._n_elements_in_block = d_ff // n_experts
     self._kernel_initializer = kernel_initializer
     self._bias_initializer = bias_initializer
-    assert self._d_ff % self._num_experts == 0
+    assert self._d_ff % self._n_experts == 0
 
   def forward(self, x):
     """Executes this layer as part of a forward pass through the model.
@@ -1284,7 +1285,7 @@ class BlockSparseFF(base.Layer):
     selected_experts = jnp.argmax(log_mask + g * self._temperature, axis=-1)
     if self._mode == 'train':
       # Tricks from Section 2.1 in https://arxiv.org/abs/1801.09797
-      quant_mask = tl.one_hot(selected_experts, self._num_experts)
+      quant_mask = tl.one_hot(selected_experts, self._n_experts)
       quant_mask = fastmath.stop_gradient(quant_mask)
       quant_mask += mask - fastmath.stop_gradient(mask)  # straight-through
       # We will sometimes (50% of the batches) use the soft-mask instead of
@@ -1293,9 +1294,8 @@ class BlockSparseFF(base.Layer):
       select = fastmath.random.uniform(rng2, (), jnp.float32, -1.0, 1.0)
       quant_mask = jnp.where(select > 0.0, quant_mask, mask)
     else:
-      quant_mask = tl.one_hot(selected_experts, self._num_experts)
-    quant_mask = jnp.reshape(quant_mask, [-1, self._num_experts, 1])
-    quant_mask_shape = quant_mask.shape
+      quant_mask = tl.one_hot(selected_experts, self._n_experts)
+    quant_mask = jnp.reshape(quant_mask, [-1, self._n_experts, 1])
     batch_size = quant_mask.shape[0]
 
     if self._mode == 'predict' and batch_size == 1:
@@ -1314,7 +1314,7 @@ class BlockSparseFF(base.Layer):
     else:
       expanded_mask = jnp.broadcast_to(
           quant_mask,
-          (quant_mask_shape[0], quant_mask.shape[1], self._n_elements_in_block))
+          (quant_mask.shape[0], quant_mask.shape[1], self._n_elements_in_block))
       expanded_mask = jnp.reshape(expanded_mask, (-1, self._d_ff))
       mid = jnp.dot(x, w1) * expanded_mask  # [joint_batch, d_ff]
       relu = jnp.where(mid <= 0, jnp.zeros_like(mid), mid)
@@ -1325,7 +1325,116 @@ class BlockSparseFF(base.Layer):
   def init_weights_and_state(self, input_signature):
     """Randomly initializes this layer's weights."""
     d_model = input_signature.shape[-1]
-    shape_m1 = (d_model, self._num_experts)
+    shape_m1 = (d_model, self._n_experts)
+    shape_w1 = (d_model, self._d_ff)
+    shape_w2 = (self._d_ff, d_model)
+    shape_b2 = (d_model,)
+
+    rng_m1, rng_w1, rng_w2, rng_b2 = fastmath.random.split(self.rng, 4)
+    m1 = self._kernel_initializer(shape_m1, rng_m1)
+    w1 = self._kernel_initializer(shape_w1, rng_w1)
+    w2 = self._kernel_initializer(shape_w2, rng_w2)
+    b2 = self._bias_initializer(shape_b2, rng_b2)
+
+    self.weights = (m1, w1, w2, b2)
+
+
+class SwitchSparseFF(base.Layer):
+  """Feed-forward block with switch-style block sparsity.
+
+  The original (non-sparse) FF block is a triple Dense(d_ff)-Relu-Dense
+  that takes an input, makes it of size d_ff (usually larger than it was) and
+  then brings it back to the original size after Relu. It is commonly used in
+  Transformer models where it often accounts for most of the trainable weights.
+
+  This block sparse layer mimics mixture of experts architecture.
+  It divides the dimension of d_ff in each weight matrix to # of blocks equal to
+  n_experts and activates only one non-zero block from the weights matrix.
+  This is trained with methods following the Switch Transformer.
+  """
+
+  def __init__(self,
+               d_ff,
+               n_experts=64,
+               temperature=0.1,
+               mode='train',
+               kernel_initializer=init.GlorotUniformInitializer(),
+               bias_initializer=init.RandomNormalInitializer(1e-6)):
+    """Returns a switch-style training block sparse feed-forward block."""
+    super().__init__(name=f'SwitchSparseFF_{d_ff}')
+    self._mode = mode
+    self._d_ff = d_ff
+    self._n_experts = n_experts
+    self._temperature = temperature if mode == 'train' else 0.0
+    self._n_elements_in_block = d_ff // n_experts
+    self._kernel_initializer = kernel_initializer
+    self._bias_initializer = bias_initializer
+    assert self._d_ff % self._n_experts == 0
+
+  def forward(self, x):
+    """Executes this layer as part of a forward pass through the model.
+
+    Args:
+      x: Tensor of same shape and dtype as the input signature used to
+        initialize this layer.
+
+    Returns:
+      Tensor of same shape and dtype as the input.
+    """
+    m1, w1, w2, b2 = self.weights
+    x_shape = x.shape
+    x = jnp.reshape(x, [-1, x_shape[-1]])  # Easier to operate on flattened x.
+
+    # Q: check if we need bias and/or put relu after the m1 dot?
+    mask_logits = jnp.dot(x, m1)
+    # Softmax.
+    mask_logsumexp = fastmath.logsumexp(mask_logits, axis=-1, keepdims=True)
+    log_mask = mask_logits - mask_logsumexp
+    mask = jnp.exp(log_mask)
+    # Gumbel noise to allow sampling from the softmax.
+    rng1, _ = fastmath.random.split(self.rng, 2)
+    u = fastmath.random.uniform(rng1, mask.shape, jnp.float32, 1e-6, 1.0 - 1e-6)
+    g = -jnp.log(-jnp.log(u))
+    selected_experts = jnp.argmax(log_mask + g * self._temperature, axis=-1)
+    quant_mask = tl.one_hot(selected_experts, self._n_experts)
+    quant_mask = fastmath.stop_gradient(quant_mask)
+    quant_mask *= mask  # go to just the selected expert
+    quant_mask = jnp.reshape(quant_mask, [-1, self._n_experts, 1])
+    batch_size = quant_mask.shape[0]
+
+    if self._mode == 'predict' and batch_size == 1:
+      mask_flat = jnp.reshape(mask, [-1, self._n_experts])
+      selected_flat = jnp.reshape(selected_experts, [-1])
+      selected_mask_flat = mask_flat[np.arange(selected_flat.size),
+                                     selected_flat]
+      # This implementation mimicks inference for batch_size 1.
+      start_idx = selected_experts[0] * self._n_elements_in_block
+      # w1 is [d_model, d_ff], w is [d_model, n_elements_in_block]
+      w = fastmath.dynamic_slice(w1, [0, start_idx],
+                                 [w1.shape[0], self._n_elements_in_block])
+      mid = jnp.dot(x, w)
+      mid *= jnp.reshape(selected_mask_flat, mid.shape[:-1])[..., None]
+      relu = jnp.where(mid <= 0, jnp.zeros_like(mid), mid)
+      # w2 is [d_ff, d_model], v is [n_elements_in_block, d_model]
+      v = fastmath.dynamic_slice(w2, [start_idx, 0],
+                                 [self._n_elements_in_block, w2.shape[-1]])
+      v = jnp.reshape(v, [self._n_elements_in_block, -1])
+      res = jnp.dot(relu, v) + b2
+    else:
+      expanded_mask = jnp.broadcast_to(
+          quant_mask,
+          (quant_mask.shape[0], quant_mask.shape[1], self._n_elements_in_block))
+      expanded_mask = jnp.reshape(expanded_mask, (-1, self._d_ff))
+      mid = jnp.dot(x, w1) * expanded_mask  # [joint_batch, d_ff]
+      relu = jnp.where(mid <= 0, jnp.zeros_like(mid), mid)
+      res = jnp.dot(relu, w2) + b2
+
+    return jnp.reshape(res, x_shape)  # un-flatten if needed
+
+  def init_weights_and_state(self, input_signature):
+    """Randomly initializes this layer's weights."""
+    d_model = input_signature.shape[-1]
+    shape_m1 = (d_model, self._n_experts)
     shape_w1 = (d_model, self._d_ff)
     shape_w2 = (self._d_ff, d_model)
     shape_b2 = (d_model,)
