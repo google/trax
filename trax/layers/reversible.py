@@ -14,7 +14,17 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Implementations of reversible layers."""
+"""Layers that can run in reverse to compute inputs from outputs.
+
+Reversible layers reduce the memory required for backpropagation-based
+training, especially for *deep* networks. In a series of reversible layers,
+input activations from a forward pass don't need to be stored: they can be
+reconstructed on the backward pass, layer by layer, from outputs to inputs.
+
+See, e.g., [The Reversible Residual Network: Backpropagation Without Storing
+Activations](https://arxiv.org/abs/1707.04585) and [Reformer: The Efficient
+Transformer](https://arxiv.org/abs/2001.04451).
+"""
 
 from absl import logging
 import jax
