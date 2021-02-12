@@ -18,7 +18,7 @@ import trax.data.inputs
 import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
-include 'c4.gin'
+include 'c4_trax_data.gin'
 
 # Corresponds roughly to T5 'large' ~ 770m params, i.e. T5's `bi_v1_large.gin`.
 d_model = 1024
@@ -27,21 +27,10 @@ n_heads = 16
 n_layers = 24
 attn_kv = 64
 dropout = 0.1
-vocab_size = 32000
 
-# Parameters for batcher:
+# Parameters for data.Batch:
 # ==============================================================================
-batcher.data_streams = @tf_inputs.data_streams
-batcher.bucket_length = 512
-batcher.batch_size_per_device = 4  # Reformer/2 can go upto 24
-batcher.eval_batch_size = 64
-batcher.max_eval_length = %max_length
-batcher.buckets_include_inputs_in_length=True
-batcher.id_to_mask = 0
-
-# Comment out the batcher above and uncomment the following line to use the new
-# trax data pipeline.
-# include 'c4_trax_data.gin'
+data.Batch.batch_size = 32  # On one 2x2, 8 chips, batch_size 4 per chip for 32.
 
 # Parameters for multifactor:
 # ==============================================================================

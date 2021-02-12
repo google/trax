@@ -18,7 +18,7 @@ import trax.data.inputs
 import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
-include 'c4.gin'
+include 'c4_trax_data.gin'
 
 dropout = 0.1
 ff_chunk_size = 1024
@@ -53,15 +53,9 @@ LSHSelfAttention.predict_mem_len = %max_length
 # Reformer2's *encoder* is bidirectional.
 ref2_encoder/LSHSelfAttention.n_chunks_after = 1
 
-# Parameters for batcher:
+# Parameters for data.Batch:
 # ==============================================================================
-batcher.data_streams = @tf_inputs.data_streams
-batcher.bucket_length = 512
-batcher.batch_size_per_device = 16
-batcher.eval_batch_size = 1
-batcher.max_eval_length = %max_length
-batcher.buckets_include_inputs_in_length=True
-batcher.id_to_mask = 0
+data.Batch.batch_size = 32  # On one 2x2, 8 chips, batch_size 4 per chip for 32.
 
 # Parameters for multifactor:
 # ==============================================================================
