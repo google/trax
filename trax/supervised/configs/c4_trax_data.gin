@@ -36,6 +36,7 @@ make_inputs.train_stream = [
   @data.AppendValue(),
   @data.PadToLength(),
   @data.AddLossWeights(),
+  @data.Shuffle(),
   @data.Batch(),
 ]
 
@@ -49,7 +50,7 @@ make_inputs.eval_stream = [
   @data.AppendValue(),
   @data.PadToLength(),
   @data.AddLossWeights(),
-  @data.Batch(),
+  @validation/data.Batch(),
 ]
 
 # Parameters for data.TFDS:
@@ -93,6 +94,7 @@ data.AddLossWeights.id_to_mask = 0
 # Parameters for data.Batch:
 # ==============================================================================
 data.Batch.batch_size = 32  # On one 2x2, 8 chips, batch_size 4 per chip for 32.
+validation/data.Batch.batch_size = 64
 
 # Parameters for train:
 # ==============================================================================
