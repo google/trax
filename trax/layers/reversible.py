@@ -80,6 +80,24 @@ class ReversibleLayer(base.Layer):
     return inputs_weights_grad
 
 
+class ReversibleConcatenatePair(ReversibleLayer):
+  """Maps (x, y) -> ([x, y], [x, y]);  [x, y] is concatenation on last axis."""
+
+  def __init__(self):
+    super().__init__(n_in=2, n_out=2)
+
+  def forward(self, inputs):
+    x, y = inputs
+    r = fastmath.numpy.concatenate((x, y), axis=-1)
+    return r, r
+
+  def reverse(self, outputs, weights=(), state=(), new_state=(), rng=None):
+    del state, new_state, rng, weights
+    pair, _ = outputs
+    x, y = fastmath.numpy.split(pair, 2, axis=-1)
+    return x, y
+
+
 class ReversibleSelect(ReversibleLayer):
   """Reversible version of the Select combinator."""
 

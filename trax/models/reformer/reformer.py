@@ -597,6 +597,8 @@ def Reformer2(input_vocab_size,
               use_bfloat16=False,
               reversible_encoder=False,
               use_two_swaps_per_encoder_block=True,
+              half_before_layer=None,
+              double_after_layer=None,
               mode='train'):
   """Reversible transformer encoder-decoder model.
 
@@ -650,6 +652,8 @@ def Reformer2(input_vocab_size,
     reversible_encoder: whether to be reversible through the encoder
     use_two_swaps_per_encoder_block: whether to allow even number of swaps in
       the encoder
+    half_before_layer: int, half d_model and d_ff before that layer
+    double_after_layer: int, double d_model and d_ff after that layer
     mode: str: 'train' or 'eval'
 
   Returns:
@@ -657,20 +661,34 @@ def Reformer2(input_vocab_size,
     activations over a vocab set.
   """
   # Set default dimensions for attention head key and value sizes.
+  if (d_model / 2) % n_heads != 0:
+    raise ValueError(f'n_heads ({n_heads}) must divide d_model/2 ({d_model/2})')
   if d_attention_key is None:
-    if d_model % n_heads != 0:
-      raise ValueError(f'n_heads ({n_heads}) must divide d_model ({d_model})')
     d_attention_key = d_model // n_heads
   if d_attention_value is None:
-    if d_model % n_heads != 0:
-      raise ValueError(f'n_heads ({n_heads}) must divide d_model ({d_model})')
     d_attention_value = d_model // n_heads
+
+  # Set values of d_model, d_ff and d_qkv for the first stage.
+  d_model1, d_ff1 = d_model, d_ff
+  d_attention_key1, d_attention_value1 = d_attention_key, d_attention_value
+  if half_before_layer:
+    d_model1, d_ff1 = d_model / 2, d_ff / 2
+    d_attention_key1 = d_attention_key / 2
+    d_attention_value1 = d_attention_value / 2
+
+  # Set values of d_model, d_ff and d_qkv for the final stage.
+  d_model2, d_ff2 = d_model, d_ff
+  d_attention_key2, d_attention_value2 = d_attention_key, d_attention_value
+  if double_after_layer:
+    d_model2, d_ff2 = d_model * 2, d_ff * 2
+    d_attention_key2 = d_attention_key * 2
+    d_attention_value2 = d_attention_value * 2
 
   # Vector embeddings.
   in_encoder, out_encoder, output_vocab_size = (
       ct.EmbeddingAndPositionalEncodings(
           input_vocab_size,
-          d_model,
+          d_model1,
           mode,
           dropout,
           [-2],  # dropout_shared_axes
@@ -687,7 +705,7 @@ def Reformer2(input_vocab_size,
   # pylint: disable=g-complex-comprehension
   encoder_blocks = [
       EncoderBlock(
-          d_model, d_ff, n_heads, encoder_attention_type,
+          d_model1, d_ff1, n_heads, encoder_attention_type,
           dropout=dropout,
           ff_activation=ff_activation,
           ff_dropout=ff_dropout,
@@ -703,12 +721,12 @@ def Reformer2(input_vocab_size,
 
   encoder = [     # vec_e mask_e tok_e tok_d tok_d
       tl.ReversibleSelect([0, 0]),     # vec_e1 vec_e2 mask_e tok_e tok_d tok_d
-      _ReversibleSerialForget(encoder_blocks, d_model, n_layers_forget)
+      _ReversibleSerialForget(encoder_blocks, d_model // 2, n_layers_forget)
   ]
   if not reversible_encoder:
     encoder += [
         tl.Fn('XYAvg', lambda x, y: (x + y) / 2.0),
-        tl.Dense(d_model, use_bfloat16=use_bfloat16),
+        tl.Dense(d_model1, use_bfloat16=use_bfloat16),
         tl.LayerNorm(),
     ]
   encoder = tl.Serial(encoder)
@@ -724,8 +742,14 @@ def Reformer2(input_vocab_size,
   for layer_idx in range(n_decoder_layers):
     layer_attention_type = encoder_decoder_attention_type[
         layer_idx % len(encoder_decoder_attention_type)]
+    # Grow d_model, d_ff, and d_qkv if requested.
+    d_m, d_f, d_k, d_v = d_model1, d_ff1, d_attention_key1, d_attention_value1
+    if half_before_layer and layer_idx >= half_before_layer:
+      d_m, d_f, d_k, d_v = d_model, d_ff, d_attention_key, d_attention_value
+    if double_after_layer and layer_idx > double_after_layer:
+      d_m, d_f, d_k, d_v = d_model2, d_ff2, d_attention_key2, d_attention_value2
     decoder_block = DecoderBlock(
-        d_model, d_ff, d_attention_key, d_attention_value, n_heads,
+        d_m, d_f, d_k, d_v, n_heads,
         attention_type=layer_attention_type,
         dropout=dropout,
         ff_activation=ff_activation,
@@ -738,10 +762,14 @@ def Reformer2(input_vocab_size,
         use_bfloat16=use_bfloat16,
         mode=mode)
     decoder_blocks.append(decoder_block)
+    if half_before_layer and layer_idx == half_before_layer - 1:
+      decoder_blocks.append(tl.ReversibleConcatenatePair())
+    if double_after_layer and layer_idx == double_after_layer:
+      decoder_blocks.append(tl.ReversibleConcatenatePair())
 
   dense_loss_layer = tl.SparseDenseWithOptions(
       output_vocab_size,
-      d_input=d_model,
+      d_input=d_model2,
       sparsity_type=loss_sparsity_type,
       sparsity=loss_sparsity,
       d_lowrank=loss_d_lowrank,
@@ -784,7 +812,7 @@ def Reformer2(input_vocab_size,
       encdec_layers,
 
       # Run decoder blocks.
-      _ReversibleSerialForget(decoder_blocks, d_model,
+      _ReversibleSerialForget(decoder_blocks, d_model2,
                               n_layers_forget),    # vec_ed1 vec_ed2 tok_e tok_d
       tl.Fn('XYAvg',
             lambda x, y: (x + y) / 2.0),           # vec_ed tok_e tok_d

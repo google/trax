@@ -140,6 +140,36 @@ class ReformerTest(absltest.TestCase):
 
     self.assertEqual(logits.shape, (1, max_len, vocab_size))
 
+  def test_reformer2_doubling(self):
+    vocab_size = 2
+    max_len = 2
+
+    model = reformer.Reformer2(
+        vocab_size,
+        d_model=8,
+        d_ff=16,
+        n_encoder_layers=1,
+        n_decoder_layers=6,
+        n_heads=2,
+        dropout=0.05,
+        max_len=max_len,
+        pos_type=None,
+        half_before_layer=2,
+        double_after_layer=2,
+        encoder_attention_type=tl.Attention,
+        encoder_decoder_attention_type=tl.CausalAttention,
+        mode='train',
+    )
+
+    x = [np.ones((1, max_len)).astype(np.int32),
+         np.ones((1, max_len)).astype(np.int32)]
+    model.init(shapes.signature(x))
+
+    logits, dec_toks = model(x)
+    del dec_toks
+
+    self.assertEqual(logits.shape, (1, max_len, vocab_size))
+
   def test_reformer2_one_step(self):
     vocab_size = 256
     max_len = 65536
