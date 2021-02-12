@@ -215,7 +215,7 @@ def _train_and_eval_dataset(dataset_name,
   if tfds.Split.TRAIN not in splits:
     raise ValueError('To train we require a train split in the dataset.')
   train_split = tfds.Split.TRAIN
-  train_examples = info.splits[train_split].statistics.num_examples
+  train_examples = info.splits[train_split].num_examples
   eval_holdout_examples = int(train_examples * eval_holdout_size)
   if eval_holdout_examples > 0 or subsplit is not None:
     n_train = train_examples - eval_holdout_examples
