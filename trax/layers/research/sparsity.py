@@ -601,7 +601,7 @@ def MultiplicativeModularCausalAttention(
 def MultiplicativeConvCausalAttention(
     d_feature, n_heads=1, sparsity=None, length_kernel_size=3,
     dropout=0.0, max_inference_length=2048, share_qk=False,
-    output_layer_type='none', v_concat_type='original', mode='train'):
+    output_layer_type='none', v_concat_type='none', mode='train'):
   """Returns a layer that maps activations to activations, with causal masking.
 
   Like `CausalAttention`, this layer type represents one pass of multi-head
