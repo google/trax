@@ -24,6 +24,7 @@ from jax import test_util  # pylint: disable=unused-import
 from jax.config import config
 import numpy as np
 
+from trax import data
 from trax import fastmath
 from trax import layers as tl
 from trax import optimizers
@@ -95,8 +96,10 @@ class TrainingTest(absltest.TestCase):
 
   def test_train_save_restore_dense(self):
     """Saves and restores a checkpoint to check for equivalence."""
+    train_data = data.Serial(lambda _: _very_simple_data(),
+                             data.CountAndSkip('simple_data'))
     task = training.TrainTask(
-        _very_simple_data(), tl.L2Loss(), optimizers.Adam(.0001))
+        train_data(), tl.L2Loss(), optimizers.Adam(.0001))
     eval_task = training.EvalTask(
         _very_simple_data(),  # deliberately re-using training data
         [tl.L2Loss()],
@@ -114,7 +117,11 @@ class TrainingTest(absltest.TestCase):
     self.assertEqual(0, training_session.step)
     training_session.run(n_steps=1)
     training_session.save_checkpoint()
+    self.assertEqual(data.inputs.data_counters['simple_data'], 2)
+    data.inputs.data_counters['simple_data'] = 0  # reset manually
+    self.assertEqual(data.inputs.data_counters['simple_data'], 0)  # check
     model2, training_session2 = _make_model_and_session()
+    self.assertEqual(data.inputs.data_counters['simple_data'], 2)  # restored
 
     x = np.ones((8, 1))
     y1 = model(x, rng=fastmath.random.get_prng(0))

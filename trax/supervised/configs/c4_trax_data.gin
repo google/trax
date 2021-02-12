@@ -27,6 +27,7 @@ vocab_size = 32000
 # ==============================================================================
 make_inputs.train_stream = [
   @training/data.TFDS(),
+  @data.CountAndSkip(),
   @data.SentencePieceTokenize(),
   @data.generate_sequential_chunks(),
   @data.generate_random_noise_mask(),
@@ -55,6 +56,7 @@ make_inputs.eval_stream = [
 # ==============================================================================
 data.TFDS.dataset_name = 'c4/en:2.3.0'
 data.TFDS.keys = ('text',)
+data.TFDS.shuffle_train = False
 training/data.TFDS.train = True
 validation/data.TFDS.train = False
 
@@ -74,6 +76,10 @@ data.consume_noise_mask.vocab_size = %vocab_size
 # Parameters for data.AppendValue:
 # ==============================================================================
 data.AppendValue.val = {0:[1], 1:[1]}
+
+# Parameters for data.CountAndSkip
+# ==============================================================================
+data.CountAndSkip.name = 'c4'
 
 # Parameters for data.PadToLength:
 # ==============================================================================

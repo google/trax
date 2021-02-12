@@ -56,6 +56,7 @@ from trax import jaxboard
 from trax import layers as tl
 from trax import optimizers
 from trax import shapes
+from trax.data import inputs
 from trax.fastmath import numpy as jnp
 from trax.fastmath import random as jax_random
 from trax.supervised import history as trax_history
@@ -196,6 +197,7 @@ class Loop:
     if output_dir is not None:
       self._output_dir = os.path.expanduser(output_dir)
       tf.io.gfile.makedirs(self._output_dir)
+      inputs.load_data_counters(self._output_dir)
     else:
       self._output_dir = None
 
@@ -714,11 +716,12 @@ class Loop:
 
   def save_checkpoint(self, permanent=False):
     """Saves checkpoint to disk for the current training step."""
-    if not self.is_chief:
-      _log('Did not save checkpoint as we are not chief.')
-      return
     if self._output_dir is None:
       _log('Did not save checkpoint as output_dir is None')
+      return
+    inputs.save_data_counters(self._output_dir)
+    if not self.is_chief:
+      _log('Did not save checkpoint as we are not chief.')
       return
     if permanent:
       filename = 'model_{}.pkl.gz'.format(self.step)

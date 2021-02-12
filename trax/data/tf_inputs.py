@@ -27,10 +27,11 @@ import re
 
 from absl import logging
 import gin
+import jax
 import numpy as np
 import scipy
 import t5.data
-import tensorflow as tf  # pylint: disable=g-explicit-tensorflow-version-import
+import tensorflow as tf
 import tensorflow_datasets as tfds
 import tensorflow_text as tf_text
 from trax import fastmath
@@ -178,7 +179,8 @@ def _train_and_eval_dataset(dataset_name,
                             data_dir,
                             eval_holdout_size,
                             train_shuffle_files=True,
-                            eval_shuffle_files=False):
+                            eval_shuffle_files=False,
+                            subsplit=None):
   """Return train and evaluation datasets, feature info and supervised keys.
 
   Args:
@@ -192,6 +194,8 @@ def _train_and_eval_dataset(dataset_name,
       files at startup. Set to False if you want data determinism.
     eval_shuffle_files: Boolean determining whether or not to shuffle the test
       files at startup. Set to False if you want data determinism.
+    subsplit: a pair of floats (x, y), both in [0, 1], saying which part of the
+      full training dataset we should return (default: all of it, [0, 1]).
 
   Returns:
     a 4-tuple consisting of:
@@ -211,11 +215,19 @@ def _train_and_eval_dataset(dataset_name,
   if tfds.Split.TRAIN not in splits:
     raise ValueError('To train we require a train split in the dataset.')
   train_split = tfds.Split.TRAIN
-  if eval_holdout_size > 0:
-    holdout_percentage = int(eval_holdout_size * 100.0)
-    train_percentage = 100 - holdout_percentage
-    train_split = f'train[:{train_percentage}%]'
-    eval_split = f'train[{train_percentage}%:]'
+  train_examples = info.splits[train_split].statistics.num_examples
+  eval_holdout_examples = int(train_examples * eval_holdout_size)
+  if eval_holdout_examples > 0 or subsplit is not None:
+    n_train = train_examples - eval_holdout_examples
+    train_start = int(n_train * subsplit[0])
+    train_end = int(n_train * subsplit[1])
+    if train_end - train_start < 1:
+      raise ValueError('Requested train subsplit has no examples: '
+                       'n_train %d subsplit %s' % (n_train, subsplit))
+    train_split = f'train[{train_start}:{train_end}]'
+
+  if eval_holdout_examples > 0:
+    eval_split = f'train[{eval_holdout_examples}:]'
   elif dataset_name == 'glue/mnli':
     eval_split = 'validation_matched'
     # TODO(kitaev): Support diagnostic dataset (AX)
@@ -248,12 +260,22 @@ def TFDS(  # pylint: disable=invalid-name
     tfds_preprocess_fn=None,
     keys=None,
     train=True,
+    shuffle_train=True,
+    host_id=None,
+    n_hosts=None,
     eval_holdout_size=0):
   """Returns an iterator of numpy arrays representing the dataset."""
   data_dir = download_and_prepare(dataset_name, data_dir)
 
-  (train_data, eval_data, _) = _train_and_eval_dataset(dataset_name, data_dir,
-                                                       eval_holdout_size)
+  host_id = jax.host_id() if host_id is None else host_id
+  n_hosts = n_hosts or jax.host_count()
+  if n_hosts > 1:
+    subsplit = (host_id / n_hosts, (host_id + 1) / n_hosts)
+  else:
+    subsplit = None
+  (train_data, eval_data, _) = _train_and_eval_dataset(
+      dataset_name, data_dir, eval_holdout_size,
+      train_shuffle_files=shuffle_train, subsplit=subsplit)
   dataset = train_data if train else eval_data
   dataset = dataset if tfds_preprocess_fn is None else tfds_preprocess_fn(
       dataset)

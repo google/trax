@@ -69,13 +69,16 @@ lines from `my_file.txt` as follows::
 """
 
 import math
+import os
+import pickle
 import random
 import zlib
 
 from absl import logging
-
 import gin
+import jax
 import numpy as np
+import tensorflow as tf
 
 from trax import fastmath
 from trax import shapes
@@ -201,6 +204,65 @@ def shuffle(samples, queue_size):
 def Shuffle(queue_size=1024):  # pylint: disable=invalid-name
   """Returns a shuffle function with the given queue size."""
   return lambda g: shuffle(g, queue_size)
+
+
+data_counters = {}
+
+
+def save_data_counters(output_dir, host_id=None):
+  """Checkpoint data counters."""
+  global data_counters
+  host_id = jax.host_id() if host_id is None else host_id
+  fname = os.path.join(output_dir, 'data_counters%d.pkl' % host_id)
+  with tf.io.gfile.GFile(fname, 'wb') as f:
+    pickle.dump(data_counters, f)
+
+
+def load_data_counters(output_dir, host_id=None):
+  """Checkpoint data counters."""
+  global data_counters
+  host_id = jax.host_id() if host_id is None else host_id
+  fname = os.path.join(output_dir, 'data_counters%d.pkl' % host_id)
+  if not tf.io.gfile.exists(fname):
+    logging.info('Did not load data counters as %s does not exist.', fname)
+    return
+  with tf.io.gfile.GFile(fname, 'rb') as f:
+    obj = pickle.load(f)
+  data_counters = obj
+
+
+def count_and_skip(generator, name):
+  """Count the number of items in the generator, skip already counted ones.
+
+  This function counts the number of processed examples and puts it into
+  the global variable `counters`. This variable can be saved and restored,
+  and if restored, this function will skip examples until the restored counter
+  is reached. When the data generator is deterministic, this allows to restore
+  the data reading process from a checkpoint.
+
+  Args:
+    generator: generator for examples in the dataset.
+    name: string, a unique id that we use to count the examples
+
+  Yields:
+    The examples from generator but first skip the number specified in the
+    global variable counters[name] and next increment this variable every
+    time a new example appears.
+  """
+  global data_counters
+  if name not in data_counters:
+    data_counters[name] = 0
+  local_counter = 0
+  for example in generator:
+    local_counter += 1
+    if local_counter > data_counters[name]:
+      data_counters[name] += 1
+      yield example
+
+
+def CountAndSkip(name):  # pylint: disable=invalid-name
+  """Returns a function that counts and skips examples (see above)."""
+  return lambda g: count_and_skip(g, name)
 
 
 def batch(generator, batch_size):

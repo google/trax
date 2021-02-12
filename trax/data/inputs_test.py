@@ -104,6 +104,24 @@ class InputsTest(parameterized.TestCase):
     self.assertLen(batch, 2)
     self.assertEqual(batch[0].shape, (10,))
 
+  def test_count_and_skip(self):
+    dataset = lambda _: ((i, i+1) for i in range(10))
+    examples = data.Serial(dataset, data.CountAndSkip('toy_data'))
+    ex_generator = examples()
+    ex1 = next(ex_generator)
+    self.assertEqual(ex1, (0, 1))
+    self.assertEqual(data.inputs.data_counters['toy_data'], 1)
+    ex2 = next(ex_generator)
+    self.assertEqual(ex2, (1, 2))
+    self.assertEqual(data.inputs.data_counters['toy_data'], 2)
+    ex3 = next(examples())  # new generator, will skip
+    self.assertEqual(ex3, (2, 3))
+    self.assertEqual(data.inputs.data_counters['toy_data'], 3)
+    data.inputs.data_counters['toy_data'] = 0  # reset
+    ex4 = next(examples())  # new generator, was reset
+    self.assertEqual(ex4, (0, 1))
+    self.assertEqual(data.inputs.data_counters['toy_data'], 1)
+
   def test_parallel(self):
     """Check that data.Serial works inside another data.Serial."""
     dataset1 = lambda: (i for i in range(10))
