@@ -249,6 +249,8 @@ class Dropout(base.Layer):
     rate = self._initial_rate
     if isinstance(state, dict) and self._name in state:
       rate = state[self._name]
+    if rate == 0.0:
+      return x
     mask_shape = list(x.shape)
     for axis in self._shared_axes:
       mask_shape[axis] = 1

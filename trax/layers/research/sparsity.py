@@ -970,6 +970,9 @@ class _SparseFFController(base.Layer):
     x = jnp.reshape(x, [-1, x_shape[-1]])  # Easier to operate on flattened x.
 
     # Q: should we add bias and/or put relu after the low-rank m1 dot?
+    # TODO(jaszczur): replacing multiplication and reshape by this einsum may
+    # bring training speed improvement (see also reshape in initialization).
+    # mask_logits = jnp.einsum('bd,dl,lxy->bxy', x, m1, m2) + mb
     mask_logits = jnp.dot(jnp.dot(x, m1), m2) + mb
     mask_logits = jnp.reshape(mask_logits, [-1, self._d1, self._d2])
 
@@ -979,10 +982,13 @@ class _SparseFFController(base.Layer):
       log_mask = mask_logits - mask_logsumexp
       mask = jnp.exp(log_mask)
       # Gumbel-softmax with straight-through discretization.
-      u = fastmath.random.uniform(self.rng, mask.shape, jnp.float32, 1e-6,
-                                  1.0 - 1e-6)
-      g = -jnp.log(-jnp.log(u))
-      quant_mask = jnp.argmax(log_mask + g * self._temperature, axis=-1)
+      if self._temperature == 0.0:
+        quant_mask = jnp.argmax(log_mask, axis=-1)
+      else:
+        u = fastmath.random.uniform(self.rng, mask.shape, jnp.float32, 1e-6,
+                                    1.0 - 1e-6)
+        g = -jnp.log(-jnp.log(u))
+        quant_mask = jnp.argmax(log_mask + g * self._temperature, axis=-1)
       return quant_mask, mask
     else:
       quant_mask = jnp.argmax(mask_logits, axis=-1)
@@ -1003,6 +1009,10 @@ class _SparseFFController(base.Layer):
       m1 = m1.astype(jnp.bfloat16)
       m2 = m2.astype(jnp.bfloat16)
       mb = mb.astype(jnp.bfloat16)
+
+    # Reshapes below, with einsum in feedforward, should improve training speed.
+    # m2 = jnp.reshape(m2, [self._d_lowrank, self._d1, self._d2])
+    # mb = jnp.reshape(mb, [self._d1, self._d2])
 
     self.weights = (m1, m2, mb)
 
@@ -1047,15 +1057,10 @@ class _SparseFFMain(base.Layer):
       quant_mask, x = x
 
     w1, w2, b2 = self.weights
-    if self._mode != 'predict':
-      w1 = jnp.reshape(w1.T, (-1, self._d_ff))
-      w2 = jnp.reshape(w2, (self._d_ff, -1))
-    else:
-      # This is a work-around of a bug in the previous if statement, which makes
-      # w1 array shuffled. Fixing it properly would invalidate previous
-      # checkpoints, so this is a temporary work-around.
-      w1 = jnp.transpose(w1, (1, 0, 2))
-      w1 = jnp.reshape(w1, (self._d1, self._d2, -1))
+
+    if self._mode == 'predict':
+      w1 = jnp.transpose(w1, (1, 2, 0))  # dm, d1, d2 -> d1, d2, dm
+      w2 = jnp.transpose(w2, (1, 0, 2))  # d2, d1, dm -> d1, d2, dm
     x_shape = x.shape
     x = jnp.reshape(x, [-1, x_shape[-1]])  # Easier to operate on flattened x.
 
@@ -1068,10 +1073,9 @@ class _SparseFFMain(base.Layer):
       # of the quantized mask to improve training stability (see paper above).
       select = fastmath.random.uniform(self.rng, (), jnp.float32, 0.0, 1.0)
       quant_mask = jnp.where(select < self._quant_prob, quant_mask, mask)
-      quant_mask = jnp.reshape(quant_mask, [-1, self._d_ff])
 
       # In training, run full matmul to get benefits from the above tricks.
-      mid = jnp.dot(x, w1) * quant_mask  # [joint_batch, d_ff]
+      mid = jnp.einsum('bd,dxy->bxy', x, w1) * quant_mask
       relu = jnp.where(mid <= 0, jnp.zeros_like(mid), mid)
       if self._multiply_by_controller_output:
         # We multiply only for quantized decisions, since for non-quantized
@@ -1081,12 +1085,9 @@ class _SparseFFMain(base.Layer):
         # Stop-gradient is here, because we already have a pass-through gradient
         # (for quantized decisions).
         mask_mult = fastmath.stop_gradient(mask_mult)
-        mask_mult = jnp.reshape(mask_mult, [-1, self._d_ff])
         relu = relu * mask_mult
-      res = jnp.dot(relu, w2) + b2
+      res = jnp.einsum('bxy,yxd->bd', relu, w2) + b2
     elif self._mode == 'predict':
-      # w1 = jnp.reshape(w1.T, (self._d1, self._d2, -1))
-      # w2 = jnp.reshape(w2, (self._d1, self._d2, -1))
       # This implementation mimicks inference. It's not efficient for large
       # size of joint_batch, but at inference that will be 1 most of the time.
       # Shapes:
@@ -1112,13 +1113,11 @@ class _SparseFFMain(base.Layer):
       res = jnp.einsum('ai,aij->aj', relu, v) + b2
     else:
       quant_mask = tl.one_hot(quant_mask, self._n_elements_in_block)
-      quant_mask = jnp.reshape(quant_mask, [-1, self._d_ff])
-      mid = jnp.dot(x, w1) * quant_mask  # [joint_batch, d_ff]
+      mid = jnp.einsum('bd,dxy->bxy', x, w1) * quant_mask
       relu = jnp.where(mid <= 0, jnp.zeros_like(mid), mid)
       if self._multiply_by_controller_output:
-        mask_mult = jnp.reshape(mask, [-1, self._d_ff])
-        relu = relu * mask_mult
-      res = jnp.dot(relu, w2) + b2
+        relu = relu * mask
+      res = jnp.einsum('bxy,yxd->bd', relu, w2) + b2
 
     return jnp.reshape(res, x_shape)  # un-flatten if needed
 
@@ -1139,8 +1138,8 @@ class _SparseFFMain(base.Layer):
       w1 = w1.astype(jnp.bfloat16)
       w2 = w2.astype(jnp.bfloat16)
 
-    w1 = jnp.reshape(w1.T, (self._d1, self._d2, -1))
-    w2 = jnp.reshape(w2, (self._d1, self._d2, -1))
+    w1 = jnp.reshape(w1, (-1, self._d1, self._d2))
+    w2 = jnp.reshape(w2, (self._d2, self._d1, -1))
 
     self.weights = (w1, w2, b2)
 
