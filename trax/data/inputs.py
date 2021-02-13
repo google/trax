@@ -72,6 +72,7 @@ import math
 import os
 import pickle
 import random
+import time
 import zlib
 
 from absl import logging
@@ -282,12 +283,14 @@ def UniformlySeek(name=None, host_id=None, n_hosts=None, dataset_size=None):  # 
   def _f(generator):
     # Each host seeks to the appropriate point in the dataset.
     num_to_seek = int(host_id * each_host)
+    start_time = time.time()
     logging.info('Dataset[%s] host_id[%d] is seeking to position[%d]',
                  name, host_id, num_to_seek)
     for _ in range(num_to_seek):
       next(generator)
-    logging.info('Dataset[%s] host_id[%d] reached position[%d]',
-                 name, host_id, num_to_seek)
+    logging.info('Dataset[%s] host_id[%d] reached position[%d]. '
+                 'Time taken [%s] seconds',
+                 name, host_id, num_to_seek, time.time() - start_time)
     for example in generator:
       yield example
   return _f
@@ -304,7 +307,14 @@ def batch(generator, batch_size):
     if len(buf) == batch_size:
       # buf is a list of tuples, e.g., [(in1, tgt1), (in2, tgt2), (in3, tgt3)]
       # batch is a tuple of arrays: ([in1, in2, in3], [tgt1, tgt2, tgt3])
-      batched_example = tuple(np.stack(x) for x in zip(*buf))
+      try:
+        batched_example = tuple(np.stack(x) for x in zip(*buf))
+      except ValueError as e:
+        for i in range(len(buf)):
+          logging.error('batch[%d] input shape: %r output shape: %r',
+                        i, buf[i][0].shape, buf[i][1].shape)
+        logging.error('buf: %r', buf)
+        raise e
       # Note that it's the same shape as each example with added batch dim.
       i += 1
       if i & (i - 1) == 0:
@@ -1361,8 +1371,9 @@ def MixMLMAndPrefixLM(mlm_rate=4,  # pylint:disable=invalid-name
   """Parallel between MLM and PrefixLM outputs."""
   assert vocab_size
   mlm = Serial(
-      # Generate sequential chunks.
-      generate_sequential_chunks(max_length=max_length),
+      # Generate sequential chunks - take one away from max_length, since 1 will
+      # be appended later.
+      generate_sequential_chunks(max_length=max_length - 1),
       # Generate mask and chunk.
       generate_random_noise_mask(
           noise_density=noise_density,
@@ -1370,5 +1381,5 @@ def MixMLMAndPrefixLM(mlm_rate=4,  # pylint:disable=invalid-name
       # Consume mask and chunk to give (input, targets).
       consume_noise_mask(vocab_size=vocab_size),
   )
-  prefix_lm = generate_prefix_lm_sequential_chunks(max_length=max_length)
+  prefix_lm = generate_prefix_lm_sequential_chunks(max_length=max_length - 1)
   return Parallel([mlm, prefix_lm], counters=(mlm_rate, prefix_lm_rate))
