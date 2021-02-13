@@ -124,9 +124,9 @@ class InputsTest(parameterized.TestCase):
 
   def test_parallel(self):
     """Check that data.Serial works inside another data.Serial."""
-    dataset1 = lambda: (i for i in range(10))
-    dataset2 = lambda: (i for i in range(10, 20))
-    parallel = data.Parallel(dataset1, dataset2)
+    dataset1 = lambda _: (i for i in range(10))
+    dataset2 = lambda _: (i for i in range(10, 20))
+    parallel = data.Parallel([dataset1, dataset2])
     generator = parallel()
 
     self.assertEqual(next(generator), 0)
@@ -138,10 +138,10 @@ class InputsTest(parameterized.TestCase):
 
   def test_parallel_with_weights(self):
     """Check that data.Serial works inside another data.Serial."""
-    dataset1 = lambda: (i for i in range(10))
-    dataset2 = lambda: (i for i in range(10, 20))
-    parallel = data.Parallel(dataset1, dataset2)
-    generator = parallel(counters=(2, 1))
+    dataset1 = lambda _: (i for i in range(10))
+    dataset2 = lambda _: (i for i in range(10, 20))
+    parallel = data.Parallel([dataset1, dataset2], counters=(2, 1))
+    generator = parallel()
 
     self.assertEqual(next(generator), 0)
     self.assertEqual(next(generator), 10)
@@ -156,11 +156,12 @@ class InputsTest(parameterized.TestCase):
 
   def test_parallel_with_weights_three_datasets(self):
     """Check that data.Serial works inside another data.Serial."""
-    dataset1 = lambda: (i for i in range(10))
-    dataset2 = lambda: (i for i in range(10, 20))
-    dataset3 = lambda: (i for i in range(20, 30))
-    parallel = data.Parallel(dataset1, dataset2, dataset3)
-    generator = parallel(counters=(2, 1, 3))
+    dataset1 = lambda _: (i for i in range(10))
+    dataset2 = lambda _: (i for i in range(10, 20))
+    dataset3 = lambda _: (i for i in range(20, 30))
+    parallel = data.Parallel(
+        [dataset1, dataset2, dataset3], counters=(2, 1, 3))
+    generator = parallel()
 
     self.assertEqual(next(generator), 0)    # (1,0,0)
     self.assertEqual(next(generator), 10)   # (1,1,0)
@@ -534,6 +535,16 @@ class InputsTest(parameterized.TestCase):
         # pylint: enable=bad-continuation,bad-whitespace
         )
 
+  def test_generate_prefix_lm_sequential_chunks(self):
+    chunker_fn = data.generate_prefix_lm_sequential_chunks(max_length=3)
+    examples = list(chunker_fn([[1, 2, 3, 4, 5, 6, 7]]))
+    self.assertSequenceEqual(([1, 2, 3], [4, 5, 6]), examples[0])
+    self.assertSequenceEqual(([4, 5, 6], [7]), examples[1])
+
+  def test_generate_prefix_lm_sequential_chunks_short_chunks(self):
+    chunker_fn = data.generate_prefix_lm_sequential_chunks(max_length=10)
+    examples = list(chunker_fn([[1, 2, 3, 4, 5, 6, 7]]))
+    self.assertSequenceEqual(([1, 2, 3], [4, 5, 6, 7]), examples[0])
 
 if __name__ == '__main__':
   absltest.main()

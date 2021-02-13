@@ -95,43 +95,47 @@ def Serial(*fns):  # pylint: disable=invalid-name
   return composed_fns
 
 
-def Parallel(*fns):  # pylint: disable=invalid-name
+def Parallel(fns=None, counters=None):  # pylint: disable=invalid-name
   """Combines generator functions into one that runs them in parallel.
 
   Args:
-    *fns: all datasets which are combined in parallel.
+    fns: a sequence of datasets which are combined in parallel.
+    counters: a sequence of ints with same length as fns, please see comments on
+      its use below.
   Returns:
     parallel_generator: the generator yields samples according to given;
     if counters are not given then samples are genereted uniformly.
 
   Example 1:
 
-    parallel = data.Parallel(dataset1, dataset2, dataset3)
-    generator = parallel(counters=(2, 1, 3))
+    gen = data.Parallel([dataset1, dataset2, dataset3], counters=(2, 1, 3))
 
   defines a generator that yields 33% examples from dataset1, 16% examples from
   dataset2 and 50% examples from dataset3.
 
   Example 2:
 
-    parallel = data.Parallel(dataset1, dataset2, dataset3)
-    generator = parallel(counters=(20, 50, 30))
+    gen = data.Parallel([dataset1, dataset2, dataset3], counters=(20, 50, 30))
 
   defines a generator that yields 20% examples from dataset1, 50% examples from
   dataset2 and 30% examples from dataset3.
   """
-  def parallel_generator(counters=None):
-    generators = []
-    for f in fastmath.tree_flatten(fns):
-      generators.append(f())
-    if counters:
-      assert len(counters) == len(generators)
-    else:
-      counters = [1]*len(generators)
+
+  if counters:
+    assert len(counters) == len(fns)
+  else:
+    counters = [1] * len(fns)
+
+  def parallel_generator(gen=None):
     # current_counters are increased step by step; they are reset to 0s when
     # current_counters[idx] == counters[idx] for all idx. See
     # test_parallel_with_weights_three_datasets for an example of how
     # current_counters are changed during computation.
+
+    generators = []
+    for f in fns:
+      generators.append(f(gen))
+
     current_counters = [0]*len(generators)
     while True:
       for idx, generator in enumerate(generators):
@@ -263,6 +267,30 @@ def count_and_skip(generator, name):
 def CountAndSkip(name):  # pylint: disable=invalid-name
   """Returns a function that counts and skips examples (see above)."""
   return lambda g: count_and_skip(g, name)
+
+
+def UniformlySeek(name=None, host_id=None, n_hosts=None, dataset_size=None):  # pylint: disable=invalid-name
+  """Sets each host at (dataset_size/n_hosts)-th of the dataset."""
+  if not dataset_size:
+    dataset_size = 2 ** 18  # 512 * 512
+    logging.error(
+        'No dataset size given to Uniformly seek, assuming: %d', dataset_size)
+  assert name
+  host_id = jax.host_id() if host_id is None else host_id
+  n_hosts = n_hosts or jax.host_count()
+  each_host = int(dataset_size / n_hosts)
+  def _f(generator):
+    # Each host seeks to the appropriate point in the dataset.
+    num_to_seek = int(host_id * each_host)
+    logging.info('Dataset[%s] host_id[%d] is seeking to position[%d]',
+                 name, host_id, num_to_seek)
+    for _ in range(num_to_seek):
+      next(generator)
+    logging.info('Dataset[%s] host_id[%d] reached position[%d]',
+                 name, host_id, num_to_seek)
+    for example in generator:
+      yield example
+  return _f
 
 
 def batch(generator, batch_size):
@@ -1296,3 +1324,51 @@ def consume_noise_mask(vocab_size=32100):
              _noise_span_to_unique_sentinel(tokens, np.logical_not(noise_mask)))
   return _f
 
+
+def generate_prefix_lm_sequential_chunks(max_length=None):
+  """Returns a function that generates prefix lm chunks of max_length length."""
+  def _f(generator):
+    for example in generator:
+      n_tokens = len(example)
+      # Don't want extremely short chunks.
+      if n_tokens < 2:
+        continue
+      # The whole document is less than max_length.
+      if n_tokens <= max_length:
+        # Generate a shorter input output pair.
+        half = n_tokens // 2
+        yield (example[:half], example[half:])
+      n_segments = int(math.ceil(float(n_tokens) / float(max_length)))
+      # Go over all but the last segment and make (overlapping) pairs.
+      # So with | showing chunks, the following doc:
+      # | 1 2 3 | 4 5 6 | 7 8
+      # Makes i/o pairs:
+      # (1 2 3, 4 5 6), (4 5 6, 7 8)
+      for i in range(n_segments - 1):
+        start1 = max_length * i
+        start2 = start1 + max_length
+        end2 = min(start2 + max_length, n_tokens)
+        yield (example[start1:start2], example[start2:end2])
+  return _f
+
+
+def MixMLMAndPrefixLM(mlm_rate=4,  # pylint:disable=invalid-name
+                      prefix_lm_rate=1,
+                      noise_density=0.15,
+                      mean_noise_span_length=3.0,
+                      vocab_size=None,
+                      max_length=512):
+  """Parallel between MLM and PrefixLM outputs."""
+  assert vocab_size
+  mlm = Serial(
+      # Generate sequential chunks.
+      generate_sequential_chunks(max_length=max_length),
+      # Generate mask and chunk.
+      generate_random_noise_mask(
+          noise_density=noise_density,
+          mean_noise_span_length=mean_noise_span_length),
+      # Consume mask and chunk to give (input, targets).
+      consume_noise_mask(vocab_size=vocab_size),
+  )
+  prefix_lm = generate_prefix_lm_sequential_chunks(max_length=max_length)
+  return Parallel([mlm, prefix_lm], counters=(mlm_rate, prefix_lm_rate))
