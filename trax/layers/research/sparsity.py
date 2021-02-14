@@ -901,7 +901,7 @@ def CausalFavor(d_feature, n_heads=1, dropout=0.0,
 class _RememberInReverse(base.Layer):
   """Layer remembering the input in forward pass. For reversible models."""
 
-  def __init__(self):
+  def __init__(self, output=True):
     """Layer remembering the input in forward pass. For reversible models.
 
     During the first pass through the model this layer saves the input as
@@ -909,8 +909,13 @@ class _RememberInReverse(base.Layer):
     model the layer outputs the input from the first pass. This is used to
     combat numerical stability problems in Reformer2. It doesn't do anything in
     non-reversible models.
+
+    Args:
+      output: Whether to pass the input or not.
     """
-    super().__init__(name='_RememberInReverse')
+    n_out = 1 if output else 0
+    self._output = output
+    super().__init__(name='_RememberInReverse', n_out=n_out)
 
   def forward(self, x):
     if 'running_second_time_yes' in self.state[1]:
@@ -919,7 +924,10 @@ class _RememberInReverse(base.Layer):
       result = x
     self.state = (x, {'running_second_time': ()})
 
-    return result
+    if self._output:
+      return result
+    else:
+      return tuple()
 
   def init_weights_and_state(self, input_signature):
     """Initializes this layer's weights."""
@@ -930,6 +938,42 @@ class _RememberInReverse(base.Layer):
                   {'running_second_time': ()})
 
 
+class _RecallQuantMaskInReverse(base.Layer):
+  """Layer recalling quant mask from specific _RememberInReverse.
+
+  This layer is needed for memory-efficient training of reversible model with
+  ff chunking. During forward pass it simply returns minus ones, which are
+  ignored in the controller. During reverse_and_grad it returns a quant_mask
+  which was memorized (saved to state) by a RememberInReverse layer.
+
+  This enable us to save quant_mask right after chunking, and load it again
+  (when reversing) right before chunking.
+  """
+
+  def __init__(self, remember_layer, elements):
+    self._remember_layer = remember_layer
+    self._elements = elements
+    super().__init__(name='_RecallQuantMaskInReverse', n_in=1, n_out=2)
+
+  def forward(self, x):
+    if (self._remember_layer.state and
+        'running_second_time_yes' in self._remember_layer.state[1]):
+      # It's reverse_and_grad, so we pull the quant_mask from remembering layer.
+      result = self._remember_layer.state[0]
+    else:
+      result = self.state
+    return (x, result)
+
+  def init_weights_and_state(self, input_signature):
+    """Initializes this layer's weights."""
+    if isinstance(input_signature, (list, tuple)):
+      input_signature = input_signature[0]
+    batch = input_signature.shape[0]
+    self.weights = ()
+    # We will interpret -1 as unknown/uncached quant_mask.
+    self.state = -jnp.ones((batch, self._elements), dtype=jnp.int32)
+
+
 class _SparseFFController(base.Layer):
   """The controller part of Sparse Feed-Forward layer."""
 
@@ -938,12 +982,13 @@ class _SparseFFController(base.Layer):
                also_return_nondiscrete_output):
     """Returns a sparse feed-forward block."""
     n_out = 2 if also_return_nondiscrete_output else 1
-    super().__init__(name=f'_SparseFFController_{d_ff}', n_out=n_out)
+    super().__init__(name=f'_SparseFFController_{d_ff}', n_in=2, n_out=n_out)
     self._use_bfloat16 = use_bfloat16
     self._d_ff = d_ff
     self._d_lowrank = d_lowrank
     # Q: what temperature is actually most useful in training?
     self._temperature = temperature if mode == 'train' else 0.0
+    self._mode = mode
     self._n_elements_in_block = n_elements_in_block
     self._kernel_initializer = kernel_initializer
     self._bias_initializer = bias_initializer
@@ -963,7 +1008,7 @@ class _SparseFFController(base.Layer):
     Returns:
       Tensor of same shape and dtype as the input.
     """
-
+    x, recalled_quant_mask = x
     m1, m2, mb = self.weights
 
     x_shape = x.shape
@@ -989,14 +1034,24 @@ class _SparseFFController(base.Layer):
                                     1.0 - 1e-6)
         g = -jnp.log(-jnp.log(u))
         quant_mask = jnp.argmax(log_mask + g * self._temperature, axis=-1)
-      return quant_mask, mask
     else:
       quant_mask = jnp.argmax(mask_logits, axis=-1)
+
+    if self._mode == 'train':
+      # We use recalled_quant_mask if it's different than -1; otherwise
+      # we use a quant_mask which we have just computed.
+      quant_mask = jnp.where(recalled_quant_mask == -1,
+                             quant_mask, recalled_quant_mask)
+
+    if self._also_return_nondiscrete_output:
+      return quant_mask, mask
+    else:
       return quant_mask
 
   def init_weights_and_state(self, input_signature):
     """Randomly initializes this layer's weights."""
-    d_model = input_signature.shape[-1]
+    x_input_signature = input_signature[0]
+    d_model = x_input_signature.shape[-1]
     shape_m1 = (d_model, self._d_lowrank)
     shape_m2 = (self._d_lowrank, self._d_ff)
     shape_mb = (self._d_ff,)
@@ -1025,7 +1080,7 @@ class _SparseFFMain(base.Layer):
                bias_initializer, multiply_by_controller_output):
     """Returns a sparse feed-forward block."""
     n_in = 3 if mode == 'train' or multiply_by_controller_output else 2
-    super().__init__(name=f'_SparseFFMain_{d_ff}', n_in=n_in)
+    super().__init__(name=f'_SparseFFMain_{d_ff}', n_in=n_in, n_out=2)
     self._mode = mode
     self._use_bfloat16 = use_bfloat16
     self._big_weights_in_bfloat16 = big_weights_in_bfloat16
@@ -1055,6 +1110,7 @@ class _SparseFFMain(base.Layer):
       quant_mask, mask, x = x
     else:
       quant_mask, x = x
+    original_quant_mask = quant_mask
 
     w1, w2, b2 = self.weights
 
@@ -1119,7 +1175,7 @@ class _SparseFFMain(base.Layer):
         relu = relu * mask
       res = jnp.einsum('bxy,yxd->bd', relu, w2) + b2
 
-    return jnp.reshape(res, x_shape)  # un-flatten if needed
+    return original_quant_mask, jnp.reshape(res, x_shape)
 
   def init_weights_and_state(self, input_signature):
     """Randomly initializes this layer's weights."""
@@ -1212,15 +1268,21 @@ def SparseFF(
       tl.Dropout(rate=dropout_rate, shared_axes=dropout_shared_axes, mode=mode),
   ]
 
-  if ff_chunk_size > 0:
-    main = [tl.Chunk(tl.Serial(main), ff_chunk_size)]
+  # We will "remember" quant_mask _after_ chunking, and "recall" this same
+  # quant_mask during reverse_and_grad _before_ chunking.
+  remembering = _RememberInReverse(output=False)
+  recalling = _RecallQuantMaskInReverse(
+      remember_layer=remembering, elements=d_ff//n_elements_in_block)
 
   return tl.BatchLeadingAxes(tl.Serial(
-      # emb
-      tl.Dup(),  # emb, emb
-      controller,  # quant_mask, mask, emb
-      _RememberInReverse(),  # quant_mask, mask, emb
-      main,  # emb/output
+      recalling,  # emb, quant_mask
+      tl.Chunk(chunk_size=ff_chunk_size, layer=tl.Serial(
+          # emb, quant_mask
+          tl.Select((0, 1, 0)),  # emb, quant_mask, emb
+          controller,  # quant_mask, mask, emb
+          main,  # quant_mask, emb/output
+          )),
+      remembering,  # emb/output
       ))
 
 

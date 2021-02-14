@@ -171,12 +171,12 @@ class ReformerTest(absltest.TestCase):
     self.assertEqual(logits.shape, (1, max_len, vocab_size))
 
   def test_reformer2_one_step(self):
-    vocab_size = 256
-    max_len = 65536
-    pos_axial = 256
+    vocab_size = 32
+    max_len = 256
+    pos_axial = 16
     assert pos_axial * pos_axial == max_len
 
-    chunk_len = 64
+    chunk_len = 32
 
     # Since 2 * chunk_len * n_buckets should be max_len.
     n_buckets = max_len // (2 * chunk_len)
@@ -189,8 +189,8 @@ class ReformerTest(absltest.TestCase):
 
     model = reformer.Reformer2(
         vocab_size,
-        d_model=256,
-        d_ff=512,
+        d_model=32,
+        d_ff=64,
         d_attention_key=64,
         d_attention_value=64,
         n_encoder_layers=2,
@@ -205,7 +205,8 @@ class ReformerTest(absltest.TestCase):
         pos_d_axial_embs=(64, 192),
         ff_activation=tl.Relu,
         ff_use_sru=0,
-        ff_chunk_size=8192,
+        ff_chunk_size=64,
+        ff_sparsity=8,
         mode='train',
     )
 
