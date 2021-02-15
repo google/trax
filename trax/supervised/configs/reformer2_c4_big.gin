@@ -23,21 +23,13 @@ include 'c4_trax_data.gin'
 dropout = 0.1
 ff_chunk_size = 1024
 
-# Corresponds roughly to ~75B params.
-d_model = 9216
-d_ff = 65536
-n_heads = 96
-attn_kv = 96
-n_layers = 34  # would like 36 but runs out of RAM
+d_model = 4096
+d_ff = 32768
+n_heads = 32
 
 # We are using T5's 32k SPM model by default.
 vocab_size = 32000
 
-
-# Parameters for SelfAttention:
-# ==============================================================================
-SelfAttention.attention_dropout = %dropout
-SelfAttention.chunk_len = None  # full attention
 
 # Parameters for LSHSelfAttention:
 # ==============================================================================
@@ -55,7 +47,8 @@ ref2_encoder/LSHSelfAttention.n_chunks_after = 1
 
 # Parameters for data.Batch:
 # ==============================================================================
-data.Batch.batch_size = 32  # On one 2x2, 8 chips, batch_size 4 per chip for 32.
+data.Batch.batch_size = 256
+validation/data.Batch.batch_size = 8
 
 # Parameters for multifactor:
 # ==============================================================================
@@ -66,7 +59,7 @@ multifactor.warmup_steps = 10000
 # Parameters for Adafactor:
 # ==============================================================================
 Adafactor.weight_decay_rate = 1e-5
-Adafactor.weight_decay_n_steps = 10000
+Adafactor.weight_decay_n_steps = 50000
 Adafactor.beta1 = 0.0
 Adafactor.decay_rate = 0.8
 Adafactor.clipping_threshold = 1.0
@@ -77,24 +70,25 @@ Adafactor.multiply_by_parameter_scale = True
 
 # Parameters for train:
 # ==============================================================================
-train.eval_frequency = 50
+train.eval_frequency = 100
 train.eval_steps = 1
 train.model = @trax.models.Reformer2
-# T5 pretrains on C4 for 2^19 steps. Our batches are ~ 1/9th the size.
-train.steps = 524288
+train.steps = 900000
 train.optimizer = @trax.optimizers.Adafactor
 train.checkpoint_highest = 'accuracy'
 train.checkpoint_lowest = 'loss'
-train.permanent_checkpoint_frequency = 1000
-train.use_memory_efficient_trainer = True
-train.loss_chunk_size = 512
+train.permanent_checkpoint_frequency = 2000
+train.use_memory_efficient_trainer = 2
+train.loss_chunk_size = 1024
 train.loss_fn = @CrossEntropyLossWithLogSoftmax()
 
 # enc_attn_type = @LSHSelfAttention
 # dec_attn_type = @ref2_encoder/LSHSelfAttention
 MultiplicativeConvCausalAttention.sparsity = 32
+MultiplicativeConvCausalAttention.share_qk = True
+MultiplicativeConvCausalAttention.force_no_dropout = True  # runs faster
 enc_attn_type = @Attention
-dec_attn_type = @MultiplicativeConvCausalAttention  # @CausalAttention
+dec_attn_type = @MultiplicativeConvCausalAttention
 
 
 # Parameters for Reformer2:
@@ -105,22 +99,20 @@ Reformer2.dropout = %dropout  # was  0.1
 Reformer2.ff_activation = @trax.layers.Relu
 Reformer2.ff_dropout = 0.1
 Reformer2.ff_chunk_size = %ff_chunk_size
-Reformer2.ff_sparsity = (256, 32)
+Reformer2.ff_sparsity = (128, 32)
 Reformer2.ff_use_sru = (1, 64)
 Reformer2.max_len = 32768  # 32*1024
 Reformer2.mode = 'train'
 Reformer2.n_heads = %n_heads
-Reformer2.n_encoder_layers = 6
-Reformer2.n_decoder_layers = %n_layers
+Reformer2.n_encoder_layers = 4
+Reformer2.n_decoder_layers = 24
 Reformer2.input_vocab_size = %vocab_size
-Reformer2.d_attention_key = %attn_kv    # d_model // n_heads
-Reformer2.d_attention_value = %attn_kv  # d_model // n_heads
 Reformer2.encoder_attention_type = %enc_attn_type
 Reformer2.encoder_decoder_attention_type = %dec_attn_type
-Reformer2.use_two_swaps_per_encoder_block = False
+Reformer2.use_two_swaps_per_encoder_block = True
 Reformer2.reversible_encoder = True
 Reformer2.n_layers_forget = 0
 Reformer2.pos_type = None
-Reformer2.attention_chunk_size = 1
+Reformer2.attention_chunk_size = 0
 Reformer2.use_bfloat16 = False
-Reformer2.loss_sparsity = 8
+Reformer2.loss_sparsity = 0

@@ -251,5 +251,6 @@ def on_accelerator(x):
       accelerator_devices = []
   if not accelerator_devices:
     return x
-  assert len(accelerator_devices) == 1
+  if len(accelerator_devices) != 1:
+    return x
   return jax.device_put(x, accelerator_devices[0])

@@ -599,8 +599,8 @@ def MultiplicativeModularCausalAttention(
 
 @assert_shape('bld->bld')
 def MultiplicativeConvCausalAttention(
-    d_feature, n_heads=1, sparsity=None, length_kernel_size=3,
-    dropout=0.0, max_inference_length=2048, share_qk=False,
+    d_feature, n_heads=1, sparsity=None, length_kernel_size=3, dropout=0.0,
+    force_no_dropout=False, max_inference_length=2048, share_qk=False,
     output_layer_type='none', v_concat_type='none', mode='train'):
   """Returns a layer that maps activations to activations, with causal masking.
 
@@ -616,6 +616,8 @@ def MultiplicativeConvCausalAttention(
     length_kernel_size: Size of convolution kernel on the length dimension.
     dropout: Probababilistic rate for internal dropout applied to attention
         activations (based on query-key pairs) before dotting them with values.
+    force_no_dropout: If True, force dropout to be 0.0 independent of the above
+        value; used to override some configurations.
     max_inference_length: maximum length for inference.
     share_qk: if True, average Q and K embeddings and share for both Q and K.
     output_layer_type: Which sparse layers to use for processing output from the
@@ -633,6 +635,7 @@ def MultiplicativeConvCausalAttention(
   assert output_layer_type in ['none', 'mult', 'conv', 'multconv']
   assert v_concat_type in ['original', 'fixed', 'none']
 
+  dropout = 0.0 if force_no_dropout else dropout
   sparsity = n_heads if sparsity is None else sparsity
   d_module = d_feature // sparsity
 

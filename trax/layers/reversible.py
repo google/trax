@@ -270,8 +270,8 @@ class ReversibleHalfResidual(ReversibleLayer):
     operations improves training speed.
   """
 
-  def __init__(self, *residual_layers, attention_layer=None):
-    super().__init__()
+  def __init__(self, *residual_layers, attention_layer=None, name=None):
+    super().__init__(name=name)
 
     self.compute_residual = cb.Serial(*residual_layers)
     self.attention_layer = attention_layer

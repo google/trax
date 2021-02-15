@@ -69,9 +69,11 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
       ] for _ in range(n_attention_layers)]
 
   feed_forwards = [
-      [tl.ReversibleHalfResidual(ct.FeedForwardWithOptions(
-          d_model, d_ff, dropout, [-2], ff_activation, ff_dropout,
-          ff_chunk_size, ff_use_sru, ff_sparsity, mode, use_bfloat16)),
+      [tl.ReversibleHalfResidual(
+          ct.FeedForwardWithOptions(
+              d_model, d_ff, dropout, [-2], ff_activation, ff_dropout,
+              ff_chunk_size, ff_use_sru, ff_sparsity, mode, use_bfloat16),
+          name='ReversibleHalfResidualDecoder'),
        tl.ReversibleSwap()
       ] for _ in range(n_feedforward_layers)]
   # pylint: enable=g-complex-comprehension

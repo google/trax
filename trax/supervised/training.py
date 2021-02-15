@@ -159,12 +159,14 @@ class Loop:
       loss_chunk_size: int, if > 0 use chunks of this size to make loss
         computation more more memory-efficient.
       use_memory_efficient_trainer: whether to use a special memory-efficient
-        trainer.
+        trainer; if set to 2, the memory efficiency if very aggressive
       callbacks: List of subclasses of StepCallback to call on training
         steps.
     """
     self._is_chief, self._n_hosts, self._n_devices, self._rng = (
         init_host_and_devices(n_devices, random_seed))
+    if use_memory_efficient_trainer:
+      self._rng = tl.on_cpu(self._rng)
 
     # Handle single task case without lists too.
     if not isinstance(tasks, (list, tuple)):
@@ -298,7 +300,8 @@ class Loop:
     optimizers.trainer.init_reversible_blocks(blocks, loss_layer, sig, rng)
     # TODO(lukaszkaiser): here optimizer is a function, revisit this.
     return optimizers.ReversibleSerialTrainer(
-        blocks, loss_layer, task.optimizer)
+        blocks, loss_layer, task.optimizer,
+        free_accelerators_on_step=(self._use_memory_efficient_trainer == 2))
 
   def _init_evaluator(self, eval_task):
     """Initializes the per-task evaluator."""
@@ -306,8 +309,8 @@ class Loop:
         self._eval_model, eval_task)
     if self._use_memory_efficient_trainer:
       return _Evaluator(
-          weights=model_with_metrics.weights[1],
-          state=model_with_metrics.state[1],
+          weights=tl.on_cpu(model_with_metrics.weights[1]),
+          state=tl.on_cpu(model_with_metrics.state[1]),
           metrics_fn=_accelerate_model_with_metrics(model_with_metrics, 0)
       )
     else:
@@ -371,6 +374,7 @@ class Loop:
 
         if task_changed:
           loss_acc, step_acc = 0.0, 0
+
         loss, optimizer_metrics = self._run_one_step(task_index, task_changed)
 
         # optimizer_metrics and loss are replicated on self.n_devices, a few
@@ -477,6 +481,9 @@ class Loop:
   def new_rng(self):
     """Returns a new single-use random number generator (JAX PRNG key)."""
     self._rng, rng = fastmath.random.split(self._rng)
+    if self._use_memory_efficient_trainer:
+      self._rng = tl.on_cpu(self._rng)
+      rng = tl.on_cpu(rng)
     return rng
 
   def _for_n_devices(self, x):
