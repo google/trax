@@ -961,17 +961,8 @@ class _RecallQuantMaskInReverse(base.Layer):
       # It's reverse_and_grad, so we pull the quant_mask from remembering layer.
       result = self._remember_layer.state[0]
     else:
-      result = self.state
+      result = -jnp.ones((x.shape[0], self._elements), dtype=jnp.int32)
     return (x, result)
-
-  def init_weights_and_state(self, input_signature):
-    """Initializes this layer's weights."""
-    if isinstance(input_signature, (list, tuple)):
-      input_signature = input_signature[0]
-    batch = input_signature.shape[0]
-    self.weights = ()
-    # We will interpret -1 as unknown/uncached quant_mask.
-    self.state = -jnp.ones((batch, self._elements), dtype=jnp.int32)
 
 
 class _SparseFFController(base.Layer):
