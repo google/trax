@@ -1381,5 +1381,9 @@ def MixMLMAndPrefixLM(mlm_rate=4,  # pylint:disable=invalid-name
       # Consume mask and chunk to give (input, targets).
       consume_noise_mask(vocab_size=vocab_size),
   )
+  if mlm_rate == 1 and prefix_lm_rate == 0:
+    return mlm
   prefix_lm = generate_prefix_lm_sequential_chunks(max_length=max_length - 1)
+  if prefix_lm_rate == 1 and mlm_rate == 0:
+    return prefix_lm
   return Parallel([mlm, prefix_lm], counters=(mlm_rate, prefix_lm_rate))
