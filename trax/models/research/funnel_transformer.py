@@ -163,7 +163,9 @@ def _FunnelBlock(d_model, d_ff, n_heads,
           hidden_dropout                            # attn, mask'
       ),                                            # funnel_activations, mask'
       tl.Residual(
-          feed_forward
+          tl.LayerNorm(),
+          feed_forward,
+          hidden_dropout,
       )
   ]
 

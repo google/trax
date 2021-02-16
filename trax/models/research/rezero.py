@@ -358,7 +358,9 @@ def _EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
           dropout_,
       ),
       ResidualZero(
-          feed_forward
+          tl.LayerNorm(),
+          feed_forward,
+          dropout_,
       ),
   ]
 
@@ -397,7 +399,9 @@ def _DecoderBlock(d_model, d_ff, n_heads,
           dropout_,
       ),
       ResidualZero(
-          feed_forward
+          tl.LayerNorm(),
+          feed_forward,
+          dropout_,
       ),
   ]
 
@@ -449,7 +453,9 @@ def _EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
           _Dropout(),                  # vec_d masks vec_e
       ),
       ResidualZero(
-          feed_forward                 # vec_d masks vec_e
+          tl.LayerNorm(),
+          feed_forward,                # vec_d masks vec_e
+          _Dropout(),
       ),
   ]
 
@@ -469,18 +475,14 @@ def _FeedForwardBlock(d_model, d_ff, dropout, dropout_shared_axes,
   Returns:
     A list of layers which maps vectors to vectors.
   """
-  dropout_middle = tl.Dropout(
-      rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
-  dropout_final = tl.Dropout(
+  dropout = tl.Dropout(
       rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
 
   return [
-      tl.LayerNorm(),
       tl.Dense(d_ff),
       activation(),
-      dropout_middle,
+      dropout,
       tl.Dense(d_model),
-      dropout_final,
   ]
 
 

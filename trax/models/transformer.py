@@ -438,7 +438,9 @@ def _EncoderBlock(d_model,
           _Dropout(),
       ),
       tl.Residual(
-          _FFBlock()
+          tl.LayerNorm(),
+          _FFBlock(),
+          _Dropout(),
       ),
   ]
 
@@ -495,7 +497,9 @@ def _DecoderBlock(d_model,
           _Dropout(),
       ),
       tl.Residual(
-          _FFBlock()
+          tl.LayerNorm(),
+          _FFBlock(),
+          _Dropout(),
       ),
   ]
 
@@ -561,7 +565,9 @@ def _EncoderDecoderBlock(d_model,
           _Dropout(),
       ),
       tl.Residual(
-          _FFBlock()
+          tl.LayerNorm(),
+          _FFBlock(),
+          _Dropout(),
       ),
   ]
 
@@ -597,11 +603,9 @@ def _FeedForwardBlock(d_model,
     return tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
 
   return [
-      tl.LayerNorm(),
       tl.Dense(d_ff),
       activation(),
       _Dropout(),
       tl.Dense(d_model),
-      _Dropout(),
   ]
 
