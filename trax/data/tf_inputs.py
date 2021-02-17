@@ -206,15 +206,16 @@ def _train_and_eval_dataset(dataset_name,
      * supervised_keys: information what's the input and what's the target,
          ie., a pair of lists with input and target feature names.
   """
+  logging.info('Building TF data pipeline for %s', dataset_name)
   if dataset_name.startswith('t2t_'):
     return _train_and_eval_dataset_v1(dataset_name[4:], data_dir,
                                       train_shuffle_files, eval_shuffle_files)
   dataset_builder = tfds.builder(dataset_name, data_dir=data_dir)
   info = dataset_builder.info
   splits = dataset_builder.info.splits
-  if tfds.Split.TRAIN not in splits:
+  if dataset_name != 'c4/multilingual' and tfds.Split.TRAIN not in splits:
     raise ValueError('To train we require a train split in the dataset.')
-  train_split = tfds.Split.TRAIN
+  train_split = tfds.Split.TRAIN if dataset_name != 'c4/multilingual' else 'en'
   train_examples = info.splits[train_split].num_examples
   eval_holdout_examples = int(train_examples * eval_holdout_size)
   if eval_holdout_examples > 0 or subsplit is not None:
@@ -224,13 +225,14 @@ def _train_and_eval_dataset(dataset_name,
     if train_end - train_start < 1:
       raise ValueError('Requested train subsplit has no examples: '
                        'n_train %d subsplit %s' % (n_train, subsplit))
-    train_split = f'train[{train_start}:{train_end}]'
+    train_split = f'{train_split}[{train_start}:{train_end}]'
 
   if eval_holdout_examples > 0:
-    eval_split = f'train[{eval_holdout_examples}:]'
+    eval_split = f'{train_split}[{eval_holdout_examples}:]'
   elif dataset_name == 'glue/mnli':
     eval_split = 'validation_matched'
-    # TODO(kitaev): Support diagnostic dataset (AX)
+  elif dataset_name == 'c4/multilingual':
+    eval_split = 'en-validation'
   else:
     if tfds.Split.VALIDATION not in splits and 'test' not in splits:
       raise ValueError('We require a validation or test split in the dataset.')

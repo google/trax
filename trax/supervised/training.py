@@ -190,7 +190,6 @@ class Loop:
     # TODO(lukaszkaiser): can we have different eval models and save memory?
     if use_memory_efficient_trainer:
       assert len(tasks) == 1, 'only single task supported for now'
-      assert len(eval_tasks) < 2, 'a most 1 eval task supported for now'
       self._eval_model = model
 
     default_at = _at_step_1_and_every_nth_step(tasks[0].n_steps_per_checkpoint)
