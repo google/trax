@@ -135,7 +135,12 @@ def Parallel(fns=None, counters=None):  # pylint: disable=invalid-name
 
     generators = []
     for f in fns:
-      generators.append(f(gen))
+      if gen:
+        generators.append(f(gen))
+      else:
+        # This handles the case when the function f cannot be
+        # called on None.
+        generators.append(f())
 
     current_counters = [0]*len(generators)
     while True:

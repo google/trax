@@ -124,8 +124,8 @@ class InputsTest(parameterized.TestCase):
 
   def test_parallel(self):
     """Check that data.Serial works inside another data.Serial."""
-    dataset1 = lambda _: (i for i in range(10))
-    dataset2 = lambda _: (i for i in range(10, 20))
+    dataset1 = lambda: (i for i in range(10))
+    dataset2 = lambda: (i for i in range(10, 20))
     parallel = data.Parallel([dataset1, dataset2])
     generator = parallel()
 
@@ -136,10 +136,28 @@ class InputsTest(parameterized.TestCase):
     self.assertEqual(next(generator), 2)
     self.assertEqual(next(generator), 12)
 
-  def test_parallel_with_weights(self):
+  def test_parallel_with_gen_not_none(self):
     """Check that data.Serial works inside another data.Serial."""
     dataset1 = lambda _: (i for i in range(10))
     dataset2 = lambda _: (i for i in range(10, 20))
+    parallel = data.Parallel([dataset1, dataset2])
+
+    def test_generator():
+      yield 0
+
+    generator = parallel(gen=test_generator)
+
+    self.assertEqual(next(generator), 0)
+    self.assertEqual(next(generator), 10)
+    self.assertEqual(next(generator), 1)
+    self.assertEqual(next(generator), 11)
+    self.assertEqual(next(generator), 2)
+    self.assertEqual(next(generator), 12)
+
+  def test_parallel_with_weights(self):
+    """Check that data.Serial works inside another data.Serial."""
+    dataset1 = lambda: (i for i in range(10))
+    dataset2 = lambda: (i for i in range(10, 20))
     parallel = data.Parallel([dataset1, dataset2], counters=(2, 1))
     generator = parallel()
 
@@ -156,9 +174,9 @@ class InputsTest(parameterized.TestCase):
 
   def test_parallel_with_weights_three_datasets(self):
     """Check that data.Serial works inside another data.Serial."""
-    dataset1 = lambda _: (i for i in range(10))
-    dataset2 = lambda _: (i for i in range(10, 20))
-    dataset3 = lambda _: (i for i in range(20, 30))
+    dataset1 = lambda: (i for i in range(10))
+    dataset2 = lambda: (i for i in range(10, 20))
+    dataset3 = lambda: (i for i in range(20, 30))
     parallel = data.Parallel(
         [dataset1, dataset2, dataset3], counters=(2, 1, 3))
     generator = parallel()
