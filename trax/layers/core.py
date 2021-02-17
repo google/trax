@@ -179,7 +179,7 @@ class Embedding(base.Layer):
     Returns:
       Tensor of embedding vectors.
     """
-    embedded = jnp.take(self.weights, x, axis=0)
+    embedded = jnp.take(self.weights, x, axis=0, mode='clip')
     if self._use_bfloat16:  # Return float32 activations w/ bfloat16 weights.
       embedded = embedded.astype(jnp.float32)
     return embedded

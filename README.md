@@ -193,7 +193,7 @@ class Embedding(base.Layer):
     Returns:
       Tensor of embedding vectors.
     """
-    return jnp.take(self.weights, x, axis=0)
+    return jnp.take(self.weights, x, axis=0, mode='clip')
 
   def init_weights_and_state(self, input_signature):
     """Returns tensor of newly initialized embedding vectors."""

@@ -151,7 +151,7 @@ def _shuffle_layer(inputs, shuffle_fn):
 
   indices = np.arange(0, seq_length).astype('int32')
   rev_indices = shuffle_fn(indices, n_bits)
-  return jnp.take(inputs, rev_indices, axis=1)
+  return jnp.take(inputs, rev_indices, axis=1, mode='clip')
 
 
 @assert_shape('bld->bld')
