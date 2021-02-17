@@ -74,7 +74,8 @@ def TransformerEncoder(vocab_size,
     n_heads: Number of attention heads.
     max_len: Maximum symbol length for positional encoding.
     dropout: Stochastic rate (probability) for dropping an activation value
-        when applying dropout within an encoder block.
+        when applying dropout within encoder blocks. The same rate is also
+        used for attention dropout in encoder blocks.
     dropout_shared_axes: Tensor axes on which to share a dropout mask.
         Sharing along batch and sequence axes (``dropout_shared_axes=(0,1)``)
         is a useful way to save memory and apply consistent masks to activation
@@ -152,7 +153,8 @@ def TransformerDecoder(vocab_size=None,
     n_heads: Number of attention heads.
     max_len: Maximum symbol length for positional encoding.
     dropout: Stochastic rate (probability) for dropping an activation value
-        when applying dropout within a decoder block.
+        when applying dropout within decoder blocks. The same rate is also
+        used for attention dropout in decoder blocks.
     dropout_shared_axes: Tensor axes on which to share a dropout mask.
         Sharing along batch and sequence axes (``dropout_shared_axes=(0,1)``)
         is a useful way to save memory and apply consistent masks to activation
@@ -228,7 +230,8 @@ def TransformerLM(vocab_size,
     n_heads: Number of attention heads.
     max_len: Maximum symbol length for positional encoding.
     dropout: Stochastic rate (probability) for dropping an activation value
-        when applying dropout within an decoder block.
+        when applying dropout within decoder blocks. The same rate is also
+        used for attention dropout in decoder blocks.
     dropout_shared_axes: Tensor axes on which to share a dropout mask.
         Sharing along batch and sequence axes (``dropout_shared_axes=(0,1)``)
         is a useful way to save memory and apply consistent masks to activation
@@ -314,7 +317,8 @@ def Transformer(input_vocab_size,
     n_heads: Number of attention heads.
     max_len: Maximum symbol length for positional encoding.
     dropout: Stochastic rate (probability) for dropping an activation value
-        when applying dropout within an encoder/decoder block.
+        when applying dropout within encoder/decoder blocks. The same rate is
+        also used for attention dropout in encoder/decoder blocks.
     dropout_shared_axes: Tensor axes on which to share a dropout mask.
         Sharing along batch and sequence axes (``dropout_shared_axes=(0,1)``)
         is a useful way to save memory and apply consistent masks to activation
@@ -408,7 +412,8 @@ def _EncoderBlock(d_model,
         :py:class:`Dense` layer in the feedforward part of each block.
     n_heads: Number of attention heads.
     dropout: Stochastic rate (probability) for dropping an activation value
-        when applying dropout within a block.
+        when applying dropout within encoder blocks. The same rate is also used
+        for attention dropout in encoder blocks.
     dropout_shared_axes: Tensor axes on which to share a dropout mask.
         Sharing along batch and sequence axes (``dropout_shared_axes=(0,1)``)
         is a useful way to save memory and apply consistent masks to activation
@@ -466,7 +471,8 @@ def _DecoderBlock(d_model,
         :py:class:`Dense` layer in the feedforward part of each block.
     n_heads: Number of attention heads.
     dropout: Stochastic rate (probability) for dropping an activation value
-        when applying dropout within a block.
+        when applying dropout within decoder blocks. The same rate is also used
+        for attention dropout in decoder blocks.
     dropout_shared_axes: Tensor axes on which to share a dropout mask.
         Sharing along batch and sequence axes (``dropout_shared_axes=(0,1)``)
         is a useful way to save memory and apply consistent masks to activation
@@ -524,7 +530,8 @@ def _EncoderDecoderBlock(d_model,
         :py:class:`Dense` layer in the feedforward part of each block.
     n_heads: Number of attention heads.
     dropout: Stochastic rate (probability) for dropping an activation value
-        when applying dropout within a block.
+        when applying dropout within encoder/decoder blocks. The same rate is
+        also used for attention dropout in encoder/decoder blocks.
     dropout_shared_axes: Tensor axes on which to share a dropout mask.
         Sharing along batch and sequence axes (``dropout_shared_axes=(0,1)``)
         is a useful way to save memory and apply consistent masks to activation

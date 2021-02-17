@@ -19,8 +19,8 @@ r"""Attention-related layers, as used in Transformer(-like) models.
 Attention is a trainable mechanism for mapping between collections of vectors:
 
 .. math::
-    \text{Attention}: \mathbf{X}^{M} \rightarrow \mathbf{Y}^{N}\!,
-    \ \text{for} \ \mathbf{X} \in \mathbb{R}^k\!, \mathbf{Y} \in \mathbb{R}^l
+    \text{Attention}: \mathbf{X}^{n} \rightarrow \mathbf{X}^{m}\!,
+    \ \text{for} \ \mathbf{X} \in \mathbb{R}^d
 
 Whereas classic neural networks assemble nodes of real numbers with
 weighted connections:
@@ -64,13 +64,14 @@ from trax.layers.research import sparsity
 # inputs are [batch, length, depth], [batch, 1, 1 length]
 @assert_shape('bld,b11l->bld,b11l')
 def Attention(d_feature, n_heads=1, dropout=0.0, mode='train'):
-  """Returns a layer that maps (activations, mask) to (new_activations, mask).
+  """Returns a layer that maps (vectors, mask) to (new_vectors, mask).
 
-  This layer type represents one pass of multi-head self-attention, best
-  known for its central role in Transformer models. Internally, it:
+  This layer type represents one pass of multi-head self-attention, from vector
+  set to vector set, using masks to represent out-of-bound (e.g., padding)
+  positions. It:
 
-    - maps incoming sequence of activations to sequence of (query, key, value)
-      triples,
+    - maps incoming sequence of activations vectors to sequence of (query, key,
+      value) triples,
     - splits queries, keys, and values into multiple 'heads',
     - computes per-head attention weights from per-head (queries, keys),
     - applies mask to screen out positions that come from padding tokens,
@@ -82,8 +83,11 @@ def Attention(d_feature, n_heads=1, dropout=0.0, mode='train'):
   Args:
     d_feature: Depth/dimensionality of feature embedding.
     n_heads: Number of attention heads.
-    dropout: Probababilistic rate for internal dropout applied to attention
-        activations (based on query-key pairs) before dotting them with values.
+    dropout: Probababilistic rate for attention dropout, which overrides
+        (sets to zero) some attention strengths derived from query-key
+        matching. As a result, on a given forward pass, some value vectors
+        don't contribute to the output, analogous to how regular dropout can
+        cause some node activations to be ignored.
     mode: One of ``'train'``, ``'eval'``, or ``'predict'``.
   """
   return cb.Serial(
@@ -98,19 +102,23 @@ def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train',
                  result_sparsity=None):
   """Returns a layer that maps (q, k, v, mask) to (activations, mask).
 
-  See ``Attention`` above for further context/details.
+  See :py:class:`Attention` above for further context/details.
 
   Args:
     d_feature: Depth/dimensionality of feature embedding.
     n_heads: Number of attention heads.
-    dropout: Probababilistic rate for internal dropout applied to attention
-        activations (based on query-key pairs) before dotting them with values.
+    dropout: Probababilistic rate for attention dropout, which overrides
+        (sets to zero) some attention strengths derived from query-key
+        matching. As a result, on a given forward pass, some value vectors
+        don't contribute to the output, analogous to how regular dropout can
+        cause some node activations to be ignored.
     mode: One of ``'train'``, ``'eval'``, or ``'predict'``.
-    cache_KV_in_predict: Whether to cache K/V tensors in predict mode.
-    q_sparsity: Sparsity with which to process queries. If None, Dense is
-        used. If 'noop' then no processing is used.
-    result_sparsity: Sparsity with which to process result of the attention. If
-        None, Dense is used. If 'noop' then no processing is used.
+    cache_KV_in_predict: Whether to cache K/V arrays in ``'predict'`` mode.
+    q_sparsity: Sparsity with which to process queries. If ``None``,
+        :py:class:`Dense` is used; if ``'noop'``, no processing is used.
+    result_sparsity: Sparsity with which to process result of the attention.
+        If ``None``, :py:class:`Dense` is used; if ``'noop'``, no processing is
+        used.
   """
   k_processor = core.Dense(d_feature)
   v_processor = core.Dense(d_feature)
@@ -176,8 +184,11 @@ class PureAttention(base.Layer):
 
     Args:
       n_heads: Number of attention heads.
-      dropout: Probababilistic rate for dropout applied to attention strengths
-          (based on query-key pairs) before applying them to values.
+      dropout: Probababilistic rate for attention dropout, which overrides
+          (sets to zero) some attention strengths derived from query-key
+          matching. As a result, on a given forward pass, some value vectors
+          don't contribute to the output, analogous to how regular dropout can
+          cause some node activations to be ignored.
       mode: One of ``'train'``, ``'eval'``, or ``'predict'``.
     """
     super().__init__(n_in=4, n_out=2)
@@ -230,8 +241,11 @@ def DotProductAttention(queries, keys, values, mask, dropout, mode, rng):
     keys: Per-head activations representing attention keys.
     values: Per-head activations to be combined by computed attention weights.
     mask: Mask that distinguishes positions with real content vs. padding.
-    dropout: Probababilistic rate for dropout applied to attention strengths
-        (based on query-key pairs) before applying them to values.
+    dropout: Probababilistic rate for attention dropout, which overrides
+        (sets to zero) some attention strengths derived from query-key
+        matching. As a result, on a given forward pass, some value vectors
+        don't contribute to the output, analogous to how regular dropout can
+        cause some node activations to be ignored.
     mode: One of ``'train'``, ``'eval'``, or ``'predict'``.
     rng: Single-use random number generator (JAX PRNG key).
 
@@ -259,7 +273,7 @@ def DotProductAttention(queries, keys, values, mask, dropout, mode, rng):
 # (b_size, seq_len, d_feature) --> (b_size*n_heads, seq_len, d_head)
 @assert_shape('bld->...lh')
 def SplitIntoHeads(n_heads, merged_batch_and_head=True):
-  """Returns a layer that reshapes tensors for multi-headed computation."""
+  """Returns a layer that reshapes arrays for multi-headed computation."""
   def f(x):
     batch_size, seq_len, d_feature = x.shape
 
@@ -326,9 +340,13 @@ def CausalAttention(d_feature, n_heads=1, dropout=0.0,
   Args:
     d_feature: Depth/dimensionality of feature embedding.
     n_heads: Number of attention heads.
-    dropout: Probababilistic rate for internal dropout applied to attention
-        activations (based on query-key pairs) before dotting them with values.
-    max_inference_length: maximum length for inference.
+    dropout: Probababilistic rate for attention dropout, which overrides
+        (sets to zero) some attention strengths derived from query-key
+        matching. As a result, on a given forward pass, some value vectors
+        don't contribute to the output, analogous to how regular dropout can
+        cause some node activations to be ignored.
+    max_inference_length: Maximum sequence length allowed in non-training
+        modes.
     mode: One of ``'train'``, ``'eval'``, or ``'predict'``.
   """
   if d_feature % n_heads != 0:
@@ -362,9 +380,13 @@ class DotProductCausalAttention(base.Layer):
     """Creates a DotProductCausalAttention instance.
 
     Args:
-      dropout: Probababilistic rate for dropout applied to attention strengths
-          (based on query-key pairs) before applying them to values.
-      max_inference_length: maximum length of sequences during inference.
+      dropout: Probababilistic rate for attention dropout, which overrides
+          (sets to zero) some attention strengths derived from query-key
+          matching. As a result, on a given forward pass, some value vectors
+          don't contribute to the output, analogous to how regular dropout can
+          cause some node activations to be ignored.
+      max_inference_length: Maximum sequence length allowed in non-training
+          modes.
       mode: One of ``'train'``, ``'eval'``, or ``'predict'``.
     """
     super().__init__(n_in=3, n_out=1)
@@ -430,8 +452,8 @@ def PaddingMask(pad=0):
   """Returns a layer that maps integer sequences to padding masks.
 
   The layer expects as input a batch of integer sequences. The layer output is
-  a tensor that marks for each sequence position whether the integer (e.g., a
-  token ID) in that position represents padding -- value ``pad`` -- versus
+  an N-D array that marks for each sequence position whether the integer (e.g.,
+  a token ID) in that position represents padding -- value ``pad`` -- versus
   text/content -- all other values. The padding mask shape is
   (batch_size, 1, 1, encoder_sequence_length), such that axis 1 will broadcast
   to cover any number of attention heads and axis 2 will broadcast to cover
@@ -443,7 +465,7 @@ def PaddingMask(pad=0):
   def f(x):
     if len(x.shape) != 2:
       raise ValueError(
-          f'Input to PaddingMask must be a rank 2 tensor with shape '
+          f'Input to PaddingMask must be a 2-D array with shape '
           f'(batch_size, sequence_length); instead got shape {x.shape}.')
     batch_size = x.shape[0]
     sequence_length = x.shape[1]
@@ -469,7 +491,7 @@ def EncoderDecoderMask():
   def f(decoder_input, mask):
     if len(decoder_input.shape) != 3:
       raise ValueError(
-          f'Decoder input to EncoderDecoderMask must be a rank 3 tensor with '
+          f'Decoder input to EncoderDecoderMask must be a 3-D array with '
           f'shape (batch_size, decoder_sequence_length, d_model); instead got '
           f'shape {decoder_input.shape}.')
     batch_size = mask.shape[0]
@@ -568,8 +590,8 @@ class PositionalEncoding(base.Layer):
     """Randomly initializes the positional encoding vectors.
 
     Args:
-      input_signature: ``ShapeDtype`` instance characterizing the input this
-          layer should compute on.
+      input_signature: :py:class:`ShapeDtype` instance characterizing the input
+          this layer should compute on.
     """
     d_feature = input_signature.shape[-1]
     pe = np.zeros((self._max_len, d_feature), dtype=np.float32)
@@ -610,7 +632,7 @@ def _fast_inference_init_state(input_signature, buffer_length):
 def _fast_inference_update_state(inputs, state):
   """Updates state of a causal attention layer for fast inference.
 
-  The layer state stores tensors with cached values of keys and values,
+  The layer state stores arrays with cached values of keys and values,
   as well as the mask and an index. To make shapes static, keys and values
   in the state are long, and the index indicates where the new keys and values
   from inputs need to be appended. Mask ensures that attention will only look
