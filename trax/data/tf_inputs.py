@@ -265,7 +265,8 @@ def TFDS(  # pylint: disable=invalid-name
     shuffle_train=True,
     host_id=None,
     n_hosts=None,
-    eval_holdout_size=0):
+    eval_holdout_size=0,
+    prefetch=8):
   """Returns an iterator of numpy arrays representing the dataset."""
   data_dir = download_and_prepare(dataset_name, data_dir)
 
@@ -286,6 +287,8 @@ def TFDS(  # pylint: disable=invalid-name
     return tuple(example[k] for k in keys)
 
   dataset = dataset.map(select_from)
+  if prefetch:
+    dataset = dataset.prefetch(prefetch)
   dataset = dataset.repeat()
 
   def gen(generator=None):
