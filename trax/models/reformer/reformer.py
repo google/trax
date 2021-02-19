@@ -64,7 +64,8 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
           attention_layer=ct.ApplyAttentionLayer(
               attention_type, d_model, n_heads, d_attention_key,
               d_attention_value, True, False, dropout, dropout,
-              attention_chunk_size, mode)),
+              attention_chunk_size, mode),
+          name='ReversibleHalfResidualDecoderAttn'),
        tl.ReversibleSwap()
       ] for _ in range(n_attention_layers)]
 
@@ -73,7 +74,7 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
           ct.FeedForwardWithOptions(
               d_model, d_ff, dropout, [-2], ff_activation, ff_dropout,
               ff_chunk_size, ff_use_sru, ff_sparsity, mode, use_bfloat16),
-          name='ReversibleHalfResidualDecoder'),
+          name='ReversibleHalfResidualDecoderFF'),
        tl.ReversibleSwap()
       ] for _ in range(n_feedforward_layers)]
   # pylint: enable=g-complex-comprehension
@@ -373,6 +374,7 @@ def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
   attention_half_residual = tl.ReversibleHalfResidual(
       tl.LayerNorm(),
       attention_layer=attention,
+      name='ReversibleHalfResidualEncoderAttn'
   )
 
   feed_forward = ct.FeedForwardWithOptions(
@@ -382,7 +384,8 @@ def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
   encoder_block = [
       attention_half_residual,
       tl.ReversibleSwap(),
-      tl.ReversibleHalfResidual(feed_forward),
+      tl.ReversibleHalfResidual(feed_forward,
+                                name='ReversibleHalfResidualEncoderFF'),
   ]
   if use_two_swaps_per_block:
     encoder_block.append(tl.ReversibleSwap())

@@ -3308,7 +3308,7 @@ def _ProjectAndSplitHeads(d_model, n_heads, use_bias, num_weights=2,  # pylint: 
                                  kernel_size=3,
                                  length_kernel_size=length_kernel_size),
              attention.SplitIntoHeads(n_heads)],
-            [cb.Concatenate(),  # use permuted and original for v
+            [cb.Select([0], n_in=2),
              sp.LocallyConvDense(sparsity, d_module, mode=mode, kernel_size=1,
                                  length_kernel_size=length_kernel_size),
              attention.SplitIntoHeads(n_heads)],
@@ -3316,7 +3316,28 @@ def _ProjectAndSplitHeads(d_model, n_heads, use_bias, num_weights=2,  # pylint: 
         core.Fn('QKAvg', lambda x, y: (x + y) / 2.0, n_out=1),
     )
 
-  # We want to train from scratch and have only two weights, w_qk and w_v.
+  if weights_format == 'sparse' and num_weights == 2:
+    d_module = d_model // sparsity
+    # This layer matches sparsity.MultiplicativeConvCausalAttention,
+    # see there for more explanation.
+    # TODO(lukaszkaiser): unify code so that we don't duplicate so much.
+    return cb.Serial(
+        cb.Select([0, 0]),  # pre-qkv, pre-v-for-concat
+        sp.FactoredDense(sparsity, d_model, d_model),  # shared q k
+        cb.Select([0, 0]),  # pre-qk, pre-v, pre-v-for-concat
+        sp.LocallyConvDense(sparsity, d_module, mode=mode, kernel_size=3,
+                            length_kernel_size=length_kernel_size),
+        attention.SplitIntoHeads(n_heads),
+        cb.Parallel(
+            [],
+            [cb.Select([0], n_in=2),
+             sp.LocallyConvDense(sparsity, d_module, mode=mode, kernel_size=1,
+                                 length_kernel_size=length_kernel_size),
+             attention.SplitIntoHeads(n_heads)],
+        )
+    )
+
+   # We want to train from scratch and have only two weights, w_qk and w_v.
   if weights_format == 'model' and num_weights == 2:
     return cb.Branch(
         [core.Dense(d_model, use_bias=use_bias),
@@ -3330,6 +3351,117 @@ def _ProjectAndSplitHeads(d_model, n_heads, use_bias, num_weights=2,  # pylint: 
   raise NotImplementedError('TODO(afrozm): Implement this when we want to use '
                             'checkpoints trained with LSHSelfAttention or '
                             'SelfAttention')
+
+
+class MixedLSHSelfAttention(base.Layer):
+  """LSH attention mixed with standard attention used until std_length."""
+
+  def __init__(self,
+               n_heads=1,
+               d_qk=64,
+               d_v=64,
+               causal=False,
+               masked=False,
+               std_length=None,
+               mode='train',
+               output_dropout=0.0,
+               attention_dropout=0.0,
+               force_no_dropout=False,
+               **pure_lsh_implementation_kwargs):
+    # This class could be replaced with a Branch and tl.Fn(..) selecting
+    # one of the arguments based on the class. But, similarly to the Wrapper
+    # below, we need forward_and_backward currently to pass remembered state
+    # back to the PureLSH layer. We should switch that to the other Remember
+    # mechanism used for the SparseFF layer (and clarify and document that too).
+    # Once this is done, we can remove this and the Wrapper class.
+    attention_dropout = 0.0 if force_no_dropout else attention_dropout
+    output_dropout = 0.0 if force_no_dropout else output_dropout
+    self._lsha = PureLSHSelfAttention(n_heads=n_heads,
+                                      d_qk=d_qk,
+                                      d_v=d_v,
+                                      causal=causal,
+                                      masked=masked,
+                                      mode=mode,
+                                      output_dropout=output_dropout,
+                                      attention_dropout=attention_dropout,
+                                      **pure_lsh_implementation_kwargs)
+    if causal:
+      pure_attn = attention.DotProductCausalAttention
+      preprocess = core.Fn('dup_shared_qk', lambda q, v: (q, q, v), n_out=3)
+    else:
+      pure_attn = attention.DotProductAttention
+      def _add_heads_to_mask(m):
+        m_with_heads = np.reshape(m, (m.shape[0], 1, m.shape[1]))
+        m_with_heads = np.broadcast_to(m_with_heads,
+                                       (m.shape[0], n_heads, m.shape[1]))
+        return np.reshape(m_with_heads, (-1, 1, m.shape[1]))
+      preprocess = core.Fn('dup_shared_qk_and_make_mask',
+                           lambda q, v, m: (q, q, v, _add_heads_to_mask(m)),
+                           n_out=4)
+    self._stda = cb.Serial(
+        preprocess,
+        pure_attn(dropout=attention_dropout, mode=mode)
+    )
+    self._std_length = std_length
+    self._sublayers = [self._lsha, self._stda]
+
+    if self._stda.n_in != self._lsha.n_in:
+      raise ValueError(f'n_in diff: {self._stda.n_in} != {self._lsha.n_in}')
+    if self._stda.n_out != self._lsha.n_out:
+      raise ValueError(f'n_out diff: {self._stda.n_out} != {self._lsha.n_out}')
+    super().__init__(n_in=self._stda.n_in, n_out=self._stda.n_out)
+
+  def init_weights_and_state(self, input_signature):
+    """Initializes weights and state for inputs with the given signature."""
+    states = []
+    for sublayer in [self._lsha, self._stda]:
+      unused_weights_or_cache_marker, state_or_cache_marker = sublayer.init(
+          input_signature, use_cache=False)
+      states.append(state_or_cache_marker)
+    self.state = tuple(states)
+    self.weights = ()  # Wrapper forward_and_backward assumes this is ()
+
+  def forward(self, xs):
+    """Executes this layer as part of a forward pass through the model."""
+    rng1, rng2 = fastmath.random.split(self.rng, 2)
+    l = xs[0].shape[1] if isinstance(xs, tuple) else xs.shape[1]
+    if self._std_length is None or l > self._std_length:
+      s = self.state[0]
+      outputs, s = self._lsha.pure_fn(xs, (), s, rng1, use_cache=True)
+      self.state = (s, self.state[1])
+    else:
+      s = self.state[1]
+      w = ((), ())  # std attention is a Serial(Dup, DotProduct), needs 2 ()
+      outputs, s = self._stda.pure_fn(xs, w, s, rng2, use_cache=True)
+      self.state = (self.state[0], s)
+    return outputs
+
+  def forward_and_or_backward(self, inputs, state, rng,
+                              output_grad=None,
+                              compute_output=True, update_state=True):
+    """Performs batched forward and/or backward passes."""
+    assert compute_output
+    assert not update_state
+
+    l = inputs[0].shape[1] if isinstance(inputs, tuple) else inputs.shape[1]
+    rng1, rng2 = fastmath.random.split(rng, 2)
+    if self._std_length is None or l > self._std_length:
+      # Run the LSH layer
+      s = state[0]
+      (out, unused_new_s, grads_inputs) = self._lsha.forward_and_or_backward(
+          inputs, s, rng1, output_grad=output_grad,
+          compute_output=True, update_state=False)
+    else:
+      # Run the standard layer
+      s, w = state[1], ((), ())
+      out, std_vjp_fn, unused_new_s = fastmath.vjp(
+          self._stda.pure_fn, inputs, w, s, rng2, has_aux=True)
+      if output_grad is not None:
+        grads_inputs, _, _, _ = std_vjp_fn(output_grad)
+      else:
+        grads_inputs = None
+
+    return (out, None, grads_inputs)
 
 
 class PureLSHSelfAttentionWrapper(cb.Serial):
@@ -3347,11 +3479,13 @@ class PureLSHSelfAttentionWrapper(cb.Serial):
                bias=True,
                mode='train',
                num_weights=3,
+               sparsity=16,
                weights_format='model',
                **pure_lsh_implementation_kwargs):
     d_model = d_qk * n_heads
     self._qkv = _ProjectAndSplitHeads(d_model, n_heads, bias,
                                       num_weights=num_weights,
+                                      sparsity=sparsity,
                                       weights_format=weights_format, mode=mode)
     self._attn = pure_lsh_implementation(n_heads=n_heads,
                                          d_qk=d_qk,

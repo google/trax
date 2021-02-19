@@ -468,7 +468,11 @@ class ReversibleSerialTrainer:
     if self._do_free:
       self._free_accelerators()
     process = psutil.Process(os.getpid())
-    logging.info('running step %d', step_int)
+    if isinstance(batch, (list, tuple)):
+      batch_shapes = [x.shape for x in batch]
+    else:
+      batch_shapes = batch.shape
+    logging.info('running step %d on shapes %s', step_int, str(batch_shapes))
     if step_int % self._n_steps_per_log == 1:
       logging.info('run fwd: cpu memory use (MB): %.2f',
                    process.memory_info().rss / float(1024 * 1024))

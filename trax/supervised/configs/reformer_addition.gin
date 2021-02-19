@@ -38,7 +38,7 @@ sequence_copy_inputs.pad_to_multiple = 32
 # Parameters for addition_inputs:
 # ==============================================================================
 addition_inputs.vocab_size = %vocab_size
-addition_inputs.batch_size = 128
+addition_inputs.batch_size = 128  # lower to e.g. 2 to test MixedLSHAttention
 addition_inputs.train_length = 129
 addition_inputs.eval_min_length = 257
 addition_inputs.eval_max_length = 301
@@ -69,6 +69,28 @@ LSHSelfAttention.n_hashes = 2
 LSHSelfAttention.n_parallel_heads = 1
 LSHSelfAttention.max_length_for_buckets = 1024
 
+# Parameters for MixedLSHSelfAttention:
+# ==============================================================================
+MixedLSHSelfAttention.attention_dropout = 0.2
+MixedLSHSelfAttention.chunk_len = 32
+MixedLSHSelfAttention.n_buckets = None
+MixedLSHSelfAttention.n_chunks_after = 0
+MixedLSHSelfAttention.n_chunks_before = 1
+MixedLSHSelfAttention.n_hashes = 2
+MixedLSHSelfAttention.n_parallel_heads = 1
+MixedLSHSelfAttention.predict_drop_len = 1024
+MixedLSHSelfAttention.predict_mem_len = 1024
+MixedLSHSelfAttention.std_length = None  # 128
+MixedLSHSelfAttention.max_length_for_buckets = 1024
+encoder/MixedLSHSelfAttention.n_chunks_after = 1
+
+# Parameters for PureLSHSelfAttentionWrapper:
+# ==============================================================================
+PureLSHSelfAttentionWrapper.pure_lsh_implementation = @MixedLSHSelfAttention
+PureLSHSelfAttentionWrapper.weights_format = 'sparse'
+PureLSHSelfAttentionWrapper.num_weights = 2
+encoder/PureLSHSelfAttentionWrapper.pure_lsh_implementation = @encoder/MixedLSHSelfAttention
+
 # Parameters for ReformerLM:
 # ==============================================================================
 ReformerLM.d_model = 256
@@ -94,6 +116,8 @@ Reformer2.n_decoder_layers = 4
 Reformer2.ff_use_sru = 1
 Reformer2.encoder_attention_type = @Attention
 Reformer2.encoder_decoder_attention_type = @CausalAttention
+# Reformer2.encoder_attention_type = @encoder/PureLSHSelfAttentionWrapper
+# Reformer2.encoder_decoder_attention_type = @PureLSHSelfAttentionWrapper
 Reformer2.input_vocab_size = %vocab_size
 Reformer2.pos_type = None
 Reformer2.pos_start_from_zero_prob = 0.95

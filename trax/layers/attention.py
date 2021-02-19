@@ -210,7 +210,7 @@ class PureAttention(base.Layer):
           f'Dimensionality of feature embedding ({d_feature}) is not a '
           f'multiple of the requested number of attention heads ({n_heads}).')
 
-    per_head_results, dots = DotProductAttention(
+    per_head_results, dots = DotProductAttentionFn(
         SplitIntoHeads(n_heads, merged_batch_and_head=False).forward(q),
         SplitIntoHeads(n_heads, merged_batch_and_head=False).forward(k),
         SplitIntoHeads(n_heads, merged_batch_and_head=False).forward(v),
@@ -225,7 +225,7 @@ class PureAttention(base.Layer):
     return (merged_results, mask)
 
 
-def DotProductAttention(queries, keys, values, mask, dropout, mode, rng):
+def DotProductAttentionFn(queries, keys, values, mask, dropout, mode, rng):
   """Computes new activations via masked attention-weighted sum of values.
 
   This function is the core of the attention mechanism. It:
@@ -267,6 +267,41 @@ def DotProductAttention(queries, keys, values, mask, dropout, mode, rng):
   out = out.astype(jnp.float32)
   dots = dots.astype(jnp.float32)
   return out, dots
+
+
+class DotProductAttention(base.Layer):
+  """Returns a layer that computes raw dot-product attention with mask.
+
+  This layer has no trainable weights and maps (q, k, v, mask) to activations.
+  """
+
+  def __init__(self, dropout=0.0, mode='train'):
+    """Creates a DotProductAttention instance.
+
+    Args:
+      dropout: Probababilistic rate for attention dropout, which overrides
+          (sets to zero) some attention strengths derived from query-key
+          matching. As a result, on a given forward pass, some value vectors
+          don't contribute to the output, analogous to how regular dropout can
+          cause some node activations to be ignored.
+      mode: One of ``'train'``, ``'eval'``, ``'predict'`` or ``'viz'``.
+    """
+    super().__init__(n_in=4, n_out=1)
+    self._dropout = dropout
+    self._mode = mode
+
+  def forward(self, inputs):
+    """Returns attention-computed activations and unchanged mask.
+
+    Args:
+      inputs: A (queries, keys, values, mask) tuple.
+    """
+    q, k, v, mask = inputs
+    res, dots = DotProductAttentionFn(
+        q, k, v, mask, dropout=self._dropout, mode=self._mode, rng=self.rng)
+    if self._mode == 'viz':
+      self.state = dots
+    return res
 
 
 # (b_size, seq_len, d_feature) --> (b_size*n_heads, seq_len, d_head)
@@ -416,7 +451,7 @@ class DotProductCausalAttention(base.Layer):
         mask = np.tril(
             np.ones((1, mask_size, mask_size), dtype=np.bool_), k=0)
 
-    res, dots = DotProductAttention(
+    res, dots = DotProductAttentionFn(
         q, k, v, mask, dropout=self._dropout, mode=self._mode, rng=self.rng)
     if self._mode == 'viz':
       self.state = dots
