@@ -3297,7 +3297,7 @@ def _ProjectAndSplitHeads(d_model, n_heads, use_bias, num_weights=2,  # pylint: 
     # TODO(lukaszkaiser): unify code so that we don't duplicate so much.
     return cb.Serial(
         cb.Select([0, 0]),  # duplicate activations
-        sp.MultiplicativeSparseDense(sparsity, d_model, d_model),
+        sp.FactoredDense(sparsity, d_model, d_model),
         cb.Select([0, 0, 0]),  # use for q, k, v
         cb.Parallel(
             [sp.LocallyConvDense(sparsity, d_module, mode=mode,

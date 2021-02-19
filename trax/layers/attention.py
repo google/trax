@@ -133,7 +133,7 @@ def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train',
   else:
     d_module = d_feature // q_sparsity
     q_processor = cb.Serial(
-        sparsity.MultiplicativeSparseDense(q_sparsity, d_feature, d_feature),
+        sparsity.FactoredDense(q_sparsity, d_feature, d_feature),
         sparsity.LocallyConvDense(q_sparsity, d_module, mode=mode,
                                   kernel_size=3, length_kernel_size=3))
 
@@ -144,8 +144,7 @@ def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train',
   else:
     d_module = d_feature // result_sparsity
     result_processor = cb.Serial(
-        sparsity.MultiplicativeSparseDense(result_sparsity, d_feature,
-                                           d_feature),
+        sparsity.FactoredDense(result_sparsity, d_feature, d_feature),
         sparsity.LocallyConvDense(result_sparsity, d_module, mode=mode,
                                   kernel_size=3, length_kernel_size=3))
 
