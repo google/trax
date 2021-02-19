@@ -1031,11 +1031,9 @@ class _SparseFFController(base.Layer):
     x = jnp.reshape(x, [-1, x_shape[-1]])  # Easier to operate on flattened x.
 
     # Q: should we add bias and/or put relu after the low-rank m1 dot?
-    # TODO(jaszczur): replacing multiplication and reshape by this einsum may
-    # bring training speed improvement (see also reshape in initialization).
-    # mask_logits = jnp.einsum('bd,dl,lxy->bxy', x, m1, m2) + mb
-    mask_logits = jnp.dot(jnp.dot(x, m1), m2) + mb
-    mask_logits = jnp.reshape(mask_logits, [-1, self._d1, self._d2])
+    # Replacing multiplication and reshape by this einsum brings training speed
+    # improvement (see also reshape in initialization).
+    mask_logits = jnp.einsum('bd,dl,lxy->bxy', x, m1, m2) + mb
 
     if self._also_return_nondiscrete_output:
       # Softmax.
@@ -1081,9 +1079,9 @@ class _SparseFFController(base.Layer):
       m2 = m2.astype(jnp.bfloat16)
       mb = mb.astype(jnp.bfloat16)
 
-    # Reshapes below, with einsum in feedforward, should improve training speed.
-    # m2 = jnp.reshape(m2, [self._d_lowrank, self._d1, self._d2])
-    # mb = jnp.reshape(mb, [self._d1, self._d2])
+    # Reshapes below, with einsum in feedforward, improve the training speed.
+    m2 = jnp.reshape(m2, [self._d_lowrank, self._d1, self._d2])
+    mb = jnp.reshape(mb, [self._d1, self._d2])
 
     self.weights = (m1, m2, mb)
 
