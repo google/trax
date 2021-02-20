@@ -1279,7 +1279,12 @@ def SparseFF(
           kernel_initializer=kernel_initializer,
           bias_initializer=bias_initializer,
           multiply_by_controller_output=multiply_by_controller_output),
+      # quant_mask, emb
+      tl.Select([1, 0]),
+      # emb, quant_mask
       tl.Dropout(rate=dropout_rate, shared_axes=dropout_shared_axes, mode=mode),
+      tl.Select([1, 0]),
+      # quant_mask, emb
   ]
 
   # We will "remember" quant_mask _after_ chunking, and "recall" this same
