@@ -231,7 +231,8 @@ def DotProductAttentionFn(queries, keys, values, mask, dropout, mode, rng):
   This function is the core of the attention mechanism. It:
     - computes per-head attention weights from per-head ``queries`` and
       ``keys``,
-    - applies ``mask`` to screen out positions that come from padding tokens,
+    - applies ``mask`` to screen out positions that come from padding tokens
+      (mask value 0 marks padding positions),
     - optionally applies dropout to attention weights, and
     - uses attention weights to combine per-head ``values`` vectors.
 
@@ -249,24 +250,30 @@ def DotProductAttentionFn(queries, keys, values, mask, dropout, mode, rng):
     rng: Single-use random number generator (JAX PRNG key).
 
   Returns:
-    Per-head activations resulting from masked per-head attention-weighted
-    sum of per-head values.
+    Tuple of (activations, attn_strengths), where activations are new per-head
+    activation vectors and attn_strengths is a matrix of per-head attention
+    strengths.
   """
+  if dropout >= 1.0:
+    raise ValueError(f'Dropout rate ({dropout}) must be lower than 1.')
+
   d_feature = queries.shape[-1]
+
   dots = jnp.matmul(queries, jnp.swapaxes(keys, -1, -2)) / jnp.sqrt(d_feature)
   if mask is not None:
-    dots = jnp.where(mask, dots, jnp.full_like(dots, -1e9))
-  # Softmax.
-  dots = jnp.exp(dots - fastmath.logsumexp(dots, axis=-1, keepdims=True))
-  if dropout >= 1.0:
-    raise ValueError('Dropout rates must be lower than 1.')
+    dots = jnp.where(mask,
+                     dots,
+                     jnp.full_like(dots, -1e9))
+  attn_strengths = (
+      jnp.exp(dots - fastmath.logsumexp(dots, axis=-1, keepdims=True)))
   if dropout is not None and dropout > 0.0 and mode == 'train':
-    keep = fastmath.random.bernoulli(rng, 1.0 - dropout, dots.shape)
-    dots = jnp.where(keep, dots / (1.0 - dropout), jnp.zeros_like(dots))
-  out = jnp.matmul(dots, values)
-  out = out.astype(jnp.float32)
-  dots = dots.astype(jnp.float32)
-  return out, dots
+    keep = fastmath.random.bernoulli(rng, 1.0 - dropout, attn_strengths.shape)
+    attn_strengths = jnp.where(keep,
+                               attn_strengths / (1.0 - dropout),
+                               jnp.zeros_like(attn_strengths))
+  activations = jnp.matmul(attn_strengths, values).astype(jnp.float32)
+  attn_strengths = attn_strengths.astype(jnp.float32)
+  return activations, attn_strengths
 
 
 class DotProductAttention(base.Layer):
@@ -297,11 +304,11 @@ class DotProductAttention(base.Layer):
       inputs: A (queries, keys, values, mask) tuple.
     """
     q, k, v, mask = inputs
-    res, dots = DotProductAttentionFn(
+    activations, attn_strengths = DotProductAttentionFn(
         q, k, v, mask, dropout=self._dropout, mode=self._mode, rng=self.rng)
     if self._mode == 'viz':
-      self.state = dots
-    return res
+      self.state = attn_strengths
+    return activations
 
 
 # (b_size, seq_len, d_feature) --> (b_size*n_heads, seq_len, d_head)
@@ -440,27 +447,29 @@ class DotProductCausalAttention(base.Layer):
       self.state = _fast_inference_update_state(inputs, self.state)
       (k, v, mask, _) = self.state
     else:
-      mask_size = q.shape[-2]
-      # Not all backends define jnp.tril. However, using np.tril is inefficient
-      # in that it creates a large global constant. TODO(kitaev): try to find an
-      # alternative that works across all backends.
-      if fastmath.is_backend(fastmath.Backend.JAX):
-        mask = jnp.tril(
-            jnp.ones((1, mask_size, mask_size), dtype=np.bool_), k=0)
-      else:
-        mask = np.tril(
-            np.ones((1, mask_size, mask_size), dtype=np.bool_), k=0)
+      sequence_length = q.shape[-2]
+      mask = _causal_mask(sequence_length)
 
-    res, dots = DotProductAttentionFn(
+    activations, attn_strengths = DotProductAttentionFn(
         q, k, v, mask, dropout=self._dropout, mode=self._mode, rng=self.rng)
     if self._mode == 'viz':
-      self.state = dots
-    return res
+      self.state = attn_strengths
+    return activations
 
   def init_weights_and_state(self, input_signature):
     """Initializes this layer for fast inference, if in ``'predict'`` mode."""
     if self._mode == 'predict':
       self.state = _fast_inference_init_state(input_signature, self._max_len)
+
+
+def _causal_mask(length):
+  # Not all backends define jnp.tril. However, using np.tril is inefficient
+  # in that it creates a large global constant. TODO(kitaev): try to find an
+  # alternative that works across all backends.
+  if fastmath.is_backend(fastmath.Backend.JAX):
+    return jnp.tril(jnp.ones((1, length, length), dtype=np.bool_), k=0)
+  else:
+    return np.tril(np.ones((1, length, length), dtype=np.bool_), k=0)
 
 
 @assert_shape('...d->...d')
