@@ -181,21 +181,22 @@ class TrainerTest(absltest.TestCase):
 
   def test_run_reversible_same_as_default_reformer2(self):
     """Runs the reversible trainer, check results are the same as default."""
-    inputs_batch = np.arange(8).reshape((2, 4))
+    inputs_batch = np.arange(8).reshape((2, 4)) + 1
     targets_batch = 2 * inputs_batch
     labeled_batch = (inputs_batch, targets_batch, np.ones_like(targets_batch))
     int_sig = shapes.ShapeDtype((2, 4), dtype=np.int32)
     input_sig = (int_sig, int_sig, int_sig)
     # We want to test rng propagation too, so adding some dropout layers.
-    model = reformer.Reformer2(20, d_model=8, d_ff=16, n_heads=1,
-                               n_encoder_layers=1, n_decoder_layers=1,
-                               loss_sparsity=2)
+    model = reformer.Reformer2(20, d_model=8, d_ff=32, n_heads=1, dropout=0.0,
+                               n_encoder_layers=2, n_decoder_layers=2,
+                               ff_sparsity=(4, 8, 0.0, 1.0),
+                               pos_type=None, reversible_encoder=True)
     loss = tl.Serial(tl.LogSoftmax(), tl.CrossEntropyLoss())
-    optimizer_fn = optimizers.SGD  # Adafactor
+    optimizer_fn = optimizers.Adafactor
     blocks, loss_layer = optimizers.trainer.extract_reversible_blocks(
         [model, loss], loss_chunk_size=4)
     blocks_serial = [(tl.Serial(std), rev) for (std, rev) in blocks]
-    model_with_loss = tl.Serial(blocks_serial + [loss_layer])
+    model_with_loss = tl.Serial(model, loss)
     rng_init = fastmath.random.get_prng(12)
     model_with_loss.init(input_sig, rng=rng_init)
 
