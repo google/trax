@@ -336,18 +336,22 @@ def batch(generator, batch_size):
       try:
         batched_example = tuple(np.stack(x) for x in zip(*buf))
       except ValueError as e:
-        for i in range(len(buf)):
-          logging.error('batch[%d] input shape: %r output shape: %r',
-                        i, buf[i][0].shape, buf[i][1].shape)
-        logging.error('buf: %r', buf)
+        for j in range(len(buf)):
+          logging.error('Batch[%d][%d] input shape: %r output shape: %r',
+                        i, j, buf[j][0].shape, buf[j][1].shape)
+        for j in range(len(buf)):
+          logging.error('Batch[%d][%d] input: %r', i, j, buf[j][0])
+          logging.error('Batch[%d][%d] output: %r', i, j, buf[j][1])
         raise e
       # Note that it's the same shape as each example with added batch dim.
       i += 1
       if i & (i - 1) == 0:
         logging.info('Batch[%d] = %r', i, batched_example)
         batched_inputs = batched_example[0]
-        for idx, inp in enumerate(batched_inputs):
-          logging.info('Input[%d][%d] = %r', i, idx, inp)
+        batched_outputs = batched_example[1]
+        for idx, io in enumerate(zip(batched_inputs, batched_outputs)):
+          logging.info('Input[%d][%d] = %r', i, idx, io[0])
+          logging.info('Output[%d][%d] = %r', i, idx, io[1])
         for idx, inp in enumerate(batched_inputs):
           logging.info('Hash[%d][%d] = %r', i, idx, zlib.adler32(bytes(inp)))
       yield batched_example
@@ -357,6 +361,24 @@ def batch(generator, batch_size):
 def Batch(batch_size):  # pylint: disable=invalid-name
   """Returns a batching function with given batch size."""
   return lambda g: batch(g, batch_size)
+
+
+def UnBatch():  # pylint: disable=invalid-name
+  """Returns a function which unbatches."""
+  def _unbatch(generator):
+    for batched_example in generator:
+      # batched_example is usually like:
+      # (batched_inputs, batched_outputs) or
+      # (batched_inputs, batched_outputs, batched_weights)
+      assert isinstance(batched_example, tuple)
+      # assert all lengths are the same.
+      batch_sizes = list(set(map(lambda example: example.shape[0],
+                                 batched_example)))
+      assert len(batch_sizes) == 1
+      # Now unbatch examples.
+      for example_idx in range(batch_sizes[0]):
+        yield tuple(map(lambda x: x[example_idx], batched_example))  # pylint: disable=cell-var-from-loop
+  return _unbatch
 
 
 def pad_to_max_dims(tensors, boundary=None, strict_pad_on_len=False):
@@ -1361,45 +1383,36 @@ def consume_noise_mask(vocab_size=32100):
   return _f
 
 
-def generate_prefix_lm_sequential_chunks(max_length=None):
-  """Returns a function that generates prefix lm chunks of max_length length."""
+def PrefixLM(input_length=128, output_length=512):  # pylint:disable=invalid-name
+  """Chunks examples so as to make inputs/outputs of specified lenghts."""
   def _f(generator):
     for example in generator:
       n_tokens = len(example)
-      # Don't want extremely short chunks.
-      if n_tokens < 2:
-        continue
-      # The whole document is less than max_length.
-      if n_tokens <= max_length:
-        # Generate a shorter input output pair.
-        half = n_tokens // 2
-        yield (example[:half], example[half:])
-      n_segments = int(math.ceil(float(n_tokens) / float(max_length)))
-      # Go over all but the last segment and make (overlapping) pairs.
-      # So with | showing chunks, the following doc:
-      # | 1 2 3 | 4 5 6 | 7 8
-      # Makes i/o pairs:
-      # (1 2 3, 4 5 6), (4 5 6, 7 8)
-      for i in range(n_segments - 1):
-        start1 = max_length * i
-        start2 = start1 + max_length
-        end2 = min(start2 + max_length, n_tokens)
-        yield (example[start1:start2], example[start2:end2])
+      # Iterate:
+      # |--------|<---- input_length ---->|<- output_length ->|--------------|
+      # ^        ^                        ^                   ^
+      # |        |                        |                   |
+      # 0        input_begin_idx          input_end_idx       output_end_idx
+      input_begin_idx = 0
+      # While you can make an input batch, keep going.
+      while input_begin_idx + input_length < n_tokens:
+        input_end_idx = input_begin_idx + input_length
+        output_end_idx = min(input_end_idx + output_length, n_tokens)
+        yield (example[input_begin_idx:input_end_idx],
+               example[input_end_idx:output_end_idx])
+        # Update the indices.
+        input_begin_idx = output_end_idx
   return _f
 
 
-def MixMLMAndPrefixLM(mlm_rate=4,  # pylint:disable=invalid-name
-                      prefix_lm_rate=1,
-                      noise_density=0.15,
-                      mean_noise_span_length=3.0,
-                      vocab_size=None,
-                      max_length=512):
-  """Parallel between MLM and PrefixLM outputs."""
-  assert vocab_size
-  mlm = Serial(
-      # Generate sequential chunks - take one away from max_length, since 1 will
-      # be appended later.
-      generate_sequential_chunks(max_length=max_length - 1),
+def MLM(vocab_size=None,  # pylint:disable=invalid-name
+        max_length=None,
+        noise_density=0.15,
+        mean_noise_span_length=3.0):
+  """Pipeline that just does MLM."""
+  return Serial(
+      # Generate sequential chunks.
+      generate_sequential_chunks(max_length=max_length),
       # Generate mask and chunk.
       generate_random_noise_mask(
           noise_density=noise_density,
@@ -1407,9 +1420,3 @@ def MixMLMAndPrefixLM(mlm_rate=4,  # pylint:disable=invalid-name
       # Consume mask and chunk to give (input, targets).
       consume_noise_mask(vocab_size=vocab_size),
   )
-  if mlm_rate > 0 and prefix_lm_rate == 0:
-    return mlm
-  prefix_lm = generate_prefix_lm_sequential_chunks(max_length=max_length - 1)
-  if prefix_lm_rate > 0 and mlm_rate == 0:
-    return prefix_lm
-  return Parallel([mlm, prefix_lm], counters=(mlm_rate, prefix_lm_rate))

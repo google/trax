@@ -553,16 +553,39 @@ class InputsTest(parameterized.TestCase):
         # pylint: enable=bad-continuation,bad-whitespace
         )
 
-  def test_generate_prefix_lm_sequential_chunks(self):
-    chunker_fn = data.generate_prefix_lm_sequential_chunks(max_length=3)
-    examples = list(chunker_fn([[1, 2, 3, 4, 5, 6, 7]]))
-    self.assertSequenceEqual(([1, 2, 3], [4, 5, 6]), examples[0])
-    self.assertSequenceEqual(([4, 5, 6], [7]), examples[1])
+  def test_prefix_lm_last_output_batch_is_short(self):
+    prefix_lm_fn = data.PrefixLM(input_length=2, output_length=3)
+    examples = list(prefix_lm_fn([[1, 2, 3, 4, 5, 6, 7, 8]]))
+    self.assertSequenceEqual(([1, 2], [3, 4, 5]), examples[0])
+    self.assertSequenceEqual(([6, 7], [8]), examples[1])
+    self.assertLen(examples, 2)
 
-  def test_generate_prefix_lm_sequential_chunks_short_chunks(self):
-    chunker_fn = data.generate_prefix_lm_sequential_chunks(max_length=10)
-    examples = list(chunker_fn([[1, 2, 3, 4, 5, 6, 7]]))
-    self.assertSequenceEqual(([1, 2, 3], [4, 5, 6, 7]), examples[0])
+  def test_prefix_lm_last_input_batch_is_short(self):
+    prefix_lm_fn = data.PrefixLM(input_length=2, output_length=3)
+    examples = list(prefix_lm_fn([[1, 2, 3, 4, 5, 6]]))
+    self.assertSequenceEqual(([1, 2], [3, 4, 5]), examples[0])
+    self.assertLen(examples, 1)
+
+  def test_prefix_lm_last_input_batch_exists_but_no_output(self):
+    prefix_lm_fn = data.PrefixLM(input_length=2, output_length=3)
+    examples = list(prefix_lm_fn([[1, 2, 3, 4, 5, 6, 7]]))
+    self.assertSequenceEqual(([1, 2], [3, 4, 5]), examples[0])
+    self.assertLen(examples, 1)
+
+  def test_unbatch(self):
+    unbatch_fn = data.UnBatch()
+    batched_inputs = [
+        # First batch - 3 examples
+        (np.arange(3*2).reshape(3, -1),
+         np.arange(3*3).reshape(3, -1),
+         np.arange(3*4).reshape(3, -1)),
+        # Second batch - 4 examples
+        (np.arange(4*2).reshape(4, -1),
+         np.arange(4*3).reshape(4, -1),
+         np.arange(4*4).reshape(4, -1)),
+    ]
+    examples = list(unbatch_fn(batched_inputs))
+    self.assertLen(examples, 3 + 4)
 
 if __name__ == '__main__':
   absltest.main()

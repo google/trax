@@ -31,6 +31,7 @@ def data_configure(*args, **kwargs):
 AddLossWeights = data_configure(inputs.AddLossWeights)
 AppendValue = data_configure(inputs.AppendValue)
 Batch = data_configure(inputs.Batch)
+UnBatch = data_configure(inputs.UnBatch)
 BertNextSentencePredictionInputs = data_configure(
     tf_inputs.BertNextSentencePredictionInputs)
 BucketByLength = data_configure(inputs.BucketByLength)
@@ -48,7 +49,8 @@ CreateT5GlueInputs = data_configure(tf_inputs.CreateT5GlueInputs)
 FilterByLength = data_configure(inputs.FilterByLength)
 FilterEmptyExamples = data_configure(inputs.FilterEmptyExamples)
 Log = data_configure(inputs.Log)
-MixMLMAndPrefixLM = data_configure(inputs.MixMLMAndPrefixLM)
+PrefixLM = data_configure(inputs.PrefixLM)
+MLM = data_configure(inputs.MLM)
 PadToLength = data_configure(inputs.PadToLength)
 Parallel = data_configure(inputs.Parallel)
 Prefetch = data_configure(inputs.Prefetch)
@@ -65,8 +67,6 @@ bucket_by_length = inputs.bucket_by_length
 consume_noise_mask = data_configure(inputs.consume_noise_mask)
 debug_pipeline = debug_data_pipeline.debug_pipeline
 detokenize = tf_inputs.detokenize
-generate_prefix_lm_sequential_chunks = data_configure(
-    inputs.generate_prefix_lm_sequential_chunks)
 generate_random_noise_mask = data_configure(inputs.generate_random_noise_mask)
 generate_sequential_chunks = data_configure(inputs.generate_sequential_chunks)
 mask_random_tokens = data_configure(tf_inputs.mask_random_tokens)

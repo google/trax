@@ -29,9 +29,7 @@ make_inputs.train_stream = [
   @training/data.TFDS(),
   @data.CountAndSkip(),
   @data.SentencePieceTokenize(),
-  @data.generate_sequential_chunks(),
-  @data.generate_random_noise_mask(),
-  @data.consume_noise_mask(),
+  @data.MLM(),
   @data.FilterEmptyExamples(),
   @data.AppendValue(),
   @data.PadToLength(),
@@ -43,9 +41,7 @@ make_inputs.train_stream = [
 make_inputs.eval_stream = [
   @validation/data.TFDS(),
   @data.SentencePieceTokenize(),
-  @data.generate_sequential_chunks(),
-  @data.generate_random_noise_mask(),
-  @data.consume_noise_mask(),
+  @data.MLM(),
   @data.FilterEmptyExamples(),
   @data.AppendValue(),
   @data.PadToLength(),
@@ -61,18 +57,12 @@ data.TFDS.shuffle_train = False
 training/data.TFDS.train = True
 validation/data.TFDS.train = False
 
-# Parameters for data.generate_sequential_chunks:
+# Parameters for data.MLM:
 # ==============================================================================
-data.generate_sequential_chunks.max_length = %max_length
-
-# Parameters for data.generate_random_noise_mask:
-# ==============================================================================
-data.generate_random_noise_mask.noise_density = %noise_density
-data.generate_random_noise_mask.mean_noise_span_length = %mean_noise_span_length
-
-# Parameters for data.consume_noise_mask:
-# ==============================================================================
-data.consume_noise_mask.vocab_size = %vocab_size
+data.MLM.vocab_size = %vocab_size
+data.MLM.max_length = %max_length
+data.MLM.noise_density = %noise_density
+data.MLM.mean_noise_span_length = %mean_noise_span_length
 
 # Parameters for data.AppendValue:
 # ==============================================================================
