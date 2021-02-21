@@ -329,6 +329,16 @@ class ReversibleSerialTrainer:
     return self._loss_layer
 
   @property
+  def all_layers(self):
+    """Returns all layers that compose the model and loss in this class."""
+    layers = []
+    for (std_layer, rev_layers) in self._blocks:
+      layers.append(std_layer)
+      layers.extend(rev_layers)
+    layers.append(self._loss_layer)
+    return layers
+
+  @property
   def optimizer_fn(self):
     """Returns the optimizer function used to initialize this class."""
     return self._optimizer_fn

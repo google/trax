@@ -234,7 +234,6 @@ class Loop:
     # NOTE: Averaging the weights across devices can screw up the initial weight
     # statistics.
     # TODO(pkozakowski): Broadcast from one of the devices instead?
-    # TODO(lukaszkaiser): make it work for the memory-efficient trainer too.
     if (random_seed is None and self._n_hosts > 1 and
         not use_memory_efficient_trainer):
       logging.info('Syncing weights/state across %d hosts.', self._n_hosts)
@@ -242,6 +241,19 @@ class Loop:
 
     # Create the optimizer for the training loss function.
     self._trainer_per_task = tuple(self._init_trainer(task) for task in tasks)
+
+    # Sync layers weights/state in memory effcient trainer layers.
+    if (random_seed is None and self._n_hosts > 1 and
+        use_memory_efficient_trainer):
+      logging.info('Syncing layers across %d hosts.', self._n_hosts)
+      for layer in self._trainer_per_task[0].all_layers:
+        weights_and_state = (layer.weights, layer.state)
+        if not _is_empty(weights_and_state):
+          layer.weighs, layer.state = tl.on_cpu(self._unreplicate(
+              _make_weights_and_state_same_across_hosts(
+                  self._for_n_devices(weights_and_state))))
+
+    # Load checkpoint if it exists.
     self.load_checkpoint()
 
     # Prepare eval components.
@@ -1236,13 +1248,15 @@ def _make_weights_and_state_same_across_hosts(weights_and_state):
   return weights_and_state
 
 
+def _is_empty(x):
+  if isinstance(x, (list, tuple)):
+    return all(_is_empty(y) for y in x)
+  else:
+    return x is None
+
+
 def _is_uninitialized(model):
   """Checks whether no weights in the model have been initialized."""
-  def _is_empty(x):
-    if isinstance(x, (list, tuple)):
-      return all(_is_empty(y) for y in x)
-    else:
-      return x is None
   if not _is_empty(model.weights):
     return False
   return all(_is_uninitialized(l) for l in model.sublayers)
