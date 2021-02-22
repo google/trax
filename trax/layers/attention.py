@@ -317,13 +317,11 @@ def SplitIntoHeads(n_heads, merged_batch_and_head=True):
   """Returns a layer that reshapes arrays for multi-headed computation."""
   def f(x):
     batch_size, seq_len, d_feature = x.shape
-
     if d_feature % n_heads != 0:
       raise ValueError(
-          f'Dimensionality of feature embedding ({d_feature}) is not a multiple'
+          f'Feature embedding dimensionality ({d_feature}) is not a multiple'
           f' of the requested number of attention heads ({n_heads}).')
 
-    assert d_feature % n_heads == 0
     d_head = d_feature // n_heads
 
     # (b_size, seq_len, d_feature) --> (b_size*n_heads, seq_len, d_head)
@@ -341,9 +339,13 @@ def MergeHeads(n_heads, merged_batch_and_head=True):
   """Returns a layer that undoes splitting, after multi-head computation."""
   def f(x):
     if merged_batch_and_head:
-      batchheads, seq_len, d_head = x.shape
-      assert batchheads % n_heads == 0
-      batch_size = batchheads // n_heads
+      dim_0, seq_len, d_head = x.shape
+      if dim_0 % n_heads != 0:
+        raise ValueError(
+            f"Array's leading dimension ({dim_0}) is not a multiple of the"
+            f" number of attention heads ({n_heads}).")
+
+      batch_size = dim_0 // n_heads
       x = x.reshape((batch_size, n_heads, seq_len, d_head))
     else:
       batch_size, _, seq_len, d_head = x.shape
