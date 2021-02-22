@@ -249,7 +249,7 @@ class Loop:
       for layer in self._trainer_per_task[0].all_layers:
         weights_and_state = (layer.weights, layer.state)
         if not _is_empty(weights_and_state):
-          layer.weighs, layer.state = tl.on_cpu(self._unreplicate(
+          layer.weights, layer.state = tl.on_cpu(self._unreplicate(
               _make_weights_and_state_same_across_hosts(
                   self._for_n_devices(weights_and_state))))
 
@@ -1229,23 +1229,17 @@ def _accelerate_model_with_metrics(model_with_metrics, n_devices,
 def _make_weights_and_state_same_across_hosts(weights_and_state):
   """Makes train and eval model's weights and state the same across hosts."""
 
-  # We assume that they have been already replicated, i.e the leading axis is
-  # self._n_devices
+  # We assume that weights_and_state have been already replicated, i.e the
+  # leading axis is self._n_devices
 
   # This is the total number of devices across all hosts.
   n_devices_total = fastmath.psum(jnp.array(1.0), 'devices').astype(jnp.int32)
 
-  # This sums up the weights and state across all devices.
-  # NOTE: There will not be any leading axis remaining because we psum
-  # over it.
-  weights_and_state = fastmath.psum(weights_and_state, 'devices')
-
-  # We finally take the average over all devices.
+  # We average the weights and state across all devices.
   # We also make sure we don't change the type of the weights and state.
-  weights_and_state = jax.tree_util.tree_map(
-      lambda ws: (ws / n_devices_total).astype(ws.dtype), weights_and_state)
-
-  return weights_and_state
+  return fastmath.nested_map(
+      lambda x: (fastmath.psum(x, 'devices') / n_devices_total).astype(x.dtype),
+      weights_and_state)
 
 
 def _is_empty(x):

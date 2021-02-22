@@ -74,7 +74,6 @@ import os
 import pickle
 import random
 import time
-import zlib
 
 from absl import logging
 import gin
@@ -343,17 +342,7 @@ def batch(generator, batch_size):
           logging.error('Batch[%d][%d] input: %r', i, j, buf[j][0])
           logging.error('Batch[%d][%d] output: %r', i, j, buf[j][1])
         raise e
-      # Note that it's the same shape as each example with added batch dim.
       i += 1
-      if i & (i - 1) == 0:
-        logging.info('Batch[%d] = %r', i, batched_example)
-        batched_inputs = batched_example[0]
-        batched_outputs = batched_example[1]
-        for idx, io in enumerate(zip(batched_inputs, batched_outputs)):
-          logging.info('Input[%d][%d] = %r', i, idx, io[0])
-          logging.info('Output[%d][%d] = %r', i, idx, io[1])
-        for idx, inp in enumerate(batched_inputs):
-          logging.info('Hash[%d][%d] = %r', i, idx, zlib.adler32(bytes(inp)))
       yield batched_example
       buf = []
 
