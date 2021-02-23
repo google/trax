@@ -19,11 +19,11 @@ r"""Attention-related layers, as used in Transformer(-like) models.
 Attention is a trainable mechanism for mapping between collections of vectors:
 
 .. math::
-    \text{Attention}: \mathbf{X}^{n} \rightarrow \mathbf{X}^{m}\!,
+    \text{Attention}: \mathbf{X}^{n} \rightarrow \mathbf{X}^{n}\!,
     \ \text{for} \ \mathbf{X} \in \mathbb{R}^d
 
-Whereas classic neural networks assemble nodes of real numbers with
-weighted connections:
+Whereas classic neural networks assemble nodes of *numbers* with weighted
+connections:
 
     - node activations: floating point values (one float per node)
     - inter-node connections: trainable weights (one float per connection),
@@ -64,7 +64,7 @@ from trax.layers.research import sparsity
 # inputs are [batch, length, depth], [batch, 1, 1 length]
 @assert_shape('bld,b11l->bld,b11l')
 def Attention(d_feature, n_heads=1, dropout=0.0, mode='train'):
-  """Returns a layer that maps (vectors, mask) to (new_vectors, mask).
+  """Returns a layer that maps `(vectors, mask)` to `(new_vectors, mask)`.
 
   This layer type represents one pass of multi-head self-attention, from vector
   set to vector set, using masks to represent out-of-bound (e.g., padding)
@@ -87,7 +87,7 @@ def Attention(d_feature, n_heads=1, dropout=0.0, mode='train'):
     d_feature: Last/innermost dimension of activations in the input to and
         output from this layer.
     n_heads: Number of attention heads. Attention heads effectively split
-        input activation vectors into ``n_heads`` subvectors, of size
+        activation vectors into ``n_heads`` subvectors, of size
         ``d_feature / n_heads``.
     dropout: Probababilistic rate for attention dropout, which overrides
         (sets to zero) some attention strengths derived from query-key
@@ -106,18 +106,19 @@ def Attention(d_feature, n_heads=1, dropout=0.0, mode='train'):
 def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train',
                  cache_KV_in_predict=False, q_sparsity=None,
                  result_sparsity=None):
-  """Returns a layer that maps (Q, K, V, mask) to (activations, mask).
+  """Returns a layer that maps `(Q, K, V, mask)` to `(activations, mask)`.
 
   Unlike :py:class:`Attention` above, :py:class:`AttentionQKV` allows the Q
   activations to come from a different source than the K and V activations.
-  This is used, for instance, in encoder-decoder attention. Otherwise, see the
+  This is used, for instance, in encoder-decoder attention (Q activations from
+  the decoder, K and V activations from the encoder). Otherwise, see the
   :py:class:`Attention` description for further context/details.
 
   Args:
     d_feature: Last/innermost dimension of activations in the input to and
         output from this layer.
     n_heads: Number of attention heads. Attention heads effectively split
-        input activation vectors into ``n_heads`` subvectors, of size
+        activation vectors into ``n_heads`` subvectors, of size
         ``d_feature / n_heads``.
     dropout: Probababilistic rate for attention dropout, which overrides
         (sets to zero) some attention strengths derived from query-key
@@ -176,14 +177,14 @@ def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train',
 # will be the same, but it is not necessary.
 @assert_shape('blq,bkq,bkd,b1xk->bld,b1xk')
 class PureAttention(base.Layer):
-  """Returns a layer that maps (Q, K, V, mask) to (activations, mask).
+  """Returns a layer that maps `(Q, K, V, mask)` to `(activations, mask)`.
 
   This layer type performs the inner workings of one pass of multi-head
   self-attention. It:
 
     - subdivides incoming Q/K/V activations into multi-head versions;
     - for each head, computes the scaled dot product of each Q-K pair;
-    - applies ``mask`` to screen out positions that come from padding tokens
+    - applies mask to screen out positions that come from padding tokens
       (indicated by 0 value);
     - [in ``'train'`` mode] applies dropout to Q-K dot products;
     - for each head, computes Q-K attention strengths using a per-query softmax
@@ -195,7 +196,7 @@ class PureAttention(base.Layer):
   """
 
   def __init__(self, n_heads=1, dropout=0.0, mode='train'):
-    """Returns a new PureAttention instance.
+    """Returns a new :py:class:`PureAttention` instance.
 
     Args:
       n_heads: Number of attention heads.
@@ -215,8 +216,8 @@ class PureAttention(base.Layer):
     """Returns attention-computed activations and unmodified mask.
 
     Args:
-      inputs: A (Q, K, V, mask) tuple, whose query, key, and value
-      activations have not yet been subdivided into heads.
+      inputs: A `(Q, K, V, mask)` tuple, whose query, key, and value
+          activations have not yet been subdivided into heads.
     """
     q, k, v, mask = inputs
 
@@ -245,8 +246,8 @@ class PureAttention(base.Layer):
 def _per_head_attention(queries, keys, values, mask, dropout, mode, rng):
   """Computes new per-head activations via scaled dot-product attention.
 
-  This function is the core of the attention mechanism. Give per-head
-  ``queries`` (Q), ``keys`` (K), ``values`` (V), and ``mask`` it:
+  This function is the core of the attention mechanism. Given per-head
+  ``queries`` (Q), ``keys`` (K), ``values`` (V), and ``mask``, it:
 
     - computes the scaled dot product of each Q-K pair;
     - applies ``mask`` to screen out positions that come from padding tokens
@@ -298,13 +299,23 @@ def _per_head_attention(queries, keys, values, mask, dropout, mode, rng):
 
 
 class DotProductAttention(base.Layer):
-  """Returns a layer that computes raw dot-product attention with mask.
+  """Returns a layer that computes per-head attention (via scaled dot-product).
 
-  This layer has no trainable weights and maps (q, k, v, mask) to activations.
+  This layer computes the core of the attention mechanism. Given per-head
+  queries (Q), keys (K), values (V), and mask, it:
+
+    - computes the scaled dot product of each Q-K pair;
+    - applies mask to screen out positions that come from padding tokens
+      (indicated by 0 value);
+    - [if created in ``'train'`` mode] applies dropout to Q-K dot products;
+    - computes Q-K attention strengths using a per-query softmax of the Q-K dot
+      products; and
+    - for each query position, combines V vectors according to the Q-K
+      attention strengths.
   """
 
   def __init__(self, dropout=0.0, mode='train'):
-    """Creates a DotProductAttention instance.
+    """Creates a :py:class:`DotProductAttention` instance in a specific mode.
 
     Args:
       dropout: Probababilistic rate for attention dropout, which overrides
@@ -319,10 +330,11 @@ class DotProductAttention(base.Layer):
     self._mode = mode
 
   def forward(self, inputs):
-    """Returns attention-computed activations and unchanged mask.
+    """Returns attention-computed per-head activations and unchanged mask.
 
     Args:
-      inputs: A (queries, keys, values, mask) tuple.
+      inputs: A `(Q, K, V, mask)` tuple, whose query, key, and value
+          activations have been subdivided into heads.
     """
     q, k, v, mask = inputs
     activations, attn_strengths = _per_head_attention(
@@ -335,7 +347,7 @@ class DotProductAttention(base.Layer):
 # (b_size, seq_len, d_feature) --> (b_size*n_heads, seq_len, d_head)
 @assert_shape('bld->...lh')
 def SplitIntoHeads(n_heads, merged_batch_and_head=True):
-  """Returns a layer that reshapes arrays for multi-headed computation."""
+  """Returns a layer that reshapes an array for multi-head computation."""
   def f(x):
     batch_size, seq_len, d_feature = x.shape
     if d_feature % n_heads != 0:
@@ -357,7 +369,7 @@ def SplitIntoHeads(n_heads, merged_batch_and_head=True):
 # (b_size*n_heads, seq_len, d_head) --> (b_size, seq_len, d_feature)
 @assert_shape('...lh->bld')
 def MergeHeads(n_heads, merged_batch_and_head=True):
-  """Returns a layer that undoes splitting, after multi-head computation."""
+  """Returns a layer that rejoins heads, after multi-head computation."""
   def f(x):
     if merged_batch_and_head:
       dim_0, seq_len, d_head = x.shape
@@ -381,6 +393,34 @@ def MergeHeads(n_heads, merged_batch_and_head=True):
 @assert_shape('bld->bld')
 def ConfigurableAttention(q_layer, k_layer, v_layer, final_layer,  # pylint: disable=invalid-name
                           qkv_attention_layer, n_heads=1):
+  """Returns a configured multi-head self-attention layer.
+
+  A :py:class:`ConfigurableAttention` layer acts similarly to
+  :py:class:`Attention` layers, but with configurable components. It
+
+    - makes three copies of incoming activations and uses ``q_layer``,
+      ``k_layer``, and ``v_layer`` to map activations to multi-head query (Q)
+      vectors, key (K) vectors, and value (V) vectors, respectively;
+    - uses ``qkv_attention_layer`` to compute per-head attention, similar to
+      :py:class:`DotProductAttention` or :py:class:`DotProductCausalAttention`;
+    - concatenates and fuses resulting per-head vectors into activations
+      matching original input activation shapes; and
+    - applies a final layer, ``final_layer``, mapping activations to
+      activations (with shape matching the original input activations).
+
+  Args:
+    q_layer: Layer that maps input activations to per-head query activations.
+    k_layer: Layer that maps input activations to per-head key activations.
+    v_layer: Layer that maps input activations to per-head value activations.
+    final_layer: After main multi-head computation and rejoining of heads,
+        layer that maps activations to activations (with shape matching the
+        original input activations).
+    qkv_attention_layer: Layer the does the core multi-head self-attention
+        computation.
+    n_heads: Number of attention heads. Attention heads effectively split
+        activation vectors into ``n_heads`` subvectors, of size
+        ``d_feature / n_heads``.
+  """
   return cb.Serial(
       cb.Branch(
           [q_layer, SplitIntoHeads(n_heads)],
@@ -405,7 +445,7 @@ def CausalAttention(d_feature, n_heads=1, dropout=0.0,
     d_feature: Last/innermost dimension of activations in the input to and
         output from this layer.
     n_heads: Number of attention heads. Attention heads effectively split
-        input activation vectors into ``n_heads`` subvectors, of size
+        activation vectors into ``n_heads`` subvectors, of size
         ``d_feature / n_heads``.
     dropout: Probababilistic rate for attention dropout, which overrides
         (sets to zero) some attention strengths derived from query-key
@@ -444,7 +484,7 @@ class DotProductCausalAttention(base.Layer):
   """
 
   def __init__(self, dropout=0.0, max_inference_length=2048, mode='train'):
-    """Creates a DotProductCausalAttention instance.
+    """Creates a :py:class:`DotProductCausalAttention` instance.
 
     Args:
       dropout: Probababilistic rate for attention dropout, which overrides
@@ -584,7 +624,7 @@ class PositionalEncoding(base.Layer):
   def __init__(self, max_len=2048, dropout=0.0, dropout_broadcast_dims=(-2,),
                use_bfloat16=False, start_from_zero_prob=1.0,
                max_offset_to_add=0, mode='train'):
-    """Creates a PositionalEncoding instance.
+    """Creates a :py:class:`PositionalEncoding` instance in a given mode.
 
     Args:
       max_len: Maximum input sequence length.
