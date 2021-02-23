@@ -247,6 +247,34 @@ class TrainingTest(absltest.TestCase):
     loop2 = training.Loop(model, [task], output_dir=tmp_dir)
     self.assertEqual(4, loop2.step)
 
+  def test_restores_from_smaller_model(self):
+    """Training restores from a checkpoint created with smaller model."""
+    model1 = tl.Serial(tl.Dense(1))
+    task = training.TrainTask(
+        _very_simple_data(), tl.L2Loss(), optimizers.Adam(.01))
+    tmp_dir = self.create_tempdir().full_path
+    loop = training.Loop(model1, [task],
+                         checkpoint_at=lambda step_n: step_n % 2 == 0,
+                         output_dir=tmp_dir)
+    loop.run(2)
+    model2 = tl.Serial(tl.Dense(1), tl.Dense(1))
+    loop2 = training.Loop(model2, [task], output_dir=tmp_dir)
+    self.assertEqual(2, loop2.step)
+
+  def test_restore_fails_different_model(self):
+    """Training restores from a checkpoint created with smaller model."""
+    model1 = tl.Serial(tl.Dense(1))
+    task = training.TrainTask(
+        _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01))
+    tmp_dir = self.create_tempdir().full_path
+    loop = training.Loop(model1, [task],
+                         checkpoint_at=lambda step_n: step_n % 2 == 0,
+                         output_dir=tmp_dir)
+    loop.run(2)
+    model2 = tl.Serial(tl.Dense(2))
+    with self.assertRaises(IndexError):
+      training.Loop(model2, [task], output_dir=tmp_dir)
+
   def test_restores_step_bfloat16(self):
     """Training restores step from directory where it saved it, w/ bfloat16."""
     model = tl.Serial(tl.Dense(1, use_bfloat16=True))

@@ -873,22 +873,31 @@ class Loop:
         )
       d['slots_per_task'] = [d['slots']]
     for (trainer, slots) in zip(self._trainer_per_task, d['slots_per_task']):
-      trainer.slots = slots
+      matched_flat_slots = _match_by_shape(fastmath.tree_flatten(trainer.slots),
+                                           fastmath.tree_flatten(slots))
+      matched_slots, _ = fastmath.tree_unflatten(
+          matched_flat_slots, trainer.slots, copy_from_tree=[()])
+      trainer.slots = matched_slots
     # This is self._model.init_from_file but optimized to not re-read.
     input_signature = d['input_signature']
     weights_and_state_sig = self._model.weights_and_state_signature(
         input_signature)
+    flat_init_weights, flat_init_state = tl.flatten_weights_and_state(
+        self._model.weights, self._model.state)
+    if len(d['flat_weights']) < len(flat_init_weights):
+      _log('Checkpoint has less weights than the model, loading first ones.')
+    matched_weights = _match_by_shape(flat_init_weights, d['flat_weights'])
     try:
       restored_state = True
+      matched_state = _match_by_shape(flat_init_state, d['flat_state'])
       weights, state = tl.unflatten_weights_and_state(
-          d['flat_weights'], d['flat_state'], weights_and_state_sig)
+          matched_weights, matched_state, weights_and_state_sig)
       self._model.state = state
     except IndexError:
-      _log('Failed restoring model state from checkpoint, trying weights only.')
+      _log('Failed loading model state from checkpoint, loading weights only.')
       restored_state = False
       weights, _ = tl.unflatten_weights_and_state(
-          d['flat_weights'], d['flat_state'], weights_and_state_sig,
-          weights_only=True)
+          matched_weights, (), weights_and_state_sig, weights_only=True)
     self._model.weights = weights
     self._eval_model.weights = self._model.weights
     # Restore eval model state; note: it's not always the same as train state.
@@ -898,7 +907,7 @@ class Loop:
       else:  # It wasn't saved in old checkpoints; remove this branch once done.
         flat_eval_state = d['flat_state']
       _, eval_state = tl.unflatten_weights_and_state(
-          d['flat_weights'], flat_eval_state, weights_and_state_sig)
+          matched_weights, flat_eval_state, weights_and_state_sig)
       self._eval_model.state = eval_state
     _log('Checkpoint loaded from %s.' % path, stdout=False)
 
@@ -1254,3 +1263,32 @@ def _is_uninitialized(model):
   if not _is_empty(model.weights):
     return False
   return all(_is_uninitialized(l) for l in model.sublayers)
+
+
+def _match_by_shape(full, partial):
+  """Puts partial into full matching by shape."""
+  partial_idx = 0
+  res = []
+  for w in full:
+    if partial_idx >= len(partial):
+      res.append(w)  # read everything from parial list, just fill
+    elif w is None and partial[partial_idx] is None:  # both Nones, move on
+      res.append(None)
+      partial_idx += 1
+    elif w is None or partial[partial_idx] is None:  # one None but not both
+      res.append(w)
+    elif w.shape == partial[partial_idx].shape:
+      res.append(partial[partial_idx])
+      partial_idx += 1
+    else:
+      res.append(w)
+  if partial_idx < len(partial):
+    _log('Did not manage to match shapes in model for all checkpoint weights.')
+    for w in partial[:partial_idx]:
+      _log('  Inserted tensor of shape %s' % str(w.shape))
+    for i, w in enumerate(partial[partial_idx:]):
+      _log('  Not inserted tensor of shape %s' % str(w.shape))
+      model_weight_shape = str(full[i + partial_idx].shape)
+      _log('  Tensor in that place has shape: %s' % model_weight_shape)
+    raise IndexError
+  return res
