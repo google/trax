@@ -328,6 +328,11 @@ class Layer:
     with tf.io.gfile.GFile(file_name, 'rb') as f:
       with gzip.GzipFile(fileobj=f, compresslevel=2) as gzipf:
         dictionary = pickle.load(gzipf)
+    # In the current checkpoint format, we store weights in a separate
+    # non-pickled file with the same name but added ".npy".
+    if isinstance(dictionary['flat_weights'], int):
+      dictionary['flat_weights'] = np_from_file(
+          file_name + '.npy', compresslevel=dictionary['flat_weights'])
     if input_signature is None:
       input_signature = dictionary['input_signature']
     weights_and_state_sig = self.weights_and_state_signature(
@@ -785,6 +790,31 @@ def unflatten_weights_and_state(
     state, _ = fastmath.tree_unflatten(flat_state, state_tree,
                                        copy_from_tree=states_to_copy)
   return weights, state
+
+
+def np_to_file(list_of_nparrays, file_path, compresslevel):
+  """Save numpy arrays to file_path with gzipping and failure protection."""
+  # Pickle to tmp file and overwrite to prevent writing partial files.
+  tmp_file_path = file_path + '._tmp_'
+  with tf.io.gfile.GFile(tmp_file_path, 'wb') as f:
+    with gzip.GzipFile(fileobj=f, compresslevel=compresslevel) as gzipf:
+      for x in list_of_nparrays:
+        np.save(gzipf, x, allow_pickle=False)
+  # Moving a file is much less error-prone than pickling large files.
+  tf.io.gfile.rename(tmp_file_path, file_path, overwrite=True)
+
+
+def np_from_file(file_path, compresslevel):
+  """Load numpy arrays from file_path with gzipping."""
+  res = []
+  with tf.io.gfile.GFile(file_path, 'rb') as f:
+    with gzip.GzipFile(fileobj=f, compresslevel=compresslevel) as gzipf:
+      while True:
+        try:
+          res.append(np.load(gzipf, allow_pickle=False))
+        except Exception:  # pylint: disable=broad-except
+          break
+  return res
 
 
 def to_list(outputs):
