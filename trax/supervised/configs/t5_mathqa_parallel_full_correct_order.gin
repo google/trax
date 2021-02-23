@@ -128,11 +128,62 @@ eval_category_task/make_additional_stream.stream = [
   @data.TruncateToLength(),
   @data.Batch()
 ]
+train_correct_answer_task/make_additional_stream.stream = [
+  @train_correct_answer_task/data.CreateMathQAInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+eval_correct_answer_task/make_additional_stream.stream = [
+  @eval_correct_answer_task/data.CreateMathQAInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+train_correct_answer_given_reasoning_task/make_additional_stream.stream = [
+  @train_correct_answer_given_reasoning_task/data.CreateMathQAInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+eval_correct_answer_given_reasoning_task/make_additional_stream.stream = [
+  @eval_correct_answer_given_reasoning_task/data.CreateMathQAInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+train_order_prediction_task/make_additional_stream.stream = [
+  @train_order_prediction_task/data.CreateMathQAInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+eval_order_prediction_task/make_additional_stream.stream = [
+  @eval_order_prediction_task/data.CreateMathQAInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
 make_parallel_stream.streams = [
   @train_basic_task/make_additional_stream,
   @train_rationale_task/make_additional_stream,
   @train_category_task/make_additional_stream,
-  @train_full_inference/make_additional_stream
+  @train_full_inference/make_additional_stream,
+  @train_correct_answer_task/make_additional_stream,
+  @train_correct_answer_given_reasoning_task/make_additional_stream,
+  @train_order_prediction_task/make_additional_stream
 ]
 make_inputs.train_stream = @make_parallel_stream()
 
@@ -153,7 +204,6 @@ eval_basic_task/data.CreateMathQAInputs.train = False
 eval_basic_task/data.CreateMathQAInputs.tolerance = 0.01
 eval_basic_task/data.CreateMathQAInputs.cumulative = True
 eval_basic_task/trax.supervised.training.EvalTask.labeled_data = @eval_basic_task/trax.data.inputs.make_additional_stream()
-# Explicitly pass the accuracy metric - we can pass multiple metrics if needs be
 eval_basic_task/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
 eval_basic_task/trax.supervised.training.EvalTask.metric_names = ['Single instruction accuracy', 'Single instruction sequence accuracy']
 
@@ -169,7 +219,6 @@ eval_rationale_task/data.CreateMathQAInputs.tolerance = 0.01
 eval_rationale_task/data.CreateMathQAInputs.cumulative = False
 eval_rationale_task/data.CreateMathQAInputs.nlp_rationale = True
 eval_rationale_task/trax.supervised.training.EvalTask.labeled_data = @eval_rationale_task/trax.data.inputs.make_additional_stream()
-# Explicitly pass the accuracy metric - we can pass multiple metrics if needs be
 eval_rationale_task/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
 eval_rationale_task/trax.supervised.training.EvalTask.metric_names = ['Rationale accuracy', 'Rationale sequence accuracy']
 
@@ -185,9 +234,23 @@ eval_category_task/data.CreateMathQAInputs.tolerance = 0.01
 eval_category_task/data.CreateMathQAInputs.cumulative = False
 eval_category_task/data.CreateMathQAInputs.category = True
 eval_category_task/trax.supervised.training.EvalTask.labeled_data = @eval_category_task/trax.data.inputs.make_additional_stream()
-# Explicitly pass the accuracy metric - we can pass multiple metrics if needs be
 eval_category_task/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
 eval_category_task/trax.supervised.training.EvalTask.metric_names = ['Category accuracy', 'Category sequence accuracy']
+
+train_order_prediction_task/data.CreateMathQAInputs.dataset_path = %dataset_path
+train_order_prediction_task/data.CreateMathQAInputs.train = True
+train_order_prediction_task/data.CreateMathQAInputs.tolerance = 0.01
+train_order_prediction_task/data.CreateMathQAInputs.cumulative = False
+train_order_prediction_task/data.CreateMathQAInputs.order_prediction = True
+
+eval_order_prediction_task/data.CreateMathQAInputs.dataset_path = %dataset_path
+eval_order_prediction_task/data.CreateMathQAInputs.train = False
+eval_order_prediction_task/data.CreateMathQAInputs.tolerance = 0.01
+eval_order_prediction_task/data.CreateMathQAInputs.cumulative = False
+eval_order_prediction_task/data.CreateMathQAInputs.order_prediction = True
+eval_order_prediction_task/trax.supervised.training.EvalTask.labeled_data = @eval_order_prediction_task/trax.data.inputs.make_additional_stream()
+eval_order_prediction_task/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
+eval_order_prediction_task/trax.supervised.training.EvalTask.metric_names = ['Order prediction accuracy', 'Order prediction sequence accuracy']
 
 train_full_inference/data.CreateMathQAInputs.dataset_path = %dataset_path
 train_full_inference/data.CreateMathQAInputs.train = True
@@ -199,13 +262,42 @@ eval_full_inference/data.CreateMathQAInputs.train = False
 eval_full_inference/data.CreateMathQAInputs.tolerance = 0.01
 eval_full_inference/data.CreateMathQAInputs.cumulative = False
 eval_full_inference/trax.supervised.training.EvalTask.labeled_data = @eval_full_inference/trax.data.inputs.make_additional_stream()
-# Explicitly pass the accuracy metric - we can pass multiple metrics if needs be
 eval_full_inference/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
 eval_full_inference/trax.supervised.training.EvalTask.metric_names = ['Full program accuracy', 'Full program sequence accuracy']
 
+train_correct_answer_task/data.CreateMathQAInputs.dataset_path = %dataset_path
+train_correct_answer_task/data.CreateMathQAInputs.train = True
+train_correct_answer_task/data.CreateMathQAInputs.tolerance = 0.01
+train_correct_answer_task/data.CreateMathQAInputs.cumulative = False
+train_correct_answer_task/data.CreateMathQAInputs.correct_answer = True
+
+eval_correct_answer_task/data.CreateMathQAInputs.dataset_path = %dataset_path
+eval_correct_answer_task/data.CreateMathQAInputs.train = False
+eval_correct_answer_task/data.CreateMathQAInputs.tolerance = 0.01
+eval_correct_answer_task/data.CreateMathQAInputs.cumulative = False
+eval_correct_answer_task/data.CreateMathQAInputs.correct_answer = True
+eval_correct_answer_task/trax.supervised.training.EvalTask.labeled_data = @eval_correct_answer_task/trax.data.inputs.make_additional_stream()
+eval_correct_answer_task/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
+eval_correct_answer_task/trax.supervised.training.EvalTask.metric_names = ['Correct answer accuracy', 'Correct answer sequence accuracy']
+
+train_correct_answer_given_reasoning_task/data.CreateMathQAInputs.dataset_path = %dataset_path
+train_correct_answer_given_reasoning_task/data.CreateMathQAInputs.train = True
+train_correct_answer_given_reasoning_task/data.CreateMathQAInputs.tolerance = 0.01
+train_correct_answer_given_reasoning_task/data.CreateMathQAInputs.cumulative = False
+train_correct_answer_given_reasoning_task/data.CreateMathQAInputs.correct_answer_given_reasoning = True
+
+eval_correct_answer_given_reasoning_task/data.CreateMathQAInputs.dataset_path = %dataset_path
+eval_correct_answer_given_reasoning_task/data.CreateMathQAInputs.train = False
+eval_correct_answer_given_reasoning_task/data.CreateMathQAInputs.tolerance = 0.01
+eval_correct_answer_given_reasoning_task/data.CreateMathQAInputs.cumulative = False
+eval_correct_answer_given_reasoning_task/data.CreateMathQAInputs.correct_answer_given_reasoning = True
+eval_correct_answer_given_reasoning_task/trax.supervised.training.EvalTask.labeled_data = @eval_correct_answer_given_reasoning_task/trax.data.inputs.make_additional_stream()
+eval_correct_answer_given_reasoning_task/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
+eval_correct_answer_given_reasoning_task/trax.supervised.training.EvalTask.metric_names = ['Correct answer given reasoning accuracy', 'Correct answer given reasoning sequence accuracy']
+
 data.PadToLength.len_map = {0: 512, 1: 512, 2: 512}
 data.PadToLength.pad_value = {0: 0, 1: 0, 2:0}
-data.TruncateToLength.len_map = {0: (256,), 1: (256,), 2: (256,)}
+data.TruncateToLength.len_map = {0: (512,), 1: (512,), 2: (512,)}
 data.Batch.batch_size = 4
 
 # Parameters for train:
@@ -216,13 +308,17 @@ train.eval_frequency = 20
 train.eval_steps = 10
 train.inputs = @trax.data.inputs.make_inputs
 train.model = @trax.models.ConfigurableTransformer
-train.steps = 200000
+train.steps = 1000000
 train.checkpoint_highest = 'accuracy'
 train.additional_eval_tasks = [
   @eval_basic_task/trax.supervised.training.EvalTask(),
   @eval_rationale_task/trax.supervised.training.EvalTask(),
   @eval_category_task/trax.supervised.training.EvalTask(),
-  @eval_full_inference/trax.supervised.training.EvalTask(),]
+  @eval_full_inference/trax.supervised.training.EvalTask(),
+  @eval_correct_answer_task/trax.supervised.training.EvalTask(),
+  @eval_correct_answer_given_reasoning_task/trax.supervised.training.EvalTask(),
+  @eval_order_prediction_task/trax.supervised.training.EvalTask(),
+]
 
 # Parameters for ConfigurableTransformer:
 # ==============================================================================
