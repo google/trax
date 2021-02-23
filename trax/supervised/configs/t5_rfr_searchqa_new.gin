@@ -1,0 +1,220 @@
+# Copyright 2021 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.layers
+import trax.models
+import trax.data
+import trax.optimizers
+import trax.supervised.lr_schedules
+import trax.supervised.trainer_lib
+import trax.models.research.bert
+import trax.layers.metrics
+
+# include 'c4.gin'
+
+# See https://arxiv.org/pdf/1704.05179.pdf for more details
+# about the SearchQA dataset.
+
+# Under the dataset_path should be located train.zip and dev.zip
+# downloaded from the SearchQA download site.
+dataset_path = 'path_to_the_dataset'
+
+# Corresponds roughly to T5 'large' ~ 770m params, i.e. T5's `bi_v1_large.gin`.
+attn_kv = 64
+# The defaults leads to OOM
+d_ff = 512 # 4096
+d_model = 512 # 1024
+dec_attn_type = @CausalAttention
+dropout = 0.1
+enc_attn_type = @Attention
+ff_chunk_size = 1024
+ff_sparsity = 0
+loss_sparsity = 0
+max_length = 4096
+mean_noise_span_length = 3.0
+n_heads = 8 # 16
+noise_density = 0.15
+sequence_length = {'inputs': 4096, 'targets': 32}
+vocab_size = 32000
+
+trax.data.Tokenize.keys = [0,1]
+trax.data.Tokenize.vocab_file = 'en_32k.subword'
+
+# Definitions of SearchQA streams:
+# ==============================================================================
+make_inputs.eval_stream = [
+  @eval/data.CreateSearchQAInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+make_inputs.train_stream = [
+  @train/data.CreateSearchQAInputs(),
+  @data.Tokenize(),
+  @data.Shuffle(),
+  @data.PadToLength(),
+  @data.TruncateToLength(),
+  @data.Batch()
+]
+
+# Parameters for SearchQA streams:
+# ==============================================================================
+eval/data.CreateSearchQAInputs.dataset_path = %dataset_path
+eval/data.CreateSearchQAInputs.train = False
+
+train/data.CreateSearchQAInputs.dataset_path = %dataset_path
+train/data.CreateSearchQAInputs.train = True
+
+data.PadToLength.len_map = {0: 4096, 1: 32, 2: 32}
+data.PadToLength.pad_value = {0: 0, 1: 0, 2:0}
+data.TruncateToLength.len_map = {0: (4096,), 1: (32,), 2: (32,)}
+data.Batch.batch_size = 4
+
+# Parameters for train:
+# ==============================================================================
+train.init_checkpoint = None
+train.optimizer = @trax.optimizers.Adafactor
+train.eval_frequency = 20
+train.eval_steps = 10
+train.inputs = @trax.data.inputs.make_inputs
+train.model = @trax.models.Reformer2
+train.steps = 200000
+train.checkpoint_highest = 'accuracy'
+
+# Parameters for MultiplicativeConvCausalAttention:
+# ==============================================================================
+
+MultiplicativeModularCausalAttention.sparsity = 16
+MultiplicativeConvCausalAttention.sparsity = 16
+MultiplicativeConvCausalAttention.length_kernel_size = 3
+
+# Parameters for Reformer2:
+# ==============================================================================
+Reformer2.attention_chunk_size = 0
+Reformer2.d_attention_key = %attn_kv
+Reformer2.d_attention_value = %attn_kv
+Reformer2.d_ff = %d_ff
+Reformer2.d_model = %d_model
+Reformer2.dropout = %dropout
+Reformer2.encoder_attention_type = %enc_attn_type
+Reformer2.encoder_decoder_attention_type = %dec_attn_type
+Reformer2.ff_activation = @trax.layers.Relu
+Reformer2.ff_chunk_size = %ff_chunk_size
+Reformer2.ff_dropout = 0.1
+Reformer2.ff_sparsity = %ff_sparsity
+Reformer2.ff_use_sru = (1, 32)
+Reformer2.input_vocab_size = %vocab_size
+Reformer2.loss_d_lowrank = 0
+Reformer2.loss_sparsity = %loss_sparsity
+Reformer2.loss_sparsity_prob = None
+Reformer2.loss_sparsity_type = 'mult'
+Reformer2.max_len = 32768
+Reformer2.n_decoder_attention_layers = 2
+Reformer2.n_decoder_layers = 12 # 24
+Reformer2.n_encoder_layers = 12 # 24
+Reformer2.n_heads = %n_heads
+Reformer2.n_layers_forget = 0
+Reformer2.output_vocab_size = None
+Reformer2.pos_axial_shape = ()
+Reformer2.pos_d_axial_embs = None
+Reformer2.pos_max_offset_to_add = 0
+Reformer2.pos_start_from_zero_prob = 1.0
+Reformer2.pos_type = None
+Reformer2.reversible_encoder = True
+Reformer2.use_bfloat16 = False
+Reformer2.use_two_swaps_per_encoder_block = False
+
+# Parameters for random spans:
+# ==============================================================================
+
+random_spans_helper.extra_tokens_per_span_inputs = 1
+random_spans_helper.extra_tokens_per_span_targets = 1
+random_spans_helper.inputs_length = %max_length
+random_spans_helper.mean_noise_span_length = %mean_noise_span_length
+random_spans_helper.noise_density = %noise_density
+random_spans_helper.verbose = False
+random_spans_noise_mask.mean_noise_span_length = 3.0
+
+
+# Parameters for Adafactor:
+# ==============================================================================
+Adafactor.beta1 = 0.0
+Adafactor.clipping_threshold = 1.0
+Adafactor.decay_rate = 0.8
+Adafactor.do_clipping = True
+Adafactor.do_momentum = False
+Adafactor.epsilon1 = 1e-16
+Adafactor.epsilon2 = 0.001
+Adafactor.factored = True
+Adafactor.learning_rate = 0.05
+Adafactor.multiply_by_parameter_scale = True
+Adafactor.weight_decay_n_steps = 100000
+Adafactor.weight_decay_rate = 1e-05
+
+add_eos_to_output_features.eos = 1
+add_eos_to_output_features.output_features = 'targets'
+
+batcher.batch_shuffle_size = None
+batcher.batch_size = None
+batcher.batch_size_per_device = 2
+batcher.bucket_length = 512
+batcher.buckets = None
+batcher.buckets_include_inputs_in_length = True
+batcher.data_streams = @tf_inputs.data_streams
+batcher.eval_batch_size = 64
+batcher.id_to_mask = 0
+batcher.max_eval_length = %max_length
+batcher.strict_pad_on_len = False
+batcher.variable_shapes = True
+
+c4_bare_preprocess_fn.copy_pretokenized = True
+c4_bare_preprocess_fn.sequence_length = %sequence_length
+c4_bare_preprocess_fn.spm_path = None
+
+data_streams.bare_preprocess_fn = @trax.data.tf_inputs.c4_bare_preprocess_fn
+data_streams.data_dir = None
+data_streams.dataset_name = 'c4/en:2.3.0'
+data_streams.eval_holdout_size = 0
+data_streams.input_name = 'inputs'
+data_streams.shuffle_buffer_size = 1024
+data_streams.target_name = 'targets'
+
+denoise.inputs_fn = @preprocessors.noise_span_to_unique_sentinel
+denoise.noise_density = %noise_density
+denoise.noise_mask_fn = @preprocessors.random_spans_noise_mask
+denoise.targets_fn = @preprocessors.nonnoise_span_to_unique_sentinel
+
+LayerNorm.epsilon = 1e-06
+
+select_random_chunk.additional_feature_keys = None
+select_random_chunk.additional_passthrough_keys = None
+select_random_chunk.feature_key = 'targets'
+select_random_chunk.max_length = %max_length
+select_random_chunk.uniform_random_start = False
+
+split_tokens.additional_feature_keys = None
+split_tokens.feature_key = 'targets'
+split_tokens.max_tokens_per_segment = @preprocessors.random_spans_tokens_length()
+split_tokens.min_tokens_per_segment = None
+split_tokens.passthrough_feature_keys = None
+
+WeightedCategoryCrossEntropy.label_smoothing = None
+
+# Parameters for multifactor:
+# ==============================================================================
+multifactor.constant = 1e-3
+multifactor.factors = 'constant * linear_warmup'
+multifactor.warmup_steps = 1000  # default is 400

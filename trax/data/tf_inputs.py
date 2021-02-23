@@ -24,6 +24,7 @@ import math
 import os
 import random
 import re
+import zipfile
 
 from absl import logging
 import gin
@@ -37,7 +38,6 @@ import tensorflow_text as tf_text
 from trax import fastmath
 from trax.data import debug_data_pipeline
 from trax.data import text_encoder
-
 
 # How many examples from the stream to skip at random during training.
 # For now, we skip at most 100K examples for efficiency.
@@ -2012,6 +2012,8 @@ def CreateAnnotatedDropInputs(  # pylint: disable=invalid-name
     dataset_path=None,
     train=True,
     single_file=True,
+    unique=False,
+    total_number_of_samples=None,
     percentile=1.):
   r"""Prepares annotated Drop inputs.
 
@@ -2063,6 +2065,10 @@ def CreateAnnotatedDropInputs(  # pylint: disable=invalid-name
     single_file: if True, then look just for one file. If False, read all
       json files in a given directory and assume that each file contains one
       example. Applied only to training data.
+    unique: if set to True, then the generator will provide at most one question
+      per passage.
+    total_number_of_samples: if set to a positive integer, then the total number
+      of unique samples will be bounded total_number_of_samples.
     percentile: the percentile of the train dataset used for training; default
       set to 1., though setting to a lower value can be interesting when
       combined train is combined with another source of data.
@@ -2094,19 +2100,25 @@ def CreateAnnotatedDropInputs(  # pylint: disable=invalid-name
           with tf.io.gfile.GFile(os.path.join(dataset_path, filename)) as f:
             for line in f:
               dataset.append(json.loads(line))
-            # dataset.append(json.load(f))
     print('The total size of the dataset {}'.format(len(dataset)))
     return dataset[:int(len(dataset) * percentile)]
 
   def drop_annotated_yield_examples(generator=None):
     del generator
     while True:
+      passages = set()
+      unique_examples = set()
       # Notice that below we enable a poor man RL loop
       # aka the DAgger algorithm: https://arxiv.org/pdf/1011.0686.pdf
       # tl;dr: after parsing all examples we re-load the dataset - this
       # may become handy if a prediction service generates new examples.
       dataset = load_dataset()
       for example in dataset:
+        # If total_number_of_samples is not None and we have reached this
+        # number of samples, then we re-load the dataset.
+        if total_number_of_samples:
+          if len(unique_examples) >= total_number_of_samples:
+            break
         # Do we have a pre-calculated input in the example?
         if 'input' in example.keys():
           question = example['input']
@@ -2115,6 +2127,9 @@ def CreateAnnotatedDropInputs(  # pylint: disable=invalid-name
         else:
           # If input is not present, then we expect that this is an
           # original drop example.
+          if unique and example['passage'] in passages:
+            continue
+          passages.add(example['passage'])
           question = example['passage'] + ' ' + example['question']
           list_num = [
               float(num.replace(',', '').rstrip('.')) for num in re.findall(
@@ -2125,7 +2140,57 @@ def CreateAnnotatedDropInputs(  # pylint: disable=invalid-name
             question += ' n{} = {}'.format(i, list_num[i])
         input_values = 'drop annotated question: ' + question
         target_values = example['calculation']
+        unique_examples.add((input_values, target_values))
         yield input_values, target_values, np.array(
             [1] * len(target_values), dtype=np.int32)
 
   return drop_annotated_yield_examples
+
+
+def CreateSearchQAInputs(  # pylint: disable=invalid-name
+    dataset_path=None, train=True):
+  r"""Prepares SearchQA inputs.
+
+  For more details see https://arxiv.org/abs/1704.05179.
+
+  Args:
+    dataset_path: a path with the Aqua dataset.
+    train: if True, then generate training examples, otherwhise generate
+      validation examples (the dataset has also a test set).
+
+  Returns:
+    searchqa_yield_examples: a generator of searchqa examples.
+  """
+  if train:
+    dataset_path = os.path.join(dataset_path, 'train.zip')
+  else:
+    dataset_path = os.path.join(dataset_path, 'val.zip')
+
+  def load_dataset():
+    dataset = []
+    dataset_handle = tf.io.gfile.GFile(dataset_path, 'rb')
+    with zipfile.ZipFile(dataset_handle, 'r') as zip_file:
+      for filename in zip_file.namelist():
+        with zip_file.open(filename) as f:
+          dataset.append(json.load(f))
+    print('The total size of the dataset {}'.format(len(dataset)))
+    return dataset
+
+  dataset = load_dataset()
+
+  def searchqa_yield_examples(generator=None):
+    del generator
+    while True:
+      for example in itertools.cycle(dataset):
+        question = ''
+        for search_result in example['search_results']:
+          # Some search_results are None - we skip them.
+          if search_result['snippet']:
+            question += search_result['snippet'] + ' '
+        question += example['question'] + '?'
+        input_values = 'searchqa question: ' + question
+        target_values = example['answer']
+        yield input_values, target_values, np.array(
+            [1] * len(target_values), dtype=np.int32)
+
+  return searchqa_yield_examples
