@@ -726,7 +726,7 @@ def Reformer2(input_vocab_size,
 
   encoder = [     # vec_e mask_e tok_e tok_d tok_d
       tl.ReversibleSelect([0, 0]),     # vec_e1 vec_e2 mask_e tok_e tok_d tok_d
-      _ReversibleSerialForget(encoder_blocks, d_model // 2, n_layers_forget)
+      _ReversibleSerialForget(encoder_blocks, d_model1, n_layers_forget)
   ]
   if not reversible_encoder:
     encoder += [
