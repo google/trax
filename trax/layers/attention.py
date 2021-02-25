@@ -106,13 +106,14 @@ def Attention(d_feature, n_heads=1, dropout=0.0, mode='train'):
 def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train',
                  cache_KV_in_predict=False, q_sparsity=None,
                  result_sparsity=None):
-  """Returns a layer that maps `(Q, K, V, mask)` to `(activations, mask)`.
+  """Returns a layer that maps `(AQ, AK, AV, mask)` to `(new-A, mask)`.
 
-  Unlike :py:class:`Attention` above, :py:class:`AttentionQKV` allows the Q
-  activations to come from a different source than the K and V activations.
-  This is used, for instance, in encoder-decoder attention (Q activations from
-  the decoder, K and V activations from the encoder). Otherwise, see the
-  :py:class:`Attention` description for further context/details.
+  Unlike :py:class:`Attention` above, :py:class:`AttentionQKV` allows the
+  incoming activations (`AQ`, `AK`, and `AV`) to come from different sources.
+  This is used, for instance, in encoder-decoder attention (Q-related
+  activations `AQ` from the decoder, K- and V-related activations -- `AK` and
+  `AV` -- from the encoder). Otherwise, see the :py:class:`Attention`
+  description for further context/details.
 
   Args:
     d_feature: Last/innermost dimension of activations in the input to and
@@ -133,43 +134,34 @@ def AttentionQKV(d_feature, n_heads=1, dropout=0.0, mode='train',
         If ``None``, :py:class:`Dense` is used; if ``'noop'``, no processing is
         used.
   """
-  k_processor = core.Dense(d_feature)
-  v_processor = core.Dense(d_feature)
-  if cache_KV_in_predict and mode == 'predict':
-    k_processor = cb.Cache(k_processor)
-    v_processor = cb.Cache(v_processor)
+  def _SparsifiableDense(layer_sparsity):
+    if layer_sparsity is None:
+      return core.Dense(d_feature)
+    elif layer_sparsity == 'noop':
+      return cb.Serial()  # No-op layer.
+    else:
+      d_module = d_feature // layer_sparsity
+      return cb.Serial(
+          sparsity.FactoredDense(layer_sparsity, d_feature, d_feature),
+          sparsity.LocallyConvDense(layer_sparsity, d_module, mode=mode,
+                                    kernel_size=3, length_kernel_size=3)
+      )
 
-  if q_sparsity is None:
-    q_processor = core.Dense(d_feature)
-  elif q_sparsity == 'noop':
-    q_processor = cb.Serial()
-  else:
-    d_module = d_feature // q_sparsity
-    q_processor = cb.Serial(
-        sparsity.FactoredDense(q_sparsity, d_feature, d_feature),
-        sparsity.LocallyConvDense(q_sparsity, d_module, mode=mode,
-                                  kernel_size=3, length_kernel_size=3))
+  def _CacheableDense():
+    if cache_KV_in_predict and mode == 'predict':
+      return cb.Cache(core.Dense(d_feature))
+    else:
+      return core.Dense(d_feature)
 
-  if result_sparsity is None:
-    result_processor = core.Dense(d_feature)
-  elif result_sparsity == 'noop':
-    result_processor = cb.Serial()
-  else:
-    d_module = d_feature // result_sparsity
-    result_processor = cb.Serial(
-        sparsity.FactoredDense(result_sparsity, d_feature, d_feature),
-        sparsity.LocallyConvDense(result_sparsity, d_module, mode=mode,
-                                  kernel_size=3, length_kernel_size=3))
+  def _PureAttention():
+    return PureAttention(n_heads=n_heads, dropout=dropout, mode=mode)
 
   return cb.Serial(
-      cb.Parallel(
-          q_processor,
-          k_processor,
-          v_processor,
-      ),
-      PureAttention(  # pylint: disable=no-value-for-parameter
-          n_heads=n_heads, dropout=dropout, mode=mode),
-      result_processor
+      cb.Parallel(_SparsifiableDense(q_sparsity),
+                  _CacheableDense(),
+                  _CacheableDense()),
+      _PureAttention(),
+      _SparsifiableDense(result_sparsity),
   )
 
 
