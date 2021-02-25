@@ -742,22 +742,138 @@ def MultiplicativeConvCausalAttention(
       output_layers,
   )
 
+class NonnegativeSoftmaxKernelFeatureCreator():
+  def __init__(self,
+               nb_rows=256,
+               nb_columns,
+               scaling=0):
+    rng = random.PRNGKey(0)
+    matrixrng, _ = random.split(rng)
+    self.key = matrixrng
+    self.nb_rows = nb_rows
+    self.nb_columns = nb_columns
+    self.scaling = scaling
 
-def Favor(d_feature, n_heads=1, dropout=0.0,
-          numerical_stabilizer=0.001, mode='train'):
+  def get_2d_array(self):
+    nb_full_blocks = int(self.nb_rows / self.nb_columns)
+    block_list = []
+    rng = self.key
+    for _ in range(nb_full_blocks):
+      rng, rng_input = jax.random.split(rng)
+      unstructured_block = random.normal(rng_input,
+                                         (self.nb_columns, self.nb_columns))
+      q, _ = jnp.linalg.qr(unstructured_block)
+      q = jnp.transpose(q)
+      block_list.append(q)
+    remaining_rows = self.nb_rows - nb_full_blocks * self.nb_columns
+    if remaining_rows > 0:
+      rng, rng_input = jax.random.split(rng)
+      unstructured_block = random.normal(rng_input,
+                                         (self.nb_columns, self.nb_columns))
+      q, _ = jnp.linalg.qr(unstructured_block)
+      q = jnp.transpose(q)
+      block_list.append(q[0:remaining_rows])
+    final_matrix = jnp.vstack(block_list)
+
+    if self.scaling == 0:
+      multiplier = jnp.linalg.norm(
+          random.normal(self.key, (self.nb_rows, self.nb_columns)), axis=1)
+    elif self.scaling == 1:
+      multiplier = jnp.sqrt(float(self.nb_columns)) * jnp.ones((self.nb_rows))
+    else:
+      raise ValueError('Scaling must be one of {0, 1}. Was %s' % self._scaling)
+
+    return jnp.matmul(jnp.diag(multiplier), final_matrix)
+
+
+
+class FavorAttention(base.Layer):
   """Returns a layer that maps (activations, mask) to (new_activations, mask).
 
   See the FAVOR paper for details: https://arxiv.org/abs/2006.03555
 
   Args:
-    d_feature: Depth/dimensionality of feature embedding.
-    n_heads: Number of attention heads.
-    dropout: Probababilistic rate for internal dropout applied to attention
-        activations (based on query-key pairs) before dotting them with values.
     numerical_stabilizer: float, small number used for numerical stability.
+    use_approximate_softmax: Bool, if True uses approximate softmax, otherwise
+                             Relu.
+    normalize_data: predicate indicating whether data should be normalized,
+    eps: numerical stabilizer.
     mode: One of `'train'`, `'eval'`, or `'predict'`.
   """
-  del dropout, mode  # not implemented yet but needed in the API
+  def __init__(self, numerical_stabilizer=0.001, use_approximate_softmax=False,
+          nb_rows=256, nb_columns, scaling=0, precision,
+          normalize_data=True, eps=0.0001, mode='train'):
+    # ARE THE PARAMETERS CORRECT HERE?
+    super().__init__(n_in=4, n_out=2)
+    self.use_approximate_softmax = use_approximate_softmax
+    self.numerical_stabilizer = numerical_stabilizer
+    self.normalize_data = normalize_data
+    self.eps = eps
+    self.precision = precision
+    self.mode = mode
+    if use_approximate_softmax:
+      feature_creator = NonnegativeSoftmaxKernelFeatureCreator(
+          nb_rows=nb_rows, nb_columns=nb_columns, scaling=scaling)
+      self.projection_matrix = feature_creator.get_2d_array()
+    else:
+      self.projection_matrix=None
+
+  def nonnegative_softmax_kernel_feature_creator(self, x, is_query):
+    """Constructs nonnegative kernel features for fast softmax attention.
+
+    Args:
+      x: input for which features are computed
+      attention_dims_t: tuple of attention dimensions
+      batch_dims_t: tuple of batch dimensions
+      precision: precision parameter
+      is_query: predicate indicating whether input data corresponds to queries or
+        keys
+
+    Returns:
+      Random features for fast softmax attention.
+    """
+    if self.normalize_data:
+      # We have e^{qk^T/sqrt{d}} = e^{q_norm k_norm^T}, where
+      # w_norm = w * data_normalizer for w in {q,k}.
+      data_normalizer = 1.0 / (jnp.sqrt(jnp.sqrt(x.shape[-1])))
+    else:
+      data_normalizer = 1.0
+    ratio = 1.0 / jnp.sqrt(self.projection_matrix.shape[0])
+    # TODO(wgaj): Double-check...
+    data_mod_shape = x.shape[0:1] + self.projection_matrix.shape
+    data_thick_random_matrix =
+        jnp.zeros(data_mod_shape) + self.projection_matrix
+
+    # data_dash = lax.dot_general(
+    #     data_normalizer * x,
+    #     data_thick_random_matrix,
+    #     (((x.ndim - 1,), (data_thick_random_matrix.ndim - 1,)),
+    #      (batch_dims_t, batch_dims_t)),
+    #     precision=precision)
+
+    # IS THIS REALLY EQUIVALENT?
+    data_dash = jnp.einsum('ij, ij -> i',
+                           data_normalizer * x,
+                           data_thick_random_matrix)
+
+    diag_data = jnp.square(x)
+    diag_data = jnp.sum(diag_data, axis=x.ndim - 1)
+    diag_data = (diag_data / 2.0) * data_normalizer * data_normalizer
+    diag_data = jnp.expand_dims(diag_data, axis=x.ndim - 1)
+
+    last_dims_t = (len(data_dash.shape) - 1,)
+    if is_query:
+      data_dash = ratio * (
+          jnp.exp(data_dash - diag_data -
+                  jnp.max(data_dash, axis=last_dims_t, keepdims=True)) +
+          self.eps)
+    else:
+      data_dash = ratio * (
+          jnp.exp(data_dash - diag_data - jnp.max(
+              data_dash, axis=last_dims_t + attention_dims_t, keepdims=True)) +
+          self.eps)
+
+    return data_dash
 
   def bidirectional_numerator(query_prime, key_prime, value):
     kvs = jnp.einsum('lbm,lbd->bmd', key_prime, value)
@@ -771,9 +887,22 @@ def Favor(d_feature, n_heads=1, dropout=0.0,
   def relu(x):
     return jnp.where(x <= 0, jnp.zeros_like(x), x)
 
-  def favor(query, key, value, mask):
-    query_prime = relu(query) + numerical_stabilizer
-    key_prime = relu(key) + numerical_stabilizer
+  def forward(self, query, key, value, mask):
+    """Returns attention-computed per-head activations and unchanged mask.
+
+    Args:
+      query: Attention query.
+      key: Attention key.
+      value: Attention value.
+      mask: mask. Left unchanged.
+    """
+    # ARE THE inputs PACKED HERE CORRECTLY?
+    if self.use_approximate_softmax:
+      query_prime = nonnegative_softmax_kernel_feature_creator(query, True)
+      key_prime = nonnegative_softmax_kernel_feature_creator(key, False)
+    else:
+      query_prime =  relu(query) + self.numerical_stabilizer
+      key_prime = relu(key) + self.numerical_stabilizer
     mask_batch_1_length = jnp.reshape(
         mask, [key.shape[0] // n_heads, 1, key.shape[1]]).astype(jnp.float32)
     mask_heads = mask_batch_1_length + jnp.zeros((1, n_heads, 1))
@@ -791,41 +920,72 @@ def Favor(d_feature, n_heads=1, dropout=0.0,
     renormalized_attention = w * r
     return renormalized_attention, mask
 
-  return  tl.ConfigurableAttention(
-      tl.Dense(d_feature), tl.Dense(d_feature), tl.Dense(d_feature),
-      tl.Dense(d_feature),
-      tl.Fn('FAVOR', favor, n_out=2), n_heads=n_heads)
 
+def Favor(d_feature, n_heads=1, dropout=0.0,
+          numerical_stabilizer=0.001, use_approximate_softmax=False,
+          nb_rows=256, nb_columns, scaling=0, precision,
+          normalize_data=True, eps=0.0001, mode='train'):
+  """Returns a layer that maps (activations, mask) to (new_activations, mask).
 
-def CausalFavor(d_feature, n_heads=1, dropout=0.0,
-                numerical_stabilizer=0.001, precision=None, mode='train'):
-  """Returns a layer that maps activations to activations, with causal masking.
-
-  Like `CausalAttention`, this layer type represents one pass of multi-head
-  causal attention, but using FAVOR fast attention as in the following paper:
-  https://arxiv.org/abs/2006.03555
+  See the FAVOR paper for details: https://arxiv.org/abs/2006.03555
 
   Args:
-    d_feature: Depth/dimensionality of feature embedding.
     n_heads: Number of attention heads.
     dropout: Probababilistic rate for internal dropout applied to attention
         activations (based on query-key pairs) before dotting them with values.
     numerical_stabilizer: float, small number used for numerical stability.
-    precision: passed to jnp.einsum to define arithmetic precision.
+    use_approximate_softmax: Bool, if True uses approximate softmax, otherwise
+                             Relu.
     mode: One of `'train'`, `'eval'`, or `'predict'`.
   """
-  del dropout, mode  # not implemented yet but needed in the API
+  return  tl.ConfigurableAttention(
+      tl.Dense(d_feature), tl.Dense(d_feature), tl.Dense(d_feature),
+      tl.Dense(d_feature),
+      tl.FavorAttention(numerical_stabilizer, use_approximate_softmax,
+          nb_rows, nb_columns, scaling, precision,
+          normalize_data, eps, mode), n_heads=n_heads)
 
-  def favor_numerator_fwd(init_prefix_sum_value, precision,
-                          query_prime, key_prime, value):
+class CausalFavorAttention(base.Layer):
+  """Returns a layer that maps (activations, mask) to (new_activations, mask).
+
+  See the FAVOR paper for details: https://arxiv.org/abs/2006.03555
+
+  Args:
+    numerical_stabilizer: float, small number used for numerical stability.
+    use_approximate_softmax: Bool, if True uses approximate softmax, otherwise
+                             Relu.
+    normalize_data: predicate indicating whether data should be normalized,
+    eps: numerical stabilizer.
+    mode: One of `'train'`, `'eval'`, or `'predict'`.
+  """
+  def __init__(self, numerical_stabilizer=0.001, use_approximate_softmax=False,
+          nb_rows=256, nb_columns, scaling=0, precision,
+          normalize_data=True, eps=0.0001, mode='train'):
+    # ARE THE PARAMETERS CORRECT HERE?
+    super().__init__(n_in=3, n_out=1)
+    self.use_approximate_softmax = use_approximate_softmax
+    self.numerical_stabilizer = numerical_stabilizer
+    self.normalize_data = normalize_data
+    self.eps = eps
+    self.precision = precision
+    self.mode = mode
+    if use_approximate_softmax:
+      feature_creator = NonnegativeSoftmaxKernelFeatureCreator(
+          nb_rows=nb_rows, nb_columns=nb_columns, scaling=scaling)
+      self.projection_matrix = feature_creator.get_2d_array()
+    else:
+      self.projection_matrix=None
+
+  def favor_numerator_fwd(self, init_prefix_sum_value, query_prime, key_prime,
+                          value):
     def body(p, qkv):
       (q, k, v) = qkv
-      p += jnp.einsum('...m,...d->...md', k, v, precision=precision)
-      x_slice = jnp.einsum('...m,...md->...d', q, p, precision=precision)
+      p += jnp.einsum('...m,...d->...md', k, v, precision=self.precision)
+      x_slice = jnp.einsum('...m,...md->...d', q, p, precision=self.precision)
       return p, x_slice
     p, w = fastmath.scan(body, init_prefix_sum_value,
                          (query_prime, key_prime, value))
-    return w, (precision, p, query_prime, key_prime, value)
+    return w, (self.precision, p, query_prime, key_prime, value)
 
   def favor_numerator_bwd(pqkv, w_ct):
     precision, p, qs, ks, vs = pqkv
@@ -844,25 +1004,25 @@ def CausalFavor(d_feature, n_heads=1, dropout=0.0,
         body, (p, jnp.zeros_like(p)), (qs, ks, vs, w_ct), reverse=True)
     return (None, None, qs_ct, ks_ct, vs_ct)
 
-  def favor_numerator(init_prefix_sum_value, precision, query_prime,
+  def favor_numerator(self, init_prefix_sum_value, query_prime,
                       key_prime, value):
-    w, _ = favor_numerator_fwd(init_prefix_sum_value, precision,
+    w, _ = favor_numerator_fwd(init_prefix_sum_value, self.precision,
                                query_prime, key_prime, value)
     return w
 
   favor_numerator = fastmath.custom_vjp(
       favor_numerator, favor_numerator_fwd, favor_numerator_bwd)
 
-  def favor_denominator_fwd(init_prefix_sum_value, precision,
+  def favor_denominator_fwd(self, init_prefix_sum_value,
                             query_prime, key_prime):
     def body(p, qk):
       q, k = qk
       p += k
-      x = jnp.einsum('...m,...m->...', q, p, precision=precision)
+      x = jnp.einsum('...m,...m->...', q, p, precision=self.precision)
       return p, x
 
     p, r = fastmath.scan(body, init_prefix_sum_value, (query_prime, key_prime))
-    return r, (precision, query_prime, key_prime, p)
+    return r, (self.precision, query_prime, key_prime, p)
 
   def favor_denominator_bwd(qkp, r_ct):
     precision, qs, ks, p = qkp
@@ -880,9 +1040,9 @@ def CausalFavor(d_feature, n_heads=1, dropout=0.0,
         body, (p, jnp.zeros_like(p)), (qs, ks, r_ct), reverse=True)
     return (None, None, qs_ct, ks_ct)
 
-  def favor_denominator(init_prefix_sum_value, precision, query_prime,
+  def favor_denominator(self, init_prefix_sum_value, query_prime,
                         key_prime):
-    r, _ = favor_denominator_fwd(init_prefix_sum_value, precision,
+    r, _ = favor_denominator_fwd(init_prefix_sum_value, self.precision,
                                  query_prime, key_prime)
     return r
 
@@ -894,20 +1054,83 @@ def CausalFavor(d_feature, n_heads=1, dropout=0.0,
   def relu(x):
     return jnp.where(x <= 0, jnp.zeros_like(x), x)
 
-  def favor(query, key, value):
-    query_prime = relu(query) + numerical_stabilizer
-    key_prime = relu(key) + numerical_stabilizer
+  def nonnegative_softmax_kernel_feature_creator(self, x, is_query):
+    """Constructs nonnegative kernel features for fast softmax attention.
+
+    Args:
+      x: input for which features are computed
+      attention_dims_t: tuple of attention dimensions
+      batch_dims_t: tuple of batch dimensions
+      precision: precision parameter
+      is_query: predicate indicating whether input data corresponds to queries or
+        keys
+
+    Returns:
+      Random features for fast softmax attention.
+    """
+    if self.normalize_data:
+      # We have e^{qk^T/sqrt{d}} = e^{q_norm k_norm^T}, where
+      # w_norm = w * data_normalizer for w in {q,k}.
+      data_normalizer = 1.0 / (jnp.sqrt(jnp.sqrt(x.shape[-1])))
+    else:
+      data_normalizer = 1.0
+    ratio = 1.0 / jnp.sqrt(self.projection_matrix.shape[0])
+    # WHICH DIMENSION IS THE BATCH IN TRAX?
+    data_mod_shape = x.shape[0:1] + self.projection_matrix.shape
+    data_thick_random_matrix =
+        jnp.zeros(data_mod_shape) + self.projection_matrix
+
+    # IS THIS REALLY EQUIVALENT?
+    # data_dash = lax.dot_general(
+    #     data_normalizer * x,
+    #     data_thick_random_matrix,
+    #     (((x.ndim - 1,), (data_thick_random_matrix.ndim - 1,)),
+    #      (batch_dims_t, batch_dims_t)),
+    #     precision=precision)
+
+    # ... TO THIS?
+    data_dash = jnp.einsum('ij, ij -> i',
+                           data_normalizer * x,
+                           data_thick_random_matrix)
+
+    diag_data = jnp.square(x)
+    diag_data = jnp.sum(diag_data, axis=x.ndim - 1)
+    diag_data = (diag_data / 2.0) * data_normalizer * data_normalizer
+    diag_data = jnp.expand_dims(diag_data, axis=x.ndim - 1)
+
+    last_dims_t = (len(data_dash.shape) - 1,)
+    if is_query:
+      data_dash = ratio * (
+          jnp.exp(data_dash - diag_data -
+                  jnp.max(data_dash, axis=last_dims_t, keepdims=True)) +
+          self.eps)
+    else:
+      data_dash = ratio * (
+          jnp.exp(data_dash - diag_data - jnp.max(
+              data_dash, axis=last_dims_t + attention_dims_t, keepdims=True)) +
+          self.eps)
+
+    return data_dash
+
+
+  def forward(self, query, key, value):
+    if self.use_approximate_softmax:
+      query_prime = nonnegative_softmax_kernel_feature_creator(query, True)
+      key_prime = nonnegative_softmax_kernel_feature_creator(key, False)
+    else:
+      query_prime = relu(query) + self.numerical_stabilizer
+      key_prime = relu(key) + self.numerical_stabilizer
+
     prefix_sum_tensor_shape = (key.shape[0], key.shape[-1], value.shape[-1])
     t_slice_shape = (key.shape[0], key.shape[-1])
     init_prefix_sum_value_numerator = jnp.zeros(prefix_sum_tensor_shape)
     init_prefix_sum_value_denominator = jnp.zeros(t_slice_shape)
 
-    w = favor_numerator(init_prefix_sum_value_numerator, precision,
+    w = favor_numerator(init_prefix_sum_value_numerator,
                         jnp.moveaxis(query_prime, 1, 0),
                         jnp.moveaxis(key_prime, 1, 0),
                         jnp.moveaxis(value, 1, 0))
     r = favor_denominator(init_prefix_sum_value_denominator,
-                          precision,
                           jnp.moveaxis(query_prime, 1, 0),
                           jnp.moveaxis(key_prime, 1, 0))
     w = jnp.moveaxis(w, 0, 1)
@@ -917,10 +1140,31 @@ def CausalFavor(d_feature, n_heads=1, dropout=0.0,
     renormalized_attention = w * r
     return renormalized_attention
 
+
+def CausalFavor(d_feature, n_heads=1, dropout=0.0,
+                numerical_stabilizer=0.001, use_approximate_softmax=False,
+                nb_rows=256, nb_columns, scaling=0, precision,
+                normalize_data=True, eps=0.0001, mode='train'):
+  """Returns a layer that maps activations to activations, with causal masking.
+
+  Like `CausalAttention`, this layer type represents one pass of multi-head
+  causal attention, but using FAVOR fast attention as in the following paper:
+  https://arxiv.org/abs/2006.03555
+
+  """
+
   return tl.ConfigurableAttention(
       core.Dense(d_feature), core.Dense(d_feature), core.Dense(d_feature),
       core.Dense(d_feature), n_heads=n_heads,
-      qkv_attention_layer=base.Fn('CausalFAVOR', favor))
+      qkv_attention_layer=tl.CausalFavorAttention(numerical_stabilizer,
+                                                  use_approximate_softmax,
+                                                  nb_rows,
+                                                  nb_columns,
+                                                  scaling,
+                                                  precision,
+                                                  normalize_data,
+                                                  eps,
+                                                  mode))
 
 
 class _RememberInReverse(base.Layer):
