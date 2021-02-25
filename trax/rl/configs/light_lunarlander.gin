@@ -1,0 +1,191 @@
+# Copyright 2021 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.supervised.lr_schedules
+import trax.models
+import trax.optimizers
+import trax.rl
+import trax.rl.distributions
+import trax.rl.normalization
+import trax.rl_trainer
+
+batch_size = 256
+train_steps = 1000
+policy_train_steps = %train_steps
+value_train_steps = %train_steps
+policy_lr = 0.0001
+value_lr = 0.001
+margin = 3
+q_value_n_samples = 4
+model = @trax.models.TransformerDecoder
+# model = @trax.models.MLP  # use for baseline
+slice_len = 5  # use 1 with MLP for baseline
+
+# Parameters for Policy:
+# ==============================================================================
+Policy.body = %model
+Policy.batch_axes = 2
+Policy.head_init_range = 0.01
+
+# Parameters for Value:
+# ==============================================================================
+Value.body = %model
+Value.inject_actions_dim = 256
+Value.multiplicative_action_injection = True
+Value.batch_axes = 2
+Value.head_init_range = 0.01
+
+# Parameters for PolicyAndValue:
+# ==============================================================================
+PolicyAndValue.body = %model
+PolicyAndValue.policy_top = @trax.models.Policy
+PolicyAndValue.value_top = @trax.models.Value
+
+# Parameters for TransformerDecoder:
+# ==============================================================================
+TransformerDecoder.d_model = 256
+TransformerDecoder.d_ff = 512
+TransformerDecoder.dropout = 0.0
+TransformerDecoder.n_heads = 4
+TransformerDecoder.n_layers = 2
+
+# Parameters for MLP:
+# ==============================================================================
+MLP.flatten = False
+MLP.layer_widths = (256, 256)
+MLP.out_activation = True
+
+# Parameters for multifactor:
+# ==============================================================================
+policy/multifactor.constant = %policy_lr
+policy/multifactor.factors = 'constant'
+value/multifactor.constant = %value_lr
+value/multifactor.factors = 'constant'
+
+# Parameters for Momentum:
+# ==============================================================================
+Momentum.weight_decay_rate = 0.0
+Momentum.nesterov = False
+
+# Parameters for RLTask:
+# ==============================================================================
+RLTask.env = "LunarLander-v2"
+RLTask.initial_trajectories = 0
+RLTask.gamma = 0.99
+RLTask.max_steps = 1000
+
+# Parameters for td_lambda:
+# ==============================================================================
+td_lambda.lambda_ = 0.95
+
+# Parameters for AWR:
+# ==============================================================================
+AWR.value_model = @trax.models.Value
+AWR.value_optimizer = @trax.optimizers.Adafactor
+AWR.value_batch_size = %batch_size
+AWR.value_train_steps_per_epoch = %value_train_steps
+AWR.value_lr_schedule = @value/multifactor
+AWR.value_evals_per_epoch = 10
+AWR.value_eval_steps = 1
+AWR.policy_model = @trax.models.Policy
+AWR.policy_optimizer = @trax.optimizers.Adafactor
+AWR.policy_batch_size = %batch_size
+AWR.policy_train_steps_per_epoch = %policy_train_steps
+AWR.policy_lr_schedule = @policy/multifactor
+AWR.policy_evals_per_epoch = 1
+AWR.policy_eval_steps = 10
+AWR.n_trajectories_per_epoch = None
+AWR.n_interactions_per_epoch = 1000
+AWR.n_eval_episodes = 1
+AWR.eval_steps = [200, 1000]
+AWR.advantage_estimator = @trax.rl.advantages.td_lambda
+AWR.beta = 1.0
+AWR.w_max = 20
+AWR.max_slice_length = %slice_len
+AWR.added_policy_slice_length = %margin
+AWR.n_replay_epochs = 50
+AWR.scale_value_targets = True
+AWR.n_shared_layers = 0
+AWR.q_value = False
+AWR.q_value_n_samples = %q_value_n_samples
+AWR.q_value_aggregate = 'max'
+
+# Parameters for LoopAWR:
+# ==============================================================================
+LoopAWR.advantage_estimator = @trax.rl.advantages.td_lambda
+LoopAWR.model_fn = @trax.models.PolicyAndValue
+LoopAWR.optimizer = @trax.optimizers.Adafactor
+LoopAWR.policy_lr_schedule = @policy/multifactor
+LoopAWR.policy_n_steps_per_epoch = %policy_train_steps
+LoopAWR.value_lr_schedule = @value/multifactor
+LoopAWR.value_n_steps_per_epoch = %value_train_steps
+LoopAWR.value_sync_at = @value_sync_at/trax.rl.every()
+LoopAWR.batch_size = %batch_size
+LoopAWR.network_eval_at = None  # Use the default: eval every 100 steps.
+LoopAWR.n_trajectories_per_epoch = None
+LoopAWR.n_interactions_per_epoch = 1000
+LoopAWR.n_eval_episodes = 1
+LoopAWR.eval_steps = [1000]
+LoopAWR.beta = 1.0
+LoopAWR.w_max = 20
+LoopAWR.max_slice_length = %slice_len
+LoopAWR.margin = %margin
+LoopAWR.n_replay_epochs = 50
+
+# Parameters for value_sync_at/every:
+value_sync_at/every.n_steps = %value_train_steps
+# ==============================================================================
+
+# Parameters for SamplingAWR:
+# ==============================================================================
+SamplingAWR.value_model = @trax.models.Value
+SamplingAWR.value_optimizer = @trax.optimizers.Adafactor
+SamplingAWR.value_batch_size = %batch_size
+SamplingAWR.value_train_steps_per_epoch = %value_train_steps
+SamplingAWR.value_lr_schedule = @value/multifactor
+SamplingAWR.value_evals_per_epoch = 20
+SamplingAWR.value_eval_steps = 1
+SamplingAWR.policy_model = @trax.models.Policy
+SamplingAWR.policy_optimizer = @trax.optimizers.Adafactor
+SamplingAWR.policy_batch_size = %batch_size
+SamplingAWR.policy_train_steps_per_epoch = %policy_train_steps
+SamplingAWR.policy_lr_schedule = @policy/multifactor
+SamplingAWR.policy_evals_per_epoch = 1
+SamplingAWR.policy_eval_steps = 10
+SamplingAWR.n_trajectories_per_epoch = None
+SamplingAWR.n_interactions_per_epoch = 1000
+SamplingAWR.n_eval_episodes = 1
+SamplingAWR.eval_steps = [1000]
+SamplingAWR.eval_temperatures = [0.0, 0.5]
+SamplingAWR.advantage_estimator = @trax.rl.advantages.td_lambda
+SamplingAWR.beta = 1.0
+SamplingAWR.w_max = 20
+SamplingAWR.max_slice_length = %slice_len
+SamplingAWR.added_policy_slice_length = %margin
+SamplingAWR.n_replay_epochs = 100
+SamplingAWR.scale_value_targets = True
+SamplingAWR.n_shared_layers = 0
+SamplingAWR.q_value_n_samples = %q_value_n_samples
+SamplingAWR.q_value_aggregate = 'logsumexp'
+SamplingAWR.q_value_temperature = 0.3
+SamplingAWR.q_value_normalization = 'abs'
+SamplingAWR.advantage_normalization_factor = 1.0
+SamplingAWR.reweight = False
+
+# Parameters for train_rl:
+# ==============================================================================
+train_rl.light_rl = True
+train_rl.light_rl_trainer = @trax.rl.SamplingAWR
+train_rl.n_epochs = 10000000
+

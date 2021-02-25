@@ -483,6 +483,7 @@ class AdvantageBasedActorCriticAgent(ActorCriticAgent):
       advantage_estimator=rl_advantages.td_lambda,
       advantage_normalization=True,
       advantage_normalization_epsilon=1e-5,
+      advantage_normalization_factor=1.0,
       added_policy_slice_length=0,
       **kwargs
   ):
@@ -491,6 +492,7 @@ class AdvantageBasedActorCriticAgent(ActorCriticAgent):
     )
     self._advantage_normalization = advantage_normalization
     self._advantage_normalization_epsilon = advantage_normalization_epsilon
+    self._advantage_normalization_factor = advantage_normalization_factor
     super().__init__(
         task, added_policy_slice_length=added_policy_slice_length, **kwargs
     )
@@ -543,7 +545,7 @@ class AdvantageBasedActorCriticAgent(ActorCriticAgent):
 
   def _preprocess_advantages(self, advantages):
     if self._advantage_normalization:
-      advantages = (
+      advantages = self._advantage_normalization_factor * (
           (advantages - jnp.mean(advantages)) /
           (jnp.std(advantages) + self._advantage_normalization_epsilon)
       )

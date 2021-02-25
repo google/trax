@@ -245,6 +245,9 @@ class Agent:
                   n_trajectories=self._n_eval_episodes,
                   max_steps=steps,
                   only_eval=True)
+              supervised.trainer_lib.log(
+                  'Eval return in epoch %d with temperature %.2f was %.2f.'
+                  % (self._epoch, eval_t, avg_return_temperature))
               self._avg_returns_temperatures[eval_t][steps].append(
                   avg_return_temperature)
 
