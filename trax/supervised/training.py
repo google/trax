@@ -113,6 +113,7 @@ class Loop:
       random_seed=None,
       loss_chunk_size=0,
       use_memory_efficient_trainer=False,
+      adasum=False,
       callbacks=None,
   ):
     """Configures a training ``Loop``, including a random initialization.
@@ -160,6 +161,7 @@ class Loop:
         computation more more memory-efficient.
       use_memory_efficient_trainer: whether to use a special memory-efficient
         trainer; if set to 2, the memory efficiency if very aggressive
+      adasum: if True, use adaptive summation for multi-device gradients
       callbacks: List of subclasses of StepCallback to call on training
         steps.
     """
@@ -187,6 +189,7 @@ class Loop:
 
     self._use_memory_efficient_trainer = use_memory_efficient_trainer
     self._loss_chunk_size = loss_chunk_size
+    self._adasum = adasum
     # TODO(lukaszkaiser): can we have different eval models and save memory?
     if use_memory_efficient_trainer:
       assert len(tasks) == 1, 'only single task supported for now'
@@ -302,7 +305,8 @@ class Loop:
           shapes.signature(task.sample_batch)
       )
       task.optimizer.tree_init(model_in_training.weights)
-      return optimizers.Trainer(model_in_training, task.optimizer)
+      return optimizers.Trainer(
+          model_in_training, task.optimizer, adasum=self._adasum)
     # In the memory-efficient path, we initialize the model here.
     blocks, loss_layer = optimizers.trainer.extract_reversible_blocks(
         [self._model, task.loss_layer], loss_chunk_size=self._loss_chunk_size)
@@ -312,7 +316,8 @@ class Loop:
     # TODO(lukaszkaiser): here optimizer is a function, revisit this.
     return optimizers.ReversibleSerialTrainer(
         blocks, loss_layer, task.optimizer,
-        free_accelerators_on_step=(self._use_memory_efficient_trainer == 2))
+        free_accelerators_on_step=(self._use_memory_efficient_trainer == 2),
+        adasum=self._adasum)
 
   def _init_evaluator(self, eval_task):
     """Initializes the per-task evaluator."""

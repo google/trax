@@ -47,10 +47,11 @@ class Trainer:
   side effect, the function also modifies the model weights and optimizer slots.
   """
 
-  def __init__(self, model_with_loss, optimizer, n_devices=None):
+  def __init__(self, model_with_loss, optimizer, n_devices=None, adasum=False):
     self._model_with_loss = model_with_loss
     self._optimizer = optimizer
     self._n_devices = n_devices or fastmath.device_count()
+    self._adasum = adasum
 
     # optimizer slots and opt_params may need to be replicated
     self._slots, self._opt_params = tl.for_n_devices(
@@ -77,6 +78,7 @@ class Trainer:
             self._optimizer,
             n_devices=self._n_devices,
             accelerate=True,
+            adasum=self._adasum
         )
     )
 
@@ -160,11 +162,30 @@ class Trainer:
     return fastmath.nested_map(lambda x: x[0], x)
 
 
-def _average_multidevice_gradients(gradients):
+def _average_multidevice_gradients(gradients, adasum=False):
   """Averages gradients over all the devices across different hosts."""
   gradients_psum = fastmath.psum(gradients, 'batch')  # sum over all devices
-  n_devices_total = fastmath.psum(jnp.array(1.0), 'batch')
-  return fastmath.nested_map(lambda g: g / n_devices_total, gradients_psum)
+  n = fastmath.psum(jnp.array(1.0), 'batch')  # number of devices on all hosts
+  if not adasum:
+    return fastmath.nested_map(lambda g: g / n, gradients_psum)
+  # This implements an approximation of the Adasum algorithm from the following
+  # paper: https://arxiv.org/pdf/2006.02924.pdf
+  # Since implementing halving and averaging half-by-half is tricky, we first
+  # average all hosts, so we use the sum as a point of comparison for gradients.
+  # So for 2 devices, this algorithm is the same as in the paper, but with more
+  # devices it does a different kind of averaging. It still has the property
+  # that orthogonal gradients will result in a sum while identical ones will
+  # be averaged, as postulated in the paper.
+  adasum_nominator = fastmath.nested_map_multiarg(
+      lambda g, q: jnp.vdot(g, q),  # pylint: disable=unnecessary-lambda
+      gradients, gradients_psum)
+  grad_norm = fastmath.nested_map(lambda g: jnp.vdot(g, g), gradients)
+  # If all devices have identical gradients, then the nominator is equal
+  # to n * grad_norm; if they're orthogonal, then nominator = grad_norm.
+  scaled_grads = fastmath.nested_map_multiarg(
+      lambda g, nominator, g_norm: g*(1 - (nominator - g_norm) / (n * g_norm)),
+      gradients, adasum_nominator, grad_norm)
+  return fastmath.psum(scaled_grads, 'batch')
 
 
 # Returns a function with the following signature:
@@ -173,7 +194,8 @@ def _average_multidevice_gradients(gradients):
 def _accelerate_update_fn(forward_and_backward_fn,
                           optimizer,
                           n_devices,
-                          accelerate=True):
+                          accelerate=True,
+                          adasum=False):
   """Accelerates the given forward_and_backward_fn function."""
   if n_devices == 1:
     def single_device_update_fn(
@@ -202,7 +224,7 @@ def _accelerate_update_fn(forward_and_backward_fn,
     weights, slots = weights_and_slots
     (loss, state), gradients = (
         forward_and_backward_fn(batch, weights, state, rng))
-    gradients = _average_multidevice_gradients(gradients)
+    gradients = _average_multidevice_gradients(gradients, adasum=adasum)
     weights, slots, stats = optimizer.tree_update(
         step, gradients, weights, slots, opt_params, store_slots=False)
     stats['loss'] = loss
@@ -235,7 +257,7 @@ class ReversibleSerialTrainer:
   """
 
   def __init__(self, blocks, loss_layer, optimizer_fn, n_devices=None,
-               memoize_jit=True, free_accelerators_on_step=False):
+               memoize_jit=True, free_accelerators_on_step=False, adasum=False):
     """Creates a ReversibleSerialTrainer and the needed optimizers.
 
     This trainer performs updates equivalent to using the default Trainer on::
@@ -263,11 +285,13 @@ class ReversibleSerialTrainer:
       free_accelerators_on_step: If true, frees memory on accelerators when
         starting a step. All layers and arguments must be on host for that,
         otherwise it can lead to failures. Can prevent memory fragmentation.
+      adasum: if True, use adaptive summation to gather multi-device gradients.
     """
     self._blocks = [(tl.Serial(std), rev) for (std, rev) in blocks]
     self._loss_layer = loss_layer
     self._optimizer_fn = optimizer_fn
     self._n_devices = n_devices or fastmath.device_count()
+    self._adasum = adasum
     self._n_layers = 1 + sum([len(revs) + 1 for (_, revs) in self._blocks])
     self._n_steps_per_log = 100  # Log layers and stats every 100 steps.
     self._n_async_layers = 1  # How many layers to run asynchronously.
@@ -303,11 +327,12 @@ class ReversibleSerialTrainer:
     self._fbos = []
     for i, (std_layer, rev_layers) in enumerate(self._blocks):
       (std_opt, rev_opts) = self._optimizers[i]
-      std_fbo = _fbo_with_layer_and_opt(std_layer, std_opt, self._n_devices)
+      std_fbo = _fbo_with_layer_and_opt(
+          std_layer, std_opt, self._n_devices, adasum=self._adasum)
       rev_and_fbos = []
       for layer, opt in zip(rev_layers, rev_opts):
         rev_and_fbo = _reverse_and_fbo_with_layer_and_opt(
-            layer, opt, self._n_devices)
+            layer, opt, self._n_devices, self._adasum)
         # The donated args are (outputs, weights, grads) and we can donate
         # them because weights and grads are immediately replaced and in
         # case of reversible layers, the outputs are never used again.
@@ -320,7 +345,7 @@ class ReversibleSerialTrainer:
       self._fbos.append((jit_std_fbo, rev_and_fbos))
 
     loss_fbo = _fbo_with_layer_and_opt(
-        self._loss_layer, self._loss_opt, self._n_devices, 'loss')
+        self._loss_layer, self._loss_opt, self._n_devices, 'loss', self._adasum)
     self._loss_fbo = self._pjit(loss_fbo, donate_argnums=(1, 2))
 
   @property
@@ -670,7 +695,8 @@ class ReversibleSerialTrainer:
 # We call them in short FBO for "Forward + Backward + Optimizer update".
 
 
-def _fbo_with_layer_and_opt(layer, optimizer, n_devices, stats_name=None):
+def _fbo_with_layer_and_opt(layer, optimizer, n_devices,
+                            stats_name=None, adasum=False):
   """Create the fbo function for a given layer and optimizer."""
   def fbo(inputs, weights, grads, state, slots, opt_params, rng, step):
     """FBO of the layer."""
@@ -698,7 +724,8 @@ def _fbo_with_layer_and_opt(layer, optimizer, n_devices, stats_name=None):
 
     # In multi-device setting, average gradients from multiple devices.
     if n_devices > 1:
-      grads_weights = _average_multidevice_gradients(grads_weights)
+      grads_weights = _average_multidevice_gradients(
+          grads_weights, adasum=adasum)
 
     # Run the optimizer.
     new_weights, new_slots, stats = optimizer.tree_update(
@@ -715,7 +742,7 @@ def _fbo_with_layer_and_opt(layer, optimizer, n_devices, stats_name=None):
 # This function uses the `reverse_and_grad` method of reversible layers.
 
 
-def _reverse_and_fbo_with_layer_and_opt(layer, optimizer, n_devices):
+def _reverse_and_fbo_with_layer_and_opt(layer, optimizer, n_devices, adasum):
   """Create the reverse_and_fbo function for a given layer and optimizer."""
   def reverse_and_fbo(output, weights, grads, state, new_state,
                       slots, opt_params, rng, step):
@@ -730,7 +757,8 @@ def _reverse_and_fbo_with_layer_and_opt(layer, optimizer, n_devices):
 
     # In multi-device setting, average gradients from multiple devices.
     if n_devices > 1:
-      grads_weights = _average_multidevice_gradients(grads_weights)
+      grads_weights = _average_multidevice_gradients(
+          grads_weights, adasum=adasum)
 
     # Run the optimizer.
     new_weights, new_slots, stats = optimizer.tree_update(

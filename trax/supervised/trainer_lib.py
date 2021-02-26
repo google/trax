@@ -530,6 +530,7 @@ def train(output_dir,
           use_loop=True,
           loss_chunk_size=0,
           use_memory_efficient_trainer=False,
+          adasum=False,
           init_checkpoint=None,
           callbacks=None,
           additional_train_tasks=None,
@@ -564,7 +565,8 @@ def train(output_dir,
     checkpoint_lowest: save the checkpoint lowest at this metric.
     use_loop: whether to use training.Loop instead of Trainer.
     loss_chunk_size: int, if > 0 chunk loss into these sizes to save memory.
-    use_memory_efficient_trainer: whether to use memory-efficient trainer..
+    use_memory_efficient_trainer: whether to use memory-efficient trainer.
+    adasum: if True, use adaptive summation for multi-device gradients.
     init_checkpoint: a checkpoint for fine tuning.
     callbacks: a list of callbacks to call during training.
     additional_train_tasks: additional tasks which should be performed during
@@ -629,6 +631,7 @@ def train(output_dir,
         n_devices=n_devices,
         loss_chunk_size=loss_chunk_size,
         use_memory_efficient_trainer=use_memory_efficient_trainer,
+        adasum=adasum,
         random_seed=random_seed,
         callbacks=callbacks,
     )
