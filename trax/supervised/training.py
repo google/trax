@@ -402,6 +402,9 @@ class Loop:
             (optimizer_metrics, loss))
 
         loss_acc += loss
+        # Log loss every 50 steps, every step in memory-efficient trainer.
+        if self._step % 50 == 0 or self._use_memory_efficient_trainer:
+          self._log_step('Loss: %.4f' % loss, stdout=False)
         step_acc += 1
         for metric_name, value in optimizer_metrics.items():
           optimizer_metrics_acc[metric_name] += value
