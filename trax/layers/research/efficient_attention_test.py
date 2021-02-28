@@ -40,6 +40,28 @@ class EfficientAttentionTest(test.TestCase, parameterized.TestCase):
       y = layer(x)
       self.assertEqual(y.shape, x.shape)
 
+  def test_self_attention_save_load(self):
+    with fastmath.use_backend(fastmath.Backend.JAX):
+      def model_fn():
+        return efficient_attention.SelfAttention(
+            n_heads=5, d_qk=7, d_v=17, share_qk=False, causal=True,
+            chunk_len=8, n_chunks_before=1, n_chunks_after=0,
+            use_reference_code=True, attention_dropout=0.0, mode='train')
+
+      layer1 = model_fn()
+      layer2 = model_fn()
+      x = np.ones((3, 32, 8)).astype(np.float32)
+      input_signature = shapes.signature(x)
+
+      layer1.init(input_signature)
+      layer1.save_to_file('/tmp/unique_weights')
+      layer2.init_from_file('/tmp/unique_weights',
+                            input_signature=input_signature)
+
+      y1 = layer1(x)
+      y2 = layer2(x)
+      np.testing.assert_array_almost_equal(y1, y2, decimal=6)
+
   def test_lsh_ff(self):
     with fastmath.use_backend(fastmath.Backend.JAX):
       layer = efficient_attention.LSHFF(d_ff=1024*8, n_buckets=[16, 8])

@@ -403,20 +403,17 @@ class EfficientAttentionBase(base.Layer):
   def init_weights_and_state(self, input_signature):
     if not isinstance(input_signature, (tuple, list)):
       input_signature = (input_signature,)
-    input_signature_unbatched = fastmath.nested_map(
-        lambda x: type(x)(shape=x.shape[1:], dtype=x.dtype),
-        input_signature)
     batch_size = int(input_signature[0].shape[0])
 
     weights = []
     weight_rngs = fastmath.random.split(self.rng, self.n_heads)
     for i in range(self.n_heads):
-      weights.append(self.create_weights_unbatched(input_signature_unbatched,
+      weights.append(self.create_weights_unbatched(input_signature,
                                                    weight_rngs[i]))
     state = []
     state_rngs = fastmath.random.split(self.rng, self.n_heads * batch_size)
     for i in range(self.n_heads * batch_size):
-      state.append(self.create_state_unbatched(input_signature_unbatched,
+      state.append(self.create_state_unbatched(input_signature,
                                                state_rngs[i]))
 
     stack_along_axis_0 = lambda *x: np.stack(x, axis=0)
@@ -1066,20 +1063,17 @@ class SelfAttention(base.Layer):
   def init_weights_and_state(self, input_signature):
     if not isinstance(input_signature, (tuple, list)):
       input_signature = (input_signature,)
-    input_signature_unbatched = fastmath.nested_map(
-        lambda x: type(x)(shape=x.shape[1:], dtype=x.dtype),
-        input_signature)
     batch_size = int(input_signature[0].shape[0])
 
     weights = []
     weight_rngs = fastmath.random.split(self.rng, self.n_heads)
     for i in range(self.n_heads):
-      weights.append(self.create_weights_unbatched(input_signature_unbatched,
+      weights.append(self.create_weights_unbatched(input_signature,
                                                    weight_rngs[i]))
     state = []
     state_rngs = fastmath.random.split(self.rng, self.n_heads * batch_size)
     for i in range(self.n_heads * batch_size):
-      state.append(self.create_state_unbatched(input_signature_unbatched,
+      state.append(self.create_state_unbatched(input_signature,
                                                state_rngs[i]))
 
     stack_along_axis_0 = lambda *x: np.stack(x, axis=0)
@@ -1804,20 +1798,20 @@ class LSHSelfAttention(base.Layer):
   def init_weights_and_state(self, input_signature):
     if not isinstance(input_signature, (tuple, list)):
       input_signature = (input_signature,)
-    input_signature_unbatched = fastmath.nested_map(
-        lambda x: type(x)(shape=x.shape[1:], dtype=x.dtype),
-        input_signature)
+    # input_signature_unbatched = fastmath.nested_map(
+    #     lambda x: shapes.ShapeDtype(shape=x.shape[1:], dtype=x.dtype),
+    #     input_signature)
     batch_size = int(input_signature[0].shape[0])
 
     weights = []
     weight_rngs = fastmath.random.split(self.rng, self.n_heads)
     for i in range(self.n_heads):
-      weights.append(self.create_weights_unbatched(input_signature_unbatched,
+      weights.append(self.create_weights_unbatched(input_signature,
                                                    weight_rngs[i]))
     state = []
     state_rngs = fastmath.random.split(self.rng, self.n_heads * batch_size)
     for i in range(self.n_heads * batch_size):
-      state.append(self.create_state_unbatched(input_signature_unbatched,
+      state.append(self.create_state_unbatched(input_signature,
                                                state_rngs[i]))
 
     stack_along_axis_0 = lambda *x: np.stack(x, axis=0)
@@ -1871,7 +1865,7 @@ class LSHSelfAttention(base.Layer):
     # for LSH, we haven't run experiments to demonstrate this. To be on the safe
     # side we include a per-head RNG in the state for the purpose of doing LSH.
     if not self.incremental:
-      length = self._max_length_for_buckets or input_signature.shape[0]
+      length = self._max_length_for_buckets or input_signature.shape[1]
       buckets = np.zeros(self.n_hashes * length, dtype=np.int32)
       return (buckets, rng)
     else:
@@ -2657,12 +2651,8 @@ class PureLSHSelfAttention(base.Layer):
     assert batch_x_heads % self.n_heads == 0
     batch = batch_x_heads // self.n_heads
 
-    query_signature_unbatched = fastmath.nested_map(
-        lambda x: type(x)(shape=x.shape[1:], dtype=x.dtype),
-        qk_signature)
-
     state_rngs = fastmath.random.split(self.rng, batch_x_heads)
-    state = [self.create_state_unbatched(query_signature_unbatched, rng)
+    state = [self.create_state_unbatched(qk_signature, rng)
              for rng in state_rngs]
 
     stack_along_axis_0 = lambda *x: np.stack(x, axis=0)
@@ -2690,7 +2680,7 @@ class PureLSHSelfAttention(base.Layer):
     # for LSH, we haven't run experiments to demonstrate this. To be on the safe
     # side we include a per-head RNG in the state for the purpose of doing LSH.
     if not self.incremental:
-      length = self._max_length_for_buckets or input_signature.shape[0]
+      length = self._max_length_for_buckets or input_signature.shape[1]
       buckets = np.zeros(self.n_hashes * length, dtype=np.int32)
       return (buckets, rng)
     else:
