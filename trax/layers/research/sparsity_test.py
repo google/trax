@@ -16,6 +16,7 @@
 # Lint as: python3
 """Tests for trax.layers.research.efficient_attention."""
 
+import functools
 from absl.testing import parameterized
 import jax
 import numpy as np
@@ -24,6 +25,7 @@ from tensorflow import test
 from trax import fastmath
 from trax import shapes
 import trax.layers as tl
+from trax.layers import test_utils
 from trax.layers.research import sparsity
 
 
@@ -71,33 +73,26 @@ class EfficientFeedForwardTest(test.TestCase, parameterized.TestCase):
       np.testing.assert_array_almost_equal(eval_out[0, 0, :], pred_out[0, 0, :])
 
   def test_sparse_ff_predict_equals_eval(self):
-    d_model = 1024
-    n_elements_in_block = 64
-    d_ff = d_model * 8
-    x_shape = (1, 1, d_model)
-    temperature = 0.7
     with fastmath.use_backend(fastmath.Backend.JAX):
-      x = np.ones(x_shape).astype(np.float32)
-      input_signature = shapes.signature(x)
-      common_kwargs = dict(
-          d_ff=d_ff,
-          n_elements_in_block=n_elements_in_block,
-          temperature=temperature,
-          multiply_by_controller_output=True,
-      )
-      eval_model = sparsity.SparseFF(
-          mode='eval', **common_kwargs)
-      weights, state = eval_model.init(input_signature)
-      eval_out, _ = eval_model.pure_fn(
-          x, weights, state, rng=jax.random.PRNGKey(0))
-      pred_model = sparsity.SparseFF(
-          mode='predict', **common_kwargs)
-      _, _ = pred_model.init(input_signature)
-      pred_out, _ = pred_model.pure_fn(
-          x, weights, state, rng=jax.random.PRNGKey(0))
-      self.assertEqual(eval_out.shape, x.shape)
-      # eval_out and pred_out should be identical.
-      np.testing.assert_array_almost_equal(eval_out[0, 0, :], pred_out[0, 0, :])
+      d_model = 64
+      seq_len = 6
+      x_shape = (1, seq_len, d_model)
+      inp = np.ones(x_shape).astype(np.float32)
+
+      model_fn = functools.partial(
+          sparsity.SparseFF,
+          d_ff=256,
+          temperature=0.7,
+          n_elements_in_block=8,
+          )
+
+      configs = [
+          {'multiply_by_controller_output': True},
+          {'multiply_by_controller_output': False},
+          {'ff_chunk_size': 2},
+      ]
+
+      test_utils.test_eval_equals_predict_configs(inp, model_fn, configs)
 
   @parameterized.named_parameters(('_mode_train', 'train'),
                                   ('_mode_eval', 'eval'),
@@ -341,6 +336,30 @@ class MultiplicativeConvCausalAttentionTest(test.TestCase):
 
       y = layer(x)
       self.assertEqual(y.shape, (1, 3, 4))
+
+  def test_predict_equals_eval(self):
+    with fastmath.use_backend(fastmath.Backend.JAX):
+      d_model = 32
+      seq_len = 3
+      x_shape = (1, seq_len, d_model)
+      inp = np.ones(x_shape).astype(np.float32)
+
+      model_fn = functools.partial(
+          sparsity.MultiplicativeConvCausalAttention,
+          d_feature=d_model,
+          n_heads=4,
+          sparsity=4,
+          )
+
+      list_kwargs = []
+      for share_qk in [True, False]:
+        for output in ['none', 'mult', 'conv', 'multconv']:
+          for concat in ['original', 'fixed', 'none']:
+            kwargs = {'share_qk': share_qk, 'output_layer_type': output,
+                      'v_concat_type': concat}
+            list_kwargs.append(kwargs)
+
+      test_utils.test_eval_equals_predict_configs(inp, model_fn, list_kwargs)
 
 
 class FavorTest(test.TestCase):

@@ -16,12 +16,13 @@
 # Lint as: python3
 """Tests for trax.layers.attention."""
 
+import functools
 from absl.testing import absltest
 import numpy as np
 
 from trax import shapes
-
 import trax.layers as tl
+from trax.layers import test_utils
 
 
 class AttentionTest(absltest.TestCase):
@@ -110,6 +111,34 @@ class CausalAttentionTest(absltest.TestCase):
 
     y = layer(x)
     self.assertEqual(y.shape, (1, 3, 4))
+
+  def test_deterministic_eval(self):
+    d_model = 32
+    seq_len = 3
+    x_shape = (1, seq_len, d_model)
+    inp = np.ones(x_shape).astype(np.float32)
+
+    model_fn = functools.partial(
+        tl.CausalAttention,
+        d_feature=d_model,
+        n_heads=4,
+        )
+
+    test_utils.test_eval_is_deterministic(inp, model_fn)
+
+  def test_predict_equals_eval(self):
+    d_model = 32
+    seq_len = 3
+    x_shape = (1, seq_len, d_model)
+    inp = np.ones(x_shape).astype(np.float32)
+
+    model_fn = functools.partial(
+        tl.CausalAttention,
+        d_feature=d_model,
+        n_heads=4,
+        )
+
+    test_utils.test_eval_equals_predict(inp, model_fn)
 
 
 class PositionalEncodingTest(absltest.TestCase):

@@ -25,6 +25,7 @@ import numpy as np
 from trax import fastmath
 from trax import layers as tl
 from trax import shapes
+from trax.layers import test_utils
 from trax.models.research import configurable_transformer as ct
 
 
@@ -69,37 +70,18 @@ class ConfigurableTransformerTest(parameterized.TestCase):
 
   def _test_fast_inference(self, length):
     with fastmath.use_backend(fastmath.Backend.JAX):
-      vocab_size = 16
       model_fn = functools.partial(
           ct.ConfigurableTransformerLM,
-          vocab_size=vocab_size,
+          vocab_size=16,
           d_model=4,
           d_ff=8,
           n_layers=2,
           n_heads=2,
       )
-      model_slow = model_fn(mode='eval')
-      model_fast = model_fn(mode='predict')
-      rng = fastmath.random.get_prng(0)
       batch_size = 2
-      input_signature = shapes.ShapeDtype((batch_size, 1), np.int32)
-      # Given the same rng, both models initialize with the same parameters.
-      model_slow.init(input_signature, rng)
-      model_fast.init(input_signature, rng)
+      inp = np.zeros((batch_size, length), dtype=np.int32)
 
-      buf = np.zeros((batch_size, length), dtype=np.int32)
-      next_sym = np.zeros((batch_size, 1), dtype=np.int32)
-
-      for index in range(length):
-        logits_slow = model_slow(buf, rng=rng)
-        logits_fast = model_fast(next_sym, rng=rng)
-        np.testing.assert_array_almost_equal(
-            logits_slow[:, index, :],
-            logits_fast[:, 0, :],
-            decimal=5,
-        )
-        next_sym = np.random.randint(vocab_size, size=(batch_size, 1))
-        buf[:, index] = next_sym[:, 0]
+      test_utils.test_eval_equals_predict(inp, model_fn)
 
   def test_sparse_configurable_transformer_fast_inference(self):
     self._test_sparse_fast_inference(length=3)
@@ -108,6 +90,7 @@ class ConfigurableTransformerTest(parameterized.TestCase):
     with fastmath.use_backend(fastmath.Backend.JAX):
       vocab_size = 16
       d_model = 4
+      batch_size = 2
 
       encoder_decoder_attention_type = functools.partial(
           tl.MultiplicativeConvCausalAttention,
@@ -126,39 +109,13 @@ class ConfigurableTransformerTest(parameterized.TestCase):
           loss_sparsity=2,
           ff_sparsity=2,
           encoder_decoder_attention_type=encoder_decoder_attention_type,
-
-          # SRU currently doesn't work for second token and further.
-          # ff_use_sru=(1, 4),
+          ff_use_sru=(1, 4),
       )
 
-      model_slow = model_fn(mode='eval')
-      model_fast = model_fn(mode='predict')
-      rng = fastmath.random.get_prng(0)
-      batch_size = 2
-      input_signature = (
-          shapes.ShapeDtype((batch_size, length), np.int32),
-          shapes.ShapeDtype((batch_size, 1), np.int32))
-      model_slow.init(input_signature)
-      model_fast.init(input_signature)
-      model_slow.save_to_file('/tmp/unique_weights')
-      model_fast.init_from_file('/tmp/unique_weights', weights_only=True,
-                                input_signature=input_signature)
-
       inp = np.random.randint(vocab_size, size=(batch_size, length))
-      buf = np.zeros((batch_size, length), dtype=np.int32)
-      next_sym = np.zeros((batch_size, 1), dtype=np.int32)
+      out = np.zeros((batch_size, length), dtype=np.int32)
 
-      for index in range(length):
-        logits_slow = model_slow((inp, buf), rng=rng)[0]
-        logits_fast = model_fast((inp, next_sym), rng=rng)[0]
-        np.testing.assert_array_almost_equal(
-            logits_slow[:, index, :],
-            logits_fast[:, 0, :],
-            decimal=5,
-            err_msg='Error on token {} out of {}.'.format(index+1, length)
-        )
-        next_sym = np.random.randint(vocab_size, size=(batch_size, 1))
-        buf[:, index] = next_sym[:, 0]
+      test_utils.test_eval_equals_predict((inp, out), model_fn, seq_tensor=1)
 
   @parameterized.named_parameters(
       ('positional_encoding', None),
