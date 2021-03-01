@@ -600,6 +600,9 @@ def cifar10_augmentation_flatten_preprocess(dataset,
 
 @gin.configurable(denylist=['dataset', 'training'])
 def downsampled_imagenet_flatten_bare_preprocess(dataset, training):
+  """Preprocessing for downsampled_imagenet 32x32 and 64x64 generation from
+  http://arxiv.org/abs/1601.06759 (page 8).
+  """
   def flatten_image(features):
     img = features['image']
     flat = tf.cast(tf.reshape(img, [-1]), tf.int64)
