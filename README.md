@@ -93,7 +93,7 @@ print(translation)
 
 ## 2. Features and resources
 
-Trax includes basic models (like [ResNet](https://github.com/google/trax/blob/master/trax/models/resnet.py#L70), [LSTM](https://github.com/google/trax/blob/master/trax/models/rnn.py#L100), [Transformer](https://github.com/google/trax/blob/master/trax/models/transformer.py#L189) and RL algorithms
+Trax includes basic models (like [ResNet](https://github.com/google/trax/blob/master/trax/models/resnet.py#L70), [LSTM](https://github.com/google/trax/blob/master/trax/models/rnn.py#L100), [Transformer](https://github.com/google/trax/blob/master/trax/models/transformer.py#L189)) and RL algorithms
 (like [REINFORCE](https://github.com/google/trax/blob/master/trax/rl/training.py#L244), [A2C](https://github.com/google/trax/blob/master/trax/rl/actor_critic_joint.py#L458), [PPO](https://github.com/google/trax/blob/master/trax/rl/actor_critic_joint.py#L209)). It is also actively used for research and includes
 new models like the [Reformer](https://github.com/google/trax/tree/master/trax/models/reformer) and new RL algorithms like [AWR](https://arxiv.org/abs/1910.00177). Trax has bindings to a large number of deep learning datasets, including
 [Tensor2Tensor](https://github.com/tensorflow/tensor2tensor) and [TensorFlow datasets](https://www.tensorflow.org/datasets/catalog/overview).
