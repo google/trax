@@ -603,8 +603,7 @@ def FunnelTransformerLM(vocab_size,
         Sharing along batch and sequence axes (`dropout_shared_axes=(0,1)`) is
         a useful way to save memory and apply consistent masks to activation
         vectors at different sequence positions.
-    mode: If `'predict'`, use fast inference. If `'train'`, each encoder block
-        will include dropout; else, it will pass all values through unaltered.
+    mode: str: 'train' or 'eval'
     ff_activation: Type of activation function at the end of each encoder
         block; must be an activation-type subclass of `Layer`.
 
@@ -612,6 +611,7 @@ def FunnelTransformerLM(vocab_size,
     A Transformer language model as a layer that maps from a tensor of tokens
     to activations over a vocab set.
   """
+  assert mode != 'predict'  # For now, 'predict' mode is unsupported.
   assert len(n_funnel_blocks) == len(shorten_factors)
 
   token_encoder = [
@@ -635,7 +635,7 @@ def FunnelTransformerLM(vocab_size,
 
   total_pooling_acc = 1
   pre_decoder_blocks = create_decoder_blocks(n_pre_decoder_blocks,
-                                             total_pooling_acc)
+                                             total_pooling=1)
 
   funnel_blocks = []
 
@@ -668,7 +668,8 @@ def FunnelTransformerLM(vocab_size,
       ff_activation()
   )
 
-  post_decoder_blocks = create_decoder_blocks(n_post_decoder_blocks, 1)
+  post_decoder_blocks = create_decoder_blocks(n_post_decoder_blocks,
+                                              total_pooling=1)
 
   # Assemble and return the model.
   return tl.Serial(              # tokens (or chunked tuple of tokens)
