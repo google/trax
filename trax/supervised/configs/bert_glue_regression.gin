@@ -17,39 +17,19 @@ import trax.models.research.bert
 
 include 'bert.gin'
 
-# See https://www.tensorflow.org/datasets/catalog/glue -- valid dataset_name
-# values are: glue/cola, glue/sst2, glue/mrpc, glue/qqp, glue/stsb, glue/mnli,
-# glue/qnli, glue/rte, glue/wnli. However, training on WNLI with this setup is
-# not recommended and will likely result in lower than baseline accuracy.
-dataset_name = 'glue/stsb'
-
-# Parameters for TFDS data pipeline:
+# Parameters for training and eval data:
 # ==============================================================================
-make_inputs.train_stream = [
-  @train/data.TFDS(),
-  @data.Tokenize(),
-  @data.CreateBertInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.Batch()
-]
-make_inputs.eval_stream = [
-  @eval/data.TFDS(),
-  @data.Tokenize(),
-  @data.CreateBertInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.Batch()
-]
-train/data.TFDS.dataset_name = %dataset_name
-train/data.TFDS.keys = @trax.data.tf_inputs.get_glue_key()
-train/data.TFDS.train = True
-eval/data.TFDS.dataset_name = %dataset_name
-eval/data.TFDS.keys = @trax.data.tf_inputs.get_glue_key()
-eval/data.TFDS.train = False
-get_glue_key.task_name = %dataset_name
+#
+# See https://www.tensorflow.org/datasets/catalog/glue. Valid benchmark names:
+#
+#     cola, sst2, mrpc, qqp, stsb, mnli, qnli, rte, wnli.
+#
+# Training on WNLI with this setup is not recommended and will likely result in
+# lower than baseline accuracy.
+make_inputs.train_stream = @data.BertGlueTrainStream
+make_inputs.eval_stream = @data.BertGlueEvalStream
+BertGlueTrainStream.benchmark_name = 'stsb'
+BertGlueEvalStream.benchmark_name = 'stsb'
 
 # Parameters for train:
 # ==============================================================================

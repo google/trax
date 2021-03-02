@@ -23,12 +23,6 @@ import trax.layers.metrics
 
 include 'c4.gin'
 
-# See https://www.tensorflow.org/datasets/catalog/glue -- valid dataset_name
-# values are: glue/cola, glue/sst2, glue/mrpc, glue/qqp, glue/stsb, glue/mnli,
-# glue/qnli, glue/rte, glue/wnli.
-
-dataset_name = 'glue/qnli'
-
 # Corresponds roughly to T5 'large' ~ 770m params, i.e. T5's `bi_v1_large.gin`.
 d_model = 1024
 d_ff = 4096
@@ -50,26 +44,12 @@ MultiplicativeConvCausalAttention.length_kernel_size = 3
 
 dec_attn_type = @CausalAttention
 
-# Parameters for TFDS data pipeline:
+# Parameters for training and eval data:
 # ==============================================================================
-make_inputs.train_stream = [
-  @train/data.CreateT5GlueInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.Batch()
-]
-make_inputs.eval_stream = [
-  @eval/data.CreateT5GlueInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.Batch()
-]
-train/data.CreateT5GlueInputs.dataset_name = %dataset_name
-train/data.CreateT5GlueInputs.train = True
-eval/data.CreateT5GlueInputs.dataset_name = %dataset_name
-eval/data.CreateT5GlueInputs.train = False
+make_inputs.train_stream = @data.T5GlueTrainStream()
+make_inputs.eval_stream = @data.T5GlueEvalStream()
+T5GlueTrainStream.benchmark_name = 'qnli'
+T5GlueEvalStream.benchmark_name = 'qnli'
 
 data.PadToLength.len_map = {0: 512, 1: 512, 2: 512}
 data.PadToLength.pad_value = {0: 0, 1: 0, 2:0}

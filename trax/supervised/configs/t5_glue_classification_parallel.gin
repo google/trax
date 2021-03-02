@@ -48,193 +48,16 @@ MultiplicativeConvCausalAttention.length_kernel_size = 3
 
 dec_attn_type = @CausalAttention
 
-# Parameters for TFDS data pipeline:
+# Parameters for training and eval data:
 # ==============================================================================
-train_cola/make_additional_stream.stream = [
-  @train_cola/data.CreateT5GlueInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.Batch()
-]
-eval_cola/make_additional_stream.stream = [
-  @eval_cola/data.CreateT5GlueInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.Batch()
-]
-train_sst2/make_additional_stream.stream = [
-  @train_sst2/data.CreateT5GlueInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.Batch()
-]
-eval_sst2/make_additional_stream.stream = [
-  @eval_sst2/data.CreateT5GlueInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.Batch()
-]
-train_mrpc/make_additional_stream.stream = [
-  @train_mrpc/data.CreateT5GlueInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.Batch()
-]
-eval_mrpc/make_additional_stream.stream = [
-  @train_mrpc/data.CreateT5GlueInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.Batch()
-]
-train_qqp/make_additional_stream.stream = [
-  @train_qqp/data.CreateT5GlueInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.Batch()
-]
-eval_qqp/make_additional_stream.stream = [
-  @eval_qqp/data.CreateT5GlueInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.Batch()
-]
-train_mnli/make_additional_stream.stream = [
-  @train_mnli/data.CreateT5GlueInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.Batch()
-]
-eval_mnli/make_additional_stream.stream = [
-  @train_mnli/data.CreateT5GlueInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.Batch()
-]
-train_qnli/make_additional_stream.stream = [
-  @train_qnli/data.CreateT5GlueInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.Batch()
-]
-eval_qnli/make_additional_stream.stream = [
-  @eval_qnli/data.CreateT5GlueInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.Batch()
-]
-train_rte/make_additional_stream.stream = [
-  @train_rte/data.CreateT5GlueInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.Batch()
-]
-eval_rte/make_additional_stream.stream = [
-  @eval_rte/data.CreateT5GlueInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.Batch()
-]
-eval_wnli/make_additional_stream.stream = [
-  @eval_wnli/data.CreateT5GlueInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.Batch()
-]
-
-train/make_parallel_stream.streams = [
-  @train_cola/make_additional_stream,
-  @train_sst2/make_additional_stream,
-  @train_mrpc/make_additional_stream,
-  @train_qqp/make_additional_stream,
-  @train_mnli/make_additional_stream,
-  @train_qnli/make_additional_stream,
-  @train_rte/make_additional_stream
-]
-
-eval/make_parallel_stream.streams = [
-  @eval_cola/make_additional_stream,
-  @eval_sst2/make_additional_stream,
-  @eval_mrpc/make_additional_stream,
-  @eval_qqp/make_additional_stream,
-  @eval_mnli/make_additional_stream,
-  @eval_qnli/make_additional_stream,
-  @eval_rte/make_additional_stream,
-  @eval_wnli/make_additional_stream
-]
-
-make_inputs.train_stream = @train/make_parallel_stream()
-make_inputs.eval_stream = @eval/make_parallel_stream()
-
-train_cola/data.CreateT5GlueInputs.dataset_name = 'glue/cola'
-train_cola/data.CreateT5GlueInputs.train = True
-train_sst2/data.CreateT5GlueInputs.dataset_name = 'glue/sst2'
-train_sst2/data.CreateT5GlueInputs.train = True
-train_mrpc/data.CreateT5GlueInputs.dataset_name = 'glue/mrpc'
-train_mrpc/data.CreateT5GlueInputs.train = True
-train_qqp/data.CreateT5GlueInputs.dataset_name = 'glue/qqp'
-train_qqp/data.CreateT5GlueInputs.train = True
-train_mnli/data.CreateT5GlueInputs.dataset_name = 'glue/mnli'
-train_mnli/data.CreateT5GlueInputs.train = True
-train_qnli/data.CreateT5GlueInputs.dataset_name = 'glue/qnli'
-train_qnli/data.CreateT5GlueInputs.train = True
-train_rte/data.CreateT5GlueInputs.dataset_name = 'glue/rte'
-train_rte/data.CreateT5GlueInputs.train = True
-
-eval_cola/data.CreateT5GlueInputs.dataset_name = 'glue/cola'
-eval_cola/data.CreateT5GlueInputs.train = False
-eval_cola/trax.supervised.training.EvalTask.labeled_data = @eval_cola/trax.data.inputs.make_additional_stream()
-eval_cola/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
-eval_cola/trax.supervised.training.EvalTask.metric_names = ['Cola accuracy', 'Cola sequence accuracy']
-eval_sst2/data.CreateT5GlueInputs.dataset_name = 'glue/sst2'
-eval_sst2/data.CreateT5GlueInputs.train = False
-eval_sst2/trax.supervised.training.EvalTask.labeled_data = @eval_sst2/trax.data.inputs.make_additional_stream()
-eval_sst2/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
-eval_sst2/trax.supervised.training.EvalTask.metric_names = ['SST2 accuracy', 'SST2 sequence accuracy']
-eval_mrpc/data.CreateT5GlueInputs.dataset_name = 'glue/mrpc'
-eval_mrpc/data.CreateT5GlueInputs.train = False
-eval_mrpc/trax.supervised.training.EvalTask.labeled_data = @eval_mrpc/trax.data.inputs.make_additional_stream()
-eval_mrpc/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
-eval_mrpc/trax.supervised.training.EvalTask.metric_names = ['MRPC accuracy', 'MRPC sequence accuracy']
-eval_qqp/data.CreateT5GlueInputs.dataset_name = 'glue/qqp'
-eval_qqp/data.CreateT5GlueInputs.train = False
-eval_qqp/trax.supervised.training.EvalTask.labeled_data = @eval_qqp/trax.data.inputs.make_additional_stream()
-eval_qqp/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
-eval_qqp/trax.supervised.training.EvalTask.metric_names = ['QQP accuracy', 'QQP sequence accuracy']
-eval_mnli/data.CreateT5GlueInputs.dataset_name = 'glue/mnli'
-eval_mnli/data.CreateT5GlueInputs.train = False
-eval_mnli/trax.supervised.training.EvalTask.labeled_data = @eval_mnli/trax.data.inputs.make_additional_stream()
-eval_mnli/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
-eval_mnli/trax.supervised.training.EvalTask.metric_names = ['MNLI accuracy', 'MNLI sequence accuracy']
-eval_qnli/data.CreateT5GlueInputs.dataset_name = 'glue/qnli'
-eval_qnli/data.CreateT5GlueInputs.train = False
-eval_qnli/trax.supervised.training.EvalTask.labeled_data = @eval_qnli/trax.data.inputs.make_additional_stream()
-eval_qnli/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
-eval_qnli/trax.supervised.training.EvalTask.metric_names = ['QNLI accuracy', 'QNLI sequence accuracy']
-eval_rte/data.CreateT5GlueInputs.dataset_name = 'glue/rte'
-eval_rte/data.CreateT5GlueInputs.train = False
-eval_rte/trax.supervised.training.EvalTask.labeled_data = @eval_rte/trax.data.inputs.make_additional_stream()
-eval_rte/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
-eval_rte/trax.supervised.training.EvalTask.metric_names = ['RTE accuracy', 'RTE sequence accuracy']
-eval_wnli/data.CreateT5GlueInputs.dataset_name = 'glue/wnli'
-eval_wnli/data.CreateT5GlueInputs.train = False
-eval_wnli/trax.supervised.training.EvalTask.labeled_data = @eval_wnli/trax.data.inputs.make_additional_stream()
-eval_wnli/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
-eval_wnli/trax.supervised.training.EvalTask.metric_names = ['WNLI accuracy', 'WNLI sequence accuracy']
+make_inputs.train_stream = @data.T5GlueTrainStreamsParallel()
+make_inputs.eval_stream = @data.T5GlueEvalStreamsParallel()
+data.T5GlueTrainStreamsParallel.name_list = [
+    'cola', 'sst2', 'mrpc', 'qqp', 'mnli', 'qnli', 'rte']
+data.T5GlueEvalStreamsParallel.name_list = [
+    'cola', 'sst2', 'mrpc', 'qqp', 'mnli', 'qnli', 'rte', 'wnli']
+data.T5GlueEvalTasks.name_list = [
+    'cola', 'sst2', 'mrpc', 'qqp', 'mnli', 'qnli', 'rte', 'wnli']
 
 data.PadToLength.len_map = {0: 512, 1: 512, 2: 512}
 data.PadToLength.pad_value = {0: 0, 1: 0, 2:0}
@@ -251,16 +74,7 @@ train.inputs = @trax.data.inputs.make_inputs
 train.model = @trax.models.ConfigurableTransformer
 train.steps = 1000000
 train.checkpoint_highest = 'accuracy'
-train.additional_eval_tasks = [
-  @eval_cola/trax.supervised.training.EvalTask(),
-  @eval_sst2/trax.supervised.training.EvalTask(),
-  @eval_mrpc/trax.supervised.training.EvalTask(),
-  @eval_qqp/trax.supervised.training.EvalTask(),
-  @eval_mnli/trax.supervised.training.EvalTask(),
-  @eval_qnli/trax.supervised.training.EvalTask(),
-  @eval_rte/trax.supervised.training.EvalTask(),
-  @eval_wnli/trax.supervised.training.EvalTask()
-]
+train.additional_eval_tasks = [@data.T5GlueEvalTasks()]
 
 # Parameters for ConfigurableTransformer:
 # ==============================================================================

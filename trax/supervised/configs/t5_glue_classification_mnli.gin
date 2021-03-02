@@ -24,13 +24,6 @@ import trax.layers.metrics
 include 'c4.gin'
 
 # This config illustrates how to manage two eval tasks.
-# See https://www.tensorflow.org/datasets/catalog/glue for a description
-# of the MNLI dataset.
-
-dataset_name = 'glue/mnli'
-train_split = 'train'
-validation_split = 'validation_matched'
-validation_additional_split = 'validation_mismatched'
 
 # Corresponds roughly to T5 'large' ~ 770m params, i.e. T5's `bi_v1_large.gin`.
 d_model = 1024
@@ -53,42 +46,15 @@ MultiplicativeConvCausalAttention.length_kernel_size = 3
 
 dec_attn_type = @CausalAttention
 
-# Parameters for TFDS data pipeline:
+# Parameters for training and eval data:
 # ==============================================================================
-make_inputs.train_stream = [
-  @train/data.CreateT5GlueInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.Batch()
-]
-make_inputs.eval_stream = [
-  @eval/data.CreateT5GlueInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.Batch()
-]
-
-make_additional_stream.stream = [
-  @eval_additional_task/data.CreateT5GlueInputs(),
-  @data.Shuffle(),
-  @data.PadToLength(),
-  @data.TruncateToLength(),
-  @data.Batch()
-]
-
-train/data.CreateT5GlueInputs.dataset_name = %dataset_name
-train/data.CreateT5GlueInputs.train = True
-eval/data.CreateT5GlueInputs.dataset_name = %dataset_name
-eval/data.CreateT5GlueInputs.train = False
-
-eval_additional_task/data.CreateT5GlueInputs.dataset_name = %dataset_name
-eval_additional_task/data.CreateT5GlueInputs.train = %validation_additional_split
-eval_additional_task/trax.supervised.training.EvalTask.labeled_data = @trax.data.inputs.make_additional_stream()
-# Explicitly pass the accuracy metric - we can pass multiple metrics if needs be
-eval_additional_task/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(),]
-eval_additional_task/trax.supervised.training.EvalTask.metric_names = [%validation_additional_split,]
+#
+# See https://www.tensorflow.org/datasets/catalog/glue for a description
+# of the MNLI dataset.
+make_inputs.train_stream = @data.T5GlueTrainStream()
+make_inputs.eval_stream = @data.T5GlueEvalStream()
+data.T5GlueTrainStream.benchmark_name = 'mnli'
+data.T5GlueEvalStream.benchmark_name = 'mnli'
 
 data.PadToLength.len_map = {0: 512, 1: 512, 2: 512}
 data.PadToLength.pad_value = {0: 0, 1: 0, 2:0}
@@ -105,7 +71,7 @@ train.inputs = @trax.data.inputs.make_inputs
 train.model = @trax.models.ConfigurableTransformer
 train.steps = 200000
 train.checkpoint_highest = 'accuracy'
-train.additional_eval_tasks = [@eval_additional_task/trax.supervised.training.EvalTask(),]
+train.additional_eval_tasks = [@data.T5GlueEvalTaskMnliMismatched()]
 
 # Parameters for ConfigurableTransformer:
 # ==============================================================================
