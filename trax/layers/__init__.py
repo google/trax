@@ -69,8 +69,10 @@ ThresholdedLinearUnit = layer_configure(ThresholdedLinearUnit)
 
 Attention = layer_configure(Attention, denylist=['mode'])
 CausalAttention = layer_configure(CausalAttention, denylist=['mode'])
+FavorAttention = layer_configure(FavorAttention, denylist=['mode'])
 Favor = layer_configure(Favor, denylist=['mode'])
 CausalFavor = layer_configure(CausalFavor, denylist=['mode'])
+CausalFavorAttention = layer_configure(CausalFavorAttention, denylist=['mode'])
 DotProductCausalAttention = layer_configure(
     DotProductCausalAttention, denylist=['mode'])
 SelfAttention = layer_configure(SelfAttention, denylist=['mode'])

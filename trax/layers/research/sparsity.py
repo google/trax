@@ -743,6 +743,64 @@ def MultiplicativeConvCausalAttention(
   )
 
 
+class FavorAttention(base.Layer):
+  """Implements FAVOR+ attention.
+
+  Original paper: https://arxiv.org/abs/2006.03555
+  The layer expects 4 inputs: (Q, K, V, MASK), and returns two outputs:
+  (RENORMALIZED_ATTENTION, MASK).
+
+  Attributes:
+
+    n_heads: Number of attention heads.
+    numerical_stabilizer: float, small number used for numerical stability.
+    mode: One of `'train'`, `'eval'`, or `'predict'`.
+  """
+
+  def __init__(self, n_heads=1, numerical_stabilizer=0.001, mode='train'):
+    super().__init__(n_in=4, n_out=2)
+    self.n_heads = n_heads
+    self.numerical_stabilizer = numerical_stabilizer
+    self.mode = mode
+
+  @staticmethod
+  def bidirectional_numerator(query_prime, key_prime, value):
+    kvs = jnp.einsum('lbm,lbd->bmd', key_prime, value)
+    return jnp.einsum('lbm,bmd->lbd', query_prime, kvs)
+
+  @staticmethod
+  def bidirectional_denominator(query_prime, key_prime):
+    all_ones = jnp.ones([query_prime.shape[0]])
+    ks_sum = jnp.einsum('lbm,l->bm', key_prime, all_ones)
+    return jnp.einsum('lbm,bm->lb', query_prime, ks_sum)
+
+  @staticmethod
+  def relu(x):
+    return jnp.where(x <= 0, jnp.zeros_like(x), x)
+
+  def forward(self, inputs):
+    query, key, value, mask = inputs
+    query_prime = self.relu(query) + self.numerical_stabilizer
+    key_prime = self.relu(key) + self.numerical_stabilizer
+    mask_batch_1_length = jnp.reshape(
+        mask, [key.shape[0] // self.n_heads, 1, key.shape[1]]).astype(
+            jnp.float32)
+    mask_heads = mask_batch_1_length + jnp.zeros((1, self.n_heads, 1))
+    key_prime *= jnp.reshape(mask_heads, [key.shape[0], key.shape[1], 1])
+
+    w = self.bidirectional_numerator(jnp.moveaxis(query_prime, 1, 0),
+                                     jnp.moveaxis(key_prime, 1, 0),
+                                     jnp.moveaxis(value, 1, 0))
+    r = self.bidirectional_denominator(jnp.moveaxis(query_prime, 1, 0),
+                                       jnp.moveaxis(key_prime, 1, 0))
+    w = jnp.moveaxis(w, 0, 1)
+    r = jnp.moveaxis(r, 0, 1)
+    r = jnp.reciprocal(r)
+    r = jnp.expand_dims(r, len(r.shape))
+    renormalized_attention = w * r
+    return renormalized_attention, mask
+
+
 def Favor(d_feature, n_heads=1, dropout=0.0,
           numerical_stabilizer=0.001, mode='train'):
   """Returns a layer that maps (activations, mask) to (new_activations, mask).
@@ -757,48 +815,139 @@ def Favor(d_feature, n_heads=1, dropout=0.0,
     numerical_stabilizer: float, small number used for numerical stability.
     mode: One of `'train'`, `'eval'`, or `'predict'`.
   """
-  del dropout, mode  # not implemented yet but needed in the API
+  del dropout  # not implemented yet but needed in the API
 
-  def bidirectional_numerator(query_prime, key_prime, value):
-    kvs = jnp.einsum('lbm,lbd->bmd', key_prime, value)
-    return jnp.einsum('lbm,bmd->lbd', query_prime, kvs)
+  return  tl.ConfigurableAttention(
+      tl.Dense(d_feature), tl.Dense(d_feature), tl.Dense(d_feature),
+      tl.Dense(d_feature),
+      tl.FavorAttention(n_heads, numerical_stabilizer, mode), n_heads=n_heads)
 
-  def bidirectional_denominator(query_prime, key_prime):
-    all_ones = jnp.ones([query_prime.shape[0]])
-    ks_sum = jnp.einsum('lbm,l->bm', key_prime, all_ones)
-    return jnp.einsum('lbm,bm->lb', query_prime, ks_sum)
 
-  def relu(x):
-    return jnp.where(x <= 0, jnp.zeros_like(x), x)
+class CausalFavorAttention(base.Layer):
+  """Returns a layer that maps activations to activations, with causal masking.
 
-  def favor(query, key, value, mask):
-    query_prime = relu(query) + numerical_stabilizer
-    key_prime = relu(key) + numerical_stabilizer
-    mask_batch_1_length = jnp.reshape(
-        mask, [key.shape[0] // n_heads, 1, key.shape[1]]).astype(jnp.float32)
-    mask_heads = mask_batch_1_length + jnp.zeros((1, n_heads, 1))
-    key_prime *= jnp.reshape(mask_heads, [key.shape[0], key.shape[1], 1])
+  Like `CausalAttention`, this layer type represents one pass of multi-head
+  causal attention, but using FAVOR fast attention as in the following paper:
+  https://arxiv.org/abs/2006.03555
 
-    w = bidirectional_numerator(jnp.moveaxis(query_prime, 1, 0),
-                                jnp.moveaxis(key_prime, 1, 0),
-                                jnp.moveaxis(value, 1, 0))
-    r = bidirectional_denominator(jnp.moveaxis(query_prime, 1, 0),
-                                  jnp.moveaxis(key_prime, 1, 0))
+  Layer expects three inputs (Q, K, V), and returns one output
+   RENORMALIZED_ATTENTION.
+
+  Attributes:
+    numerical_stabilizer: float, small number used for numerical stability.
+    mode: One of `'train'`, `'eval'`, or `'predict'`.
+  """
+
+  def __init__(self, numerical_stabilizer=0.001, mode='train'):
+    super().__init__(n_in=3, n_out=1)
+    self.numerical_stabilizer = numerical_stabilizer
+    self.mode = mode
+
+  def forward(self, inputs):
+    def favor_numerator_fwd(init_prefix_sum_value,
+                            query_prime, key_prime, value):
+      def body(p, qkv):
+        (q, k, v) = qkv
+        p += jnp.einsum('...m,...d->...md', k, v)
+        x_slice = jnp.einsum('...m,...md->...d', q, p)
+        return p, x_slice
+      p, w = fastmath.scan(body, init_prefix_sum_value,
+                           (query_prime, key_prime, value))
+      return w, (p, query_prime, key_prime, value)
+
+    def favor_numerator_bwd(pqkv, w_ct):
+      p, qs, ks, vs = pqkv
+
+      def body(carry, qkv_xct):
+        p, p_ct = carry
+        q, k, v, x_ct = qkv_xct
+        q_ct = jnp.einsum('...d,...md->...m', x_ct, p)
+        p_ct += jnp.einsum('...d,...m->...md', x_ct, q)
+        k_ct = jnp.einsum('...md,...d->...m', p_ct, v)
+        v_ct = jnp.einsum('...md,...m->...d', p_ct, k)
+        p -= jnp.einsum('...m,...d->...md', k, v)
+        return (p, p_ct), (q_ct, k_ct, v_ct)
+
+      _, (qs_ct, ks_ct, vs_ct) = fastmath.scan(
+          body, (p, jnp.zeros_like(p)), (qs, ks, vs, w_ct), reverse=True)
+      return (None, qs_ct, ks_ct, vs_ct)
+
+    def favor_numerator(init_prefix_sum_value, query_prime,
+                        key_prime, value):
+      w, _ = favor_numerator_fwd(init_prefix_sum_value,
+                                 query_prime, key_prime, value)
+      return w
+
+    favor_numerator = fastmath.custom_vjp(
+        favor_numerator, favor_numerator_fwd, favor_numerator_bwd)
+
+    def favor_denominator_fwd(init_prefix_sum_value,
+                              query_prime, key_prime):
+      def body(p, qk):
+        q, k = qk
+        p += k
+        x = jnp.einsum('...m,...m->...', q, p)
+        return p, x
+
+      p, r = fastmath.scan(body, init_prefix_sum_value, (query_prime,
+                                                         key_prime))
+      return r, (query_prime, key_prime, p)
+
+    def favor_denominator_bwd(qkp, r_ct):
+      qs, ks, p = qkp
+
+      def body(carry, qkx):
+        p, p_ct = carry
+        q, k, x_ct = qkx
+        q_ct = jnp.einsum('...,...m->...m', x_ct, p)
+        p_ct += jnp.einsum('...,...m->...m', x_ct, q)
+        k_ct = p_ct
+        p -= k
+        return (p, p_ct), (q_ct, k_ct)
+
+      _, (qs_ct, ks_ct) = fastmath.scan(
+          body, (p, jnp.zeros_like(p)), (qs, ks, r_ct), reverse=True)
+      return (None, qs_ct, ks_ct)
+
+    def favor_denominator(init_prefix_sum_value, query_prime,
+                          key_prime):
+      r, _ = favor_denominator_fwd(init_prefix_sum_value,
+                                   query_prime, key_prime)
+      return r
+
+    favor_denominator = fastmath.custom_vjp(
+        favor_denominator, favor_denominator_fwd, favor_denominator_bwd)
+
+    favor_denominator.defvjp(favor_denominator_fwd, favor_denominator_bwd)
+
+    def relu(x):
+      return jnp.where(x <= 0, jnp.zeros_like(x), x)
+
+    query, key, value = inputs
+    query_prime = relu(query) + self.numerical_stabilizer
+    key_prime = relu(key) + self.numerical_stabilizer
+    prefix_sum_tensor_shape = (key.shape[0], key.shape[-1], value.shape[-1])
+    t_slice_shape = (key.shape[0], key.shape[-1])
+    init_prefix_sum_value_numerator = jnp.zeros(prefix_sum_tensor_shape)
+    init_prefix_sum_value_denominator = jnp.zeros(t_slice_shape)
+
+    w = favor_numerator(init_prefix_sum_value_numerator,
+                        jnp.moveaxis(query_prime, 1, 0),
+                        jnp.moveaxis(key_prime, 1, 0),
+                        jnp.moveaxis(value, 1, 0))
+    r = favor_denominator(init_prefix_sum_value_denominator,
+                          jnp.moveaxis(query_prime, 1, 0),
+                          jnp.moveaxis(key_prime, 1, 0))
     w = jnp.moveaxis(w, 0, 1)
     r = jnp.moveaxis(r, 0, 1)
     r = jnp.reciprocal(r)
     r = jnp.expand_dims(r, len(r.shape))
     renormalized_attention = w * r
-    return renormalized_attention, mask
-
-  return  tl.ConfigurableAttention(
-      tl.Dense(d_feature), tl.Dense(d_feature), tl.Dense(d_feature),
-      tl.Dense(d_feature),
-      tl.Fn('FAVOR', favor, n_out=2), n_heads=n_heads)
+    return renormalized_attention
 
 
 def CausalFavor(d_feature, n_heads=1, dropout=0.0,
-                numerical_stabilizer=0.001, precision=None, mode='train'):
+                numerical_stabilizer=0.001, mode='train'):
   """Returns a layer that maps activations to activations, with causal masking.
 
   Like `CausalAttention`, this layer type represents one pass of multi-head
@@ -811,116 +960,14 @@ def CausalFavor(d_feature, n_heads=1, dropout=0.0,
     dropout: Probababilistic rate for internal dropout applied to attention
         activations (based on query-key pairs) before dotting them with values.
     numerical_stabilizer: float, small number used for numerical stability.
-    precision: passed to jnp.einsum to define arithmetic precision.
     mode: One of `'train'`, `'eval'`, or `'predict'`.
   """
-  del dropout, mode  # not implemented yet but needed in the API
-
-  def favor_numerator_fwd(init_prefix_sum_value, precision,
-                          query_prime, key_prime, value):
-    def body(p, qkv):
-      (q, k, v) = qkv
-      p += jnp.einsum('...m,...d->...md', k, v, precision=precision)
-      x_slice = jnp.einsum('...m,...md->...d', q, p, precision=precision)
-      return p, x_slice
-    p, w = fastmath.scan(body, init_prefix_sum_value,
-                         (query_prime, key_prime, value))
-    return w, (precision, p, query_prime, key_prime, value)
-
-  def favor_numerator_bwd(pqkv, w_ct):
-    precision, p, qs, ks, vs = pqkv
-
-    def body(carry, qkv_xct):
-      p, p_ct = carry
-      q, k, v, x_ct = qkv_xct
-      q_ct = jnp.einsum('...d,...md->...m', x_ct, p, precision=precision)
-      p_ct += jnp.einsum('...d,...m->...md', x_ct, q, precision=precision)
-      k_ct = jnp.einsum('...md,...d->...m', p_ct, v, precision=precision)
-      v_ct = jnp.einsum('...md,...m->...d', p_ct, k, precision=precision)
-      p -= jnp.einsum('...m,...d->...md', k, v, precision=precision)
-      return (p, p_ct), (q_ct, k_ct, v_ct)
-
-    _, (qs_ct, ks_ct, vs_ct) = fastmath.scan(
-        body, (p, jnp.zeros_like(p)), (qs, ks, vs, w_ct), reverse=True)
-    return (None, None, qs_ct, ks_ct, vs_ct)
-
-  def favor_numerator(init_prefix_sum_value, precision, query_prime,
-                      key_prime, value):
-    w, _ = favor_numerator_fwd(init_prefix_sum_value, precision,
-                               query_prime, key_prime, value)
-    return w
-
-  favor_numerator = fastmath.custom_vjp(
-      favor_numerator, favor_numerator_fwd, favor_numerator_bwd)
-
-  def favor_denominator_fwd(init_prefix_sum_value, precision,
-                            query_prime, key_prime):
-    def body(p, qk):
-      q, k = qk
-      p += k
-      x = jnp.einsum('...m,...m->...', q, p, precision=precision)
-      return p, x
-
-    p, r = fastmath.scan(body, init_prefix_sum_value, (query_prime, key_prime))
-    return r, (precision, query_prime, key_prime, p)
-
-  def favor_denominator_bwd(qkp, r_ct):
-    precision, qs, ks, p = qkp
-
-    def body(carry, qkx):
-      p, p_ct = carry
-      q, k, x_ct = qkx
-      q_ct = jnp.einsum('...,...m->...m', x_ct, p, precision=precision)
-      p_ct += jnp.einsum('...,...m->...m', x_ct, q, precision=precision)
-      k_ct = p_ct
-      p -= k
-      return (p, p_ct), (q_ct, k_ct)
-
-    _, (qs_ct, ks_ct) = fastmath.scan(
-        body, (p, jnp.zeros_like(p)), (qs, ks, r_ct), reverse=True)
-    return (None, None, qs_ct, ks_ct)
-
-  def favor_denominator(init_prefix_sum_value, precision, query_prime,
-                        key_prime):
-    r, _ = favor_denominator_fwd(init_prefix_sum_value, precision,
-                                 query_prime, key_prime)
-    return r
-
-  favor_denominator = fastmath.custom_vjp(
-      favor_denominator, favor_denominator_fwd, favor_denominator_bwd)
-
-  favor_denominator.defvjp(favor_denominator_fwd, favor_denominator_bwd)
-
-  def relu(x):
-    return jnp.where(x <= 0, jnp.zeros_like(x), x)
-
-  def favor(query, key, value):
-    query_prime = relu(query) + numerical_stabilizer
-    key_prime = relu(key) + numerical_stabilizer
-    prefix_sum_tensor_shape = (key.shape[0], key.shape[-1], value.shape[-1])
-    t_slice_shape = (key.shape[0], key.shape[-1])
-    init_prefix_sum_value_numerator = jnp.zeros(prefix_sum_tensor_shape)
-    init_prefix_sum_value_denominator = jnp.zeros(t_slice_shape)
-
-    w = favor_numerator(init_prefix_sum_value_numerator, precision,
-                        jnp.moveaxis(query_prime, 1, 0),
-                        jnp.moveaxis(key_prime, 1, 0),
-                        jnp.moveaxis(value, 1, 0))
-    r = favor_denominator(init_prefix_sum_value_denominator,
-                          precision,
-                          jnp.moveaxis(query_prime, 1, 0),
-                          jnp.moveaxis(key_prime, 1, 0))
-    w = jnp.moveaxis(w, 0, 1)
-    r = jnp.moveaxis(r, 0, 1)
-    r = jnp.reciprocal(r)
-    r = jnp.expand_dims(r, len(r.shape))
-    renormalized_attention = w * r
-    return renormalized_attention
-
+  del dropout
   return tl.ConfigurableAttention(
       core.Dense(d_feature), core.Dense(d_feature), core.Dense(d_feature),
       core.Dense(d_feature), n_heads=n_heads,
-      qkv_attention_layer=base.Fn('CausalFAVOR', favor))
+      qkv_attention_layer=tl.CausalFavorAttention(numerical_stabilizer,
+                                                  mode))
 
 
 class _RememberInReverse(base.Layer):
