@@ -35,6 +35,7 @@ from trax.layers.normalization import *
 from trax.layers.pooling import *
 from trax.layers.research.efficient_attention import *
 from trax.layers.research.position_encodings import *
+from trax.layers.research.rel_attention import *
 from trax.layers.research.sparsity import *
 from trax.layers.reversible import *
 from trax.layers.rnn import *
@@ -108,3 +109,5 @@ SequenceAccuracy = layer_configure(SequenceAccuracy)
 CategoryCrossEntropy = layer_configure(CategoryCrossEntropy)
 WeightedCategoryCrossEntropy = layer_configure(WeightedCategoryCrossEntropy)
 MacroAveragedFScore = layer_configure(MacroAveragedFScore)
+RelativeAttentionLayer = layer_configure(RelativeAttentionLayer)
+RelativeAttentionLMLayer = layer_configure(RelativeAttentionLMLayer)

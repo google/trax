@@ -18,8 +18,9 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
+import jax
 import numpy as np
-
+from trax import fastmath
 from trax import layers as tl
 from trax import shapes
 import trax.models.research.funnel_transformer as ft
@@ -115,6 +116,68 @@ class FunnelTransformerTest(parameterized.TestCase):
     y = model(x)
 
     self.assertEqual(y.shape, (batch_size, n_tokens, vocab_size))
+
+  def test_funnel_transformer_lm_forward_shape(self):
+    d_model = 8
+    vocab_size = 7
+    x = np.ones((3, 6)).astype(np.int32)
+
+    simple_funnel = ft.FunnelTransformerLM(
+        vocab_size,
+        shorten_factors=(3,),
+        n_funnel_blocks=(1,),
+        vanilla_layers=(1, 1),
+        d_model=d_model, d_ff=d_model, n_heads=2
+    )
+    _, _ = simple_funnel.init(shapes.signature(x))
+    y = simple_funnel(x)
+    self.assertEqual(y.shape, (3, 6, vocab_size))
+
+    multi_stage_funnel = ft.FunnelTransformerLM(
+        vocab_size,
+        shorten_factors=(3, 2),
+        n_funnel_blocks=(0, 0),
+        vanilla_layers=(0, 0),
+        d_model=d_model, d_ff=d_model, n_heads=2)
+
+    _, _ = multi_stage_funnel.init(shapes.signature(x))
+    y = multi_stage_funnel(x)
+    self.assertEqual(y.shape, (3, 6, vocab_size))
+
+  def test_funnel_transformer_lm_autoregressive_property(self):
+    input_shape = (1, 12)
+    d_model = 8
+    vocab_size = 26
+    rng_1 = jax.random.PRNGKey(0)
+    rng_2 = jax.random.PRNGKey(1)
+
+    def _get_output_logits(unitialized_eval_model: tl.Layer, x):
+      input_signature = shapes.signature(x)
+      unitialized_eval_model.init(input_signature, rng=rng_1, use_cache=False)
+
+      output_logits, *_ = unitialized_eval_model(x, rng=rng_1)
+      return output_logits
+
+    with fastmath.use_backend(fastmath.Backend.JAX):
+      model = ft.FunnelTransformerLM(
+          vocab_size,
+          shorten_factors=(3,),
+          n_funnel_blocks=(1,),
+          vanilla_layers=(1, 1),
+          d_model=d_model, d_ff=4*d_model, n_heads=2
+      )
+
+      x_1 = jax.random.randint(rng_1, input_shape, 0, vocab_size)
+      y_1 = _get_output_logits(model, x_1)
+
+      x_2 = jax.random.randint(rng_2, input_shape, 0, vocab_size)
+
+      for i in range(input_shape[1]):
+        masked_x_2 = np.concatenate((x_1[:, :i], x_2[:, i:]), axis=1)
+
+        y_2 = _get_output_logits(model, masked_x_2)
+        self.assertEqual(y_2.shape[0], input_shape[1])
+        np.testing.assert_array_almost_equal(y_1[:i+1], y_2[:i+1])
 
 
 if __name__ == '__main__':

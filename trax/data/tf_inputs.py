@@ -627,6 +627,32 @@ def cifar10_augmentation_flatten_preprocess(dataset,
 
 
 @gin.configurable(denylist=['dataset', 'training'])
+def downsampled_imagenet_flatten_bare_preprocess(dataset, training):
+  """Preprocessing for downsampled_imagenet.
+
+  Args:
+    dataset: the dataset.
+    training: unused option.
+
+  Returns:
+    Flattened dataset.
+
+  Preprocessing for downsampled_imagenet 32x32 and 64x64 generation from
+  http://arxiv.org/abs/1601.06759 (page 8).
+  """
+  del training
+
+  def flatten_image(features):
+    img = features['image']
+    flat = tf.cast(tf.reshape(img, [-1]), tf.int64)
+
+    new_features = {'image': flat}
+    return new_features
+
+  return dataset.map(flatten_image)
+
+
+@gin.configurable(denylist=['dataset', 'training'])
 def concat_preprocess(dataset, training, pad_symbol=0):
   """Pre-processing function that concatenates input and target for LM."""
   del training
