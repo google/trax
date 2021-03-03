@@ -128,7 +128,7 @@ class CausalAttentionTest(absltest.TestCase):
 
   def test_predict_equals_eval(self):
     d_model = 32
-    seq_len = 3
+    seq_len = 10
     x_shape = (1, seq_len, d_model)
     inp = np.ones(x_shape).astype(np.float32)
 

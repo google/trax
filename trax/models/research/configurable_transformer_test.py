@@ -84,7 +84,7 @@ class ConfigurableTransformerTest(parameterized.TestCase):
       test_utils.test_eval_equals_predict(inp, model_fn)
 
   def test_sparse_configurable_transformer_fast_inference(self):
-    self._test_sparse_fast_inference(length=3)
+    self._test_sparse_fast_inference(length=5)
 
   def _test_sparse_fast_inference(self, length):
     with fastmath.use_backend(fastmath.Backend.JAX):

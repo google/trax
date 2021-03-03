@@ -25,6 +25,7 @@ import numpy as np
 from trax import fastmath
 from trax import layers as tl
 from trax import shapes
+from trax.layers import test_utils
 from trax.models.reformer import reformer
 
 
@@ -139,6 +140,63 @@ class ReformerTest(absltest.TestCase):
     del dec_toks
 
     self.assertEqual(logits.shape, (1, max_len, vocab_size))
+
+  def test_reformer2_deterministic_eval(self):
+    with fastmath.use_backend(fastmath.Backend.JAX):
+      vocab_size = 16
+      d_model = 4
+      batch_size = 2
+      length = 5
+
+      model_fn = functools.partial(
+          reformer.Reformer2,
+          vocab_size,
+          d_model=d_model,
+          d_ff=16,
+          n_encoder_layers=0,
+          n_decoder_layers=1,
+          n_heads=2,
+          dropout=0.0,
+          max_len=length*2,
+          pos_type=None,
+          encoder_attention_type=tl.Attention,
+          encoder_decoder_attention_type=tl.CausalAttention,
+      )
+
+      inp = np.random.randint(vocab_size, size=(batch_size, length))
+      out = np.zeros((batch_size, length), dtype=np.int32)
+
+      test_utils.test_eval_is_deterministic((inp, out), model_fn)
+
+  def test_reformer2_predict_equals_eval(self):
+    with fastmath.use_backend(fastmath.Backend.JAX):
+      vocab_size = 16
+      d_model = 8
+      batch_size = 2
+      length = 5
+
+      model_fn = functools.partial(
+          reformer.Reformer2,
+          vocab_size,
+          d_model=d_model,
+          d_ff=16,
+          n_encoder_layers=1,
+          n_decoder_layers=1,
+          n_heads=2,
+          dropout=0.0,
+          max_len=length*2,
+          pos_type=None,
+          n_decoder_attention_layers=1,
+          encoder_attention_type=tl.Attention,
+          encoder_decoder_attention_type=tl.CausalAttention,
+      )
+
+      inp = np.random.randint(vocab_size, size=(batch_size, length))
+      out = np.zeros((batch_size, length), dtype=np.int32)
+
+      # TODO(jaszczur): check why init_tokens > 1 fails nondeterministically
+      test_utils.test_eval_equals_predict((inp, out), model_fn, 1, -1,
+                                          init_tokens=1)
 
   def test_reformer2_doubling(self):
     vocab_size = 2

@@ -189,8 +189,8 @@ class DecodingTest(test.TestCase):
     s = decoding.beam_search(pred_model, inputs, n_beams=3, max_length=6)
     self.assertEqual(len(s), 3)  # 3 beams
     self.assertEqual(str(s[0][0][0]), '[3 7 5 3 2 4]')
-    self.assertEqual(str(s[1][0][0]), '[7 5 3 2 4 4]')  # different from above
-    self.assertEqual(str(s[2][0][0]), '[7 5 3 2 4 3]')  # different from above
+    self.assertEqual(str(s[1][0][0]), '[3 7 5 3 2 2]')  # different from above
+    self.assertEqual(str(s[2][0][0]), '[3 7 5 3 3 2]')  # different from above
 
   def test_autoregressive_sample_transformer_quality(self):
     pred_model = models.Transformer(

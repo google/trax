@@ -502,8 +502,8 @@ class DotProductCausalAttention(base.Layer):
     q, k, v = inputs
 
     if self._mode == 'predict':
-      self.state = _fast_inference_update_state(inputs, self.state)
-      (k, v, mask, _) = self.state
+      self.state, mask = _fast_inference_update_state(inputs, self.state)
+      (k, v, _) = self.state
     else:
       sequence_length = q.shape[-2]
       mask = _causal_mask(sequence_length)
@@ -726,41 +726,44 @@ def _fast_inference_init_state(input_signature, buffer_length):
   batch_size = input_signature[0].shape[0]
   k = zeros_for(batch_size, input_signature[1])
   v = zeros_for(batch_size, input_signature[2])
-  mask = jnp.zeros((batch_size, 1, buffer_length))
-  return (k, v, mask, jnp.array(0))
+  return (k, v, jnp.array(0))
 
 
 def _fast_inference_update_state(inputs, state):
   """Updates state of a causal attention layer for fast inference.
 
   The layer state stores arrays with cached values of keys and values,
-  as well as the mask and an index. To make shapes static, keys and values
-  in the state are long, and the index indicates where the new keys and values
-  from inputs need to be appended. Mask ensures that attention will only look
-  at keys upto index.
+  as well as an index. To make shapes static, keys and values in the state are
+  long, and the index indicates where the new keys and values from inputs need
+  to be appended.
 
   During update, we append new_keys and new_values to keys and values at
-  position given by index. We also update mask (which starts as all-0s) to
-  be 1 at the new keys positions. And we increment index by length of new keys.
+  position given by index. And we increment index by length of new keys.
+  We also create a mask to be 1 at appropriate positions (causal mask).
 
   Args:
     inputs: a triple (new_queries, new_keys, new_values)
-    state: layer state with (keys, values, mask, index)
+    state: layer state with (keys, values, index)
 
   Returns:
-    Updated state.
+    Updated state and mask to be used.
   """
   # Fast inference: run step-by-step, storing the sequence
   # of keys and values calculated so far in state.
   (_, new_k, new_v) = inputs
   length = new_k.shape[1]
-  (ks, vs, mask, idx) = state
+  (ks, vs, idx) = state
   # TODO(lukaszkaiser): benchmark speed and decide if using a separate code path
   # with index_update when length == 1 is worth it.
   # Keys and values are of shape [batch_size, length, d_kv].
   ks = fastmath.dynamic_update_slice_in_dim(ks, new_k, idx, axis=1)
   vs = fastmath.dynamic_update_slice_in_dim(vs, new_v, idx, axis=1)
-  # Mask is of shape [batch_size, 1 (for heads), length].
-  new_mask = jnp.ones((mask.shape[0], mask.shape[1], length))
-  mask = fastmath.dynamic_update_slice_in_dim(mask, new_mask, idx, axis=2)
-  return (ks, vs, mask, idx + length)
+  k_length = ks.shape[1]
+
+  # Mask is of shape [1, q_length, k_length].
+  # Mask should be true for every pair of (query_token, key_token) such that
+  # index of query_token is equal or larger to index of key_token.
+  mask = (jnp.reshape(jnp.arange(k_length), (1, 1, k_length))
+          <= jnp.reshape(jnp.arange(length) + idx, (1, length, 1)))
+
+  return (ks, vs, idx + length), mask

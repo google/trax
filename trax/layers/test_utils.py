@@ -63,7 +63,7 @@ def test_eval_is_deterministic(inp, model_fn, message=''):
 
 
 def test_eval_equals_predict(inp, model_fn, seq_axis=1, seq_tensor=None,
-                             message=''):
+                             init_tokens=3, message=''):
   """Utility method for testing equivalence of predict and eval modes.
 
   Args:
@@ -73,6 +73,7 @@ def test_eval_equals_predict(inp, model_fn, seq_axis=1, seq_tensor=None,
       axis. By default `1`, which is 2nd dimension.
     seq_tensor: if `inp` is a tuple, `seq_tensor` is an index of an input tensor
       in this tuple on which we iterate the sequence.
+    init_tokens: how many tokens should be passed to the first `predict` call.
     message: Optional message to show when outputs of eval/predict mode don't
       match.
   """
@@ -98,13 +99,18 @@ def test_eval_equals_predict(inp, model_fn, seq_axis=1, seq_tensor=None,
     else:
       length = inp[seq_tensor].shape[seq_axis]
 
-    for index in range(length):
+    assert length >= init_tokens + 2  # Required to properly test predict mode.
+    indices_list = [(0, init_tokens)] + [(i, i+1)
+                                         for i in range(init_tokens, length)]
+
+    for indices in indices_list:
+      start, end = indices
       if seq_tensor is None:
-        new_inp = inp.take(indices=range(index, index+1), axis=seq_axis)
+        new_inp = inp.take(indices=range(start, end), axis=seq_axis)
       else:
         new_inp = list(inp)
         new_inp[seq_tensor] = new_inp[seq_tensor].take(
-            indices=range(index, index+1), axis=seq_axis)
+            indices=range(start, end), axis=seq_axis)
 
       output_predict = model_predict(new_inp, rng=rng)
       if not isinstance(output_predict, (tuple, list)):
@@ -114,10 +120,10 @@ def test_eval_equals_predict(inp, model_fn, seq_axis=1, seq_tensor=None,
       np.testing.assert_equal(len(output_predict), len(output_eval))
       for outp, oute in zip(output_predict, output_eval):
         np.testing.assert_array_almost_equal(
-            oute.take(indices=index, axis=seq_axis),
-            outp.take(indices=0, axis=seq_axis),
+            oute.take(indices=range(start, end), axis=seq_axis),
+            outp.take(indices=range(0, end-start), axis=seq_axis),
             decimal=5,
-            err_msg='Error on element {} out of {}.{}'.format(index, length,
+            err_msg='Error on element {} out of {}.{}'.format(indices, length,
                                                               message))
 
 
