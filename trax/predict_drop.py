@@ -62,6 +62,8 @@ flags.DEFINE_string(
     'and predictions would be stored.')
 flags.DEFINE_integer('starting_example', 0,
                      'Example index for starting decoding.')
+flags.DEFINE_integer('reload_after', 1000,
+                     'Reload checkpoint after reload_after examples.')
 flags.DEFINE_multi_string('config_file', None,
                           'Configuration file with parameters (.gin).')
 
@@ -146,6 +148,7 @@ def main(argv):
   # We can check whether the processing of an example was finished, but
   # currently we are only checking whether it was started.
   done = FLAGS.starting_example
+  reload_count = 0
   all_existing_files = tf.io.gfile.listdir(FLAGS.output_dir)
   for filename in all_existing_files:
     if 'processing' in filename:
@@ -168,9 +171,15 @@ def main(argv):
   # TODO(henrykm): improve managment of the counters.
   # example_count_total - all numeric examples
   # example_count - all numeric examples above starting_example
+  # reload_count - if we processed FLAGS.reload_after examples,
+  #   then the checkpoint should be reloaded.
   # idx - total number of exaples
   example_count_total = 0
+  reload_count += 1
   for idx, e in enumerate(drop_gen):
+    if reload_count >= FLAGS.reload_after:
+      vocab, model, initial_state = prepare_model(model_file, FLAGS.batch_size)
+      reload_count = 0
     if example_count >= FLAGS.num_examples:
       print('Reached the example_count {} - breaking'.format(example_count))
       break
