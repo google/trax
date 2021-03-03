@@ -28,8 +28,8 @@ include 'bert.gin'
 # lower than baseline accuracy.
 make_inputs.train_stream = @data.BertGlueTrainStream
 make_inputs.eval_stream = @data.BertGlueEvalStream
-BertGlueTrainStream.benchmark_name = 'stsb'
-BertGlueEvalStream.benchmark_name = 'stsb'
+BertGlueTrainStream.benchmark = 'stsb'
+BertGlueEvalStream.benchmark = 'stsb'
 
 # Parameters for train:
 # ==============================================================================

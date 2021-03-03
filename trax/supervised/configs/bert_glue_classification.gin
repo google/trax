@@ -28,8 +28,8 @@ include 'bert.gin'
 # lower than baseline accuracy.
 make_inputs.train_stream = @data.BertGlueTrainStream
 make_inputs.eval_stream = @data.BertGlueEvalStream
-BertGlueTrainStream.benchmark_name = 'mnli'
-BertGlueEvalStream.benchmark_name = 'mnli'
+BertGlueTrainStream.benchmark = 'mnli'
+BertGlueEvalStream.benchmark = 'mnli'
 
 # Parameters for BERT:
 # ==============================================================================

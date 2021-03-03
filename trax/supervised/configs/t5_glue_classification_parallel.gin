@@ -52,11 +52,11 @@ dec_attn_type = @CausalAttention
 # ==============================================================================
 make_inputs.train_stream = @data.T5GlueTrainStreamsParallel()
 make_inputs.eval_stream = @data.T5GlueEvalStreamsParallel()
-data.T5GlueTrainStreamsParallel.name_list = [
+data.T5GlueTrainStreamsParallel.benchmark_list = [
     'cola', 'sst2', 'mrpc', 'qqp', 'mnli', 'qnli', 'rte']
-data.T5GlueEvalStreamsParallel.name_list = [
+data.T5GlueEvalStreamsParallel.benchmark_list = [
     'cola', 'sst2', 'mrpc', 'qqp', 'mnli', 'qnli', 'rte', 'wnli']
-data.T5GlueEvalTasks.name_list = [
+data.T5GlueEvalTasks.benchmark_list = [
     'cola', 'sst2', 'mrpc', 'qqp', 'mnli', 'qnli', 'rte', 'wnli']
 
 data.PadToLength.len_map = {0: 512, 1: 512, 2: 512}

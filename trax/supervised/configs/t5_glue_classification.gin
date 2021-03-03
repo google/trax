@@ -48,8 +48,8 @@ dec_attn_type = @CausalAttention
 # ==============================================================================
 make_inputs.train_stream = @data.T5GlueTrainStream()
 make_inputs.eval_stream = @data.T5GlueEvalStream()
-T5GlueTrainStream.benchmark_name = 'qnli'
-T5GlueEvalStream.benchmark_name = 'qnli'
+T5GlueTrainStream.benchmark = 'qnli'
+T5GlueEvalStream.benchmark = 'qnli'
 
 data.PadToLength.len_map = {0: 512, 1: 512, 2: 512}
 data.PadToLength.pad_value = {0: 0, 1: 0, 2:0}

@@ -1367,35 +1367,53 @@ _GLUE_LABELS = {
 # makes gin configuration expressions more direct. A single gin line can
 # configure each; for example:
 #
-#   BertGlueTrainStream.benchmark_name = 'mnli'
-#   BertGlueEvalStream.benchmark_name = 'mnli'
+#   BertGlueTrainStream.benchmark= 'mnli'
+#   BertGlueEvalStream.benchmark = 'mnli'
 
 
 # pylint: disable=invalid-name
-def BertGlueTrainStream(benchmark_name=gin.REQUIRED):
-  """Returns a Bert-preprocessed training stream for ``benchmark_name``.
+def BertGlueTrainStream(benchmark=gin.REQUIRED):
+  """Returns a Bert-preprocessed training stream for ``benchmark``.
 
   Args:
-    benchmark_name: Simple name of GLUE benchmark, e.g., ``'mnli'``.
+    benchmark: Simple lower-case name of a GLUE benchmark, e.g., ``'cola'``,
+        ``'mnli'``, ``'rte'``.
   """
-  return _BertGlueDataStream(benchmark_name, train=True)
+  return _BertGlueDataStream(benchmark + '_t')
 
 
-def BertGlueEvalStream(benchmark_name=gin.REQUIRED):
-  """Returns a Bert-preprocessed eval data stream for ``benchmark_name``.
+def BertGlueEvalStream(benchmark=gin.REQUIRED):
+  """Returns a Bert-preprocessed eval data stream for ``benchmark``.
 
   Args:
-    benchmark_name: Simple name of GLUE benchmark, e.g., ``'mnli'``.
+    benchmark: Simple lower-case name of a GLUE benchmark, e.g., ``'cola'``,
+        ``'mnli'``, ``'rte'``. If the benchmark includes an alternate
+        eval (e.g., MNLI's "mismatched" eval/validation split), you can
+        specify it with an ``'_e2'`` suffix, e.g., ``'mnli_e2'``.
   """
-  return _BertGlueDataStream(benchmark_name, train=False)
+  if benchmark.endswith('_e') or benchmark.endswith('e2'):
+    return _BertGlueDataStream(benchmark)
+  else:
+    return _BertGlueDataStream(benchmark + '_e')
 
 
-def _BertGlueDataStream(benchmark_name=gin.REQUIRED, train=True):
-  glue_data_split = TFDS(f'glue/{benchmark_name}',
-                         keys=_GLUE_KEYS[benchmark_name],
-                         train=train)
+def _BertGlueDataStream(benchmark_id):
+  """Returns a Bert-preprocessed data stream for ``benchmark_id``.
+
+  Args:
+    benchmark_id: String that indicates the name and data split of a GLUE
+        benchmark. Data splits are indicated as underscore suffixes, e.g.,
+        ``'cola_t'`` (Cola benchmark, training split), ``'rte_e'`` (RTE
+        benchmark, eval/validation split), and ``'mnli_e2'`` (MNLI benchmark,
+        alternate "mismatched" eval/validation split).
+  """
+  benchmark, split = benchmark_id.rsplit('_', 1)
+  glue_data = TFDS(f'glue/{benchmark}',
+                   keys=_GLUE_KEYS[benchmark],
+                   train=(split == 't'))
+  # TODO(jonni): Currently can't access MNLI "mismatched"; fix this?
   return data.Serial(
-      glue_data_split,
+      glue_data,
       data.Tokenize(),
       data.CreateBertInputs(),
       data.Shuffle(),
@@ -1405,55 +1423,68 @@ def _BertGlueDataStream(benchmark_name=gin.REQUIRED, train=True):
   )
 
 
-def T5GlueTrainStream(benchmark_name=gin.REQUIRED):
-  """Returns a T5-preprocessed training data stream for ``benchmark_name``.
+def T5GlueTrainStream(benchmark=gin.REQUIRED):
+  """Returns a T5-preprocessed training data stream for ``benchmark``.
 
   Args:
-    benchmark_name: Simple name of GLUE benchmark, e.g., ``'mnli'``.
+    benchmark: Simple lower-case name of a GLUE benchmark, e.g., ``'cola'``,
+        ``'mnli'``, ``'rte'``.
   """
-  return _T5GlueDataStream(benchmark_name, is_mode_train=True)
+  return _T5GlueDataStream(benchmark + '_t')
 
 
-def T5GlueTrainStreamsParallel(name_list=gin.REQUIRED):
-  """Returns a parallel set of T5 training streams, based on ``name_list``.
+def T5GlueTrainStreamsParallel(benchmark_list=gin.REQUIRED):
+  """Returns a parallel set of training streams, based on ``benchmark_list``.
 
   Args:
-    name_list: List of simple benchmark names from GLUE, e.g.,
-        ``['cola', 'mnli', 'rte']``
+    benchmark_list: List of simple lower-case names of GLUE benchmarks, e.g.,
+        ``'cola'``, ``'mnli'``, ``'rte'``.
   """
-  stream_list = map(T5GlueTrainStream, name_list)
+  stream_list = map(T5GlueTrainStream, benchmark_list)
   return data.Parallel(stream_list)
 
 
-def T5GlueEvalStream(benchmark_name=gin.REQUIRED, split_name=None):
-  """Returns a T5-preprocessed eval data stream for ``benchmark_name``.
+def T5GlueEvalStream(benchmark=gin.REQUIRED):
+  """Returns a T5-preprocessed eval data stream for ``benchmark``.
 
   Args:
-    benchmark_name: Simple name of GLUE benchmark, e.g., ``'mnli'``.
-    split_name: Explicit name (e.g., ``'validation_mismatched'``) that
-        overrides default benchmark/mode-determined split name.
+    benchmark: Simple lower-case name of a GLUE benchmark, e.g., ``'cola'``,
+        ``'mnli'``, ``'rte'``. If the benchmark includes an alternate
+        eval (e.g., MNLI's "mismatched" eval/validation split), you can
+        specify it with an ``'_e2'`` suffix, e.g., ``'mnli_e2'``.
   """
-  return _T5GlueDataStream(benchmark_name,
-                           is_mode_train=False,
-                           split_name=split_name)
+  if benchmark.endswith('_e') or benchmark.endswith('_e2'):
+    return _T5GlueDataStream(benchmark)
+  else:
+    return _T5GlueDataStream(benchmark + '_e')
 
 
-def T5GlueEvalStreamsParallel(name_list=gin.REQUIRED):
-  """Returns a parallel set of T5 eval streams, based on ``name_list``.
+def T5GlueEvalStreamsParallel(benchmark_list=gin.REQUIRED):
+  """Returns a parallel set of T5 eval streams, based on ``benchmark_list``.
 
   Args:
-    name_list: List of simple benchmark names from GLUE, e.g.,
-        ``['cola', 'mnli', 'rte']``
+    benchmark_list: List of strings, each of which is a simple lower-case name
+        of a GLUE benchmark, e.g., ``'cola'``, ``'mnli'``, ``'rte'``. If a
+        benchmark includes an alternate eval (e.g., MNLI's "mismatched"
+        eval/validation split), you can specify it with an ``'_e2'`` suffix,
+        e.g., ``'mnli_e2'``.
   """
-  stream_list = map(T5GlueEvalStream, name_list)
+  stream_list = map(T5GlueEvalStream, benchmark_list)
   return data.Parallel(stream_list)
 
 
-def _T5GlueDataStream(benchmark_name=gin.REQUIRED,
-                      is_mode_train=True,
-                      split_name=None):
+def _T5GlueDataStream(benchmark_id):
+  """Returns a T5-preprocessed data stream for ``benchmark_id``.
+
+  Args:
+    benchmark_id: String that indicates the name and data split of a GLUE
+        benchmark. Data splits are indicated as underscore suffixes, e.g.,
+        ``'cola_t'`` (Cola benchmark, training split), ``'rte_e'`` (RTE
+        benchmark, eval/validation split), and ``'mnli_e2'`` (MNLI benchmark,
+        alternate "mismatched" eval/validation split).
+  """
   return data.Serial(
-      _t5_glue_data_split(benchmark_name, is_mode_train, split_name),
+      _t5_glue_data_split(benchmark_id),
       data.Shuffle(),
       data.PadToLength(),
       data.TruncateToLength(),
@@ -1461,24 +1492,31 @@ def _T5GlueDataStream(benchmark_name=gin.REQUIRED,
   )
 
 
-def T5GlueEvalTasks(name_list=gin.REQUIRED):
-  """Returns a list of T5 GLUE eval tasks, based on ``name_list``.
+def T5GlueEvalTasks(benchmark_list=gin.REQUIRED):
+  """Returns a list of T5 GLUE eval tasks, based on ``benchmark_list``.
 
   Args:
-    name_list: List of simple benchmark names from GLUE, e.g.,
-        ``['cola', 'mnli', 'rte']``
+    benchmark_list: List of strings, each of which indicates the name and
+        data split of a GLUE benchmark. Data splits are indicated as underscore
+        suffixes, e.g., ``'cola_t'`` (Cola benchmark, training split),
+        ``'rte_e'`` (RTE benchmark, eval/validation split), and ``'mnli_e2'``
+        (MNLI alternate "mismatched" eval/validation split).
   """
-  task_list = map(_T5GlueEvalTask, name_list)
+  task_list = map(_T5GlueEvalTask, benchmark_list)
   return task_list
 
 
-def _T5GlueEvalTask(benchmark_name):
-  eval_data = T5GlueEvalStream(benchmark_name)
+def _T5GlueEvalTask(benchmark_id):
+  """Returns a T5 GLUE eval task, based on ``benchmark_id``."""
+  eval_data = T5GlueEvalStream(benchmark_id)
   metrics = [tl.WeightedCategoryAccuracy(), tl.SequenceAccuracy()]
-  if benchmark_name == 'cola':
+  benchmark, split = benchmark_id.rsplit('_', 1)
+  if benchmark == 'cola':
     name_upper = 'Cola'
+  elif benchmark == 'mnli':
+    name_upper = 'MNLI_matched' if split == 'e' else 'MNLI_mismatched'
   else:
-    name_upper = benchmark_name.upper()
+    name_upper = benchmark.upper()
   return supervised.training.EvalTask(
       eval_data,
       metrics,
@@ -1486,28 +1524,18 @@ def _T5GlueEvalTask(benchmark_name):
                     f'{name_upper} sequence accuracy'])
 
 
-# TODO(jonni): Find a good way to fold this in with other eval tasks.
-def T5GlueEvalTaskMnliMismatched():
-  """Returns a GLUE mnli eval task, using ``'validation_mismatched'`` data."""
-  return supervised.training.EvalTask(
-      T5GlueEvalStream('mnli', 'validation_mismatched'),
-      [tl.WeightedCategoryAccuracy()],
-      metric_names=['validation_mismatched accuracy'])
-
-
-def _t5_glue_data_split(benchmark_name, is_mode_train, split_name):
+def _t5_glue_data_split(benchmark_id):
   """Returns a GLUE data split prepared with the standard T5 preprocessor."""
-  if split_name is None:
-    split_name = _t5_glue_split_name(benchmark_name, is_mode_train)
-  dataset = tfds.load(name=f'glue/{benchmark_name}', split=split_name)
+  benchmark, split = _t5_glue_benchmark_and_split(benchmark_id)
+  dataset = tfds.load(name=f'glue/{benchmark}', split=split)
   processed_dataset = generic_text_dataset_preprocess_fn(
       dataset,
       spm_path=t5.data.DEFAULT_SPM_PATH,
       text_preprocess_fns=[
           lambda ds, training: t5.data.preprocessors.glue(  # pylint: disable=g-long-lambda
               ds,
-              benchmark_name=benchmark_name,
-              label_names=_GLUE_LABELS[benchmark_name])
+              benchmark_name=benchmark,
+              label_names=_GLUE_LABELS[benchmark])
       ],
       copy_pretokenized=True,
       debug_print_examples=True,
@@ -1527,13 +1555,15 @@ def _t5_glue_data_split(benchmark_name, is_mode_train, split_name):
   return stream_of_inputs_targets_weights
 
 
-def _t5_glue_split_name(benchmark_name, is_mode_train):
-  if is_mode_train:
-    return 'train'
-  elif benchmark_name == 'mnli':
-    return 'validation_matched'
+def _t5_glue_benchmark_and_split(benchmark_id):
+  benchmark, mode = benchmark_id.rsplit('_', 1)
+  if mode == 't':
+    split = 'train'
+  elif benchmark == 'mnli':
+    split = 'validation_mismatched' if mode == 'e2' else 'validation_matched'
   else:
-    return 'validation'
+    split = 'validation'
+  return benchmark, split
 # pylint: enable=invalid-name
 
 

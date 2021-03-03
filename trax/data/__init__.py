@@ -60,8 +60,6 @@ Serial = data_configure(inputs.Serial)
 Shuffle = data_configure(inputs.Shuffle)
 T5GlueEvalStream = data_configure(tf_inputs.T5GlueEvalStream)
 T5GlueEvalStreamsParallel = data_configure(tf_inputs.T5GlueEvalStreamsParallel)
-T5GlueEvalTaskMnliMismatched = (
-    data_configure(tf_inputs.T5GlueEvalTaskMnliMismatched))
 T5GlueEvalTasks = data_configure(tf_inputs.T5GlueEvalTasks)
 T5GlueTrainStream = data_configure(tf_inputs.T5GlueTrainStream)
 T5GlueTrainStreamsParallel = (

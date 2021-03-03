@@ -53,8 +53,9 @@ dec_attn_type = @CausalAttention
 # of the MNLI dataset.
 make_inputs.train_stream = @data.T5GlueTrainStream()
 make_inputs.eval_stream = @data.T5GlueEvalStream()
-data.T5GlueTrainStream.benchmark_name = 'mnli'
-data.T5GlueEvalStream.benchmark_name = 'mnli'
+data.T5GlueTrainStream.benchmark = 'mnli'
+data.T5GlueEvalStream.benchmark = 'mnli'
+data.T5GlueEvalTasks.benchmark_list = ['mnli_e2']
 
 data.PadToLength.len_map = {0: 512, 1: 512, 2: 512}
 data.PadToLength.pad_value = {0: 0, 1: 0, 2:0}
@@ -71,7 +72,7 @@ train.inputs = @trax.data.inputs.make_inputs
 train.model = @trax.models.ConfigurableTransformer
 train.steps = 200000
 train.checkpoint_highest = 'accuracy'
-train.additional_eval_tasks = [@data.T5GlueEvalTaskMnliMismatched()]
+train.additional_eval_tasks = @data.T5GlueEvalTasks()
 
 # Parameters for ConfigurableTransformer:
 # ==============================================================================
