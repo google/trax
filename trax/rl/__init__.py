@@ -19,6 +19,7 @@ import gin
 
 from trax.rl import actor_critic
 from trax.rl import actor_critic_joint
+from trax.rl import envs
 from trax.rl import training
 
 
