@@ -151,9 +151,15 @@ def ApplyAttentionLayer(attention_type, d_model, n_heads, d_qk, d_v, causal,
   return tl.Chunk(attention, attention_chunk_size)
 
 
-def PositionalEncoder(mode, dropout=None, max_len=None, pos_type=None,
-                      pos_axial_shape=None, pos_d_axial_embs=None,
-                      pos_start_from_zero_prob=1.0, pos_max_offset_to_add=0,
+@tl.assert_shape('...d->...d')
+def PositionalEncoder(mode,
+                      dropout=None,
+                      max_len=None,
+                      pos_type=None,
+                      pos_axial_shape=None,
+                      pos_d_axial_embs=None,
+                      pos_start_from_zero_prob=1.0,
+                      pos_max_offset_to_add=0,
                       use_bfloat16=False):
   """Returns the positional encoding layer depending on the arguments.
 
@@ -308,6 +314,9 @@ def EmbeddingAndPositionalEncodings(input_vocab_size,
   if output_vocab_size is None:
     output_vocab_size = input_vocab_size
 
+  in_encoder = tl.AssertFunction('...->...d', in_encoder)
+  out_encoder = tl.AssertFunction('...->...d', out_encoder)
+
   return in_encoder, out_encoder, output_vocab_size
 
 
@@ -395,6 +404,8 @@ def ConfigurableTransformerEncoder(vocab_size,
       PositionalEncoder(
           mode, dropout, max_len, pos_type, pos_axial_shape, pos_d_axial_embs)
   ]
+
+  positional_encoder = tl.AssertFunction('...->...d', positional_encoder)
 
   # pylint: disable=g-complex-comprehension
   encoder_blocks = [
