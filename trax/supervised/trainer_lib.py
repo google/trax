@@ -71,6 +71,16 @@ _DEFAULT_METRICS = {
 }
 
 
+NamedStream = collections.namedtuple(
+    'NamedStream', ['name', 'stream']
+)
+
+
+@gin.configurable()
+def named_stream(name=gin.REQUIRED, stream=gin.REQUIRED):
+  return NamedStream(name=name, stream=stream)
+
+
 class Trainer:
   """Trax trainer.
 
@@ -534,7 +544,8 @@ def train(output_dir,
           init_checkpoint=None,
           callbacks=None,
           additional_train_tasks=None,
-          additional_eval_tasks=None):
+          additional_eval_tasks=None,
+          additional_eval_streams=None):
   """Train the model on the inputs.
 
   Args:
@@ -573,6 +584,9 @@ def train(output_dir,
       training.
     additional_eval_tasks: additional tasks which should be performed during
       evaluation.
+    additional_eval_streams: List[NamedStream], additional data streams that
+      should be used during evaluation. Can be provided independently of
+      additional_eval_tasks.
 
   Returns:
     trax.TrainerState or training.Loop if use_loop is True
@@ -597,6 +611,9 @@ def train(output_dir,
         n_steps_per_checkpoint=eval_frequency,
         n_steps_per_permanent_checkpoint=permanent_checkpoint_frequency)
 
+    if additional_train_tasks is None:
+      additional_train_tasks = []
+
     # Prepare the evaluation.
     metrics_dict = metrics if metrics is not None else _DEFAULT_METRICS
     names, metrics = zip(*metrics_dict.items())
@@ -604,6 +621,19 @@ def train(output_dir,
                                   metrics,
                                   metric_names=names,
                                   n_eval_batches=eval_steps)
+
+    if additional_eval_tasks is None:
+      additional_eval_tasks = []
+
+    additional_eval_tasks_from_streams = []
+    if additional_eval_streams is not None:
+      for stream in additional_eval_streams:
+        additional_eval_tasks_from_streams.append(
+            training.EvalTask(stream.stream,
+                              metrics,
+                              metric_names=names,
+                              n_eval_batches=eval_steps,
+                              export_prefix=stream.name))
 
     # Prepare the training loop.
     checkpoint_at = None
@@ -620,11 +650,10 @@ def train(output_dir,
       model_train.init_from_file(init_checkpoint, weights_only=True)
       model_predict_eval.init_from_file(init_checkpoint, weights_only=True)
     loop = training.Loop(
-        model_train, [train_task] +
-        (additional_train_tasks if additional_train_tasks is not None else []),
+        model_train, [train_task] + additional_train_tasks,
         eval_model=model_predict_eval,
         eval_tasks=[eval_task] +
-        (additional_eval_tasks if additional_eval_tasks is not None else []),
+        additional_eval_tasks + additional_eval_tasks_from_streams,
         output_dir=output_dir,
         checkpoint_at=checkpoint_at,
         permanent_checkpoint_at=permanent_checkpoint_at,

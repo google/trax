@@ -1206,23 +1206,21 @@ def random_number_lower_endian(length, base):
 
 
 @gin.configurable()
-def addition_inputs(
-    vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, train_length=gin.REQUIRED,
-    eval_min_length=gin.REQUIRED, eval_max_length=gin.REQUIRED,
-    pad_to_multiple=32, encdec=False):
-  """Inputs for the add problem: <S>x+y<S>(x+y).
+def addition_input_stream(
+    vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, min_length=gin.REQUIRED,
+    max_length=gin.REQUIRED, pad_to_multiple=32, encdec=False):
+  """Data stream for the add problem: <S>x+y<S>(x+y).
 
   Args:
     vocab_size: how many symbols to use.
     batch_size: how large are the batches.
-    train_length: maximal length of w for training.
-    eval_min_length: minimal length of w for eval.
-    eval_max_length: maximal length of w for eval.
+    min_length: minimal length of w.
+    max_length: maximal length of w.
     pad_to_multiple: int, pad length to be multiple of this number.
     encdec: bool, if True return encoder-decoder style inputs (default: False)
 
   Returns:
-    trax.inputs.Inputs
+    python generator of tuples of data examples
   """
   base = vocab_size - 3  # We use 0 to pad, base+1 as "+" and base+2 as "<S>".
   def single_example(max_length, min_length):
@@ -1261,9 +1259,36 @@ def addition_inputs(
                       for x in zip(*ex)]
       yield tuple(padded_batch)
 
+  return batches(max_length, min_length)
+
+
+@gin.configurable()
+def addition_inputs(
+    vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, train_length=gin.REQUIRED,
+    eval_min_length=gin.REQUIRED, eval_max_length=gin.REQUIRED,
+    pad_to_multiple=32, encdec=False):
+  """Inputs for the add problem: <S>x+y<S>(x+y).
+
+  Args:
+    vocab_size: how many symbols to use.
+    batch_size: how large are the batches.
+    train_length: maximal length of w for training.
+    eval_min_length: minimal length of w for eval.
+    eval_max_length: maximal length of w for eval.
+    pad_to_multiple: int, pad length to be multiple of this number.
+    encdec: bool, if True return encoder-decoder style inputs (default: False)
+
+  Returns:
+    trax.inputs.Inputs
+  """
+  train_stream = addition_input_stream(
+      vocab_size, batch_size, 3, train_length, pad_to_multiple, encdec)
+  eval_stream = addition_input_stream(
+      vocab_size, batch_size, eval_min_length, eval_max_length, pad_to_multiple,
+      encdec)
   return Inputs(
-      train_stream=lambda _: batches(train_length, 3),
-      eval_stream=lambda _: batches(eval_max_length, eval_min_length)
+      train_stream=lambda _: train_stream,
+      eval_stream=lambda _: eval_stream
   )
 
 

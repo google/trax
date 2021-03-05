@@ -323,6 +323,36 @@ class TraxTest(parameterized.TestCase):
       # Assert total train steps
       self.assertEqual(loop.step, steps)
 
+  @parameterized.parameters(BACKENDS)
+  def test_train_fills_in_missing_eval_metrics(self, backend):
+    with fastmath.use_backend(backend):
+      # Prepare model and inputs
+      n_classes = 4
+      steps = 2
+      eval_steps = 2
+      model_fn = functools.partial(models.MLP, layer_widths=(16, 16, n_classes))
+      inputs = _test_inputs(n_classes)
+      additional_eval_stream = trainer_lib.NamedStream(
+          # deliberately duplicating eval data
+          stream=inputs.eval_stream(1),
+          name='additional_eval_task')
+
+      # Train and evaluate
+      output_dir = self.create_tempdir().full_path
+      loop = trainer_lib.train(
+          output_dir,
+          model=model_fn,
+          inputs=inputs,
+          steps=steps,
+          eval_steps=eval_steps,
+          eval_frequency=1,
+          additional_eval_streams=[additional_eval_stream])
+
+      self.assertLen(loop.eval_tasks, 2)
+      eval_task_1, eval_task_2 = loop.eval_tasks
+      self.assertCountEqual(eval_task_1.metrics, eval_task_2.metrics)
+      self.assertCountEqual(eval_task_1.metric_names, eval_task_2.metric_names)
+
   @parameterized.named_parameters(
       ('_%s' % short_name(backend), backend)
       for backend in BACKENDS)

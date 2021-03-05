@@ -280,7 +280,9 @@ class Loop:
         if len(task_list) < 2:
           output_dir = self._output_dir
         else:
-          output_dir = os.path.join(self._output_dir, str(task_index))
+          output_dir = os.path.join(
+              self._output_dir,
+              task_list[task_index].export_prefix or str(task_index))
         tf.io.gfile.makedirs(output_dir)
         return output_dir
       else:
@@ -958,7 +960,7 @@ class TrainTask:
   def __init__(self, labeled_data, loss_layer, optimizer,
                lr_schedule=None, n_steps_per_checkpoint=100,
                n_steps_per_permanent_checkpoint=None, loss_name=None,
-               sample_batch=None):
+               sample_batch=None, export_prefix=None):
     r"""Configures a training task.
 
     Args:
@@ -976,7 +978,10 @@ class TrainTask:
       loss_name: Name for the loss metric.
       sample_batch: Optional sample batch for model initialization. If not
           provided, it will be taken from ``labeled_data``.
+      export_prefix: Optional task name to be used as prefix for exporting
+      metrics during training in Loop.
     """
+    self._export_prefix = export_prefix
     self._labeled_data = labeled_data
     self._loss_layer = loss_layer
     self._optimizer = optimizer
@@ -997,6 +1002,10 @@ class TrainTask:
   def next_batch(self):
     """Returns one batch of labeled data: a tuple of input(s) plus label."""
     return next(self._labeled_data)
+
+  @property
+  def export_prefix(self):
+    return self._export_prefix
 
   @property
   def loss_layer(self):
@@ -1042,7 +1051,8 @@ class EvalTask:
   """
 
   def __init__(self, labeled_data, metrics,
-               metric_names=None, n_eval_batches=1, sample_batch=None):
+               metric_names=None, n_eval_batches=1, sample_batch=None,
+               export_prefix=None):
     r"""Configures an eval task: named metrics run with a given data source.
 
     Args:
@@ -1058,7 +1068,10 @@ class EvalTask:
           the output is then the average of the outputs from the N batches.
       sample_batch: Optional sample batch for model initialization. If not
           provided, it will be taken from ``labeled_data``.
+      export_prefix: Optional task name to be used as prefix for exporting
+          metrics during evaluation in Loop.
     """
+    self._export_prefix = export_prefix
     self._labeled_data = labeled_data
     self._metrics = metrics
     self._metric_names = metric_names or self._default_names()
@@ -1078,6 +1091,10 @@ class EvalTask:
   def next_batch(self):
     """Returns one batch of labeled data: a tuple of input(s) plus label."""
     return next(self._labeled_data)
+
+  @property
+  def export_prefix(self):
+    return self._export_prefix
 
   @property
   def metrics(self):
