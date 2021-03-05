@@ -983,15 +983,44 @@ class PPO(AdvantageBasedActorCriticAgent):
     return tl.Fn('PPOLoss', f)
 
 
+def _weighted_percentiles(x, thresholds):
+  """Calculate weights for x by percentile-and-weights given in thresholds.
+
+  Thresholds contain a list of (p, weight, minumum). For each threshold,
+  all elements of x that are above the p-th percentile *and* above minimum
+  get the weight weight, and all other get the weight 0.
+  The result is the sum over all thresholds.
+
+  Args:
+    x: tensor to calculate the weights for
+    thresholds: list of triples (percentile, weight, minimum) used to
+      calculate the weights (see above how)
+
+  Returns:
+    weights, a tensor of the same shape as x
+  """
+  res = []
+  for (percentile, weight, minimum) in thresholds:
+    threshold = jnp.percentile(x, percentile)
+    if minimum is not None:
+      threshold = jnp.maximum(minimum, threshold)
+    zero_ones = jnp.where(x < threshold, jnp.zeros_like(x), jnp.ones_like(x))
+    res.append(weight * zero_ones)
+  return sum(res)
+
+
 # AWR is an off-policy actor-critic RL algorithm.
-def awr_weights(advantages, beta):
+def awr_weights(advantages, beta, thresholds):
+  if thresholds:
+    return _weighted_percentiles(advantages, thresholds)
   return jnp.exp(advantages / beta)
 
 
 # Helper functions for computing AWR metrics.
-def awr_metrics(beta, preprocess_layer=None):
+def awr_metrics(beta, thresholds, preprocess_layer=None):
   return {  # pylint: disable=g-complex-comprehension
-      'awr_weight_' + name: awr_weight_stat(name, fn, beta, preprocess_layer)
+      'awr_weight_' + name: awr_weight_stat(name, fn, beta, thresholds,
+                                            preprocess_layer)
       for (name, fn) in [
           ('mean', jnp.mean),
           ('std', jnp.std),
@@ -1001,23 +1030,23 @@ def awr_metrics(beta, preprocess_layer=None):
   }
 
 
-def awr_weight_stat(stat_name, stat_fn, beta, preprocess_layer):
+def awr_weight_stat(stat_name, stat_fn, beta, thresholds, preprocess_layer):
   # Select just the advantages if preprocess layer is not given.
   preprocess = tl.Select([1]) if preprocess_layer is None else preprocess_layer
   return tl.Serial([
       preprocess,
       tl.Fn(
           'AWRWeight' + stat_name.capitalize(),
-          lambda x: stat_fn(awr_weights(x, beta)),
+          lambda x: stat_fn(awr_weights(x, beta, thresholds)),
       ),
   ])
 
 
-def AWRLoss(beta, w_max):  # pylint: disable=invalid-name
+def AWRLoss(beta, w_max, thresholds):  # pylint: disable=invalid-name
   """Definition of the Advantage Weighted Regression (AWR) loss."""
   def f(log_probs, advantages, old_log_probs, mask):
     del old_log_probs  # Not used in AWR.
-    weights = jnp.minimum(awr_weights(advantages, beta), w_max)
+    weights = jnp.minimum(awr_weights(advantages, beta, thresholds), w_max)
     return -jnp.sum(log_probs * weights * mask) / jnp.sum(mask)
   return tl.Fn('AWRLoss', f)
 
@@ -1027,16 +1056,18 @@ class AWR(AdvantageBasedActorCriticAgent):
 
   on_policy = False
 
-  def __init__(self, task, beta=1.0, w_max=20.0, **kwargs):
+  def __init__(self, task, beta=1.0, w_max=20.0, thresholds=None, **kwargs):
     """Configures the AWR Trainer."""
     self._beta = beta
     self._w_max = w_max
+    self._thresholds = thresholds
     super().__init__(task, **kwargs)
 
   @property
   def policy_loss_given_log_probs(self):
     """Policy loss."""
-    return AWRLoss(beta=self._beta, w_max=self._w_max)  # pylint: disable=no-value-for-parameter
+    return AWRLoss(beta=self._beta, w_max=self._w_max,
+                   thresholds=self._thresholds)  # pylint: disable=no-value-for-parameter
 
 
 class LoopAWR(LoopActorCriticAgent):
@@ -1052,14 +1083,15 @@ class LoopAWR(LoopActorCriticAgent):
     )
 
 
-def SamplingAWRLoss(beta, w_max, reweight=False, sampled_all_discrete=False):  # pylint: disable=invalid-name
+def SamplingAWRLoss(beta, w_max, thresholds,  # pylint: disable=invalid-name
+                    reweight=False, sampled_all_discrete=False):
   """Definition of the Advantage Weighted Regression (AWR) loss."""
   def f(log_probs, advantages, old_log_probs, mask):
     if reweight:  # Use new policy weights for sampled actions instead.
       mask *= jnp.exp(fastmath.stop_gradient(log_probs) - old_log_probs)
     if sampled_all_discrete:  # Actions were sampled uniformly; weight them.
       mask *= jnp.exp(old_log_probs)
-    weights = jnp.minimum(awr_weights(advantages, beta), w_max)
+    weights = jnp.minimum(awr_weights(advantages, beta, thresholds), w_max)
     return -jnp.sum(log_probs * weights * mask) / jnp.sum(mask)
   return tl.Fn('SamplingAWRLoss', f)
 
@@ -1069,10 +1101,12 @@ class SamplingAWR(AdvantageBasedActorCriticAgent):
 
   on_policy = False
 
-  def __init__(self, task, beta=1.0, w_max=20.0, reweight=False, **kwargs):
+  def __init__(self, task, beta=1.0, w_max=20.0, thresholds=None,
+               reweight=False, **kwargs):
     """Configures the AWR Trainer."""
     self._beta = beta
     self._w_max = w_max
+    self._thresholds = thresholds
     self._reweight = reweight
     super().__init__(task, q_value=True, **kwargs)
 
@@ -1106,7 +1140,8 @@ class SamplingAWR(AdvantageBasedActorCriticAgent):
         )
     }
     metrics.update(awr_metrics(
-        self._beta, preprocess_layer=self._policy_inputs_to_advantages(True)))
+        self._beta, self._thresholds,
+        preprocess_layer=self._policy_inputs_to_advantages(True)))
     return metrics
 
   @property
@@ -1139,7 +1174,8 @@ class SamplingAWR(AdvantageBasedActorCriticAgent):
         # Policy loss is expected to consume
         # (log_probs, advantages, old_log_probs, mask).
         SamplingAWRLoss(
-            beta=self._beta, w_max=self._w_max, reweight=self._reweight,
+            beta=self._beta, w_max=self._w_max, thresholds=self._thresholds,
+            reweight=self._reweight,
             sampled_all_discrete=self._sample_all_discrete_actions)
     )
 

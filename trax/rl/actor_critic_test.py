@@ -18,7 +18,9 @@
 
 import functools
 
+
 from absl.testing import absltest
+from absl.testing import parameterized
 
 from trax import layers as tl
 from trax import models
@@ -30,7 +32,7 @@ from trax.rl import task as rl_task
 from trax.supervised import lr_schedules
 
 
-class ActorCriticTest(absltest.TestCase):
+class ActorCriticTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
@@ -157,7 +159,9 @@ class ActorCriticTest(absltest.TestCase):
     trainer.run(2)
     self.assertEqual(2, trainer.current_epoch)
 
-  def test_sanity_awrtrainer_transformer_cartpole(self):
+  @parameterized.named_parameters(('default', None),
+                                  ('thresholds', ((70, 1.0, 0), (90, 4.0, 0))))
+  def test_sanity_awrtrainer_transformer_cartpole(self, thresholds):
     """Test-runs AWR on cartpole with Transformer."""
     task = rl_task.RLTask('CartPole-v0', initial_trajectories=2,
                           max_steps=2)
@@ -169,6 +173,7 @@ class ActorCriticTest(absltest.TestCase):
         constant=1e-2, warmup_steps=100, factors='constant * linear_warmup')
     trainer = actor_critic.AWR(
         task,
+        thresholds=thresholds,
         n_shared_layers=0,
         max_slice_length=2,
         added_policy_slice_length=1,

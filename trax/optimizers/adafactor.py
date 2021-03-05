@@ -120,8 +120,8 @@ class Adafactor(opt_base.Optimizer):
 
     grads_sqr = grads * grads
     if self._factored and len(weights.shape) >= 2:
-      v_row = slots.pop(0)
-      v_col = slots.pop(0)
+      v_row = slots[0]
+      v_col = slots[1]
       new_v_row = (
           decay_rate * v_row + mixing_rate * jnp.mean(grads_sqr, axis=-1))
       new_v_col = (
@@ -134,7 +134,7 @@ class Adafactor(opt_base.Optimizer):
           grads * jnp.expand_dims(row_factor, axis=-1) *
           jnp.expand_dims(col_factor, axis=-2))
     else:
-      v = slots.pop(0)
+      v = slots[-1]
       new_v = decay_rate * v + mixing_rate * grads_sqr
       updates.append(new_v)
       y = grads * (new_v + epsilon1)**-0.5
