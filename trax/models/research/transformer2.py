@@ -16,7 +16,6 @@
 # Lint as: python3
 """Transformer variant -- no encoder-decoder attention."""
 
-import jax
 from trax import fastmath
 from trax import layers as tl
 from trax.fastmath import numpy as jnp
@@ -186,7 +185,7 @@ def _ConcatWithPadding(vec_e, vec_d, mask_e):
     raise ValueError(f'Shape of encoder mask, {mask_e.shape}, does not'
                      f' equal {(B, L1)}.')
 
-  def _UpdateRow(x):
+  def _UpdateRow(_, x):
     # row_e - (L1, H), row_d - (L2, H), row_mask_e - (L1,)
     row_e, row_d, row_mask_e = x
     # final_row - (L1+L2, H)
@@ -195,9 +194,10 @@ def _ConcatWithPadding(vec_e, vec_d, mask_e):
     e_idx = jnp.sum(row_mask_e, dtype=jnp.int32)
     # Starting after that index, update with the decoder row.
     zero = jnp.array(0, dtype=e_idx.dtype)  # avoid int32/int64 mismatch
-    return fastmath.dynamic_update_slice(final_row, row_d, (e_idx, zero))
+    return _, fastmath.dynamic_update_slice(final_row, row_d, (e_idx, zero))
 
-  return jax.lax.map(_UpdateRow, [vec_e, vec_d, mask_e])
+  return fastmath.scan(_UpdateRow, [None, None, None],
+                       [vec_e, vec_d, mask_e])[1]
 
 
 def _StripFromConcatenateWithPadding(vec_ed, tok_e, tok_d):
@@ -218,7 +218,7 @@ def _StripFromConcatenateWithPadding(vec_ed, tok_e, tok_d):
     raise ValueError(f'Shape of decoder tokens, {tok_d.shape}, does not'
                      f' equal {(B, L2)}.')
 
-  def _UpdateRow(x):
+  def _UpdateRow(_, x):
     # (L, H), (L1, H) & (L2, H)
     row_ed, row_e, _ = x
     mask_e = row_e != 0
@@ -228,9 +228,10 @@ def _StripFromConcatenateWithPadding(vec_ed, tok_e, tok_d):
     zero = jnp.array(0, dtype=len_e.dtype)  # avoid int32/int64 mismatch
     l2_np = jnp.array(L2, dtype=len_e.dtype)
     h_np = jnp.array(H, dtype=len_e.dtype)
-    return fastmath.dynamic_slice(row_ed, (len_e, zero), (l2_np, h_np))
+    return _, fastmath.dynamic_slice(row_ed, (len_e, zero), (l2_np, h_np))
 
-  return jax.lax.map(_UpdateRow, [vec_ed, tok_e, tok_d])
+  return fastmath.scan(_UpdateRow, [None, None, None],
+                       [vec_ed, tok_e, tok_d])[1]
 
 
 class StripFromConcatenateWithPadding(tl.Layer):
