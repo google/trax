@@ -703,8 +703,7 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
   def testBernoulliWrongShape(self):
     mean = [0.1, 0.2]
     shape = [3]
-    with self.assertRaisesWithPredicateMatch(tf.errors.InvalidArgumentError,
-                                             r"Incompatible shapes"):
+    with self.assertRaisesIncompatibleShapesError():
       extensions.bernoulli(123, mean, shape)
 
   def testDatasetAsNumpy(self):
