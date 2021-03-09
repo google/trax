@@ -41,6 +41,7 @@ setup(
         'gym',
         'jax',
         'jaxlib',
+        'matplotlib',
         'numpy',
         'psutil',
         'scipy',
@@ -55,7 +56,6 @@ setup(
         'tests': [
             'attrs',
             'jupyter',
-            'matplotlib',
             'mock',
             'parameterized',
             'pylint',
