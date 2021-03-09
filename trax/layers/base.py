@@ -806,6 +806,8 @@ def np_to_file(list_of_nparrays, file_path, compresslevel):
 
 def np_from_file(file_path, compresslevel):
   """Load numpy arrays from file_path with gzipping."""
+  if not tf.io.gfile.exists(file_path):
+    raise FileNotFoundError(file_path)
   res = []
   with tf.io.gfile.GFile(file_path, 'rb') as f:
     with gzip.GzipFile(fileobj=f, compresslevel=compresslevel) as gzipf:
