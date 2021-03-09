@@ -24,6 +24,7 @@ import gym
 import numpy as np
 
 from trax import models
+from trax import test_utils
 from trax.data import inputs
 from trax.rl import serialization_utils
 from trax.rl import space_serializer
@@ -48,6 +49,10 @@ def dummy_inputs(seq_len, batch_size):
 
 
 class CallbacksTest(absltest.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    test_utils.ensure_flag('test_tmpdir')
 
   @mock.patch('sys.stdout', new_callable=io.StringIO)
   def test_serialized_model_evaluation(self, mock_stdout):
