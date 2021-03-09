@@ -100,7 +100,7 @@ def _n_weights_per_core(weights):  # pylint: disable=invalid-name
     of weights over all cores divided by the number of cores otherwise
   """
   weights_sum = jnp.sum(weights)
-  if fastmath.device_count() < 2:
+  if fastmath.global_device_count() < 2:
     return weights_sum
   else:
     try:

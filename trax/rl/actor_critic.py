@@ -159,7 +159,8 @@ class ActorCriticAgent(rl_training.PolicyAgent):
     self._value_eval_model = value_model(mode='eval')
     self._value_eval_model.init(self._value_model_signature)
     self._value_eval_jit = tl.jit_forward(
-        self._value_eval_model.pure_fn, fastmath.device_count(), do_mean=False)
+        self._value_eval_model.pure_fn, fastmath.local_device_count(),
+        do_mean=False)
 
     # Initialize policy training.
     super().__init__(task, **kwargs)
@@ -245,7 +246,7 @@ class ActorCriticAgent(rl_training.PolicyAgent):
       log_probs = None
       inputs = (observations,)
 
-    n_devices = fastmath.device_count()
+    n_devices = fastmath.local_device_count()
     weights = tl.for_n_devices(self._value_eval_model.weights, n_devices)
     state = tl.for_n_devices(self._value_eval_model.state, n_devices)
     rng = self._value_eval_model.rng

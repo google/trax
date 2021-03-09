@@ -354,9 +354,14 @@ def dataset_as_numpy(*args, **kwargs):
   return JAX_BACKEND['dataset_as_numpy'](*args, **kwargs)
 
 
-def device_count(*args, **kwargs):
-  """Return the number of accelerators (GPUs or TPUs) available."""
-  return backend()['device_count'](*args, **kwargs)
+def global_device_count(*args, **kwargs):
+  """Return the number of accelerators (GPUs or TPUs) in all hosts."""
+  return backend()['global_device_count'](*args, **kwargs)
+
+
+def local_device_count(*args, **kwargs):
+  """Return the number of accelerators (GPUs or TPUs) available on this host."""
+  return backend()['local_device_count'](*args, **kwargs)
 
 
 # Backend selection functions.

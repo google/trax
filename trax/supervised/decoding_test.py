@@ -47,7 +47,7 @@ class DecodingTest(test.TestCase):
         model, batch_size=1, eos_id=-1, max_length=10)
     self.assertEqual(s1.shape[0], 1)
     self.assertEqual(s1.shape[1], 10)
-    batch_per_device = 2 // fastmath.device_count()
+    batch_per_device = 2 // fastmath.local_device_count()
     model.init(shapes.ShapeDtype((batch_per_device, 1), dtype=np.int32))
     s2 = decoding.autoregressive_sample(
         model, batch_size=2, max_length=10)
@@ -69,7 +69,7 @@ class DecodingTest(test.TestCase):
           model, batch_size=1, eos_id=-1, max_length=10)
       self.assertEqual(s1.shape[0], 1)
       self.assertEqual(s1.shape[1], 10)
-      batch_per_device = 2 // fastmath.device_count()
+      batch_per_device = 2 // fastmath.local_device_count()
       model.init(shapes.ShapeDtype((batch_per_device, 1), dtype=np.int32))
       s2 = decoding.autoregressive_sample(
           model, batch_size=2, max_length=10)

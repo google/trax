@@ -1204,7 +1204,7 @@ def init_host_and_devices(n_devices=None, random_seed=None):
   logging.info('Initializing hosts and devices: host_id %d, host_count %d, '
                'is_chief %d', host_id, host_count, is_chief)
 
-  device_count = fastmath.device_count()
+  device_count = fastmath.local_device_count()
   n_devices = n_devices or device_count
   # TODO(lukaszkaiser): remove this restriction when possible.
   if n_devices != device_count and fastmath.is_backend(fastmath.Backend.JAX):

@@ -448,7 +448,7 @@ class TrainingTest(absltest.TestCase):
     # This test requires > 16GB RAM, only run on TPUs. It does pass on GPU
     # and CPU when you run it locally, but it's too big for unit-testing.
     ram_limited = True  # Set to False to run this test locally.
-    if fastmath.device_count() == 1 and ram_limited:
+    if fastmath.global_device_count() == 1 and ram_limited:
       return
 
     # Create the model.
