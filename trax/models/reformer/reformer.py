@@ -30,7 +30,8 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
                  n_heads, attention_type, dropout, ff_activation,
                  ff_dropout, ff_use_sru, ff_chunk_size, ff_sparsity,
                  attention_chunk_size, n_attention_layers=1,
-                 n_feedforward_layers=1, use_bfloat16=False, mode='train'):
+                 n_feedforward_layers=1, center_layernorm=True,
+                 use_bfloat16=False, mode='train'):
   """Reversible transformer decoder layer.
 
   Args:
@@ -50,6 +51,8 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
     n_attention_layers: how many residual causal attention layers should we
       have before the feed-forward block (default: 1, the standard block)
     n_feedforward_layers: how many FFNN layers should we have (default 1).
+    center_layernorm: whether to use centering in LayerNorm (default) or if
+      to skip it, which is known as RMS normalization.
     use_bfloat16: whether to use bfloat16 for weights (default: False).
     mode: str: 'train' or 'eval'
 
@@ -60,7 +63,7 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
   # pylint: disable=g-complex-comprehension
   attention_half_residuals = [
       [tl.ReversibleHalfResidual(
-          tl.LayerNorm(),
+          tl.LayerNorm(center=center_layernorm),
           attention_layer=ct.ApplyAttentionLayer(
               attention_type, d_model, n_heads, d_attention_key,
               d_attention_value, True, False, dropout, dropout,
@@ -73,7 +76,8 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
       [tl.ReversibleHalfResidual(
           ct.FeedForwardWithOptions(
               d_model, d_ff, dropout, [-2], ff_activation, ff_dropout,
-              ff_chunk_size, ff_use_sru, ff_sparsity, mode, use_bfloat16),
+              ff_chunk_size, ff_use_sru, ff_sparsity, center_layernorm,
+              mode, use_bfloat16),
           name='ReversibleHalfResidualDecoderFF'),
        tl.ReversibleSwap()
       ] for _ in range(n_feedforward_layers)]
@@ -320,8 +324,9 @@ def ReformerShortenLM(vocab_size,
 
 def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
                  ff_dropout, ff_use_sru=0, ff_chunk_size=0, ff_sparsity=0,
-                 attention_chunk_size=0, use_bfloat16=False,
-                 use_two_swaps_per_block=True, mode='train'):
+                 attention_chunk_size=0, center_layernorm=True,
+                 use_bfloat16=False, use_two_swaps_per_block=True,
+                 mode='train'):
   """Returns a list of layers that implements a Reformer encoder block.
 
   The input to the layer is a pair, (activations, mask), where the mask was
@@ -340,6 +345,8 @@ def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
     ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
     attention_chunk_size: int, if > 0 run attention chunked at this size
+    center_layernorm: whether to use centering in LayerNorm (default) or if
+      to skip it, which is known as RMS normalization.
     use_bfloat16: whether to use bfloat16 for weights (default: False)
     use_two_swaps_per_block: bool, if True use two reversible swaps in Encoder
       block, otherwise use only one swap.
@@ -372,14 +379,15 @@ def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
     )
 
   attention_half_residual = tl.ReversibleHalfResidual(
-      tl.LayerNorm(),
+      tl.LayerNorm(center=center_layernorm),
       attention_layer=attention,
       name='ReversibleHalfResidualEncoderAttn'
   )
 
   feed_forward = ct.FeedForwardWithOptions(
       d_model, d_ff, dropout, [-2], ff_activation, ff_dropout,
-      ff_chunk_size, ff_use_sru, ff_sparsity, mode, use_bfloat16)
+      ff_chunk_size, ff_use_sru, ff_sparsity, center_layernorm,
+      mode, use_bfloat16)
 
   encoder_block = [
       attention_half_residual,
@@ -433,7 +441,7 @@ def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, ff_activation,
 
   feed_forward = ct.FeedForwardWithOptions(
       d_model, d_ff, dropout, [-2], ff_activation, ff_dropout,
-      ff_chunk_size, ff_use_sru, ff_sparsity, mode)
+      ff_chunk_size, ff_use_sru, ff_sparsity, True, mode)
 
   return [                             # vec_d1 vec_d2 vec_e masks
       causal_attention_half_residual,
@@ -602,6 +610,7 @@ def Reformer2(input_vocab_size,
               use_bfloat16=False,
               reversible_encoder=False,
               use_two_swaps_per_encoder_block=True,
+              center_layernorm=True,
               half_before_layer=None,
               double_after_layer=None,
               mode='train'):
@@ -657,6 +666,8 @@ def Reformer2(input_vocab_size,
     reversible_encoder: whether to be reversible through the encoder
     use_two_swaps_per_encoder_block: whether to allow even number of swaps in
       the encoder
+    center_layernorm: whether to use centering in LayerNorm (default) or if
+      to skip it, which is known as RMS normalization.
     half_before_layer: int, half d_model and d_ff before that layer
     double_after_layer: int, double d_model and d_ff after that layer
     mode: str: 'train' or 'eval'
@@ -718,6 +729,7 @@ def Reformer2(input_vocab_size,
           ff_chunk_size=ff_chunk_size,
           ff_sparsity=ff_sparsity,
           attention_chunk_size=attention_chunk_size,
+          center_layernorm=center_layernorm,
           use_bfloat16=use_bfloat16,
           use_two_swaps_per_block=use_two_swaps_per_encoder_block,
           mode=mode)
@@ -764,6 +776,7 @@ def Reformer2(input_vocab_size,
         ff_sparsity=ff_sparsity,
         attention_chunk_size=attention_chunk_size,
         n_attention_layers=n_decoder_attention_layers,
+        center_layernorm=center_layernorm,
         use_bfloat16=use_bfloat16,
         mode=mode)
     decoder_blocks.append(decoder_block)

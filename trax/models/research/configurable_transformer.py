@@ -45,6 +45,7 @@ def FeedForwardWithOptions(d_model,
                            ff_chunk_size,
                            ff_use_sru,
                            ff_sparsity,
+                           center_layernorm,
                            mode,
                            use_bfloat16=False,
                            ff_sparsity_type='1inN'):
@@ -69,6 +70,8 @@ def FeedForwardWithOptions(d_model,
       in addition to the feed-forward block (second int specifies sru size)
     ff_sparsity: int, tuple or string; if not 0, use sparse feed-forward block
       with this sparsity
+    center_layernorm: whether to use centering in LayerNorm (default) or if
+      to skip it, which is known as RMS normalization.
     mode: If `'train'`, each block will include dropout; else, it will pass all
       values through unaltered.
     use_bfloat16: whether to use bfloat16 for weights (default: False).
@@ -112,7 +115,7 @@ def FeedForwardWithOptions(d_model,
   else:
     ff = _FeedForward(d_model, d_ff, dropout, ff_activation, ff_dropout,
                       use_bfloat16, mode)
-  res = [tl.LayerNorm(), ff]
+  res = [tl.LayerNorm(center=center_layernorm), ff]
   if ff_sparsity_type != '1inN' or ff_sparsity == 0:
     # SparseFF has Dropout and BatchLeadingAxes built-in.
     res.append(tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes,
@@ -125,7 +128,8 @@ def FeedForwardWithOptions(d_model,
     else:
       sru_n_layers, sru_n_units = ff_use_sru, 32
     sru = [tl.SRU(sru_n_units, mode=mode) for _ in range(sru_n_layers)]
-    block = [tl.LayerNorm(), tl.Dense(sru_n_units)] + sru + [tl.Dense(d_model)]
+    block = [tl.LayerNorm(center=center_layernorm), tl.Dense(sru_n_units)
+             ] + sru + [tl.Dense(d_model)]
     res = tl.Residual(block, shortcut=res)
   return [res]
 
@@ -807,7 +811,8 @@ def EncoderBlock(d_model,
           FeedForwardWithOptions(d_model, d_ff, dropout,
                                  dropout_shared_axes, ff_activation,
                                  ff_dropout, ff_chunk_size, ff_use_sru,
-                                 ff_sparsity, mode, False, ff_sparsity_type)
+                                 ff_sparsity, True, mode, False,
+                                 ff_sparsity_type)
       )
       for _ in range(n_feedforward_layers)
   ]
@@ -895,7 +900,8 @@ def DecoderBlock(d_model,
           FeedForwardWithOptions(d_model, d_ff, dropout,
                                  dropout_shared_axes, ff_activation,
                                  ff_dropout, ff_chunk_size, ff_use_sru,
-                                 ff_sparsity, mode, False, ff_sparsity_type)
+                                 ff_sparsity, True, mode, False,
+                                 ff_sparsity_type)
       )
       for _ in range(n_feedforward_layers)
   ]
@@ -986,7 +992,7 @@ def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
   feed_forward = FeedForwardWithOptions(d_model, d_ff, dropout,
                                         dropout_shared_axes, ff_activation,
                                         ff_dropout, ff_chunk_size, ff_use_sru,
-                                        ff_sparsity, mode, False,
+                                        ff_sparsity, True, mode, False,
                                         ff_sparsity_type)
 
   return [                             # vec_d masks vec_e
