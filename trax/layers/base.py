@@ -331,8 +331,14 @@ class Layer:
     # In the current checkpoint format, we store weights in a separate
     # non-pickled file with the same name but added ".npy".
     if isinstance(dictionary['flat_weights'], int):
+      if file_name.endswith('.pkl.gz'):
+        weights_path = file_name[:-6] + 'weights.npy.gz'
+      else:
+        weights_path = file_name + '.npy'
+      if not tf.io.gfile.exists(weights_path):  # old format compatibility
+        weights_path = file_name + '.npy'
       dictionary['flat_weights'] = np_from_file(
-          file_name + '.npy', compresslevel=dictionary['flat_weights'])
+          weights_path, compresslevel=dictionary['flat_weights'])
     if input_signature is None:
       input_signature = dictionary['input_signature']
     weights_and_state_sig = self.weights_and_state_signature(

@@ -375,14 +375,17 @@ class ReversibleSerialTrainer:
   @property
   def slots(self):
     """Returns the slots of all optimizers."""
-    return fastmath.nested_map(lambda opt: opt.slots, self._optimizers)
+    optimizers = list(self._optimizers) + [self._loss_opt]
+    return fastmath.nested_map(lambda opt: opt.slots, optimizers)
 
   @slots.setter
   def slots(self, slots):
     """Sets the slots of all optimizers."""
-    for ((s_opt, r_opts), (s_slots, r_slots)) in zip(self._optimizers, slots):
+    for ((s_opt, r_opts), (s_slots, r_slots)) in zip(
+        self._optimizers, slots[:-1]):
       for (opt, slot) in zip([s_opt] + r_opts, [s_slots] + r_slots):
         opt.slots = slot
+    self._loss_opt.slots = slots[-1]
 
   def _pjit(self, f, memory_key=None, donate_argnums=()):
     """JIT f if 1 device is available and pmap if more are available."""

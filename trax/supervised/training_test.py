@@ -247,6 +247,23 @@ class TrainingTest(absltest.TestCase):
     loop2 = training.Loop(model, [task], output_dir=tmp_dir)
     self.assertEqual(4, loop2.step)
 
+  def test_restores_memory_efficient_from_standard(self):
+    """Training restores step from directory where it saved it."""
+    model = tl.Serial(tl.Dense(4), tl.Dense(1))
+    task_std = training.TrainTask(
+        _very_simple_data(), tl.L2Loss(), optimizers.Adam(.0001))
+    tmp_dir = self.create_tempdir().full_path
+    loop = training.Loop(model, [task_std],
+                         checkpoint_at=lambda step_n: step_n % 2 == 0,
+                         output_dir=tmp_dir)
+    loop.run(4)
+    task_memeff = training.TrainTask(
+        _very_simple_data(), tl.L2Loss(), optimizers.Adam)
+    loop2 = training.Loop(model, [task_memeff], output_dir=tmp_dir,
+                          use_memory_efficient_trainer=True)
+    loop2.run(2)
+    self.assertEqual(6, loop2.step)
+
   def test_restores_from_smaller_model(self):
     """Training restores from a checkpoint created with smaller model."""
     model1 = tl.Serial(tl.Dense(1))
@@ -278,8 +295,9 @@ class TrainingTest(absltest.TestCase):
   def test_restores_step_bfloat16(self):
     """Training restores step from directory where it saved it, w/ bfloat16."""
     model = tl.Serial(tl.Dense(1, use_bfloat16=True))
-    task = training.TrainTask(
-        _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01))
+    # We'll also use Adafactor with bfloat16 to check restoring bfloat slots.
+    opt = optimizers.Adafactor(.01, do_momentum=True, momentum_in_bfloat16=True)
+    task = training.TrainTask(_very_simple_data(), tl.L2Loss(), opt)
     tmp_dir = self.create_tempdir().full_path
     loop = training.Loop(model, [task],
                          checkpoint_at=lambda step_n: step_n % 2 == 0,

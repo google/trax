@@ -29,6 +29,7 @@ class Adafactor(opt_base.Optimizer):
                multiply_by_parameter_scale=True,
                do_clipping=True,
                do_momentum=False,
+               momentum_in_bfloat16=False,
                beta1=0.0,
                decay_rate=0.8,
                clipping_threshold=1.0,
@@ -49,6 +50,7 @@ class Adafactor(opt_base.Optimizer):
         absolute step size.
       do_clipping: whether to clip gradients; if True, set clipping_theshold.
       do_momentum: whether to use momentum; if True, set beta1.
+      momentum_in_bfloat16: if True, store momentum in bfloat16 to save memory.
       beta1: a float value between 0 and 1, enables momentum and uses extra
         memory if nonzero!  Off by default.
       decay_rate: float: controls second-moment exponential decay schedule.
@@ -63,6 +65,7 @@ class Adafactor(opt_base.Optimizer):
     self._multiply_by_parameter_scale = multiply_by_parameter_scale
     self._do_clipping = do_clipping
     self._do_momentum = do_momentum
+    self._momentum_in_bfloat16 = momentum_in_bfloat16
     # Dynamically configurable parameters will be passed to the update function.
     super().__init__(
         learning_rate=learning_rate,
@@ -93,6 +96,8 @@ class Adafactor(opt_base.Optimizer):
       slots.append(v)
     if self._do_momentum:
       m = jnp.zeros_like(weights)
+      if self._momentum_in_bfloat16:
+        m = m.astype(jnp.bfloat16)
       slots.append(m)
     return slots
 
@@ -147,9 +152,10 @@ class Adafactor(opt_base.Optimizer):
     subtrahend = update_scale * y
     if self._do_momentum:
       m = slots[-1]  # Momentum is always the last slot (if used).
+      m = m.astype(subtrahend.dtype)  # Accumulate in subtrahend dtype.
       new_m = beta1 * m + (1.0 - beta1) * subtrahend
       subtrahend = new_m
-      updates.append(new_m)
+      updates.append(new_m.astype(slots[-1].dtype))  # Back to bfloat if needed.
 
     new_weights = (1 - weight_decay_rate) * weights - subtrahend
     # TODO(lukaszkaiser): why is the astype needed here? Check and correct.
