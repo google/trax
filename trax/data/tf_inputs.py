@@ -59,7 +59,7 @@ def t2t_problems():
   return t2tp
 
 
-@gin.configurable()
+@gin.configurable
 def data_streams(dataset_name,
                  data_dir=None,
                  preprocess_fn=no_preprocess,
@@ -258,7 +258,7 @@ def _train_and_eval_dataset(dataset_name,
   return train, valid, keys
 
 
-@gin.configurable()
+@gin.configurable
 def TFDS(  # pylint: disable=invalid-name
     dataset_name,
     data_dir=None,
@@ -395,7 +395,7 @@ def tokenize(stream,
       yield output
 
 
-@gin.configurable()
+@gin.configurable
 def Tokenize(  # pylint: disable=invalid-name
     keys=None,
     vocab_type='subword',  # pylint: disable=invalid-name
@@ -815,7 +815,7 @@ def sentencepiece_tokenize(stream, spm_path=None, extra_ids=0):
     yield np.array(vocab.encode(example))
 
 
-@gin.configurable()
+@gin.configurable
 def SentencePieceTokenize(  # pylint: disable=invalid-name
     spm_path=None,
     extra_ids=0):

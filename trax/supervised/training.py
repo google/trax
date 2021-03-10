@@ -967,7 +967,7 @@ def _model_with_metrics(model, eval_task):
   )
 
 
-@gin.configurable()
+@gin.configurable
 class TrainTask:
   """A supervised task (labeled data + feedback mechanism) for training."""
 
@@ -1053,7 +1053,7 @@ class TrainTask:
     return params['learning_rate']
 
 
-@gin.configurable()
+@gin.configurable
 class EvalTask:
   """Labeled data plus scalar functions for (periodically) measuring a model.
 

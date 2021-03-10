@@ -76,7 +76,7 @@ NamedStream = collections.namedtuple(
 )
 
 
-@gin.configurable()
+@gin.configurable
 def named_stream(name=gin.REQUIRED, stream=gin.REQUIRED):
   return NamedStream(name=name, stream=stream)
 

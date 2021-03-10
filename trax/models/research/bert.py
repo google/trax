@@ -47,7 +47,7 @@ class AddBias(tl.Layer):
     self.weights = np.zeros(input_signature.shape[-1])
 
 
-@gin.configurable()
+@gin.configurable
 def BERTClassifierHead(n_classes):
   return tl.Serial([
       tl.Select([0], n_in=2),
@@ -59,7 +59,7 @@ def BERTClassifierHead(n_classes):
   ])
 
 
-@gin.configurable()
+@gin.configurable
 def BERTRegressionHead():
   return tl.Serial([
       tl.Select([0], n_in=2),
@@ -72,7 +72,7 @@ def BERTRegressionHead():
   ])
 
 
-@gin.configurable()
+@gin.configurable
 def BERTMLMHead(vocab_size=30522):
   return tl.Serial([
       tl.Select([1], n_in=2),
@@ -83,14 +83,14 @@ def BERTMLMHead(vocab_size=30522):
   ])
 
 
-@gin.configurable()
+@gin.configurable
 def BERTPretrainingLoss():
   nsp_loss = [tl.Select([0, 2, 3], n_in=6), tl.WeightedCategoryCrossEntropy()]
   mlm_loss = [tl.Select([1, 4, 5], n_in=6), tl.WeightedCategoryCrossEntropy()]
   return tl.Serial(tl.Branch(nsp_loss, mlm_loss), tl.Add())
 
 
-@gin.configurable()
+@gin.configurable
 def BERTPretrainingHead(n_classes):
   return tl.Branch(BERTClassifierHead(n_classes), BERTMLMHead()),
 

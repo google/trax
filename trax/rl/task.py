@@ -288,7 +288,7 @@ def _sample_proportionally(inputs, weights):
   return inputs[int(idx)]
 
 
-@gin.configurable()
+@gin.configurable
 class RLTask:
   """A RL task: environment and a collection of trajectories."""
 

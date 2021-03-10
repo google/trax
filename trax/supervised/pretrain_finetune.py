@@ -64,7 +64,7 @@ def _tfds_stream(n_devices,
       yield batch
 
 
-@gin.configurable()
+@gin.configurable
 def tfds_inputs(
     dataset_name,
     preprocess_fun,
@@ -105,7 +105,7 @@ def tfds_inputs(
   )
 
 
-@gin.configurable()
+@gin.configurable
 def bert_tokenizer(vocab_path=None):
   """Constructs a BERT tokenizer."""
   # This import is from https://github.com/google-research/bert which is not
@@ -145,7 +145,7 @@ def bert_preprocess(batch, tokenizer, key_a, key_b=None, max_len=128):
       batch_size)
 
 
-@gin.configurable()
+@gin.configurable
 def glue_inputs(dataset_name=gin.REQUIRED,
                 batch_size=16,
                 eval_batch_size=None,

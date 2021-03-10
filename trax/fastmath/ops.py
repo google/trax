@@ -398,7 +398,7 @@ def _get_backend_from_string(name_str):
   return JAX_BACKEND
 
 
-@gin.configurable()
+@gin.configurable
 def backend(name='jax'):
   """Returns the backend used to provide fastmath ops ('tf' or 'jax')."""
   if override_backend:

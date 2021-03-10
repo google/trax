@@ -948,7 +948,7 @@ class Inputs:
 # Batching and Inputs creation helpers.
 
 
-@gin.configurable()
+@gin.configurable
 def make_inputs(train_stream=gin.REQUIRED, eval_stream=None):
   """Create Inputs from two streams; mostly for use in gin configs."""
   if isinstance(train_stream, (list, tuple)):
@@ -960,19 +960,19 @@ def make_inputs(train_stream=gin.REQUIRED, eval_stream=None):
                 eval_stream=eval_stream_fn)
 
 
-@gin.configurable()
+@gin.configurable
 def make_additional_stream(stream=gin.REQUIRED):
   """Create a stream mostly for use in gin configs for additional tasks."""
   return Serial(stream)()
 
 
-@gin.configurable()
+@gin.configurable
 def make_parallel_stream(streams=gin.REQUIRED, counters=None):
   """Create a parallel stream for use in gin configs for additional tasks."""
   return Parallel(streams, counters=counters)()
 
 
-@gin.configurable()
+@gin.configurable
 def batcher(data_streams=gin.REQUIRED, variable_shapes=True,
             batch_size_per_device=32, batch_size=None, eval_batch_size=32,
             bucket_length=32, buckets=None,
@@ -1059,7 +1059,7 @@ def batch_fn(dataset, training, n_devices, variable_shapes,
 # Example input functions.
 
 
-@gin.configurable()
+@gin.configurable
 def random_inputs(
     input_shape=gin.REQUIRED, input_dtype=jnp.int32, input_range=(0, 255),
     output_shape=gin.REQUIRED, output_dtype=jnp.int32, output_range=(0, 9)):
@@ -1102,7 +1102,7 @@ def _pad_to_multiple_of(x, y, axis):
                 constant_values=x.dtype.type(0))
 
 
-@gin.configurable()
+@gin.configurable
 def sequence_copy_inputs(
     vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, train_length=gin.REQUIRED,
     eval_min_length=gin.REQUIRED, eval_max_length=gin.REQUIRED, reverse=False,
@@ -1148,7 +1148,7 @@ def sequence_copy_inputs(
   )
 
 
-@gin.configurable()
+@gin.configurable
 def simple_sequence_copy_inputs(
     vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, train_length=gin.REQUIRED,
     eval_min_length=gin.REQUIRED, eval_max_length=gin.REQUIRED,
@@ -1205,7 +1205,7 @@ def random_number_lower_endian(length, base):
   return prefix + [np.random.randint(base - 1) + 1]  # Last digit is not 0.
 
 
-@gin.configurable()
+@gin.configurable
 def addition_input_stream(
     vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, min_length=gin.REQUIRED,
     max_length=gin.REQUIRED, pad_to_multiple=32, encdec=False):
@@ -1262,7 +1262,7 @@ def addition_input_stream(
   return batches(max_length, min_length)
 
 
-@gin.configurable()
+@gin.configurable
 def addition_inputs(
     vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, train_length=gin.REQUIRED,
     eval_min_length=gin.REQUIRED, eval_max_length=gin.REQUIRED,
