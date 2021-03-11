@@ -689,8 +689,8 @@ class Layer:
     """
     if attr[0] != '_' and attr not in self._settable_attrs():
       raise ValueError(
-          'Trax layers only allow to set %s as public attribues, not %s.' %
-          (str(self._settable_attrs()), attr))
+          f'Trax layers only allow to set {self._settable_attrs()} as public '
+          f'attribues, not {attr}.')
     else:
       super().__setattr__(attr, value)
 
