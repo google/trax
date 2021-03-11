@@ -341,15 +341,14 @@ class Layer:
           weights_path, compresslevel=dictionary['flat_weights'])
     if input_signature is None:
       input_signature = dictionary['input_signature']
-    weights_and_state_sig = self.weights_and_state_signature(
-        input_signature, unsafe=True)
+    if weights_only and input_signature is not None:
+      self.init(input_signature)
+    weights_and_state_sig = self.weights_and_state_signature(input_signature)
     weights, state = unflatten_weights_and_state(
         dictionary['flat_weights'], dictionary['flat_state'],
         weights_and_state_sig, weights_only=weights_only)
     if not weights_only:
       self.state = state
-    elif input_signature is not None:
-      self.init(input_signature)
     self.weights = weights
     return (self.weights, self.state)
 

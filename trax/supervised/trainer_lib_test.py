@@ -360,7 +360,6 @@ class TraxTest(parameterized.TestCase):
       # Assert total train steps
       self.assertEqual(loop.step, steps)
 
-  # TODO(henrykm): verify why the the tf.numpy backends fails.
   def test_train_with_pure_lsh_attention(self, backend=fastmath.Backend.JAX):
     with fastmath.use_backend(backend):
       # Prepare model and inputs
@@ -444,11 +443,9 @@ class TraxTest(parameterized.TestCase):
       shape11 = trax_shapes.ShapeDtype((1, 1), dtype=jnp.int32)
       shape1l = trax_shapes.ShapeDtype((1, max_len), dtype=jnp.int32)
 
-      del model_file, shape11, shape1l
-      # TODO(henrykm): deal with the failing test below
-      # model_predict = model(mode='predict')
-      # model_predict.init_from_file(model_file, weights_only=True,
-      #                              input_signature=(shape1l, shape11))
+      model_predict = model(mode='predict')
+      model_predict.init_from_file(model_file, weights_only=True,
+                                   input_signature=(shape1l, shape11))
 
   @parameterized.parameters(BACKENDS)
   def test_train_fills_in_missing_eval_metrics(self, backend):
