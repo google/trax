@@ -377,28 +377,28 @@ class EfficientAttentionBase(base.Layer):
           it is not recommended except for testing/debugging.
     """
     super().__init__(n_in=n_in, n_out=1)
-    self.n_heads = n_heads
-    self.incremental = incremental
-    if self.incremental:
+    self._n_heads = n_heads
+    self._incremental = incremental
+    if self._incremental:
       if predict_mem_len is None or predict_drop_len is None:
         raise ValueError('This configuration does not support fast inference.')
       if not 0 < predict_drop_len <= predict_mem_len:
         raise ValueError(
             'Bad parameter values: (predict_mem_len, predict_drop_len) = ',
             predict_mem_len, predict_drop_len)
-      self.predict_mem_len = predict_mem_len
-      self.predict_drop_len = predict_drop_len
+      self._predict_mem_len = predict_mem_len
+      self._predict_drop_len = predict_drop_len
 
     if n_parallel_heads:
       if ((n_parallel_heads > n_heads and n_parallel_heads % n_heads != 0)
           or (n_parallel_heads < n_heads and n_heads % n_parallel_heads != 0)):
         raise ValueError(
             'n_parallel_heads must be a multiple or fraction of n_heads')
-      self.n_parallel_heads = n_parallel_heads
+      self._n_parallel_heads = n_parallel_heads
     else:
-      self.n_parallel_heads = None
-    self.use_python_loop = use_python_loop
-    self.use_reference_code = use_reference_code
+      self._n_parallel_heads = None
+    self._use_python_loop = use_python_loop
+    self._use_reference_code = use_reference_code
 
   def init_weights_and_state(self, input_signature):
     if not isinstance(input_signature, (tuple, list)):
@@ -409,13 +409,13 @@ class EfficientAttentionBase(base.Layer):
     batch_size = int(input_signature[0].shape[0])
 
     weights = []
-    weight_rngs = fastmath.random.split(self.rng, self.n_heads)
-    for i in range(self.n_heads):
+    weight_rngs = fastmath.random.split(self.rng, self._n_heads)
+    for i in range(self._n_heads):
       weights.append(self.create_weights_unbatched(input_signature_unbatched,
                                                    weight_rngs[i]))
     state = []
-    state_rngs = fastmath.random.split(self.rng, self.n_heads * batch_size)
-    for i in range(self.n_heads * batch_size):
+    state_rngs = fastmath.random.split(self.rng, self._n_heads * batch_size)
+    for i in range(self._n_heads * batch_size):
       state.append(self.create_state_unbatched(input_signature_unbatched,
                                                state_rngs[i]))
 
@@ -423,10 +423,10 @@ class EfficientAttentionBase(base.Layer):
     weights = fastmath.nested_map_multiarg(stack_along_axis_0, *weights)
     state = fastmath.nested_map_multiarg(stack_along_axis_0, *state)
 
-    if self.incremental:
+    if self._incremental:
       mem = fastmath.nested_map(
           lambda x: np.zeros(  # pylint: disable=g-long-lambda
-              x.shape[:1] + (self.predict_mem_len,) + x.shape[2:],
+              x.shape[:1] + (self._predict_mem_len,) + x.shape[2:],
               dtype=x.dtype),
           input_signature)
       mem_end = np.zeros((), dtype=np.int32)
@@ -458,8 +458,8 @@ class EfficientAttentionBase(base.Layer):
     """
     raise NotImplementedError('Subclasses should override forward_unbatched')
 
-  def incremental_forward_unbatched(self, *inputs, q_start, q_len,
-                                    weights, state):
+  def _incremental_forward_unbatched(self, *inputs, q_start, q_len,
+                                     weights, state):
     """Perform fast inference for a single batch element and head.
 
     Subclasses should override this method.
@@ -490,7 +490,7 @@ class EfficientAttentionBase(base.Layer):
       A tuple (output, new_state).
     """
     weights, state, rng = self.weights, self.state, self.rng
-    if not self.use_reference_code:
+    if not self._use_reference_code:
       # By default, an efficient, batched implementation is used.
       output, new_state, _, _ = self.forward_and_or_backward(
           inputs, weights, state, rng, compute_output=True, update_state=True)
@@ -506,22 +506,22 @@ class EfficientAttentionBase(base.Layer):
     seqlen = inputs[0].shape[-2]
     d_model = inputs[0].shape[-1]
 
-    if self.incremental:
-      inputs, state, q_start, new_mem, new_mem_end = self.use_predict_mem(
+    if self._incremental:
+      inputs, state, q_start, new_mem, new_mem_end = self._use_predict_mem(
           inputs, state)
 
     output_accum = [np.zeros((seqlen, d_model)) for _ in range(batch_size)]
     new_state = []
     for example_idx in range(batch_size):
-      for head_idx in range(self.n_heads):
+      for head_idx in range(self._n_heads):
         # pylint: disable=cell-var-from-loop
         single_inputs = fastmath.nested_map(lambda x: x[example_idx], inputs)
         single_weights = fastmath.nested_map(lambda w: w[head_idx], weights)
         single_state = fastmath.nested_map(
-            lambda s: s[example_idx * self.n_heads + head_idx], state)
+            lambda s: s[example_idx * self._n_heads + head_idx], state)
         # pylint: enable=cell-var-from-loop
-        if self.incremental:
-          single_out, single_new_state = self.incremental_forward_unbatched(
+        if self._incremental:
+          single_out, single_new_state = self._incremental_forward_unbatched(
               *single_inputs, q_start=q_start, q_len=seqlen,
               weights=single_weights, rng=rng,
               state=single_state, update_state=True)
@@ -538,27 +538,27 @@ class EfficientAttentionBase(base.Layer):
           lambda *s: np.stack(s, 0), *new_state)
     else:
       new_state = state
-    if self.incremental:
+    if self._incremental:
       new_state = (new_mem_end, new_mem, new_state)
     self.state = tuple(new_state)
     return output
 
-  def use_predict_mem(self, inputs, state):
+  def _use_predict_mem(self, inputs, state):
     """Update input cache for fast inference."""
     mem_end, mem, state = state
     seqlen = inputs[0].shape[-2]
 
-    if seqlen <= self.predict_drop_len and seqlen < self.predict_mem_len:
+    if seqlen <= self._predict_drop_len and seqlen < self._predict_mem_len:
       # This branch is called when only a small number of tokens are appended to
       # the sequence, e.g. when generating one token at a time. A fixed number
-      # of tokens (self.predict_drop_tokens) will be dropped from memory if
+      # of tokens (self._predict_drop_tokens) will be dropped from memory if
       # needed, and then new values will be inserted into the memory.
       def roll_mem(buf):
         return np.concatenate(
-            [buf[:, self.predict_drop_len:],
-             np.zeros_like(buf[:, :self.predict_drop_len])], axis=1)
+            [buf[:, self._predict_drop_len:],
+             np.zeros_like(buf[:, :self._predict_drop_len])], axis=1)
 
-      do_roll_mem = (mem_end + seqlen > self.predict_mem_len)
+      do_roll_mem = (mem_end + seqlen > self._predict_mem_len)
       mem = fastmath.cond(
           pred=do_roll_mem,
           true_operand=mem,
@@ -566,7 +566,7 @@ class EfficientAttentionBase(base.Layer):
           false_operand=mem,
           false_fun=lambda x: x,
       )
-      mem_end = np.where(do_roll_mem, mem_end - self.predict_drop_len, mem_end)
+      mem_end = np.where(do_roll_mem, mem_end - self._predict_drop_len, mem_end)
       def update_mem(mem_element, new_vals):
         assert new_vals.shape[1] == seqlen
         if seqlen == 1:
@@ -578,7 +578,7 @@ class EfficientAttentionBase(base.Layer):
       inputs = fastmath.nested_map_multiarg(update_mem, mem, inputs)
       return inputs, state, mem_end, inputs, mem_end + seqlen
     else:
-      assert seqlen > self.predict_drop_len or seqlen == self.predict_mem_len
+      assert seqlen > self._predict_drop_len or seqlen == self._predict_mem_len
       # This branch handles the case where a large number of tokens are being
       # introduced all at once. The code here assumes that we are at the start
       # of the sequence, which matches the typical use case of decoding from a
@@ -587,15 +587,15 @@ class EfficientAttentionBase(base.Layer):
       new_flat_mem = []
       for inp in fastmath.tree_leaves(inputs):
         assert inp.shape[1] == seqlen
-        if seqlen == self.predict_mem_len:
+        if seqlen == self._predict_mem_len:
           new_mem_val = inp
-        elif seqlen > self.predict_mem_len:
-          new_mem_val = inp[:, -self.predict_mem_len:]  # pylint: disable=invalid-unary-operand-type
+        elif seqlen > self._predict_mem_len:
+          new_mem_val = inp[:, -self._predict_mem_len:]  # pylint: disable=invalid-unary-operand-type
         else:
           new_mem_val = np.concatenate([
               inp,
               np.zeros(inp.shape[:1]
-                       + (self.predict_mem_len - inp.shape[1],)
+                       + (self._predict_mem_len - inp.shape[1],)
                        + inp.shape[2:],
                        dtype=inp.dtype)
           ], axis=1)
@@ -613,17 +613,17 @@ class EfficientAttentionBase(base.Layer):
             true_operand=x, true_fun=lambda x: x,
             false_operand=x, false_fun=lambda x: x * np.nan)
       inputs = fastmath.nested_map(replace_with_nan_if_not_seq_start, inputs)
-      return inputs, state, 0, mem, np.minimum(seqlen, self.predict_mem_len)
+      return inputs, state, 0, mem, np.minimum(seqlen, self._predict_mem_len)
 
   @property
   def has_backward(self):
     # Use an efficient backward pass, unless we're running the reference code.
-    return not self.use_reference_code
+    return not self._use_reference_code
 
   def backward(self, inputs, output, grad, weights, state, new_state, rng=None,
                **kwargs):
     """Custom backward pass, for efficiency (see forward_and_or_backward)."""
-    assert not self.use_reference_code
+    assert not self._use_reference_code
     del output, state, kwargs
     _, _, inputs_grad, weights_grad = self.forward_and_or_backward(
         inputs, weights, new_state, rng, output_grad=grad,
@@ -702,12 +702,12 @@ class EfficientAttentionBase(base.Layer):
     compute_grad = (output_grad is not None)
     assert compute_output or compute_grad, 'No work to perform!'
 
-    if not self.incremental:
+    if not self._incremental:
       forward_unbatched = functools.partial(
           self.forward_unbatched, rng=rng, update_state=update_state)
     else:
       if update_state:
-        inputs, state, q_start, new_mem, new_mem_end = self.use_predict_mem(
+        inputs, state, q_start, new_mem, new_mem_end = self._use_predict_mem(
             inputs, state)
       else:
         # This assumes that the memory stores all of the inputs, which would not
@@ -716,15 +716,15 @@ class EfficientAttentionBase(base.Layer):
         q_start = new_mem_end - seqlen
 
       forward_unbatched = functools.partial(
-          self.incremental_forward_unbatched,
+          self._incremental_forward_unbatched,
           q_start=fastmath.stop_gradient(q_start),
           q_len=fastmath.stop_gradient(seqlen),
           rng=rng, update_state=update_state)
 
     # Adjust degree of parallelism based on the batch size.
-    n_parallel_heads = batch_size * self.n_heads
-    if self.n_parallel_heads and self.n_parallel_heads < n_parallel_heads:
-      n_parallel_heads = self.n_parallel_heads
+    n_parallel_heads = batch_size * self._n_heads
+    if self._n_parallel_heads and self._n_parallel_heads < n_parallel_heads:
+      n_parallel_heads = self._n_parallel_heads
 
     def tree_update(tree, indices, new_values):
       return fastmath.nested_map_multiarg(
@@ -774,8 +774,8 @@ class EfficientAttentionBase(base.Layer):
       def run_inner(idx, loop_val):
         """Runs one slice of attention (for a single head)."""
         o_all, s_all, i_ct_all, w_ct_all = loop_val
-        example_idx = idx // self.n_heads
-        head_idx = idx % self.n_heads
+        example_idx = idx // self._n_heads
+        head_idx = idx % self._n_heads
 
         i_h = fastmath.nested_map(lambda x: x[example_idx], inputs)
         w_h = fastmath.nested_map(lambda w: w[head_idx], weights)
@@ -801,14 +801,14 @@ class EfficientAttentionBase(base.Layer):
           i_ct_all = tree_add(i_ct_all, example_idx, i_ct_h)
           w_ct_all = tree_add(w_ct_all, head_idx, w_ct_h)
         return (o_all, s_all, i_ct_all, w_ct_all)
-    elif n_parallel_heads < self.n_heads:
-      assert self.n_heads % n_parallel_heads == 0
+    elif n_parallel_heads < self._n_heads:
+      assert self._n_heads % n_parallel_heads == 0
       def run_inner(idx, loop_val):
         """Runs one slice of attention (multiple heads, but one example)."""
         o_all, s_all, i_ct_all, w_ct_all = loop_val
-        idx = idx * self.n_parallel_heads
-        example_idx = idx // self.n_heads
-        head_idx_lo = idx % self.n_heads
+        idx = idx * self._n_parallel_heads
+        example_idx = idx // self._n_heads
+        head_idx_lo = idx % self._n_heads
         head_range = head_idx_lo + np.arange(n_parallel_heads, dtype=np.int32)
         state_range = idx + np.arange(n_parallel_heads, dtype=np.int32)
 
@@ -841,7 +841,7 @@ class EfficientAttentionBase(base.Layer):
           w_ct_all = tree_add(w_ct_all, head_range, w_ct_mh)
         return (o_all, s_all, i_ct_all, w_ct_all)
     else:
-      assert n_parallel_heads % self.n_heads == 0
+      assert n_parallel_heads % self._n_heads == 0
       def forward_single_example(i_x, w_all, s_x):
         def forward_unbatched_h(i_h, w_h, s_h):
           return forward_unbatched(*i_h, weights=w_h, state=s_h)
@@ -854,15 +854,15 @@ class EfficientAttentionBase(base.Layer):
         """Runs one slice of attention (all heads for one or more examples)."""
         o_all, s_all, i_ct_all, w_ct_all = loop_val
         idx = idx * n_parallel_heads
-        example_idx_lo = idx // self.n_heads
+        example_idx_lo = idx // self._n_heads
         example_range = example_idx_lo + np.arange(
-            n_parallel_heads // self.n_heads, dtype=np.int32)
+            n_parallel_heads // self._n_heads, dtype=np.int32)
         state_range = idx + np.arange(n_parallel_heads, dtype=np.int32)
 
         i_mex = fastmath.nested_map(lambda x: x[example_range], inputs)
         s_mex = fastmath.nested_map(
             lambda s: np.reshape(s[state_range],  # pylint: disable=g-long-lambda
-                                 (-1, self.n_heads) + s.shape[1:]),
+                                 (-1, self._n_heads) + s.shape[1:]),
             state)
         def forward_fn(i_mex, w_all):
           o_mex, new_s_mex = fastmath.vmap(
@@ -907,9 +907,9 @@ class EfficientAttentionBase(base.Layer):
 
     loop_val = (o_all, s_all, i_ct_all, w_ct_all)
 
-    assert (batch_size * self.n_heads) % n_parallel_heads == 0
-    loop_hi = (batch_size * self.n_heads) // n_parallel_heads
-    if self.use_python_loop or loop_hi == 1:
+    assert (batch_size * self._n_heads) % n_parallel_heads == 0
+    loop_hi = (batch_size * self._n_heads) // n_parallel_heads
+    if self._use_python_loop or loop_hi == 1:
       for idx in range(loop_hi):
         loop_val = run_inner(idx, loop_val)
     else:
@@ -921,7 +921,7 @@ class EfficientAttentionBase(base.Layer):
     if compute_grad:
       i_ct_all = join_differentiable(i_ct_all, i_nondifferentiable_dummy_ct)
 
-    if self.incremental and update_state:
+    if self._incremental and update_state:
       s_all = (new_mem_end, new_mem, s_all)
 
     if have_single_input and compute_grad:
@@ -1010,8 +1010,8 @@ class SelfAttention(base.Layer):
     """
     super().__init__(n_in=(2 if masked else 1), n_out=1)
 
-    self.incremental = (mode == 'predict')
-    if self.incremental:
+    self._incremental = (mode == 'predict')
+    if self._incremental:
       assert causal, 'Only causal attention supports fast inference'
       assert chunk_len is not None or (predict_mem_len and predict_drop_len)
       predict_mem_len = predict_mem_len or (chunk_len * (1 + n_chunks_before))
@@ -1022,37 +1022,37 @@ class SelfAttention(base.Layer):
         raise ValueError(
             'Bad parameter values: (predict_mem_len, predict_drop_len) = ',
             predict_mem_len, predict_drop_len)
-      self.predict_mem_len = predict_mem_len
-      self.predict_drop_len = predict_drop_len
+      self._predict_mem_len = predict_mem_len
+      self._predict_drop_len = predict_drop_len
 
-    self.n_heads = n_heads
+    self._n_heads = n_heads
     if n_parallel_heads:
       if ((n_parallel_heads > n_heads and n_parallel_heads % n_heads != 0)
           or (n_parallel_heads < n_heads and n_heads % n_parallel_heads != 0)):
         raise ValueError(
             'n_parallel_heads must be a multiple or fraction of n_heads')
-      self.n_parallel_heads = n_parallel_heads
+      self._n_parallel_heads = n_parallel_heads
     else:
-      self.n_parallel_heads = None
-    self.use_python_loop = use_python_loop
-    self.use_reference_code = use_reference_code
+      self._n_parallel_heads = None
+    self._use_python_loop = use_python_loop
+    self._use_reference_code = use_reference_code
 
-    self.d_qk = d_qk
-    self.d_v = d_v
-    self.share_qk = share_qk
-    self.causal = causal
-    self.masked = masked
-    self.chunk_len = chunk_len
-    self.n_chunks_before = n_chunks_before
-    self.n_chunks_after = n_chunks_after
-    self.bias = bias
-    self.mode = mode
+    self._d_qk = d_qk
+    self._d_v = d_v
+    self._share_qk = share_qk
+    self._causal = causal
+    self._masked = masked
+    self._chunk_len = chunk_len
+    self._n_chunks_before = n_chunks_before
+    self._n_chunks_after = n_chunks_after
+    self._bias = bias
+    self._mode = mode
     if mode == 'train':
-      self.attention_dropout = attention_dropout
-      self.output_dropout = output_dropout
+      self._attention_dropout = attention_dropout
+      self._output_dropout = output_dropout
     else:
-      self.attention_dropout = 0.0
-      self.output_dropout = 0.0
+      self._attention_dropout = 0.0
+      self._output_dropout = 0.0
 
   def _kernel_initializer(self, shape, rng):
     # Attention uses Glorot uniform initalization with respect to the *total*
@@ -1060,7 +1060,7 @@ class SelfAttention(base.Layer):
     # at a time in this class, so init.GlorotUniformInitializer won't work.
     # This initialization type is for parity with previous Trax & tensor2tensor
     # Transformers; it's not clear if it's strictly needed for model accuracy.
-    lim = np.sqrt(6.0 / (shape[0] + shape[1] * self.n_heads))
+    lim = np.sqrt(6.0 / (shape[0] + shape[1] * self._n_heads))
     return fastmath.random.uniform(rng, shape, np.float32, -lim, lim)
 
   def init_weights_and_state(self, input_signature):
@@ -1072,13 +1072,13 @@ class SelfAttention(base.Layer):
     batch_size = int(input_signature[0].shape[0])
 
     weights = []
-    weight_rngs = fastmath.random.split(self.rng, self.n_heads)
-    for i in range(self.n_heads):
+    weight_rngs = fastmath.random.split(self.rng, self._n_heads)
+    for i in range(self._n_heads):
       weights.append(self.create_weights_unbatched(input_signature_unbatched,
                                                    weight_rngs[i]))
     state = []
-    state_rngs = fastmath.random.split(self.rng, self.n_heads * batch_size)
-    for i in range(self.n_heads * batch_size):
+    state_rngs = fastmath.random.split(self.rng, self._n_heads * batch_size)
+    for i in range(self._n_heads * batch_size):
       state.append(self.create_state_unbatched(input_signature_unbatched,
                                                state_rngs[i]))
 
@@ -1086,10 +1086,10 @@ class SelfAttention(base.Layer):
     weights = fastmath.nested_map_multiarg(stack_along_axis_0, *weights)
     state = fastmath.nested_map_multiarg(stack_along_axis_0, *state)
 
-    if self.incremental:
+    if self._incremental:
       mem = fastmath.nested_map(
           lambda x: np.zeros(  # pylint: disable=g-long-lambda
-              x.shape[:1] + (self.predict_mem_len,) + x.shape[2:],
+              x.shape[:1] + (self._predict_mem_len,) + x.shape[2:],
               dtype=x.dtype),
           input_signature)
       mem_end = np.zeros((), dtype=np.int32)
@@ -1103,22 +1103,22 @@ class SelfAttention(base.Layer):
       input_signature = input_signature[0]
     d_model = input_signature.shape[-1]
     rng_q, rng_k, rng_v, rng_o = fastmath.random.split(rng, 4)
-    w_q = self._kernel_initializer((d_model, self.d_qk), rng_q)
-    if not self.share_qk:
-      w_k = self._kernel_initializer((d_model, self.d_qk), rng_k)
-    w_v = self._kernel_initializer((d_model, self.d_v), rng_v)
-    w_o = np.transpose(self._kernel_initializer((d_model, self.d_v), rng_o))
+    w_q = self._kernel_initializer((d_model, self._d_qk), rng_q)
+    if not self._share_qk:
+      w_k = self._kernel_initializer((d_model, self._d_qk), rng_k)
+    w_v = self._kernel_initializer((d_model, self._d_v), rng_v)
+    w_o = np.transpose(self._kernel_initializer((d_model, self._d_v), rng_o))
 
-    if self.bias:
-      b_q = np.zeros(self.d_qk)
-      b_v = np.zeros(self.d_v)
-      if self.share_qk:
+    if self._bias:
+      b_q = np.zeros(self._d_qk)
+      b_v = np.zeros(self._d_v)
+      if self._share_qk:
         return (w_q, w_v, w_o, b_q, b_v)
       else:
-        b_k = np.zeros(self.d_qk)
+        b_k = np.zeros(self._d_qk)
         return (w_q, w_k, w_v, w_o, b_q, b_k, b_v)
 
-    if self.share_qk:
+    if self._share_qk:
       return (w_q, w_v, w_o)
     else:
       return (w_q, w_k, w_v, w_o)
@@ -1145,57 +1145,57 @@ class SelfAttention(base.Layer):
 
     del update_state
     attend_rng, output_rng = fastmath.random.split(rng)
-    if self.bias:
-      if self.share_qk:
+    if self._bias:
+      if self._share_qk:
         w_q, w_v, w_o, b_q, b_v = weights
       else:
         w_q, w_k, w_v, w_o, b_q, b_k, b_v = weights
     else:
-      if self.share_qk:
+      if self._share_qk:
         w_q, w_v, w_o = weights
       else:
         w_q, w_k, w_v, w_o = weights
 
     q = np.matmul(x, w_q)
     k = None
-    if not self.share_qk:
+    if not self._share_qk:
       k = np.matmul(x, w_k)
     v = np.matmul(x, w_v)
 
-    if self.bias:
+    if self._bias:
       q = q + b_q
-      if not self.share_qk:
+      if not self._share_qk:
         k = k + b_k
       v = v + b_v
 
     mask_fn = functools.partial(
         mask_self_attention,
-        causal=self.causal, exclude_self=self.share_qk, masked=self.masked)
+        causal=self._causal, exclude_self=self._share_qk, masked=self._masked)
     q_info = kv_info = np.arange(q.shape[-2], dtype=np.int32)
 
-    assert (mask is not None) == self.masked
-    if self.masked:
+    assert (mask is not None) == self._masked
+    if self._masked:
       # mask is a boolean array (True means "is valid token")
       ones_like_mask = np.ones_like(mask, dtype=np.int32)
       kv_info = kv_info * np.where(mask, ones_like_mask, -ones_like_mask)
 
     o, _ = attend(
         q, k, v,
-        q_chunk_len=self.chunk_len,
-        kv_chunk_len=self.chunk_len,
-        n_chunks_before=self.n_chunks_before,
-        n_chunks_after=self.n_chunks_after,
+        q_chunk_len=self._chunk_len,
+        kv_chunk_len=self._chunk_len,
+        n_chunks_before=self._n_chunks_before,
+        n_chunks_after=self._n_chunks_after,
         mask_fn=mask_fn, q_info=q_info, kv_info=kv_info,
-        dropout=self.attention_dropout, rng=attend_rng,
+        dropout=self._attention_dropout, rng=attend_rng,
         )
 
     out = np.matmul(o, w_o)
-    out = apply_broadcasted_dropout(out, self.output_dropout, output_rng)
+    out = apply_broadcasted_dropout(out, self._output_dropout, output_rng)
     return out, state
 
-  def incremental_forward_unbatched(self, x, mask=None, *,
-                                    q_start, q_len,
-                                    weights, state, rng, update_state):
+  def _incremental_forward_unbatched(self, x, mask=None, *,
+                                     q_start, q_len,
+                                     weights, state, rng, update_state):
     """Perform fast inference for a single batch element and head.
 
     Args:
@@ -1217,7 +1217,7 @@ class SelfAttention(base.Layer):
     """
     del update_state
     attend_rng, output_rng = fastmath.random.split(rng)
-    if self.share_qk:
+    if self._share_qk:
       w_q, w_v, w_o = weights
     else:
       w_q, w_k, w_v, w_o = weights
@@ -1232,7 +1232,7 @@ class SelfAttention(base.Layer):
       q = np.matmul(np.concatenate([x[q_range]] * 2, 0), w_q)
     else:
       q = np.matmul(x[q_range], w_q)
-    if self.share_qk:
+    if self._share_qk:
       k = length_normalized(np.matmul(x, w_q))
     else:
       k = np.matmul(x, w_k)
@@ -1240,33 +1240,33 @@ class SelfAttention(base.Layer):
 
     mask_fn = functools.partial(
         mask_self_attention,
-        causal=self.causal, exclude_self=self.share_qk, masked=self.masked)
+        causal=self._causal, exclude_self=self._share_qk, masked=self._masked)
     q_info = q_range
     kv_info = np.arange(k.shape[-2], dtype=np.int32)
 
-    if self.chunk_len is not None and q_len > self.chunk_len:
+    if self._chunk_len is not None and q_len > self._chunk_len:
       assert q_start == 0
-      assert q_len % self.chunk_len == 0
+      assert q_len % self._chunk_len == 0
       o, _ = attend(
           q, k, v,
-          q_chunk_len=self.chunk_len,
-          kv_chunk_len=self.chunk_len,
-          n_chunks_before=self.n_chunks_before,
-          n_chunks_after=self.n_chunks_after,
+          q_chunk_len=self._chunk_len,
+          kv_chunk_len=self._chunk_len,
+          n_chunks_before=self._n_chunks_before,
+          n_chunks_after=self._n_chunks_after,
           mask_fn=mask_fn, q_info=q_info, kv_info=kv_info,
-          dropout=self.attention_dropout, rng=attend_rng,
+          dropout=self._attention_dropout, rng=attend_rng,
           )
     else:
       o, _ = attend(
           q, k, v,
           mask_fn=mask_fn, q_info=q_info, kv_info=kv_info,
-          dropout=self.attention_dropout, rng=attend_rng,
+          dropout=self._attention_dropout, rng=attend_rng,
           )
 
     out = np.matmul(o, w_o)
     if q_len == 1:
       out = out[:1]
-    out = apply_broadcasted_dropout(out, self.output_dropout, output_rng)
+    out = apply_broadcasted_dropout(out, self._output_dropout, output_rng)
     return out, state
 
   def forward(self, inputs):
@@ -1279,7 +1279,7 @@ class SelfAttention(base.Layer):
       A tuple (output, new_state).
     """
     weights, state, rng = self.weights, self.state, self.rng
-    if not self.use_reference_code:
+    if not self._use_reference_code:
       # By default, an efficient, batched implementation is used.
       output, new_state, _, _ = self.forward_and_or_backward(
           inputs, weights, state, rng, compute_output=True, update_state=True)
@@ -1295,22 +1295,22 @@ class SelfAttention(base.Layer):
     seqlen = inputs[0].shape[-2]
     d_model = inputs[0].shape[-1]
 
-    if self.incremental:
-      inputs, state, q_start, new_mem, new_mem_end = self.use_predict_mem(
+    if self._incremental:
+      inputs, state, q_start, new_mem, new_mem_end = self._use_predict_mem(
           inputs, state)
 
     output_accum = [np.zeros((seqlen, d_model)) for _ in range(batch_size)]
     new_state = []
     for example_idx in range(batch_size):
-      for head_idx in range(self.n_heads):
+      for head_idx in range(self._n_heads):
         # pylint: disable=cell-var-from-loop
         single_inputs = fastmath.nested_map(lambda x: x[example_idx], inputs)
         single_weights = fastmath.nested_map(lambda w: w[head_idx], weights)
         single_state = fastmath.nested_map(
-            lambda s: s[example_idx * self.n_heads + head_idx], state)
+            lambda s: s[example_idx * self._n_heads + head_idx], state)
         # pylint: enable=cell-var-from-loop
-        if self.incremental:
-          single_out, single_new_state = self.incremental_forward_unbatched(
+        if self._incremental:
+          single_out, single_new_state = self._incremental_forward_unbatched(
               *single_inputs, q_start=q_start, q_len=seqlen,
               weights=single_weights, rng=rng,
               state=single_state, update_state=True)
@@ -1327,27 +1327,27 @@ class SelfAttention(base.Layer):
           lambda *s: np.stack(s, 0), *new_state)
     else:
       new_state = state
-    if self.incremental:
+    if self._incremental:
       new_state = (new_mem_end, new_mem, new_state)
     self.state = tuple(new_state)
     return output
 
-  def use_predict_mem(self, inputs, state):
+  def _use_predict_mem(self, inputs, state):
     """Update input cache for fast inference."""
     mem_end, mem, state = state
     seqlen = inputs[0].shape[-2]
 
-    if seqlen <= self.predict_drop_len and seqlen < self.predict_mem_len:
+    if seqlen <= self._predict_drop_len and seqlen < self._predict_mem_len:
       # This branch is called when only a small number of tokens are appended to
       # the sequence, e.g. when generating one token at a time. A fixed number
-      # of tokens (self.predict_drop_tokens) will be dropped from memory if
+      # of tokens (self._predict_drop_tokens) will be dropped from memory if
       # needed, and then new values will be inserted into the memory.
       def roll_mem(buf):
         return np.concatenate(
-            [buf[:, self.predict_drop_len:],
-             np.zeros_like(buf[:, :self.predict_drop_len])], axis=1)
+            [buf[:, self._predict_drop_len:],
+             np.zeros_like(buf[:, :self._predict_drop_len])], axis=1)
 
-      do_roll_mem = (mem_end + seqlen > self.predict_mem_len)
+      do_roll_mem = (mem_end + seqlen > self._predict_mem_len)
       mem = fastmath.cond(
           pred=do_roll_mem,
           true_operand=mem,
@@ -1355,7 +1355,7 @@ class SelfAttention(base.Layer):
           false_operand=mem,
           false_fun=lambda x: x,
       )
-      mem_end = np.where(do_roll_mem, mem_end - self.predict_drop_len, mem_end)
+      mem_end = np.where(do_roll_mem, mem_end - self._predict_drop_len, mem_end)
       def update_mem(mem_element, new_vals):
         assert new_vals.shape[1] == seqlen
         if seqlen == 1:
@@ -1367,7 +1367,7 @@ class SelfAttention(base.Layer):
       inputs = fastmath.nested_map_multiarg(update_mem, mem, inputs)
       return inputs, state, mem_end, inputs, mem_end + seqlen
     else:
-      assert seqlen > self.predict_drop_len or seqlen == self.predict_mem_len
+      assert seqlen > self._predict_drop_len or seqlen == self._predict_mem_len
       # This branch handles the case where a large number of tokens are being
       # introduced all at once. The code here assumes that we are at the start
       # of the sequence, which matches the typical use case of decoding from a
@@ -1376,15 +1376,15 @@ class SelfAttention(base.Layer):
       new_flat_mem = []
       for inp in fastmath.tree_leaves(inputs):
         assert inp.shape[1] == seqlen
-        if seqlen == self.predict_mem_len:
+        if seqlen == self._predict_mem_len:
           new_mem_val = inp
-        elif seqlen > self.predict_mem_len:
-          new_mem_val = inp[:, -self.predict_mem_len:]  # pylint: disable=invalid-unary-operand-type
+        elif seqlen > self._predict_mem_len:
+          new_mem_val = inp[:, -self._predict_mem_len:]  # pylint: disable=invalid-unary-operand-type
         else:
           new_mem_val = np.concatenate([
               inp,
               np.zeros(inp.shape[:1]
-                       + (self.predict_mem_len - inp.shape[1],)
+                       + (self._predict_mem_len - inp.shape[1],)
                        + inp.shape[2:],
                        dtype=inp.dtype)
           ], axis=1)
@@ -1402,17 +1402,17 @@ class SelfAttention(base.Layer):
             true_operand=x, true_fun=lambda x: x,
             false_operand=x, false_fun=lambda x: x * np.nan)
       inputs = fastmath.nested_map(replace_with_nan_if_not_seq_start, inputs)
-      return inputs, state, 0, mem, np.minimum(seqlen, self.predict_mem_len)
+      return inputs, state, 0, mem, np.minimum(seqlen, self._predict_mem_len)
 
   @property
   def has_backward(self):
     # Use an efficient backward pass, unless we're running the reference code.
-    return not self.use_reference_code
+    return not self._use_reference_code
 
   def backward(self, inputs, output, grad, weights, state, new_state, rng=None,
                **kwargs):
     """Custom backward pass, for efficiency (see forward_and_or_backward)."""
-    assert not self.use_reference_code
+    assert not self._use_reference_code
     del output, state, kwargs
     _, _, inputs_grad, weights_grad = self.forward_and_or_backward(
         inputs, weights, new_state, rng, output_grad=grad,
@@ -1491,12 +1491,12 @@ class SelfAttention(base.Layer):
     compute_grad = (output_grad is not None)
     assert compute_output or compute_grad, 'No work to perform!'
 
-    if not self.incremental:
+    if not self._incremental:
       forward_unbatched = functools.partial(
           self.forward_unbatched, rng=rng, update_state=update_state)
     else:
       if update_state:
-        inputs, state, q_start, new_mem, new_mem_end = self.use_predict_mem(
+        inputs, state, q_start, new_mem, new_mem_end = self._use_predict_mem(
             inputs, state)
       else:
         # This assumes that the memory stores all of the inputs, which would not
@@ -1505,15 +1505,15 @@ class SelfAttention(base.Layer):
         q_start = new_mem_end - seqlen
 
       forward_unbatched = functools.partial(
-          self.incremental_forward_unbatched,
+          self._incremental_forward_unbatched,
           q_start=fastmath.stop_gradient(q_start),
           q_len=fastmath.stop_gradient(seqlen),
           rng=rng, update_state=update_state)
 
     # Adjust degree of parallelism based on the batch size.
-    n_parallel_heads = batch_size * self.n_heads
-    if self.n_parallel_heads and self.n_parallel_heads < n_parallel_heads:
-      n_parallel_heads = self.n_parallel_heads
+    n_parallel_heads = batch_size * self._n_heads
+    if self._n_parallel_heads and self._n_parallel_heads < n_parallel_heads:
+      n_parallel_heads = self._n_parallel_heads
 
     def tree_update(tree, indices, new_values):
       return fastmath.nested_map_multiarg(
@@ -1563,8 +1563,8 @@ class SelfAttention(base.Layer):
       def run_inner(idx, loop_val):
         """Runs one slice of attention (for a single head)."""
         o_all, s_all, i_ct_all, w_ct_all = loop_val
-        example_idx = idx // self.n_heads
-        head_idx = idx % self.n_heads
+        example_idx = idx // self._n_heads
+        head_idx = idx % self._n_heads
 
         i_h = fastmath.nested_map(lambda x: x[example_idx], inputs)
         w_h = fastmath.nested_map(lambda w: w[head_idx], weights)
@@ -1590,14 +1590,14 @@ class SelfAttention(base.Layer):
           i_ct_all = tree_add(i_ct_all, example_idx, i_ct_h)
           w_ct_all = tree_add(w_ct_all, head_idx, w_ct_h)
         return (o_all, s_all, i_ct_all, w_ct_all)
-    elif n_parallel_heads < self.n_heads:
-      assert self.n_heads % n_parallel_heads == 0
+    elif n_parallel_heads < self._n_heads:
+      assert self._n_heads % n_parallel_heads == 0
       def run_inner(idx, loop_val):
         """Runs one slice of attention (multiple heads, but one example)."""
         o_all, s_all, i_ct_all, w_ct_all = loop_val
-        idx = idx * self.n_parallel_heads
-        example_idx = idx // self.n_heads
-        head_idx_lo = idx % self.n_heads
+        idx = idx * self._n_parallel_heads
+        example_idx = idx // self._n_heads
+        head_idx_lo = idx % self._n_heads
         head_range = head_idx_lo + np.arange(n_parallel_heads, dtype=np.int32)
         state_range = idx + np.arange(n_parallel_heads, dtype=np.int32)
 
@@ -1630,7 +1630,7 @@ class SelfAttention(base.Layer):
           w_ct_all = tree_add(w_ct_all, head_range, w_ct_mh)
         return (o_all, s_all, i_ct_all, w_ct_all)
     else:
-      assert n_parallel_heads % self.n_heads == 0
+      assert n_parallel_heads % self._n_heads == 0
       def forward_single_example(i_x, w_all, s_x):
         def forward_unbatched_h(i_h, w_h, s_h):
           return forward_unbatched(*i_h, weights=w_h, state=s_h)
@@ -1643,15 +1643,15 @@ class SelfAttention(base.Layer):
         """Runs one slice of attention (all heads for one or more examples)."""
         o_all, s_all, i_ct_all, w_ct_all = loop_val
         idx = idx * n_parallel_heads
-        example_idx_lo = idx // self.n_heads
+        example_idx_lo = idx // self._n_heads
         example_range = example_idx_lo + np.arange(
-            n_parallel_heads // self.n_heads, dtype=np.int32)
+            n_parallel_heads // self._n_heads, dtype=np.int32)
         state_range = idx + np.arange(n_parallel_heads, dtype=np.int32)
 
         i_mex = fastmath.nested_map(lambda x: x[example_range], inputs)
         s_mex = fastmath.nested_map(
             lambda s: np.reshape(s[state_range],  # pylint: disable=g-long-lambda
-                                 (-1, self.n_heads) + s.shape[1:]),
+                                 (-1, self._n_heads) + s.shape[1:]),
             state)
         def forward_fn(i_mex, w_all):
           o_mex, new_s_mex = fastmath.vmap(
@@ -1696,9 +1696,9 @@ class SelfAttention(base.Layer):
 
     loop_val = (o_all, s_all, i_ct_all, w_ct_all)
 
-    assert (batch_size * self.n_heads) % n_parallel_heads == 0
-    loop_hi = (batch_size * self.n_heads) // n_parallel_heads
-    if self.use_python_loop or loop_hi == 1:
+    assert (batch_size * self._n_heads) % n_parallel_heads == 0
+    loop_hi = (batch_size * self._n_heads) // n_parallel_heads
+    if self._use_python_loop or loop_hi == 1:
       for idx in range(loop_hi):
         loop_val = run_inner(idx, loop_val)
     else:
@@ -1710,7 +1710,7 @@ class SelfAttention(base.Layer):
     if compute_grad:
       i_ct_all = join_differentiable(i_ct_all, i_nondifferentiable_dummy_ct)
 
-    if self.incremental and update_state:
+    if self._incremental and update_state:
       s_all = (new_mem_end, new_mem, s_all)
 
     if have_single_input and compute_grad:
@@ -1743,18 +1743,18 @@ class LSHSelfAttention(base.Layer):
     """Construct an LSH self-attention layer."""
     super().__init__(n_in=(2 if masked else 1), n_out=1)
 
-    self.n_heads = n_heads
+    self._n_heads = n_heads
     if n_parallel_heads:
       if ((n_parallel_heads > n_heads and n_parallel_heads % n_heads != 0)
           or (n_parallel_heads < n_heads and n_heads % n_parallel_heads != 0)):
         raise ValueError(
             'n_parallel_heads must be a multiple or fraction of n_heads')
-      self.n_parallel_heads = n_parallel_heads
+      self._n_parallel_heads = n_parallel_heads
     else:
-      self.n_parallel_heads = None
+      self._n_parallel_heads = None
 
-    self.incremental = (mode == 'predict')
-    if self.incremental:
+    self._incremental = (mode == 'predict')
+    if self._incremental:
       assert causal, 'Only causal attention supports fast inference'
       assert chunk_len is not None or (predict_mem_len and predict_drop_len)
       predict_mem_len = predict_mem_len or (chunk_len * (1 + n_chunks_before))
@@ -1765,31 +1765,31 @@ class LSHSelfAttention(base.Layer):
         raise ValueError(
             'Bad parameter values: (predict_mem_len, predict_drop_len) = ',
             predict_mem_len, predict_drop_len)
-      self.predict_mem_len = predict_mem_len
-      self.predict_drop_len = predict_drop_len
+      self._predict_mem_len = predict_mem_len
+      self._predict_drop_len = predict_drop_len
 
-    self.use_python_loop = use_python_loop
-    self.use_reference_code = use_reference_code
+    self._use_python_loop = use_python_loop
+    self._use_reference_code = use_reference_code
 
-    self.d_qk = d_qk
-    self.d_v = d_v
-    self.share_qk = True
-    self.causal = causal
-    self.masked = masked
-    self.chunk_len = chunk_len
-    self.n_chunks_before = n_chunks_before
-    self.n_chunks_after = n_chunks_after
-    self.bias = bias
-    self.mode = mode
+    self._d_qk = d_qk
+    self._d_v = d_v
+    self._share_qk = True
+    self._causal = causal
+    self._masked = masked
+    self._chunk_len = chunk_len
+    self._n_chunks_before = n_chunks_before
+    self._n_chunks_after = n_chunks_after
+    self._bias = bias
+    self._mode = mode
     if mode == 'train':
-      self.attention_dropout = attention_dropout
-      self.output_dropout = output_dropout
+      self._attention_dropout = attention_dropout
+      self._output_dropout = output_dropout
     else:
-      self.attention_dropout = 0.0
-      self.output_dropout = 0.0
+      self._attention_dropout = 0.0
+      self._output_dropout = 0.0
 
-    self.n_hashes = n_hashes
-    self.n_buckets = n_buckets
+    self._n_hashes = n_hashes
+    self._n_buckets = n_buckets
     self._max_length_for_buckets = max_length_for_buckets
 
   def _kernel_initializer(self, shape, rng):
@@ -1798,7 +1798,7 @@ class LSHSelfAttention(base.Layer):
     # at a time in this class, so init.GlorotUniformInitializer won't work.
     # This initialization type is for parity with previous Trax & tensor2tensor
     # Transformers; it's not clear if it's strictly needed for model accuracy.
-    lim = np.sqrt(6.0 / (shape[0] + shape[1] * self.n_heads))
+    lim = np.sqrt(6.0 / (shape[0] + shape[1] * self._n_heads))
     return fastmath.random.uniform(rng, shape, np.float32, -lim, lim)
 
   def init_weights_and_state(self, input_signature):
@@ -1810,13 +1810,13 @@ class LSHSelfAttention(base.Layer):
     batch_size = int(input_signature[0].shape[0])
 
     weights = []
-    weight_rngs = fastmath.random.split(self.rng, self.n_heads)
-    for i in range(self.n_heads):
+    weight_rngs = fastmath.random.split(self.rng, self._n_heads)
+    for i in range(self._n_heads):
       weights.append(self.create_weights_unbatched(input_signature_unbatched,
                                                    weight_rngs[i]))
     state = []
-    state_rngs = fastmath.random.split(self.rng, self.n_heads * batch_size)
-    for i in range(self.n_heads * batch_size):
+    state_rngs = fastmath.random.split(self.rng, self._n_heads * batch_size)
+    for i in range(self._n_heads * batch_size):
       state.append(self.create_state_unbatched(input_signature_unbatched,
                                                state_rngs[i]))
 
@@ -1824,10 +1824,10 @@ class LSHSelfAttention(base.Layer):
     weights = fastmath.nested_map_multiarg(stack_along_axis_0, *weights)
     state = fastmath.nested_map_multiarg(stack_along_axis_0, *state)
 
-    if self.incremental:
+    if self._incremental:
       mem = fastmath.nested_map(
           lambda x: np.zeros(  # pylint: disable=g-long-lambda
-              x.shape[:1] + (self.predict_mem_len,) + x.shape[2:],
+              x.shape[:1] + (self._predict_mem_len,) + x.shape[2:],
               dtype=x.dtype),
           input_signature)
       mem_end = np.zeros((), dtype=np.int32)
@@ -1841,22 +1841,22 @@ class LSHSelfAttention(base.Layer):
       input_signature = input_signature[0]
     d_model = input_signature.shape[-1]
     rng_q, rng_k, rng_v, rng_o = fastmath.random.split(rng, 4)
-    w_q = self._kernel_initializer((d_model, self.d_qk), rng_q)
-    if not self.share_qk:
-      w_k = self._kernel_initializer((d_model, self.d_qk), rng_k)
-    w_v = self._kernel_initializer((d_model, self.d_v), rng_v)
-    w_o = np.transpose(self._kernel_initializer((d_model, self.d_v), rng_o))
+    w_q = self._kernel_initializer((d_model, self._d_qk), rng_q)
+    if not self._share_qk:
+      w_k = self._kernel_initializer((d_model, self._d_qk), rng_k)
+    w_v = self._kernel_initializer((d_model, self._d_v), rng_v)
+    w_o = np.transpose(self._kernel_initializer((d_model, self._d_v), rng_o))
 
-    if self.bias:
-      b_q = np.zeros(self.d_qk)
-      b_v = np.zeros(self.d_v)
-      if self.share_qk:
+    if self._bias:
+      b_q = np.zeros(self._d_qk)
+      b_v = np.zeros(self._d_v)
+      if self._share_qk:
         return (w_q, w_v, w_o, b_q, b_v)
       else:
-        b_k = np.zeros(self.d_qk)
+        b_k = np.zeros(self._d_qk)
         return (w_q, w_k, w_v, w_o, b_q, b_k, b_v)
 
-    if self.share_qk:
+    if self._share_qk:
       return (w_q, w_v, w_o)
     else:
       return (w_q, w_k, w_v, w_o)
@@ -1870,23 +1870,23 @@ class LSHSelfAttention(base.Layer):
     # same sharing is likely to be safe when selecting random hash functions
     # for LSH, we haven't run experiments to demonstrate this. To be on the safe
     # side we include a per-head RNG in the state for the purpose of doing LSH.
-    if not self.incremental:
+    if not self._incremental:
       length = self._max_length_for_buckets or input_signature.shape[0]
-      buckets = np.zeros(self.n_hashes * length, dtype=np.int32)
+      buckets = np.zeros(self._n_hashes * length, dtype=np.int32)
       return (buckets, rng)
     else:
       buckets = np.zeros(
-          self.n_hashes * self.predict_mem_len, dtype=np.int32)
+          self._n_hashes * self._predict_mem_len, dtype=np.int32)
       buckets_idx = np.zeros((), dtype=np.int32)
       return (buckets, buckets_idx, rng)
 
   def hash_vectors(self, vecs, rng, mask=None):
-    n_buckets_list = self.n_buckets
+    n_buckets_list = self._n_buckets
 
     # Determine the number of buckets needed from input length if not set.
     if n_buckets_list is None:
       length = vecs.shape[0]
-      n_buckets = 2 * max(1, length // self.chunk_len)
+      n_buckets = 2 * max(1, length // self._chunk_len)
       if n_buckets <= 128:
         n_buckets_list = n_buckets
       else:  # Factorize n_buckets.
@@ -1896,7 +1896,7 @@ class LSHSelfAttention(base.Layer):
         n_buckets_list = [n_buckets_div, n_buckets_rest]
 
     # Hash vectors.
-    buckets, n_buckets = hash_vecs(vecs, n_buckets_list, self.n_hashes, rng)
+    buckets, n_buckets = hash_vecs(vecs, n_buckets_list, self._n_hashes, rng)
 
     if mask is not None:
       n_buckets += 1  # Create an extra bucket for padding tokens only
@@ -1904,7 +1904,7 @@ class LSHSelfAttention(base.Layer):
 
     # buckets is now (n_hashes, seqlen). Next we add offsets so that
     # bucket numbers from different hashing rounds don't overlap.
-    offsets = np.arange(self.n_hashes, dtype=np.int32)
+    offsets = np.arange(self._n_hashes, dtype=np.int32)
     offsets = np.reshape(offsets * n_buckets, (-1, 1))
     buckets = np.reshape(buckets + offsets, (-1,))
     return buckets
@@ -1923,7 +1923,7 @@ class LSHSelfAttention(base.Layer):
       buckets = self.hash_vectors(q, hash_subrng, mask)
       s_buckets = buckets
       if self._max_length_for_buckets:
-        length = self.n_hashes * self._max_length_for_buckets
+        length = self._n_hashes * self._max_length_for_buckets
         if buckets.shape[0] < length:
           s_buckets = np.concatenate(
               [buckets, np.zeros(length - buckets.shape[0], dtype=np.int32)],
@@ -1932,12 +1932,12 @@ class LSHSelfAttention(base.Layer):
     else:
       buckets, _ = state
       if self._max_length_for_buckets:
-        buckets = buckets[:self.n_hashes * x.shape[0]]
+        buckets = buckets[:self._n_hashes * x.shape[0]]
 
     seqlen = x.shape[0]
-    assert int(buckets.shape[0]) == self.n_hashes * seqlen
+    assert int(buckets.shape[0]) == self._n_hashes * seqlen
 
-    ticker = np.arange(self.n_hashes * seqlen, dtype=np.int32)
+    ticker = np.arange(self._n_hashes * seqlen, dtype=np.int32)
     buckets_and_t = seqlen * buckets + (ticker % seqlen)
     buckets_and_t = fastmath.stop_gradient(buckets_and_t)
 
@@ -1953,13 +1953,13 @@ class LSHSelfAttention(base.Layer):
     sq = np.take(q, st, axis=0)
     sv = np.take(v, st, axis=0)
 
-    mask_fn = functools.partial(mask_self_attention, causal=self.causal,
-                                exclude_self=True, masked=self.masked)
+    mask_fn = functools.partial(mask_self_attention, causal=self._causal,
+                                exclude_self=True, masked=self._masked)
     q_info = st
 
-    assert (mask is not None) == self.masked
+    assert (mask is not None) == self._masked
     kv_info = None
-    if self.masked:
+    if self._masked:
       # mask is a boolean array (True means "is valid token")
       smask = np.take(mask, st, axis=0)
       ones_like_mask = np.ones_like(smask, dtype=np.int32)
@@ -1967,11 +1967,11 @@ class LSHSelfAttention(base.Layer):
 
     so, slogits = attend(
         sq, k=None, v=sv,
-        q_chunk_len=self.chunk_len,
-        n_chunks_before=self.n_chunks_before,
-        n_chunks_after=self.n_chunks_after,
+        q_chunk_len=self._chunk_len,
+        n_chunks_before=self._n_chunks_before,
+        n_chunks_after=self._n_chunks_after,
         mask_fn=mask_fn, q_info=q_info, kv_info=kv_info,
-        dropout=self.attention_dropout, rng=attend_rng,
+        dropout=self._attention_dropout, rng=attend_rng,
         )
 
     # np.take(so, undo_sort, axis=0); np.take(slogits, undo_sort, axis=0) would
@@ -1979,29 +1979,29 @@ class LSHSelfAttention(base.Layer):
     o = permute_via_gather(so, undo_sort, sticker, axis=0)
     logits = permute_via_sort(slogits, sticker, buckets_and_t, axis=-1)
 
-    if self.n_hashes > 1:
-      o = np.reshape(o, (self.n_hashes, seqlen, o.shape[-1]))
-      logits = np.reshape(logits, (self.n_hashes, seqlen, 1))
+    if self._n_hashes > 1:
+      o = np.reshape(o, (self._n_hashes, seqlen, o.shape[-1]))
+      logits = np.reshape(logits, (self._n_hashes, seqlen, 1))
       probs = np.exp(logits - fastmath.logsumexp(logits, axis=0, keepdims=True))
       o = np.sum(o * probs, axis=0)
 
     assert o.shape == (seqlen, w_v.shape[-1])
     out = np.matmul(o, w_o)
-    out = apply_broadcasted_dropout(out, self.output_dropout, output_rng)
+    out = apply_broadcasted_dropout(out, self._output_dropout, output_rng)
     return out, state
 
-  def incremental_forward_unbatched(self, x, *,
-                                    q_start, q_len,
-                                    weights, state, rng, update_state):
+  def _incremental_forward_unbatched(self, x, *,
+                                     q_start, q_len,
+                                     weights, state, rng, update_state):
     assert update_state, (
         'This setting not supported (e.g. no backprop for fast inference)')
     if q_len > 1:
       if isinstance(q_start, int):
         assert q_start == 0, 'Chunks larger than 1 only work at start for now.'
-      if x.shape[0] % self.chunk_len == 0:
+      if x.shape[0] % self._chunk_len == 0:
         x_padded = x
       else:
-        pad_amount = self.chunk_len - (x.shape[0] % self.chunk_len)
+        pad_amount = self._chunk_len - (x.shape[0] % self._chunk_len)
         x_padded = np.pad(x, ((0, pad_amount), (0, 0)), mode='constant')
       buckets, buckets_idx, hash_rng = state
       q = np.matmul(x_padded, weights[0])
@@ -2012,11 +2012,11 @@ class LSHSelfAttention(base.Layer):
           rng=rng, update_state=False)
 
       out = out[:q_len]
-      buckets = np.reshape(buckets, (self.n_hashes, -1))
+      buckets = np.reshape(buckets, (self._n_hashes, -1))
       buckets_update = np.reshape(
-          buckets_update, (self.n_hashes, -1))[:, :q_len]
-      if q_len > self.predict_mem_len:
-        buckets_update = buckets_update[:, -self.predict_mem_len:]  # pylint: disable=invalid-unary-operand-type
+          buckets_update, (self._n_hashes, -1))[:, :q_len]
+      if q_len > self._predict_mem_len:
+        buckets_update = buckets_update[:, -self._predict_mem_len:]  # pylint: disable=invalid-unary-operand-type
       buckets = fastmath.dynamic_update_slice_in_dim(
           buckets, buckets_update, q_start, axis=1)
       buckets = np.reshape(buckets, (-1,))
@@ -2028,9 +2028,9 @@ class LSHSelfAttention(base.Layer):
     buckets, buckets_idx, hash_rng = state
 
     def roll_buckets(buckets):
-      buckets = np.reshape(buckets, (self.n_hashes, -1))
+      buckets = np.reshape(buckets, (self._n_hashes, -1))
       new_buckets = np.concatenate(
-          [buckets, np.zeros((self.n_hashes, self.predict_drop_len),
+          [buckets, np.zeros((self._n_hashes, self._predict_drop_len),
                              dtype=buckets.dtype)
           ], axis=1)
       new_buckets = fastmath.dynamic_slice_in_dim(
@@ -2058,10 +2058,10 @@ class LSHSelfAttention(base.Layer):
     q = np.matmul(np.concatenate([x[q_range]] * 2, 0), w_q)
 
     q_buckets = self.hash_vectors(q, hash_rng)
-    q_buckets = np.reshape(q_buckets, (self.n_hashes, 2))[:, :q_len]
+    q_buckets = np.reshape(q_buckets, (self._n_hashes, 2))[:, :q_len]
 
     unflattened_buckets = fastmath.dynamic_update_slice_in_dim(
-        np.reshape(buckets, (self.n_hashes, -1)),
+        np.reshape(buckets, (self._n_hashes, -1)),
         q_buckets, q_start, axis=1)
     buckets = np.reshape(unflattened_buckets, (-1,))
     is_valid_target = np.any(unflattened_buckets == q_buckets, axis=0)
@@ -2075,8 +2075,8 @@ class LSHSelfAttention(base.Layer):
     kv_priorities = kv_priorities + seqlen * is_valid_target.astype(np.int32)
     _, kv_indices = fastmath.sort_key_val(kv_priorities, arange_seqlen)
     kv_indices = kv_indices[
-        -self.n_hashes * self.chunk_len * (1 + self.n_chunks_before):]
-    assert self.n_chunks_after == 0
+        -self._n_hashes * self._chunk_len * (1 + self._n_chunks_before):]
+    assert self._n_chunks_after == 0
 
     x_attend_to = x[kv_indices]
     k = length_normalized(np.matmul(x_attend_to, w_q))
@@ -2092,13 +2092,13 @@ class LSHSelfAttention(base.Layer):
     o, _ = attend(
         q, k, v,
         mask_fn=mask_fn, q_info=q_info, kv_info=kv_info,
-        dropout=self.attention_dropout, rng=attend_rng,
+        dropout=self._attention_dropout, rng=attend_rng,
         )
 
     out = np.matmul(o, w_o)
     if q_len == 1:
       out = out[:1]
-    out = apply_broadcasted_dropout(out, self.output_dropout, output_rng)
+    out = apply_broadcasted_dropout(out, self._output_dropout, output_rng)
     buckets_idx = np.array(q_start + q_len, dtype=buckets_idx.dtype)
     return out, (buckets, buckets_idx, hash_rng)
 
@@ -2112,7 +2112,7 @@ class LSHSelfAttention(base.Layer):
       A tuple (output, new_state).
     """
     weights, state, rng = self.weights, self.state, self.rng
-    if not self.use_reference_code:
+    if not self._use_reference_code:
       # By default, an efficient, batched implementation is used.
       output, new_state, _, _ = self.forward_and_or_backward(
           inputs, weights, state, rng, compute_output=True, update_state=True)
@@ -2128,22 +2128,22 @@ class LSHSelfAttention(base.Layer):
     seqlen = inputs[0].shape[-2]
     d_model = inputs[0].shape[-1]
 
-    if self.incremental:
-      inputs, state, q_start, new_mem, new_mem_end = self.use_predict_mem(
+    if self._incremental:
+      inputs, state, q_start, new_mem, new_mem_end = self._use_predict_mem(
           inputs, state)
 
     output_accum = [np.zeros((seqlen, d_model)) for _ in range(batch_size)]
     new_state = []
     for example_idx in range(batch_size):
-      for head_idx in range(self.n_heads):
+      for head_idx in range(self._n_heads):
         # pylint: disable=cell-var-from-loop
         single_inputs = fastmath.nested_map(lambda x: x[example_idx], inputs)
         single_weights = fastmath.nested_map(lambda w: w[head_idx], weights)
         single_state = fastmath.nested_map(
-            lambda s: s[example_idx * self.n_heads + head_idx], state)
+            lambda s: s[example_idx * self._n_heads + head_idx], state)
         # pylint: enable=cell-var-from-loop
-        if self.incremental:
-          single_out, single_new_state = self.incremental_forward_unbatched(
+        if self._incremental:
+          single_out, single_new_state = self._incremental_forward_unbatched(
               *single_inputs, q_start=q_start, q_len=seqlen,
               weights=single_weights, rng=rng,
               state=single_state, update_state=True)
@@ -2160,27 +2160,27 @@ class LSHSelfAttention(base.Layer):
           lambda *s: np.stack(s, 0), *new_state)
     else:
       new_state = state
-    if self.incremental:
+    if self._incremental:
       new_state = (new_mem_end, new_mem, new_state)
     self.state = tuple(new_state)
     return output
 
-  def use_predict_mem(self, inputs, state):
+  def _use_predict_mem(self, inputs, state):
     """Update input cache for fast inference."""
     mem_end, mem, state = state
     seqlen = inputs[0].shape[-2]
 
-    if seqlen <= self.predict_drop_len and seqlen < self.predict_mem_len:
+    if seqlen <= self._predict_drop_len and seqlen < self._predict_mem_len:
       # This branch is called when only a small number of tokens are appended to
       # the sequence, e.g. when generating one token at a time. A fixed number
-      # of tokens (self.predict_drop_tokens) will be dropped from memory if
+      # of tokens (self._predict_drop_tokens) will be dropped from memory if
       # needed, and then new values will be inserted into the memory.
       def roll_mem(buf):
         return np.concatenate(
-            [buf[:, self.predict_drop_len:],
-             np.zeros_like(buf[:, :self.predict_drop_len])], axis=1)
+            [buf[:, self._predict_drop_len:],
+             np.zeros_like(buf[:, :self._predict_drop_len])], axis=1)
 
-      do_roll_mem = (mem_end + seqlen > self.predict_mem_len)
+      do_roll_mem = (mem_end + seqlen > self._predict_mem_len)
       mem = fastmath.cond(
           pred=do_roll_mem,
           true_operand=mem,
@@ -2188,7 +2188,7 @@ class LSHSelfAttention(base.Layer):
           false_operand=mem,
           false_fun=lambda x: x,
       )
-      mem_end = np.where(do_roll_mem, mem_end - self.predict_drop_len, mem_end)
+      mem_end = np.where(do_roll_mem, mem_end - self._predict_drop_len, mem_end)
       def update_mem(mem_element, new_vals):
         assert new_vals.shape[1] == seqlen
         if seqlen == 1:
@@ -2200,7 +2200,7 @@ class LSHSelfAttention(base.Layer):
       inputs = fastmath.nested_map_multiarg(update_mem, mem, inputs)
       return inputs, state, mem_end, inputs, mem_end + seqlen
     else:
-      assert seqlen > self.predict_drop_len or seqlen == self.predict_mem_len
+      assert seqlen > self._predict_drop_len or seqlen == self._predict_mem_len
       # This branch handles the case where a large number of tokens are being
       # introduced all at once. The code here assumes that we are at the start
       # of the sequence, which matches the typical use case of decoding from a
@@ -2209,15 +2209,15 @@ class LSHSelfAttention(base.Layer):
       new_flat_mem = []
       for inp in fastmath.tree_leaves(inputs):
         assert inp.shape[1] == seqlen
-        if seqlen == self.predict_mem_len:
+        if seqlen == self._predict_mem_len:
           new_mem_val = inp
-        elif seqlen > self.predict_mem_len:
-          new_mem_val = inp[:, -self.predict_mem_len:]  # pylint: disable=invalid-unary-operand-type
+        elif seqlen > self._predict_mem_len:
+          new_mem_val = inp[:, -self._predict_mem_len:]  # pylint: disable=invalid-unary-operand-type
         else:
           new_mem_val = np.concatenate([
               inp,
               np.zeros(inp.shape[:1]
-                       + (self.predict_mem_len - inp.shape[1],)
+                       + (self._predict_mem_len - inp.shape[1],)
                        + inp.shape[2:],
                        dtype=inp.dtype)
           ], axis=1)
@@ -2235,17 +2235,17 @@ class LSHSelfAttention(base.Layer):
             true_operand=x, true_fun=lambda x: x,
             false_operand=x, false_fun=lambda x: x * np.nan)
       inputs = fastmath.nested_map(replace_with_nan_if_not_seq_start, inputs)
-      return inputs, state, 0, mem, np.minimum(seqlen, self.predict_mem_len)
+      return inputs, state, 0, mem, np.minimum(seqlen, self._predict_mem_len)
 
   @property
   def has_backward(self):
     # Use an efficient backward pass, unless we're running the reference code.
-    return not self.use_reference_code
+    return not self._use_reference_code
 
   def backward(self, inputs, output, grad, weights, state, new_state, rng=None,
                **kwargs):
     """Custom backward pass, for efficiency (see forward_and_or_backward)."""
-    assert not self.use_reference_code
+    assert not self._use_reference_code
     del output, state, kwargs
     _, _, inputs_grad, weights_grad = self.forward_and_or_backward(
         inputs, weights, new_state, rng, output_grad=grad,
@@ -2324,12 +2324,12 @@ class LSHSelfAttention(base.Layer):
     compute_grad = (output_grad is not None)
     assert compute_output or compute_grad, 'No work to perform!'
 
-    if not self.incremental:
+    if not self._incremental:
       forward_unbatched = functools.partial(
           self.forward_unbatched, rng=rng, update_state=update_state)
     else:
       if update_state:
-        inputs, state, q_start, new_mem, new_mem_end = self.use_predict_mem(
+        inputs, state, q_start, new_mem, new_mem_end = self._use_predict_mem(
             inputs, state)
       else:
         # This assumes that the memory stores all of the inputs, which would not
@@ -2338,15 +2338,15 @@ class LSHSelfAttention(base.Layer):
         q_start = new_mem_end - seqlen
 
       forward_unbatched = functools.partial(
-          self.incremental_forward_unbatched,
+          self._incremental_forward_unbatched,
           q_start=fastmath.stop_gradient(q_start),
           q_len=fastmath.stop_gradient(seqlen),
           rng=rng, update_state=update_state)
 
     # Adjust degree of parallelism based on the batch size.
-    n_parallel_heads = batch_size * self.n_heads
-    if self.n_parallel_heads and self.n_parallel_heads < n_parallel_heads:
-      n_parallel_heads = self.n_parallel_heads
+    n_parallel_heads = batch_size * self._n_heads
+    if self._n_parallel_heads and self._n_parallel_heads < n_parallel_heads:
+      n_parallel_heads = self._n_parallel_heads
 
     def tree_update(tree, indices, new_values):
       return fastmath.nested_map_multiarg(
@@ -2396,8 +2396,8 @@ class LSHSelfAttention(base.Layer):
       def run_inner(idx, loop_val):
         """Runs one slice of attention (for a single head)."""
         o_all, s_all, i_ct_all, w_ct_all = loop_val
-        example_idx = idx // self.n_heads
-        head_idx = idx % self.n_heads
+        example_idx = idx // self._n_heads
+        head_idx = idx % self._n_heads
 
         i_h = fastmath.nested_map(lambda x: x[example_idx], inputs)
         w_h = fastmath.nested_map(lambda w: w[head_idx], weights)
@@ -2423,14 +2423,14 @@ class LSHSelfAttention(base.Layer):
           i_ct_all = tree_add(i_ct_all, example_idx, i_ct_h)
           w_ct_all = tree_add(w_ct_all, head_idx, w_ct_h)
         return (o_all, s_all, i_ct_all, w_ct_all)
-    elif n_parallel_heads < self.n_heads:
-      assert self.n_heads % n_parallel_heads == 0
+    elif n_parallel_heads < self._n_heads:
+      assert self._n_heads % n_parallel_heads == 0
       def run_inner(idx, loop_val):
         """Runs one slice of attention (multiple heads, but one example)."""
         o_all, s_all, i_ct_all, w_ct_all = loop_val
-        idx = idx * self.n_parallel_heads
-        example_idx = idx // self.n_heads
-        head_idx_lo = idx % self.n_heads
+        idx = idx * self._n_parallel_heads
+        example_idx = idx // self._n_heads
+        head_idx_lo = idx % self._n_heads
         head_range = head_idx_lo + np.arange(n_parallel_heads, dtype=np.int32)
         state_range = idx + np.arange(n_parallel_heads, dtype=np.int32)
 
@@ -2463,7 +2463,7 @@ class LSHSelfAttention(base.Layer):
           w_ct_all = tree_add(w_ct_all, head_range, w_ct_mh)
         return (o_all, s_all, i_ct_all, w_ct_all)
     else:
-      assert n_parallel_heads % self.n_heads == 0
+      assert n_parallel_heads % self._n_heads == 0
       def forward_single_example(i_x, w_all, s_x):
         def forward_unbatched_h(i_h, w_h, s_h):
           return forward_unbatched(*i_h, weights=w_h, state=s_h)
@@ -2476,15 +2476,15 @@ class LSHSelfAttention(base.Layer):
         """Runs one slice of attention (all heads for one or more examples)."""
         o_all, s_all, i_ct_all, w_ct_all = loop_val
         idx = idx * n_parallel_heads
-        example_idx_lo = idx // self.n_heads
+        example_idx_lo = idx // self._n_heads
         example_range = example_idx_lo + np.arange(
-            n_parallel_heads // self.n_heads, dtype=np.int32)
+            n_parallel_heads // self._n_heads, dtype=np.int32)
         state_range = idx + np.arange(n_parallel_heads, dtype=np.int32)
 
         i_mex = fastmath.nested_map(lambda x: x[example_range], inputs)
         s_mex = fastmath.nested_map(
             lambda s: np.reshape(s[state_range],  # pylint: disable=g-long-lambda
-                                 (-1, self.n_heads) + s.shape[1:]),
+                                 (-1, self._n_heads) + s.shape[1:]),
             state)
         def forward_fn(i_mex, w_all):
           o_mex, new_s_mex = fastmath.vmap(
@@ -2529,9 +2529,9 @@ class LSHSelfAttention(base.Layer):
 
     loop_val = (o_all, s_all, i_ct_all, w_ct_all)
 
-    assert (batch_size * self.n_heads) % n_parallel_heads == 0
-    loop_hi = (batch_size * self.n_heads) // n_parallel_heads
-    if self.use_python_loop or loop_hi == 1:
+    assert (batch_size * self._n_heads) % n_parallel_heads == 0
+    loop_hi = (batch_size * self._n_heads) // n_parallel_heads
+    if self._use_python_loop or loop_hi == 1:
       for idx in range(loop_hi):
         loop_val = run_inner(idx, loop_val)
     else:
@@ -2543,7 +2543,7 @@ class LSHSelfAttention(base.Layer):
     if compute_grad:
       i_ct_all = join_differentiable(i_ct_all, i_nondifferentiable_dummy_ct)
 
-    if self.incremental and update_state:
+    if self._incremental and update_state:
       s_all = (new_mem_end, new_mem, s_all)
 
     if have_single_input and compute_grad:
@@ -2579,18 +2579,18 @@ class PureLSHSelfAttention(base.Layer):
     # (qk, v) -> (o) otherwise
     super().__init__(n_in=(3 if masked else 2), n_out=1)
 
-    self.n_heads = n_heads
+    self._n_heads = n_heads
     if n_parallel_heads:
       if ((n_parallel_heads > n_heads and n_parallel_heads % n_heads != 0)
           or (n_parallel_heads < n_heads and n_heads % n_parallel_heads != 0)):
         raise ValueError(
             'n_parallel_heads must be a multiple or fraction of n_heads')
-      self.n_parallel_heads = n_parallel_heads
+      self._n_parallel_heads = n_parallel_heads
     else:
-      self.n_parallel_heads = None
+      self._n_parallel_heads = None
 
-    self.incremental = (mode == 'predict')
-    if self.incremental:
+    self._incremental = (mode == 'predict')
+    if self._incremental:
       assert causal, 'Only causal attention supports fast inference'
       assert chunk_len is not None or (predict_mem_len and predict_drop_len)
       predict_mem_len = predict_mem_len or (chunk_len * (1 + n_chunks_before))
@@ -2601,31 +2601,31 @@ class PureLSHSelfAttention(base.Layer):
         raise ValueError(
             'Bad parameter values: (predict_mem_len, predict_drop_len) = ',
             predict_mem_len, predict_drop_len)
-      self.predict_mem_len = predict_mem_len
-      self.predict_drop_len = predict_drop_len
+      self._predict_mem_len = predict_mem_len
+      self._predict_drop_len = predict_drop_len
 
-    self.use_python_loop = use_python_loop
-    self.use_reference_code = use_reference_code
+    self._use_python_loop = use_python_loop
+    self._use_reference_code = use_reference_code
 
-    self.d_qk = d_qk
-    self.d_v = d_v
-    self.share_qk = True
-    self.causal = causal
-    self.masked = masked
-    self.chunk_len = chunk_len
-    self.n_chunks_before = n_chunks_before
-    self.n_chunks_after = n_chunks_after
-    self.bias = bias
-    self.mode = mode
+    self._d_qk = d_qk
+    self._d_v = d_v
+    self._share_qk = True
+    self._causal = causal
+    self._masked = masked
+    self._chunk_len = chunk_len
+    self._n_chunks_before = n_chunks_before
+    self._n_chunks_after = n_chunks_after
+    self._bias = bias
+    self._mode = mode
     if mode == 'train':
-      self.attention_dropout = attention_dropout
-      self.output_dropout = output_dropout
+      self._attention_dropout = attention_dropout
+      self._output_dropout = output_dropout
     else:
-      self.attention_dropout = 0.0
-      self.output_dropout = 0.0
+      self._attention_dropout = 0.0
+      self._output_dropout = 0.0
 
-    self.n_hashes = n_hashes
-    self.n_buckets = n_buckets
+    self._n_hashes = n_hashes
+    self._n_buckets = n_buckets
     self._max_length_for_buckets = max_length_for_buckets
 
   def _kernel_initializer(self, shape, rng):
@@ -2634,12 +2634,12 @@ class PureLSHSelfAttention(base.Layer):
     # at a time in this class, so init.GlorotUniformInitializer won't work.
     # This initialization type is for parity with previous Trax & tensor2tensor
     # Transformers; it's not clear if it's strictly needed for model accuracy.
-    lim = np.sqrt(6.0 / (shape[0] + shape[1] * self.n_heads))
+    lim = np.sqrt(6.0 / (shape[0] + shape[1] * self._n_heads))
     return fastmath.random.uniform(rng, shape, np.float32, -lim, lim)
 
   def init_weights_and_state(self, input_signature):
     # input_signature should be the type signature of (qk, v, mask) or (qk, v)
-    expected_inputs = 3 if self.masked else 2
+    expected_inputs = 3 if self._masked else 2
     if not (isinstance(input_signature, (tuple, list)) and
             len(input_signature) == expected_inputs):
       raise ValueError(
@@ -2654,8 +2654,8 @@ class PureLSHSelfAttention(base.Layer):
     # batch = mask_signature.shape[0]
     batch_x_heads = qk_signature.shape[0]
 
-    assert batch_x_heads % self.n_heads == 0
-    batch = batch_x_heads // self.n_heads
+    assert batch_x_heads % self._n_heads == 0
+    batch = batch_x_heads // self._n_heads
 
     query_signature_unbatched = fastmath.nested_map(
         lambda x: type(x)(shape=x.shape[1:], dtype=x.dtype),
@@ -2668,10 +2668,10 @@ class PureLSHSelfAttention(base.Layer):
     stack_along_axis_0 = lambda *x: np.stack(x, axis=0)
     state = fastmath.nested_map_multiarg(stack_along_axis_0, *state)
 
-    if self.incremental:
+    if self._incremental:
       mem = fastmath.nested_map(
           lambda x: np.zeros(  # pylint: disable=g-long-lambda
-              x.shape[:1] + (self.predict_mem_len,) + x.shape[2:],
+              x.shape[:1] + (self._predict_mem_len,) + x.shape[2:],
               dtype=x.dtype),
           (qk_signature, v_signature))
       mem_end = np.zeros((), dtype=np.int32)
@@ -2689,23 +2689,23 @@ class PureLSHSelfAttention(base.Layer):
     # same sharing is likely to be safe when selecting random hash functions
     # for LSH, we haven't run experiments to demonstrate this. To be on the safe
     # side we include a per-head RNG in the state for the purpose of doing LSH.
-    if not self.incremental:
+    if not self._incremental:
       length = self._max_length_for_buckets or input_signature.shape[0]
-      buckets = np.zeros(self.n_hashes * length, dtype=np.int32)
+      buckets = np.zeros(self._n_hashes * length, dtype=np.int32)
       return (buckets, rng)
     else:
       buckets = np.zeros(
-          self.n_hashes * self.predict_mem_len, dtype=np.int32)
+          self._n_hashes * self._predict_mem_len, dtype=np.int32)
       buckets_idx = np.zeros((), dtype=np.int32)
       return (buckets, buckets_idx, rng)
 
   def hash_vectors(self, vecs, rng, mask=None):
-    n_buckets_list = self.n_buckets
+    n_buckets_list = self._n_buckets
 
     # Determine the number of buckets needed from input length if not set.
     if n_buckets_list is None:
       length = vecs.shape[0]
-      n_buckets = 2 * max(1, length // self.chunk_len)
+      n_buckets = 2 * max(1, length // self._chunk_len)
       if n_buckets <= 128:
         n_buckets_list = n_buckets
       else:  # Factorize n_buckets.
@@ -2715,7 +2715,7 @@ class PureLSHSelfAttention(base.Layer):
         n_buckets_list = [n_buckets_div, n_buckets_rest]
 
     # Hash vectors.
-    buckets, n_buckets = hash_vecs(vecs, n_buckets_list, self.n_hashes, rng)
+    buckets, n_buckets = hash_vecs(vecs, n_buckets_list, self._n_hashes, rng)
 
     if mask is not None:
       n_buckets += 1  # Create an extra bucket for padding tokens only
@@ -2723,7 +2723,7 @@ class PureLSHSelfAttention(base.Layer):
 
     # buckets is now (n_hashes, seqlen). Next we add offsets so that
     # bucket numbers from different hashing rounds don't overlap.
-    offsets = np.arange(self.n_hashes, dtype=np.int32)
+    offsets = np.arange(self._n_hashes, dtype=np.int32)
     offsets = np.reshape(offsets * n_buckets, (-1, 1))
     buckets = np.reshape(buckets + offsets, (-1,))
     return buckets
@@ -2744,7 +2744,7 @@ class PureLSHSelfAttention(base.Layer):
       buckets = self.hash_vectors(q, hash_subrng, mask)
       s_buckets = buckets
       if self._max_length_for_buckets:
-        length = self.n_hashes * self._max_length_for_buckets
+        length = self._n_hashes * self._max_length_for_buckets
         if buckets.shape[0] < length:
           s_buckets = np.concatenate(
               [buckets, np.zeros(length - buckets.shape[0], dtype=np.int32)],
@@ -2753,11 +2753,11 @@ class PureLSHSelfAttention(base.Layer):
     else:
       buckets, _ = state
       if self._max_length_for_buckets:
-        buckets = buckets[:self.n_hashes * seqlen]
+        buckets = buckets[:self._n_hashes * seqlen]
 
-    assert int(buckets.shape[0]) == self.n_hashes * seqlen
+    assert int(buckets.shape[0]) == self._n_hashes * seqlen
 
-    ticker = np.arange(self.n_hashes * seqlen, dtype=np.int32)
+    ticker = np.arange(self._n_hashes * seqlen, dtype=np.int32)
     buckets_and_t = seqlen * buckets + (ticker % seqlen)
     buckets_and_t = fastmath.stop_gradient(buckets_and_t)
 
@@ -2773,13 +2773,13 @@ class PureLSHSelfAttention(base.Layer):
     sq = np.take(q, st, axis=0)
     sv = np.take(v, st, axis=0)
 
-    mask_fn = functools.partial(mask_self_attention, causal=self.causal,
-                                exclude_self=True, masked=self.masked)
+    mask_fn = functools.partial(mask_self_attention, causal=self._causal,
+                                exclude_self=True, masked=self._masked)
     q_info = st
 
-    assert (mask is not None) == self.masked
+    assert (mask is not None) == self._masked
     kv_info = None
-    if self.masked:
+    if self._masked:
       # mask is a boolean array (True means "is valid token")
       smask = np.take(mask, st, axis=0)
       ones_like_mask = np.ones_like(smask, dtype=np.int32)
@@ -2787,11 +2787,11 @@ class PureLSHSelfAttention(base.Layer):
 
     so, slogits = attend(
         sq, k=None, v=sv,
-        q_chunk_len=self.chunk_len,
-        n_chunks_before=self.n_chunks_before,
-        n_chunks_after=self.n_chunks_after,
+        q_chunk_len=self._chunk_len,
+        n_chunks_before=self._n_chunks_before,
+        n_chunks_after=self._n_chunks_after,
         mask_fn=mask_fn, q_info=q_info, kv_info=kv_info,
-        dropout=self.attention_dropout, rng=attend_rng,
+        dropout=self._attention_dropout, rng=attend_rng,
         )
 
     # np.take(so, undo_sort, axis=0); np.take(slogits, undo_sort, axis=0) would
@@ -2799,9 +2799,9 @@ class PureLSHSelfAttention(base.Layer):
     o = permute_via_gather(so, undo_sort, sticker, axis=0)
     logits = permute_via_sort(slogits, sticker, buckets_and_t, axis=-1)
 
-    if self.n_hashes > 1:
-      o = np.reshape(o, (self.n_hashes, seqlen, o.shape[-1]))
-      logits = np.reshape(logits, (self.n_hashes, seqlen, 1))
+    if self._n_hashes > 1:
+      o = np.reshape(o, (self._n_hashes, seqlen, o.shape[-1]))
+      logits = np.reshape(logits, (self._n_hashes, seqlen, 1))
       probs = np.exp(logits - fastmath.logsumexp(logits, axis=0, keepdims=True))
       o = np.sum(o * probs, axis=0)
 
@@ -2812,9 +2812,9 @@ class PureLSHSelfAttention(base.Layer):
     out = o
     return out, state
 
-  def incremental_forward_unbatched(self, qk, v, mask=None, *,
-                                    q_start, q_len,
-                                    state, rng, update_state):
+  def _incremental_forward_unbatched(self, qk, v, mask=None, *,
+                                     q_start, q_len,
+                                     state, rng, update_state):
     x = (qk, v)
     length = x[0].shape[0]
     assert update_state, (
@@ -2822,10 +2822,10 @@ class PureLSHSelfAttention(base.Layer):
     if q_len > 1:
       if isinstance(q_start, int):
         assert q_start == 0, 'Chunks larger than 1 only work at start for now.'
-      if length % self.chunk_len == 0:
+      if length % self._chunk_len == 0:
         x_padded = x
       else:
-        pad_amount = self.chunk_len - (length % self.chunk_len)
+        pad_amount = self._chunk_len - (length % self._chunk_len)
         x_padded = fastmath.nested_map(
             lambda x: np.pad(x, ((0, pad_amount), (0, 0)), mode='constant'), x)
       buckets, buckets_idx, hash_rng = state
@@ -2837,11 +2837,11 @@ class PureLSHSelfAttention(base.Layer):
           update_state=False)
 
       out = out[:q_len]
-      buckets = np.reshape(buckets, (self.n_hashes, -1))
+      buckets = np.reshape(buckets, (self._n_hashes, -1))
       buckets_update = np.reshape(
-          buckets_update, (self.n_hashes, -1))[:, :q_len]
-      if q_len > self.predict_mem_len:
-        buckets_update = buckets_update[:, -self.predict_mem_len:]  # pylint: disable=invalid-unary-operand-type
+          buckets_update, (self._n_hashes, -1))[:, :q_len]
+      if q_len > self._predict_mem_len:
+        buckets_update = buckets_update[:, -self._predict_mem_len:]  # pylint: disable=invalid-unary-operand-type
       buckets = fastmath.dynamic_update_slice_in_dim(
           buckets, buckets_update, q_start, axis=1)
       buckets = np.reshape(buckets, (-1,))
@@ -2853,9 +2853,9 @@ class PureLSHSelfAttention(base.Layer):
     buckets, buckets_idx, hash_rng = state
 
     def roll_buckets(buckets):
-      buckets = np.reshape(buckets, (self.n_hashes, -1))
+      buckets = np.reshape(buckets, (self._n_hashes, -1))
       new_buckets = np.concatenate(
-          [buckets, np.zeros((self.n_hashes, self.predict_drop_len),
+          [buckets, np.zeros((self._n_hashes, self._predict_drop_len),
                              dtype=buckets.dtype)
           ], axis=1)
       new_buckets = fastmath.dynamic_slice_in_dim(
@@ -2882,10 +2882,10 @@ class PureLSHSelfAttention(base.Layer):
     q = np.concatenate([qk[q_range]] * 2, 0)
 
     q_buckets = self.hash_vectors(q, hash_rng)
-    q_buckets = np.reshape(q_buckets, (self.n_hashes, 2))[:, :q_len]
+    q_buckets = np.reshape(q_buckets, (self._n_hashes, 2))[:, :q_len]
 
     unflattened_buckets = fastmath.dynamic_update_slice_in_dim(
-        np.reshape(buckets, (self.n_hashes, -1)),
+        np.reshape(buckets, (self._n_hashes, -1)),
         q_buckets, q_start, axis=1)
     buckets = np.reshape(unflattened_buckets, (-1,))
     is_valid_target = np.any(unflattened_buckets == q_buckets, axis=0)
@@ -2899,8 +2899,8 @@ class PureLSHSelfAttention(base.Layer):
     kv_priorities = kv_priorities + length * is_valid_target.astype(np.int32)
     _, kv_indices = fastmath.sort_key_val(kv_priorities, arange_seqlen)
     kv_indices = kv_indices[
-        -self.n_hashes * self.chunk_len * (1 + self.n_chunks_before):]
-    assert self.n_chunks_after == 0
+        -self._n_hashes * self._chunk_len * (1 + self._n_chunks_before):]
+    assert self._n_chunks_after == 0
 
     k = length_normalized(qk[kv_indices])
     v = v[kv_indices]
@@ -2915,7 +2915,7 @@ class PureLSHSelfAttention(base.Layer):
     o, _ = attend(
         q, k, v,
         mask_fn=mask_fn, q_info=q_info, kv_info=kv_info,
-        dropout=self.attention_dropout, rng=attend_rng,
+        dropout=self._attention_dropout, rng=attend_rng,
         )
 
     out = o
@@ -2935,7 +2935,7 @@ class PureLSHSelfAttention(base.Layer):
     """
     state, rng = self.state, self.rng
 
-    if self.use_reference_code:
+    if self._use_reference_code:
       raise NotImplementedError(
           'Reference code not implemented for PureLSHSelfAttention')
 
@@ -2944,7 +2944,7 @@ class PureLSHSelfAttention(base.Layer):
     self.state = new_state
     return output
 
-  def use_predict_mem(self, inputs, state):
+  def _use_predict_mem(self, inputs, state):
     """Update input cache for fast inference."""
 
     # inputs is (qk, v). mask isn't passed in.
@@ -2953,17 +2953,17 @@ class PureLSHSelfAttention(base.Layer):
     mem_end, mem, state = state
     seqlen = inputs[0].shape[-2]
 
-    if seqlen <= self.predict_drop_len and seqlen < self.predict_mem_len:
+    if seqlen <= self._predict_drop_len and seqlen < self._predict_mem_len:
       # This branch is called when only a small number of tokens are appended to
       # the sequence, e.g. when generating one token at a time. A fixed number
-      # of tokens (self.predict_drop_tokens) will be dropped from memory if
+      # of tokens (self._predict_drop_tokens) will be dropped from memory if
       # needed, and then new values will be inserted into the memory.
       def roll_mem(buf):
         return np.concatenate(
-            [buf[:, self.predict_drop_len:],
-             np.zeros_like(buf[:, :self.predict_drop_len])], axis=1)
+            [buf[:, self._predict_drop_len:],
+             np.zeros_like(buf[:, :self._predict_drop_len])], axis=1)
 
-      do_roll_mem = (mem_end + seqlen > self.predict_mem_len)
+      do_roll_mem = (mem_end + seqlen > self._predict_mem_len)
       mem = fastmath.cond(
           pred=do_roll_mem,
           true_operand=mem,
@@ -2971,7 +2971,7 @@ class PureLSHSelfAttention(base.Layer):
           false_operand=mem,
           false_fun=lambda x: x,
       )
-      mem_end = np.where(do_roll_mem, mem_end - self.predict_drop_len, mem_end)
+      mem_end = np.where(do_roll_mem, mem_end - self._predict_drop_len, mem_end)
       def update_mem(mem_element, new_vals):
         assert new_vals.shape[1] == seqlen
         if seqlen == 1:
@@ -2983,7 +2983,7 @@ class PureLSHSelfAttention(base.Layer):
       inputs = fastmath.nested_map_multiarg(update_mem, mem, inputs)
       return inputs, state, mem_end, inputs, mem_end + seqlen
     else:
-      assert seqlen > self.predict_drop_len or seqlen == self.predict_mem_len
+      assert seqlen > self._predict_drop_len or seqlen == self._predict_mem_len
       # This branch handles the case where a large number of tokens are being
       # introduced all at once. The code here assumes that we are at the start
       # of the sequence, which matches the typical use case of decoding from a
@@ -2992,15 +2992,15 @@ class PureLSHSelfAttention(base.Layer):
       new_flat_mem = []
       for inp in fastmath.tree_leaves(inputs):
         assert inp.shape[1] == seqlen
-        if seqlen == self.predict_mem_len:
+        if seqlen == self._predict_mem_len:
           new_mem_val = inp
-        elif seqlen > self.predict_mem_len:
-          new_mem_val = inp[:, -self.predict_mem_len:]  # pylint: disable=invalid-unary-operand-type
+        elif seqlen > self._predict_mem_len:
+          new_mem_val = inp[:, -self._predict_mem_len:]  # pylint: disable=invalid-unary-operand-type
         else:
           new_mem_val = np.concatenate([
               inp,
               np.zeros(inp.shape[:1]
-                       + (self.predict_mem_len - inp.shape[1],)
+                       + (self._predict_mem_len - inp.shape[1],)
                        + inp.shape[2:],
                        dtype=inp.dtype)
           ], axis=1)
@@ -3018,7 +3018,7 @@ class PureLSHSelfAttention(base.Layer):
             true_operand=x, true_fun=lambda x: x,
             false_operand=x, false_fun=lambda x: x * np.nan)
       inputs = fastmath.nested_map(replace_with_nan_if_not_seq_start, inputs)
-      return inputs, state, 0, mem, np.minimum(seqlen, self.predict_mem_len)
+      return inputs, state, 0, mem, np.minimum(seqlen, self._predict_mem_len)
 
   @property
   def has_backward(self):
@@ -3099,19 +3099,19 @@ class PureLSHSelfAttention(base.Layer):
     #               for example, head in zip(examples, heads):
     #                 backward(example, head)
 
-    if self.masked:
+    if self._masked:
       qk, v, mask = inputs
       batch_size = mask.shape[0]
     else:
       qk, v = inputs
       mask = None
-      batch_size = qk.shape[0] // self.n_heads
+      batch_size = qk.shape[0] // self._n_heads
     batch_x_heads, seqlen, d_model = qk.shape
 
     compute_grad = (output_grad is not None)
     assert compute_output or compute_grad, 'No work to perform!'
 
-    if not self.incremental:
+    if not self._incremental:
       forward_unbatched = functools.partial(
           self.forward_unbatched, rng=rng, update_state=update_state)
     else:
@@ -3121,7 +3121,7 @@ class PureLSHSelfAttention(base.Layer):
       inputs = (qk, v)
 
       if update_state:
-        inputs, state, q_start, new_mem, new_mem_end = self.use_predict_mem(
+        inputs, state, q_start, new_mem, new_mem_end = self._use_predict_mem(
             inputs, state)
       else:
         # This assumes that the memory stores all of the inputs, which would not
@@ -3133,15 +3133,15 @@ class PureLSHSelfAttention(base.Layer):
       qk, v = inputs
 
       forward_unbatched = functools.partial(
-          self.incremental_forward_unbatched,
+          self._incremental_forward_unbatched,
           q_start=fastmath.stop_gradient(q_start),
           q_len=fastmath.stop_gradient(seqlen),
           rng=rng, update_state=update_state)
 
     # Adjust degree of parallelism based on the batch size.
-    n_parallel_heads = batch_size * self.n_heads
-    if self.n_parallel_heads and self.n_parallel_heads < n_parallel_heads:
-      n_parallel_heads = self.n_parallel_heads
+    n_parallel_heads = batch_size * self._n_heads
+    if self._n_parallel_heads and self._n_parallel_heads < n_parallel_heads:
+      n_parallel_heads = self._n_parallel_heads
 
     def tree_update(tree, indices, new_values):
       return fastmath.nested_map_multiarg(
@@ -3195,12 +3195,12 @@ class PureLSHSelfAttention(base.Layer):
     def run_inner(idx, loop_val):
       """Runs one slice of attention (for a single head)."""
       o_all, s_all, i_ct_all = loop_val
-      example_idx = idx // self.n_heads
-      unused_head_idx = idx % self.n_heads
+      example_idx = idx // self._n_heads
+      unused_head_idx = idx % self._n_heads
 
       s_h = fastmath.nested_map(lambda s: s[idx], state)
 
-      if self.masked:
+      if self._masked:
         i_h = (qk[idx], v[idx], mask[example_idx])
       else:
         i_h = (qk[idx], v[idx])
@@ -3236,9 +3236,9 @@ class PureLSHSelfAttention(base.Layer):
 
     loop_val = (o_all, s_all, i_ct_all)
 
-    assert (batch_size * self.n_heads) % n_parallel_heads == 0
-    loop_hi = (batch_size * self.n_heads) // n_parallel_heads
-    if self.use_python_loop or loop_hi == 1:
+    assert (batch_size * self._n_heads) % n_parallel_heads == 0
+    loop_hi = (batch_size * self._n_heads) // n_parallel_heads
+    if self._use_python_loop or loop_hi == 1:
       for idx in range(loop_hi):
         loop_val = run_inner(idx, loop_val)
     else:
@@ -3250,7 +3250,7 @@ class PureLSHSelfAttention(base.Layer):
     if compute_grad:
       i_ct_all = join_differentiable(i_ct_all, i_nondifferentiable_dummy_ct)
 
-    if self.incremental and update_state:
+    if self._incremental and update_state:
       s_all = (new_mem_end, new_mem, s_all)
 
     return (o_all, s_all, i_ct_all)
@@ -3269,13 +3269,13 @@ def _ProjectAndSplitHeads(d_model, n_heads, use_bias, num_weights=2,  # pylint: 
   # efficient_attention.SelfAttention
 
   # Or they can be in 'model' major format - (d_model, d_model), which is what
-  # tl.Attention/CausalAttention etc use -- so use this format if we pretrain a
+  # tl._attention/CausalAttention etc use -- so use this format if we pretrain a
   # model trained with those and finetuning with PureLSHSelfAttention.
 
   assert weights_format in ('heads', 'model', 'sparse')
 
   # When an earlier model was trained with 3 separate weights for Q, K, V
-  # projections with tl.Attention/tl.CausalAttention etc.
+  # projections with tl._attention/tl._causalAttention etc.
   if weights_format == 'model' and num_weights == 3:
     return cb.Serial(
         # Create the raw Q, K, V projections.
@@ -3608,16 +3608,16 @@ class EncDecAttention(EfficientAttentionBase):
         use_python_loop=use_python_loop,
         use_reference_code=use_reference_code,
         )
-    self.d_qk = d_qk
-    self.d_v = d_v
-    self.masked = masked
-    self.mode = mode
+    self._d_qk = d_qk
+    self._d_v = d_v
+    self._masked = masked
+    self._mode = mode
     if mode == 'train':
-      self.attention_dropout = attention_dropout
-      self.output_dropout = output_dropout
+      self._attention_dropout = attention_dropout
+      self._output_dropout = output_dropout
     else:
-      self.attention_dropout = 0.0
-      self.output_dropout = 0.0
+      self._attention_dropout = 0.0
+      self._output_dropout = 0.0
 
   def _kernel_initializer(self, shape, rng):
     # Attention uses Glorot uniform initalization with respect to the *total*
@@ -3625,17 +3625,17 @@ class EncDecAttention(EfficientAttentionBase):
     # at a time in this class, so init.GlorotUniformInitializer won't work.
     # This initialization type is for parity with previous Trax & tensor2tensor
     # Transformers; it's not clear if it's strictly needed for model accuracy.
-    lim = np.sqrt(6.0 / (shape[0] + shape[1] * self.n_heads))
+    lim = np.sqrt(6.0 / (shape[0] + shape[1] * self._n_heads))
     return fastmath.random.uniform(rng, shape, np.float32, -lim, lim)
 
   def create_weights_unbatched(self, input_signature, rng):
     d_model = input_signature[0].shape[-1]
     d_kv_antecedent = input_signature[1].shape[-1]
     rng_q, rng_k, rng_v, rng_o = fastmath.random.split(rng, 4)
-    w_q = self._kernel_initializer((d_model, self.d_qk), rng_q)
-    w_k = self._kernel_initializer((d_kv_antecedent, self.d_qk), rng_k)
-    w_v = self._kernel_initializer((d_kv_antecedent, self.d_v), rng_v)
-    w_o = np.transpose(self._kernel_initializer((d_model, self.d_v), rng_o))
+    w_q = self._kernel_initializer((d_model, self._d_qk), rng_q)
+    w_k = self._kernel_initializer((d_kv_antecedent, self._d_qk), rng_k)
+    w_v = self._kernel_initializer((d_kv_antecedent, self._d_v), rng_v)
+    w_o = np.transpose(self._kernel_initializer((d_model, self._d_v), rng_o))
     return (w_q, w_k, w_v, w_o)
 
   def forward_unbatched(self, q_antecedent, kv_antecedent, mask=None, *,
@@ -3648,7 +3648,7 @@ class EncDecAttention(EfficientAttentionBase):
     k = np.matmul(kv_antecedent, w_k)
     v = np.matmul(kv_antecedent, w_v)
 
-    if not self.masked:
+    if not self._masked:
       assert mask is None
       q_info = kv_info = mask_fn = None
     else:
@@ -3665,11 +3665,11 @@ class EncDecAttention(EfficientAttentionBase):
     o, _ = attend(
         q, k, v,
         mask_fn=mask_fn, q_info=q_info, kv_info=kv_info,
-        dropout=self.attention_dropout, rng=attend_rng,
+        dropout=self._attention_dropout, rng=attend_rng,
         )
 
     out = np.matmul(o, w_o)
-    out = apply_broadcasted_dropout(out, self.output_dropout, output_rng)
+    out = apply_broadcasted_dropout(out, self._output_dropout, output_rng)
     return out, state
 
 

@@ -273,18 +273,18 @@ class ReversibleHalfResidual(ReversibleLayer):
   def __init__(self, *residual_layers, attention_layer=None, name=None):
     super().__init__(name=name)
 
-    self.compute_residual = cb.Serial(*residual_layers)
-    self.attention_layer = attention_layer
+    self._compute_residual = cb.Serial(*residual_layers)
+    self._attention_layer = attention_layer
 
-    if self.attention_layer is None:
-      self._sublayers = (self.compute_residual,)
+    if self._attention_layer is None:
+      self._sublayers = (self._compute_residual,)
     else:
       if hasattr(attention_layer, 'forward_and_or_backward'):
         self._forward_and_or_backward = attention_layer.forward_and_or_backward
       else:
         self._forward_and_or_backward = _forward_and_or_backward(
             attention_layer)
-      self._sublayers = (self.compute_residual, self.attention_layer)
+      self._sublayers = (self._compute_residual, self._attention_layer)
 
     running_max = 0
     running_total = 0
@@ -323,7 +323,7 @@ class ReversibleHalfResidual(ReversibleLayer):
     accumulator_output_ct, *context_ct = ct
     context_ct = tuple(context_ct)
 
-    # Forward pass through self.compute_residual. Outputs that will not receive
+    # Forward pass through self._compute_residual. Outputs that will not receive
     # a gradient signal from subsequent layers are moved to aux.
     def call_compute_residual(x, weights):
       state_to_pass = state[0]  # old_state
@@ -343,40 +343,40 @@ class ReversibleHalfResidual(ReversibleLayer):
           return stt
 
       state_to_pass = _replace_second_time(state_to_pass, new_state[0])
-      res, _ = self.compute_residual.pure_fn(
+      res, _ = self._compute_residual.pure_fn(
           x, weights=weights, state=state_to_pass, rng=rngs[0])
       if not isinstance(res, (tuple, list)):
         return res, None
       else:
         n_differentiable = 1
-        if self.attention_layer is not None:
-          n_differentiable = min(len(res), self.attention_layer.n_in)
+        if self._attention_layer is not None:
+          n_differentiable = min(len(res), self._attention_layer.n_in)
         return res[:n_differentiable], res[n_differentiable:]
 
     stack = context
-    inputs = cb.inputs_from_stack(stack, self.compute_residual.n_in)
+    inputs = cb.inputs_from_stack(stack, self._compute_residual.n_in)
     outputs, compute_residual_vjpfun, outputs_aux = fastmath.vjp(
         call_compute_residual, inputs, weights[0], has_aux=True)
     if outputs_aux is not None:
       n_differentiable_outputs = len(outputs)
       outputs = outputs + outputs_aux
-    stack = cb.outputs_onto_stack(outputs, stack, self.compute_residual.n_in)
+    stack = cb.outputs_onto_stack(outputs, stack, self._compute_residual.n_in)
 
     stack_ct = accumulator_output_ct
-    if self.attention_layer is None:
+    if self._attention_layer is None:
       residual = stack[0] if isinstance(stack, (tuple, list)) else stack
     else:
-      inputs = cb.inputs_from_stack(stack, self.attention_layer.n_in)
+      inputs = cb.inputs_from_stack(stack, self._attention_layer.n_in)
       (residual, _, attn_inputs_ct, attn_weights_ct
       ) = self._forward_and_or_backward(
           inputs, weights[1], new_state[1], rngs[1],
           output_grad=accumulator_output_ct,
           compute_output=True, update_state=False)
       stack_ct = cb.outputs_onto_stack(
-          attn_inputs_ct, stack_ct, self.attention_layer.n_out)
+          attn_inputs_ct, stack_ct, self._attention_layer.n_out)
 
     compute_residual_ct = cb.inputs_from_stack(
-        stack_ct, self.compute_residual.n_out)
+        stack_ct, self._compute_residual.n_out)
     if outputs_aux is not None:
       if not isinstance(compute_residual_ct, (tuple, list)):
         compute_residual_ct = (compute_residual_ct,)
@@ -385,7 +385,7 @@ class ReversibleHalfResidual(ReversibleLayer):
     (compute_residual_inputs_ct, compute_residual_weights_ct
     ) = compute_residual_vjpfun(compute_residual_ct)
     stack_ct = cb.outputs_onto_stack(
-        compute_residual_inputs_ct, stack_ct, self.compute_residual.n_out)
+        compute_residual_inputs_ct, stack_ct, self._compute_residual.n_out)
     if not isinstance(stack_ct, (tuple, list)):
       stack_ct = (stack_ct,)
     def _add(x, y):
@@ -399,7 +399,7 @@ class ReversibleHalfResidual(ReversibleLayer):
 
     reconstructed_x = accumulator_output - residual
     stack = (reconstructed_x,) + context
-    if self.attention_layer is None:
+    if self._attention_layer is None:
       weights_ct = (compute_residual_weights_ct,)
     else:
       weights_ct = (compute_residual_weights_ct, attn_weights_ct)
@@ -411,17 +411,17 @@ class ReversibleHalfResidual(ReversibleLayer):
     if len(stack) == 1:
       stack = stack[0]
 
-    inputs = cb.inputs_from_stack(stack, self.compute_residual.n_in)
-    weights, state = self.compute_residual.init(inputs)
-    outputs, _ = self.compute_residual._forward_abstract(inputs)
-    stack = cb.outputs_onto_stack(outputs, stack, self.compute_residual.n_in)
+    inputs = cb.inputs_from_stack(stack, self._compute_residual.n_in)
+    weights, state = self._compute_residual.init(inputs)
+    outputs, _ = self._compute_residual._forward_abstract(inputs)
+    stack = cb.outputs_onto_stack(outputs, stack, self._compute_residual.n_in)
 
-    if self.attention_layer is None:
+    if self._attention_layer is None:
       self.state = (state,)
       self.weights = (weights,)
     else:
-      inputs = cb.inputs_from_stack(stack, self.attention_layer.n_in)
-      attn_weights, attn_state = self.attention_layer.init(inputs)
+      inputs = cb.inputs_from_stack(stack, self._attention_layer.n_in)
+      attn_weights, attn_state = self._attention_layer.init(inputs)
       self.state = (state, attn_state)
       self.weights = (weights, attn_weights)
   # pylint: enable=protected-access

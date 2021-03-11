@@ -38,14 +38,14 @@ class _ClippedScaling(tl.Layer):
   def __init__(self,
                residual_weight):
     super().__init__(n_in=1, n_out=1)
-    self.residual_weight = residual_weight
+    self._residual_weight = residual_weight
 
   def forward(self, x):
     s = self.weights
     return jnp.multiply(x, fastmath.expit(s))
 
   def init_weights_and_state(self, input_signature):
-    self.weights = _inverse_sigmoid(self.residual_weight) * np.ones(
+    self.weights = _inverse_sigmoid(self._residual_weight) * np.ones(
         (input_signature.shape[-1])).astype('float32')
 
 

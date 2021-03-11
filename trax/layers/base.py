@@ -661,6 +661,39 @@ class Layer:
     output, state = do_forward(self.state, self._rng, x, self.weights)
     return output, state
 
+  def _settable_attrs(self):
+    """We only allow to set these attributes in Trax layers to prevent typos."""
+    return ('weights', 'state', 'rng')
+
+  def __setattr__(self, attr, value):
+    """Sets class attributes and protects from typos.
+
+    In Trax layers, we only allow to set the following public attributes::
+
+      - weights
+      - state
+      - rng
+
+    This function prevents from setting other public attributes to avoid typos,
+    for example, this is not possible and would be without this function::
+
+      [typo]   layer.weighs = some_tensor
+
+    If you need to set other public attributes in a derived class (which we
+    do not recommend as in almost all cases it suffices to use a private
+    attribute), override self._settable_attrs to include the attribute name.
+
+    Args:
+      attr: Name of the attribute to be set.
+      value: Value to be assigned to the attribute.
+    """
+    if attr[0] != '_' and attr not in self._settable_attrs():
+      raise ValueError(
+          'Trax layers only allow to set %s as public attribues, not %s.' %
+          (str(self._settable_attrs()), attr))
+    else:
+      super().__setattr__(attr, value)
+
 
 class PureLayer(Layer):
   """Pure function from inputs to outputs, packaged as neural network layer.
