@@ -818,6 +818,12 @@ def Reformer2(input_vocab_size,
       tl.Parallel(in_encoder, [], [],            # vec_e tok_e tok_e vec_d tok_d
                   [tl.ShiftRight(mode=mode), out_encoder]),
 
+      # Predict mode doesn't work with padding in encoder. Raising an exception
+      # in jitted function isn't possible, so the second next best thing is
+      # to convert every embedding to NaNs, so the user will not get subtly
+      # wrong results, but clearly wrong results.
+      (_ConvertToNaNsOnAnyZero() if mode == 'predict' else []),
+
       tl.Parallel([], [tl.PaddingMask(),
                        tl.Fn('Squeeze',
                              lambda x: jnp.squeeze(x, (1, 2)), n_out=1)]),
@@ -857,3 +863,10 @@ def _ReversibleSerialForget(layers, d_model, n_layers):
       tl.Dup(),
       _ReversibleSerialForget(layers2, d_model, n_layers)
   )
+
+
+def _ConvertToNaNsOnAnyZero():
+  def _convert_to_nans(x, y):
+    # if all values in x are non-zeros, return x; otherwise return 0s
+    return jnp.where(jnp.all(y, keepdims=False), x, x/0.), y
+  return tl.Fn('ConvertToNaNsOnAnyZero', _convert_to_nans, n_out=2)

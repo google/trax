@@ -191,12 +191,12 @@ class ReformerTest(absltest.TestCase):
           encoder_decoder_attention_type=tl.CausalAttention,
       )
 
-      inp = np.random.randint(vocab_size, size=(batch_size, length))
+      # Token id of 0 indicates padding; and predict mode doesn't support it.
+      inp = np.random.randint(1, vocab_size, size=(batch_size, length))
       out = np.zeros((batch_size, length), dtype=np.int32)
 
       # TODO(jaszczur): check why init_tokens > 1 fails nondeterministically
-      test_utils.test_eval_equals_predict((inp, out), model_fn, 1, -1,
-                                          init_tokens=1)
+      test_utils.test_eval_equals_predict((inp, out), model_fn, 1, -1)
 
   def test_reformer2_doubling(self):
     vocab_size = 2
