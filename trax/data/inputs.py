@@ -777,16 +777,13 @@ def AppendValue(val=None):  # pylint: disable=invalid-name
 
 
 def TruncateToLength(len_map=None):  # pylint: disable=invalid-name
-  """Truncates features in an example to lengths given in `len_map`.
-
-  len_map contains a dictionary of example keys to tuples of dimension sizes.
+  """Returns a stream function that resizes items as specified by ``len_map``.
 
   Args:
-    len_map: dict of int to int tuples (shapes), we truncate examples
-      where a feature's size is beyond the max. Ex: {0: (1, 512), 1: 64}
-      will truncate examples to be within those bounds.
-  Returns:
-    Function to truncate length of examples.
+    len_map: Dictionary that specifies maximum shapes for potentially multiple
+        features per stream item. For example, given a stream of tokenized
+        string pairs, one could enforce a maximum length of 256 tokens for each
+        string by using ``len_map={0: (256,), 1: (256,)}``.
   """
   @debug_data_pipeline.debug_pipeline
   def _truncate_to_length(generator):

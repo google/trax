@@ -269,25 +269,54 @@ class InputsTest(parameterized.TestCase):
                      np.array([[0., 0., 0., 0., 0.,
                                 1., 1., 1.]]).all())
 
-  def test_truncate_to_length(self):
-    tensors1 = [(np.zeros((1, 5)), np.ones((1, 5)))]
+  def test_truncate_to_length_no_arg(self):
+    """Tests that a no-arg call leaves shapes unchanged."""
+    def data_stream():
+      while True:
+        yield (np.zeros((1, 5)), np.ones((1, 5)))
+    stream_fn = data.inputs.TruncateToLength()
+    y0, y1 = next(stream_fn(data_stream()))
+    self.assertEqual(y0.shape, (1, 5))
+    self.assertEqual(y1.shape, (1, 5))
 
-    truncate_to_length_function1 = data.inputs.TruncateToLength()
-    truncated1 = next(truncate_to_length_function1(tensors1))
-    self.assertEqual(truncated1[0].shape, (1, 5))
-    self.assertEqual(truncated1[1].shape, (1, 5))
+  @parameterized.named_parameters(
+      ('none', None, ((1, 5), (1, 5))),
+      ('large_values', {0: (1, 77), 1: (1, 88)}, ((1, 5), (1, 5))),
+      ('small_values', {0: (1, 3), 1: (1, 2)}, ((1, 3), (1, 2))),
+  )
+  def test_truncate_to_length_len_map(self, len_map, out_shapes):
+    """Tests that truncation occurs when len_map values are small enough."""
+    def data_stream():
+      while True:
+        yield (np.zeros((1, 5)), np.ones((1, 5)))
+    stream_fn = data.inputs.TruncateToLength(len_map=len_map)
+    y0, y1 = next(stream_fn(data_stream()))
+    self.assertEqual(y0.shape, out_shapes[0])
+    self.assertEqual(y1.shape, out_shapes[1])
 
-    truncate_to_length_function2 = data.inputs.TruncateToLength({0: (1, 3),
-                                                                 1: (1, 2)})
-    truncated2 = next(truncate_to_length_function2(tensors1))
-    self.assertEqual(truncated2[0].shape, (1, 3))
-    self.assertEqual(truncated2[1].shape, (1, 2))
-
-    truncate_to_length_function3 = data.inputs.TruncateToLength({0: (1, 77),
-                                                                 1: (1, 88)})
-    truncated3 = next(truncate_to_length_function3(tensors1))
-    self.assertEqual(truncated3[0].shape, (1, 5))
-    self.assertEqual(truncated3[1].shape, (1, 5))
+  def test_truncate_to_length_questionable_behavior(self):
+    # Use of np.reshape in TruncateToLength allows non-truncation results
+    # without warning. As long as the target shape (len_map value) is
+    # lexicographically prior to the data shape, then np.reshape can happen,
+    # even if it results in *adding* values to the overall array.
+    #
+    # This test passes as a marker of the questionable behavior, and should
+    # *fail* -- and then be removed -- when the function is
+    # clarified/re-implemented.
+    #
+    # TODO(jonni): Determine desired behavior, and fit implementation to it.
+    x = np.arange(21).reshape((1, 21, 1))
+    def data_stream():
+      while True:
+        yield x
+    stream_fn = data.inputs.TruncateToLength(len_map={0: (1, 4, 6)})
+    (y,) = next(stream_fn(data_stream()))
+    self.assertEqual(y.shape, (1, 4, 6))
+    self.assertEqual(y[0, 3, 1], 19)
+    self.assertEqual(y[0, 3, 2], 20)  # end of original values [0..20]
+    self.assertEqual(y[0, 3, 3], 0)  # added value
+    self.assertEqual(y[0, 3, 4], 1)  # added value
+    self.assertEqual(y[0, 3, 5], 2)  # added value
 
   def test_filter_empty_examples(self):
     tensors1 = [(np.zeros((0,)), np.ones((1, 5))),
