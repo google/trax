@@ -1,0 +1,95 @@
+# Copyright 2021 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.layers
+import trax.models
+import trax.optimizers
+import trax.data.tf_inputs
+import trax.supervised.trainer_lib
+
+# Parameters that will vary between experiments:
+# ==============================================================================
+n_layers = 6
+pos_type = 'fixed-base'
+attn_type = @LSHSelfAttention  # @CausalFavor
+
+# Parameters for batcher:
+# ==============================================================================
+batcher.data_streams = @tf_inputs.data_streams
+batcher.batch_size_per_device = 1
+batcher.eval_batch_size = 8
+batcher.max_eval_length = 12288  # 64 * 64 * 3
+batcher.variable_shapes = False
+
+# Parameters for data_streams:
+# ==============================================================================
+data_streams.data_dir = None
+data_streams.dataset_name = 'downsampled_imagenet/64x64'
+data_streams.input_name = 'image'
+data_streams.target_name = 'image'
+data_streams.bare_preprocess_fn = @trax.data.tf_inputs.downsampled_imagenet_flatten_bare_preprocess
+
+# Parameters for multifactor:
+# ==============================================================================
+# 0.03125 ~= 1024^-0.5 = d_model^-0.5
+multifactor.constant = 0.03125
+multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
+multifactor.warmup_steps = 16000
+
+# Parameters for Adam:
+# ==============================================================================
+Adam.weight_decay_rate=0.0
+Adam.b1 = 0.9
+Adam.b2 = 0.98
+Adam.eps = 1e-9
+
+# Parameters for train:
+# ==============================================================================
+train.eval_frequency = 500
+train.eval_steps = 256
+train.model = @trax.models.RelformerLM
+train.optimizer = @trax.optimizers.Adam
+train.steps = 500000
+train.save_graphs = False
+train.checkpoints_at = \
+    [1000, 5000, 10000, 20000, 40000, 60000, 80000,
+     100000, 200000, 300000, 400000, 500000]
+
+# Parameters for LSHSelfAttention:
+# ==============================================================================
+LSHSelfAttention.attention_dropout = 0.2
+LSHSelfAttention.chunk_len = 128
+LSHSelfAttention.n_buckets = 192
+LSHSelfAttention.n_chunks_after = 0
+LSHSelfAttention.n_chunks_before = 1
+LSHSelfAttention.n_hashes = 2
+LSHSelfAttention.n_parallel_heads = 1
+LSHSelfAttention.predict_drop_len = 256
+LSHSelfAttention.predict_mem_len = 12288
+
+# Parameters for RelformerLM:
+# ==============================================================================
+RelformerLM.d_model = 1024
+RelformerLM.d_ff = 4096
+RelformerLM.dropout = 0.0
+RelformerLM.ff_activation = @trax.layers.FastGelu
+RelformerLM.max_len = 12288  # 64 * 64 * 3
+RelformerLM.mode = 'train'
+RelformerLM.n_heads = 8
+RelformerLM.n_rel_layers = %n_layers
+RelformerLM.vanilla_layers = (3, 3)
+RelformerLM.shorten_factor = 3
+RelformerLM.vocab_size = 256
+RelformerLM.vanilla_attn_type = %attn_type
+RelformerLM.pos_type = %pos_type

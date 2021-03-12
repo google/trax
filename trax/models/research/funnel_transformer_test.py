@@ -122,12 +122,13 @@ class FunnelTransformerTest(parameterized.TestCase):
     vocab_size = 7
     x = np.ones((3, 6)).astype(np.int32)
 
-    simple_funnel = ft.FunnelTransformerLM(
+    simple_funnel = ft.RelformerLM(
         vocab_size,
-        shorten_factors=(3,),
-        n_funnel_blocks=(1,),
+        shorten_factor=3,
+        n_rel_layers=1,
         vanilla_layers=(1, 1),
-        d_model=d_model, d_ff=d_model, n_heads=2
+        d_model=d_model, d_ff=d_model, n_heads=2,
+        vanilla_attn_type=tl.SelfAttention
     )
     _, _ = simple_funnel.init(shapes.signature(x))
     y = simple_funnel(x)
@@ -159,12 +160,13 @@ class FunnelTransformerTest(parameterized.TestCase):
       return output_logits
 
     with fastmath.use_backend(fastmath.Backend.JAX):
-      model = ft.FunnelTransformerLM(
+      model = ft.RelformerLM(
           vocab_size,
-          shorten_factors=(3,),
-          n_funnel_blocks=(1,),
+          shorten_factor=3,
+          n_rel_layers=1,
           vanilla_layers=(1, 1),
-          d_model=d_model, d_ff=4*d_model, n_heads=2
+          d_model=d_model, d_ff=4*d_model, n_heads=2,
+          vanilla_attn_type=tl.SelfAttention
       )
 
       x_1 = jax.random.randint(rng_1, input_shape, 0, vocab_size)
