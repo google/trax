@@ -202,6 +202,7 @@ def BenesBlock(d_model, dropout, mode):
 @assert_shape('bl->blv')
 def ResidualShuffleExchange(vocab_size,
                             d_model,
+                            input_dropout,
                             dropout,
                             mode='train',
                             n_blocks=2):
@@ -209,6 +210,7 @@ def ResidualShuffleExchange(vocab_size,
   benes_blocks = [BenesBlock(d_model, dropout, mode) for _ in range(n_blocks)]
   return tl.Serial(
       tl.Embedding(vocab_size, d_model),
+      tl.Dropout(rate=input_dropout, mode=mode),
       # Apply Benes Block n_blocks times.
       *benes_blocks,
       ResidualSwitchUnit(d_model, dropout, mode),

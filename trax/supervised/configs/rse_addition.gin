@@ -55,11 +55,16 @@ multifactor.constant = 0.1
 multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
 multifactor.warmup_steps = 4000
 
+# Parameters for Adafactor:
+# ==============================================================================
+# Adafactor.do_momentum = True
+
 # Parameters for RSE:
 # ==============================================================================
 ResidualShuffleExchange.vocab_size = %vocab_size
 ResidualShuffleExchange.d_model = 192
-ResidualShuffleExchange.dropout = 0.05
+ResidualShuffleExchange.dropout = 0.1
+ResidualShuffleExchange.input_dropout = 0.05
 ResidualShuffleExchange.mode = 'train'
 ResidualShuffleExchange.n_blocks = 2
 
@@ -74,7 +79,7 @@ train.eval_frequency = 1000
 train.eval_steps = 50
 train.optimizer = %Adam
 train.loss_fn = @trax.layers.WeightedCategoryCrossEntropy()
-train.steps = 30000
+train.steps = 100000
 train.model = @trax.models.ResidualShuffleExchange
 train.checkpoint_highest = 'sequence_accuracy'
 train.additional_eval_streams = [
