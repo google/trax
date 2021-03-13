@@ -110,6 +110,60 @@ def _n_weights_per_core(weights):  # pylint: disable=invalid-name
       return weights_sum  # fall back to the sum
 
 
+def _non_nan(x):  # pylint: disable=invalid-name
+  """Replaces NaN values with zeros.
+
+  Args
+    x: tensor with arbitrary shape.
+
+  A support function replaces NaN values with zeros to escape
+  the undefined behavior of the division by zero.
+  """
+  return jnp.where(jnp.isnan(x), 0., x)
+
+
+def _precision_recall(predictions, targets, k):  # pylint: disable=invalid-name
+  """Returns precision, recall, and intermediate values
+     for the given category `k`.
+
+  Args:
+    predictions: predicted categories.
+    targets: target categories.
+    k: a category number.
+
+  Returns a tuple:
+    n_correct: a number of correct (or true) examples.
+    n_k_predictions: a number of predictions of the `k` category.
+    n_k_targets: a number of targets for the `k` category.
+    precision: a precision score.
+    recall: a recall score.
+
+  A support function for calculating precision, recall,
+  and intermediate values for the single category `k`
+  for future use in metric layers.
+  """
+  n_correct = sum((predictions == k) & (targets == k))
+  n_k_predictions = sum(predictions == k)
+  precision = _non_nan(n_correct / n_k_predictions)
+  n_k_targets = sum(targets == k)
+  recall = _non_nan(n_correct / n_k_targets)
+  return (n_correct, n_k_predictions, n_k_targets, precision, recall)
+
+
+def _f_score(precision, recall, beta2):  # pylint: disable=invalid-name
+  """Returns F-score.
+
+  Args:
+    precision: a precision score.
+    recall: a recall score.
+    beta2: a square of the parameter that determines the weight of recall.
+
+  A support function to calculate F-score for the single category.
+  """
+  return _non_nan(
+    (beta2 + 1) * (precision * recall) / ((beta2 * precision) + recall))
+
+
 def WeightedCategoryAccuracy():
   r"""Returns a layer that computes a weighted category prediction accuracy.
 
@@ -433,6 +487,10 @@ def SmoothL1Loss():
 def MacroAveragedFScore(beta=1., initial_category_index=0):
   r"""Returns a layer that computes a macro-averaged F-score.
 
+  The macro-averaged F-score summarize how well the classifier's `k` predictions
+  align with the observed/gold instances of `k`. It additionally cares about
+  all the classes equally regardless of their size.
+
   Args:
     beta: a parameter that determines the weight of recall in the F-score.
     initial_category_index: an index of the initial category.
@@ -447,23 +505,54 @@ def MacroAveragedFScore(beta=1., initial_category_index=0):
   The layer returns an macro-averaged F-score across all the classes.
   """
   def f(model_output, targets):  # pylint: disable=invalid-name
-    def non_nan(x):  # pylint: disable=invalid-name
-      return jnp.where(jnp.isnan(x), 0., x)
-
     beta2 = beta ** 2
     predictions = jnp.argmax(model_output, axis=-1)
     n_categories = model_output.shape[-1]
     f_scores = jnp.empty(0)
     for k in range(initial_category_index, n_categories):
-      n_correct = sum((predictions == k) & (targets == k))
-      precision = non_nan(n_correct / sum(predictions == k))
-      recall = non_nan(n_correct / sum(targets == k))
-      f_score = non_nan(
-          (beta2 + 1) * (precision * recall) / ((beta2 * precision) + recall))
-      f_scores = jnp.append(f_scores, f_score)
+      n_correct, _, _, precision, recall = _precision_recall(
+        predictions, targets, k)
+      f_scores = jnp.append(f_scores, _f_score(precision, recall, beta2))
     return jnp.mean(f_scores)
 
   return base.Fn('MacroAveragedFScore', f)
+
+
+def WeightedFScore(beta = 1., initial_category_index=0):
+  """Returns a layer that computes a weighted F-score.
+
+  The weighted F-score summarize how well the classifier's `k` predictions
+  align with the observed/gold instances of `k`. It additionally
+  weights the summary by the number of observed/gold and predicted examples
+  in each class.
+
+  Args:
+    beta: a parameter that determines the weight of recall in the F-score.
+    initial_category_index: an index of the initial category.
+
+  The layer takes two inputs:
+
+    - Model output from one batch, an ndarray of float-valued elements.
+
+    - A batch of element-wise target values, which matches the shape of the
+      model output.
+
+  The layer returns a weighted F-score across all the classes.
+  """
+  def f(model_output, targets):  # pylint: disable=invalid-name
+    beta2 = beta ** 2
+    predictions = jnp.argmax(model_output, axis=-1)
+    n_categories = model_output.shape[-1]
+    f_scores = jnp.empty(0)
+    weights = jnp.empty(0)
+    for k in range(initial_category_index, n_categories):
+      n_correct, _, n_k_targets, precision, recall = _precision_recall(
+        predictions, targets, k)
+      f_scores = jnp.append(f_scores, _f_score(precision, recall, beta2))
+      weights = jnp.append(weights, n_k_targets)
+    return jnp.average(f_scores, weights=weights)
+
+  return base.Fn("WeightedFScore", f)
 
 
 def WeightedSum():
