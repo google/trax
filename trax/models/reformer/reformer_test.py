@@ -18,6 +18,7 @@
 
 import functools
 
+import jax
 from absl.testing import absltest
 import gin
 import numpy as np
@@ -111,6 +112,56 @@ class ReformerTest(absltest.TestCase):
     weights, state, logits = mock_training_step(
         x, weights, state, fastmath.random.get_prng(0))
     self.assertEqual(logits.shape, (1, 65536, 256))
+
+
+  def test_reformer_lm_autoregressive_property(self):
+    chunk_len = 2
+    gin.bind_parameter('LSHSelfAttention.chunk_len', chunk_len)
+    max_len = chunk_len * 3  # Changing max_len to chunk_len * 2 makes it pass,
+    # anything bigger fails.
+
+    d_model = 8
+    n_heads = 2
+    vocab_size = 26
+    input_shape = (1, max_len)
+
+    rng_1 = jax.random.PRNGKey(0)
+    rng_2 = jax.random.PRNGKey(1)
+
+    def _get_output_logits(unitialized_eval_model: tl.Layer, x):
+      input_signature = shapes.signature(x)
+      unitialized_eval_model.init(input_signature, rng=rng_1, use_cache=False)
+
+      output_logits, *_ = unitialized_eval_model(x, rng=rng_1)
+      return output_logits
+
+    def _test_attn_type(attn_type):
+      with fastmath.use_backend(fastmath.Backend.JAX):
+        model = reformer.ReformerLM(vocab_size, d_model=d_model,
+                                    d_ff=4 * d_model,
+                                    d_attention_key=d_model // n_heads,
+                                    d_attention_value=
+                                    d_model // n_heads, n_layers=1,
+                                    n_heads=n_heads,
+                                    dropout=0,
+                                    max_len=max_len, attention_type=attn_type,
+                                    mode='eval')
+
+        x_1 = jax.random.randint(rng_1, input_shape, 0, vocab_size)
+        y_1 = _get_output_logits(model, x_1)
+
+        x_2 = jax.random.randint(rng_2, input_shape, 0, vocab_size)
+
+        for i in range(input_shape[1]):
+          masked_x_2 = np.concatenate((x_1[:, :i], x_2[:, i:]), axis=1)
+
+          y_2 = _get_output_logits(model, masked_x_2)
+          self.assertEqual(y_2.shape[0], input_shape[1])
+          np.testing.assert_array_almost_equal(y_1[:i + 1], y_2[:i + 1])
+
+    _test_attn_type(tl.SelfAttention)
+    _test_attn_type(tl.LSHSelfAttention)  # this one fails
+
 
   def test_reformer2_quick(self):
     vocab_size = 2
