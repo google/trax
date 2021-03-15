@@ -16,7 +16,6 @@
 # Lint as: python3
 """Transformer variant -- no encoder-decoder attention."""
 
-import jax
 from trax import fastmath
 from trax import layers as tl
 from trax.fastmath import numpy as jnp
@@ -197,7 +196,7 @@ def _ConcatWithPadding(vec_e, vec_d, mask_e):
     zero = jnp.array(0, dtype=e_idx.dtype)  # avoid int32/int64 mismatch
     return fastmath.dynamic_update_slice(final_row, row_d, (e_idx, zero))
 
-  return jax.lax.map(_UpdateRow, [vec_e, vec_d, mask_e])
+  return fastmath.map(_UpdateRow, [vec_e, vec_d, mask_e])
 
 
 def _StripFromConcatenateWithPadding(vec_ed, tok_e, tok_d):
@@ -230,7 +229,7 @@ def _StripFromConcatenateWithPadding(vec_ed, tok_e, tok_d):
     h_np = jnp.array(H, dtype=len_e.dtype)
     return fastmath.dynamic_slice(row_ed, (len_e, zero), (l2_np, h_np))
 
-  return jax.lax.map(_UpdateRow, [vec_ed, tok_e, tok_d])
+  return fastmath.map(_UpdateRow, [vec_ed, tok_e, tok_d])
 
 
 class StripFromConcatenateWithPadding(tl.Layer):

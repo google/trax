@@ -197,6 +197,7 @@ JAX_BACKEND = {
     'local_device_count': jax.local_device_count,
     'logsumexp': jax_special.logsumexp,
     'lt': lax.lt,
+    'map': lax.map,
     'max_pool': jax_max_pool,
     'pmap': jax.pmap,
     'psum': lax.psum,

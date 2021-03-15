@@ -144,6 +144,11 @@ def scan(*args, **kwargs):
   return backend()['scan'](*args, **kwargs)
 
 
+def map(*args, **kwargs):  # pylint: disable=redefined-builtin
+  """Map a function over leading array axes."""
+  return backend()['map'](*args, **kwargs)
+
+
 def fori_loop(lower, upper, body_fn, init_val):
   """Loop from `lower` to `upper` running `body_fn` starting from `init_val`.
 

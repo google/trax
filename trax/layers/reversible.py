@@ -389,9 +389,11 @@ class ReversibleHalfResidual(ReversibleLayer):
     if not isinstance(stack_ct, (tuple, list)):
       stack_ct = (stack_ct,)
     def _add(x, y):
-      if x.dtype == jax.float0:
+      # `None` is for TFNP backend, which uses `None` as the gradient of
+      # int/bool instead of an array of dtype `float0`.
+      if x is None or x.dtype == jax.float0:
         return y
-      if y.dtype == jax.float0:
+      if y is None or y.dtype == jax.float0:
         return x
       return x + y
     stack_ct = (accumulator_output_ct,) + fastmath.nested_map_multiarg(
