@@ -1466,7 +1466,7 @@ def T5GlueTrainStreamsParallel(benchmark_list=gin.REQUIRED):
     benchmark_list: List of simple lower-case names of GLUE benchmarks, e.g.,
         ``'cola'``, ``'mnli'``, ``'rte'``.
   """
-  stream_list = map(T5GlueTrainStream, benchmark_list)
+  stream_list = list(map(T5GlueTrainStream, benchmark_list))
   return data.Parallel(stream_list)
 
 
@@ -1495,7 +1495,7 @@ def T5GlueEvalStreamsParallel(benchmark_list=gin.REQUIRED):
         eval/validation split), you can specify it with an ``'_e2'`` suffix,
         e.g., ``'mnli_e2'``.
   """
-  stream_list = map(T5GlueEvalStream, benchmark_list)
+  stream_list = list(map(T5GlueEvalStream, benchmark_list))
   return data.Parallel(stream_list)
 
 
@@ -1528,7 +1528,7 @@ def T5GlueEvalTasks(benchmark_list=gin.REQUIRED):
         ``'rte_e'`` (RTE benchmark, eval/validation split), and ``'mnli_e2'``
         (MNLI alternate "mismatched" eval/validation split).
   """
-  task_list = map(_T5GlueEvalTask, benchmark_list)
+  task_list = list(map(_T5GlueEvalTask, benchmark_list))
   return task_list
 
 
