@@ -93,8 +93,8 @@ class SM3(opt_base.Optimizer):
     weight_decay = opt_params['weight_decay']
 
     is_beta2_1 = (beta2 == 1).astype(g.dtype)
-    w = is_beta2_1  + (1.0 - beta2) * (1.0 - is_beta2_1)
-    v1[0] = beta2 * v1[0] + w * g * g
+    one_minus_beta2_except1 = is_beta2_1  + (1.0 - beta2) * (1.0 - is_beta2_1)
+    v1[0] = beta2 * v1[0] + one_minus_beta2_except1 * g * g
 
     preconditioner = jnp.where(v1[0] > 0, 1.0 / (jnp.sqrt(v1[0]) + 1e-16),
                                jnp.zeros_like(v1[0]))
@@ -145,8 +145,8 @@ class SM3(opt_base.Optimizer):
     acc = self._minimum(reshaped_accumulators)
 
     is_beta2_1 = (beta2 == 1).astype(g.dtype)
-    w = is_beta2_1  + (1.0 - beta2) * (1.0 - is_beta2_1)
-    acc = beta2 * acc + w * g * g
+    one_minus_beta2_except1 = is_beta2_1  + (1.0 - beta2) * (1.0 - is_beta2_1)
+    acc = beta2 * acc + one_minus_beta2_except1 * g * g
 
     preconditioner = jnp.where(acc > 0.0, 1.0 / (jnp.sqrt(acc) + 1e-16),
                                jnp.zeros_like(acc))
