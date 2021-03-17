@@ -96,7 +96,7 @@ class RelAttentionTest(absltest.TestCase):
                                        [-3., -1.]]]])
 
   def test_create_mask_layer_downsample(self):
-    layer = ra.CreateAttentionMaskLayer()
+    layer = ra.AttentionMaskLayer()
     xs = _get_xs(q=2, k=4)
     layer.init(shapes.signature(xs))
     _, _, _, mask = layer(xs)
@@ -105,7 +105,7 @@ class RelAttentionTest(absltest.TestCase):
                                                  [True, True, True, True]]]])
 
   def test_create_mask_layer_upsample(self):
-    layer = ra.CreateAttentionMaskLayer()
+    layer = ra.AttentionMaskLayer()
     xs = _get_xs(q=4, k=2)
     layer.init(shapes.signature(xs))
     _, _, _, mask = layer(xs)
@@ -116,13 +116,75 @@ class RelAttentionTest(absltest.TestCase):
                                                  [True, True]]]])
 
   def test_create_mask_layer(self):
-    layer = ra.CreateAttentionMaskLayer()
+    layer = ra.AttentionMaskLayer()
     xs = _get_xs(q=2, k=2)
     layer.init(shapes.signature(xs))
     _, _, _, mask = layer(xs)
     self.assertEqual(mask.shape, (1, 1, 2, 2))
     np.testing.assert_equal(tl.to_list(mask), [[[[True, False],
                                                  [True, True]]]])
+
+  def test_create_mask_layer_predict(self):
+    layer = ra.AttentionMaskLayer(
+        total_kv_pooling=2,
+        n_raw_tokens_generated=1,
+        max_inference_length=3,
+        mode='predict')
+    xs = _get_xs(q=1, k=1)
+    layer.init(shapes.signature(xs))
+
+    for _ in range(2):
+      _, _, _, mask = layer(xs)
+      self.assertEqual(mask.shape, (1, 1, 1, 3))
+      np.testing.assert_equal(tl.to_list(mask), [[[[True, False, False]]]])
+
+    for _ in range(2):
+      _, _, _, mask = layer(xs)
+      self.assertEqual(mask.shape, (1, 1, 1, 3))
+      np.testing.assert_equal(tl.to_list(mask), [[[[True, True, False]]]])
+
+    for _ in range(2):
+      _, _, _, mask = layer(xs)
+      self.assertEqual(mask.shape, (1, 1, 1, 3))
+      np.testing.assert_equal(tl.to_list(mask), [[[[True, True, True]]]])
+
+  def test_positional_embeddings_predict(self):
+    d_feature = 10
+    total_kv_pooling = 2
+    max_inference_length = 3
+    layer = ra.PositionalEmbeddings(
+        d_feature=d_feature,
+        separate_cls=False,
+        total_kv_pooling=2,
+        n_raw_tokens_generated=1,
+        max_inference_length=3,
+        mode='predict')
+    xs = _get_xs(q=1, k=1)[:2]
+    layer.init(shapes.signature(xs))
+
+    for _ in range(2):
+      pos_emb = layer(xs)
+      real_positions = np.array([0, 1, 2]) * total_kv_pooling
+      self.assertEqual(pos_emb.shape, (max_inference_length, d_feature))
+      np.testing.assert_allclose(
+          pos_emb,
+          ra.Sinusoidal_Embeddings(real_positions, d_feature=d_feature))
+
+    for _ in range(2):
+      pos_emb = layer(xs)
+      real_positions = np.array([-1, 0, 1]) * total_kv_pooling
+      self.assertEqual(pos_emb.shape, (max_inference_length, d_feature))
+      np.testing.assert_allclose(
+          pos_emb,
+          ra.Sinusoidal_Embeddings(real_positions, d_feature=d_feature))
+
+    for _ in range(2):
+      pos_emb = layer(xs)
+      real_positions = np.array([-2, -1, 0]) * total_kv_pooling
+      self.assertEqual(pos_emb.shape, (max_inference_length, d_feature))
+      np.testing.assert_allclose(
+          pos_emb,
+          ra.Sinusoidal_Embeddings(real_positions, d_feature=d_feature))
 
 
 if __name__ == '__main__':
