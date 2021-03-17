@@ -68,13 +68,13 @@ data.Batch.batch_size = 4
 # ==============================================================================
 train.init_checkpoint = None
 train.optimizer = @trax.optimizers.Adafactor
-train.eval_frequency = 20
+train.eval_frequency = 500
 train.eval_steps = 10
 train.inputs = @trax.data.inputs.make_inputs
 train.model = @trax.models.ConfigurableTransformer
 train.steps = 1000000
 train.checkpoint_highest = 'accuracy'
-train.additional_eval_tasks = [@data.T5GlueEvalTasks()]
+train.additional_eval_tasks = @data.T5GlueEvalTasks()
 
 # Parameters for ConfigurableTransformer:
 # ==============================================================================

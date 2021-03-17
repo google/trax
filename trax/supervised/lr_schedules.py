@@ -30,13 +30,13 @@ import gin
 from trax.fastmath import numpy as jnp
 
 
-@gin.configurable()
+@gin.configurable
 def constant(value):
   """Returns an LR schedule that is constant from time (step) 1 to infinity."""
   return _BodyAndTail(value, body_start=1)
 
 
-@gin.configurable()
+@gin.configurable
 def warmup(n_warmup_steps, max_value):
   """Returns an LR schedule with linear warm-up followed by constant value.
 
@@ -48,13 +48,13 @@ def warmup(n_warmup_steps, max_value):
   return _BodyAndTail(max_value, body_start=n_warmup_steps + 1)
 
 
-@gin.configurable()
+@gin.configurable
 def warmup_and_rsqrt_decay(n_warmup_steps, max_value):
   """Returns an LR schedule with warm-up + reciprocal square root decay."""
   return _BodyAndTail(max_value, tail_start=n_warmup_steps + 1, tail_fn=_rsqrt)
 
 
-@gin.configurable()
+@gin.configurable
 def multifactor(factors='constant * linear_warmup * rsqrt_decay',
                 constant=0.1,  # pylint: disable=redefined-outer-name
                 warmup_steps=400,

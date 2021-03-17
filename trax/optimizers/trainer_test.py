@@ -232,7 +232,7 @@ class TrainerTest(absltest.TestCase):
     # This test requires > 18GB RAM, only run on TPUs. It does pass on GPU
     # and CPU when you run it locally, but it's too big for unit-testing.
     ram_limited = True  # Set to False to run this test locally.
-    if fastmath.device_count() == 1 and ram_limited:
+    if fastmath.global_device_count() == 1 and ram_limited:
       return
 
     # Create inputs and rngs.
@@ -277,7 +277,7 @@ class TrainerTest(absltest.TestCase):
   def test_run_reversible_weights_trainsfer_xprof(self):
     """Runs the reversible trainer and profiles weight transfer stats."""
     run_this_test = False  # We only run this test manually.
-    if fastmath.device_count() == 1 and run_this_test:  # TPU only
+    if not run_this_test or fastmath.global_device_count() == 1:  # TPU only
       return
 
     # Create inputs and rngs.

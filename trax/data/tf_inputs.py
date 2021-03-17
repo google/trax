@@ -41,7 +41,6 @@ from trax.data import debug_data_pipeline
 from trax.data import text_encoder
 from trax.fastmath import numpy as jnp
 
-
 # How many examples from the stream to skip at random during training.
 # For now, we skip at most 100K examples for efficiency.
 # TODO(lukaszkaiser): can we improve efficiency, should that be changed?
@@ -59,7 +58,7 @@ def t2t_problems():
   return t2tp
 
 
-@gin.configurable()
+@gin.configurable
 def data_streams(dataset_name,
                  data_dir=None,
                  preprocess_fn=no_preprocess,
@@ -258,7 +257,7 @@ def _train_and_eval_dataset(dataset_name,
   return train, valid, keys
 
 
-@gin.configurable()
+@gin.configurable
 def TFDS(  # pylint: disable=invalid-name
     dataset_name,
     data_dir=None,
@@ -395,7 +394,7 @@ def tokenize(stream,
       yield output
 
 
-@gin.configurable()
+@gin.configurable
 def Tokenize(  # pylint: disable=invalid-name
     keys=None,
     vocab_type='subword',  # pylint: disable=invalid-name
@@ -815,7 +814,7 @@ def sentencepiece_tokenize(stream, spm_path=None, extra_ids=0):
     yield np.array(vocab.encode(example))
 
 
-@gin.configurable()
+@gin.configurable
 def SentencePieceTokenize(  # pylint: disable=invalid-name
     spm_path=None,
     extra_ids=0):
@@ -1408,6 +1407,21 @@ def BertGlueTrainStream(benchmark=gin.REQUIRED):
   return _BertGlueDataStream(benchmark + '_t')
 
 
+def GlueEvalAddSuffix(benchmark):
+  """Returns the benchmark name with a suffix.
+
+  Args:
+    benchmark: Simple lower-case name of a GLUE benchmark, e.g., ``'cola'``,
+      ``'mnli'``, ``'rte'``. If the benchmark includes an alternate eval (e.g.,
+      MNLI's "mismatched" eval/validation split), you can specify it with an
+      ``'_e2'`` suffix, e.g., ``'mnli_e2'``.
+  """
+  if benchmark.endswith('_e') or benchmark.endswith('_e2'):
+    return benchmark
+  else:
+    return benchmark + '_e'
+
+
 def BertGlueEvalStream(benchmark=gin.REQUIRED):
   """Returns a Bert-preprocessed eval data stream for ``benchmark``.
 
@@ -1417,10 +1431,7 @@ def BertGlueEvalStream(benchmark=gin.REQUIRED):
         eval (e.g., MNLI's "mismatched" eval/validation split), you can
         specify it with an ``'_e2'`` suffix, e.g., ``'mnli_e2'``.
   """
-  if benchmark.endswith('_e') or benchmark.endswith('e2'):
-    return _BertGlueDataStream(benchmark)
-  else:
-    return _BertGlueDataStream(benchmark + '_e')
+  return _BertGlueDataStream(GlueEvalAddSuffix(benchmark))
 
 
 def _BertGlueDataStream(benchmark_id):
@@ -1433,6 +1444,7 @@ def _BertGlueDataStream(benchmark_id):
         benchmark, eval/validation split), and ``'mnli_e2'`` (MNLI benchmark,
         alternate "mismatched" eval/validation split).
   """
+  benchmark_id = GlueEvalAddSuffix(benchmark_id)
   benchmark, split = benchmark_id.rsplit('_', 1)
   glue_data = TFDS(f'glue/{benchmark}',
                    keys=_GLUE_KEYS[benchmark],
@@ -1466,8 +1478,8 @@ def T5GlueTrainStreamsParallel(benchmark_list=gin.REQUIRED):
     benchmark_list: List of simple lower-case names of GLUE benchmarks, e.g.,
         ``'cola'``, ``'mnli'``, ``'rte'``.
   """
-  stream_list = map(T5GlueTrainStream, benchmark_list)
-  return data.Parallel(stream_list)
+  stream_list = list(map(T5GlueTrainStream, benchmark_list))
+  return data.Parallel(stream_list)()
 
 
 def T5GlueEvalStream(benchmark=gin.REQUIRED):
@@ -1479,10 +1491,7 @@ def T5GlueEvalStream(benchmark=gin.REQUIRED):
         eval (e.g., MNLI's "mismatched" eval/validation split), you can
         specify it with an ``'_e2'`` suffix, e.g., ``'mnli_e2'``.
   """
-  if benchmark.endswith('_e') or benchmark.endswith('_e2'):
-    return _T5GlueDataStream(benchmark)
-  else:
-    return _T5GlueDataStream(benchmark + '_e')
+  return _T5GlueDataStream(GlueEvalAddSuffix(benchmark))
 
 
 def T5GlueEvalStreamsParallel(benchmark_list=gin.REQUIRED):
@@ -1495,8 +1504,8 @@ def T5GlueEvalStreamsParallel(benchmark_list=gin.REQUIRED):
         eval/validation split), you can specify it with an ``'_e2'`` suffix,
         e.g., ``'mnli_e2'``.
   """
-  stream_list = map(T5GlueEvalStream, benchmark_list)
-  return data.Parallel(stream_list)
+  stream_list = list(map(T5GlueEvalStream, benchmark_list))
+  return data.Parallel(stream_list)()
 
 
 def _T5GlueDataStream(benchmark_id):
@@ -1528,13 +1537,14 @@ def T5GlueEvalTasks(benchmark_list=gin.REQUIRED):
         ``'rte_e'`` (RTE benchmark, eval/validation split), and ``'mnli_e2'``
         (MNLI alternate "mismatched" eval/validation split).
   """
-  task_list = map(_T5GlueEvalTask, benchmark_list)
+  task_list = list(map(_T5GlueEvalTask, benchmark_list))
   return task_list
 
 
 def _T5GlueEvalTask(benchmark_id):
   """Returns a T5 GLUE eval task, based on ``benchmark_id``."""
   eval_data = T5GlueEvalStream(benchmark_id)
+  benchmark_id = GlueEvalAddSuffix(benchmark_id)
   metrics = [tl.WeightedCategoryAccuracy(), tl.SequenceAccuracy()]
   benchmark, split = benchmark_id.rsplit('_', 1)
   if benchmark == 'cola':
@@ -1544,7 +1554,7 @@ def _T5GlueEvalTask(benchmark_id):
   else:
     name_upper = benchmark.upper()
   return supervised.training.EvalTask(
-      eval_data,
+      eval_data(),
       metrics,
       metric_names=[f'{name_upper} accuracy',
                     f'{name_upper} sequence accuracy'])
@@ -2168,6 +2178,8 @@ def CreateAnnotatedDropInputs(  # pylint: disable=invalid-name
     dataset_path=None,
     train=True,
     single_file=True,
+    unique=False,
+    total_number_of_samples=None,
     percentile=1.):
   r"""Prepares annotated Drop inputs.
 
@@ -2219,6 +2231,10 @@ def CreateAnnotatedDropInputs(  # pylint: disable=invalid-name
     single_file: if True, then look just for one file. If False, read all
       json files in a given directory and assume that each file contains one
       example. Applied only to training data.
+    unique: if set to True, then the generator will provide at most one question
+      per passage.
+    total_number_of_samples: if set to a positive integer, then the total number
+      of unique samples will be bounded total_number_of_samples.
     percentile: the percentile of the train dataset used for training; default
       set to 1., though setting to a lower value can be interesting when
       combined train is combined with another source of data.
@@ -2250,19 +2266,25 @@ def CreateAnnotatedDropInputs(  # pylint: disable=invalid-name
           with tf.io.gfile.GFile(os.path.join(dataset_path, filename)) as f:
             for line in f:
               dataset.append(json.loads(line))
-            # dataset.append(json.load(f))
     print('The total size of the dataset {}'.format(len(dataset)))
     return dataset[:int(len(dataset) * percentile)]
 
   def drop_annotated_yield_examples(generator=None):
     del generator
     while True:
+      passages = set()
+      unique_examples = set()
       # Notice that below we enable a poor man RL loop
       # aka the DAgger algorithm: https://arxiv.org/pdf/1011.0686.pdf
       # tl;dr: after parsing all examples we re-load the dataset - this
       # may become handy if a prediction service generates new examples.
       dataset = load_dataset()
       for example in dataset:
+        # If total_number_of_samples is not None and we have reached this
+        # number of samples, then we re-load the dataset.
+        if total_number_of_samples:
+          if len(unique_examples) >= total_number_of_samples:
+            break
         # Do we have a pre-calculated input in the example?
         if 'input' in example.keys():
           question = example['input']
@@ -2271,9 +2293,13 @@ def CreateAnnotatedDropInputs(  # pylint: disable=invalid-name
         else:
           # If input is not present, then we expect that this is an
           # original drop example.
+          if unique and example['passage'] in passages:
+            continue
+          passages.add(example['passage'])
           question = example['passage'] + ' ' + example['question']
           list_num = [
-              float(num.replace(',', '').rstrip('.')) for num in re.findall(
+              float(num.replace(',', '').rstrip('.').lstrip('.'))  # pylint: disable=g-complex-comprehension
+              for num in re.findall(
                   r'[-+]?[.]?[\d]+(?:,\d\d\d)*[\.]?\d*(?:[eE][-+]?\d+)?',
                   question)
           ]
@@ -2281,6 +2307,7 @@ def CreateAnnotatedDropInputs(  # pylint: disable=invalid-name
             question += ' n{} = {}'.format(i, list_num[i])
         input_values = 'drop annotated question: ' + question
         target_values = example['calculation']
+        unique_examples.add((input_values, target_values))
         yield input_values, target_values, np.array(
             [1] * len(target_values), dtype=np.int32)
 

@@ -29,6 +29,7 @@ class Adafactor(opt_base.Optimizer):
                multiply_by_parameter_scale=True,
                do_clipping=True,
                do_momentum=False,
+               momentum_in_bfloat16=False,
                beta1=0.0,
                decay_rate=0.8,
                clipping_threshold=1.0,
@@ -49,6 +50,7 @@ class Adafactor(opt_base.Optimizer):
         absolute step size.
       do_clipping: whether to clip gradients; if True, set clipping_theshold.
       do_momentum: whether to use momentum; if True, set beta1.
+      momentum_in_bfloat16: if True, store momentum in bfloat16 to save memory.
       beta1: a float value between 0 and 1, enables momentum and uses extra
         memory if nonzero!  Off by default.
       decay_rate: float: controls second-moment exponential decay schedule.
@@ -63,6 +65,7 @@ class Adafactor(opt_base.Optimizer):
     self._multiply_by_parameter_scale = multiply_by_parameter_scale
     self._do_clipping = do_clipping
     self._do_momentum = do_momentum
+    self._momentum_in_bfloat16 = momentum_in_bfloat16
     # Dynamically configurable parameters will be passed to the update function.
     super().__init__(
         learning_rate=learning_rate,
@@ -93,6 +96,8 @@ class Adafactor(opt_base.Optimizer):
       slots.append(v)
     if self._do_momentum:
       m = jnp.zeros_like(weights)
+      if self._momentum_in_bfloat16:
+        m = m.astype(jnp.bfloat16)
       slots.append(m)
     return slots
 
@@ -120,8 +125,8 @@ class Adafactor(opt_base.Optimizer):
 
     grads_sqr = grads * grads
     if self._factored and len(weights.shape) >= 2:
-      v_row = slots.pop(0)
-      v_col = slots.pop(0)
+      v_row = slots[0]  # In this case, the slots are (v_row, v_col, ...).
+      v_col = slots[1]
       new_v_row = (
           decay_rate * v_row + mixing_rate * jnp.mean(grads_sqr, axis=-1))
       new_v_col = (
@@ -134,7 +139,7 @@ class Adafactor(opt_base.Optimizer):
           grads * jnp.expand_dims(row_factor, axis=-1) *
           jnp.expand_dims(col_factor, axis=-2))
     else:
-      v = slots.pop(0)
+      v = slots[0]  # In this case, the slots are (v, ...)
       new_v = decay_rate * v + mixing_rate * grads_sqr
       updates.append(new_v)
       y = grads * (new_v + epsilon1)**-0.5
@@ -146,10 +151,11 @@ class Adafactor(opt_base.Optimizer):
 
     subtrahend = update_scale * y
     if self._do_momentum:
-      m = slots.pop(0)
+      m = slots[-1]  # Momentum is always the last slot (if used).
+      m = m.astype(subtrahend.dtype)  # Accumulate in subtrahend dtype.
       new_m = beta1 * m + (1.0 - beta1) * subtrahend
       subtrahend = new_m
-      updates.append(new_m)
+      updates.append(new_m.astype(slots[-1].dtype))  # Back to bfloat if needed.
 
     new_weights = (1 - weight_decay_rate) * weights - subtrahend
     # TODO(lukaszkaiser): why is the astype needed here? Check and correct.

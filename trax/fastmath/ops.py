@@ -144,6 +144,11 @@ def scan(*args, **kwargs):
   return backend()['scan'](*args, **kwargs)
 
 
+def map(*args, **kwargs):  # pylint: disable=redefined-builtin
+  """Map a function over leading array axes."""
+  return backend()['map'](*args, **kwargs)
+
+
 def fori_loop(lower, upper, body_fn, init_val):
   """Loop from `lower` to `upper` running `body_fn` starting from `init_val`.
 
@@ -354,9 +359,14 @@ def dataset_as_numpy(*args, **kwargs):
   return JAX_BACKEND['dataset_as_numpy'](*args, **kwargs)
 
 
-def device_count(*args, **kwargs):
-  """Return the number of accelerators (GPUs or TPUs) available."""
-  return backend()['device_count'](*args, **kwargs)
+def global_device_count(*args, **kwargs):
+  """Return the number of accelerators (GPUs or TPUs) in all hosts."""
+  return backend()['global_device_count'](*args, **kwargs)
+
+
+def local_device_count(*args, **kwargs):
+  """Return the number of accelerators (GPUs or TPUs) available on this host."""
+  return backend()['local_device_count'](*args, **kwargs)
 
 
 # Backend selection functions.
@@ -393,7 +403,7 @@ def _get_backend_from_string(name_str):
   return JAX_BACKEND
 
 
-@gin.configurable()
+@gin.configurable
 def backend(name='jax'):
   """Returns the backend used to provide fastmath ops ('tf' or 'jax')."""
   if override_backend:

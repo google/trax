@@ -20,17 +20,17 @@ Funnel-Transformer: Filtering out Sequential Redundancy for Efficient
 Language Processing https://arxiv.org/abs/2006.03236
 """
 from trax import layers as tl
+from trax import fastmath
 from trax.fastmath import numpy as jnp
 from trax.fastmath.ops import index_add
 from trax.layers import core
 from trax.layers import initializers as init
 from trax.layers.assert_shape import assert_shape
 from trax.layers.research.rel_attention import RelativeAttentionLMLayer
+from trax.models.reformer.reformer import DecoderBlock
 from trax.models.research.configurable_transformer import PositionalEncoder
 from trax.models.transformer import _EncoderBlock
 from trax.models.transformer import _FeedForwardBlock
-from trax.models.reformer.reformer import DecoderBlock
-from trax import fastmath
 
 
 @assert_shape('bld->bSd')
@@ -888,7 +888,7 @@ def RelformerLM(vocab_size,
 
   n_pre_decoder_blocks, n_post_decoder_blocks = vanilla_layers
 
-  def create_decoder_blocks(n_layers, total_pooling):
+  def create_decoder_blocks(n_layers, total_pooling):  # pylint: disable=invalid-name
     context_bias_layer, location_bias_layer = _get_rel_att_inputs(d_model,
                                                                   n_heads)
     decoder_blocks = [
@@ -900,12 +900,12 @@ def RelformerLM(vocab_size,
         for _ in range(n_layers)]
     return decoder_blocks + [tl.LayerNorm()]
 
-  def create_reformer_blocks(n_layers, dense=True):
+  def create_reformer_blocks(n_layers, dense=True):  # pylint: disable=invalid-name
     if n_layers == 0:
       return [tl.LayerNorm()]
     d_per_head = d_model // n_heads
     decoder_blocks = [
-        DecoderBlock(d_model, d_ff, d_per_head, d_per_head, n_heads,
+        DecoderBlock(d_model, d_ff, d_per_head, d_per_head, n_heads,  # pylint: disable=g-complex-comprehension
                      vanilla_attn_type,
                      dropout, ff_activation, dropout,
                      ff_use_sru=0,

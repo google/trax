@@ -331,19 +331,24 @@ class Layer:
     # In the current checkpoint format, we store weights in a separate
     # non-pickled file with the same name but added ".npy".
     if isinstance(dictionary['flat_weights'], int):
+      if file_name.endswith('.pkl.gz'):
+        weights_path = file_name[:-6] + 'weights.npy.gz'
+      else:
+        weights_path = file_name + '.npy'
+      if not tf.io.gfile.exists(weights_path):  # old format compatibility
+        weights_path = file_name + '.npy'
       dictionary['flat_weights'] = np_from_file(
-          file_name + '.npy', compresslevel=dictionary['flat_weights'])
+          weights_path, compresslevel=dictionary['flat_weights'])
     if input_signature is None:
       input_signature = dictionary['input_signature']
-    weights_and_state_sig = self.weights_and_state_signature(
-        input_signature, unsafe=True)
+    if weights_only and input_signature is not None:
+      self.init(input_signature)
+    weights_and_state_sig = self.weights_and_state_signature(input_signature)
     weights, state = unflatten_weights_and_state(
         dictionary['flat_weights'], dictionary['flat_state'],
         weights_and_state_sig, weights_only=weights_only)
     if not weights_only:
       self.state = state
-    elif input_signature is not None:
-      self.init(input_signature)
     self.weights = weights
     return (self.weights, self.state)
 
@@ -655,6 +660,39 @@ class Layer:
     output, state = do_forward(self.state, self._rng, x, self.weights)
     return output, state
 
+  def _settable_attrs(self):
+    """We only allow to set these attributes in Trax layers to prevent typos."""
+    return ('weights', 'state', 'rng')
+
+  def __setattr__(self, attr, value):
+    """Sets class attributes and protects from typos.
+
+    In Trax layers, we only allow to set the following public attributes::
+
+      - weights
+      - state
+      - rng
+
+    This function prevents from setting other public attributes to avoid typos,
+    for example, this is not possible and would be without this function::
+
+      [typo]   layer.weighs = some_tensor
+
+    If you need to set other public attributes in a derived class (which we
+    do not recommend as in almost all cases it suffices to use a private
+    attribute), override self._settable_attrs to include the attribute name.
+
+    Args:
+      attr: Name of the attribute to be set.
+      value: Value to be assigned to the attribute.
+    """
+    if attr[0] != '_' and attr not in self._settable_attrs():
+      raise ValueError(
+          f'Trax layers only allow to set {self._settable_attrs()} as public '
+          f'attribues, not {attr}.')
+    else:
+      super().__setattr__(attr, value)
+
 
 class PureLayer(Layer):
   """Pure function from inputs to outputs, packaged as neural network layer.
@@ -806,6 +844,8 @@ def np_to_file(list_of_nparrays, file_path, compresslevel):
 
 def np_from_file(file_path, compresslevel):
   """Load numpy arrays from file_path with gzipping."""
+  if not tf.io.gfile.exists(file_path):
+    raise FileNotFoundError(file_path)
   res = []
   with tf.io.gfile.GFile(file_path, 'rb') as f:
     with gzip.GzipFile(fileobj=f, compresslevel=compresslevel) as gzipf:

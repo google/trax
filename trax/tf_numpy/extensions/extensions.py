@@ -1110,6 +1110,28 @@ def scan(f, init, xs, length=None, reverse=False):
   return _tf_to_np((carry, ys))
 
 
+# named "tf_map" instead of "map" as in JAX to avoid conflict with Python `map`
+def tf_map(f, xs):
+  """Map a function over leading array axes.
+
+  See the docstring of `jax.lax.map`
+  (https://jax.readthedocs.io/en/latest/_autosummary/jax.lax.map.html) for
+  details.
+
+  Args:
+    f: a Python function to apply element-wise over the first axis or axes of
+      `xs`.
+    xs: values over which to map along the leading axis.
+
+  Returns:
+    Mapped values.
+  """
+  def g(unused, x):
+    return unused, f(x)
+  carry = tf.nest.map_structure(lambda _: None, xs)
+  return scan(g, carry, xs)[1]
+
+
 def _get_dynamic_indices(operand, start_indices, slice_sizes):
   """Calcuates the indices for `tf.gather_nd` from slices.
 

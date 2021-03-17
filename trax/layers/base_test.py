@@ -38,6 +38,12 @@ class BaseLayerTest(parameterized.TestCase):
     with self.assertRaisesRegex(tl.LayerError, 'NotImplementedError'):
       _ = layer(x)
 
+  def test_set_weighs_raises_error(self):
+    layer = tl.Layer()
+    layer.weights = 1.0  # can assign weights
+    with self.assertRaisesRegex(ValueError, 'weighs'):
+      layer.weighs = 1.0  # cannot assign weighs
+
   def test_forward_raises_error(self):
     layer = tl.Layer()
     x = np.array([[1, 2, 3, 4, 5], [10, 20, 30, 40, 50]])

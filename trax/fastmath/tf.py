@@ -170,9 +170,11 @@ TF_BACKEND = {
     # TODO(wangpeng): See whether and how to support `remat`
     'remat': lambda f: f,
     'scan': tf_np_extensions.scan,
+    'map': tf_np_extensions.tf_map,
     # TODO(wangpeng): can we make extensions ds_as_numpy compatible with data?
     # 'dataset_as_numpy': tf_np_extensions.dataset_as_numpy,
-    'device_count': lambda: max(len(tf_np_extensions.accelerators()), 1),
+    'global_device_count': lambda: max(len(tf_np_extensions.accelerators()), 1),
+    'local_device_count': lambda: max(len(tf_np_extensions.accelerators()), 1),
     'pmap': _tf_pmap,
     'psum': tf_np_extensions.psum,
     'vmap': tf_np_extensions.vmap,

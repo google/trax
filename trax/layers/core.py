@@ -465,7 +465,7 @@ class RandomUniform(base.Layer):
     return result
 
   def _get_conditionally_synced_rng(self):
-    if self._sync and fastmath.device_count() > 1:
+    if self._sync and fastmath.global_device_count() > 1:
       return fastmath.psum(self.rng, 'batch')
     else:
       return self.rng

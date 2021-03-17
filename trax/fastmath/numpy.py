@@ -62,7 +62,8 @@ def np_abstract_eval(f):
 
 NUMPY_BACKEND = {
     'abstract_eval': np_abstract_eval,
-    'device_count': lambda: 1,
+    'local_device_count': lambda: 1,
+    'global_device_count': lambda: 1,
     'jit': lambda f: f,
     'logsumexp': logsumexp,
     'name': 'numpy',

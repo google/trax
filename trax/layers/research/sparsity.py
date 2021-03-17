@@ -759,9 +759,9 @@ class FavorAttention(base.Layer):
 
   def __init__(self, n_heads=1, numerical_stabilizer=0.001, mode='train'):
     super().__init__(n_in=4, n_out=2)
-    self.n_heads = n_heads
-    self.numerical_stabilizer = numerical_stabilizer
-    self.mode = mode
+    self._n_heads = n_heads
+    self._numerical_stabilizer = numerical_stabilizer
+    self._mode = mode
 
   @staticmethod
   def bidirectional_numerator(query_prime, key_prime, value):
@@ -780,12 +780,12 @@ class FavorAttention(base.Layer):
 
   def forward(self, inputs):
     query, key, value, mask = inputs
-    query_prime = self.relu(query) + self.numerical_stabilizer
-    key_prime = self.relu(key) + self.numerical_stabilizer
+    query_prime = self.relu(query) + self._numerical_stabilizer
+    key_prime = self.relu(key) + self._numerical_stabilizer
     mask_batch_1_length = jnp.reshape(
-        mask, [key.shape[0] // self.n_heads, 1, key.shape[1]]).astype(
+        mask, [key.shape[0] // self._n_heads, 1, key.shape[1]]).astype(
             jnp.float32)
-    mask_heads = mask_batch_1_length + jnp.zeros((1, self.n_heads, 1))
+    mask_heads = mask_batch_1_length + jnp.zeros((1, self._n_heads, 1))
     key_prime *= jnp.reshape(mask_heads, [key.shape[0], key.shape[1], 1])
 
     w = self.bidirectional_numerator(jnp.moveaxis(query_prime, 1, 0),
@@ -840,8 +840,8 @@ class CausalFavorAttention(base.Layer):
 
   def __init__(self, numerical_stabilizer=0.001, mode='train'):
     super().__init__(n_in=3, n_out=1)
-    self.numerical_stabilizer = numerical_stabilizer
-    self.mode = mode
+    self._numerical_stabilizer = numerical_stabilizer
+    self._mode = mode
 
   def forward(self, inputs):
     def favor_numerator_fwd(init_prefix_sum_value,
@@ -924,8 +924,8 @@ class CausalFavorAttention(base.Layer):
       return jnp.where(x <= 0, jnp.zeros_like(x), x)
 
     query, key, value = inputs
-    query_prime = relu(query) + self.numerical_stabilizer
-    key_prime = relu(key) + self.numerical_stabilizer
+    query_prime = relu(query) + self._numerical_stabilizer
+    key_prime = relu(key) + self._numerical_stabilizer
     prefix_sum_tensor_shape = (key.shape[0], key.shape[-1], value.shape[-1])
     t_slice_shape = (key.shape[0], key.shape[-1])
     init_prefix_sum_value_numerator = jnp.zeros(prefix_sum_tensor_shape)

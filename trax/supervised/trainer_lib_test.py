@@ -17,19 +17,18 @@
 
 import functools
 import os
+
 from absl.testing import absltest
 from absl.testing import parameterized
-
 from jax import test_util  # pylint: disable=unused-import
 from jax.config import config
 from jax.lib import xla_bridge
-
 import tensorflow.compat.v2 as tf
-
 from trax import fastmath
 from trax import layers as tl
 from trax import models
 from trax import optimizers as trax_opt
+from trax import shapes as trax_shapes
 from trax import test_utils
 from trax.data import inputs as inputs_lib
 from trax.fastmath import numpy as jnp
@@ -104,6 +103,44 @@ def opt_name(opt):
   if opt is None:
     return 'None'
   return opt.__name__
+
+
+def _pure_lsh_self_attention_fn(n_chunks_after=0):
+  return functools.partial(
+      tl.PureLSHSelfAttentionWrapper,
+      attention_dropout=0.1,
+      chunk_len=16,
+      n_buckets=[32, 32],
+      n_chunks_after=n_chunks_after,
+      n_chunks_before=1,
+      n_hashes=2,
+      n_parallel_heads=1,
+      max_length_for_buckets=1024,
+      predict_drop_len=128,
+      predict_mem_len=1024,
+      num_weights=2,
+      bias=False,
+      pure_lsh_implementation=tl.PureLSHSelfAttention,
+  )
+
+
+def _mixed_lsh_self_attention_fn(n_chunks_after=0):
+  return functools.partial(
+      tl.PureLSHSelfAttentionWrapper,
+      attention_dropout=0.1,
+      chunk_len=16,
+      n_buckets=[32, 32],
+      n_chunks_after=n_chunks_after,
+      n_chunks_before=1,
+      n_hashes=2,
+      n_parallel_heads=1,
+      max_length_for_buckets=1024,
+      predict_drop_len=128,
+      predict_mem_len=1024,
+      num_weights=2,
+      bias=False,
+      pure_lsh_implementation=tl.MixedLSHSelfAttention,
+  )
 
 
 class TraxTest(parameterized.TestCase):
@@ -322,6 +359,123 @@ class TraxTest(parameterized.TestCase):
 
       # Assert total train steps
       self.assertEqual(loop.step, steps)
+
+  def test_train_with_pure_lsh_attention(self, backend=fastmath.Backend.JAX):
+    with fastmath.use_backend(backend):
+      # Prepare model and inputs
+      def model(mode='train'):
+        return models.Reformer2(
+            mode=mode,
+            d_model=16,
+            d_ff=16,
+            n_heads=2,
+            dropout=0.05,
+            n_decoder_layers=1,
+            n_encoder_layers=1,
+            input_vocab_size=256,
+            encoder_attention_type=_pure_lsh_self_attention_fn(),
+            encoder_decoder_attention_type=_pure_lsh_self_attention_fn(),
+        )
+
+      max_len = 128
+      inputs = _test_inputs_lm(vocab_size=256, seq_len=max_len)
+
+      steps = 1
+      eval_steps = 1
+
+      # Train and evaluate
+      output_dir = self.create_tempdir().full_path
+      trainer_lib.train(
+          output_dir,
+          model=model,
+          inputs=inputs,
+          steps=steps,
+          eval_steps=eval_steps,
+          eval_frequency=1)
+
+      # Read checkpoint
+      model_file = os.path.join(output_dir, 'model.pkl.gz')
+
+      shape11 = trax_shapes.ShapeDtype((1, 1), dtype=jnp.int32)
+      shape1l = trax_shapes.ShapeDtype((1, max_len), dtype=jnp.int32)
+
+      model_predict = model(mode='predict')
+      model_predict.init_from_file(
+          model_file, weights_only=True, input_signature=(shape1l, shape11))
+
+  def test_train_with_mixed_lsh_attention(self, backend=fastmath.Backend.JAX):
+    with fastmath.use_backend(backend):
+      # Prepare model and inputs
+
+      def model(mode='train'):
+        return models.Reformer2(
+            mode=mode,
+            d_model=16,
+            d_ff=16,
+            n_heads=2,
+            dropout=0.05,
+            n_decoder_layers=1,
+            n_encoder_layers=1,
+            input_vocab_size=256,
+            encoder_attention_type=_mixed_lsh_self_attention_fn(),
+            encoder_decoder_attention_type=_mixed_lsh_self_attention_fn(),
+        )
+
+      max_len = 128
+      inputs = _test_inputs_lm(vocab_size=256, seq_len=max_len)
+
+      steps = 1
+      eval_steps = 1
+
+      # Train and evaluate
+      output_dir = self.create_tempdir().full_path
+      trainer_lib.train(
+          output_dir,
+          model=model,
+          inputs=inputs,
+          steps=steps,
+          eval_steps=eval_steps,
+          eval_frequency=1)
+
+      # Read checkpoint
+      model_file = os.path.join(output_dir, 'model.pkl.gz')
+
+      shape11 = trax_shapes.ShapeDtype((1, 1), dtype=jnp.int32)
+      shape1l = trax_shapes.ShapeDtype((1, max_len), dtype=jnp.int32)
+
+      model_predict = model(mode='predict')
+      model_predict.init_from_file(model_file, weights_only=True,
+                                   input_signature=(shape1l, shape11))
+
+  @parameterized.parameters(BACKENDS)
+  def test_train_fills_in_missing_eval_metrics(self, backend):
+    with fastmath.use_backend(backend):
+      # Prepare model and inputs
+      n_classes = 4
+      steps = 2
+      eval_steps = 2
+      model_fn = functools.partial(models.MLP, layer_widths=(16, 16, n_classes))
+      inputs = _test_inputs(n_classes)
+      additional_eval_stream = trainer_lib.NamedStream(
+          # deliberately duplicating eval data
+          stream=inputs.eval_stream(1),
+          name='additional_eval_task')
+
+      # Train and evaluate
+      output_dir = self.create_tempdir().full_path
+      loop = trainer_lib.train(
+          output_dir,
+          model=model_fn,
+          inputs=inputs,
+          steps=steps,
+          eval_steps=eval_steps,
+          eval_frequency=1,
+          additional_eval_streams=[additional_eval_stream])
+
+      self.assertLen(loop.eval_tasks, 2)
+      eval_task_1, eval_task_2 = loop.eval_tasks
+      self.assertCountEqual(eval_task_1.metrics, eval_task_2.metrics)
+      self.assertCountEqual(eval_task_1.metric_names, eval_task_2.metric_names)
 
   @parameterized.named_parameters(
       ('_%s' % short_name(backend), backend)

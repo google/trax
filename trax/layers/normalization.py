@@ -122,17 +122,19 @@ class BatchNorm(base.Layer):
 class LayerNorm(base.Layer):
   """Layer normalization."""
 
-  def __init__(self, epsilon=1e-6):
+  def __init__(self, center=True, epsilon=1e-6):
     super().__init__()
     self._epsilon = epsilon
+    self._center = center
 
   def forward(self, x):
     scale, bias = self.weights
     mean = jnp.mean(x, axis=-1, keepdims=True)
-    centered = x - mean
+    centered = x - mean if self._center else x
     variance = jnp.mean(centered * centered, axis=-1, keepdims=True)
     norm_inputs = centered / jnp.sqrt(variance + self._epsilon)
-    return norm_inputs * scale + bias
+    scaled = norm_inputs * scale
+    return scaled + bias if self._center else scaled
 
   def init_weights_and_state(self, input_signature):
     features = input_signature.shape[-1]

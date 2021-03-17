@@ -777,16 +777,13 @@ def AppendValue(val=None):  # pylint: disable=invalid-name
 
 
 def TruncateToLength(len_map=None):  # pylint: disable=invalid-name
-  """Truncates features in an example to lengths given in `len_map`.
-
-  len_map contains a dictionary of example keys to tuples of dimension sizes.
+  """Returns a stream function that resizes items as specified by ``len_map``.
 
   Args:
-    len_map: dict of int to int tuples (shapes), we truncate examples
-      where a feature's size is beyond the max. Ex: {0: (1, 512), 1: 64}
-      will truncate examples to be within those bounds.
-  Returns:
-    Function to truncate length of examples.
+    len_map: Dictionary that specifies maximum shapes for potentially multiple
+        features per stream item. For example, given a stream of tokenized
+        string pairs, one could enforce a maximum length of 256 tokens for each
+        string by using ``len_map={0: (256,), 1: (256,)}``.
   """
   @debug_data_pipeline.debug_pipeline
   def _truncate_to_length(generator):
@@ -948,7 +945,7 @@ class Inputs:
 # Batching and Inputs creation helpers.
 
 
-@gin.configurable()
+@gin.configurable
 def make_inputs(train_stream=gin.REQUIRED, eval_stream=None):
   """Create Inputs from two streams; mostly for use in gin configs."""
   if isinstance(train_stream, (list, tuple)):
@@ -960,19 +957,19 @@ def make_inputs(train_stream=gin.REQUIRED, eval_stream=None):
                 eval_stream=eval_stream_fn)
 
 
-@gin.configurable()
+@gin.configurable
 def make_additional_stream(stream=gin.REQUIRED):
   """Create a stream mostly for use in gin configs for additional tasks."""
   return Serial(stream)()
 
 
-@gin.configurable()
+@gin.configurable
 def make_parallel_stream(streams=gin.REQUIRED, counters=None):
   """Create a parallel stream for use in gin configs for additional tasks."""
   return Parallel(streams, counters=counters)()
 
 
-@gin.configurable()
+@gin.configurable
 def batcher(data_streams=gin.REQUIRED, variable_shapes=True,
             batch_size_per_device=32, batch_size=None, eval_batch_size=32,
             bucket_length=32, buckets=None,
@@ -1059,7 +1056,7 @@ def batch_fn(dataset, training, n_devices, variable_shapes,
 # Example input functions.
 
 
-@gin.configurable()
+@gin.configurable
 def random_inputs(
     input_shape=gin.REQUIRED, input_dtype=jnp.int32, input_range=(0, 255),
     output_shape=gin.REQUIRED, output_dtype=jnp.int32, output_range=(0, 9)):
@@ -1102,7 +1099,7 @@ def _pad_to_multiple_of(x, y, axis):
                 constant_values=x.dtype.type(0))
 
 
-@gin.configurable()
+@gin.configurable
 def sequence_copy_inputs(
     vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, train_length=gin.REQUIRED,
     eval_min_length=gin.REQUIRED, eval_max_length=gin.REQUIRED, reverse=False,
@@ -1148,7 +1145,7 @@ def sequence_copy_inputs(
   )
 
 
-@gin.configurable()
+@gin.configurable
 def simple_sequence_copy_inputs(
     vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, train_length=gin.REQUIRED,
     eval_min_length=gin.REQUIRED, eval_max_length=gin.REQUIRED,
@@ -1205,24 +1202,22 @@ def random_number_lower_endian(length, base):
   return prefix + [np.random.randint(base - 1) + 1]  # Last digit is not 0.
 
 
-@gin.configurable()
-def addition_inputs(
-    vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, train_length=gin.REQUIRED,
-    eval_min_length=gin.REQUIRED, eval_max_length=gin.REQUIRED,
-    pad_to_multiple=32, encdec=False):
-  """Inputs for the add problem: <S>x+y<S>(x+y).
+@gin.configurable
+def addition_input_stream(
+    vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, min_length=gin.REQUIRED,
+    max_length=gin.REQUIRED, pad_to_multiple=32, encdec=False):
+  """Data stream for the add problem: <S>x+y<S>(x+y).
 
   Args:
     vocab_size: how many symbols to use.
     batch_size: how large are the batches.
-    train_length: maximal length of w for training.
-    eval_min_length: minimal length of w for eval.
-    eval_max_length: maximal length of w for eval.
+    min_length: minimal length of w.
+    max_length: maximal length of w.
     pad_to_multiple: int, pad length to be multiple of this number.
     encdec: bool, if True return encoder-decoder style inputs (default: False)
 
   Returns:
-    trax.inputs.Inputs
+    python generator of tuples of data examples
   """
   base = vocab_size - 3  # We use 0 to pad, base+1 as "+" and base+2 as "<S>".
   def single_example(max_length, min_length):
@@ -1261,9 +1256,36 @@ def addition_inputs(
                       for x in zip(*ex)]
       yield tuple(padded_batch)
 
+  return batches(max_length, min_length)
+
+
+@gin.configurable
+def addition_inputs(
+    vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, train_length=gin.REQUIRED,
+    eval_min_length=gin.REQUIRED, eval_max_length=gin.REQUIRED,
+    pad_to_multiple=32, encdec=False):
+  """Inputs for the add problem: <S>x+y<S>(x+y).
+
+  Args:
+    vocab_size: how many symbols to use.
+    batch_size: how large are the batches.
+    train_length: maximal length of w for training.
+    eval_min_length: minimal length of w for eval.
+    eval_max_length: maximal length of w for eval.
+    pad_to_multiple: int, pad length to be multiple of this number.
+    encdec: bool, if True return encoder-decoder style inputs (default: False)
+
+  Returns:
+    trax.inputs.Inputs
+  """
+  train_stream = addition_input_stream(
+      vocab_size, batch_size, 3, train_length, pad_to_multiple, encdec)
+  eval_stream = addition_input_stream(
+      vocab_size, batch_size, eval_min_length, eval_max_length, pad_to_multiple,
+      encdec)
   return Inputs(
-      train_stream=lambda _: batches(train_length, 3),
-      eval_stream=lambda _: batches(eval_max_length, eval_min_length)
+      train_stream=lambda _: train_stream,
+      eval_stream=lambda _: eval_stream
   )
 
 

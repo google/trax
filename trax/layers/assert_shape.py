@@ -194,20 +194,20 @@ class AssertShape(base.Layer):
     self._specs = spec.split(',')
     self._n_in = self._n_out = len(self._specs)
 
-    self.defined_shapes = {str(i): i for i in range(10)}
-    self.linked = False
+    self._defined_shapes = {str(i): i for i in range(10)}
+    self._linked = False
 
     if message is None:
       caller = inspect.getframeinfo(inspect.stack()[1][0])
-      self.message = f'Defined at {caller.filename}:{caller.lineno}'
+      self._message = f'Defined at {caller.filename}:{caller.lineno}'
     else:
-      self.message = message
+      self._message = message
 
   def forward(self, xs):
-    if not self.linked:
-      for k in list(self.defined_shapes.keys()):
+    if not self._linked:
+      for k in list(self._defined_shapes.keys()):
         if not k.isdigit():
-          del self.defined_shapes[k]
+          del self._defined_shapes[k]
 
     if not isinstance(xs, (list, tuple)):
       xs = [xs]
@@ -235,10 +235,10 @@ class AssertShape(base.Layer):
       if not cond:
         shapes = [x.shape for x in xs]
         defined_shapes_dict_without_digits = {
-            k: v for k, v in self.defined_shapes.items() if not k.isdigit()}
+            k: v for k, v in self._defined_shapes.items() if not k.isdigit()}
         raise ValueError(
             f'AssertShape Error. Expected {self._specs}, got {shapes} with dict'
-            f' {defined_shapes_dict_without_digits}. {self.message}')
+            f' {defined_shapes_dict_without_digits}. {self._message}')
 
     def assert_equal(a, b):
       assert_true(a == b)
@@ -247,18 +247,18 @@ class AssertShape(base.Layer):
     def check_shape(shape, spec):
       assert_equal(len(shape), len(spec))
       for shape_dim, letter in zip(shape, spec):
-        if letter in self.defined_shapes:
-          self.defined_shapes[letter] = assert_equal(
-              self.defined_shapes[letter], shape_dim)
+        if letter in self._defined_shapes:
+          self._defined_shapes[letter] = assert_equal(
+              self._defined_shapes[letter], shape_dim)
         else:
-          self.defined_shapes[letter] = shape_dim
+          self._defined_shapes[letter] = shape_dim
 
     def check_ellipsys(shape):
-      if '.' not in self.defined_shapes:
-        self.defined_shapes['.'] = shape
+      if '.' not in self._defined_shapes:
+        self._defined_shapes['.'] = shape
       else:
-        assert_equal(len(shape), len(self.defined_shapes['.']))
-        for s1, s2 in zip(shape, self.defined_shapes['.']):
+        assert_equal(len(shape), len(self._defined_shapes['.']))
+        for s1, s2 in zip(shape, self._defined_shapes['.']):
           assert_equal(s1, s2)
 
     # actual asserts
@@ -288,5 +288,5 @@ class AssertShape(base.Layer):
     """Internal. Used to create a shared dictionary."""
     # This works well for assert_shape and AssertFunction; but it can break
     # easily if the order of calls to forward() is not known in advance.
-    self.linked = True
-    self.defined_shapes = other.defined_shapes
+    self._linked = True
+    self._defined_shapes = other._defined_shapes  # pylint: disable=protected-access

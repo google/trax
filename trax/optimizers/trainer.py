@@ -50,7 +50,7 @@ class Trainer:
   def __init__(self, model_with_loss, optimizer, n_devices=None, adasum=False):
     self._model_with_loss = model_with_loss
     self._optimizer = optimizer
-    self._n_devices = n_devices or fastmath.device_count()
+    self._n_devices = n_devices or fastmath.local_device_count()
     self._adasum = adasum
 
     # optimizer slots and opt_params may need to be replicated
@@ -162,30 +162,34 @@ class Trainer:
     return fastmath.nested_map(lambda x: x[0], x)
 
 
+def _adasum_merge(g1, g2):
+  """Adasum gradient composition, see https://arxiv.org/pdf/2006.02924.pdf."""
+  frac1 = jnp.vdot(g1, g2) / (2 * jnp.vdot(g1, g1) + 1e-30)
+  frac2 = jnp.vdot(g1, g2) / (2 * jnp.vdot(g2, g2) + 1e-30)
+  return  (1 - frac1) * g1 + (1 - frac2) * g2
+
+
 def _average_multidevice_gradients(gradients, adasum=False):
   """Averages gradients over all the devices across different hosts."""
+  n = jnp.array(fastmath.global_device_count(), dtype=jnp.float32)
+  if adasum:
+    # This implements a version of the Adasum algorithm from the following
+    # paper: https://arxiv.org/pdf/2006.02924.pdf
+    lg = max([i for i in range(20) if 2**i <= n])
+    for lg_i in range(lg):
+      shift = 2**lg_i
+      perm = []
+      for i in range(n):
+        block_i = i % (2*shift)  # we do blocks of 2*shift size
+        if block_i < shift:
+          perm.append((i, i+shift))
+        else:
+          perm.append((i, i-shift))
+      perm_grad = jax.lax.ppermute(gradients, perm=perm, axis_name='batch')
+      gradients = fastmath.nested_map_multiarg(
+          _adasum_merge, gradients, perm_grad)
   gradients_psum = fastmath.psum(gradients, 'batch')  # sum over all devices
-  n = fastmath.psum(jnp.array(1.0), 'batch')  # number of devices on all hosts
-  if not adasum:
-    return fastmath.nested_map(lambda g: g / n, gradients_psum)
-  # This implements an approximation of the Adasum algorithm from the following
-  # paper: https://arxiv.org/pdf/2006.02924.pdf
-  # Since implementing halving and averaging half-by-half is tricky, we first
-  # average all hosts, so we use the sum as a point of comparison for gradients.
-  # So for 2 devices, this algorithm is the same as in the paper, but with more
-  # devices it does a different kind of averaging. It still has the property
-  # that orthogonal gradients will result in a sum while identical ones will
-  # be averaged, as postulated in the paper.
-  adasum_nominator = fastmath.nested_map_multiarg(
-      lambda g, q: jnp.vdot(g, q),  # pylint: disable=unnecessary-lambda
-      gradients, gradients_psum)
-  grad_norm = fastmath.nested_map(lambda g: jnp.vdot(g, g), gradients)
-  # If all devices have identical gradients, then the nominator is equal
-  # to n * grad_norm; if they're orthogonal, then nominator = grad_norm.
-  scaled_grads = fastmath.nested_map_multiarg(
-      lambda g, nominator, g_norm: g*(1 - (nominator - g_norm) / (n * g_norm)),
-      gradients, adasum_nominator, grad_norm)
-  return fastmath.psum(scaled_grads, 'batch')
+  return fastmath.nested_map(lambda g: g / n, gradients_psum)
 
 
 # Returns a function with the following signature:
@@ -290,7 +294,7 @@ class ReversibleSerialTrainer:
     self._blocks = [(tl.Serial(std), rev) for (std, rev) in blocks]
     self._loss_layer = loss_layer
     self._optimizer_fn = optimizer_fn
-    self._n_devices = n_devices or fastmath.device_count()
+    self._n_devices = n_devices or fastmath.local_device_count()
     self._adasum = adasum
     self._n_layers = 1 + sum([len(revs) + 1 for (_, revs) in self._blocks])
     self._n_steps_per_log = 100  # Log layers and stats every 100 steps.
@@ -371,14 +375,17 @@ class ReversibleSerialTrainer:
   @property
   def slots(self):
     """Returns the slots of all optimizers."""
-    return fastmath.nested_map(lambda opt: opt.slots, self._optimizers)
+    optimizers = list(self._optimizers) + [self._loss_opt]
+    return fastmath.nested_map(lambda opt: opt.slots, optimizers)
 
   @slots.setter
   def slots(self, slots):
     """Sets the slots of all optimizers."""
-    for ((s_opt, r_opts), (s_slots, r_slots)) in zip(self._optimizers, slots):
+    for ((s_opt, r_opts), (s_slots, r_slots)) in zip(
+        self._optimizers, slots[:-1]):
       for (opt, slot) in zip([s_opt] + r_opts, [s_slots] + r_slots):
         opt.slots = slot
+    self._loss_opt.slots = slots[-1]
 
   def _pjit(self, f, memory_key=None, donate_argnums=()):
     """JIT f if 1 device is available and pmap if more are available."""

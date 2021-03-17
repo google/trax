@@ -19,6 +19,7 @@
 import functools
 
 from absl.testing import absltest
+from absl.testing import parameterized
 import gin
 import numpy as np
 
@@ -29,7 +30,17 @@ from trax.layers import test_utils
 from trax.models.reformer import reformer
 
 
-class ReformerTest(absltest.TestCase):
+BACKENDS = [fastmath.Backend.JAX, fastmath.Backend.TFNP]
+
+
+def short_name(b):
+  if b == fastmath.Backend.JAX:
+    return 'jax'
+  else:
+    return 'tf'
+
+
+class ReformerTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
@@ -112,34 +123,38 @@ class ReformerTest(absltest.TestCase):
         x, weights, state, fastmath.random.get_prng(0))
     self.assertEqual(logits.shape, (1, 65536, 256))
 
-  def test_reformer2_quick(self):
-    vocab_size = 2
-    max_len = 2
+  @parameterized.named_parameters(
+      ('_%s' % short_name(backend), backend)
+      for backend in BACKENDS)
+  def test_reformer2_quick(self, backend):
+    with fastmath.use_backend(backend):
+      vocab_size = 2
+      max_len = 2
 
-    model = reformer.Reformer2(
-        vocab_size,
-        d_model=4,
-        d_ff=4,
-        n_encoder_layers=1,
-        n_decoder_layers=1,
-        n_heads=2,
-        dropout=0.05,
-        max_len=max_len,
-        pos_type=None,
-        ff_activation=tl.Relu,
-        ff_use_sru=0,
-        ff_chunk_size=2,
-        mode='train',
-    )
+      model = reformer.Reformer2(
+          vocab_size,
+          d_model=4,
+          d_ff=4,
+          n_encoder_layers=1,
+          n_decoder_layers=1,
+          n_heads=2,
+          dropout=0.05,
+          max_len=max_len,
+          pos_type=None,
+          ff_activation=tl.Relu,
+          ff_use_sru=0,
+          ff_chunk_size=2,
+          mode='train',
+      )
 
-    x = [np.ones((1, max_len)).astype(np.int32),
-         np.ones((1, max_len)).astype(np.int32)]
-    model.init(shapes.signature(x))
+      x = [np.ones((1, max_len)).astype(np.int32),
+           np.ones((1, max_len)).astype(np.int32)]
+      model.init(shapes.signature(x))
 
-    logits, dec_toks = model(x)
-    del dec_toks
+      logits, dec_toks = model(x)
+      del dec_toks
 
-    self.assertEqual(logits.shape, (1, max_len, vocab_size))
+      self.assertEqual(logits.shape, (1, max_len, vocab_size))
 
   def test_reformer2_deterministic_eval(self):
     with fastmath.use_backend(fastmath.Backend.JAX):
@@ -191,12 +206,12 @@ class ReformerTest(absltest.TestCase):
           encoder_decoder_attention_type=tl.CausalAttention,
       )
 
-      inp = np.random.randint(vocab_size, size=(batch_size, length))
+      # Token id of 0 indicates padding; and predict mode doesn't support it.
+      inp = np.random.randint(1, vocab_size, size=(batch_size, length))
       out = np.zeros((batch_size, length), dtype=np.int32)
 
       # TODO(jaszczur): check why init_tokens > 1 fails nondeterministically
-      test_utils.test_eval_equals_predict((inp, out), model_fn, 1, -1,
-                                          init_tokens=1)
+      test_utils.test_eval_equals_predict((inp, out), model_fn, 1, -1)
 
   def test_reformer2_doubling(self):
     vocab_size = 2

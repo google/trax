@@ -675,6 +675,22 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
         functools.partial(extensions.scan, f), static_argnums=(2,))(*inputs)
     self.assertAllEqual(expected_outputs, outputs)
 
+  def testMap(self):
+    shape = [2, 3]
+    dtype = tf_np.int32
+    xs1 = tf_np.zeros(shape, dtype)
+    xs2 = tf_np.ones(shape, dtype)
+    ys_expected = [xs2 + 10, xs1 + 20]
+    def f(x):
+      self.assertIsInstance(x, tuple)
+      for a in x:
+        self.assertEqual(a.shape, shape[1:])
+      x1, x2 = x
+      return [x2 + 10, x1 + 20]
+    ys = extensions.tf_map(f, (xs1, xs2))
+    self.assertIsInstance(ys, list)
+    self.assertAllClose(ys, ys_expected)
+
   def testPrng(self):
     self.assertAllEqual(tf_np.asarray(123, np.int64), extensions.prng(123))
 
@@ -703,8 +719,7 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
   def testBernoulliWrongShape(self):
     mean = [0.1, 0.2]
     shape = [3]
-    with self.assertRaisesWithPredicateMatch(tf.errors.InvalidArgumentError,
-                                             r"Incompatible shapes"):
+    with self.assertRaisesIncompatibleShapesError():
       extensions.bernoulli(123, mean, shape)
 
   def testDatasetAsNumpy(self):

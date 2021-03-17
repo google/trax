@@ -38,14 +38,14 @@ class _ClippedScaling(tl.Layer):
   def __init__(self,
                residual_weight):
     super().__init__(n_in=1, n_out=1)
-    self.residual_weight = residual_weight
+    self._residual_weight = residual_weight
 
   def forward(self, x):
     s = self.weights
     return jnp.multiply(x, fastmath.expit(s))
 
   def init_weights_and_state(self, input_signature):
-    self.weights = _inverse_sigmoid(self.residual_weight) * np.ones(
+    self.weights = _inverse_sigmoid(self._residual_weight) * np.ones(
         (input_signature.shape[-1])).astype('float32')
 
 
@@ -202,6 +202,7 @@ def BenesBlock(d_model, dropout, mode):
 @assert_shape('bl->blv')
 def ResidualShuffleExchange(vocab_size,
                             d_model,
+                            input_dropout,
                             dropout,
                             mode='train',
                             n_blocks=2):
@@ -209,6 +210,7 @@ def ResidualShuffleExchange(vocab_size,
   benes_blocks = [BenesBlock(d_model, dropout, mode) for _ in range(n_blocks)]
   return tl.Serial(
       tl.Embedding(vocab_size, d_model),
+      tl.Dropout(rate=input_dropout, mode=mode),
       # Apply Benes Block n_blocks times.
       *benes_blocks,
       ResidualSwitchUnit(d_model, dropout, mode),

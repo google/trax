@@ -625,10 +625,11 @@ class AWRJoint(ActorCriticJointAgent):
 
   # TODO(henrykm): value_loss_coeff looks like a common parameter
   def __init__(self, task, value_loss_coeff=0.1, beta=1.0, w_max=20.0,
-               **kwargs):
+               thresholds=None, **kwargs):
     """Configures the joint AWR Trainer."""
     self._beta = beta
     self._w_max = w_max
+    self._thresholds = thresholds
     self._value_loss_coeff = value_loss_coeff
     super().__init__(task, **kwargs)
 
@@ -650,8 +651,9 @@ class AWRJoint(ActorCriticJointAgent):
     def f(preds, values, returns, actions, mask):
       advantages = jnp.squeeze(returns - stop_gradient(values), axis=-1)
       logps = self._policy_dist.log_prob(preds, actions)
-      awr_loss = actor_critic.AWRLoss(beta=self._beta, w_max=self._w_max)(
-          (logps, advantages, jnp.zeros_like(logps), mask))
+      awr_loss = actor_critic.AWRLoss(
+          beta=self._beta, w_max=self._w_max, thresholds=self._thresholds)(
+              (logps, advantages, jnp.zeros_like(logps), mask))
       l2_value_loss = jnp.mean((returns - values)**2) * self._value_loss_coeff
       return awr_loss + l2_value_loss
     return tl.Fn('AWRJointLoss', f)

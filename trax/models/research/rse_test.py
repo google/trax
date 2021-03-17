@@ -80,7 +80,8 @@ class RSETest(absltest.TestCase):
     vocab_size = 12
     seq_len = 32
     model = rse.ResidualShuffleExchange(
-        vocab_size=vocab_size, d_model=17, dropout=0.1, mode='train')
+        vocab_size=vocab_size, d_model=17, dropout=0.1, input_dropout=0.05,
+        mode='train')
     x = np.ones((3, seq_len)).astype(np.int32)
     _, _ = model.init(shapes.signature(x))
     y = model(x)

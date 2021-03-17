@@ -247,6 +247,23 @@ class TrainingTest(absltest.TestCase):
     loop2 = training.Loop(model, [task], output_dir=tmp_dir)
     self.assertEqual(4, loop2.step)
 
+  def test_restores_memory_efficient_from_standard(self):
+    """Training restores step from directory where it saved it."""
+    model = tl.Serial(tl.Dense(4), tl.Dense(1))
+    task_std = training.TrainTask(
+        _very_simple_data(), tl.L2Loss(), optimizers.Adam(.0001))
+    tmp_dir = self.create_tempdir().full_path
+    loop = training.Loop(model, [task_std],
+                         checkpoint_at=lambda step_n: step_n % 2 == 0,
+                         output_dir=tmp_dir)
+    loop.run(4)
+    task_memeff = training.TrainTask(
+        _very_simple_data(), tl.L2Loss(), optimizers.Adam)
+    loop2 = training.Loop(model, [task_memeff], output_dir=tmp_dir,
+                          use_memory_efficient_trainer=True)
+    loop2.run(2)
+    self.assertEqual(6, loop2.step)
+
   def test_restores_from_smaller_model(self):
     """Training restores from a checkpoint created with smaller model."""
     model1 = tl.Serial(tl.Dense(1))
@@ -278,8 +295,9 @@ class TrainingTest(absltest.TestCase):
   def test_restores_step_bfloat16(self):
     """Training restores step from directory where it saved it, w/ bfloat16."""
     model = tl.Serial(tl.Dense(1, use_bfloat16=True))
-    task = training.TrainTask(
-        _very_simple_data(), tl.L2Loss(), optimizers.SGD(.01))
+    # We'll also use Adafactor with bfloat16 to check restoring bfloat slots.
+    opt = optimizers.Adafactor(.01, do_momentum=True, momentum_in_bfloat16=True)
+    task = training.TrainTask(_very_simple_data(), tl.L2Loss(), opt)
     tmp_dir = self.create_tempdir().full_path
     loop = training.Loop(model, [task],
                          checkpoint_at=lambda step_n: step_n % 2 == 0,
@@ -384,18 +402,30 @@ class TrainingTest(absltest.TestCase):
         tl.L2Loss(),
         optimizers.SGD(.01)
     )
-    eval_task = training.EvalTask(
+    export_prefix_1 = 'eval_1'
+    eval_task_1 = training.EvalTask(
         _very_simple_data(),  # deliberately re-using training data
         [tl.L2Loss()],
+        export_prefix=export_prefix_1,
+    )
+    export_prefix_2 = 'eval_2'
+    eval_task_2 = training.EvalTask(
+        _very_simple_data(),  # deliberately re-using training data
+        [tl.L2Loss()],
+        export_prefix=export_prefix_2,
     )
     training_session = training.Loop(
         model,
         tasks=(task,),
-        eval_tasks=(eval_task, eval_task),
+        eval_tasks=(eval_task_1, eval_task_2),
     )
     self.assertEqual(0, training_session.step)
     training_session.run(n_steps=5)
     self.assertEqual(5, training_session.step)
+    export_prefixes = [task.export_prefix
+                       for task in training_session.eval_tasks]
+    self.assertCountEqual([export_prefix_1, export_prefix_2],
+                          export_prefixes)
 
   def test_can_predict_with_trained_model(self):
     model = tl.Serial(tl.Dense(3), tl.Branch(tl.Dense(1), tl.Dense(2)))
@@ -436,7 +466,7 @@ class TrainingTest(absltest.TestCase):
     # This test requires > 16GB RAM, only run on TPUs. It does pass on GPU
     # and CPU when you run it locally, but it's too big for unit-testing.
     ram_limited = True  # Set to False to run this test locally.
-    if fastmath.device_count() == 1 and ram_limited:
+    if fastmath.global_device_count() == 1 and ram_limited:
       return
 
     # Create the model.

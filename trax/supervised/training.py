@@ -280,7 +280,9 @@ class Loop:
         if len(task_list) < 2:
           output_dir = self._output_dir
         else:
-          output_dir = os.path.join(self._output_dir, str(task_index))
+          output_dir = os.path.join(
+              self._output_dir,
+              task_list[task_index].export_prefix or str(task_index))
         tf.io.gfile.makedirs(output_dir)
         return output_dir
       else:
@@ -749,36 +751,38 @@ class Loop:
     if not self.is_chief:
       _log('Did not save checkpoint as we are not chief.')
       return
-    if permanent:
-      filename = 'model_{}.pkl.gz'.format(self.step)
-    else:
-      filename = 'model.pkl.gz'
+    filename = f'model_{self.step}' if permanent else 'model'
     ckpt_file = os.path.join(self._output_dir, filename)
-    _log('Saving checkpoint to %s.' % ckpt_file, stdout=False)
+    pkl_file = ckpt_file + '.pkl.gz'
+    _log('Saving checkpoint to %s' % pkl_file, stdout=False)
     weights = self._model.weights
     state = self._model.state
-    slots_per_task = [trainer.slots for trainer in self._trainer_per_task]
+    compresslevel = 0 if self._use_memory_efficient_trainer else 2
+    # Serialize optimizer slots.
+    for i, trainer in enumerate(self._trainer_per_task):
+      flat_slots = self._to_bits(_flatten_and_remove_empty(trainer.slots))
+      tl.np_to_file(flat_slots, ckpt_file + f'.opt_slots{i}.npy.gz',
+                    compresslevel=compresslevel)
     # We only need the input signature for the body, not for the loss layers.
     # That part is the same across tasks - take it from the first one.
     input_signature = self._batch_signature[:self._model.n_in]
     flat_weights, flat_state = tl.flatten_weights_and_state(weights, state)
     _, flat_eval_state = tl.flatten_weights_and_state(
         weights, self._eval_model.state)
-    tl.np_to_file(self._to_bits(flat_weights), ckpt_file + '.npy',
-                  compresslevel=0 if self._use_memory_efficient_trainer else 2)
-    weights_in_dict = 0 if self._use_memory_efficient_trainer else 2
+    tl.np_to_file(self._to_bits(flat_weights), ckpt_file + '.weights.npy.gz',
+                  compresslevel=compresslevel)
     d = {
         'step': self.step,
-        'flat_weights': weights_in_dict,
+        'flat_weights': compresslevel,  # for compatibility with older format
         'flat_state': flat_state,
         'flat_eval_state': flat_eval_state,
         'history': self._history.to_dict(),
-        'slots_per_task': slots_per_task,
+        'slots_per_task': compresslevel,  # for compatibility with older format
         'input_signature': input_signature,
-        'version_timestamp': 'Oct-28-2020'  # To update in the future if needed.
+        'version_timestamp': 'Mar-10-2021'  # To update in the future if needed.
     }
-    pickle_to_file(d, ckpt_file, gzip=True)
-    _log('Checkpoint saved in %s.' % ckpt_file, stdout=False)
+    pickle_to_file(d, pkl_file, gzip=True)
+    _log('Checkpoint saved in %s' % pkl_file, stdout=False)
 
   def _to_bits(self, weights):
     """Converts a list of weights to bit-cast weights and their types."""
@@ -822,36 +826,48 @@ class Loop:
       _log('Not loading as both directory and output_dir are None.',
            stdout=False)
       return
-    filename = filename or 'model.pkl.gz'
+    filename = filename or 'model'
     path = os.path.join(directory, filename)
-    if not tf.io.gfile.exists(path):
-      _log(f'Not loading as checkpoint file does not exist: {path}.',
+    pkl_path = path + '.pkl.gz'
+    if not tf.io.gfile.exists(pkl_path):
+      _log(f'Not loading as checkpoint file does not exist: {pkl_path}',
            stdout=False)
       return
-    _log('Loading checkpoint from %s.' % path, stdout=False)
-    d = unpickle_from_file(path, gzip=True)
+    _log('Loading checkpoint from %s' % pkl_path, stdout=False)
+    d = unpickle_from_file(pkl_path, gzip=True)
     # Weights are stored in a separate non-pickled file in the new checkpoint
     # format. We support loading old checkpoints with this hack.
     # TODO(lukaszkaiser): remove the hack when not needed any more.
     if isinstance(d['flat_weights'], int):
-      weights = tl.np_from_file(path + '.npy', compresslevel=d['flat_weights'])
+      weights = tl.np_from_file(path + '.weights.npy.gz',
+                                compresslevel=d['flat_weights'])
       d['flat_weights'] = self._from_bits(weights)
     else:
       d['flat_weights'] = self._from_bits(d['flat_weights'])
-    self._step = d['step']
-    self._history = trax_history.History.from_dict(d['history'])
-    if 'slots' in d:
+    # The same holds for optimizer slots.
+    if 'slots' in d:  # Old checkpoints had just 'slots' for one task.
       if len(self._tasks) != 1:
         raise ValueError(
             'Can\'t load a single-task checkpoint into a multitask Loop.'
         )
       d['slots_per_task'] = [d['slots']]
+    # Read from separate files if optimizer slots are in them.
+    if 'slots_per_task' in d and isinstance(d['slots_per_task'], int):
+      compresslevel = d['slots_per_task']
+      d['slots_per_task'] = []
+      for i in range(len(self._trainer_per_task)):
+        slots = tl.np_from_file(path + f'.opt_slots{i}.npy.gz',
+                                compresslevel=compresslevel)
+        d['slots_per_task'].append(self._from_bits(slots))
     for (trainer, slots) in zip(self._trainer_per_task, d['slots_per_task']):
-      matched_flat_slots = _match_by_shape(fastmath.tree_flatten(trainer.slots),
-                                           fastmath.tree_flatten(slots))
+      matched_flat_slots = _match_by_shape(
+          _flatten_and_remove_empty(trainer.slots),
+          _flatten_and_remove_empty(slots))
       matched_slots, _ = fastmath.tree_unflatten(
-          matched_flat_slots, trainer.slots, copy_from_tree=[()])
+          matched_flat_slots, trainer.slots, copy_from_tree=[None, ()])
       trainer.slots = matched_slots
+    self._step = d['step']
+    self._history = trax_history.History.from_dict(d['history'])
     # This is self._model.init_from_file but optimized to not re-read.
     input_signature = d['input_signature']
     weights_and_state_sig = self._model.weights_and_state_signature(
@@ -883,7 +899,7 @@ class Loop:
       _, eval_state = tl.unflatten_weights_and_state(
           matched_weights, flat_eval_state, weights_and_state_sig)
       self._eval_model.state = eval_state
-    _log('Checkpoint loaded from %s.' % path, stdout=False)
+    _log('Checkpoint loaded from %s' % pkl_path, stdout=False)
 
   @contextlib.contextmanager
   def _open_summary_writers(self):
@@ -951,14 +967,14 @@ def _model_with_metrics(model, eval_task):
   )
 
 
-@gin.configurable()
+@gin.configurable
 class TrainTask:
   """A supervised task (labeled data + feedback mechanism) for training."""
 
   def __init__(self, labeled_data, loss_layer, optimizer,
                lr_schedule=None, n_steps_per_checkpoint=100,
                n_steps_per_permanent_checkpoint=None, loss_name=None,
-               sample_batch=None):
+               sample_batch=None, export_prefix=None):
     r"""Configures a training task.
 
     Args:
@@ -976,7 +992,10 @@ class TrainTask:
       loss_name: Name for the loss metric.
       sample_batch: Optional sample batch for model initialization. If not
           provided, it will be taken from ``labeled_data``.
+      export_prefix: Optional task name to be used as prefix for exporting
+      metrics during training in Loop.
     """
+    self._export_prefix = export_prefix
     self._labeled_data = labeled_data
     self._loss_layer = loss_layer
     self._optimizer = optimizer
@@ -997,6 +1016,10 @@ class TrainTask:
   def next_batch(self):
     """Returns one batch of labeled data: a tuple of input(s) plus label."""
     return next(self._labeled_data)
+
+  @property
+  def export_prefix(self):
+    return self._export_prefix
 
   @property
   def loss_layer(self):
@@ -1030,7 +1053,7 @@ class TrainTask:
     return params['learning_rate']
 
 
-@gin.configurable()
+@gin.configurable
 class EvalTask:
   """Labeled data plus scalar functions for (periodically) measuring a model.
 
@@ -1042,7 +1065,8 @@ class EvalTask:
   """
 
   def __init__(self, labeled_data, metrics,
-               metric_names=None, n_eval_batches=1, sample_batch=None):
+               metric_names=None, n_eval_batches=1, sample_batch=None,
+               export_prefix=None):
     r"""Configures an eval task: named metrics run with a given data source.
 
     Args:
@@ -1058,7 +1082,10 @@ class EvalTask:
           the output is then the average of the outputs from the N batches.
       sample_batch: Optional sample batch for model initialization. If not
           provided, it will be taken from ``labeled_data``.
+      export_prefix: Optional task name to be used as prefix for exporting
+          metrics during evaluation in Loop.
     """
+    self._export_prefix = export_prefix
     self._labeled_data = labeled_data
     self._metrics = metrics
     self._metric_names = metric_names or self._default_names()
@@ -1078,6 +1105,10 @@ class EvalTask:
   def next_batch(self):
     """Returns one batch of labeled data: a tuple of input(s) plus label."""
     return next(self._labeled_data)
+
+  @property
+  def export_prefix(self):
+    return self._export_prefix
 
   @property
   def metrics(self):
@@ -1187,7 +1218,7 @@ def init_host_and_devices(n_devices=None, random_seed=None):
   logging.info('Initializing hosts and devices: host_id %d, host_count %d, '
                'is_chief %d', host_id, host_count, is_chief)
 
-  device_count = fastmath.device_count()
+  device_count = fastmath.local_device_count()
   n_devices = n_devices or device_count
   # TODO(lukaszkaiser): remove this restriction when possible.
   if n_devices != device_count and fastmath.is_backend(fastmath.Backend.JAX):
@@ -1266,3 +1297,8 @@ def _match_by_shape(full, partial):
       _log('  Tensor in that place has shape: %s' % model_weight_shape)
     raise IndexError
   return res
+
+
+def _flatten_and_remove_empty(x):
+  flat = fastmath.tree_flatten(x)
+  return [f for f in flat if f is not None and f is not ()]  # pylint: disable=literal-comparison
