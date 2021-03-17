@@ -30,6 +30,8 @@ from trax.models.research.configurable_transformer import PositionalEncoder
 from trax.models.transformer import _EncoderBlock
 from trax.models.transformer import _FeedForwardBlock
 from trax.models.reformer.reformer import DecoderBlock
+from trax import fastmath
+
 
 @assert_shape('bld->bSd')
 def PoolLayer(pool_layer=tl.AvgPool,
@@ -431,7 +433,8 @@ def _get_rel_att_inputs(d_model, n_heads):  # pylint: disable=invalid-name
 
 def _RelativeDecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
                           mode, ff_activation, context_bias_layer,
-                          location_bias_layer, total_pooling):
+                          location_bias_layer, total_pooling,
+                          max_inference_length=3072):
   """Returns a list of layers that implements a Transformer encoder block.
 
   The input to the block is a pair, (activations, mask), where the mask was
@@ -464,7 +467,8 @@ def _RelativeDecoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
   attention = RelativeAttentionLMLayer(
       d_model, context_bias_layer, location_bias_layer,
       total_pooling,
-      n_heads=n_heads, dropout=dropout, mode=mode)
+      n_heads=n_heads, dropout=dropout,
+      max_inference_length=max_inference_length, mode=mode)
 
   feed_forward = _FeedForwardBlock(
       d_model, d_ff, dropout, dropout_shared_axes, mode, ff_activation)
@@ -703,6 +707,110 @@ def FunnelTransformerLM(vocab_size,
   )
 
 
+class RelformerCacher(tl.Layer):
+  """
+    A class for caching tokens going through model to provide fast inference
+    for Relformer model.
+  """
+
+  def __init__(self, total_kv_pooling, n_raw_tokens_generated=1,
+               max_inference_length=64 * 64 * 3,
+               shift=0, sliding=False, mode='train'):
+    super().__init__(n_in=1, n_out=1)
+    self._total_kv_pooling = total_kv_pooling
+    self._n_raw_tokens_generated = n_raw_tokens_generated
+    self._max_len = max_inference_length
+    self._shift = shift
+    self._sliding = sliding
+    self._mode = mode
+
+  def forward(self, inputs):
+    if self._mode != 'predict':
+      return inputs
+    return self.update_state(inputs=inputs)
+
+  def init_weights_and_state(self, input_signature):
+    if self._mode == 'predict':
+      shape, dtype = input_signature.as_tuple()
+      batch_size, _, d_feature = shape
+      cache = jnp.zeros((batch_size, 2 * self._total_kv_pooling, d_feature),
+                        dtype=dtype)
+      self.state = cache, jnp.array(0)
+
+  def update_state(self, inputs):
+    cache, idx = self.state
+    cache = fastmath.dynamic_update_slice_in_dim(
+        cache,
+        inputs,
+        (idx + self._shift) % (2 * self._total_kv_pooling),
+        axis=1)
+
+    if self._sliding:
+      cache = fastmath.dynamic_update_slice_in_dim(
+          cache,
+          inputs,
+          (idx + self._total_kv_pooling * 2 - 1) % (2 * self._total_kv_pooling),
+          axis=1)
+
+    if self._sliding:
+      left_index = idx % self._total_kv_pooling
+    else:
+      left_index = idx - (idx % self._total_kv_pooling) % \
+                   (2 * self._total_kv_pooling)
+
+    output = fastmath.dynamic_slice(cache,
+                                    [0, left_index, 0],
+                                    [cache.shape[0], self._total_kv_pooling,
+                                     cache.shape[2]])
+
+    self.state = cache, idx + self._n_raw_tokens_generated
+    return output
+
+
+class RelformerPicker(tl.Layer):
+  """
+    A class for picking tokens going through model to provide fast inference
+    for Relformer model.
+  """
+
+  def __init__(self, total_kv_pooling, n_raw_tokens_generated=1, mode='train'):
+    super().__init__(n_in=1, n_out=1)
+    self._total_kv_pooling = total_kv_pooling
+    self._n_raw_tokens_generated = n_raw_tokens_generated
+    self._mode = mode
+
+  def forward(self, inputs):
+    if self._mode != 'predict':
+      return inputs
+
+    output = fastmath.dynamic_slice(inputs,
+                                    [0, self.state, 0],
+                                    [inputs.shape[0],
+                                     self._n_raw_tokens_generated,
+                                     inputs.shape[2]])
+    self.state = (self.state + self._n_raw_tokens_generated
+                  ) % self._total_kv_pooling
+    return output
+
+  def init_weights_and_state(self, input_signature):
+    if self._mode == 'predict':
+      self.state = jnp.array(0)
+
+
+def PickLastTokenInPredict(mode='train'):
+  """
+    Self-descriptive layer for picking last token logits in predict mode
+    for fast inference.
+  """
+
+  def last_token(x):
+    if mode == 'predict':
+      return x[:, -1:, :]
+    return x
+
+  return tl.Fn('Pick last token in predict', last_token)
+
+
 def RelformerLM(vocab_size,
                 d_model=512,
                 d_ff=2048,
@@ -715,6 +823,7 @@ def RelformerLM(vocab_size,
                 vanilla_attn_type=tl.LSHSelfAttention,
                 pos_type='fixed-base',
                 max_len=3072,
+                n_raw_tokens_generated=1,
                 mode='train',
                 ff_activation=tl.FastGelu):
   """Returns a Transformer language model.
@@ -755,8 +864,14 @@ def RelformerLM(vocab_size,
     vanilla_attn_type: class: attention class such as SelfAttention to use in
         the layers before and after shortening (vanilla layers).
     pos_type: string, the type of positional embeddings to use.
-    max_len: int: maximum symbol length for positional encoding
-    mode: str: 'train' or 'eval'.
+    max_len: int: maximum symbol length both for positional encoding and it is
+      also the maximum length of the possible inference in 'predict' mode
+    n_raw_tokens_generated: int: number of tokens generated with every pass
+      through model in 'predict' mode. Number of tokens should be smaller and
+      divisible by the first shorten factor we are using in the model.
+      It cannot be larger than one if we use vanilla layers because we would
+      lose autoregressive property of the model.
+    mode: str: 'train' or 'eval' or 'predict'.
     ff_activation: Type of activation function at the end of each encoder
         block; must be an activation-type subclass of `Layer`.
 
@@ -764,7 +879,6 @@ def RelformerLM(vocab_size,
     A Transformer language model as a layer that maps from a tensor of tokens
     to activations over a vocab set.
   """
-  assert mode != 'predict'  # For now, 'predict' mode is unsupported.
 
   token_encoder = [
       tl.Embedding(vocab_size, d_model),
@@ -782,7 +896,7 @@ def RelformerLM(vocab_size,
         _RelativeDecoderBlock(d_model, d_ff, n_heads, dropout,
                               dropout_shared_axes, mode, ff_activation,
                               context_bias_layer, location_bias_layer,
-                              total_pooling)
+                              total_pooling, max_len)
         for _ in range(n_layers)]
     return decoder_blocks + [tl.LayerNorm()]
 
@@ -821,6 +935,25 @@ def RelformerLM(vocab_size,
   post_decoder_blocks = create_reformer_blocks(n_post_decoder_blocks,
                                                dense=False)
 
+  cacher = RelformerCacher(total_kv_pooling=shorten_factor,
+                           n_raw_tokens_generated=n_raw_tokens_generated,
+                           max_inference_length=max_len,
+                           shift=shorten_factor - 1,
+                           mode=mode)
+
+  picker = RelformerPicker(total_kv_pooling=shorten_factor,
+                           n_raw_tokens_generated=n_raw_tokens_generated,
+                           mode=mode)
+
+  cacher_conv = RelformerCacher(total_kv_pooling=shorten_factor,
+                                n_raw_tokens_generated=n_raw_tokens_generated,
+                                max_inference_length=max_len,
+                                shift=shorten_factor - 1,
+                                sliding=True,
+                                mode=mode)
+
+  picker_conv = PickLastTokenInPredict(mode=mode)
+
   # Assemble and return the model.
   return tl.Serial(              # tokens (or chunked tuple of tokens)
       tl.ShiftRight(mode=mode),  # toks
@@ -828,14 +961,18 @@ def RelformerLM(vocab_size,
       positional_encoder,
       pre_decoder_blocks,        # vecs
       tl.Dup(),
-      tl.ShiftRight(n_positions=shorten_factor - 1),
+      cacher,
+      tl.ShiftRight(n_positions=shorten_factor - 1, mode=mode),
       _DownsamplerLM(shorten_factor, d_model),
       relative_decoder_blocks,
       tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),
       _UpsamplerLM(shorten_factor, d_model),
       tl.LayerNorm(),
+      picker,
       tl.Concatenate(),
+      cacher_conv,
       conv_layer,
+      picker_conv,
       post_decoder_blocks,
       tl.Dense(vocab_size),      # vecs
   )
