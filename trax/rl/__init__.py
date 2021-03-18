@@ -20,6 +20,7 @@ import gin
 from trax.rl import actor_critic
 from trax.rl import actor_critic_joint
 from trax.rl import envs
+from trax.rl import serialization_utils
 from trax.rl import training
 
 
@@ -41,3 +42,7 @@ PPOJoint = configure_rl(actor_critic_joint.PPOJoint)
 
 PolicyGradient = configure_rl(training.PolicyGradient)
 DQN = configure_rl(training.DQN)
+
+TimeSeriesModel = gin.external_configurable(
+    serialization_utils.TimeSeriesModel, module='trax.rl'
+)

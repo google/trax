@@ -128,12 +128,7 @@ def SignificanceWeights(serializer, decay):
   return tl.Fn('SignificanceWeights', significance_weights)
 
 
-def SerializedModel(
-    seq_model,
-    observation_serializer,
-    action_serializer,
-    significance_decay,
-):
+class SerializedModel(tl.Serial):
   """Wraps a world model in serialization machinery for training.
 
   The resulting model takes as input the observation and action sequences,
@@ -142,53 +137,107 @@ def SerializedModel(
   observations and actions, and the observation logits are returned together
   with computed symbol significance weights.
 
-  Args:
-    seq_model: Trax autoregressive model taking as input a sequence of symbols
-      and outputting a sequence of symbol logits.
-    observation_serializer: Serializer to use for observations.
-    action_serializer: Serializer to use for actions.
-    significance_decay: Float from (0, 1) for exponential weighting of symbols
-      in the representation.
-
-  Returns:
-    A model of signature
-    (obs, act, obs, mask) -> (obs_logits, obs_repr, weights), where obs are
-    observations (the second occurrence is the target), act are actions, mask is
-    the observation mask, obs_logits are logits of the output observation
-    representation, obs_repr is the target observation representation and
-    weights are the target weights.
+  The model has a signature
+  (obs, act, obs, mask) -> (obs_logits, obs_repr, weights), where obs are
+  observations (the second occurrence is the target), act are actions, mask is
+  the observation mask, obs_logits are logits of the output observation
+  representation, obs_repr is the target observation representation and weights
+  are the target weights.
   """
-  weigh_by_significance = [
-      # (mask,)
-      RepresentationMask(serializer=observation_serializer),
-      # (repr_mask)
-      SignificanceWeights(serializer=observation_serializer,
-                          decay=significance_decay),
-      # (mask, sig_weights)
-  ]
-  return tl.Serial(
-      # (obs, act, obs, mask)
-      tl.Parallel(Serialize(serializer=observation_serializer),
-                  Serialize(serializer=action_serializer),
-                  Serialize(serializer=observation_serializer)),
-      # (obs_repr, act_repr, obs_repr, mask)
-      Interleave(),
-      # (obs_act_repr, obs_repr, mask)
+
+  def __init__(
+      self,
       seq_model,
-      # (obs_act_logits, obs_repr, mask)
-      Deinterleave(x_size=observation_serializer.representation_length,
-                   y_size=action_serializer.representation_length),
-      # (obs_logits, act_logits, obs_repr, mask)
-      tl.Parallel(None, tl.Drop(), None, weigh_by_significance),
-      # (obs_logits, obs_repr, weights)
+      observation_serializer,
+      action_serializer,
+      significance_decay,
+      mode='train',
+  ):
+    """Initializes SerializedModel.
+
+    Args:
+      seq_model: Trax autoregressive model taking as input a sequence of symbols
+        and outputting a sequence of symbol logits.
+      observation_serializer: Serializer to use for observations.
+      action_serializer: Serializer to use for actions.
+      significance_decay: Float from (0, 1) for exponential weighting of symbols
+        in the representation.
+    """
+    assert mode in ('train', 'eval')
+    weigh_by_significance = [
+        # (mask,)
+        RepresentationMask(serializer=observation_serializer),
+        # (repr_mask)
+        SignificanceWeights(serializer=observation_serializer,
+                            decay=significance_decay),
+        # (mask, sig_weights)
+    ]
+    super().__init__(
+        # (obs, act, obs, mask)
+        tl.Parallel(Serialize(serializer=observation_serializer),
+                    Serialize(serializer=action_serializer),
+                    Serialize(serializer=observation_serializer)),
+        # (obs_repr, act_repr, obs_repr, mask)
+        Interleave(),
+        # (obs_act_repr, obs_repr, mask)
+        seq_model(mode=mode),
+        # (obs_act_logits, obs_repr, mask)
+        Deinterleave(x_size=observation_serializer.representation_length,
+                     y_size=action_serializer.representation_length),
+        # (obs_logits, act_logits, obs_repr, mask)
+        tl.Parallel(None, tl.Drop(), None, weigh_by_significance),
+        # (obs_logits, obs_repr, weights)
+    )
+
+    self._seq_model = seq_model
+    self._observation_serializer = observation_serializer
+    self._action_serializer = action_serializer
+        
+  @property
+  def observation_serializer(self):
+    return self._observation_serializer
+        
+  @property
+  def action_serializer(self):
+    return self._action_serializer
+
+  def make_predict_model(self):
+    """Returns a predict-mode model of the same architecture."""
+    return self._seq_model(mode='predict')
+
+  @property
+  def seq_model_weights(self):
+    """Extracts the weights of the underlying sequence model."""
+    return self.weights[2]
+
+  @property
+  def seq_model_state(self):
+    """Extracts the state of the underlying sequence model."""
+    return self.state[2]
+
+
+def TimeSeriesModel(
+    seq_model,
+    low=0.0,
+    high=1.0,
+    precision=2,
+    vocab_size=64,
+    significance_decay=0.7,
+    mode='train',
+):
+  # Model scalar time series.
+  obs_srl = space_serializer.BoxSpaceSerializer(
+      space=gym.spaces.Box(shape=(), low=low, high=high),
+      vocab_size=vocab_size,
+      precision=precision,
   )
-
-
-# TODO(pkozakowski): Figure out a more generic way to do this (submodel tags
-# inside the model?).
-def extract_inner_model(serialized_model):  # pylint: disable=invalid-name
-  """Extracts the weights/state of the inner model from a SerializedModel."""
-  return serialized_model[2]
+  # Artifact of the fact that we must provide some actions.
+  # TODO(pkozakowski): Remove this requirement.
+  act_srl = space_serializer.DiscreteSpaceSerializer(
+      space=gym.spaces.Discrete(n=1), vocab_size=1
+  )
+  seq_model = functools.partial(seq_model, vocab_size=vocab_size)
+  return SerializedModel(seq_model, obs_srl, act_srl, significance_decay)
 
 
 def RawPolicy(seq_model, n_controls, n_actions):

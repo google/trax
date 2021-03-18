@@ -1452,3 +1452,45 @@ def MLM(vocab_size=None,  # pylint:disable=invalid-name
       # Consume mask and chunk to give (input, targets).
       consume_noise_mask(vocab_size=vocab_size),
   )
+
+
+@gin.configurable
+def sine_inputs(
+    batch_size=gin.REQUIRED,
+    length=gin.REQUIRED,
+    max_phase=(2 * np.pi),
+    min_period=0.1,
+    max_period=10.0,
+):
+  """Sinusoids of random period and phase.
+
+  Args:
+    vocab_size: how many symbols to use.
+    batch_size: how large are the batches.
+    train_length: maximum length of w for training.
+    eval_min_length: minimum length of w for eval.
+    eval_max_length : maximum length of w for eval.
+    pad_to_multiple: int, pad length to be multiple of this number.
+
+  Returns:
+    trax.inputs.Inputs
+  """
+  def random_series():
+    while True:
+      phase = np.random.uniform(0, max_phase)
+      period = np.exp(np.random.uniform(np.log(min_period), np.log(max_period)))
+      x = np.arange(length)
+      yield np.sin((x - phase) / period)
+
+  def random_minibatches(_):
+    minibatch = []
+    for series in random_series():
+      minibatch.append(series)
+      if len(minibatch) == batch_size:
+        obs = np.stack(minibatch)
+        minibatch.clear()
+        act = np.zeros_like(obs, dtype=np.int32)
+        mask = np.ones_like(obs)
+        yield (obs, act, obs, mask)
+
+  return Inputs(train_stream=random_minibatches, eval_stream=random_minibatches)

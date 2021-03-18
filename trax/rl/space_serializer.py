@@ -53,6 +53,10 @@ class SpaceSerializer:
     self._space = space
     self._vocab_size = vocab_size
 
+  @property
+  def vocab_size(self):
+    return self._vocab_size
+
   def serialize(self, data):
     """Serializes a batch of space elements into discrete sequences.
 
