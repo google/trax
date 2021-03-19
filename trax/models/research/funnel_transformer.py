@@ -771,7 +771,7 @@ class RelformerCacher(tl.Layer):
     if self._sliding:
       left_index = idx % self._total_kv_pooling
     else:
-      left_index = idx - (idx % self._total_kv_pooling) % \
+      left_index = (idx - (idx % self._total_kv_pooling)) % \
                    (2 * self._total_kv_pooling)
 
     output = fastmath.dynamic_slice(
