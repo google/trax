@@ -771,8 +771,16 @@ class RelformerCacher(tl.Layer):
     if self._sliding:
       left_index = idx % self._total_kv_pooling
     else:
-      left_index = idx - (idx % self._total_kv_pooling) % \
+      left_index = (idx - (idx % self._total_kv_pooling)) % \
                    (2 * self._total_kv_pooling)
+    #   print(f'left index = {left_index}')
+    #   print(f'write index = {(idx + self._shift) % (2 * self._total_kv_pooling)}')
+    #   print(f'modulo = {2 * self._total_kv_pooling}')
+    #   print(f'before modulo = {(idx + self._shift)}')
+    #   print(f'left side of left index = {idx - (idx % self._total_kv_pooling)}')
+    #
+    # # 00r_0 r_1 r_2 r_3
+    # #
 
     output = fastmath.dynamic_slice(
         cache, [0, left_index, 0],
@@ -988,7 +996,7 @@ def RelformerLM(vocab_size,
       cacher,
       tl.ShiftRight(n_positions=shorten_factor - 1, mode=mode),
       _DownsamplerLM(shorten_factor, d_model),
-      relative_decoder_blocks,
+      # relative_decoder_blocks,
       tl.Dropout(rate=dropout, shared_axes=[-2], mode=mode),
       _UpsamplerLM(shorten_factor, d_model),
       tl.LayerNorm(),
