@@ -231,7 +231,7 @@ class FunnelTransformerTest(parameterized.TestCase):
     d_model = 8
     vocab_size = 4
     batch_size = 1
-    n_len_eval = 180
+    n_len_eval = 21
     attention_type = tl.SelfAttention
 
     shorten_factor = 3
@@ -275,10 +275,7 @@ class FunnelTransformerTest(parameterized.TestCase):
 
     for i in range(n_len_eval):
       y = predict_funnel(input[:, i:i+1])
-      print(f'input: {input[:, i:i+1]}')
-      print(f'compare\n y_predict = {y}\n y_eval = {y_eval[:, i:i+1, :]}')
       np.testing.assert_array_almost_equal(y, y_eval[:, i:i+1, :], decimal=5)
-      print(f'{i} passed')
 
   def test_autoregressive_sample_relformerlm(self):
     batch_size = 4

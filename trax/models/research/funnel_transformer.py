@@ -773,14 +773,6 @@ class RelformerCacher(tl.Layer):
     else:
       left_index = (idx - (idx % self._total_kv_pooling)) % \
                    (2 * self._total_kv_pooling)
-    #   print(f'left index = {left_index}')
-    #   print(f'write index = {(idx + self._shift) % (2 * self._total_kv_pooling)}')
-    #   print(f'modulo = {2 * self._total_kv_pooling}')
-    #   print(f'before modulo = {(idx + self._shift)}')
-    #   print(f'left side of left index = {idx - (idx % self._total_kv_pooling)}')
-    #
-    # # 00r_0 r_1 r_2 r_3
-    # #
 
     output = fastmath.dynamic_slice(
         cache, [0, left_index, 0],
