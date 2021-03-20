@@ -1471,15 +1471,20 @@ def T5GlueTrainStream(benchmark=gin.REQUIRED):
   return _T5GlueDataStream(benchmark + '_t')
 
 
-def T5GlueTrainStreamsParallel(benchmark_list=gin.REQUIRED):
+def T5GlueTrainStreamsParallel(benchmark_list=gin.REQUIRED, counters=None):
   """Returns a parallel set of training streams, based on ``benchmark_list``.
 
   Args:
     benchmark_list: List of simple lower-case names of GLUE benchmarks, e.g.,
         ``'cola'``, ``'mnli'``, ``'rte'``.
+    counters: a list of counters to be passed to data.Parallel, e.g.,
+    [8551, 392702, 2490] would be a reasonable counterpart to
+    benchmark_list = ["cola", "mnli", "rte"], see
+    https://github.com/google-research/text-to-text-transfer-transformer/blob/master/t5/data/glue_utils.py#L42
+    for more details on counters.
   """
   stream_list = list(map(T5GlueTrainStream, benchmark_list))
-  return data.Parallel(stream_list)()
+  return data.Parallel(stream_list, counters)()
 
 
 def T5GlueEvalStream(benchmark=gin.REQUIRED):
@@ -1508,7 +1513,7 @@ def T5GlueEvalStreamsParallel(benchmark_list=gin.REQUIRED):
   return data.Parallel(stream_list)()
 
 
-def _T5GlueDataStream(benchmark_id):
+def _T5GlueDataStream(benchmark_id, t5_tokenization=False):
   """Returns a T5-preprocessed data stream for ``benchmark_id``.
 
   Args:
@@ -1517,9 +1522,12 @@ def _T5GlueDataStream(benchmark_id):
         ``'cola_t'`` (Cola benchmark, training split), ``'rte_e'`` (RTE
         benchmark, eval/validation split), and ``'mnli_e2'`` (MNLI benchmark,
         alternate "mismatched" eval/validation split).
+    t5_tokenization: if true, then use t5_tokenization.
   """
   return data.Serial(
-      _t5_glue_data_split(benchmark_id),
+      _t5_glue_data_split(benchmark_id)
+      if t5_tokenization else _t5_glue_data_split_no_token(benchmark_id),
+      data.Tokenize(),
       data.Shuffle(),
       data.PadToLength(),
       data.TruncateToLength(),
@@ -1558,6 +1566,28 @@ def _T5GlueEvalTask(benchmark_id):
       metrics,
       metric_names=[f'{name_upper} accuracy',
                     f'{name_upper} sequence accuracy'])
+
+
+def _t5_glue_data_split_no_token(benchmark_id):
+  """Returns a GLUE data split prepared with the standard T5 preprocessor."""
+  benchmark, split = _t5_glue_benchmark_and_split(benchmark_id)
+  dataset = tfds.load(name=f'glue/{benchmark}', split=split)
+  processed_dataset = t5.data.preprocessors.glue(  # pylint: disable=g-long-lambda
+      dataset,
+      benchmark_name=benchmark,
+      label_names=_GLUE_LABELS[benchmark])
+
+  def stream_of_inputs_targets_weights(generator=None):
+    del generator
+    while True:
+      for example in processed_dataset:
+        input_values = example['inputs'].numpy()
+        target_values = example['targets'].numpy()
+        yield (input_values,
+               target_values,
+               jnp.array([1] * len(target_values)))
+
+  return stream_of_inputs_targets_weights
 
 
 def _t5_glue_data_split(benchmark_id):
