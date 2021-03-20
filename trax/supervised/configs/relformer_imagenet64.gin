@@ -22,7 +22,7 @@ import trax.supervised.trainer_lib
 # ==============================================================================
 n_layers = 6
 pos_type = 'fixed-base'
-attn_type = @LSHSelfAttention  # @CausalFavor
+attn_type = @trax.layers.SelfAttention # @CausalFavor
 
 # Parameters for batcher:
 # ==============================================================================
@@ -66,17 +66,11 @@ train.checkpoints_at = \
     [1000, 5000, 10000, 20000, 40000, 60000, 80000,
      100000, 200000, 300000, 400000, 500000]
 
-# Parameters for LSHSelfAttention:
+# Parameters for SelfAttention:
 # ==============================================================================
-LSHSelfAttention.attention_dropout = 0.2
-LSHSelfAttention.chunk_len = 128
-LSHSelfAttention.n_buckets = 192
-LSHSelfAttention.n_chunks_after = 0
-LSHSelfAttention.n_chunks_before = 1
-LSHSelfAttention.n_hashes = 2
-LSHSelfAttention.n_parallel_heads = 1
-LSHSelfAttention.predict_drop_len = 256
-LSHSelfAttention.predict_mem_len = 12288
+layers.SelfAttention.chunk_len = 1024
+layers.SelfAttention.n_chunks_after = 0
+layers.SelfAttention.n_chunks_before = 0
 
 # Parameters for RelformerLM:
 # ==============================================================================

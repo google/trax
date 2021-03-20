@@ -230,27 +230,36 @@ class FunnelTransformerTest(parameterized.TestCase):
   def test_funnel_transformer_lm_predict_eval_equal(self):
     d_model = 8
     vocab_size = 4
-    batch_size = 2
-    n_len_predict = 1
-    n_len_eval = 18
+    batch_size = 1
+    n_len_eval = 21
     attention_type = tl.SelfAttention
+
+    shorten_factor = 3
+    n_rel_layers = 1
+    vanilla_layers = (1, 1)
+    n_heads = 2
 
     eval_funnel = ft.RelformerLM(
         vocab_size,
-        shorten_factor=3,
-        n_rel_layers=1,
-        vanilla_layers=(1, 1),
+        shorten_factor=shorten_factor,
+        n_rel_layers=n_rel_layers,
+        vanilla_layers=vanilla_layers,
         d_model=d_model,
         d_ff=d_model,
-        n_heads=2,
+        n_heads=n_heads,
         vanilla_attn_type=attention_type,
         mode='eval')
 
-    rng_1 = jax.random.PRNGKey(0)
-
-    x = np.zeros((batch_size, n_len_eval)).astype(np.int32)
-    _, _ = eval_funnel.init(shapes.signature(x), rng=rng_1, use_cache=False)
-    y_eval = eval_funnel(x)
+    input_funnel = jax.random.randint(
+        key=jax.random.PRNGKey(0),
+        minval=0,
+        maxval=vocab_size,
+        shape=(batch_size, n_len_eval)).astype(np.int32)
+    _, _ = eval_funnel.init(
+        shapes.signature(input_funnel),
+        rng=jax.random.PRNGKey(0),
+        use_cache=False)
+    y_eval = eval_funnel(input_funnel)
     self.assertEqual(y_eval.shape, (batch_size, n_len_eval, vocab_size))
 
     if attention_type == tl.SelfAttention:
@@ -258,21 +267,26 @@ class FunnelTransformerTest(parameterized.TestCase):
 
     predict_funnel = ft.RelformerLM(
         vocab_size,
-        shorten_factor=3,
-        n_rel_layers=1,
-        vanilla_layers=(1, 1),
+        shorten_factor=shorten_factor,
+        n_rel_layers=n_rel_layers,
+        vanilla_layers=vanilla_layers,
         d_model=d_model,
         d_ff=d_model,
-        n_heads=2,
+        n_heads=n_heads,
         vanilla_attn_type=attention_type,
         mode='predict')
 
-    x = np.zeros((batch_size, n_len_predict)).astype(np.int32)
-    _, _ = predict_funnel.init(shapes.signature(x), rng=rng_1, use_cache=False)
+    input_funnel = np.concatenate(
+        [np.zeros((batch_size, 1)).astype(np.int32), input_funnel], axis=1)
+    input_funnel = input_funnel[:, :-1]
+    _, _ = predict_funnel.init(
+        shapes.signature(input_funnel[:, 0:1]),
+        rng=jax.random.PRNGKey(0),
+        use_cache=False)
 
-    for i in range(15):
-      y = predict_funnel(x)
-      np.testing.assert_array_almost_equal(y, y_eval[:, i:i + 1, :], decimal=1)
+    for i in range(n_len_eval):
+      y = predict_funnel(input_funnel[:, i:i + 1])
+      np.testing.assert_array_almost_equal(y, y_eval[:, i:i + 1, :], decimal=5)
 
   def test_autoregressive_sample_relformerlm(self):
     batch_size = 4
