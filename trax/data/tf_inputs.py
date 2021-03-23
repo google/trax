@@ -1413,14 +1413,16 @@ def BertGlueTrainStream(benchmark=gin.REQUIRED):
   return _BertGlueDataStream(benchmark + '_t')
 
 
-def GlueEvalAddSuffix(benchmark):
-  """Returns the benchmark name with a suffix.
+# GLUE evals need special handling because one eval in particular, MNLI, has
+# two different eval sets: "matched" and "mismatched". The code in this module
+# distinguishes between the two using the suffixes '_e' versus '_e2',
+# respectively.
+def _ensure_eval_suffix(benchmark):
+  """Returns a string ending in an eval suffix; adds ``'_e'`` suffix if needed.
 
   Args:
-    benchmark: Simple lower-case name of a GLUE benchmark, e.g., ``'cola'``,
-      ``'mnli'``, ``'rte'``. If the benchmark includes an alternate eval (e.g.,
-      MNLI's "mismatched" eval/validation split), you can specify it with an
-      ``'_e2'`` suffix, e.g., ``'mnli_e2'``.
+    benchmark: Name of a benchmark or task, that might already include an
+        eval-indicating suffix (``'_e'`` or ``'_e2'``).
   """
   if benchmark.endswith('_e') or benchmark.endswith('_e2'):
     return benchmark
@@ -1438,7 +1440,7 @@ def BertGlueEvalStream(benchmark=gin.REQUIRED):
         eval (e.g., MNLI's "mismatched" eval/validation split), you can
         specify it with an ``'_e2'`` suffix, e.g., ``'mnli_e2'``.
   """
-  return _BertGlueDataStream(GlueEvalAddSuffix(benchmark))
+  return _BertGlueDataStream(_ensure_eval_suffix(benchmark))
 
 
 def _BertGlueDataStream(benchmark_id):
@@ -1451,7 +1453,7 @@ def _BertGlueDataStream(benchmark_id):
         benchmark, eval/validation split), and ``'mnli_e2'`` (MNLI benchmark,
         alternate "mismatched" eval/validation split).
   """
-  benchmark_id = GlueEvalAddSuffix(benchmark_id)
+  benchmark_id = _ensure_eval_suffix(benchmark_id)
   benchmark, split = benchmark_id.rsplit('_', 1)
   glue_data = TFDS(f'glue/{benchmark}',
                    keys=_GLUE_KEYS[benchmark],
@@ -1506,7 +1508,7 @@ def T5GlueEvalStream(benchmark=gin.REQUIRED):
         eval (e.g., MNLI's "mismatched" eval/validation split), you can
         specify it with an ``'_e2'`` suffix, e.g., ``'mnli_e2'``.
   """
-  return _T5GlueDataStream(GlueEvalAddSuffix(benchmark))
+  return _T5GlueDataStream(_ensure_eval_suffix(benchmark))
 
 
 @gin.configurable(module='trax.data')
@@ -1564,7 +1566,7 @@ def T5GlueEvalTasks(benchmark_list=gin.REQUIRED):
 def _T5GlueEvalTask(benchmark_id):
   """Returns a T5 GLUE eval task, based on ``benchmark_id``."""
   eval_data = T5GlueEvalStream(benchmark_id)
-  benchmark_id = GlueEvalAddSuffix(benchmark_id)
+  benchmark_id = _ensure_eval_suffix(benchmark_id)
   metrics = [tl.WeightedCategoryAccuracy(), tl.SequenceAccuracy()]
   benchmark, split = benchmark_id.rsplit('_', 1)
   if benchmark == 'cola':
