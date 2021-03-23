@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import trax.data
 import trax.models
 import trax.optimizers
-import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
 n_symbols = 32
@@ -45,7 +45,7 @@ multifactor.warmup_steps = 8000
 # ==============================================================================
 train.eval_frequency = 1000
 train.eval_steps = 10
-train.inputs = @trax.data.inputs.sequence_copy_inputs
+train.inputs = @trax.data.sequence_copy_inputs
 train.model = @trax.models.RNNLM
 train.optimizer = @trax.optimizers.Adam
 train.steps = 500000

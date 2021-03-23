@@ -16,10 +16,9 @@
 
 include 'reformer_copy.gin'
 
+import trax.data
 import trax.models
 import trax.optimizers
-import trax.data.inputs
-import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
 # Parameters for Reformer2:
@@ -43,5 +42,5 @@ Reformer2.pos_type  = 'fixed-base'
 
 # Parameters for train:
 # ==============================================================================
-train.inputs = @trax.data.inputs.simple_sequence_copy_inputs
+train.inputs = @trax.data.simple_sequence_copy_inputs
 train.model = @trax.models.Reformer2

@@ -12,10 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import trax.data
 import trax.models
 import trax.optimizers
-import trax.data.inputs
-import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
 # Macros:
@@ -78,7 +77,7 @@ eval/data.TFDS.train = False
 
 # Parameters for batcher:
 # ==============================================================================
-batcher.data_streams = @tf_inputs.data_streams
+batcher.data_streams = @data.data_streams
 batcher.max_eval_length = %max_len
 # batcher.buckets = ([16384], [8, 1])   # 2x2s
 batcher.buckets = ([16384], [32, 1])  # 4x4s
@@ -114,7 +113,7 @@ train.optimizer = @trax.optimizers.Adafactor
 train.checkpoint_highest = 'neg_log_perplexity'
 train.checkpoint_lowest = 'loss'
 train.use_memory_efficient_trainer = False
-train.inputs = @trax.data.inputs.make_inputs
+train.inputs = @trax.data.make_inputs
 
 
 # We are using T5's 32k SPM model by default.

@@ -12,10 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import trax.data
 import trax.models
 import trax.optimizers
-import trax.data.inputs
-import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
 include 'c4_trax_data.gin'

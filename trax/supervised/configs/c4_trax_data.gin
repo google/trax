@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import trax.data.inputs
-import trax.data.tf_inputs
+import trax.data
 import trax.supervised.trainer_lib
 
 # Macros:
@@ -88,5 +87,5 @@ validation/data.Batch.batch_size = 64
 
 # Parameters for train:
 # ==============================================================================
-train.inputs = @trax.data.inputs.make_inputs
+train.inputs = @trax.data.make_inputs
 

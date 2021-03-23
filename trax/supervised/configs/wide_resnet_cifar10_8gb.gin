@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import trax.data
 import trax.supervised.lr_schedules
 import trax.models
 import trax.optimizers
-import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
 # Parameters for batcher:
 # ==============================================================================
-batcher.data_streams = @tf_inputs.data_streams
+batcher.data_streams = @data.data_streams
 batcher.batch_size_per_device = 256
 batcher.bucket_length = 32
 batcher.buckets = None
@@ -31,7 +31,7 @@ batcher.variable_shapes = False
 # ==============================================================================
 data_streams.data_dir = None
 data_streams.dataset_name = 'cifar10'
-data_streams.preprocess_fn = @trax.data.tf_inputs.cifar10_augmentation_preprocess
+data_streams.preprocess_fn = @data.cifar10_augmentation_preprocess
 
 # Parameters for multifactor:
 # ==============================================================================

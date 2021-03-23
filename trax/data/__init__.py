@@ -13,72 +13,90 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Data imports in Trax."""
-import gin
+"""Functions and classes for obtaining and preprocesing data.
 
-from trax.data import debug_data_pipeline
-from trax.data import inputs
-from trax.data import tf_inputs
+The ``trax.data`` module presents a flattened (no subpackages) public API.
+(Many of the functions and class initilizers in the API are also accessible for
+gin configuration.) To use as a client, import ``trax.data`` and access
+functions using ``data.foo`` qualified names; for example::
 
+   from trax import data
+   ...
+   training_inputs = data.Serial(
+     ...
+     data.Tokenize(),
+     data.Shuffle(),
+     ...
+  )
 
-# Ginify
-def data_configure(*args, **kwargs):
-  kwargs['module'] = 'trax.data'
-  return gin.external_configurable(*args, **kwargs)
+"""
 
+from trax.data.debug_data_pipeline import debug_pipeline
 
-# pylint: disable=invalid-name
-AddLossWeights = data_configure(inputs.AddLossWeights)
-AppendValue = data_configure(inputs.AppendValue)
-Batch = data_configure(inputs.Batch)
-UnBatch = data_configure(inputs.UnBatch)
-BertGlueEvalStream = data_configure(tf_inputs.BertGlueEvalStream)
-BertGlueTrainStream = data_configure(tf_inputs.BertGlueTrainStream)
-BertNextSentencePredictionInputs = data_configure(
-    tf_inputs.BertNextSentencePredictionInputs)
-BucketByLength = data_configure(inputs.BucketByLength)
-CastTo = data_configure(inputs.CastTo)
-ConcatenateToLMInput = data_configure(inputs.ConcatenateToLMInput)
-ConvertToUnicode = data_configure(tf_inputs.ConvertToUnicode)
-CorpusToRandomChunks = data_configure(tf_inputs.CorpusToRandomChunks)
-CountAndSkip = data_configure(inputs.CountAndSkip)
-CreateAnnotatedDropInputs = data_configure(tf_inputs.CreateAnnotatedDropInputs)
-CreateAquaInputs = data_configure(tf_inputs.CreateAquaInputs)
-CreateBertInputs = data_configure(tf_inputs.CreateBertInputs)
-CreateDropInputs = data_configure(tf_inputs.CreateDropInputs)
-CreateMathQAInputs = data_configure(tf_inputs.CreateMathQAInputs)
-FilterByLength = data_configure(inputs.FilterByLength)
-FilterEmptyExamples = data_configure(inputs.FilterEmptyExamples)
-Log = data_configure(inputs.Log)
-PrefixLM = data_configure(inputs.PrefixLM)
-MLM = data_configure(inputs.MLM)
-PadToLength = data_configure(inputs.PadToLength)
-Parallel = data_configure(inputs.Parallel)
-Prefetch = data_configure(inputs.Prefetch)
-SentencePieceTokenize = data_configure(tf_inputs.SentencePieceTokenize)
-Serial = data_configure(inputs.Serial)
-Shuffle = data_configure(inputs.Shuffle)
-T5GlueEvalStream = data_configure(tf_inputs.T5GlueEvalStream)
-T5GlueEvalStreamsParallel = data_configure(tf_inputs.T5GlueEvalStreamsParallel)
-T5GlueEvalTasks = data_configure(tf_inputs.T5GlueEvalTasks)
-T5GlueTrainStream = data_configure(tf_inputs.T5GlueTrainStream)
-T5GlueTrainStreamsParallel = (
-    data_configure(tf_inputs.T5GlueTrainStreamsParallel))
-TFDS = data_configure(tf_inputs.TFDS)
-Tokenize = data_configure(tf_inputs.Tokenize)
-TruncateToLength = data_configure(inputs.TruncateToLength)
-UniformlySeek = data_configure(inputs.UniformlySeek)
-add_loss_weights = inputs.add_loss_weights
-batch = inputs.batch
-bucket_by_length = inputs.bucket_by_length
-consume_noise_mask = data_configure(inputs.consume_noise_mask)
-debug_pipeline = debug_data_pipeline.debug_pipeline
-detokenize = tf_inputs.detokenize
-generate_random_noise_mask = data_configure(inputs.generate_random_noise_mask)
-generate_sequential_chunks = data_configure(inputs.generate_sequential_chunks)
-mask_random_tokens = data_configure(tf_inputs.mask_random_tokens)
-random_spans_noise_mask = inputs.random_spans_noise_mask
-sentencepiece_tokenize = tf_inputs.sentencepiece_tokenize
-shuffle = inputs.shuffle
-tokenize = tf_inputs.tokenize
-vocab_size = tf_inputs.vocab_size
+from trax.data.inputs import add_loss_weights
+from trax.data.inputs import addition_inputs
+from trax.data.inputs import AddLossWeights
+from trax.data.inputs import AppendValue
+from trax.data.inputs import batch
+from trax.data.inputs import Batch
+from trax.data.inputs import bucket_by_length
+from trax.data.inputs import BucketByLength
+from trax.data.inputs import CastTo
+from trax.data.inputs import ConcatenateToLMInput
+from trax.data.inputs import consume_noise_mask
+from trax.data.inputs import CountAndSkip
+from trax.data.inputs import FilterByLength
+from trax.data.inputs import FilterEmptyExamples
+from trax.data.inputs import generate_random_noise_mask
+from trax.data.inputs import generate_sequential_chunks
+from trax.data.inputs import Log
+from trax.data.inputs import MLM
+from trax.data.inputs import PadToLength
+from trax.data.inputs import Parallel
+from trax.data.inputs import Prefetch
+from trax.data.inputs import PrefixLM
+from trax.data.inputs import random_spans_noise_mask
+from trax.data.inputs import sequence_copy_inputs
+from trax.data.inputs import Serial
+from trax.data.inputs import shuffle
+from trax.data.inputs import Shuffle
+from trax.data.inputs import simple_sequence_copy_inputs
+from trax.data.inputs import TruncateToLength
+from trax.data.inputs import UnBatch
+from trax.data.inputs import UniformlySeek
+
+from trax.data.tf_inputs import add_eos_to_output_features
+from trax.data.tf_inputs import BertGlueEvalStream
+from trax.data.tf_inputs import BertGlueTrainStream
+from trax.data.tf_inputs import BertNextSentencePredictionInputs
+from trax.data.tf_inputs import cifar10_augmentation_flatten_preprocess
+from trax.data.tf_inputs import cifar10_augmentation_preprocess
+from trax.data.tf_inputs import ConvertToUnicode
+from trax.data.tf_inputs import CorpusToRandomChunks
+from trax.data.tf_inputs import CreateAnnotatedDropInputs
+from trax.data.tf_inputs import CreateAquaInputs
+from trax.data.tf_inputs import CreateBertInputs
+from trax.data.tf_inputs import CreateDropInputs
+from trax.data.tf_inputs import CreateMathQAInputs
+from trax.data.tf_inputs import data_streams
+from trax.data.tf_inputs import detokenize
+from trax.data.tf_inputs import downsampled_imagenet_flatten_bare_preprocess
+from trax.data.tf_inputs import filter_dataset_on_len
+from trax.data.tf_inputs import lm1b_preprocess
+from trax.data.tf_inputs import mask_random_tokens
+from trax.data.tf_inputs import sentencepiece_tokenize
+from trax.data.tf_inputs import SentencePieceTokenize
+from trax.data.tf_inputs import squeeze_targets_preprocess
+from trax.data.tf_inputs import T5GlueEvalStream
+from trax.data.tf_inputs import T5GlueEvalStreamsParallel
+from trax.data.tf_inputs import T5GlueEvalTasks
+from trax.data.tf_inputs import T5GlueTrainStream
+from trax.data.tf_inputs import T5GlueTrainStreamsParallel
+from trax.data.tf_inputs import TFDS
+from trax.data.tf_inputs import tokenize
+from trax.data.tf_inputs import Tokenize
+from trax.data.tf_inputs import truncate_dataset_on_len
+from trax.data.tf_inputs import vocab_size
+from trax.data.tf_inputs import wmt_concat_preprocess
+from trax.data.tf_inputs import wmt_preprocess
+

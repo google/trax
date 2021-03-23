@@ -16,10 +16,9 @@
 
 include 'reformer2_copy.gin'
 
+import trax.data
 import trax.models
 import trax.optimizers
-import trax.data.inputs
-import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
 
@@ -52,5 +51,5 @@ Reformer2.encoder_decoder_attention_type = @PureLSHSelfAttentionWrapper
 
 # Parameters for train:
 # ==============================================================================
-train.inputs = @trax.data.inputs.simple_sequence_copy_inputs
+train.inputs = @trax.data.simple_sequence_copy_inputs
 train.model = @trax.models.Reformer2

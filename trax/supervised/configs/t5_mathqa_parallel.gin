@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import trax.data
 import trax.layers
 import trax.models
-import trax.data
 import trax.optimizers
 import trax.supervised.lr_schedules
 import trax.supervised.trainer_lib
@@ -152,7 +152,7 @@ eval_basic_task/data.CreateMathQAInputs.dataset_path = %dataset_path
 eval_basic_task/data.CreateMathQAInputs.train = False
 eval_basic_task/data.CreateMathQAInputs.tolerance = 0.01
 eval_basic_task/data.CreateMathQAInputs.cumulative = True
-eval_basic_task/trax.supervised.training.EvalTask.labeled_data = @eval_basic_task/trax.data.inputs.make_additional_stream()
+eval_basic_task/trax.supervised.training.EvalTask.labeled_data = @eval_basic_task/trax.data.make_additional_stream()
 # Explicitly pass the accuracy metric - we can pass multiple metrics if needs be
 eval_basic_task/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
 eval_basic_task/trax.supervised.training.EvalTask.metric_names = ['Single instruction accuracy', 'Single instruction sequence accuracy']
@@ -168,7 +168,7 @@ eval_rationale_task/data.CreateMathQAInputs.train = False
 eval_rationale_task/data.CreateMathQAInputs.tolerance = 0.01
 eval_rationale_task/data.CreateMathQAInputs.cumulative = False
 eval_rationale_task/data.CreateMathQAInputs.nlp_rationale = True
-eval_rationale_task/trax.supervised.training.EvalTask.labeled_data = @eval_rationale_task/trax.data.inputs.make_additional_stream()
+eval_rationale_task/trax.supervised.training.EvalTask.labeled_data = @eval_rationale_task/trax.data.make_additional_stream()
 # Explicitly pass the accuracy metric - we can pass multiple metrics if needs be
 eval_rationale_task/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
 eval_rationale_task/trax.supervised.training.EvalTask.metric_names = ['Rationale accuracy', 'Rationale sequence accuracy']
@@ -184,7 +184,7 @@ eval_category_task/data.CreateMathQAInputs.train = False
 eval_category_task/data.CreateMathQAInputs.tolerance = 0.01
 eval_category_task/data.CreateMathQAInputs.cumulative = False
 eval_category_task/data.CreateMathQAInputs.category = True
-eval_category_task/trax.supervised.training.EvalTask.labeled_data = @eval_category_task/trax.data.inputs.make_additional_stream()
+eval_category_task/trax.supervised.training.EvalTask.labeled_data = @eval_category_task/trax.data.make_additional_stream()
 # Explicitly pass the accuracy metric - we can pass multiple metrics if needs be
 eval_category_task/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
 eval_category_task/trax.supervised.training.EvalTask.metric_names = ['Category accuracy', 'Category sequence accuracy']
@@ -198,7 +198,7 @@ eval_full_inference/data.CreateMathQAInputs.dataset_path = %dataset_path
 eval_full_inference/data.CreateMathQAInputs.train = False
 eval_full_inference/data.CreateMathQAInputs.tolerance = 0.01
 eval_full_inference/data.CreateMathQAInputs.cumulative = False
-eval_full_inference/trax.supervised.training.EvalTask.labeled_data = @eval_full_inference/trax.data.inputs.make_additional_stream()
+eval_full_inference/trax.supervised.training.EvalTask.labeled_data = @eval_full_inference/trax.data.make_additional_stream()
 # Explicitly pass the accuracy metric - we can pass multiple metrics if needs be
 eval_full_inference/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
 eval_full_inference/trax.supervised.training.EvalTask.metric_names = ['Full program accuracy', 'Full program sequence accuracy']
@@ -214,7 +214,7 @@ train.init_checkpoint = None
 train.optimizer = @trax.optimizers.Adafactor
 train.eval_frequency = 20
 train.eval_steps = 10
-train.inputs = @trax.data.inputs.make_inputs
+train.inputs = @trax.data.make_inputs
 train.model = @trax.models.ConfigurableTransformer
 train.steps = 200000
 train.checkpoint_highest = 'accuracy'

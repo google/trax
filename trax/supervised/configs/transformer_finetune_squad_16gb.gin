@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# -*-Python-*-
-
-import trax.data.tf_inputs
+import trax.data
 include 'c4_pretrain_16gb_adafactor.gin'
 
 
@@ -41,7 +39,7 @@ multifactor.constant = 0.001
 # Parameters for data_streams:
 # ==============================================================================
 data_streams.dataset_name = 'squad/plain_text:1.0.0'
-data_streams.bare_preprocess_fn = @trax.data.tf_inputs.generic_text_dataset_preprocess_fn
+data_streams.bare_preprocess_fn = @data.generic_text_dataset_preprocess_fn
 
 
 # Parameters for get_t5_preprocessor_by_name:
@@ -56,5 +54,5 @@ generic_text_dataset_preprocess_fn.text_preprocess_fns = [
     @squad/get_t5_preprocessor_by_name()
 ]
 generic_text_dataset_preprocess_fn.token_preprocess_fns = [
-    @trax.data.tf_inputs.add_eos_to_output_features
+    @data.add_eos_to_output_features
 ]

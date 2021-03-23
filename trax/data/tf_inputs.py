@@ -58,7 +58,7 @@ def t2t_problems():
   return t2tp
 
 
-@gin.configurable
+@gin.configurable(module='trax.data')
 def data_streams(dataset_name,
                  data_dir=None,
                  preprocess_fn=no_preprocess,
@@ -257,7 +257,7 @@ def _train_and_eval_dataset(dataset_name,
   return train, valid, keys
 
 
-@gin.configurable
+@gin.configurable(module='trax.data')
 def TFDS(  # pylint: disable=invalid-name
     dataset_name,
     data_dir=None,
@@ -394,7 +394,7 @@ def tokenize(stream,
       yield output
 
 
-@gin.configurable
+@gin.configurable(module='trax.data')
 def Tokenize(  # pylint: disable=invalid-name
     keys=None,
     vocab_type='subword',  # pylint: disable=invalid-name
@@ -447,6 +447,7 @@ def _to_unicode(s):
   return str(s, encoding='utf-8', errors='ignore')
 
 
+@gin.configurable(module='trax.data')
 def ConvertToUnicode(keys=None):  # pylint: disable=invalid-name
   """Converts to Unicode UTF-8 elements of an example.
 
@@ -545,7 +546,7 @@ def _get_vocab(vocab_type='subword', vocab_file=None, vocab_dir=None,
 
 
 # Makes the function accessible in gin configs, even with all args denylisted.
-@gin.configurable(denylist=['dataset', 'training'])
+@gin.configurable(module='trax.data', denylist=['dataset', 'training'])
 def cifar10_no_augmentation_preprocess(dataset, training):
   del training
 
@@ -575,7 +576,7 @@ def _cifar_augment_image(image):
 
 
 # Makes the function accessible in gin configs, even with all args denylisted.
-@gin.configurable(denylist=['dataset', 'training'])
+@gin.configurable(module='trax.data', denylist=['dataset', 'training'])
 def cifar10_augmentation_preprocess(dataset, training):
   """Preprocessing for cifar10 with augmentation (see below)."""
 
@@ -593,7 +594,7 @@ def cifar10_augmentation_preprocess(dataset, training):
   return dataset
 
 
-@gin.configurable(denylist=['dataset', 'training'])
+@gin.configurable(module='trax.data', denylist=['dataset', 'training'])
 def cifar10_augmentation_flatten_preprocess(dataset,
                                             training,
                                             predict_image_train_weight=0.01):
@@ -625,7 +626,7 @@ def cifar10_augmentation_flatten_preprocess(dataset,
   return dataset
 
 
-@gin.configurable(denylist=['dataset', 'training'])
+@gin.configurable(module='trax.data', denylist=['dataset', 'training'])
 def downsampled_imagenet_flatten_bare_preprocess(dataset, training):
   """Preprocessing for downsampled_imagenet.
 
@@ -651,7 +652,7 @@ def downsampled_imagenet_flatten_bare_preprocess(dataset, training):
   return dataset.map(flatten_image)
 
 
-@gin.configurable(denylist=['dataset', 'training'])
+@gin.configurable(module='trax.data', denylist=['dataset', 'training'])
 def concat_preprocess(dataset, training, pad_symbol=0):
   """Pre-processing function that concatenates input and target for LM."""
   del training
@@ -669,7 +670,7 @@ def concat_preprocess(dataset, training, pad_symbol=0):
   return dataset
 
 
-@gin.configurable(denylist=['dataset', 'training'])
+@gin.configurable(module='trax.data', denylist=['dataset', 'training'])
 def squeeze_targets_preprocess(dataset, training):
   """Pre-processing function that squeezes last axis of targets."""
   del training
@@ -683,7 +684,7 @@ def squeeze_targets_preprocess(dataset, training):
   return dataset
 
 
-@gin.configurable(denylist=['dataset', 'training'])
+@gin.configurable(module='trax.data', denylist=['dataset', 'training'])
 def lm1b_preprocess(dataset,
                     training,
                     max_target_length=-1,
@@ -706,7 +707,7 @@ def lm1b_preprocess(dataset,
 
 
 # TODO(lukaszkaiser): find a single more abstract way of text pre-processing.
-@gin.configurable(denylist=['dataset', 'training'])
+@gin.configurable(module='trax.data', denylist=['dataset', 'training'])
 def wmt_preprocess(dataset, training, max_length=-1, max_eval_length=-1):
   """Preprocessing for LM1B: filter out targets exceeding maximum length."""
 
@@ -727,7 +728,7 @@ def wmt_preprocess(dataset, training, max_length=-1, max_eval_length=-1):
   return dataset
 
 
-@gin.configurable(denylist=['dataset', 'training'])
+@gin.configurable(module='trax.data', denylist=['dataset', 'training'])
 def wmt_concat_preprocess(dataset, training, max_length=-1, max_eval_length=-1):
   """Preprocessing for WMT: filter exceeding maximum length and concatenate."""
   dataset = wmt_preprocess(dataset, training, max_length, max_eval_length)
@@ -745,7 +746,7 @@ def wmt_concat_preprocess(dataset, training, max_length=-1, max_eval_length=-1):
   return dataset
 
 
-@gin.configurable(denylist=['dataset', 'training'])
+@gin.configurable(module='trax.data', denylist=['dataset', 'training'])
 def lm_token_preprocessing(dataset, training):
   """Concatenates inputs, 0, targets, with masking only for targets."""
   del training
@@ -765,7 +766,7 @@ def lm_token_preprocessing(dataset, training):
   return dataset
 
 
-@gin.configurable(denylist=['hparams'])
+@gin.configurable(module='trax.data', denylist=['hparams'])
 def bair_robot_pushing_hparams(hparams=None,
                                video_num_input_frames=1,
                                video_num_target_frames=15):
@@ -776,7 +777,7 @@ def bair_robot_pushing_hparams(hparams=None,
     return video_num_input_frames, video_num_target_frames
 
 
-@gin.configurable(denylist=['dataset', 'training'])
+@gin.configurable(module='trax.data', denylist=['dataset', 'training'])
 def bair_robot_pushing_preprocess(dataset, training):
   """Pre-processing function that concatenates input and target frames."""
   del training
@@ -814,7 +815,7 @@ def sentencepiece_tokenize(stream, spm_path=None, extra_ids=0):
     yield np.array(vocab.encode(example))
 
 
-@gin.configurable
+@gin.configurable(module='trax.data')
 def SentencePieceTokenize(  # pylint: disable=invalid-name
     spm_path=None,
     extra_ids=0):
@@ -825,7 +826,7 @@ def SentencePieceTokenize(  # pylint: disable=invalid-name
       extra_ids=extra_ids)
 
 
-@gin.configurable(denylist=['dataset', 'training'])
+@gin.configurable(module='trax.data', denylist=['dataset', 'training'])
 def c4_preprocess(dataset,
                   training,
                   max_target_length=-1,
@@ -866,7 +867,7 @@ def c4_preprocess(dataset,
   return dataset
 
 
-@gin.configurable(denylist=['dataset', 'training'])
+@gin.configurable(module='trax.data', denylist=['dataset', 'training'])
 def c4_bare_preprocess_fn(dataset,
                           training=True,
                           spm_path=None,
@@ -927,7 +928,7 @@ def c4_bare_preprocess_fn(dataset,
   return dataset
 
 
-@gin.configurable(denylist=['dataset', 'training'])
+@gin.configurable(module='trax.data', denylist=['dataset', 'training'])
 def filter_dataset_on_len(dataset,
                           training,
                           len_map=None,
@@ -965,7 +966,7 @@ def filter_dataset_on_len(dataset,
   return dataset
 
 
-@gin.configurable(denylist=['dataset', 'training'])
+@gin.configurable(module='trax.data', denylist=['dataset', 'training'])
 def truncate_dataset_on_len(dataset,
                             training,
                             len_map=None,
@@ -998,7 +999,7 @@ def truncate_dataset_on_len(dataset,
   return dataset.map(truncate_example)
 
 
-@gin.configurable(denylist=['dataset', 'training'])
+@gin.configurable(module='trax.data', denylist=['dataset', 'training'])
 def pad_dataset_to_length(dataset, training, len_map=None):
   """Pad features less than specified length to specified length."""
   del training
@@ -1020,7 +1021,7 @@ def pad_dataset_to_length(dataset, training, len_map=None):
   return dataset.map(pad_to_len)
 
 
-@gin.configurable(denylist=['dataset', 'training'])
+@gin.configurable(module='trax.data', denylist=['dataset', 'training'])
 def add_eos_to_output_features(dataset,
                                training,
                                output_features='targets',
@@ -1038,7 +1039,7 @@ def add_eos_to_output_features(dataset,
   return dataset.map(add_eos)
 
 
-@gin.configurable(denylist=['dataset', 'training'])
+@gin.configurable(module='trax.data', denylist=['dataset', 'training'])
 def generic_text_dataset_preprocess_fn(dataset,
                                        training=True,
                                        text_preprocess_fns=None,
@@ -1125,7 +1126,7 @@ def generic_text_dataset_preprocess_fn(dataset,
   return dataset
 
 
-@gin.configurable
+@gin.configurable(module='trax.data')
 def get_t5_preprocessor_by_name(name=None, fn_kwargs=None):
   """Returns a closure of any T5 preprocessor function with its arguments.
 
@@ -1231,6 +1232,7 @@ def BertDoubleSentenceInputs(batch,  # pylint: disable=invalid-name
       yield value_vector, segment_embs, segment_embs
 
 
+@gin.configurable(module='trax.data')
 def CreateBertInputs(double_sentence=True,  # pylint: disable=invalid-name
                      labeled=True,
                      cls_id=101,
@@ -1240,6 +1242,7 @@ def CreateBertInputs(double_sentence=True,  # pylint: disable=invalid-name
       bert_inputs_fn, labeled=labeled, cls_id=cls_id, sep_id=sep_id)
 
 
+@gin.configurable(module='trax.data')
 def mask_random_tokens(batch,
                        explicit_vocab_size=30522,
                        masking_prob=0.15,
@@ -1321,6 +1324,7 @@ def mask_random_tokens(batch,
     yield (token_ids, *row_rest, original_tokens, token_weights)
 
 
+@gin.configurable(module='trax.data')
 def BertNextSentencePredictionInputs(dataset_name,  # pylint: disable=invalid-name
                                      data_dir=None,
                                      text_key='text',
@@ -1352,6 +1356,7 @@ def BertNextSentencePredictionInputs(dataset_name,  # pylint: disable=invalid-na
   return split_stream
 
 
+@gin.configurable(module='trax.data')
 def CorpusToRandomChunks(dataset_name, num_tokens=512, train=True):  # pylint: disable=invalid-name
   return TFDS(
       dataset_name,
@@ -1397,6 +1402,7 @@ _GLUE_LABELS = {
 
 
 # pylint: disable=invalid-name
+@gin.configurable(module='trax.data')
 def BertGlueTrainStream(benchmark=gin.REQUIRED):
   """Returns a Bert-preprocessed training stream for ``benchmark``.
 
@@ -1422,6 +1428,7 @@ def GlueEvalAddSuffix(benchmark):
     return benchmark + '_e'
 
 
+@gin.configurable(module='trax.data')
 def BertGlueEvalStream(benchmark=gin.REQUIRED):
   """Returns a Bert-preprocessed eval data stream for ``benchmark``.
 
@@ -1461,6 +1468,7 @@ def _BertGlueDataStream(benchmark_id):
   )
 
 
+@gin.configurable(module='trax.data')
 def T5GlueTrainStream(benchmark=gin.REQUIRED):
   """Returns a T5-preprocessed training data stream for ``benchmark``.
 
@@ -1471,6 +1479,7 @@ def T5GlueTrainStream(benchmark=gin.REQUIRED):
   return _T5GlueDataStream(benchmark + '_t')
 
 
+@gin.configurable(module='trax.data')
 def T5GlueTrainStreamsParallel(benchmark_list=gin.REQUIRED, counters=None):
   """Returns a parallel set of training streams, based on ``benchmark_list``.
 
@@ -1487,6 +1496,7 @@ def T5GlueTrainStreamsParallel(benchmark_list=gin.REQUIRED, counters=None):
   return data.Parallel(stream_list, counters)()
 
 
+@gin.configurable(module='trax.data')
 def T5GlueEvalStream(benchmark=gin.REQUIRED):
   """Returns a T5-preprocessed eval data stream for ``benchmark``.
 
@@ -1499,6 +1509,7 @@ def T5GlueEvalStream(benchmark=gin.REQUIRED):
   return _T5GlueDataStream(GlueEvalAddSuffix(benchmark))
 
 
+@gin.configurable(module='trax.data')
 def T5GlueEvalStreamsParallel(benchmark_list=gin.REQUIRED):
   """Returns a parallel set of T5 eval streams, based on ``benchmark_list``.
 
@@ -1535,6 +1546,7 @@ def _T5GlueDataStream(benchmark_id, t5_tokenization=False):
   )
 
 
+@gin.configurable(module='trax.data')
 def T5GlueEvalTasks(benchmark_list=gin.REQUIRED):
   """Returns a list of T5 GLUE eval tasks, based on ``benchmark_list``.
 
@@ -1904,6 +1916,7 @@ def convert_to_subtract(const_string):
   return 'subtract({},const_0)'.format(const_string)
 
 
+@gin.configurable(module='trax.data')
 def CreateMathQAInputs(  # pylint: disable=invalid-name
     dataset_path=None,
     train=True,
@@ -2056,6 +2069,7 @@ def CreateMathQAInputs(  # pylint: disable=invalid-name
   return mathqa_yield_examples
 
 
+@gin.configurable(module='trax.data')
 def CreateAquaInputs(  # pylint: disable=invalid-name
     dataset_path=None,
     train=True,
@@ -2160,6 +2174,7 @@ def CreateAquaInputs(  # pylint: disable=invalid-name
   return aqua_yield_examples
 
 
+@gin.configurable(module='trax.data')
 def CreateDropInputs(  # pylint: disable=invalid-name
     train=True, mathqa_format=False):
   """Prepares Drop inputs.
@@ -2204,6 +2219,7 @@ def CreateDropInputs(  # pylint: disable=invalid-name
   return drop_yield_examples
 
 
+@gin.configurable(module='trax.data')
 def CreateAnnotatedDropInputs(  # pylint: disable=invalid-name
     dataset_path=None,
     train=True,

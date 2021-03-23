@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import trax.data
 import trax.models
 import trax.optimizers
-import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
 MAX_EVAL_LENGTH = 512 # Get back to 65536
@@ -22,7 +22,7 @@ BUCKETS = ([513], [64, 1])
 
 # Parameters for batcher:
 # ==============================================================================
-batcher.data_streams = @tf_inputs.data_streams
+batcher.data_streams = @data.data_streams
 batcher.batch_size_per_device = 1
 batcher.eval_batch_size = 1
 batcher.buckets_include_inputs_in_length = True
@@ -35,7 +35,7 @@ batcher.id_to_mask = 0
 # ==============================================================================
 data_streams.data_dir = None
 data_streams.dataset_name = 't2t_translate_ende_wmt32k'
-data_streams.preprocess_fn = @trax.data.tf_inputs.wmt_preprocess
+data_streams.preprocess_fn = @data.wmt_preprocess
 
 # Parameters for multifactor:
 # ==============================================================================

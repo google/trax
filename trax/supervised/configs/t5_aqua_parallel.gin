@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import trax.data
 import trax.layers
 import trax.models
-import trax.data
 import trax.optimizers
 import trax.supervised.lr_schedules
 import trax.supervised.trainer_lib
@@ -166,7 +166,7 @@ train_cumulative_rationale_task/data.CreateAquaInputs.cumulative = True
 eval_cumulative_rationale_task/data.CreateAquaInputs.dataset_path = %dataset_path
 eval_cumulative_rationale_task/data.CreateAquaInputs.train = False
 eval_cumulative_rationale_task/data.CreateAquaInputs.cumulative = True
-eval_cumulative_rationale_task/trax.supervised.training.EvalTask.labeled_data = @eval_cumulative_rationale_task/trax.data.inputs.make_additional_stream()
+eval_cumulative_rationale_task/trax.supervised.training.EvalTask.labeled_data = @eval_cumulative_rationale_task/trax.data.make_additional_stream()
 eval_cumulative_rationale_task/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
 eval_cumulative_rationale_task/trax.supervised.training.EvalTask.metric_names = ['Single instruction accuracy', 'Single instruction sequence accuracy']
 
@@ -177,7 +177,7 @@ train_rationale_task/data.CreateAquaInputs.rationale = True
 eval_rationale_task/data.CreateAquaInputs.dataset_path = %dataset_path
 eval_rationale_task/data.CreateAquaInputs.train = False
 eval_rationale_task/data.CreateAquaInputs.rationale = True
-eval_rationale_task/trax.supervised.training.EvalTask.labeled_data = @eval_rationale_task/trax.data.inputs.make_additional_stream()
+eval_rationale_task/trax.supervised.training.EvalTask.labeled_data = @eval_rationale_task/trax.data.make_additional_stream()
 eval_rationale_task/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
 eval_rationale_task/trax.supervised.training.EvalTask.metric_names = ['Rationale accuracy', 'Rationale sequence accuracy']
 
@@ -188,7 +188,7 @@ train_order_prediction_task/data.CreateAquaInputs.order_prediction = True
 eval_order_prediction_task/data.CreateAquaInputs.dataset_path = %dataset_path
 eval_order_prediction_task/data.CreateAquaInputs.train = False
 eval_order_prediction_task/data.CreateAquaInputs.order_prediction = True
-eval_order_prediction_task/trax.supervised.training.EvalTask.labeled_data = @eval_order_prediction_task/trax.data.inputs.make_additional_stream()
+eval_order_prediction_task/trax.supervised.training.EvalTask.labeled_data = @eval_order_prediction_task/trax.data.make_additional_stream()
 eval_order_prediction_task/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
 eval_order_prediction_task/trax.supervised.training.EvalTask.metric_names = ['Order prediction accuracy', 'Order prediction sequence accuracy']
 
@@ -199,7 +199,7 @@ train_correct_answer_task/data.CreateAquaInputs.correct_answer = True
 eval_correct_answer_task/data.CreateAquaInputs.dataset_path = %dataset_path
 eval_correct_answer_task/data.CreateAquaInputs.train = False
 eval_correct_answer_task/data.CreateAquaInputs.correct_answer = True
-eval_correct_answer_task/trax.supervised.training.EvalTask.labeled_data = @eval_correct_answer_task/trax.data.inputs.make_additional_stream()
+eval_correct_answer_task/trax.supervised.training.EvalTask.labeled_data = @eval_correct_answer_task/trax.data.make_additional_stream()
 eval_correct_answer_task/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
 eval_correct_answer_task/trax.supervised.training.EvalTask.metric_names = ['Correct answer accuracy', 'Correct answer sequence accuracy']
 
@@ -210,7 +210,7 @@ train_correct_answer_given_reasoning_task/data.CreateAquaInputs.correct_answer_g
 eval_correct_answer_given_reasoning_task/data.CreateAquaInputs.dataset_path = %dataset_path
 eval_correct_answer_given_reasoning_task/data.CreateAquaInputs.train = False
 eval_correct_answer_given_reasoning_task/data.CreateAquaInputs.correct_answer_given_reasoning = True
-eval_correct_answer_given_reasoning_task/trax.supervised.training.EvalTask.labeled_data = @eval_correct_answer_given_reasoning_task/trax.data.inputs.make_additional_stream()
+eval_correct_answer_given_reasoning_task/trax.supervised.training.EvalTask.labeled_data = @eval_correct_answer_given_reasoning_task/trax.data.make_additional_stream()
 eval_correct_answer_given_reasoning_task/trax.supervised.training.EvalTask.metrics = [@trax.layers.WeightedCategoryAccuracy(), @trax.layers.SequenceAccuracy()]
 eval_correct_answer_given_reasoning_task/trax.supervised.training.EvalTask.metric_names = ['Correct answer given reasoning accuracy', 'Correct answer given reasoning sequence accuracy']
 
@@ -225,7 +225,7 @@ train.init_checkpoint = None
 train.optimizer = @trax.optimizers.Adafactor
 train.eval_frequency = 20
 train.eval_steps = 10
-train.inputs = @trax.data.inputs.make_inputs
+train.inputs = @trax.data.make_inputs
 train.model = @trax.models.ConfigurableTransformer
 train.steps = 1000000
 train.checkpoint_highest = 'accuracy'

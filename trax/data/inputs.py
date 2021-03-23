@@ -155,6 +155,7 @@ def Parallel(fns=None, counters=None):  # pylint: disable=invalid-name
   return parallel_generator
 
 
+@gin.configurable(module='trax.data')
 def Log(n_steps_per_example=1, only_shapes=True):  # pylint: disable=invalid-name
   """Creates a logging component of the input pipeline."""
   def log(stream):
@@ -177,6 +178,7 @@ def _generator_process(generator, in_q, out_q):
     out_q.put(example)
 
 
+@gin.configurable(module='trax.data')
 def Prefetch(n_prefetch=2):  # pylint: disable=invalid-name
   """Pre-fetches a number of examples from generator in a separate process."""
   def prefetch(generator):
@@ -231,6 +233,7 @@ def shuffle(samples, queue_size):
     yield sample
 
 
+@gin.configurable(module='trax.data')
 def Shuffle(queue_size=1024):  # pylint: disable=invalid-name
   """Returns a shuffle function with the given queue size."""
   return lambda g: shuffle(g, queue_size)
@@ -290,11 +293,13 @@ def count_and_skip(generator, name):
       yield example
 
 
+@gin.configurable(module='trax.data')
 def CountAndSkip(name):  # pylint: disable=invalid-name
   """Returns a function that counts and skips examples (see above)."""
   return lambda g: count_and_skip(g, name)
 
 
+@gin.configurable(module='trax.data')
 def UniformlySeek(name=None, host_id=None, n_hosts=None, dataset_size=None):  # pylint: disable=invalid-name
   """Sets each host at (dataset_size/n_hosts)-th of the dataset."""
   if not dataset_size:
@@ -347,11 +352,13 @@ def batch(generator, batch_size):
       buf = []
 
 
+@gin.configurable(module='trax.data')
 def Batch(batch_size):  # pylint: disable=invalid-name
   """Returns a batching function with given batch size."""
   return lambda g: batch(g, batch_size)
 
 
+@gin.configurable(module='trax.data')
 def UnBatch():  # pylint: disable=invalid-name
   """Returns a function which unbatches."""
   def _unbatch(generator):
@@ -550,6 +557,7 @@ def _length_fn(example, length_axis, length_keys):
   return example.shape[length_axis]
 
 
+@gin.configurable(module='trax.data')
 def BucketByLength(boundaries, batch_sizes,  # pylint: disable=invalid-name
                    length_keys=None, length_axis=0, strict_pad_on_len=False):
   """Returns a function for bucketing inputs, see `bucket_by_length`."""
@@ -560,6 +568,7 @@ def BucketByLength(boundaries, batch_sizes,  # pylint: disable=invalid-name
       g, length_fn, boundaries, batch_sizes, strict_pad_on_len)
 
 
+@gin.configurable(module='trax.data')
 def FilterByLength(max_length, min_length=0,  # pylint: disable=invalid-name
                    length_keys=None, length_axis=0):
   """Returns a function that filters out examples by length.
@@ -593,6 +602,7 @@ def FilterByLength(max_length, min_length=0,  # pylint: disable=invalid-name
   return filtered
 
 
+@gin.configurable(module='trax.data')
 def FilterEmptyExamples(axes=None, debug=False):  # pylint: disable=invalid-name
   """Filters empty examples.
 
@@ -624,6 +634,7 @@ def FilterEmptyExamples(axes=None, debug=False):  # pylint: disable=invalid-name
   return _filter_examples
 
 
+@gin.configurable(module='trax.data')
 def CastTo(dtype=np.int32, indices=(0, 1,), debug=False):  # pylint: disable=invalid-name
   """Casts the given indices to the given dtype."""
   def _cast_fn(generator):
@@ -651,6 +662,7 @@ def CastTo(dtype=np.int32, indices=(0, 1,), debug=False):  # pylint: disable=inv
   return _cast_fn
 
 
+@gin.configurable(module='trax.data')
 def ConcatenateToLMInput(pad_to_length=None):  # pylint: disable=invalid-name
   """Prepares the input needed for training of Language Models.
 
@@ -696,6 +708,7 @@ def ConcatenateToLMInput(pad_to_length=None):  # pylint: disable=invalid-name
   return _concatenate_to_lm_input
 
 
+@gin.configurable(module='trax.data')
 def PadToLength(  # pylint: disable=invalid-name
     len_map=None, pad_value=0, multiple=False):
   """Pads the values to lengths given in `len_map'.
@@ -747,6 +760,7 @@ def PadToLength(  # pylint: disable=invalid-name
   return _pad_to_length
 
 
+@gin.configurable(module='trax.data')
 def AppendValue(val=None):  # pylint: disable=invalid-name
   """Appends values provided in 'val` to inputs.
 
@@ -776,6 +790,7 @@ def AppendValue(val=None):  # pylint: disable=invalid-name
   return _append_value
 
 
+@gin.configurable(module='trax.data')
 def TruncateToLength(len_map=None):  # pylint: disable=invalid-name
   """Returns a stream function that resizes items as specified by ``len_map``.
 
@@ -841,6 +856,7 @@ def add_loss_weights(generator, id_to_mask=None):
       yield output
 
 
+@gin.configurable(module='trax.data')
 def AddLossWeights(id_to_mask=None):  # pylint: disable=invalid-name
   """Returns a function to add loss weights; see `add_loss_weights`."""
   return lambda g: add_loss_weights(g, id_to_mask=id_to_mask)
@@ -945,7 +961,7 @@ class Inputs:
 # Batching and Inputs creation helpers.
 
 
-@gin.configurable
+@gin.configurable(module='trax.data')
 def make_inputs(train_stream=gin.REQUIRED, eval_stream=None):
   """Create Inputs from two streams; mostly for use in gin configs."""
   if isinstance(train_stream, (list, tuple)):
@@ -957,19 +973,19 @@ def make_inputs(train_stream=gin.REQUIRED, eval_stream=None):
                 eval_stream=eval_stream_fn)
 
 
-@gin.configurable
+@gin.configurable(module='trax.data')
 def make_additional_stream(stream=gin.REQUIRED):
   """Create a stream mostly for use in gin configs for additional tasks."""
   return Serial(stream)()
 
 
-@gin.configurable
+@gin.configurable(module='trax.data')
 def make_parallel_stream(streams=gin.REQUIRED, counters=None):
   """Create a parallel stream for use in gin configs for additional tasks."""
   return Parallel(streams, counters=counters)()
 
 
-@gin.configurable
+@gin.configurable(module='trax.data')
 def batcher(data_streams=gin.REQUIRED, variable_shapes=True,
             batch_size_per_device=32, batch_size=None, eval_batch_size=32,
             bucket_length=32, buckets=None,
@@ -1056,7 +1072,7 @@ def batch_fn(dataset, training, n_devices, variable_shapes,
 # Example input functions.
 
 
-@gin.configurable
+@gin.configurable(module='trax.data')
 def random_inputs(
     input_shape=gin.REQUIRED, input_dtype=jnp.int32, input_range=(0, 255),
     output_shape=gin.REQUIRED, output_dtype=jnp.int32, output_range=(0, 9)):
@@ -1099,7 +1115,7 @@ def _pad_to_multiple_of(x, y, axis):
                 constant_values=x.dtype.type(0))
 
 
-@gin.configurable
+@gin.configurable(module='trax.data')
 def sequence_copy_inputs(
     vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, train_length=gin.REQUIRED,
     eval_min_length=gin.REQUIRED, eval_max_length=gin.REQUIRED, reverse=False,
@@ -1145,7 +1161,7 @@ def sequence_copy_inputs(
   )
 
 
-@gin.configurable
+@gin.configurable(module='trax.data')
 def simple_sequence_copy_inputs(
     vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, train_length=gin.REQUIRED,
     eval_min_length=gin.REQUIRED, eval_max_length=gin.REQUIRED,
@@ -1202,7 +1218,7 @@ def random_number_lower_endian(length, base):
   return prefix + [np.random.randint(base - 1) + 1]  # Last digit is not 0.
 
 
-@gin.configurable
+@gin.configurable(module='trax.data')
 def addition_input_stream(
     vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, min_length=gin.REQUIRED,
     max_length=gin.REQUIRED, pad_to_multiple=32, encdec=False):
@@ -1259,7 +1275,7 @@ def addition_input_stream(
   return batches(max_length, min_length)
 
 
-@gin.configurable
+@gin.configurable(module='trax.data')
 def addition_inputs(
     vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, train_length=gin.REQUIRED,
     eval_min_length=gin.REQUIRED, eval_max_length=gin.REQUIRED,
@@ -1343,6 +1359,7 @@ def random_spans_noise_mask(length,
   return is_noise[:orig_length]
 
 
+@gin.configurable(module='trax.data')
 def generate_sequential_chunks(max_length=None):
   """Returns a function that generates chunks of atmost max_length length."""
   def _f(generator):
@@ -1358,6 +1375,7 @@ def generate_sequential_chunks(max_length=None):
   return _f
 
 
+@gin.configurable(module='trax.data')
 def generate_random_noise_mask(noise_density=0.15,
                                mean_noise_span_length=3.0,
                                seed1=None,
@@ -1374,6 +1392,7 @@ def generate_random_noise_mask(noise_density=0.15,
   return _f
 
 
+@gin.configurable(module='trax.data')
 def consume_noise_mask(vocab_size=32100):
   """Consumes (tokens, noise mask) and returns (inputs, targets)."""
   def _noise_span_to_unique_sentinel(tokens, noise_mask):
@@ -1394,6 +1413,7 @@ def consume_noise_mask(vocab_size=32100):
   return _f
 
 
+@gin.configurable(module='trax.data')
 def PrefixLM(input_length=128, output_length=512):  # pylint:disable=invalid-name
   """Chunks examples so as to make inputs/outputs of specified lenghts."""
   def _f(generator):
@@ -1416,6 +1436,7 @@ def PrefixLM(input_length=128, output_length=512):  # pylint:disable=invalid-nam
   return _f
 
 
+@gin.configurable(module='trax.data')
 def MLM(vocab_size=None,  # pylint:disable=invalid-name
         max_length=None,
         noise_density=0.15,

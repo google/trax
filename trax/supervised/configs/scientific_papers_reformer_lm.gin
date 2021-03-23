@@ -12,10 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import trax.data
 import trax.models
 import trax.optimizers
-import trax.data.inputs
-import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
 # Macros:
@@ -115,7 +114,7 @@ train.optimizer = @trax.optimizers.Adafactor
 train.checkpoint_highest = 'neg_log_perplexity'
 train.checkpoint_lowest = 'loss'
 # train.use_memory_efficient_trainer = True
-train.inputs = @trax.data.inputs.make_inputs
+train.inputs = @trax.data.make_inputs
 
 
 # We are using T5's 32k SPM model by default.

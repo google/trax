@@ -15,8 +15,7 @@
 # Generic gin file in TRAX to use for C4's span corruption objective.
 
 import t5.data.preprocessors
-import trax.data.inputs
-import trax.data.tf_inputs
+import trax.data
 
 
 # Parameters for T5
@@ -36,7 +35,7 @@ data_streams.data_dir = None
 data_streams.dataset_name = 'c4/en:2.3.0'
 data_streams.input_name = 'inputs'
 data_streams.target_name = 'targets'
-data_streams.bare_preprocess_fn=@trax.data.tf_inputs.c4_bare_preprocess_fn
+data_streams.bare_preprocess_fn=@trax.data.c4_bare_preprocess_fn
 
 # Parameters for unsupervised:
 # ==============================================================================

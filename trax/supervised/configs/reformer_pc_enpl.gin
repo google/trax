@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import trax.data
 import trax.models
 import trax.optimizers
-import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
 import t5.data.preprocessors
@@ -26,7 +26,7 @@ noise_density = 0.15
 
 # Parameters for batcher:
 # ==============================================================================
-batcher.data_streams = @tf_inputs.data_streams
+batcher.data_streams = @data.data_streams
 batcher.batch_size_per_device = 256
 batcher.eval_batch_size = 64
 batcher.max_eval_length = 512
@@ -38,7 +38,7 @@ batcher.buckets_include_inputs_in_length=True
 data_streams.data_dir = None
 data_streams.eval_holdout_size = 0.1
 data_streams.dataset_name = 'para_crawl/enpl_plain_text'
-data_streams.bare_preprocess_fn = @trax.data.tf_inputs.generic_text_dataset_preprocess_fn
+data_streams.bare_preprocess_fn = @data.generic_text_dataset_preprocess_fn
 data_streams.input_name = 'inputs'
 data_streams.target_name = 'targets'
 
@@ -59,9 +59,9 @@ generic_text_dataset_preprocess_fn.text_preprocess_fns = [
     @rekey/get_t5_preprocessor_by_name()
 ]
 generic_text_dataset_preprocess_fn.token_preprocess_fns = [
-    @trax.data.tf_inputs.add_eos_to_output_features,
-    @trax.data.tf_inputs.truncate_dataset_on_len,
-    @trax.data.tf_inputs.filter_dataset_on_len,
+    @data.add_eos_to_output_features,
+    @data.truncate_dataset_on_len,
+    @data.filter_dataset_on_len,
 ]
 
 # Parameters for get_t5_preprocessor_by_name:

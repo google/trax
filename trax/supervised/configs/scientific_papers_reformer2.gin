@@ -12,10 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import trax.data
 import trax.models
 import trax.optimizers
-import trax.data.inputs
-import trax.data.tf_inputs
 import trax.supervised.trainer_lib
 
 # Macros:
@@ -99,7 +98,7 @@ rekey/get_t5_preprocessor_by_name.fn_kwargs = {'key_map': {'inputs': 'article', 
 
 # Parameters for batcher:
 # ==============================================================================
-batcher.data_streams = @tf_inputs.data_streams
+batcher.data_streams = @data.data_streams
 batcher.max_eval_length = %max_len
 # batcher.buckets = ([16384], [8, 1])   # 2x2s
 batcher.buckets = ([16384], [32, 1])  # 4x4s
@@ -111,7 +110,7 @@ batcher.id_to_mask = 0
 # ==============================================================================
 data_streams.data_dir = None
 data_streams.dataset_name = 'scientific_papers/arxiv:1.1.1'
-data_streams.bare_preprocess_fn = @trax.data.tf_inputs.generic_text_dataset_preprocess_fn
+data_streams.bare_preprocess_fn = @data.generic_text_dataset_preprocess_fn
 data_streams.input_name = 'inputs'
 data_streams.target_name = 'targets'
 
@@ -139,10 +138,10 @@ generic_text_dataset_preprocess_fn.text_preprocess_fns = [
     @rekey/get_t5_preprocessor_by_name()
 ]
 generic_text_dataset_preprocess_fn.token_preprocess_fns = [
-    @trax.data.tf_inputs.add_eos_to_output_features,
-    @trax.data.tf_inputs.truncate_dataset_on_len,
-    @trax.data.tf_inputs.filter_dataset_on_len,
-    @trax.data.tf_inputs.pad_dataset_to_length,
+    @data.add_eos_to_output_features,
+    @data.truncate_dataset_on_len,
+    @data.filter_dataset_on_len,
+    @data.pad_dataset_to_length,
 ]
 
 
@@ -173,7 +172,7 @@ train.steps = 1000000
 train.optimizer = @trax.optimizers.Adafactor
 train.checkpoint_highest = 'neg_log_perplexity'
 train.checkpoint_lowest = 'loss'
-train.inputs = @trax.data.inputs.make_inputs
+train.inputs = @trax.data.make_inputs
 
 
 # We are using T5's 32k SPM model by default.
