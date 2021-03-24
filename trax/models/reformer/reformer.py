@@ -606,6 +606,7 @@ def Reformer2(input_vocab_size,
               loss_sparsity_prob=None,
               attention_chunk_size=0,
               n_layers_forget=0,
+              forget_dense=True,
               n_decoder_attention_layers=2,
               use_bfloat16=False,
               reversible_encoder=False,
@@ -661,6 +662,7 @@ def Reformer2(input_vocab_size,
       used. If None, only sparse version is used.
     attention_chunk_size: int, if > 0 run attention chunked at this size
     n_layers_forget: how often to have a forgetting block between layers
+    forget_dense: whether to use Dense or no-op (Serial) as a forget layer.
     n_decoder_attention_layers: how many attention layers in a decoder block
     use_bfloat16: whether to use bfloat16 for weights (default: False)
     reversible_encoder: whether to be reversible through the encoder
@@ -738,7 +740,8 @@ def Reformer2(input_vocab_size,
 
   encoder = [     # vec_e mask_e tok_e tok_d tok_d
       tl.ReversibleSelect([0, 0]),     # vec_e1 vec_e2 mask_e tok_e tok_d tok_d
-      _ReversibleSerialForget(encoder_blocks, d_model1, n_layers_forget)
+      _ReversibleSerialForget(encoder_blocks, d_model1, n_layers_forget,
+                              forget_dense)
   ]
   if not reversible_encoder:
     encoder += [
@@ -836,8 +839,8 @@ def Reformer2(input_vocab_size,
       encdec_layers,
 
       # Run decoder blocks.
-      _ReversibleSerialForget(decoder_blocks, d_model2,
-                              n_layers_forget),    # vec_ed1 vec_ed2 tok_e tok_d
+      _ReversibleSerialForget(decoder_blocks, d_model2, n_layers_forget,
+                              forget_dense),    # vec_ed1 vec_ed2 tok_e tok_d
       tl.Fn('XYAvg',
             lambda x, y: (x + y) / 2.0),           # vec_ed tok_e tok_d
       tl.LayerNorm(),                              # vec_ed tok_e tok_d
@@ -851,17 +854,25 @@ def Reformer2(input_vocab_size,
   )
 
 
-def _ReversibleSerialForget(layers, d_model, n_layers):
+def _ReversibleSerialForget(layers, d_model, n_layers, forget_dense=True):
   """ReversibleSerial but with a forgetting block every n_layers."""
   if not n_layers or len(layers) <= n_layers + 1:
     return tl.ReversibleSerial(layers)
   layers1, layers2 = layers[:n_layers], layers[n_layers:]
+
+  if forget_dense:
+    forgetting_layer = tl.Serial(
+        tl.Fn('XYAvg', lambda x, y: (x + y) / 2.0),
+        tl.Dense(d_model),
+        tl.Dup(),
+        )
+  else:
+    forgetting_layer = tl.Select([0, 1])
+
   return tl.Serial(
       tl.ReversibleSerial(layers1),
-      tl.Fn('XYAvg', lambda x, y: (x + y) / 2.0),
-      tl.Dense(d_model),
-      tl.Dup(),
-      _ReversibleSerialForget(layers2, d_model, n_layers)
+      forgetting_layer,
+      _ReversibleSerialForget(layers2, d_model, n_layers, forget_dense)
   )
 
 
