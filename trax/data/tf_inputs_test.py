@@ -112,6 +112,48 @@ class TFInputsTest(tf.test.TestCase):
     super().setUp()
     gin.clear_config()
 
+  def test_TFDS_default_split_is_train(self):
+    fn_that_returns_iterator = tf_inputs.TFDS('glue/mnli',
+                                              keys=('premise', 'hypothesis'),
+                                              shuffle_train=False)
+    # Given shuffle_train=False, data stream should be deterministic.
+    item_iterator = fn_that_returns_iterator()
+    premise, hypothesis = next(item_iterator)
+    self.assertEqual(premise[:30], b'In recognition of these tensio')
+    self.assertEqual(hypothesis[:30], b'Meaningful partnerships with s')
+
+  def test_TFDS_split_is_train(self):
+    fn_that_returns_iterator = tf_inputs.TFDS('glue/mnli',
+                                              keys=('premise', 'hypothesis'),
+                                              train=True,
+                                              shuffle_train=False)
+    # Given shuffle_train=False, data stream should be deterministic.
+    item_iterator = fn_that_returns_iterator()
+    premise, hypothesis = next(item_iterator)
+    self.assertEqual(premise[:30], b'In recognition of these tensio')
+    self.assertEqual(hypothesis[:30], b'Meaningful partnerships with s')
+
+  def test_TFDS_split_is_eval(self):
+    fn_that_returns_iterator = tf_inputs.TFDS('glue/mnli',
+                                              keys=('premise', 'hypothesis'),
+                                              train=False)
+    # Given train=False, data stream should be deterministic.
+    item_iterator = fn_that_returns_iterator()  # should be deterministic
+    premise, hypothesis = next(item_iterator)
+    self.assertEqual(premise[:30], b'uh-huh oh yeah all the people ')
+    self.assertEqual(hypothesis[:30], b'yeah lots of people for the ri')
+
+  def test_TFDS_split_is_alt_eval(self):
+    fn_that_returns_iterator = tf_inputs.TFDS('glue/mnli',
+                                              keys=('premise', 'hypothesis'),
+                                              train=False,
+                                              use_alt_eval=True)
+    # Given train=False, data stream should be deterministic.
+    item_iterator = fn_that_returns_iterator()
+    premise, hypothesis = next(item_iterator)
+    self.assertEqual(premise[:30], b'Projects which enliven and enr')
+    self.assertEqual(hypothesis[:30], b'These projects are largely ign')
+
   def test_convert_to_unicode(self):
 
     def dataset1():

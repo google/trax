@@ -182,6 +182,7 @@ def _train_and_eval_dataset(dataset_name,
                             eval_holdout_size,
                             train_shuffle_files=True,
                             eval_shuffle_files=False,
+                            use_alt_eval=False,
                             subsplit=None):
   """Return train and evaluation datasets, feature info and supervised keys.
 
@@ -196,6 +197,10 @@ def _train_and_eval_dataset(dataset_name,
       files at startup. Set to False if you want data determinism.
     eval_shuffle_files: Boolean determining whether or not to shuffle the test
       files at startup. Set to False if you want data determinism.
+    use_alt_eval: If True, use the dataset's alternate/secondary eval split;
+      else use the dataset's default/only eval split. Currently, only the
+      `glue/mnli` dataset provides an alternate eval split, and this arg is
+      ignored for other datasets.
     subsplit: a pair of floats (x, y), both in [0, 1], saying which part of the
       full training dataset we should return (default: all of it, [0, 1]).
 
@@ -232,7 +237,8 @@ def _train_and_eval_dataset(dataset_name,
   if eval_holdout_examples > 0:
     eval_split = f'{train_split}[{eval_holdout_examples}:]'
   elif dataset_name == 'glue/mnli':
-    eval_split = 'validation_matched'
+    eval_split = (
+        'validation_mismatched' if use_alt_eval else 'validation_matched')
   elif dataset_name == 'c4/multilingual':
     eval_split = 'en-validation'
   else:
@@ -264,11 +270,36 @@ def TFDS(  # pylint: disable=invalid-name
     tfds_preprocess_fn=None,
     keys=None,
     train=True,
+    use_alt_eval=False,
     shuffle_train=True,
     host_id=None,
     n_hosts=None,
     eval_holdout_size=0):
-  """Returns an iterator of numpy arrays representing the dataset."""
+  """Returns a function that returns a data stream (iterator of NumPy arrays).
+
+  Args:
+    dataset_name: Name of the dataset, as registered TensorFlow dataset (e.g.,
+      ``'glue/mnli'``.
+    data_dir: Directory where the data is located.
+    tfds_preprocess_fn: If specified, function that applies to items in raw
+      dataset (before selecting specific features).
+    keys: Tuple of dataset-specific strings that select features from the
+      dataset.
+    train: If True, select the training split from the TensorFlow dataset; else
+      select an eval split.
+    use_alt_eval: If True, and if ``train`` is False, select the dataset's
+      alternate eval split if it has one (or fall back to the dataset's only
+      eval split). This currently affects only the ``'glue/mnli'`` dataset.
+    shuffle_train: If True, have TensorFlow pre-shuffle the training data; else
+      receive training data in deterministic sequence.
+    host_id: Integer id used for tracking data subsplits, in cases where
+      ``n_hosts`` > 1.
+    n_hosts: If greater than 1, prepare data subsplits for the given number of
+      hosts.
+    eval_holdout_size: If greater than 0, specifies a fraction of training data
+      to siphon off and use as eval data, in place of an explicit, separate
+      eval split.
+  """
   data_dir = download_and_prepare(dataset_name, data_dir)
 
   host_id = jax.host_id() if host_id is None else host_id
@@ -277,9 +308,13 @@ def TFDS(  # pylint: disable=invalid-name
     subsplit = (host_id / n_hosts, (host_id + 1) / n_hosts)
   else:
     subsplit = None
-  (train_data, eval_data, _) = _train_and_eval_dataset(
-      dataset_name, data_dir, eval_holdout_size,
-      train_shuffle_files=shuffle_train, subsplit=subsplit)
+  train_data, eval_data, _ = (
+      _train_and_eval_dataset(dataset_name,
+                              data_dir,
+                              eval_holdout_size,
+                              train_shuffle_files=shuffle_train,
+                              use_alt_eval=use_alt_eval,
+                              subsplit=subsplit))
   dataset = train_data if train else eval_data
   dataset = dataset if tfds_preprocess_fn is None else tfds_preprocess_fn(
       dataset)
@@ -1457,8 +1492,8 @@ def _BertGlueDataStream(benchmark_id):
   benchmark, split = benchmark_id.rsplit('_', 1)
   glue_data = TFDS(f'glue/{benchmark}',
                    keys=_GLUE_KEYS[benchmark],
-                   train=(split == 't'))
-  # TODO(jonni): Currently can't access MNLI "mismatched"; fix this?
+                   train=(split == 't'),
+                   use_alt_eval=(split == 'e2'))
   return data.Serial(
       glue_data,
       data.Tokenize(),
