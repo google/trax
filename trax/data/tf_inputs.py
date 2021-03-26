@@ -58,6 +58,7 @@ def t2t_problems():
   return t2tp
 
 
+# TODO(jonni): Rename function to better match its return values.
 @gin.configurable(module='trax.data')
 def data_streams(dataset_name,
                  data_dir=None,
@@ -67,25 +68,27 @@ def data_streams(dataset_name,
                  eval_holdout_size=0,
                  input_name=None,
                  target_name=None):
-  """Make data streams for TF datasets.
+  """Creates `(train, eval)` data sources from ``dataset_name``.
 
   Args:
-    dataset_name: a TFDS or T2T dataset name. If it's a T2T dataset name, prefix
-      with 't2t_'.
-    data_dir: data directory.
-    preprocess_fn: function to use for pre-processing after appending targets to
+    dataset_name: Name of dataset belonging to TFDS or T2T. T2T dataset names
+      must start with ``'t2t_'``.
+    data_dir: Directory where the data is located.
+    preprocess_fn: Function to use for pre-processing after appending targets to
       inputs.
-    bare_preprocess_fn: function to use for pre-processing before appending
+    bare_preprocess_fn: Function to use for pre-processing before appending
       targets to inputs.
-    shuffle_buffer_size: size of the shuffle buffer.
-    eval_holdout_size: float from 0 to <1; if >0 use this much of training data
-      for evaluation (instead of looking for a pre-specified VALIDATION split).
-    input_name: optional, name of the inputs from the dictionary.
-    target_name: optional, name of the outputs either from the dictionary or as
-      a result of post-processing.
+    shuffle_buffer_size: Size of the shuffle buffer.
+    eval_holdout_size: If greater than 0, specifies a fraction of training data
+      to siphon off and use as eval data, in place of an separate eval split.
+    input_name: Name of the inputs from the dictionary.
+    target_name: Name of the outputs either from the dictionary or as a result
+      of post-processing.
 
   Returns:
-    A pair of python streams, one for training and one for eval.
+    A pair of functions, `(f, g)` for use as data sources; call `f()` to get an
+    iterator of training data samples, and call `g()` to get an iterator of eval
+    data samples.
   """
   data_dir = download_and_prepare(dataset_name, data_dir)
 
@@ -263,6 +266,7 @@ def _train_and_eval_dataset(dataset_name,
   return train, valid, keys
 
 
+# TODO(jonni): Consider renaming this function.
 @gin.configurable(module='trax.data')
 def TFDS(  # pylint: disable=invalid-name
     dataset_name,
@@ -275,21 +279,21 @@ def TFDS(  # pylint: disable=invalid-name
     host_id=None,
     n_hosts=None,
     eval_holdout_size=0):
-  """Returns a function that returns a data stream (iterator of NumPy arrays).
+  """Creates a data source from TensorFlow dataset ``dataset_name``.
 
   Args:
-    dataset_name: Name of the dataset, as registered TensorFlow dataset (e.g.,
-      ``'glue/mnli'``.
+    dataset_name: Name of the dataset, as registered in TensorFlow datasets
+      (e.g., ``'glue/mnli'``).
     data_dir: Directory where the data is located.
     tfds_preprocess_fn: If specified, function that applies to items in raw
       dataset (before selecting specific features).
     keys: Tuple of dataset-specific strings that select features from the
       dataset.
-    train: If True, select the training split from the TensorFlow dataset; else
-      select an eval split.
+    train: If True, select the training split from the dataset; else select an
+      eval split.
     use_alt_eval: If True, and if ``train`` is False, select the dataset's
       alternate eval split if it has one (or fall back to the dataset's only
-      eval split). This currently affects only the ``'glue/mnli'`` dataset.
+      eval split). This currently affects only the `glue/mnli` dataset.
     shuffle_train: If True, have TensorFlow pre-shuffle the training data; else
       receive training data in deterministic sequence.
     host_id: Integer id used for tracking data subsplits, in cases where
@@ -297,8 +301,11 @@ def TFDS(  # pylint: disable=invalid-name
     n_hosts: If greater than 1, prepare data subsplits for the given number of
       hosts.
     eval_holdout_size: If greater than 0, specifies a fraction of training data
-      to siphon off and use as eval data, in place of an explicit, separate
-      eval split.
+      to siphon off and use as eval data, in place of an separate eval split.
+
+  Returns:
+    A function `f` for use as a training or eval data source; call `f()` to get
+    an iterator of data samples.
   """
   data_dir = download_and_prepare(dataset_name, data_dir)
 
