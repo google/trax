@@ -24,6 +24,7 @@ import numpy as np
 from trax import fastmath
 from trax import layers as tl
 from trax.fastmath import numpy as jnp
+from trax.fastmath import random
 from trax.layers import base
 from trax.layers import core
 from trax.layers import initializers as init
@@ -752,16 +753,129 @@ class FavorAttention(base.Layer):
 
   Attributes:
 
+    d_feature: Dimensionality of feature embedding.
     n_heads: Number of attention heads.
+    n_random_features: Free dimension size for the orthogonal random matrix.
     numerical_stabilizer: float, small number used for numerical stability.
+    use_approximate_softmax: Bool, if True uses approximate softmax, otherwise
+                             Relu.
+    scale_by_norm: Boolean; whether to scale orthogonal random matrix.
+    normalize_data: predicate indicating whether data should be normalized.
+    epsilon: numerical stabilizer.
     mode: One of `'train'`, `'eval'`, or `'predict'`.
   """
 
-  def __init__(self, n_heads=1, numerical_stabilizer=0.001, mode='train'):
+  def __init__(self, d_feature=4, n_heads=1, n_random_features=256,
+               numerical_stabilizer=0.001,
+               use_approximate_softmax=False, scale_by_norm=True,
+               normalize_data=False,
+               epsilon=0.0001, mode='train'):
     super().__init__(n_in=4, n_out=2)
+    self._d_feature = d_feature
     self._n_heads = n_heads
+    self._n_random_features = n_random_features
     self._numerical_stabilizer = numerical_stabilizer
     self._mode = mode
+    self._use_approximate_softmax = use_approximate_softmax
+    self._normalize_data = normalize_data
+    self._epsilon = epsilon
+    if self._use_approximate_softmax:
+      rng = random.get_prng(0)
+      self._projection_matrix = self.get_2d_array(
+          rng=rng, n_rows=self._n_random_features,
+          n_columns=(self._d_feature // self._n_heads),
+          scale_by_norm=scale_by_norm,
+          normalize_data=normalize_data, epsilon=epsilon)
+    else:
+      self._projection_matrix = None
+
+  def nonnegative_softmax_kernel_feature_creator(self, x, is_query):
+    """Constructs nonnegative kernel features for fast softmax attention.
+
+    Args:
+      x: input for which features are computed.
+      is_query: predicate indicating whether input data corresponds to
+                queries or keys.
+
+    Returns:
+      Random features for fast softmax attention.
+    """
+    if self._normalize_data:
+      # We have e^{qk^T/sqrt{d}} = e^{q_norm k_norm^T}, where
+      # w_norm = w * data_normalizer for w in {q,k}.
+      data_normalizer = 1.0 / (jnp.sqrt(jnp.sqrt(x.shape[-1])))
+    else:
+      data_normalizer = 1.0
+    ratio = 1.0 / jnp.sqrt(self._projection_matrix.shape[0])
+    # TODO(wgaj): Double-check... Should there be only one batch dimension...?
+    data_mod_shape = x.shape[0:1] + self._projection_matrix.shape
+    data_thick_random_matrix = (jnp.zeros(data_mod_shape) +
+                                self._projection_matrix)
+
+    data_dash = jnp.einsum('Bij, Bkj -> Bik',
+                           data_normalizer * x,
+                           data_thick_random_matrix)
+    diag_data = jnp.square(x)
+    diag_data = jnp.sum(diag_data, axis=x.ndim - 1)
+    diag_data = (diag_data / 2.0) * data_normalizer * data_normalizer
+    diag_data = jnp.expand_dims(diag_data, axis=x.ndim - 1)
+
+    last_dims_t = (len(data_dash.shape) - 1,)
+    attention_dims_t = (1,)
+    if is_query:
+      data_dash = ratio * (
+          jnp.exp(data_dash - diag_data -
+                  jnp.max(data_dash, axis=last_dims_t, keepdims=True)) +
+          self._epsilon)
+    else:
+      data_dash = ratio * (
+          jnp.exp(data_dash - diag_data - jnp.max(
+              data_dash, axis=last_dims_t + attention_dims_t, keepdims=True)) +
+          self._epsilon)
+
+    return data_dash
+
+  @staticmethod
+  def get_2d_array(rng, n_rows=256, n_columns=0, scale_by_norm=True,
+                   normalize_data=False, epsilon=0.0001):
+    """Generator for approximate softmax orthogonal kernel feature matrix.
+
+    Args:
+      rng: Random number generator.
+      n_rows: Number of rows.
+      n_columns: Number of columns.
+      scale_by_norm: Boolean; whether to scale orthogonal random matrix.
+      normalize_data: predicate indicating whether data should be normalized.
+      epsilon: numerical stabilizer.
+
+    Returns:
+      Orthogonal kernel feature matrix.
+    """
+    n_full_blocks = int(n_rows / n_columns)
+    block_list = []
+    rng_key = rng
+    for _ in range(n_full_blocks):
+      rng, rng_input = random.split(rng)
+      unstructured_block = random.normal(rng_input, (n_columns, n_columns))
+      q, _ = jnp.linalg.qr(unstructured_block)
+      q = jnp.transpose(q)
+      block_list.append(q)
+    remaining_rows = n_rows - n_full_blocks * n_columns
+    if remaining_rows > 0:
+      rng, rng_input = random.split(rng)
+      unstructured_block = random.normal(rng_input, (n_columns, n_columns))
+      q, _ = jnp.linalg.qr(unstructured_block)
+      q = jnp.transpose(q)
+      block_list.append(q[0:remaining_rows])
+    final_matrix = jnp.vstack(block_list)
+
+    if scale_by_norm:
+      multiplier = jnp.linalg.norm(
+          random.normal(rng_key, (n_rows, n_columns)), axis=1)
+    else:
+      multiplier = jnp.sqrt(float(n_columns)) * jnp.ones((n_rows))
+
+    return jnp.matmul(jnp.diag(multiplier), final_matrix)
 
   @staticmethod
   def bidirectional_numerator(query_prime, key_prime, value):
@@ -780,8 +894,12 @@ class FavorAttention(base.Layer):
 
   def forward(self, inputs):
     query, key, value, mask = inputs
-    query_prime = self.relu(query) + self._numerical_stabilizer
-    key_prime = self.relu(key) + self._numerical_stabilizer
+    if self._use_approximate_softmax:
+      query_prime = self.nonnegative_softmax_kernel_feature_creator(query, True)
+      key_prime = self.nonnegative_softmax_kernel_feature_creator(key, False)
+    else:
+      query_prime = self.relu(query) + self._numerical_stabilizer
+      key_prime = self.relu(key) + self._numerical_stabilizer
     mask_batch_1_length = jnp.reshape(
         mask, [key.shape[0] // self._n_heads, 1, key.shape[1]]).astype(
             jnp.float32)
@@ -801,8 +919,9 @@ class FavorAttention(base.Layer):
     return renormalized_attention, mask
 
 
-def Favor(d_feature, n_heads=1, dropout=0.0,
-          numerical_stabilizer=0.001, mode='train'):
+def Favor(d_feature, n_heads=1, n_random_features=256, dropout=0.0,
+          numerical_stabilizer=0.001, use_approximate_softmax=False,
+          scale_by_norm=0, normalize_data=False, epsilon=0.0001, mode='train'):
   """Returns a layer that maps (activations, mask) to (new_activations, mask).
 
   See the FAVOR paper for details: https://arxiv.org/abs/2006.03555
@@ -810,9 +929,15 @@ def Favor(d_feature, n_heads=1, dropout=0.0,
   Args:
     d_feature: Depth/dimensionality of feature embedding.
     n_heads: Number of attention heads.
+    n_random_features: Free dimension size for the orthogonal random matrix.
     dropout: Probababilistic rate for internal dropout applied to attention
         activations (based on query-key pairs) before dotting them with values.
     numerical_stabilizer: float, small number used for numerical stability.
+    use_approximate_softmax: Bool, if True uses approximate softmax, otherwise
+                             Relu.
+    scale_by_norm: Boolean; whether to scale orthogonal random matrix.
+    normalize_data: predicate indicating whether data should be normalized.
+    epsilon: numerical stabilizer.
     mode: One of `'train'`, `'eval'`, or `'predict'`.
   """
   del dropout  # not implemented yet but needed in the API
@@ -820,7 +945,10 @@ def Favor(d_feature, n_heads=1, dropout=0.0,
   return  tl.ConfigurableAttention(
       tl.Dense(d_feature), tl.Dense(d_feature), tl.Dense(d_feature),
       tl.Dense(d_feature),
-      tl.FavorAttention(n_heads, numerical_stabilizer, mode), n_heads=n_heads)
+      tl.FavorAttention(d_feature, n_heads, n_random_features,
+                        numerical_stabilizer, use_approximate_softmax,
+                        scale_by_norm, normalize_data, epsilon, mode),
+      n_heads=n_heads)
 
 
 class CausalFavorAttention(base.Layer):
