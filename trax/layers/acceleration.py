@@ -91,16 +91,26 @@ class Accelerate(base.Layer):
       y = padded_y[:x.shape[0]]
     return y, state
 
+  def _prepare_weights(self, weights):
+    """Replicate or shard weights for the number of devices requested."""
+    if base.N_WEIGHTS_SHARDS > 1:
+      if base.N_WEIGHTS_SHARDS % self._n_devices != 0:
+        raise ValueError(f'Number of shards ({base.N_WEIGHTS_SHARDS}) must '
+                         f'be a multiple of n_devices ({self._n_devices}).')
+      return base.shard(weights, base.N_WEIGHTS_SHARDS)
+    else:
+      return for_n_devices(weights, self._n_devices)
+
   def init(self, input_signature):
     """Calls ``self.sublayer.init`` and replicates its values onto devices."""
     weights, state = self.sublayer.init(input_signature, use_cache=True)
-    self._weights = for_n_devices(weights, self._n_devices)
+    self._weights = self._prepare_weights(weights)
     self._state = for_n_devices(state, self._n_devices)
 
   def replicate_weights(self, weights):
     """Sets the weights of the sublayer and replicates them for this layer."""
     self.sublayer.weights = weights
-    self._weights = for_n_devices(weights, self._n_devices)
+    self._weights = self._prepare_weights(weights)
 
   def replicate_state(self, state):
     """Sets the state of the sublayer and replicates it for this layer."""
@@ -117,7 +127,7 @@ class Accelerate(base.Layer):
   def weights(self):
     # Override the getter so it works even if only sublayer is initialized.
     if self._weights is base.EMPTY_WEIGHTS:
-      self._weights = for_n_devices(self.sublayer.weights, self._n_devices)
+      self._weights = self._prepare_weights(self.sublayer.weights)
     return self._weights
 
   @weights.setter

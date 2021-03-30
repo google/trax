@@ -29,6 +29,7 @@ import psutil
 from trax import fastmath
 from trax import layers as tl
 from trax.fastmath import numpy as jnp
+from trax.layers import base
 from trax.layers import combinators as cb
 
 
@@ -171,7 +172,8 @@ def _adasum_merge(g1, g2):
 
 def _average_multidevice_gradients(gradients, adasum=False):
   """Averages gradients over all the devices across different hosts."""
-  n = jnp.array(fastmath.global_device_count(), dtype=jnp.float32)
+  n = jnp.array(fastmath.global_device_count() // base.N_WEIGHTS_SHARDS,
+                dtype=jnp.float32)
   if adasum:
     # This implements a version of the Adasum algorithm from the following
     # paper: https://arxiv.org/pdf/2006.02924.pdf
@@ -188,7 +190,13 @@ def _average_multidevice_gradients(gradients, adasum=False):
       perm_grad = jax.lax.ppermute(gradients, perm=perm, axis_name='batch')
       gradients = fastmath.nested_map_multiarg(
           _adasum_merge, gradients, perm_grad)
-  gradients_psum = fastmath.psum(gradients, 'batch')  # sum over all devices
+  if base.N_WEIGHTS_SHARDS > 1:  # only sum gradients from matching shards
+    groups = [[base.N_WEIGHTS_SHARDS * i + d for i in range(int(n))]
+              for d in range(base.N_WEIGHTS_SHARDS)]
+    gradients_psum = fastmath.psum(gradients, 'batch',
+                                   axis_index_groups=groups)
+  else:
+    gradients_psum = fastmath.psum(gradients, 'batch')  # sum all gradients
   return fastmath.nested_map(lambda g: g / n, gradients_psum)
 
 

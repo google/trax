@@ -27,6 +27,7 @@ from trax import fastmath
 from trax import layers as tl
 from trax import optimizers
 from trax import shapes
+from trax.layers import base
 from trax.models.reformer import reformer
 
 
@@ -65,6 +66,41 @@ class TrainerTest(absltest.TestCase):
       trainer = optimizers.Trainer(loss_layer, optimizer)
       rng = fastmath.random.get_prng(0)
       trainer.one_step(labeled_batch, rng)
+
+  def test_run_sharded_reformer2(self):
+    """Runs Reformer2 with sharded weights (only on 2+-device systems)."""
+    if fastmath.local_device_count() == 1:
+      return
+    base.N_WEIGHTS_SHARDS = fastmath.local_device_count()
+    inputs_batch = np.arange(8).reshape((2, 4)) + 1
+    targets_batch = 2 * inputs_batch
+    labeled_batch = (inputs_batch, targets_batch, np.ones_like(targets_batch))
+    int_sig = shapes.ShapeDtype((2, 4), dtype=np.int32)
+    input_sig = (int_sig, int_sig, int_sig)
+    # We want to test rng propagation too, so adding some dropout layers.
+    model = reformer.Reformer2(
+        20, d_model=8, d_ff=32, n_heads=1, dropout=0.0,
+        n_encoder_layers=2, n_decoder_layers=2,
+        ff_sparsity=(4, 8, 0.0, 1.0),
+        encoder_attention_type=tl.Attention,
+        encoder_decoder_attention_type=tl.CausalAttention,
+        pos_type=None, reversible_encoder=True)
+    loss = tl.Serial(tl.LogSoftmax(), tl.CrossEntropyLoss())
+    model_with_loss = tl.Serial(model, loss)
+    rng_init = fastmath.random.get_prng(12)
+    model_with_loss.init(input_sig, rng=rng_init)
+
+    # Make a step with the trainer.
+    optimizer = optimizers.Adafactor(0.01)
+    split_w = fastmath.nested_map(
+        lambda x: x[0],
+        tl.shard(model_with_loss.weights, base.N_WEIGHTS_SHARDS))
+    optimizer.tree_init(split_w)
+    trainer = optimizers.Trainer(model_with_loss, optimizer)
+    rng_step1 = fastmath.random.get_prng(7)
+    trainer.one_step(labeled_batch, rng_step1)
+    # Reset shards back to default.
+    base.N_WEIGHTS_SHARDS = 1
 
   def test_run_reversible_slots(self):
     """Tests that slots can be read and assigned in reversible trainer."""

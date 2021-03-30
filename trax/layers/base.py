@@ -17,17 +17,20 @@
 """The key layer abstraction (Layer class) and supporting machinery."""
 
 import copy
+import functools
 import gzip
 import inspect
 import pickle
 import random
 import traceback
 
+import jax
 import numpy as np
 import tensorflow as tf
 
 from trax import fastmath
 from trax.fastmath import nested_map
+from trax.fastmath import numpy as jnp
 from trax.shapes import ShapeDtype
 from trax.shapes import signature
 
@@ -37,6 +40,7 @@ EMPTY_WEIGHTS = ()    # Used for layers that have no trainable weights.
 EMPTY_STATE = ()      # Used for layers that have no non-trainable state.
 GET_WEIGHTS_FROM_CACHE = {'__marker_for_cached_weights_': ()}
 GET_STATE_FROM_CACHE = {'__marker_for_cached_state_': ()}
+N_WEIGHTS_SHARDS = 1  # TODO(lukaszkaiser): make weight-sharding non-global
 
 
 class Layer:
@@ -573,6 +577,12 @@ class Layer:
         was_cached = False
         self.weights, self.state = weights, state
 
+      # If weights are sharded across multiple devices, unshard before forward.
+      sharded_weights, weights_were_unsharded = weights, False
+      if N_WEIGHTS_SHARDS > 1 and not self.sublayers:
+        self.weights, weights_were_unsharded = unshard_in_pmap(
+            weights, N_WEIGHTS_SHARDS)
+
       if not self.has_backward:
         outputs = self.forward(x)
         s = self.state
@@ -580,6 +590,9 @@ class Layer:
         outputs, s = self._do_custom_gradients(x)
         self.state = s
       self._rng = old_rng
+      if weights_were_unsharded:  # only store a shard of weights if sharded
+        self.weights = sharded_weights
+
       if not use_cache:
         self.weights, self.state = old_weights, old_state
       if was_cached:  # If the layer was shared, return a state marking this.
@@ -979,3 +992,64 @@ def _shapes(x):
     except Exception:  # pylint: disable=broad-except
       return ()
   return tuple(nested_map(shape, x))
+
+
+@functools.partial(fastmath.pmap, axis_name='batch')
+def _axis_index(unused_x):
+  """Return the axis indices."""
+  return jax.lax.axis_index('batch')
+
+
+def _axis_to_shard_heuristic(shape):
+  """Chooses an axis to shard on - a simple heuristic to be revisited."""
+  axis = 0 if len(shape) < 3 else -1
+  return axis
+
+
+def shard(tensors, n_shards):
+  """Shard tensors across n_shards."""
+  indices = _axis_index(np.zeros(fastmath.local_device_count()))
+  def _shard_fn(x):
+    axis = _axis_to_shard_heuristic(x.shape)
+    if int(x.shape[axis]) % n_shards != 0:
+      raise ValueError(f'Cannot split x with shape {x.shape} into {n_shards}.')
+    split_x = jnp.split(x, n_shards, axis=axis)
+    split_x = [split_x[i % n_shards] for i in indices]
+    return np.stack(split_x, axis=0)
+  return fastmath.nested_map(_shard_fn, tensors)
+
+
+def unshard_in_pmap(tensors, n_shards):
+  """Unshard tensors that were sharded into n_shards (call inside pmap)."""
+  groups = [[n_shards * i + d for d in range(n_shards)]
+            for i in range(fastmath.global_device_count() // n_shards)]
+  def _unshard_fn(x):
+    y = jax.lax.all_gather(x, 'batch', axis_index_groups=groups)
+    split_y = jnp.split(y, n_shards, axis=0)
+    split_y = [jnp.squeeze(sy, axis=0) for sy in split_y]
+    axis = _axis_to_shard_heuristic(split_y[0].shape)
+    return jnp.concatenate(split_y, axis=axis)
+  try:
+    jax.lax.axis_index('batch')  # will throw if not in pmap, e.g., on init
+    res = fastmath.nested_map(_unshard_fn, tensors)
+    return res, True
+  except NameError:  # thrown from axis_index above
+    return tensors, False
+
+
+@functools.partial(fastmath.pmap, axis_name='batch')
+def _all_gather(x, groups):
+  return jax.lax.all_gather(x, 'batch', axis_index_groups=groups)
+
+
+def unshard(tensors, n_shards):
+  """Unshard tensors that were sharded into n_shards (outside of pmap)."""
+  groups = [[n_shards * i + d for d in range(n_shards)]
+            for i in range(fastmath.global_device_count() // n_shards)]
+  def _unshard_fn(x):
+    y = _all_gather(x, groups)
+    split_y = jnp.split(y, n_shards, axis=0)
+    split_y = [jnp.squeeze(sy, axis=0) for sy in split_y]
+    axis = _axis_to_shard_heuristic(split_y[0].shape)
+    return jnp.concatenate(split_y, axis=axis)
+  return fastmath.nested_map(_unshard_fn, tensors)

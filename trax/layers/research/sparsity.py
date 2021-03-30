@@ -133,13 +133,13 @@ class ReversibleRandomPermute(reversible.ReversibleLayer):
 @assert_shape('...a->...bc')
 def SplitLastAxis(num_splits):
   return tl.Fn(f'SplitLastAxis_{num_splits}',
-               lambda x: jnp.reshape(x, x.shape[:-1] + (num_splits, -1)))
+               lambda x: jnp.reshape(x, tuple(x.shape)[:-1] + (num_splits, -1)))
 
 
 @assert_shape('...ab->...c')
 def MergeLastTwoAxes():
   return tl.Fn('MergeLastTwoAxes',
-               lambda x: jnp.reshape(x, x.shape[:-2] + (-1,)))
+               lambda x: jnp.reshape(x, tuple(x.shape)[:-2] + (-1,)))
 
 
 @assert_shape('...a->...b')
@@ -288,7 +288,7 @@ def LocallyConvDense(n_modules, n_units, mode, kernel_size=1,
   pad_widths = [[0, 0], [0, 0], [half, half], [0, 0]]
   return tl.Serial(
       tl.SplitLastAxis(n_modules),
-      tl.Fn('Pad', lambda x: jnp.pad(x, pad_width=pad_widths)),
+      tl.Fn('Pad', lambda x: jnp.pad(x, pad_width=pad_widths, mode='constant')),
       _RememberPad(length_kernel_size-1, mode=mode),
       tl.Conv(n_units, kernel_size=(length_kernel_size, kernel_size)),
       tl.MergeLastTwoAxes()
