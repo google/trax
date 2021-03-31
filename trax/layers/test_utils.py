@@ -13,12 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Utility functions for testing.
-"""
+"""Utility functions for testing."""
+
+import copy
 import functools
+
 import numpy as np
 
 from trax import fastmath
+from trax import layers as tl
 from trax import shapes
 
 
@@ -151,3 +154,128 @@ def test_eval_equals_predict_configs(inp, model_fn, configs, seq_axis=1,
     test_eval_equals_predict(inp, model_fn_configured, seq_axis=seq_axis,
                              seq_tensor=seq_tensor,
                              message=' Config: {}.{}'.format(config, message))
+
+
+def test_eval_equals_predict_discrete(model_fn, vocab_size=10, length=5, batch_size=3):
+    """Tests equivalence of eval and predict modes for discrete models."""
+    with fastmath.use_backend(fastmath.Backend.JAX):
+      model_slow = model_fn(mode='eval', vocab_size=vocab_size)
+      model_fast = model_fn(mode='predict', vocab_size=vocab_size)
+      rng = fastmath.random.get_prng(0)
+      input_signature = shapes.ShapeDtype((batch_size, 1), np.int32)
+      # Given the same rng, both models initialize with the same parameters.
+      model_slow.init(input_signature, rng)
+      model_fast.init(input_signature, rng)
+
+      buf = np.zeros((batch_size, length), dtype=np.int32)
+      next_sym = np.zeros((batch_size, 1), dtype=np.int32)
+
+      for index in range(length):
+        logits_slow = model_slow(buf, rng=rng)
+        logits_fast = model_fast(next_sym, rng=rng)
+        np.testing.assert_array_almost_equal(
+            logits_slow[:, index, :], logits_fast[:, 0, :],
+            decimal=5,
+        )
+        next_sym = np.random.randint(vocab_size, size=(batch_size, 1))
+        buf[:, index] = next_sym[:, 0]
+
+
+class MockTransformerLM(tl.Layer):
+    """Mock TransformerLM for testing autoregressive sampling routines.
+
+    Mimics the behavior of a perfectly-trained, deterministic TransformerLM.
+    Allows to specify the \sigma^* -> \sigma function implemented by the model
+    and to make assertions about the input sequence passed to the model.
+
+    Supports two modes: stateful "predict" for fast inference, and stateless
+    non-"predict" ("train", "eval" etc).
+
+    Useful for testing any logic that relies on autoregressive sampling, as it
+    removes the additional layer of complexity related to training a model or
+    maintaining a pretrained one. Makes the tests run MUCH faster.
+
+    Does not support acceleration. Do not wrap in tl.Accelerate().
+    """
+
+    def __init__(self, sequence_fn, mode, vocab_size):
+        super().__init__()
+
+        self._sequence_fn = sequence_fn
+        self._mode = mode
+        self._vocab_size = vocab_size
+
+        self._prediction_buffers = None
+
+    @property
+    def state(self):
+        return copy.deepcopy(self._prediction_buffers)
+
+    @state.setter
+    def state(self, state):
+        self._prediction_buffers = copy.deepcopy(state)
+
+    def _output_symbol_predict(self, input_symbols, prediction_buffer):
+        prediction_buffer.extend(input_symbols)
+        output_symbol = self._sequence_fn(np.array(prediction_buffer))
+        return np.array([output_symbol])
+
+    def _output_symbols_eval(self, input_symbols, prediction_buffer):
+        del prediction_buffer
+
+        # Add a leading 0 token to imitate ShiftRight.
+        input_symbols = np.concatenate(([0], input_symbols))
+
+        # Call sequence_fn repeatedly along the input sequence.
+        return np.array([
+            self._sequence_fn(input_symbols[:end])
+            for end in range(1, len(input_symbols))
+        ])
+
+    def _symbols_to_logits(self, symbols):
+        # Assert that symbols are discrete.
+        assert np.issubdtype(symbols.dtype, np.integer)
+        # Assert that 0 <= symbols < vocab_size.
+        np.testing.assert_array_less(-1, symbols)
+        np.testing.assert_array_less(symbols, self._vocab_size)
+
+        # Return almost-determinisitc logits:
+        # e^1000 / (e^1000 + vocab_size) ~= 1
+        return tl.one_hot(symbols, n_categories=self._vocab_size) * 1000.0
+
+    def __call__(self, inputs, rng=None):
+        del rng
+
+        assert inputs.ndim == 2, (
+            'The input sequences should have exactly two axes.'
+        )
+
+        if self._prediction_buffers is None:
+            # Initialize the buffer.
+            batch_size = inputs.shape[0]
+            # [[]] * batch_size would create multiple references to the same
+            # list, and we want separate lists.
+            self._prediction_buffers = [[] for _ in range(batch_size)]
+
+        if self._mode == 'predict':
+            output_fn = self._output_symbol_predict
+        else:
+            output_fn = self._output_symbols_eval
+
+        # Calculate the output separately for each sequence in the batch.
+        output_symbols = np.array([
+            output_fn(input_seq, pred_buffer)
+            for (input_seq, pred_buffer) in zip(
+                inputs, self._prediction_buffers
+            )
+        ])
+        return self._symbols_to_logits(output_symbols)
+
+    def assert_prediction_buffers_equal(self, expected_buffers):
+        if self._prediction_buffers is None:
+            batch_size = expected_buffers.shape[0]
+            actual_buffers = np.empty((batch_size, 0))
+        else:
+            actual_buffers = np.array(self._prediction_buffers)
+
+        np.testing.assert_array_equal(actual_buffers, expected_buffers)

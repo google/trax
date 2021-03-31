@@ -82,6 +82,7 @@ class SerializedModelEvaluation(TrainingStepCallback):
       context_lengths=(1,),
       horizon_lengths=(1,),
       n_steps=1,
+      accelerate_model=True,
   ):
     """Initializes SerializedModelEvaluation.
 
@@ -105,7 +106,9 @@ class SerializedModelEvaluation(TrainingStepCallback):
     """
     super().__init__(loop)
 
-    self._model = tl.Accelerate(model)
+    if accelerate_model:
+        model = tl.Accelerate(model)
+    self._model = model
     self._obs_serializer = observation_serializer
     self._act_serializer = action_serializer
 
@@ -147,29 +150,36 @@ class SerializedModelEvaluation(TrainingStepCallback):
         os.path.join(self._loop.output_dir, 'srl_eval')
     )
     try:
-      self._model.weights = serialization_utils.extract_inner_model(
+      weights = serialization_utils.extract_inner_model(
           self._loop.eval_model.weights
       )
-
-      metrics = collections.defaultdict(list)
-      for _ in range(self._n_steps):
-        batch = self._eval_task.next_batch()
-        step_metrics = self._eval_batch(batch)
-        for (key, value) in step_metrics.items():
-          metrics[key].append(value)
-
-      def metric_name(context, horizon):
-        return f'pred_error/context_{context}/horizon_{horizon}'
-
-      metrics = {
-          metric_name(context, horizon): np.sum(errors) / np.sum(errors != 0)
-          for ((context, horizon), errors) in metrics.items()
-      }
+      metrics = self.evaluate(weights)
       self._loop.log_summary(metrics, summary_writer, '', 'srl_eval')
     finally:
       summary_writer.close()
 
-  def _eval_batch(self, batch):
+  def evaluate(self, weights):
+    self._model.weights = weights
+
+    metrics = collections.defaultdict(list)
+    for _ in range(self._n_steps):
+      batch = self._eval_task.next_batch()
+      step_metrics = self._evaluate_batch(batch)
+      for (key, value) in step_metrics.items():
+        metrics[key].append(value)
+
+    metrics = {k: np.array(v) for (k, v) in metrics.items()}
+
+    def metric_name(context, horizon):
+      return f'pred_error/context_{context}/horizon_{horizon}'
+
+    return {
+        metric_name(context, horizon):
+            np.sum(errors) / (np.sum(errors != 0) + 1e-6)
+        for ((context, horizon), errors) in metrics.items()
+    }
+
+  def _evaluate_batch(self, batch):
     """Performs evaluation on a single batch."""
     (obs, act, _, mask) = batch
     obs_repr = serialization_utils.Serialize(self._obs_serializer)(obs)
@@ -190,6 +200,7 @@ class SerializedModelEvaluation(TrainingStepCallback):
         consume_sequence(self._model, start_id, context_seq[:, :-1])
         last_start_id = start_id = context_seq[:, -1:]
         last_state = self._model.state
+        last_context = context
 
       for timestep in range(max(self._horizon_lengths)):
         pred_repr = decoding.autoregressive_sample(
