@@ -1374,8 +1374,15 @@ class _SparseFFMain(base.Layer):
     shape_b2 = (d_model,)
 
     rng_w1, rng_w2, rng_b2 = fastmath.random.split(self.rng, 3)
-    w1 = self._kernel_initializer(shape_w1, rng_w1)
-    w2 = self._kernel_initializer(shape_w2, rng_w2)
+    if base.N_WEIGHTS_SHARDS > 1:
+      # In sharded-weights mode, put the weights on CPU on init
+      # as they will be sharded later.
+      w1 = tl.on_cpu(self._kernel_initializer(shape_w1, rng_w1))
+      w2 = tl.on_cpu(self._kernel_initializer(shape_w2, rng_w2))
+    else:
+      w1 = self._kernel_initializer(shape_w1, rng_w1)
+      w2 = self._kernel_initializer(shape_w2, rng_w2)
+
     b2 = self._bias_initializer(shape_b2, rng_b2)
     if self._use_bfloat16:
       b2 = b2.astype(jnp.bfloat16)

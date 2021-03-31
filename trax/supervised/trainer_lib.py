@@ -39,6 +39,7 @@ from trax import optimizers as trax_opt
 from trax.data import inputs as trax_inputs
 from trax.fastmath import numpy as np
 from trax.fastmath import random as jax_random
+from trax.layers import base
 from trax.shapes import ShapeDtype
 from trax.supervised import history as trax_history
 from trax.supervised import lr_schedules as lr
@@ -543,6 +544,7 @@ def train(output_dir,
           adasum=False,
           init_checkpoint=None,
           callbacks=None,
+          n_weights_shards=1,
           additional_train_tasks=None,
           additional_eval_tasks=None,
           additional_eval_streams=None):
@@ -580,6 +582,7 @@ def train(output_dir,
     adasum: if True, use adaptive summation for multi-device gradients.
     init_checkpoint: a checkpoint for fine tuning.
     callbacks: a list of callbacks to call during training.
+    n_weights_shards: shard weights into this many devices.
     additional_train_tasks: additional tasks which should be performed during
       training.
     additional_eval_tasks: additional tasks which should be performed during
@@ -591,6 +594,7 @@ def train(output_dir,
   Returns:
     trax.TrainerState or training.Loop if use_loop is True
   """
+  base.N_WEIGHTS_SHARDS = n_weights_shards
   if (permanent_checkpoint_frequency is not None
       and permanent_checkpoints_at is not None):
     raise ValueError('Only one of ["permanent_checkpoint_frequency", '

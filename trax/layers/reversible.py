@@ -301,7 +301,12 @@ class ReversibleHalfResidual(ReversibleLayer):
     new_state = []
     for layer, w, s, rng in zip(self.sublayers, self.weights, self.state, rngs):
       inputs = cb.inputs_from_stack(stack, layer.n_in)
-      outputs, s = layer.pure_fn(inputs, w, s, rng)
+      if base.N_WEIGHTS_SHARDS > 1:
+        # With sharded weights, make sure we don't keep them concatenated
+        # in memory on each device by using remat.
+        outputs, s = jax.remat(layer.pure_fn)(inputs, w, s, rng)
+      else:
+        outputs, s = layer.pure_fn(inputs, w, s, rng)
       stack = cb.outputs_onto_stack(outputs, stack, layer.n_in)
       new_state.append(s)
     residual = stack[0] if isinstance(stack, (tuple, list)) else stack

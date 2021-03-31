@@ -1006,8 +1006,9 @@ def _axis_to_shard_heuristic(shape):
   return axis
 
 
-def shard(tensors, n_shards):
+def shard(tensors, n_shards=None):
   """Shard tensors across n_shards."""
+  n_shards = N_WEIGHTS_SHARDS if n_shards is None else n_shards
   indices = _axis_index(np.zeros(fastmath.local_device_count()))
   def _shard_fn(x):
     axis = _axis_to_shard_heuristic(x.shape)
@@ -1042,13 +1043,11 @@ def _all_gather(x, groups):
   return jax.lax.all_gather(x, 'batch', axis_index_groups=groups)
 
 
-def unshard(tensors, n_shards):
+def unshard(tensors, n_shards=None):
   """Unshard tensors that were sharded into n_shards (outside of pmap)."""
-  groups = [[n_shards * i + d for d in range(n_shards)]
-            for i in range(fastmath.global_device_count() // n_shards)]
+  n_shards = N_WEIGHTS_SHARDS if n_shards is None else n_shards
   def _unshard_fn(x):
-    y = _all_gather(x, groups)
-    split_y = jnp.split(y, n_shards, axis=0)
+    split_y = jnp.split(x, n_shards, axis=0)
     split_y = [jnp.squeeze(sy, axis=0) for sy in split_y]
     axis = _axis_to_shard_heuristic(split_y[0].shape)
     return jnp.concatenate(split_y, axis=axis)

@@ -59,6 +59,7 @@ from trax import shapes
 from trax.data import inputs
 from trax.fastmath import numpy as jnp
 from trax.fastmath import random as jax_random
+from trax.layers import base
 from trax.supervised import history as trax_history
 
 
@@ -240,7 +241,21 @@ class Loop:
     if (random_seed is None and self._n_hosts > 1 and
         not use_memory_efficient_trainer):
       logging.info('Syncing weights/state across %d hosts.', self._n_hosts)
-      self._sync_weights_and_state_across_hosts()
+      # Do self._sync_weights_and_state_across_hosts() but layer-by-layer
+      # to save memory.
+      blocks, last_layer = optimizers.trainer.extract_reversible_blocks(
+          [self._model])
+      all_layers = []
+      for (std_layer, rev_layers) in blocks:
+        all_layers.append(tl.Serial(std_layer))
+        all_layers.extend(rev_layers)
+      all_layers.append(last_layer)
+      for layer in all_layers:
+        weights_and_state = (layer.weights, layer.state)
+        if not _is_empty(weights_and_state):
+          layer.weights, layer.state = tl.on_cpu(self._unreplicate(
+              _make_weights_and_state_same_across_hosts(
+                  self._for_n_devices(weights_and_state))))
 
     # Create the optimizer for the training loss function.
     self._trainer_per_task = tuple(self._init_trainer(task) for task in tasks)
@@ -306,7 +321,12 @@ class Loop:
           [task.loss_layer],
           shapes.signature(task.sample_batch)
       )
-      task.optimizer.tree_init(model_in_training.weights)
+      if base.N_WEIGHTS_SHARDS > 1:
+        sharded_weights = fastmath.nested_map(
+            lambda x: x[0], tl.shard(model_in_training.weights))
+        task.optimizer.tree_init(sharded_weights)
+      else:
+        task.optimizer.tree_init(model_in_training.weights)
       return optimizers.Trainer(
           model_in_training, task.optimizer, adasum=self._adasum)
     # In the memory-efficient path, we initialize the model here.
@@ -641,6 +661,7 @@ class Loop:
         return 0
     sizes = fastmath.nested_map(_size, self._model.weights)
     total_size = sum(fastmath.tree_flatten(sizes))
+    total_size *= base.N_WEIGHTS_SHARDS
     self._log_step('Total number of trainable weights: %d' % total_size)
 
   # TODO(afrozm): Fix multi-host evals, right now the reported numbers in the
@@ -756,6 +777,9 @@ class Loop:
     pkl_file = ckpt_file + '.pkl.gz'
     _log('Saving checkpoint to %s' % pkl_file, stdout=False)
     weights = self._model.weights
+    if base.N_WEIGHTS_SHARDS > 1:
+      weights = self._trainer_per_task[0].accelerated_model_with_loss.weights
+      weights = tl.unshard(weights)
     state = self._model.state
     compresslevel = 0 if self._use_memory_efficient_trainer else 2
     # Serialize optimizer slots.
@@ -795,9 +819,9 @@ class Loop:
     for w in weights:
       if w.dtype == jnp.bfloat16:
         converted = jax.lax.bitcast_convert_type(w, np.uint16)
-        bits.append(converted.astype(np.uint16))
+        bits.append(np.asarray(converted.astype(np.uint16)))
       else:  # for non-bfloat16 weights, be compatible with earlier checkpoints
-        bits.append(w)
+        bits.append(np.asarray(w))
     return bits
 
   def _from_bits(self, bits):
@@ -841,9 +865,9 @@ class Loop:
     if isinstance(d['flat_weights'], int):
       weights = tl.np_from_file(path + '.weights.npy.gz',
                                 compresslevel=d['flat_weights'])
-      d['flat_weights'] = self._from_bits(weights)
+      d['flat_weights'] = weights
     else:
-      d['flat_weights'] = self._from_bits(d['flat_weights'])
+      d['flat_weights'] = d['flat_weights']
     # The same holds for optimizer slots.
     if 'slots' in d:  # Old checkpoints had just 'slots' for one task.
       if len(self._tasks) != 1:
@@ -858,13 +882,14 @@ class Loop:
       for i in range(len(self._trainer_per_task)):
         slots = tl.np_from_file(path + f'.opt_slots{i}.npy.gz',
                                 compresslevel=compresslevel)
-        d['slots_per_task'].append(self._from_bits(slots))
+        d['slots_per_task'].append(slots)
     for (trainer, slots) in zip(self._trainer_per_task, d['slots_per_task']):
       matched_flat_slots = _match_by_shape(
-          _flatten_and_remove_empty(trainer.slots),
+          self._to_bits(_flatten_and_remove_empty(trainer.slots)),
           _flatten_and_remove_empty(slots))
       matched_slots, _ = fastmath.tree_unflatten(
-          matched_flat_slots, trainer.slots, copy_from_tree=[None, ()])
+          self._from_bits(matched_flat_slots),
+          trainer.slots, copy_from_tree=[None, ()])
       trainer.slots = matched_slots
     self._step = d['step']
     self._history = trax_history.History.from_dict(d['history'])
@@ -876,10 +901,14 @@ class Loop:
         self._model.weights, self._model.state)
     if len(d['flat_weights']) < len(flat_init_weights):
       _log('Checkpoint has less weights than the model, loading first ones.')
-    matched_weights = _match_by_shape(flat_init_weights, d['flat_weights'])
+    matched_weights = _match_by_shape(self._to_bits(flat_init_weights),
+                                      d['flat_weights'])
+    matched_weights = self._from_bits(matched_weights)
     try:
       restored_state = True
-      matched_state = _match_by_shape(flat_init_state, d['flat_state'])
+      matched_state = _match_by_shape(self._to_bits(flat_init_state),
+                                      d['flat_state'])
+      matched_state = self._from_bits(matched_state)
       weights, state = tl.unflatten_weights_and_state(
           matched_weights, matched_state, weights_and_state_sig)
       self._model.state = state

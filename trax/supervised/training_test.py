@@ -30,6 +30,7 @@ from trax import layers as tl
 from trax import optimizers
 from trax import shapes
 from trax import test_utils
+from trax.layers import base
 from trax.models import transformer
 from trax.supervised import callbacks
 from trax.supervised import training
@@ -136,6 +137,36 @@ class TrainingTest(absltest.TestCase):
     slots1 = training_session._trainer_per_task[0].slots
     slots2 = training_session2._trainer_per_task[0].slots
     np.testing.assert_array_equal(slots1, slots2)
+
+  def test_train_save_restore_sharded(self):
+    """Saves and restores a sharded checkpoint to check for equivalence."""
+    if fastmath.local_device_count() < 2:
+      return  # multi-accelerator only
+    base.N_WEIGHTS_SHARDS = fastmath.local_device_count()
+    train_data = data.Serial(lambda _: _very_simple_data(2, 2),
+                             data.CountAndSkip('simple_data'))
+    task = training.TrainTask(
+        train_data(), tl.L2Loss(), optimizers.Adam(.0001))
+    eval_task = training.EvalTask(
+        _very_simple_data(2, 2),  # deliberately re-using training data
+        [tl.L2Loss()],
+        metric_names=['SGD.L2Loss'])
+    tmp_dir = self.create_tempdir().full_path
+
+    def _make_model_and_session():
+      m = tl.Serial(tl.Dense(2))
+      ts = training.Loop(m, [task], eval_tasks=[eval_task],
+                         eval_at=lambda step_n: step_n % 2 == 0,
+                         output_dir=tmp_dir)
+      return m, ts
+
+    _, training_session = _make_model_and_session()
+    self.assertEqual(0, training_session.step)
+    training_session.run(n_steps=1)
+    training_session.save_checkpoint()
+    _, training_session2 = _make_model_and_session()
+    training_session2.run(n_steps=1)
+    base.N_WEIGHTS_SHARDS = 1
 
   def test_train_save_restore_transformer(self):
     """Saves and restores a checkpoint to check for equivalence."""
@@ -563,9 +594,10 @@ class TrainingTest(absltest.TestCase):
     self.assertEqual(end_steps, call_at_steps)
 
 
-def _very_simple_data(output_dim=1):
+def _very_simple_data(output_dim=1, input_dim=1):
   """"Returns stream of labeled data that maps small integers to constant pi."""
   inputs_batch = np.arange(8).reshape((8, 1))  # 8 items per batch
+  inputs_batch = np.concatenate([inputs_batch] * input_dim, axis=1)
   targets_batch = np.pi * np.ones((8, output_dim))
   labeled_batch = (inputs_batch, targets_batch, np.ones_like(targets_batch))
   while True:
