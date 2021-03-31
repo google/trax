@@ -71,5 +71,5 @@ setup(
         'License :: OSI Approved :: Apache Software License',
         'Topic :: Scientific/Engineering :: Artificial Intelligence',
     ],
-    keywords='tensorflow machine learning jax',
+    keywords='tensorflow deep learning jax',
 )
