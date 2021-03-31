@@ -56,6 +56,11 @@ flags.DEFINE_bool('use_eval_mode', False,
                   'If True, use the slower but easier to debug eval mode.')
 flags.DEFINE_bool('use_eval_set', False,
                   'If True, use eval set for evaluation.')
+flags.DEFINE_bool(
+    'use_beam_search', False,
+    'If True, use beam search, otherwise use autoregresive sampling.')
+flags.DEFINE_float('autoregressive_sample_temp', 1,
+                   'The temperature for autoregressive sampling.')
 flags.DEFINE_integer('n_beams', 4, 'How many beams to use in beam search.')
 flags.DEFINE_string(
     'output_dir', '', 'Path to the output directory where articles, abstracts, '
@@ -239,20 +244,39 @@ def main(argv):
                                  vocab_file=gin.query_parameter(
                                      'trax.data.Tokenize.vocab_file'))))
       state = model.state
-      answer_beams = decoding.beam_search(
-          model,
-          tokenized_question[None, :],
-          n_beams=FLAGS.n_beams,
-          max_length=FLAGS.max_answer_len,
-          accelerate=False)
-      model.state = state
+      if FLAGS.use_beam_search:
+        answer_beams = decoding.beam_search(
+            model,
+            tokenized_question[None, :],
+            n_beams=FLAGS.n_beams,
+            max_length=FLAGS.max_answer_len,
+            accelerate=False)
+        model.state = state
+      else:
+        answer_beams = []
+        # We recycle the n_beams flag to control the number
+        # of autoregressive samples.
+        for i in range(FLAGS.n_beams):
+          answer = decoding.autoregressive_sample(
+              model,
+              tokenized_question[None, :],
+              temperature=FLAGS.autoregressive_sample_temp,
+              max_length=FLAGS.max_answer_len,
+              accelerate=False)
+          model.state = state
+          answer_beams.append(answer)
 
       correct_example_index = -1
 
       for i in range(len(answer_beams)):
-        answer = trax_data.detokenize(
-            answer_beams[i][0][0],
-            vocab_file=gin.query_parameter('trax.data.Tokenize.vocab_file'))
+        if FLAGS.use_beam_search:
+          answer = trax_data.detokenize(
+              answer_beams[i][0][0],
+              vocab_file=gin.query_parameter('trax.data.Tokenize.vocab_file'))
+        else:
+          answer = trax_data.detokenize(
+              answer_beams[i][0],
+              vocab_file=gin.query_parameter('trax.data.Tokenize.vocab_file'))
         print('Proposed computation {}'.format(answer))
         list_op = answer.split('|')
         if not list_op[-1]:
