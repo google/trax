@@ -1266,7 +1266,7 @@ class _SparseFFMain(base.Layer):
 
   def __init__(self, d_ff, n_elements_in_block, d_lowrank, quant_prob,
                use_bfloat16, big_weights_in_bfloat16, mode, kernel_initializer,
-               bias_initializer, multiply_by_controller_output):
+               bias_initializer, multiply_by_controller_output, kernel_scaling):
     """Returns a sparse feed-forward block."""
     n_in = 3 if mode == 'train' or multiply_by_controller_output else 2
     super().__init__(name=f'_SparseFFMain_{d_ff}', n_in=n_in, n_out=2)
@@ -1284,6 +1284,7 @@ class _SparseFFMain(base.Layer):
     self._d1 = self._d_ff // self._n_elements_in_block
     self._d2 = self._n_elements_in_block
     self._multiply_by_controller_output = multiply_by_controller_output
+    self._kernel_scaling = kernel_scaling
 
   def forward(self, x):
     """Executes this layer as part of a forward pass through the model.
@@ -1393,6 +1394,10 @@ class _SparseFFMain(base.Layer):
     w1 = jnp.reshape(w1, (-1, self._d1, self._d2))
     w2 = jnp.reshape(w2, (self._d2, self._d1, -1))
 
+    if self._kernel_scaling:
+      # This keeps expected variance of the output regardless of N.
+      w2 = w2 * (self._n_elements_in_block ** 0.5)
+
     self.weights = (w1, w2, b2)
 
 
@@ -1402,7 +1407,7 @@ def SparseFF(
     kernel_initializer=init.GlorotUniformInitializer(),
     bias_initializer=init.RandomNormalInitializer(1e-6),
     dropout_rate=0.0, dropout_shared_axes=None, ff_chunk_size=0,
-    multiply_by_controller_output=False):
+    multiply_by_controller_output=False, kernel_scaling=False):
   """Returns Feed-forward block with sparsity.
 
   The original (non-sparse) FF block is a triple Dense(d_ff)-Relu-Dense
@@ -1439,6 +1444,8 @@ def SparseFF(
     ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks.
     multiply_by_controller_output: whether to multiply the middle activation
       layer of FF by controller output (i.e. softmax).
+    kernel_scaling: Whether to scale the kernel matrix (during init) to keep the
+      variance of the layer output regardless of n_elements_in_block.
   """
 
   if mode == 'train' or multiply_by_controller_output:
@@ -1460,7 +1467,8 @@ def SparseFF(
           big_weights_in_bfloat16=big_weights_in_bfloat16, mode=mode,
           kernel_initializer=kernel_initializer,
           bias_initializer=bias_initializer,
-          multiply_by_controller_output=multiply_by_controller_output),
+          multiply_by_controller_output=multiply_by_controller_output,
+          kernel_scaling=kernel_scaling),
       # quant_mask, emb
       tl.Select([1, 0]),
       # emb, quant_mask

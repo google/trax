@@ -141,6 +141,27 @@ class EfficientFeedForwardTest(test.TestCase, parameterized.TestCase):
           x, weights, state, rng=jax.random.PRNGKey(0))
       self.assertEqual(out.shape, x.shape)
 
+  def test_sparse_ff_kernel_scaling(self):
+    d_model = 8
+    n_elements_in_block = 2
+    d_ff = 16
+    x_shape = (2, 8, d_model)
+    temperature = 0.7
+    with fastmath.use_backend(fastmath.Backend.JAX):
+      x = np.ones(x_shape).astype(np.float32)
+      input_signature = shapes.signature(x)
+      model = sparsity.SparseFF(
+          d_ff=d_ff,
+          n_elements_in_block=n_elements_in_block,
+          temperature=temperature,
+          ff_chunk_size=4,
+          mode='train',
+          kernel_scaling=True)
+      weights, state = model.init(input_signature)
+      out, _ = model.pure_fn(
+          x, weights, state, rng=jax.random.PRNGKey(0))
+      self.assertEqual(out.shape, x.shape)
+
   def test_switchsparse_ff_train(self):
     d_model = 1024
     n_experts = 64
