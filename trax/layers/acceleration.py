@@ -106,6 +106,7 @@ class Accelerate(base.Layer):
     weights, state = self.sublayer.init(input_signature, use_cache=True)
     self._weights = self._prepare_weights(weights)
     self._state = for_n_devices(state, self._n_devices)
+    return (self.weights, self.state)
 
   def replicate_weights(self, weights):
     """Sets the weights of the sublayer and replicates them for this layer."""

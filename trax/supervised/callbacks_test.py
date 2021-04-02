@@ -20,19 +20,23 @@ import io
 from unittest import mock
 
 from absl.testing import absltest
+from absl.testing import parameterized
 import gym
 import numpy as np
 
 from trax import models
+from trax import test_utils
 from trax.data import inputs
+from trax.layers import test_utils as tl_test_utils
 from trax.rl import serialization_utils
 from trax.rl import space_serializer
 from trax.supervised import callbacks
 from trax.supervised import lr_schedules
 from trax.supervised import trainer_lib
+from trax.supervised import training
 
 
-def dummy_inputs(seq_len, batch_size):
+def random_inputs(seq_len, batch_size):
   def stream_fn(num_devices):
     del num_devices
     while True:
@@ -47,7 +51,52 @@ def dummy_inputs(seq_len, batch_size):
   )
 
 
-class CallbacksTest(absltest.TestCase):
+def make_multibonacci_modulo(history_length, limit):
+  """Creates a function that generates the Multibonacci sequence modulo n."""
+  def sequence_fn(seq):
+    return np.sum(seq[-history_length:]) % limit
+  return sequence_fn
+
+
+def generate_trajectory(sequence_fn, space, n_steps):
+  """Generates random actions and observations that follow sequence_fn."""
+  act = [space.sample() for _ in range(n_steps)]
+  obs = [space.sample()]
+
+  for (o, a) in zip(
+      obs,
+      act[:-1],  # Don't generate the last observation.
+  ):
+    context = list(np.array([o, a]).flatten())
+    symbols = []
+    for _ in range(np.array(o).size):
+      symbol = sequence_fn(context + symbols)
+      symbols.append(symbol)
+    obs.append(np.reshape(symbols, space.shape))
+
+  obs = np.array([obs])
+  act = np.array([act])
+  return (obs, act)
+
+
+def make_singleton_eval_task(observations, actions):
+  """Creates an EvalTask with just one example."""
+  mask = np.ones(observations.shape[:2])
+  def data():
+    while True:
+      yield (observations, actions, observations, mask)
+
+  return training.EvalTask(
+      labeled_data=data(),
+      metrics=[],
+  )
+
+
+class CallbacksTest(parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    test_utils.ensure_flag('test_tmpdir')
 
   @mock.patch('sys.stdout', new_callable=io.StringIO)
   def test_serialized_model_evaluation(self, mock_stdout):
@@ -89,12 +138,77 @@ class CallbacksTest(absltest.TestCase):
     trainer_lib.train(
         output_dir=output_dir,
         model=model,
-        inputs=functools.partial(dummy_inputs, seq_len=4, batch_size=64),
+        inputs=functools.partial(random_inputs, seq_len=4, batch_size=64),
         lr_schedule_fn=functools.partial(lr_schedules.constant, 0.01),
         callbacks=[eval_callback],
         steps=10,
     )
     self.assertTrue(_has_metric('pred_error', mock_stdout))
+
+  @parameterized.product(
+      context_lengths=((2,), (1, 3)),
+      horizon_lengths=((1,), (1, 2)),
+  )
+  def test_srl_eval_feeds_correct_sequence(
+      self, context_lengths, horizon_lengths
+  ):
+    vocab_size = 10
+    n_steps = 5
+
+    multibonacci_modulo = make_multibonacci_modulo(2, vocab_size)
+    space = gym.spaces.Discrete(n=vocab_size)
+    (obs, act) = generate_trajectory(multibonacci_modulo, space, n_steps)
+    eval_task = make_singleton_eval_task(obs, act)
+    model = tl_test_utils.MockTransformerLM(
+        sequence_fn=multibonacci_modulo, vocab_size=vocab_size, mode='predict'
+    )
+    srl = space_serializer.DiscreteSpaceSerializer(space, vocab_size)
+    callback = callbacks.SerializedModelEvaluation(
+        loop=None,
+        eval_task=eval_task,
+        model=model,
+        observation_serializer=srl,
+        action_serializer=srl,
+        context_lengths=context_lengths,
+        horizon_lengths=horizon_lengths,
+        accelerate_model=False,
+    )
+    callback.evaluate(weights=None)
+
+    expected_seq = np.zeros(2 * n_steps + 1)
+    expected_seq[1::2] = obs
+    expected_seq[2::2] = act
+    seen_len = (context_lengths[-1] + horizon_lengths[-1]) * 2
+    model.assert_prediction_buffers_equal([expected_seq[:seen_len]])
+
+  @parameterized.named_parameters(('one_symbol', 1), ('two_symbols', 2))
+  def test_srl_eval_reports_zero_error_for_perfect_model(self, precision):
+    vocab_size = 100
+    n_steps = 5
+
+    multibonacci_modulo = make_multibonacci_modulo(2 * precision, vocab_size)
+    space = gym.spaces.MultiDiscrete(nvec=([vocab_size] * precision))
+    (obs, act) = generate_trajectory(multibonacci_modulo, space, n_steps)
+    eval_task = make_singleton_eval_task(obs, act)
+    model = tl_test_utils.MockTransformerLM(
+        sequence_fn=multibonacci_modulo, vocab_size=vocab_size, mode='predict'
+    )
+    srl = space_serializer.MultiDiscreteSpaceSerializer(space, vocab_size)
+    callback = callbacks.SerializedModelEvaluation(
+        loop=None,
+        eval_task=eval_task,
+        model=model,
+        observation_serializer=srl,
+        action_serializer=srl,
+        context_lengths=(1,),
+        horizon_lengths=(4,),
+        accelerate_model=False,
+    )
+    metrics = callback.evaluate(weights=None)
+    error = next(
+        value for (name, value) in metrics.items() if 'pred_error' in name
+    )
+    assert error == 0
 
 
 def _has_metric(metric_name, stdout):
