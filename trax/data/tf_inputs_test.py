@@ -437,7 +437,7 @@ class TFInputsTest(tf.test.TestCase):
         bare_preprocess_fn=tf_inputs.c4_bare_preprocess_fn)
 
   def test_generic_text_dataset_preprocess_fn(self):
-    dataset = _load_dataset('squad/v1.1:2.0.0')
+    dataset = _load_dataset('squad/v1.1:3.0.0')
 
     example, = tfds.as_numpy(dataset.take(1))
 
