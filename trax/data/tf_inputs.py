@@ -1705,7 +1705,7 @@ def compute_single_result(op_name, num_args):
   elif op_name == 'circumface':
     return 2 * math.pi * num_args[0]
   elif op_name == 'choose':
-    return scipy.misc.comb(num_args[0], num_args[1])
+    return scipy.special.comb(num_args[0], num_args[1])
   elif op_name == 'cosine':
     return math.cos(num_args[0])
   elif op_name == 'cube_edge_by_volume':
@@ -1780,7 +1780,7 @@ def compute_single_result(op_name, num_args):
   elif op_name == 'rectangle_area':
     return num_args[0] * num_args[1]
   elif op_name == 'rectangle_perimeter':
-    return math.sqrt(num_args[0]**2 + num_args[1]**2)
+    return 2 * (num_args[0] + num_args[1])
   elif op_name == 'rhombus_area':
     return num_args[0] * num_args[1] / 2
   elif op_name == 'sine':
@@ -1830,7 +1830,7 @@ def compute_single_result(op_name, num_args):
         max(0,
             s * (s - num_args[0]) * (s - num_args[1]) * (s - num_args[2])))
   elif op_name == 'union_prob':
-    return num_args[0] + num_args[1] - num_args[0]
+    return num_args[0] + num_args[1] - num_args[2]
   elif op_name == 'negate_prob':
     return 1 - num_args[0]
   elif op_name == 'volume_cube':
@@ -1886,6 +1886,214 @@ def compute_result(list_op, list_num):
             constant = constant1 + constant2
         num_args.append(constant)
     temporary_results.append(compute_single_result(op_name, num_args))
+  return temporary_results
+
+
+def single_op_to_python_command(op_name, num_args):
+  """An implementation of the most popular ops from the MathQA dataset."""
+  # See https://gitlab.cs.washington.edu/amini91/mathqa-categorization/
+  # and specfically line 142 and following in new_DataStructure.py
+  # for an implementation which covers more details.
+  if op_name == 'add':
+    return '{} + {}'.format(num_args[0], num_args[1])
+  elif op_name == 'circle_arc':
+    return '{} / 360 * math.pi * 2 * {}'.format(num_args[0], num_args[1])
+  elif op_name == 'circle_area':
+    return 'math.pi * {}**2'.format(num_args[0])
+  elif op_name == 'circle_sector_area':
+    return '{} / 360 * math.pi * ({}**2)'.format(num_args[1], num_args[0])
+  elif op_name == 'circumface':
+    return '2 * math.pi * {}'.format(num_args[0])
+  elif op_name == 'choose':
+    return 'scipy.misc.comb({}, {})'.format(num_args[0], num_args[1])
+  elif op_name == 'cosine':
+    return 'math.cos({})'.format(num_args[0])
+  elif op_name == 'cube_edge_by_volume':
+    return '{}**(1 / 3)'.format(num_args[0])
+  elif op_name == 'combined_work':
+    return '1 / (min({}, 1 / {}) + min({}, 1 / {}))'.format(
+        num_args[0], num_args[0], num_args[1], num_args[1])
+  elif op_name == 'count_interval':
+    return '{} - {} + 1'.format(num_args[0], num_args[1])
+  elif op_name == 'diagonal':
+    return 'math.sqrt({}**2 + {}**2)'.format(num_args[0], num_args[1])
+  elif op_name == 'divide' or op_name == 'speed':
+    # safe divide
+    if num_args[1] != 0:
+      return '{} / {}'.format(num_args[0], num_args[1])
+    else:
+      return '0'
+  elif op_name == 'factorial':
+    return 'math.factorial(min(15, int({})))'.format(num_args[0])
+  elif op_name == 'floor':
+    return 'math.floor({})'.format(num_args[0])
+  elif op_name == 'find_work':
+    return ('1 / (max(min({}, 1 / {}), min({}, 1 / {})) - min(min({}, 1 / {}), '
+            'min({}, 1 / {})))').format(num_args[0], num_args[0], num_args[1],
+                                        num_args[1], num_args[0], num_args[0],
+                                        num_args[1], num_args[1])
+  elif op_name == 'from_percent':
+    return '{} / 100'.format(num_args[0])
+  elif op_name == 'gain_percent':
+    return '100 + {}'.format(num_args[0])
+  elif op_name == 'gcd':
+    return 'scipy.gcd(int({}), int({}))'.format(num_args[0], num_args[1])
+  elif op_name == 'inverse':
+    # safe inverse
+    if num_args[0] != 0:
+      return '1 / {}'.format(num_args[0])
+    else:
+      return '0'
+  elif op_name == 'lcm':
+    return 'scipy.lcm(int({}), int({}))'.format(num_args[0], num_args[1])
+  elif op_name == 'log':
+    return 'math.log(max(1e-5, {}), 2)'.format(num_args[0])
+  elif op_name == 'loss_percent':
+    return '100 - {}'.format(num_args[0])
+  elif op_name == 'max':
+    return 'max({},{})'.format(num_args[0], num_args[1])
+  elif op_name == 'multiply':
+    return '{} * {}'.format(num_args[0], num_args[1])
+  elif op_name == 'negate_percent':
+    return '100 - {}'.format(num_args[0])
+  elif op_name == 'negate':
+    return '-{}'.format(num_args[0])
+  elif op_name == 'original_price_before_loss':
+    return '{} * 100 / (100 + 1e-5 - {})  # original price before loss'.format(
+        num_args[1], num_args[0])
+  elif op_name == 'original_price_before_gain':
+    return '{} * 100 / (100 + {})  # original_price_before gain'.format(
+        num_args[1], num_args[0])
+  elif op_name == 'permutation':
+    return ('math.factorial(int(max({}, {}))) / math.factorial(int(max({}, {}) '
+            '- min({}, {})))  # find all permutations').format(
+                num_args[0], num_args[1], num_args[0], num_args[1], num_args[0],
+                num_args[1])
+  elif op_name == 'power':
+    return '{}**min({}, 5)'.format(num_args[0], num_args[1])
+  elif op_name == 'percent':
+    return '{} / 100 * {}'.format(num_args[0], num_args[1])
+  elif op_name == 'price_after_gain' or op_name == 'p_after_gain':
+    return '(1 + {} / 100) * {}'.format(num_args[0], num_args[1])
+  elif op_name == 'price_after_loss' or op_name == 'price_after_loss':
+    return '(1 - {} / 100) * {}'.format(num_args[0], num_args[1])
+  elif op_name == 'quadrilateral_area':
+    return '{} * ({} + {}) / 2  # quadrilateral area'.format(
+        num_args[0], num_args[1], num_args[2])
+  elif op_name == 'reminder':
+    return '{} % {}'.format(num_args[0], num_args[1])
+  elif op_name == 'rectangle_area':
+    return '{} * {}  # area of rectangle'.format(num_args[0], num_args[1])
+  elif op_name == 'rectangle_perimeter':
+    return '2 * ({} + {})  # perimetere of rectangle'.format(
+        num_args[0], num_args[1])
+  elif op_name == 'rhombus_area':
+    return '{} * {} / 2'.format(num_args[0], num_args[1])
+  elif op_name == 'sine':
+    return 'math.sin({})'.format(num_args[0])
+  elif op_name == 'sqrt':
+    return 'math.sqrt(max(0, {}))'.format(num_args[0])
+  elif op_name == 'subtract':
+    return '{} - {}'.format(num_args[0], num_args[1])
+  elif op_name == 'square_edge_by_perimeter':
+    return '{} / 4. # square edge given perimeter'.format(num_args[0])
+  elif op_name == 'square_edge_by_area':
+    return 'math.sqrt({})  # square edge given area'.format(num_args[0])
+  elif op_name == 'square_area':
+    return '{}**2'.format(num_args[0])
+  elif op_name == 'surface_cube':
+    return '6 * {}**2  # surface of a cube'.format(num_args[0])
+  elif op_name == 'surface_rectangular_prism':
+    return '2 * ({} * {} + {} * {} + {} * {})  # surface of a rectangular prism'.format(
+        num_args[0], num_args[1], num_args[0], num_args[2], num_args[1],
+        num_args[2])
+  elif op_name == 'semi_circle_perimiter':
+    return 'math.pi * {} + 2 * {}  # perimeter of a semi-circle'.format(
+        num_args[0], num_args[0])
+  elif op_name == 'square_perimeter' or op_name == 'rhombus_perimeter':
+    return '4 * {}'.format(num_args[0])
+  elif op_name == 'surface_sphere':
+    return '4 * math.pi * {}**2'.format(num_args[0])
+  elif op_name == 'speed_ratio_steel_to_stream':
+    return '({} + {}) / ({} - {})'.format(num_args[0], num_args[1], num_args[0],
+                                          num_args[1])
+  elif op_name == 'speed_in_still_water':
+    return '{} + {} / 2'.format(num_args[0], num_args[1])
+  elif op_name == 'stream_speed':
+    return '{} - {} / 2'.format(num_args[0], num_args[1])
+  elif op_name == 'trapezium_area':
+    return '{} * ({} + {}) / 2'.format(num_args[0], num_args[1], num_args[2])
+  elif op_name == 'triangle_area':
+    return '{} * {} / 2'.format(num_args[0], num_args[1])
+  elif op_name == 'triangle_perimeter':
+    return '{} + {} + {}  # perimeter of a triangle'.format(
+        num_args[0], num_args[1], num_args[2])
+  elif op_name == 'triangle_area_three_edges':
+    return ("(lambda s, a, b, c: math.sqrt(max(0, s * (s - a) * (s - b) * (s - "
+            "c))))(({} + {} + {}) / 2, {}, {}, {})  # Heron's formula").format(
+                num_args[0], num_args[1], num_args[2], num_args[0], num_args[1],
+                num_args[2])
+  elif op_name == 'union_prob':
+    return '{} + {} - {}'.format(num_args[0], num_args[1], num_args[2])
+  elif op_name == 'negate_prob':
+    return '1 - {}'.format(num_args[0])
+  elif op_name == 'volume_cube':
+    return '{}**3'.format(num_args[0])
+  elif op_name == 'volume_cone':
+    return 'math.pi * {}**2 * {} / 3'.format(num_args[0], num_args[1])
+  elif op_name == 'volume_cylinder':
+    return 'math.pi * {}**2 * {}'.format(num_args[0], num_args[1])
+  elif op_name == 'volume_rectangular_prism':
+    return '{} * {} * {}'.format(num_args[0], num_args[1], num_args[2])
+  elif op_name == 'volume_sphere':
+    return '4 / 3 * math.pi * {}**3'.format(num_args[0])
+
+
+def compute_program(list_op):
+  """Python execution of MathQA ops."""
+  # The last of temporary results is the final answer.
+  temporary_results = []
+  num_op = 0
+  for op in list_op:
+    op_name = op.split('(')[0]
+    start_bracket = op.find('(')
+    end_bracket = op.find(')')
+    op_args = op[start_bracket + 1:end_bracket].split(',')
+    num_args = []
+    for arg in op_args:
+      # The hash stands for a number stored in temporary_results.
+      # For example #2 refers to the third temporary result.
+      if arg[0] == '#':
+        temp_index = int(
+            re.findall(r'[-+]?[.]?[\d]+(?:,\d\d\d)*[\.]?\d*(?:[eE][-+]?\d+)?',
+                       arg)[0])
+        num_args.append('t{}'.format(temp_index))
+      # The n prefix stands for numbers which listed in list_num -
+      # originally they were contained in the text.
+      elif arg[0] == 'n':
+        # n_index = int(
+        #     re.findall(r'[-+]?[.]?[\d]+(?:,\d\d\d)*[\.]?\d*(?:[eE][-+]?\d+)?',
+        #                arg)[0])
+        num_args.append(arg)
+      elif arg[0] == 'c':
+        if arg == 'const_pi':
+          constant = math.pi
+        elif arg == 'const_deg_to_rad':
+          constant = math.pi / 180
+        else:
+          consts = re.findall(
+              r'[-+]?[.]?[\d]+(?:,\d\d\d)*[\.]?\d*(?:[eE][-+]?\d+)?', arg)
+          if len(consts) == 1:
+            constant = float(consts[0])
+          else:
+            constant1 = float(consts[0])
+            constant2 = float('0.' + consts[1])
+            constant = constant1 + constant2
+        num_args.append(str(constant))
+    temporary_result = 't{} = {}'.format(
+        num_op, single_op_to_python_command(op_name, num_args))
+    temporary_results.append(temporary_result)
+    num_op += 1
   return temporary_results
 
 
@@ -1945,7 +2153,8 @@ def process_single_mathqa_example(example):
   if not list_op[-1]:
     list_op = list_op[:-1]
   python_result = compute_result(list_op, list_num)
-  return answer_num, python_result, list_op, list_num
+  python_program = compute_program(list_op)
+  return answer_num, python_result, python_program, list_op, list_num
 
 
 def convert_float_to_mathqa(number):
@@ -1966,6 +2175,7 @@ def CreateMathQAInputs(  # pylint: disable=invalid-name
     train=True,
     tolerance=0.01,
     cumulative=True,
+    python_code=False,
     partial_results=True,
     nlp_rationale=False,
     correct_answer=False,
@@ -1998,6 +2208,8 @@ def CreateMathQAInputs(  # pylint: disable=invalid-name
       problem + numbers + op1 + op2 + op3 target - op4 If set to False, then
       examples are in the format input - problem + numbers target - all
       operations.
+    python_code: if set to True, then generates python code instead of
+      MathQA commands.
     partial_results: if set to True, then partial results will be reported as
       part of the input, e.g. input - problem + numbers + op1 + #1 + op2 + #2 +
       op3 + #3, target - op4, where #k is the partial results from operation
@@ -2045,7 +2257,7 @@ def CreateMathQAInputs(  # pylint: disable=invalid-name
         # TODO(henrykm): Remove the first two ifs.
         if not result:
           continue
-        answer_num, python_result, list_op, list_num = result
+        answer_num, python_result, python_program, list_op, list_num = result
         if not answer_num or not python_result[-1]:
           continue
         if qed:
@@ -2063,6 +2275,30 @@ def CreateMathQAInputs(  # pylint: disable=invalid-name
                 input_prefix += ' #{} = {}'.format(i, answer_num)
               yield input_values, target_values, np.array([1] *
                                                           len(target_values))
+          elif python_code:
+            input_values = '# ' + input_prefix
+            target_values = ''
+            for command in python_program:
+              if 'math' in command:
+                target_values += 'import math\n'
+                break
+            for command in python_program:
+              if 'scipy' in command:
+                target_values += 'import scipy\n'
+                break
+            for i in range(len(list_num)):
+              target_values += 'n{} = {}\n'.format(i, list_num[i])
+            target_values += '\n'.join(python_program[:-1])
+            final_line = python_program[-1].split('=')[1]
+            target_values += '\nanswer ={}'.format(final_line)
+            var_dict = {}
+            # We generate a python code and want to check whether the answer
+            # is coorect.
+            exec(target_values, globals(), var_dict)  # pylint: disable=exec-used
+            if math.isclose(answer_num, var_dict['answer'], rel_tol=tolerance):
+              yield input_values, target_values, np.array([1] *
+                                                          len(target_values))
+
           elif nlp_rationale:
             input_values = 'infer full rationale: ' + input_prefix
             target_values = example['Rationale']

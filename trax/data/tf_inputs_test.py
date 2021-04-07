@@ -717,11 +717,16 @@ class TFInputsTest(tf.test.TestCase):
             'gain'
     }
 
-    answer_num, python_result, list_op, list_num = tf_inputs.process_single_mathqa_example(
+    answer_num, python_result, python_program, list_op, list_num = tf_inputs.process_single_mathqa_example(
         example)
     self.assertEqual(answer_num,
                      400)  # we know it, because correct answer is a)
     self.assertEqual(python_result, [3600.0, 30.0, 120.0, 12000.0, 400.0])
+
+    self.assertEqual(python_program, [
+        't0 = n2 * 100.0', 't1 = n0 * n1', 't2 = t0 / t1', 't3 = t2 * 100.0',
+        't4 = t3 / t1'
+    ])
     self.assertEqual(list_op, [
         'multiply(n2,const_100)', 'multiply(n0,n1)', 'divide(#0,#1)',
         'multiply(#2,const_100)', 'divide(#3,#1)'
@@ -748,16 +753,60 @@ class TFInputsTest(tf.test.TestCase):
         'category': 'general'
     }
 
-    answer_num, python_result, list_op, list_num = tf_inputs.process_single_mathqa_example(
+    answer_num, python_result, python_program, list_op, list_num = tf_inputs.process_single_mathqa_example(
         example)
     self.assertEqual(answer_num,
                      270)  # we know it, because correct answer is b)
     self.assertAllClose(
         python_result,
         [0.6666666666666666, 0.33333333333333337, 269.99999999999994])
+    self.assertEqual(python_program,
+                     ['t0 = n0 / n1', 't1 = 1.0 - t0', 't2 = n2 / t1'])
     self.assertEqual(list_op,
                      ['divide(n0,n1)', 'subtract(const_1,#0)', 'divide(n2,#1)'])
     self.assertEqual(list_num, [2.0, 3.0, 90.0])
+
+  def test_process_single_mathqa_example_with_import(self):
+    # This is a training MathQA problem which involve an import.
+    example = {
+        'Problem':
+            'the length of a rectangular garden is three times its width . if '
+            'the area of the rectangular garden is 588 square meters , then '
+            'what is the width of the rectangular garden ?',
+        'Rationale':
+            '\"let x be the width of the garden . 3 x ^ 2 = 588 x ^ 2 = 196 x '
+            '= 14 the answer is c .\"',
+        'options':
+            'a ) 12 , b ) 13 , c ) 14 , d ) 15 , e ) 16',
+        'correct':
+            'c',
+        'annotated_formula':
+            'sqrt(divide(588, const_3))',
+        'linear_formula':
+            'divide(n0,const_3)|sqrt(#0)|',
+        'category':
+            'geometry'
+    }
+
+    answer_num, python_result, python_program, list_op, list_num = tf_inputs.process_single_mathqa_example(
+        example)
+    self.assertEqual(answer_num, 14)  # we know it, because correct answer is c)
+    self.assertAllClose(python_result, [196, 14])
+    self.assertEqual(
+        python_program,
+        ['t0 = n0 / 3.0', 't1 = math.sqrt(max(0, t0))'])
+    self.assertEqual(list_op, ['divide(n0,const_3)', 'sqrt(#0)'])
+    self.assertEqual(list_num, [588])
+
+    target_values = 'import math\n'
+    for i in range(len(list_num)):
+      target_values += 'n{} = {}\n'.format(i, list_num[i])
+    target_values += '\n'.join(python_program[:-1])
+    final_line = python_program[-1].split('=')[1]
+    target_values += '\nanswer ={}'.format(final_line)
+    var_dict = {}
+    exec(target_values, globals(), var_dict)  # pylint: disable=exec-used
+    self.assertAllClose(var_dict['answer'], 14)
 
   def test_sentencepiece_tokenize(self):
     def dataset():
