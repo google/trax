@@ -52,6 +52,7 @@ from trax.fastmath import numpy as jnp
 from trax.layers import base
 from trax.layers import combinators as cb
 from trax.layers import core
+from trax.layers import initializers as init
 from trax.layers.assert_shape import assert_shape
 from trax.layers.base import Fn
 from trax.layers.research import sparsity
@@ -623,7 +624,7 @@ class PositionalEncoding(base.Layer):
 
   def __init__(self, max_len=2048, dropout=0.0, dropout_broadcast_dims=(-2,),
                use_bfloat16=False, start_from_zero_prob=1.0,
-               max_offset_to_add=0, mode='train'):
+               max_offset_to_add=0, d_feature=None, mode='train'):
     """Creates a :py:class:`PositionalEncoding` instance in a given mode.
 
     Args:
@@ -639,6 +640,8 @@ class PositionalEncoding(base.Layer):
       max_offset_to_add: maximum offset to add to the positions during training
         when randomizing; this offset plus input length must still be less than
         max_len for all training examples.
+      d_feature: int or None; have this dimension for embeddings + shared FF if
+        not None.
       mode: One of ``'train'``, ``'eval'``, or ``'predict'``.
     """
     super().__init__()
@@ -654,10 +657,14 @@ class PositionalEncoding(base.Layer):
     self._start_from_zero_prob = start_from_zero_prob
     self._max_offset_to_add = max_offset_to_add
     self._mode = mode
+    self._d_feature = d_feature
 
   def forward(self, inputs):
     """Returns the input activations, with added positional information."""
     weights = self.weights
+    if self._d_feature is not None and self._mode != 'predict':
+      weights, ff = weights
+      weights = jnp.dot(weights[:inputs.shape[1], :], ff)
     if len(weights.shape) < 3:  # old checkpoints have 1 in first dim already
       weights = weights[None, :, :]  # [1, self._max_len, d_feature]
     if self._mode != 'predict':
@@ -706,6 +713,8 @@ class PositionalEncoding(base.Layer):
           this layer should compute on.
     """
     d_feature = input_signature.shape[-1]
+    if self._d_feature is not None:
+      d_feature = self._d_feature
     pe = np.zeros((self._max_len, d_feature), dtype=np.float32)
     position = np.arange(0, self._max_len)[:, np.newaxis]
     div_term = np.exp(
@@ -714,7 +723,13 @@ class PositionalEncoding(base.Layer):
     pe[:, 1::2] = np.cos(position * div_term)  # [self._max_len, d_feature]
     if self._use_bfloat16:
       pe = pe.astype(jnp.bfloat16)
-    self.weights = jnp.array(pe)  # Trainable parameters, initialized above.
+    w = jnp.array(pe)  # Trainable parameters, initialized above.
+    if self._d_feature is not None:
+      ff = init.GlorotUniformInitializer()(
+          (d_feature, input_signature.shape[-1]), self.rng)
+      self.weights = w, ff
+    else:
+      self.weights = w
     if self._mode == 'predict':
       self.state = jnp.zeros((), dtype=jnp.int32)
 

@@ -1215,6 +1215,7 @@ def _init_random_number_generators(seed=None):
   random.seed(seed)
   if seed is None:
     seed = random.randint(0, 2**31 - 1)
+  logging.info('using seed %d', seed)
   np.random.seed(seed)
   tf.random.set_seed(seed)
   return jax_random.get_prng(seed)
@@ -1255,7 +1256,7 @@ def init_host_and_devices(n_devices=None, random_seed=None):
                      '%d != %d' % (n_devices, device_count))
 
   if random_seed is None and host_count > 1:
-    random_seed = int(1e6 * (host_id + time.time())) % 2**32
+    random_seed = int(1e6 * (host_id + time.time())) % 2**31
   return (is_chief, host_count, n_devices,
           _init_random_number_generators(random_seed))
 

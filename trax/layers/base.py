@@ -1047,8 +1047,10 @@ def unshard(tensors, n_shards=None):
   """Unshard tensors that were sharded into n_shards (outside of pmap)."""
   n_shards = N_WEIGHTS_SHARDS if n_shards is None else n_shards
   def _unshard_fn(x):
-    split_y = jnp.split(x, n_shards, axis=0)
-    split_y = [jnp.squeeze(sy, axis=0) for sy in split_y]
+    # We use numpy here to put the large un-sharded arrays in CPU memory.
+    # For unsharding on accelerators use ushard_in_pmap above and pmap it.
+    split_y = np.split(np.asarray(x), n_shards, axis=0)
+    split_y = [np.squeeze(sy, axis=0) for sy in split_y]
     axis = _axis_to_shard_heuristic(split_y[0].shape)
-    return jnp.concatenate(split_y, axis=axis)
+    return np.concatenate(split_y, axis=axis)
   return fastmath.nested_map(_unshard_fn, tensors)

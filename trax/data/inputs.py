@@ -283,11 +283,12 @@ def count_and_skip(generator, name):
     time a new example appears.
   """
   global data_counters
-  if name not in data_counters:
-    data_counters[name] = 0
   local_counter = 0
   for example in generator:
     local_counter += 1
+    # This check must be inside the loop due to asynchronous initializations.
+    if name not in data_counters:
+      data_counters[name] = 0
     if local_counter > data_counters[name]:
       data_counters[name] += 1
       yield example
