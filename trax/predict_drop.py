@@ -31,8 +31,8 @@ from absl import flags
 import gin
 import jax
 import numpy as np
+from seqio import vocabularies as t5_spc_vocab
 from t5 import data
-from t5.seqio import vocabularies as t5_spc_vocab
 import tensorflow as tf
 from trax import data as trax_data
 from trax import layers as tl
