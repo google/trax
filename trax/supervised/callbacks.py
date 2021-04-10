@@ -74,9 +74,7 @@ class SerializedModelEvaluation(TrainingStepCallback):
   def __init__(
       self,
       loop,
-      model=gin.REQUIRED,
-      observation_serializer=gin.REQUIRED,
-      action_serializer=gin.REQUIRED,
+      model=None,
       eval_at=1000,
       eval_task=None,
       context_lengths=(1,),
@@ -87,12 +85,11 @@ class SerializedModelEvaluation(TrainingStepCallback):
     """Initializes SerializedModelEvaluation.
 
     Args:
-      loop: Instance of `trax.supervised.training.Loop`.
-      model: Instance of `trax.rl.serialization_utils.SerializedModel`.
-      observation_serializer: `trax.rl.space_serializer.Serializer` of the
-        output sequence (observation sequence in RL environment models).
-      action_serializer: `trax.rl.space_serializer.Serializer` of the
-        input sequence (action sequence in RL environment models).
+      loop: Instance of `trax.supervised.training.Loop` or `None`. Can be set to
+        `None` for testing - in such a case, `model` and `eval_task` must be
+        provided.
+      model: Instance of `trax.rl.serialization_utils.SerializedModel`. Not
+        required if `loop` is provided.
       eval_at: When to evaluate. Either int (every how many steps to evaluate),
         or a list of ints (step numbers), or a function int -> bool (step
         predicate).
@@ -107,9 +104,16 @@ class SerializedModelEvaluation(TrainingStepCallback):
     """
     super().__init__(loop)
 
+    if model is None:
+      model = loop.model
+
+    observation_serializer = model.observation_serializer
+    action_serializer = model.action_serializer
+
+    predict_model = model.make_predict_model()
     if accelerate_model:
-      model = tl.Accelerate(model)
-    self._model = model
+      predict_model = tl.Accelerate(predict_model)
+    self._predict_model = predict_model
     self._obs_serializer = observation_serializer
     self._act_serializer = action_serializer
 
@@ -136,9 +140,13 @@ class SerializedModelEvaluation(TrainingStepCallback):
     self._n_steps = n_steps
 
     self._batch_size = eval_task.sample_batch[0].shape[0]
-    (_, self._init_state) = model.init(
+    (_, self._init_state) = predict_model.init(
         shapes.ShapeDtype((self._batch_size, 1), dtype=np.int32)
     )
+
+  @property
+  def predict_model(self):
+    return self._predict_model
 
   def call_at(self, step):
     return self._eval_at(step)
@@ -151,9 +159,7 @@ class SerializedModelEvaluation(TrainingStepCallback):
         os.path.join(self._loop.output_dir, 'srl_eval')
     )
     try:
-      weights = serialization_utils.extract_inner_model(
-          self._loop.eval_model.weights
-      )
+      weights = self._loop.eval_model.seq_model_weights
       metrics = self.evaluate(weights)
       self._loop.log_summary(metrics, summary_writer, '', 'srl_eval')
     finally:
@@ -161,7 +167,7 @@ class SerializedModelEvaluation(TrainingStepCallback):
 
   def evaluate(self, weights):
     """Evaluates the model and returns the metrics."""
-    self._model.weights = weights
+    self._predict_model.weights = weights
 
     metrics = collections.defaultdict(list)
     for _ in range(self._n_steps):
@@ -192,21 +198,21 @@ class SerializedModelEvaluation(TrainingStepCallback):
     last_state = self._init_state
     last_start_id = 0
     for context in self._context_lengths:
-      self._model.state = last_state
+      self._predict_model.state = last_state
       start_id = last_start_id
 
       if context > last_context:
         context_seq = serialization_utils.Interleave()((
             obs_repr[:, last_context:context], act_repr[:, last_context:context]
         ))
-        consume_sequence(self._model, start_id, context_seq[:, :-1])
+        consume_sequence(self._predict_model, start_id, context_seq[:, :-1])
         last_start_id = start_id = context_seq[:, -1:]
-        last_state = self._model.state
+        last_state = self._predict_model.state
         last_context = context
 
       for timestep in range(max(self._horizon_lengths)):
         pred_repr = decoding.autoregressive_sample(
-            self._model,
+            self._predict_model,
             start_id=start_id,
             eos_id=-1,
             batch_size=self._batch_size,
@@ -221,7 +227,7 @@ class SerializedModelEvaluation(TrainingStepCallback):
 
         start_id = pred_repr[:, -1:]
         consume_sequence(
-            self._model, start_id, act_repr[:, context + timestep, :-1]
+            self._predict_model, start_id, act_repr[:, context + timestep, :-1]
         )
         start_id = act_repr[:, context + timestep, -1:]
 

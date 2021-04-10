@@ -61,6 +61,7 @@ from trax.data.inputs import Serial
 from trax.data.inputs import shuffle
 from trax.data.inputs import Shuffle
 from trax.data.inputs import simple_sequence_copy_inputs
+from trax.data.inputs import sine_inputs
 from trax.data.inputs import TruncateToLength
 from trax.data.inputs import UnBatch
 from trax.data.inputs import UniformlySeek

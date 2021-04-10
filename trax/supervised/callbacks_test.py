@@ -92,6 +92,16 @@ def make_singleton_eval_task(observations, actions):
   )
 
 
+def make_serialized_model(seq_model, space, vocab_size):
+  srl = space_serializer.create(space, vocab_size)
+  return serialization_utils.SerializedModel(
+      functools.partial(seq_model, vocab_size=vocab_size),
+      observation_serializer=srl,
+      action_serializer=srl,
+      significance_decay=0.7,
+  )
+
+
 class CallbacksTest(parameterized.TestCase):
 
   def setUp(self):
@@ -118,26 +128,21 @@ class CallbacksTest(parameterized.TestCase):
           n_heads=1,
       )
 
-    def model(mode):
-      return serialization_utils.SerializedModel(
-          inner_model(mode),
-          observation_serializer=srl,
-          action_serializer=srl,
-          significance_decay=0.7,
-      )
-
-    eval_callback = functools.partial(
-        callbacks.SerializedModelEvaluation,
-        model=inner_model('predict'),
+    serialized_model_fn = functools.partial(
+        serialization_utils.SerializedModel,
+        inner_model,
         observation_serializer=srl,
         action_serializer=srl,
-        eval_at=5,
+        significance_decay=0.7,
+    )
+    eval_callback = functools.partial(
+        callbacks.SerializedModelEvaluation, eval_at=5
     )
 
     output_dir = self.create_tempdir().full_path
     trainer_lib.train(
         output_dir=output_dir,
-        model=model,
+        model=serialized_model_fn,
         inputs=functools.partial(random_inputs, seq_len=4, batch_size=64),
         lr_schedule_fn=functools.partial(lr_schedules.constant, 0.01),
         callbacks=[eval_callback],
@@ -159,16 +164,15 @@ class CallbacksTest(parameterized.TestCase):
     space = gym.spaces.Discrete(n=vocab_size)
     (obs, act) = generate_trajectory(multibonacci_modulo, space, n_steps)
     eval_task = make_singleton_eval_task(obs, act)
-    model = tl_test_utils.MockTransformerLM(
-        sequence_fn=multibonacci_modulo, vocab_size=vocab_size, mode='predict'
+    seq_model = functools.partial(
+        tl_test_utils.MockTransformerLM,
+        sequence_fn=multibonacci_modulo,
     )
-    srl = space_serializer.DiscreteSpaceSerializer(space, vocab_size)
+    serialized_model = make_serialized_model(seq_model, space, vocab_size)
     callback = callbacks.SerializedModelEvaluation(
         loop=None,
         eval_task=eval_task,
-        model=model,
-        observation_serializer=srl,
-        action_serializer=srl,
+        model=serialized_model,
         context_lengths=context_lengths,
         horizon_lengths=horizon_lengths,
         accelerate_model=False,
@@ -179,7 +183,9 @@ class CallbacksTest(parameterized.TestCase):
     expected_seq[1::2] = obs
     expected_seq[2::2] = act
     seen_len = (context_lengths[-1] + horizon_lengths[-1]) * 2
-    model.assert_prediction_buffers_equal([expected_seq[:seen_len]])
+    callback.predict_model.assert_prediction_buffers_equal(
+        [expected_seq[:seen_len]]
+    )
 
   @parameterized.named_parameters(('one_symbol', 1), ('two_symbols', 2))
   def test_srl_eval_reports_zero_error_for_perfect_model(self, precision):
@@ -190,16 +196,15 @@ class CallbacksTest(parameterized.TestCase):
     space = gym.spaces.MultiDiscrete(nvec=([vocab_size] * precision))
     (obs, act) = generate_trajectory(multibonacci_modulo, space, n_steps)
     eval_task = make_singleton_eval_task(obs, act)
-    model = tl_test_utils.MockTransformerLM(
-        sequence_fn=multibonacci_modulo, vocab_size=vocab_size, mode='predict'
+    seq_model = functools.partial(
+        tl_test_utils.MockTransformerLM,
+        sequence_fn=multibonacci_modulo,
     )
-    srl = space_serializer.MultiDiscreteSpaceSerializer(space, vocab_size)
+    serialized_model = make_serialized_model(seq_model, space, vocab_size)
     callback = callbacks.SerializedModelEvaluation(
         loop=None,
         eval_task=eval_task,
-        model=model,
-        observation_serializer=srl,
-        action_serializer=srl,
+        model=serialized_model,
         context_lengths=(1,),
         horizon_lengths=(4,),
         accelerate_model=False,

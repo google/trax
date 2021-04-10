@@ -616,5 +616,17 @@ class InputsTest(parameterized.TestCase):
     examples = list(unbatch_fn(batched_inputs))
     self.assertLen(examples, 3 + 4)
 
+  def test_sine_shape(self):
+    inputs = data.sine_inputs(batch_size=3, length=5)
+    train_batch = next(inputs.train_stream(n_devices=1))
+    eval_batch = next(inputs.eval_stream(n_devices=1))
+    # (observations, actions, observations, mask)
+    self.assertLen(train_batch, 4)
+    self.assertLen(eval_batch, 4)
+    for (x, y) in zip(train_batch, eval_batch):
+      self.assertEqual(x.shape, (3, 5))
+      self.assertEqual(y.shape, (3, 5))
+
+
 if __name__ == '__main__':
   absltest.main()

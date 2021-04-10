@@ -16,13 +16,12 @@
 """Tests for trax.rl.serialization_utils."""
 import functools
 
+from absl.testing import absltest
 from absl.testing import parameterized
 import gin
 import gym
 from jax import numpy as jnp
 import numpy as np
-from tensorflow import test
-# from trax import fastmath as trax_math
 from trax import models as trax_models
 from trax import shapes
 from trax import test_utils
@@ -35,8 +34,9 @@ from trax.supervised import trainer_lib
 
 
 # pylint: disable=invalid-name
-def TestModel(extra_dim):
+def TestModel(extra_dim, mode='train'):
   """Dummy sequence model for testing."""
+  del mode
   def f(inputs):
     # Cast the input to float32 - this is for simulating discrete-input models.
     inputs = inputs.astype(np.float32)
@@ -89,7 +89,8 @@ class SerializationTest(parameterized.TestCase):
     test_model_inputs = []
 
     # pylint: disable=invalid-name
-    def TestModelSavingInputs():
+    def TestModelSavingInputs(mode):
+      del mode
       def f(inputs):
         # Save the inputs for a later check.
         test_model_inputs.append(inputs)
@@ -107,7 +108,7 @@ class SerializationTest(parameterized.TestCase):
         gym.spaces.Discrete(2), vocab_size=vocab_size
     )
     serialized_model = serialization_utils.SerializedModel(
-        TestModelSavingInputs(),  # pylint: disable=no-value-for-parameter
+        TestModelSavingInputs,  # pylint: disable=no-value-for-parameter
         observation_serializer=obs_serializer,
         action_serializer=act_serializer,
         significance_decay=0.9,
@@ -153,14 +154,16 @@ class SerializationTest(parameterized.TestCase):
     )
 
     def model(mode):
+      del mode
       return serialization_utils.SerializedModel(
-          trax_models.TransformerLM(
-              mode=mode,
+          functools.partial(
+              trax_models.TransformerLM,
               vocab_size=vocab_size,
               d_model=16,
               d_ff=8,
               n_layers=1,
-              n_heads=1),
+              n_heads=1,
+          ),
           observation_serializer=srl,
           action_serializer=srl,
           significance_decay=0.9,
@@ -191,7 +194,7 @@ class SerializationTest(parameterized.TestCase):
         gym.spaces.Discrete(2), vocab_size=vocab_size
     )
     serialized_model = serialization_utils.SerializedModel(
-        TestModel(extra_dim=vocab_size),  # pylint: disable=no-value-for-parameter
+        functools.partial(TestModel, extra_dim=vocab_size),
         observation_serializer=obs_serializer,
         action_serializer=act_serializer,
         significance_decay=0.9,
@@ -207,12 +210,17 @@ class SerializationTest(parameterized.TestCase):
     )
     self.assertEqual(obs_repr.shape, weights.shape)
 
-  def test_extract_inner_model(self):
+  def test_serialized_model_extracts_seq_model_weights_and_state(self):
     vocab_size = 3
 
-    inner_model = transformer.TransformerLM(
-        vocab_size=vocab_size, d_model=2, d_ff=2, n_layers=0
+    seq_model_fn = functools.partial(
+        transformer.TransformerLM,
+        vocab_size=vocab_size,
+        d_model=2,
+        d_ff=2,
+        n_layers=0,
     )
+    seq_model = seq_model_fn(mode='eval')
     obs_serializer = space_serializer.create(
         gym.spaces.Discrete(2), vocab_size=vocab_size
     )
@@ -220,23 +228,19 @@ class SerializationTest(parameterized.TestCase):
         gym.spaces.Discrete(2), vocab_size=vocab_size
     )
     serialized_model = serialization_utils.SerializedModel(
-        inner_model,
+        seq_model_fn,
         observation_serializer=obs_serializer,
         action_serializer=act_serializer,
         significance_decay=0.9,
     )
-    rng = inner_model.rng
 
     obs_sig = shapes.ShapeDtype((1, 2))
     act_sig = shapes.ShapeDtype((1, 1))
-    (weights, state) = serialized_model.init(
-        input_signature=(obs_sig, act_sig, obs_sig, obs_sig),
-    )
-    (inner_weights, inner_state) = map(
-        serialization_utils.extract_inner_model, (weights, state)
-    )
-    inner_model.rng = rng
-    inner_model(jnp.array([[0]]), weights=inner_weights, state=inner_state)
+    serialized_model.init(input_signature=(obs_sig, act_sig, obs_sig, obs_sig))
+    seq_model.weights = serialized_model.seq_model_weights
+    seq_model.state = serialized_model.seq_model_state
+    # Run the model to check if the weights and state have correct structure.
+    seq_model(jnp.array([[0]]))
 
   @parameterized.named_parameters(('raw', None), ('serialized', 32))
   def test_wrapped_policy_continuous(self, vocab_size):
@@ -287,4 +291,4 @@ class SerializationTest(parameterized.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  absltest.main()
