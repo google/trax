@@ -139,15 +139,26 @@ class ConfigurableTransformerTest(parameterized.TestCase):
     y = positional_encoding(x)
     self.assertEqual(y.shape, input_shape)
 
-  def test_embedding_and_positional_encodings(self):
+  @parameterized.named_parameters(
+      ('input_vocab_size_only', 32, None),
+      ('output_vocab_size_only', None, 32),
+      ('same_input_output_vocab_size', 32, 32),
+      ('different_input_output_vocab_size', 32, 16),
+  )
+  def test_embedding_and_positional_encodings(self, input_vocab_size,
+                                              output_vocab_size):
     d_model = 16
     max_len = 32
     batch = 2
     input_shape = (batch, max_len)
-    input_vocab_size = 32
-    x = np.random.randint(0, input_vocab_size - 1, input_shape)
+    output_vocab_size_expected = output_vocab_size or input_vocab_size
+    x_out = np.random.randint(0, output_vocab_size_expected - 1, input_shape)
+    if input_vocab_size is None:
+      x_in = np.random.uniform(size=list(input_shape) + [2])
+    else:
+      x_in = np.random.randint(0, input_vocab_size - 1, input_shape)
 
-    in_encoder, out_encoder, output_vocab_size = (
+    in_encoder, out_encoder, output_vocab_size_result = (
         ct.EmbeddingAndPositionalEncodings(
             input_vocab_size,
             d_model,
@@ -155,22 +166,22 @@ class ConfigurableTransformerTest(parameterized.TestCase):
             0.1,
             [-2],
             max_len,
-            output_vocab_size=None,
+            output_vocab_size=output_vocab_size,
             pos_axial_shape=None,
             pos_d_axial_embs=None))
 
-    self.assertEqual(output_vocab_size, input_vocab_size)
+    self.assertEqual(output_vocab_size_result, output_vocab_size_expected)
 
     model_in = tl.Serial(in_encoder)
     model_out = tl.Serial(out_encoder)
 
-    model_in.init(shapes.signature(x))
-    model_out.init(shapes.signature(x))
+    model_in.init(shapes.signature(x_in))
+    model_out.init(shapes.signature(x_out))
 
-    y = model_in(x)
+    y = model_in(x_in)
     self.assertEqual(y.shape, input_shape + (d_model,))
 
-    y = model_in(x)
+    y = model_out(x_out)
     self.assertEqual(y.shape, input_shape + (d_model,))
 
 

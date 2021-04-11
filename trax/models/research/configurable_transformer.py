@@ -297,6 +297,7 @@ def EmbeddingAndPositionalEncodings(input_vocab_size,
 
   # If output_vocab_size is None, we reuse the same embedding matrix, otherwise
   # we initialize one.
+  assert input_vocab_size or output_vocab_size
   if output_vocab_size is None:
     out_embedder = in_embedder
   else:
@@ -318,7 +319,10 @@ def EmbeddingAndPositionalEncodings(input_vocab_size,
   if output_vocab_size is None:
     output_vocab_size = input_vocab_size
 
-  in_encoder = tl.AssertFunction('...->...d', in_encoder)
+  if input_vocab_size is None:
+    in_encoder = tl.AssertFunction('...a->...b', in_encoder)
+  else:
+    in_encoder = tl.AssertFunction('...->...d', in_encoder)
   out_encoder = tl.AssertFunction('...->...d', out_encoder)
 
   return in_encoder, out_encoder, output_vocab_size
