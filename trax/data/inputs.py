@@ -1459,7 +1459,7 @@ def MLM(vocab_size=None,  # pylint:disable=invalid-name
 def sine_inputs(
     batch_size=gin.REQUIRED,
     length=gin.REQUIRED,
-    max_phase=(2 * np.pi),
+    max_phase=(2 * math.pi),
     min_period=0.1,
     max_period=10.0,
 ):
