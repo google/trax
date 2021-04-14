@@ -49,8 +49,7 @@ class TaskTest(absltest.TestCase):
     task = rl_task.RLTask(DummyEnv(), initial_trajectories=1, max_steps=9)
     stream = task.trajectory_stream(max_slice_length=1)
     next_slice = next(stream)
-    self.assertLen(next_slice, 1)
-    self.assertEqual(next_slice.last_observation.shape, (2,))
+    self.assertEqual(next_slice.observations.shape, (1, 2))
 
   def test_time_limit_terminates_epsiodes(self):
     """Test that episodes are terminated upon reaching `time_limit` steps."""
@@ -128,12 +127,10 @@ class TaskTest(absltest.TestCase):
     task = rl_task.RLTask(DummyEnv(), initial_trajectories=[tr1], max_steps=9)
     stream = task.trajectory_stream(epochs=[-1], max_slice_length=1)
     next_slice = next(stream)
-    self.assertLen(next_slice, 1)
-    self.assertEqual(next_slice.last_observation[0], 0)
+    np.testing.assert_equal(next_slice.observations, np.zeros((1, 2)))
     task.collect_trajectories(policy=(lambda _: (0, 0)), n_trajectories=1)
     next_slice = next(stream)
-    self.assertLen(next_slice, 1)
-    self.assertEqual(next_slice.last_observation[0], 1)
+    np.testing.assert_equal(next_slice.observations, np.ones((1, 2)))
 
   def test_trajectory_stream_shape(self):
     """Test the shape yielded by trajectory stream."""
@@ -145,8 +142,7 @@ class TaskTest(absltest.TestCase):
     task = rl_task.RLTask(DummyEnv(), initial_trajectories=[tr1], max_steps=9)
     stream = task.trajectory_stream(max_slice_length=1)
     next_slice = next(stream)
-    self.assertLen(next_slice, 1)
-    self.assertEqual(next_slice.last_observation.shape, (12, 13))
+    self.assertEqual(next_slice.observations.shape, (1, 12, 13))
 
   def test_trajectory_stream_long_slice(self):
     """Test trajectory stream with slices of longer length."""
@@ -161,34 +157,7 @@ class TaskTest(absltest.TestCase):
     task = rl_task.RLTask(DummyEnv(), initial_trajectories=[tr1], max_steps=9)
     stream = task.trajectory_stream(max_slice_length=2)
     next_slice = next(stream)
-    self.assertLen(next_slice, 2)
-    self.assertEqual(next_slice.last_observation.shape, (12, 13))
-
-  def test_trajectory_stream_final_state(self):
-    """Test trajectory stream with and without the final state."""
-    tr1 = rl_task.Trajectory(0)
-    tr1.extend(
-        action=0, dist_inputs=0, reward=0, done=True, new_observation=1
-    )
-    task = rl_task.RLTask(DummyEnv(), initial_trajectories=[tr1], max_steps=9)
-
-    # Stream of slices without the final state.
-    stream1 = task.trajectory_stream(
-        max_slice_length=1, include_final_state=False)
-    for _ in range(10):
-      next_slice = next(stream1)
-      self.assertLen(next_slice, 1)
-      self.assertEqual(next_slice.last_observation, 0)
-
-    # Stream of slices with the final state.
-    stream2 = task.trajectory_stream(
-        max_slice_length=1, include_final_state=True)
-    all_sum = 0
-    for _ in range(100):
-      next_slice = next(stream2)
-      self.assertLen(next_slice, 1)
-      all_sum += next_slice.last_observation
-    self.assertEqual(min(all_sum, 1), 1)  # We've seen the end at least once.
+    self.assertEqual(next_slice.observations.shape, (2, 12, 13))
 
   def test_trajectory_stream_sampling_uniform(self):
     """Test if the trajectory stream samples uniformly."""
@@ -214,8 +183,8 @@ class TaskTest(absltest.TestCase):
     slices = []
     for _ in range(10):
       next_slice = next(stream)
-      assert len(next_slice) == 1
-      slices.append(next_slice.last_observation)
+      assert next_slice.observations.shape[0] == 1
+      slices.append(next_slice.observations[-1])
     mean_obs = sum(slices) / float(len(slices))
     # Average should be around 1 sampling from 0x100, 101 uniformly.
     self.assertLess(mean_obs, 31)  # Sampling 101 even 3 times is unlikely.
@@ -246,8 +215,8 @@ class TaskTest(absltest.TestCase):
     slices = []
     for _ in range(10):
       next_slice = next(stream)
-      assert len(next_slice) == 1
-      slices.append(next_slice.last_observation)
+      assert next_slice.observations.shape[0] == 1
+      slices.append(next_slice.observations[-1])
     mean_obs = sum(slices) / float(len(slices))
     # Average should be around 50, sampling from {0, 101} uniformly.
     # Sampling 101 < 2 times has low probability (but it possible, flaky test).
@@ -257,6 +226,11 @@ class TaskTest(absltest.TestCase):
   def test_trajectory_stream_margin(self):
     """Test trajectory stream with an added margin."""
     tr1 = rl_task.Trajectory(0)
+    # TODO(pkozakowski): Add an util for extending trajectories with dummy
+    # timesteps.
+    tr1.extend(
+        action=0, dist_inputs=0, reward=0, done=False, new_observation=1
+    )
     tr1.extend(
         action=0, dist_inputs=0, reward=0, done=False, new_observation=1
     )
@@ -266,20 +240,34 @@ class TaskTest(absltest.TestCase):
     task = rl_task.RLTask(DummyEnv(), initial_trajectories=[tr1], max_steps=9)
 
     # Stream of slices without the final state.
-    stream1 = task.trajectory_stream(
-        max_slice_length=3, margin=2, include_final_state=False)
+    stream1 = task.trajectory_stream(max_slice_length=4, margin=3)
     got_done = False
-    for _ in range(10):
+    for _ in range(20):
       next_slice = next(stream1)
-      self.assertLen(next_slice, 3)
-      if next_slice.timesteps[0].done:
-        for i in range(1, 3):
-          self.assertTrue(next_slice.timesteps[i].done)
-          self.assertFalse(next_slice.timesteps[i].mask)
+      self.assertEqual(next_slice.observations.shape, (4,))
+      if next_slice.dones[0]:
+        # In the slice, first we have the last timestep in the actual
+        # trajectory, so observation = 1.
+        # Then comes the first timestep in the margin, which has the final
+        # observation from the trajectory: observation = 1.
+        # The remaining timesteps have 0 observations.
+        np.testing.assert_array_equal(next_slice.observations, [1, 1, 0, 0])
+        # In the margin, done = True and mask = 0.
+        for i in range(1, next_slice.observations.shape[0]):
+          self.assertTrue(next_slice.dones[i])
+          self.assertFalse(next_slice.mask[i])
         got_done = True
     # Assert that we got a done somewhere, otherwise the test is not triggered.
-    # Not getting done has low probability (1/2^10) but is possible, flaky test.
+    # Not getting done has low probability (1/2^20) but is possible, flaky test.
     self.assertTrue(got_done)
+
+  def test_trajectory_batch_stream_shape(self):
+    task = rl_task.RLTask(DummyEnv(), initial_trajectories=1, max_steps=10)
+    batch_stream = task.trajectory_batch_stream(
+        batch_size=3, min_slice_length=4, max_slice_length=4
+    )
+    batch = next(batch_stream)
+    self.assertEqual(batch.observations.shape, (3, 4, 2))
 
 
 if __name__ == '__main__':

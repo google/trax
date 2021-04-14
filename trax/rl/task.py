@@ -83,7 +83,7 @@ TimeStepNp = collections.namedtuple('TimeStepNp', [
 class Trajectory:
   """A trajectory of interactions with a RL environment.
 
-  Trajectories are created when interacting with a RL environment. They can
+  Trajectories are created when interacting with an RL environment. They can
   be prolonged and sliced and when completed, allow to re-calculate returns.
   """
 
@@ -92,6 +92,8 @@ class Trajectory:
     # reuse code from base_trainer.dump_trajectories and related functions.
     if observation is not None:
       self._timesteps = [_TimeStep(observation)]
+    self._trajectory_np = None
+    self._cached_to_np_args = None
 
   def __len__(self):
     return len(self._timesteps)
@@ -171,12 +173,22 @@ class Trajectory:
         mask=ts.mask,
     ))
 
-  def to_np(self, timestep_to_np=None):
+  def to_np(self, margin=0, timestep_to_np=None):
     """Create a tuple of numpy arrays from a given trajectory."""
+    timestep_to_np = timestep_to_np or self._default_timestep_to_np
+    args = (margin, timestep_to_np)
+
+    # Return the cached result if the arguments agree and the trajectory has not
+    # grown.
+    if self._trajectory_np:
+      result_length = len(self) + margin - 1
+      length_ok = self._trajectory_np.observations.shape[0] == result_length
+      if args == self._cached_to_np_args and length_ok:
+        return self._trajectory_np
+
     observations, actions, dist_inputs, rewards, returns, dones, masks = (
         [], [], [], [], [], [], []
     )
-    timestep_to_np = timestep_to_np or self._default_timestep_to_np
     for timestep in self._timesteps:
       if timestep.action is None:
         obs = timestep_to_np(timestep).observation
@@ -191,12 +203,32 @@ class Trajectory:
         returns.append(timestep_np.return_)
         masks.append(timestep_np.mask)
 
+    # TODO(pkozakowski): The case len(obs) == 1 is for handling
+    # "dummy trajectories", that are only there to determine data shapes. Check
+    # if they're still required.
+    if len(observations) > 1:
+      # Extend the trajectory with a given margin - this is to make sure that
+      # the networks always "see" the "done" states in the training data, even
+      # when a suffix is added to the trajectory slice for better estimation of
+      # returns.
+      # We set `mask` to 0, so the added timesteps don't influence the loss. We
+      # set `done` to True for easier implementation of advantage estimators.
+      # The rest of the fields don't matter, so we set them to 0 for easy
+      # debugging (unless they're None). The list of observations is longer, so
+      # we pad it with margin - 1.
+      masks.extend([0] * margin)
+      dones.extend([True] * margin)
+      observations.extend([np.zeros_like(observations[-1])] * (margin - 1))
+      for x in (actions, dist_inputs, rewards, returns):
+        filler = None if x[-1] is None else np.zeros_like(x[-1])
+        x.extend([filler] * margin)
+
     def stack(x):
       if not x:
         return None
       return fastmath.nested_stack(x)
 
-    return TrajectoryNp(**{  # pylint: disable=g-complex-comprehension
+    trajectory_np = TrajectoryNp(**{  # pylint: disable=g-complex-comprehension
         key: stack(value) for (key, value) in [
             ('observations', observations),
             ('actions', actions),
@@ -207,6 +239,11 @@ class Trajectory:
             ('mask', masks),
         ]
     })
+
+    self._trajectory_np = trajectory_np
+    self._cached_to_np_args = args
+
+    return trajectory_np
 
 
 def play(env, policy, dm_suite=False, max_steps=None, last_observation=None):
@@ -609,15 +646,12 @@ class RLTask:
       self._trajectories.pop(epoch)
 
   def trajectory_stream(self, epochs=None, max_slice_length=None,
-                        include_final_state=False,
                         sample_trajectories_uniformly=False, margin=0):
     """Return a stream of random trajectory slices from the specified epochs.
 
     Args:
       epochs: a list of epochs to use; we use all epochs if None
       max_slice_length: maximum length of the slices of trajectories to return
-      include_final_state: whether to include slices with the final state of
-        the trajectory which may have no action and reward
       sample_trajectories_uniformly: whether to sample trajectories uniformly,
         or proportionally to the number of slices in each trajectory (default)
       margin: number of extra steps after "done" that should be included in
@@ -628,36 +662,13 @@ class RLTask:
       up to max_slice_length in all specified epochs
     """
     # TODO(lukaszkaiser): add option to sample from n last trajectories.
-    end_offset = 0 if include_final_state else 1
     def n_slices(t):
       """How many slices of length upto max_slice_length in a trajectory."""
       if not max_slice_length:
         return 1
       # A trajectory [a, b, c, end_state] will have 2 slices of length 2:
-      # the slice [a, b] and the one [b, c], with end_offset; 3 without.
-      return max(1, len(t) + margin - max_slice_length + 1 - end_offset)
-
-    def extend_trajectory(t):
-      # TODO(pkozakowski) Refactor.
-      if len(t) == 1:
-        return t
-      else:
-        ts = t.timesteps[0]
-        extend_kwargs = {
-            'action': np.zeros_like(ts.action),
-            'dist_inputs': (
-                np.zeros_like(ts.dist_inputs)
-                if ts.dist_inputs is not None else None
-            ),
-            'reward': 0.0,
-            'done': True,
-            'mask': 0,
-            'new_observation': np.zeros_like(ts.observation),
-        }
-        t = t[:]  # Make a shallow copy of the timestep list.
-        for _ in range(margin):
-          t.extend(**extend_kwargs)
-        return t
+      # the slice [a, b] and the one [b, c], with margin=0; 3 with margin=1.
+      return max(1, len(t) + margin - max_slice_length)
 
     while True:
       all_epochs = list(self._trajectories.keys())
@@ -678,6 +689,7 @@ class RLTask:
       if len(epoch_indices) == 1:  # Skip this step if there's just 1 epoch.
         epoch_id = epoch_indices[0]
       else:
+        # NOTE: Bottleneck. TODO(pkozakowski): Optimize.
         slices_per_epoch = [sum([n_slices(t) for t in self._trajectories[ep]])
                             for ep in epoch_indices]
         epoch_id = _sample_proportionally(epoch_indices, slices_per_epoch)
@@ -687,25 +699,29 @@ class RLTask:
       if sample_trajectories_uniformly:
         slices_per_trajectory = [1] * len(epoch)
       else:
+        # NOTE: Bottleneck. TODO(pkozakowski): Optimize.
         slices_per_trajectory = [n_slices(t) for t in epoch]
       trajectory = _sample_proportionally(epoch, slices_per_trajectory)
 
       # Sample a slice from the trajectory.
       slice_start = np.random.randint(n_slices(trajectory))
-      # Extend the trajectory with a given margin - this is to make sure that
-      # the networks always "see" the "done" states in the training data, even
-      # when a suffix is added to the trajectory slice for better estimation of
-      # returns.
-      extended_trajectory = extend_trajectory(trajectory)
-      slice_end = slice_start + (max_slice_length or len(extended_trajectory))
-      slice_end = min(slice_end, len(extended_trajectory) - end_offset)
-      yield extended_trajectory[slice_start:slice_end]
+
+      # Convert the whole trajectory to Numpy while adding the margin. The
+      # result is cached, so we don't have to repeat this for every sample.
+      trajectory_np = trajectory.to_np(margin, self._timestep_to_np)
+
+      # Slice and yield the result.
+      slice_end = slice_start + (
+          max_slice_length or trajectory_np.observations.shape[0]
+      )
+      yield fastmath.nested_map(
+          lambda x: x[slice_start:slice_end], trajectory_np
+      )
 
   def trajectory_batch_stream(self, batch_size, epochs=None,
                               max_slice_length=None,
                               min_slice_length=None,
                               margin=0,
-                              include_final_state=False,
                               sample_trajectories_uniformly=False):
     """Return a stream of trajectory batches from the specified epochs.
 
@@ -719,8 +735,6 @@ class RLTask:
       min_slice_length: minimum length of the slices of trajectories to return
       margin: number of extra steps after "done" that should be included in
         slices, so that networks see the terminal states in the training data
-      include_final_state: whether to include slices with the final state of
-        the trajectory which may have no action and reward
       sample_trajectories_uniformly: whether to sample trajectories uniformly,
        or proportionally to the number of slices in each trajectory (default)
 
@@ -748,30 +762,20 @@ class RLTask:
                        for t in tensor_list])
     cur_batch = []
     for t in self.trajectory_stream(
-        epochs, max_slice_length,
-        include_final_state, sample_trajectories_uniformly,
-        margin=margin
+        epochs, max_slice_length, sample_trajectories_uniformly, margin=margin
     ):
       cur_batch.append(t)
       if len(cur_batch) == batch_size:
-        # TODO(pkozakowski): Unpack based on name instead of position in the
-        # tuple (how?).
-        obs, act, dinp, rew, ret, done, mask = zip(*[
-            t.to_np(self._timestep_to_np) for t in cur_batch
-        ])
-        # Where act, rew and ret will usually have the following shape:
-        # [batch_size, trajectory_length-1], which we call [B, L-1].
-        # Observations are more complex and will usually be [B, L] + S where S
-        # is the shape of the observation space (self.observation_space.shape).
+        # bottleneck
+        # zip(*cur_batch) transposes (batch_size, fields)
+        # -> (fields, batch_size). Then we build TrajectoryNp from the fields.
+        # Fields are observations, actions, ...
+        batch_trajectory_np = TrajectoryNp(*zip(*cur_batch))
+        # Actions, rewards and returns in the trajectory slice have shape
+        # [batch_size, trajectory_length], which we denote as [B, L].
+        # Observations are more complex: [B, L] + S, where S is the shape of the
+        # observation space (self.observation_space.shape).
         # We stop the recursion at level 1, so we pass lists of arrays into
         # pad().
-        yield fastmath.nested_map(pad, TrajectoryNp(
-            observations=obs,
-            actions=act,
-            dist_inputs=dinp,
-            rewards=rew,
-            dones=done,
-            returns=ret,
-            mask=mask,
-        ), level=1)
+        yield fastmath.nested_map(pad, batch_trajectory_np, level=1)
         cur_batch = []

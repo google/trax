@@ -370,7 +370,7 @@ class ActorCriticAgent(rl_training.PolicyAgent):
         epochs=self._replay_epochs,
         max_slice_length=max_slice_length,
         margin=self._added_policy_slice_length,
-        include_final_state=False):
+    ):
       dist_inputs = self._get_dist_inputs(np_trajectory)
       (values, _, act_log_probs) = self._run_value_model(
           np_trajectory.observations, dist_inputs)
@@ -1187,7 +1187,6 @@ class SamplingAWR(AdvantageBasedActorCriticAgent):
         self._policy_batch_size,
         epochs=self._replay_epochs,
         max_slice_length=self._max_slice_length,
-        include_final_state=False,
     ):
       dist_inputs = self._get_dist_inputs(np_trajectory)
       (q_values, actions, act_log_probs) = self._run_value_model(
