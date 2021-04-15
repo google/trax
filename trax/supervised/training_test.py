@@ -61,6 +61,50 @@ class TrainingTest(absltest.TestCase):
       # Loop should initialize and run successfully, even with no eval task.
       training_session.run(n_steps=5)
 
+  def test_loop_checkpoint_low_metric(self):
+    """Runs a training loop that saves checkpoints for low metric values."""
+    model = tl.Serial(tl.Dense(1))
+    task = training.TrainTask(_very_simple_data(),
+                              tl.L2Loss(),
+                              optimizers.SGD(.01))
+    eval_metric = tl.L2Loss()
+    eval_task = training.EvalTask(_very_simple_data(),
+                                  [eval_metric],
+                                  metric_names=['l2_loss'])
+    tmp_dir = self.create_tempdir().full_path
+    loop = training.Loop(model,
+                         [task],
+                         eval_tasks=[eval_task],
+                         output_dir=tmp_dir,
+                         eval_at=lambda step_n: step_n % 2 == 0,
+                         checkpoint_at=lambda step_n: step_n % 2 == 0,
+                         checkpoint_low_metric='l2_loss')
+    loop.run(n_steps=18)
+    # TODO(jonni): Strengthen test to check when checkpointing happens.
+    # (Currently just checked manually in the test logs.)
+
+  def test_loop_checkpoint_high_metric(self):
+    """Runs a training loop that saves checkpoints for high metric values."""
+    model = tl.Serial(tl.Dense(1))
+    task = training.TrainTask(_very_simple_data(),
+                              tl.L2Loss(),
+                              optimizers.SGD(.01))
+    eval_metric = tl.L2Loss()
+    eval_task = training.EvalTask(_very_simple_data(),
+                                  [eval_metric],
+                                  metric_names=['l2_loss'])
+    tmp_dir = self.create_tempdir().full_path
+    loop = training.Loop(model,
+                         [task],
+                         eval_tasks=[eval_task],
+                         output_dir=tmp_dir,
+                         eval_at=lambda step_n: step_n % 2 == 0,
+                         checkpoint_at=lambda step_n: step_n % 2 == 0,
+                         checkpoint_high_metric='l2_loss')
+    loop.run(n_steps=18)
+    # TODO(jonni): Strengthen test to check when checkpointing happens.
+    # (Currently just checked manually in the test logs.)
+
   def test_train_dense_layer(self):
     """Trains a very simple network on a very simple task."""
     model = tl.Serial(tl.Dense(1))
@@ -117,7 +161,7 @@ class TrainingTest(absltest.TestCase):
     model, training_session = _make_model_and_session()
     self.assertEqual(0, training_session.step)
     training_session.run(n_steps=1)
-    training_session.save_checkpoint()
+    training_session.save_checkpoint('model')
     self.assertEqual(data.inputs.data_counters['simple_data'], 2)
     data.inputs.data_counters['simple_data'] = 0  # reset manually
     self.assertEqual(data.inputs.data_counters['simple_data'], 0)  # check
@@ -163,7 +207,7 @@ class TrainingTest(absltest.TestCase):
     _, training_session = _make_model_and_session()
     self.assertEqual(0, training_session.step)
     training_session.run(n_steps=1)
-    training_session.save_checkpoint()
+    training_session.save_checkpoint('model')
     _, training_session2 = _make_model_and_session()
     training_session2.run(n_steps=1)
     base.N_WEIGHTS_SHARDS = 1
@@ -190,7 +234,7 @@ class TrainingTest(absltest.TestCase):
     model, training_session = _make_model_and_session()
     self.assertEqual(0, training_session.step)
     training_session.run(n_steps=1)
-    training_session.save_checkpoint()
+    training_session.save_checkpoint('model')
     model2, training_session2 = _make_model_and_session()
 
     x = np.ones((2, 2)).astype(np.int32)
