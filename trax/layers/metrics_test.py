@@ -393,6 +393,23 @@ class MetricsTest(absltest.TestCase):
     loss = layer([model_outputs, targets])
     self.assertAlmostEqual(loss, .444, places=3)
 
+  def test_weighted_f_score(self):
+    # predictions = [1, 1, 2, 1, 1].
+    model_outputs = np.array([[0, 1, 0, 0],
+                              [0, 1, 0, 0],
+                              [0, 0, 1, 0],
+                              [0, 1, 0, 0],
+                              [0, 1, 0, 0]])
+    targets = np.array([1, 2, 2, 3, 1])
+    # Category indices starting with `0`.
+    layer = tl.WeightedFScore()
+    loss = layer([model_outputs, targets])
+    self.assertAlmostEqual(loss, .533, places=3)
+    # Excluding the padding index `0`.
+    layer = tl.WeightedFScore(initial_category_index=1)
+    loss = layer([model_outputs, targets])
+    self.assertAlmostEqual(loss, .533, places=3)
+
   def test_names(self):
     layer = tl.L2Loss()
     self.assertEqual('L2Loss_in3', str(layer))
