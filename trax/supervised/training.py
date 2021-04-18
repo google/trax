@@ -107,6 +107,8 @@ class Loop:
       eval_tasks=None,
       output_dir=None,
       checkpoint_at=None,
+      checkpoint_low_metric=None,
+      checkpoint_high_metric=None,
       permanent_checkpoint_at=None,
       eval_at=None,
       which_task=None,
@@ -144,13 +146,28 @@ class Loop:
       checkpoint_at: Function (integer --> boolean) telling, for step n, whether
           that step should have its checkpoint saved. If ``None``, the default
           is periodic checkpointing at ``task.n_steps_per_checkpoint``.
+      checkpoint_low_metric: Name of metric, or None. The metric name must
+          be one of the metric names from the evals in ``eval_tasks``. At
+          checkpoint times determined by ``checkpoint_at``, a separate
+          specially named checkpoint will be saved (overwriting any previous
+          version) if the designated metric reaches a value less than or equal
+          to any previous recorded low value. No such checkpoint is saved if
+          arg value is `None`.
+      checkpoint_high_metric: Name of metric, or None. The metric name must
+          be one of the metric names from the evals in ``eval_tasks``. At
+          checkpoint times determined by ``checkpoint_at``, a separate
+          specially named checkpoint will be saved (overwriting any previous
+          version) if the designated metric reaches a value greater than or
+          equal to any previous recorded high value. No such checkpoint is
+          saved if arg value is `None`.
       permanent_checkpoint_at: Function (integer --> boolean) telling,
           for step n, whether that step should have its checkpoint saved
           permanently. If ``None``, the default is periodic checkpointing at
           ``task.n_steps_per_permanent_checkpoint``.
       eval_at: Function (integer --> boolean) that says, for training step n,
-          whether that step should run evals. If ``None``, run when
-          checkpointing.
+          whether that step should run evals. If ``None``, run evals on the
+          first step and on every N'th step, as determined by the first
+          training task.
       which_task: Function (integer --> integer) indicating which task should be
           used at which training step. Can be set to ``None`` in single-task
           training.
@@ -210,6 +227,8 @@ class Loop:
     self._step = 0
     self._history = trax_history.History()
     self._checkpoint_at = checkpoint_at or default_at
+    self._checkpoint_low_metric = checkpoint_low_metric
+    self._checkpoint_high_metric = checkpoint_high_metric
     self._permanent_checkpoint_at = (
         permanent_checkpoint_at or permanent_default_at)
     if which_task is None:
@@ -446,9 +465,9 @@ class Loop:
         # when the checkpoint format is changed to storing weights separately
         # from a small file with history and other data.
         if self._checkpoint_at(self.step):
-          self.save_checkpoint()
+          self.save_checkpoint('model')
         if self._permanent_checkpoint_at(self.step):
-          self.save_checkpoint(permanent=True)
+          self.save_checkpoint(f'model_{self.step}')
         if self._eval_at(self.step):
           logging.info('cpu memory use (MB): %.2f',
                        process.memory_info().rss / float(1024 * 1024))
@@ -466,13 +485,34 @@ class Loop:
           start_time = time.time()
           optimizer_metrics_acc = collections.defaultdict(float)
 
+        # For the current step, after all evals are run and recorded in the
+        # event history, check if we need to save special checkpoints because
+        # of a new low metric value or a new high metric value.
+        if self._checkpoint_at(self.step):
+          if self._checkpoint_low_metric is not None and self._at_lowest():
+            self.save_checkpoint(f'lowest_{self._checkpoint_low_metric}')
+          if self._checkpoint_high_metric is not None and self._at_highest():
+            self.save_checkpoint(f'highest_{self._checkpoint_high_metric}')
+
     # Store the final values back into their respective objects, for testing
     # or other inspection/use.
-
+    #
     # We keep the standard model weights/state unreplicated and
     # tl.Accelerate(model) will carry the replicated weights/state.
     # TODO(afrozm): Try to use tl.Accelerate(model) everywhere in the Loop.
     self._eval_model.weights = self._model.weights
+
+  def _at_lowest(self):
+    low_items = self.history.get('eval',
+                                 f'metrics/{self._checkpoint_low_metric}')
+    vals = [float(obj[1]) for obj in low_items]
+    return vals[-1] == min(vals)
+
+  def _at_highest(self):
+    high_items = self.history.get('eval',
+                                  f'metrics/{self._checkpoint_high_metric}')
+    vals = [float(obj[1]) for obj in high_items]
+    return vals[-1] == max(vals)
 
   @property
   def step(self):
@@ -763,18 +803,30 @@ class Loop:
     """Logs message, labeled with the current training step number."""
     _log('Step % 6d: %s' % (self.step, msg), stdout=stdout)
 
-  def save_checkpoint(self, permanent=False):
-    """Saves checkpoint to disk for the current training step."""
+  def save_checkpoint(self, basename):
+    """Saves checkpoint (multiple files) to disk for the current training step.
+
+    Saving a checkpoint will overwrite any previous checkpoint saved with the
+    same ``basename``. Use differing ``basename`` values to save multiple
+    checkpoints or multiple copies of the same checkpoint.
+
+    Args:
+      basename: Basename for saving a checkpoint. Full file paths for the saved
+          checkpoint will combine the output dir, basename, and relevant file
+          extensions (e.g., `.weights.npy.gz`).
+    """
     if self._output_dir is None:
       _log('Did not save checkpoint as output_dir is None')
       return
+
     inputs.save_data_counters(self._output_dir)
     if not self.is_chief:
       _log('Did not save checkpoint as we are not chief.')
       return
-    filename = f'model_{self.step}' if permanent else 'model'
-    ckpt_file = os.path.join(self._output_dir, filename)
-    pkl_file = ckpt_file + '.pkl.gz'
+
+    dir_and_basename = os.path.join(self._output_dir, basename)
+    pkl_file = dir_and_basename + '.pkl.gz'
+
     _log('Saving checkpoint to %s' % pkl_file, stdout=False)
     weights = self._model.weights
     if base.N_WEIGHTS_SHARDS > 1:
@@ -784,8 +836,9 @@ class Loop:
     compresslevel = 0 if self._use_memory_efficient_trainer else 2
     # Serialize optimizer slots.
     for i, trainer in enumerate(self._trainer_per_task):
-      flat_slots = self._to_bits(_flatten_and_remove_empty(trainer.slots))
-      tl.np_to_file(flat_slots, ckpt_file + f'.opt_slots{i}.npy.gz',
+      flat_slots = _flatten_and_remove_empty(trainer.slots)
+      tl.np_to_file(self._to_bits(flat_slots),
+                    f'{dir_and_basename}.opt_slots{i}.npy.gz',
                     compresslevel=compresslevel)
     # We only need the input signature for the body, not for the loss layers.
     # That part is the same across tasks - take it from the first one.
@@ -793,7 +846,8 @@ class Loop:
     flat_weights, flat_state = tl.flatten_weights_and_state(weights, state)
     _, flat_eval_state = tl.flatten_weights_and_state(
         weights, self._eval_model.state)
-    tl.np_to_file(self._to_bits(flat_weights), ckpt_file + '.weights.npy.gz',
+    tl.np_to_file(self._to_bits(flat_weights),
+                  f'{dir_and_basename}.weights.npy.gz',
                   compresslevel=compresslevel)
     d = {
         'step': self.step,
