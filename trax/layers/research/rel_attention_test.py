@@ -38,91 +38,27 @@ import trax.layers as tl
 import trax.layers.research.rel_attention as ra
 
 
-def _get_xs(q, k, batch=1, d_model=5):
-  queries, keys = np.zeros((batch, q, d_model)), \
-                  np.zeros((batch, k, d_model))
-  xs = [queries, keys, keys]
-  return xs
-
-
 class RelAttentionTest(absltest.TestCase):
 
-  def test_shift_right_cls(self):
-    layer = ra.ShiftRightCls(5)
-    x = np.array([[1, 2, 3, 4]])
-    _, _ = layer.init(shapes.signature(x))
+  def test_fast_shift_matrix(self):
+    layer = ra._fast_matrix_shift
+    x = np.array([[[[-3., -2., -1., 0.], [-3., -2., -1.,
+                                          0.], [-3., -2., -1., 0.],
+                    [-3., -2., -1., 0.]]]]).astype(np.float32)
+
     y = layer(x)
-
-    self.assertEqual(tl.to_list(y), [[5, 1, 2, 3]])
-
-  def test_fast_shift_matrix_funnel_1(self):
-    layer = ra._fast_matrix_shift
-    x = np.array([[[[-3., -2., -1., 0., 1., 2., 3.],
-                    [-3., -2., -1., 0., 1., 2., 3.],
-                    [-3., -2., -1., 0., 1., 2., 3.],
-                    [-3., -2., -1., 0., 1., 2., 3.]]]]).astype(np.float32)
-
-    y = layer(x, funnel_factor=1, is_upsampling=False)
     self.assertEqual(y.dtype, np.float32)
-    self.assertEqual(tl.to_list(y), [[[[0., 1., 2., 3.],
-                                       [-1., 0., 1., 2.],
-                                       [-2., -1., 0., 1.],
-                                       [-3., -2., -1., 0.]]]])
-
-  def test_fast_shift_matrix_funnel_2(self):
-    layer = ra._fast_matrix_shift
-    x = np.array([[[[-3., -2., -1., 0., 1., 2., 3.],
-                    [-3., -2., -1., 0., 1., 2., 3.]]]]).astype(np.float32)
-
-    y = layer(x, funnel_factor=2, is_upsampling=False)
-    self.assertEqual(y.dtype, np.float32)
-    self.assertEqual(tl.to_list(y), [[[[0., 1., 2., 3.],
-                                       [-2., -1., 0., 1.]]]])
-
-  def test_fast_shift_matrix_funnel_2_upsampling(self):
-    layer = ra._fast_matrix_shift
-    x = np.array([[[
-        [-3., -2., -1., 0., 1., 2., 3.],
-        [-3., -2., -1., 0., 1., 2., 3.],
-        [-3., -2., -1., 0., 1., 2., 3.],
-        [-3., -2., -1., 0., 1., 2., 3.],
-    ]]]).astype(np.float32)
-
-    y = layer(x, funnel_factor=2, is_upsampling=True)
-    self.assertEqual(y.dtype, np.float32)
-    self.assertEqual(tl.to_list(y), [[[[0., 2.],
-                                       [-1., 1.],
-                                       [-2, 0.],
-                                       [-3., -1.]]]])
-
-  def test_create_mask_layer_downsample(self):
-    layer = ra.AttentionMaskLayer()
-    xs = _get_xs(q=2, k=4)
-    layer.init(shapes.signature(xs))
-    _, _, _, mask = layer(xs)
-    self.assertEqual(mask.shape, (1, 1, 2, 4))
-    np.testing.assert_equal(tl.to_list(mask), [[[[True, True, False, False],
-                                                 [True, True, True, True]]]])
-
-  def test_create_mask_layer_upsample(self):
-    layer = ra.AttentionMaskLayer()
-    xs = _get_xs(q=4, k=2)
-    layer.init(shapes.signature(xs))
-    _, _, _, mask = layer(xs)
-    self.assertEqual(mask.shape, (1, 1, 4, 2))
-    np.testing.assert_equal(tl.to_list(mask), [[[[True, False],
-                                                 [True, False],
-                                                 [True, True],
-                                                 [True, True]]]])
+    self.assertEqual(
+        tl.to_list(y), [[[[0., 0., -3., -2.], [-1., 0., 0., -3.],
+                          [-2., -1., 0., 0.], [-3., -2., -1., 0.]]]])
 
   def test_create_mask_layer(self):
     layer = ra.AttentionMaskLayer()
-    xs = _get_xs(q=2, k=2)
+    xs = np.zeros((1, 2, 5))
     layer.init(shapes.signature(xs))
-    _, _, _, mask = layer(xs)
-    self.assertEqual(mask.shape, (1, 1, 2, 2))
-    np.testing.assert_equal(tl.to_list(mask), [[[[True, False],
-                                                 [True, True]]]])
+    mask = layer(xs)
+    self.assertEqual(mask.shape, (2, 2))
+    np.testing.assert_equal(tl.to_list(mask), [[True, False], [True, True]])
 
   def test_create_mask_layer_predict(self):
     layer = ra.AttentionMaskLayer(
@@ -130,41 +66,44 @@ class RelAttentionTest(absltest.TestCase):
         n_raw_tokens_generated=1,
         max_inference_length=3,
         mode='predict')
-    xs = _get_xs(q=1, k=1)
+    xs = np.zeros((1, 1, 5))
     layer.init(shapes.signature(xs))
 
     for _ in range(2):
-      _, _, _, mask = layer(xs)
-      self.assertEqual(mask.shape, (1, 1, 1, 3))
-      np.testing.assert_equal(tl.to_list(mask), [[[[True, False, False]]]])
+      mask = layer(xs)
+      self.assertEqual(mask.shape, (1, 3))
+      np.testing.assert_equal(tl.to_list(mask), [[True, False, False]])
 
     for _ in range(2):
-      _, _, _, mask = layer(xs)
-      self.assertEqual(mask.shape, (1, 1, 1, 3))
-      np.testing.assert_equal(tl.to_list(mask), [[[[True, True, False]]]])
+      mask = layer(xs)
+      self.assertEqual(mask.shape, (1, 3))
+      np.testing.assert_equal(tl.to_list(mask), [[True, True, False]])
 
     for _ in range(2):
-      _, _, _, mask = layer(xs)
-      self.assertEqual(mask.shape, (1, 1, 1, 3))
-      np.testing.assert_equal(tl.to_list(mask), [[[[True, True, True]]]])
+      mask = layer(xs)
+      self.assertEqual(mask.shape, (1, 3))
+      np.testing.assert_equal(tl.to_list(mask), [[True, True, True]])
 
   def test_positional_embeddings_predict(self):
     d_feature = 10
     total_kv_pooling = 2
     max_inference_length = 3
+    batch_size = 1
+    token_length = 1
+
     layer = ra.PositionalEmbeddings(
         d_feature=d_feature,
-        separate_cls=False,
-        total_kv_pooling=2,
+        total_kv_pooling=total_kv_pooling,
         n_raw_tokens_generated=1,
-        max_inference_length=3,
+        max_inference_length=max_inference_length,
         mode='predict')
-    xs = _get_xs(q=1, k=1)[:2]
+
+    xs = np.zeros((batch_size, token_length, d_feature))
     layer.init(shapes.signature(xs))
 
     for _ in range(2):
       pos_emb = layer(xs)
-      real_positions = np.array([0, 1, 2]) * total_kv_pooling
+      real_positions = np.array([0, 1, 2])
       self.assertEqual(pos_emb.shape, (max_inference_length, d_feature))
       np.testing.assert_allclose(
           pos_emb,
@@ -172,7 +111,7 @@ class RelAttentionTest(absltest.TestCase):
 
     for _ in range(2):
       pos_emb = layer(xs)
-      real_positions = np.array([-1, 0, 1]) * total_kv_pooling
+      real_positions = np.array([-1, 0, 1])
       self.assertEqual(pos_emb.shape, (max_inference_length, d_feature))
       np.testing.assert_allclose(
           pos_emb,
@@ -180,7 +119,7 @@ class RelAttentionTest(absltest.TestCase):
 
     for _ in range(2):
       pos_emb = layer(xs)
-      real_positions = np.array([-2, -1, 0]) * total_kv_pooling
+      real_positions = np.array([-2, -1, 0])
       self.assertEqual(pos_emb.shape, (max_inference_length, d_feature))
       np.testing.assert_allclose(
           pos_emb,
