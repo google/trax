@@ -1717,7 +1717,7 @@ def compute_single_result(op_name, num_args):
     return num_args[0] - num_args[1] + 1
   elif op_name == 'diagonal':
     return math.sqrt(num_args[0]**2 + num_args[1]**2)
-  elif op_name == 'divide':
+  elif op_name == 'divide' or op_name == 'speed':
     if num_args[1] != 0:
       return num_args[0] / num_args[1]
     else:
@@ -1785,8 +1785,6 @@ def compute_single_result(op_name, num_args):
     return num_args[0] * num_args[1] / 2
   elif op_name == 'sine':
     return math.sin(num_args[0])
-  elif op_name == 'speed':
-    return num_args[0] / num_args[1]
   elif op_name == 'sqrt':
     return math.sqrt(max(0, num_args[0]))
   elif op_name == 'subtract':
@@ -1809,8 +1807,6 @@ def compute_single_result(op_name, num_args):
     return 4 * num_args[0]
   elif op_name == 'surface_sphere':
     return 4 * math.pi * num_args[0]**2
-  elif op_name == 'speed':
-    return num_args[0] / num_args[1]
   elif op_name == 'speed_ratio_steel_to_stream':
     return (num_args[0] + num_args[1]) / (num_args[0] - num_args[1])
   elif op_name == 'speed_in_still_water':
@@ -2097,6 +2093,25 @@ def compute_program(list_op):
   return temporary_results
 
 
+def compute_nums(question):
+  """Finds numbers in a string and convert them to floats."""
+  # The funny looking replace is needed to deal with numbers such as 4,000
+  # TODO(henrykm) deal with numbers written as words "one", "two", ...
+  return [
+      float(num.replace(',', '')) for num in re.findall(
+          r'[-+]?[.]?[\d]+(?:,\d\d\d)*[\.]?\d*(?:[eE][-+]?\d+)?', question)
+  ]
+
+
+def compute_ops(linear_formula):
+  list_op = linear_formula.split('|')
+  # In some cases the list of operations contains a superflous last element,
+  # namely an empty string.
+  if not list_op[-1]:
+    list_op = list_op[:-1]
+  return list_op
+
+
 def process_single_mathqa_example(example):
   """Execute a single example and verify coherence of a MathQA problem.
 
@@ -2119,13 +2134,8 @@ def process_single_mathqa_example(example):
     list_num: list of identified numbers in the text
   """
   question = example['Problem']
-  # The funny looking replace is needed to deal with numbers such as 4,000
-  # TODO(henrykm) deal with numbers written as words "one", "two", ...
-  list_num = [
-      float(num.replace(',', '')) for num in re.findall(
-          r'[-+]?[.]?[\d]+(?:,\d\d\d)*[\.]?\d*(?:[eE][-+]?\d+)?', question)
-  ]
-  list_op = example['linear_formula'].split('|')
+  list_num = compute_nums(question)
+  list_op = compute_ops(example['linear_formula'])
   answers = example['options']
   correct_answer = example['correct']
   index = answers.find('{} )'.format(correct_answer))
@@ -2148,10 +2158,6 @@ def process_single_mathqa_example(example):
         re.findall(r'[-+]?[.]?[\d]+(?:,\d\d\d)*[\.]?\d*(?:[eE][-+]?\d+)?',
                    answers[index_end_of_answer:])[0].replace(',', ''))
     answer_num /= answer_denom
-  # In some cases the list of operations contains a superflous last element,
-  # namely an empty string.
-  if not list_op[-1]:
-    list_op = list_op[:-1]
   python_result = compute_result(list_op, list_num)
   python_program = compute_program(list_op)
   return answer_num, python_result, python_program, list_op, list_num

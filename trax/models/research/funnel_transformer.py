@@ -19,14 +19,15 @@
 Funnel-Transformer: Filtering out Sequential Redundancy for Efficient
 Language Processing https://arxiv.org/abs/2006.03236
 """
+import functools
+
 from trax import fastmath
 from trax import layers as tl
 from trax.fastmath import numpy as jnp
 from trax.fastmath.ops import index_add
-from trax.layers import core
-from trax.layers import initializers as init
 from trax.layers.assert_shape import assert_shape
 from trax.layers.research.rel_attention import RelativeAttentionLMLayer
+from trax.layers.research.rel_attention import RelativeAttentionWrapper
 from trax.models.reformer.reformer import DecoderBlock
 from trax.models.research.configurable_transformer import PositionalEncoder
 from trax.models.transformer import _EncoderBlock
@@ -418,19 +419,6 @@ def FunnelTransformer(vocab_size,
   )
 
 
-def _get_rel_att_inputs(d_model, n_heads):  # pylint: disable=invalid-name
-  """Global relative attentions bias initialization shared across the layers."""
-  assert d_model % n_heads == 0 and d_model % 2 == 0
-  d_head = d_model // n_heads
-
-  bias_initializer = init.RandomNormalInitializer(1e-6)
-  context_bias_layer = core.Weights(bias_initializer,
-                                    shape=(1, n_heads, 1, d_head))
-  location_bias_layer = core.Weights(bias_initializer,
-                                     shape=(1, n_heads, 1, d_head))
-  return context_bias_layer, location_bias_layer
-
-
 def _RelativeDecoderBlock(d_model,
                           d_ff,
                           n_heads,
@@ -438,10 +426,10 @@ def _RelativeDecoderBlock(d_model,
                           dropout_shared_axes,
                           mode,
                           ff_activation,
-                          context_bias_layer,
-                          location_bias_layer,
                           total_pooling,
-                          max_inference_length=3072):
+                          max_inference_length=3072,
+                          rel_chunk_len=None,
+                          chunk_offset=None):
   """Returns a list of layers that implements a Transformer encoder block.
 
   The input to the block is a pair, (activations, mask), where the mask was
@@ -450,23 +438,24 @@ def _RelativeDecoderBlock(d_model,
 
   Args:
     d_model: Final dimension of tensors at most points in the model, including
-        the initial embedding output.
+      the initial embedding output.
     d_ff: Size of special dense layer in the feed-forward part of each block.
     n_heads: Number of attention heads.
     dropout: Stochastic rate (probability) for dropping an activation value
-        when applying dropout within a block.
+      when applying dropout within a block.
     dropout_shared_axes: Tensor axes on which to share a dropout mask.
-        Sharing along batch and sequence axes (`dropout_shared_axes=(0,1)`) is
-        a useful way to save memory and apply consistent masks to activation
-        vectors at different sequence positions.
+      Sharing along batch and sequence axes (`dropout_shared_axes=(0,1)`) is
+      a useful way to save memory and apply consistent masks to activation
+      vectors at different sequence positions.
     mode: If `'train'`, each block will include dropout; else, it will
-        pass all values through unaltered.
+      pass all values through unaltered.
     ff_activation: Type of activation function at the end of each block; must
-        be an activation-type subclass of `Layer`.
-    context_bias_layer: Global context bias from Transformer XL's attention.
-    location_bias_layer: Global location bias from Transformer XL's attention.
+      be an activation-type subclass of `Layer`.
     total_pooling: The combined pool size of previously used funnel blocks.
     max_inference_length: The maximum inference length.
+    rel_chunk_len: Number of tokens per chunk. Setting this option will enable
+      chunked attention.
+    chunk_offset: Offset for shifting chunks, for shifted chunked attention.
 
   Returns:
     A list of layers that maps (activations, att_vecs, mask) to
@@ -474,12 +463,12 @@ def _RelativeDecoderBlock(d_model,
   """
   attention = RelativeAttentionLMLayer(
       d_model,
-      context_bias_layer,
-      location_bias_layer,
       total_pooling,
       n_heads=n_heads,
       dropout=dropout,
       max_inference_length=max_inference_length,
+      chunk_len=rel_chunk_len,
+      chunk_offset=chunk_offset,
       mode=mode)
 
   feed_forward = _FeedForwardBlock(
@@ -524,7 +513,6 @@ def _DownsamplerLM(shorten_factor, d_model):
 
 def _FunnelRelativeDecoderBlock(d_model, d_ff, n_heads, dropout,
                                 dropout_shared_axes, mode, ff_activation,
-                                context_bias_layer, location_bias_layer,
                                 total_pooling, shorten_factor, resampler_fn):
   """Returns a list of layers that implements a Transformer decoder block.
 
@@ -545,8 +533,6 @@ def _FunnelRelativeDecoderBlock(d_model, d_ff, n_heads, dropout,
       pass all values through unaltered.
     ff_activation: Type of activation function at the end of each block; must
       be an activation-type subclass of `Layer`.
-    context_bias_layer: context bias layer.
-    location_bias_layer: location bias layer.
     total_pooling: total pooling.
     shorten_factor: by how much shorten/upsample at this funnel block.
     resampler_fn: Type of function that performs funnel upsampling/downsampling;
@@ -559,9 +545,7 @@ def _FunnelRelativeDecoderBlock(d_model, d_ff, n_heads, dropout,
   resampler = resampler_fn(shorten_factor, d_model)
 
   attention = RelativeAttentionLMLayer(
-      d_model, context_bias_layer, location_bias_layer,
-      total_pooling, n_heads=n_heads, dropout=dropout,
-      mode=mode)
+      d_model, total_pooling, n_heads=n_heads, dropout=dropout, mode=mode)
 
   feed_forward = _FeedForwardBlock(
       d_model, d_ff, dropout, dropout_shared_axes, mode, ff_activation)
@@ -648,9 +632,6 @@ def FunnelTransformerLM(vocab_size,
       tl.Embedding(vocab_size, d_model),
       tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)]
 
-  context_bias_layer, location_bias_layer = _get_rel_att_inputs(d_model,
-                                                                n_heads)
-
   n_pre_decoder_blocks, n_post_decoder_blocks = vanilla_layers
 
   def create_decoder_blocks(n_layers, total_pooling):  # pylint: disable=invalid-name
@@ -658,7 +639,6 @@ def FunnelTransformerLM(vocab_size,
         # pylint: disable=g-complex-comprehension
         _RelativeDecoderBlock(d_model, d_ff, n_heads, dropout,
                               dropout_shared_axes, mode, ff_activation,
-                              context_bias_layer, location_bias_layer,
                               total_pooling)
         for _ in range(n_layers)]
     return decoder_blocks + [tl.LayerNorm()]
@@ -674,8 +654,6 @@ def FunnelTransformerLM(vocab_size,
         d_model, d_ff, n_heads, dropout,
         dropout_shared_axes, mode,
         ff_activation,
-        context_bias_layer=context_bias_layer,
-        location_bias_layer=location_bias_layer,
         total_pooling=total_pooling_acc,
         shorten_factor=shorten_factor,
         resampler_fn=_DownsamplerLM)]
@@ -687,8 +665,6 @@ def FunnelTransformerLM(vocab_size,
       d_model, d_ff, n_heads, dropout,
       dropout_shared_axes, mode,
       ff_activation,
-      context_bias_layer=context_bias_layer,
-      location_bias_layer=location_bias_layer,
       total_pooling=total_pooling_acc,
       shorten_factor=total_pooling_acc,
       resampler_fn=_UpsamplerLM)
@@ -771,8 +747,9 @@ class RelformerCacher(tl.Layer):
     if self._sliding:
       left_index = idx % self._total_kv_pooling
     else:
-      left_index = (idx - (idx % self._total_kv_pooling)) % \
-                   (2 * self._total_kv_pooling)
+      left_index = (idx -
+                    (idx % self._total_kv_pooling)) % (2 *
+                                                       self._total_kv_pooling)
 
     output = fastmath.dynamic_slice(
         cache, [0, left_index, 0],
@@ -838,6 +815,8 @@ def RelformerLM(vocab_size,
                 vanilla_layers=(1, 1),
                 shorten_factor=3,
                 n_rel_layers=6,
+                rel_chunk_len=None,
+                vanilla_chunk_len=None,
                 n_heads=8,
                 dropout=0.1,
                 dropout_shared_axes=None,
@@ -875,6 +854,10 @@ def RelformerLM(vocab_size,
     shorten_factor: by how much to shorten
     n_rel_layers: number of Transformer blocks after the pooling. These blocks
         use relative attention.
+    rel_chunk_len (optional): Number of tokens per chunk. Setting this option
+        will enable chunked relative attention.
+    vanilla_chunk_len (optional): If set, enables chunked relative attention
+        also in layers before and after shortening.
     n_heads: Number of attention heads.
     dropout: Stochastic rate (probability) for dropping an activation value
         when applying dropout within an encoder block.
@@ -905,36 +888,61 @@ def RelformerLM(vocab_size,
       tl.Embedding(vocab_size, d_model),
       tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)]
 
-  positional_encoder = PositionalEncoder(mode, dropout, max_len, pos_type)
+  if vanilla_chunk_len is None:
+    positional_encoder = PositionalEncoder(mode, dropout, max_len, pos_type)
+  else:
+    positional_encoder = []
 
   n_pre_decoder_blocks, n_post_decoder_blocks = vanilla_layers
 
-  def create_decoder_blocks(n_layers, total_pooling):  # pylint: disable=invalid-name
-    context_bias_layer, location_bias_layer = _get_rel_att_inputs(d_model,
-                                                                  n_heads)
-    decoder_blocks = [
-        # pylint: disable=g-complex-comprehension
-        _RelativeDecoderBlock(d_model, d_ff, n_heads, dropout,
-                              dropout_shared_axes, mode, ff_activation,
-                              context_bias_layer, location_bias_layer,
-                              total_pooling, max_len) for _ in range(n_layers)
-    ]
-    return decoder_blocks + [tl.LayerNorm()]
-
-  def create_reformer_blocks(n_layers, dense=True):  # pylint: disable=invalid-name
+  def create_reformer_blocks(  # pylint: disable=invalid-name
+      n_layers,
+      total_kv_pooling=1,
+      layer_chunk_len=None,
+      force_relative=False,
+      dense=True):
     if n_layers == 0:
       return [tl.LayerNorm()]
+
+    def determine_attn_type(layer_number):  # pylint: disable=invalid-name
+      if layer_chunk_len is None and not force_relative:
+        return vanilla_attn_type
+
+      if layer_chunk_len is not None:
+        chunk_offset = (layer_number % 2) * (layer_chunk_len // 2)
+      else:
+        chunk_offset = None
+
+      return functools.partial(
+          RelativeAttentionWrapper,
+          n_raw_tokens_generated=n_raw_tokens_generated,
+          max_inference_length=max_len,
+          total_kv_pooling=total_kv_pooling,
+          chunk_len=layer_chunk_len,
+          chunk_offset=chunk_offset)
+
     d_per_head = d_model // n_heads
-    decoder_blocks = [
-        DecoderBlock(d_model, d_ff, d_per_head, d_per_head, n_heads,  # pylint: disable=g-complex-comprehension
-                     vanilla_attn_type,
-                     dropout, ff_activation, dropout,
-                     ff_use_sru=0,
-                     ff_chunk_size=0,
-                     ff_sparsity=0,
-                     attention_chunk_size=0,
-                     mode=mode)
-        for _ in range(n_layers)]
+
+    decoder_blocks = []
+    for i in range(n_layers):
+      layer_attn_type = determine_attn_type(i)
+
+      decoder_blocks.append(
+          DecoderBlock(
+              d_model,
+              d_ff,
+              d_per_head,
+              d_per_head,
+              n_heads,
+              layer_attn_type,
+              dropout,
+              ff_activation,
+              dropout,
+              ff_use_sru=0,
+              ff_chunk_size=0,
+              ff_sparsity=0,
+              attention_chunk_size=0,
+              mode=mode))
 
     return [
         tl.Dup(),
@@ -944,17 +952,22 @@ def RelformerLM(vocab_size,
         tl.Dense(d_model) if dense else [],
     ]
 
-  pre_decoder_blocks = create_reformer_blocks(n_pre_decoder_blocks, dense=True)
+  pre_decoder_blocks = create_reformer_blocks(
+      n_pre_decoder_blocks, layer_chunk_len=vanilla_chunk_len)
 
-  relative_decoder_blocks = create_decoder_blocks(n_rel_layers, shorten_factor)
+  relative_decoder_blocks = create_reformer_blocks(
+      n_rel_layers,
+      total_kv_pooling=shorten_factor,
+      layer_chunk_len=rel_chunk_len,
+      force_relative=True)
 
   conv_layer = tl.Serial(
       tl.CausalConv(d_model, shorten_factor),
       ff_activation()
   )
 
-  post_decoder_blocks = create_reformer_blocks(n_post_decoder_blocks,
-                                               dense=False)
+  post_decoder_blocks = create_reformer_blocks(
+      n_post_decoder_blocks, layer_chunk_len=vanilla_chunk_len, dense=False)
 
   cacher = RelformerCacher(
       total_kv_pooling=shorten_factor,

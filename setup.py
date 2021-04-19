@@ -14,6 +14,7 @@
 # limitations under the License.
 
 # coding=utf-8
+# coding=utf-8
 """Install trax."""
 
 from setuptools import find_packages
@@ -41,6 +42,7 @@ setup(
         'gym',
         'jax',
         'jaxlib',
+        'matplotlib',
         'numpy',
         'psutil',
         'scipy',
@@ -55,7 +57,6 @@ setup(
         'tests': [
             'attrs',
             'jupyter',
-            'matplotlib',
             'mock',
             'parameterized',
             'pylint',

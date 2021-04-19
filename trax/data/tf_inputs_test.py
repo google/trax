@@ -808,6 +808,7 @@ class TFInputsTest(tf.test.TestCase):
     exec(target_values, globals(), var_dict)  # pylint: disable=exec-used
     self.assertAllClose(var_dict['answer'], 14)
 
+
   def test_sentencepiece_tokenize(self):
     def dataset():
       yield 'I have a cat.'
@@ -817,6 +818,7 @@ class TFInputsTest(tf.test.TestCase):
       examples.append(example)
     toks = list(examples[0])
     self.assertSequenceEqual([27, 43, 3, 9, 1712, 5], toks)
+
 
 if __name__ == '__main__':
   tf.test.main()
