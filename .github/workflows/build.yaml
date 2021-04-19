@@ -37,7 +37,7 @@ jobs:
 
     strategy:
       matrix:
-        python-version: [3.7, 3.8]
+        python-version: [3.7]
         tf-version: ["2.4.*", "tf-nightly"]
 
     # Steps represent a sequence of tasks that will be executed as part of the job
@@ -53,7 +53,7 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install -q -U setuptools numpy
         python -m pip install flake8 pytest
-        if [[ ${{matrix.tf-version}} == "tf-version" ]]; then python -m pip install tf-nightly; else python -m pip install -q "tensorflow=="${{matrix.tf-version}} ; fi
+        if [[ ${{matrix.tf-version}} == "tf-nightly" ]]; then python -m pip install tf-nightly; else python -m pip install -q "tensorflow=="${{matrix.tf-version}}; fi
         pip install -e .[test]
     - name: Lint with flake8
       run: |
