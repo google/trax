@@ -16,6 +16,7 @@
 # Lint as: python3
 """Tests for supervised training: core classes and flows."""
 
+import collections
 import os
 import time
 
@@ -79,9 +80,15 @@ class TrainingTest(absltest.TestCase):
                          eval_at=lambda step_n: step_n % 2 == 0,
                          checkpoint_at=lambda step_n: step_n % 2 == 0,
                          checkpoint_low_metric='l2_loss')
-    loop.run(n_steps=18)
-    # TODO(jonni): Strengthen test to check when checkpointing happens.
-    # (Currently just checked manually in the test logs.)
+    call_counter = collections.Counter()
+    loop.save_checkpoint = lambda name: call_counter.update([name])
+    loop.run(n_steps=10)
+
+    # Eval metric steadily descends, so low checkpoint triggered all 5 times.
+    # High checkpoint not defined, so never triggered.
+    self.assertEqual(call_counter['model'], 5)
+    self.assertEqual(call_counter['lowest_l2_loss'], 5)
+    self.assertEqual(call_counter['highest_l2_loss'], 0)
 
   def test_loop_checkpoint_high_metric(self):
     """Runs a training loop that saves checkpoints for high metric values."""
@@ -101,9 +108,15 @@ class TrainingTest(absltest.TestCase):
                          eval_at=lambda step_n: step_n % 2 == 0,
                          checkpoint_at=lambda step_n: step_n % 2 == 0,
                          checkpoint_high_metric='l2_loss')
-    loop.run(n_steps=18)
-    # TODO(jonni): Strengthen test to check when checkpointing happens.
-    # (Currently just checked manually in the test logs.)
+    call_counter = collections.Counter()
+    loop.save_checkpoint = lambda name: call_counter.update([name])
+    loop.run(n_steps=10)
+
+    # Eval metric steadily descends, so high checkpoint triggered only once.
+    # Low checkpoint not defined, so never triggered.
+    self.assertEqual(call_counter['model'], 5)
+    self.assertEqual(call_counter['lowest_l2_loss'], 0)
+    self.assertEqual(call_counter['highest_l2_loss'], 1)
 
   def test_train_dense_layer(self):
     """Trains a very simple network on a very simple task."""
