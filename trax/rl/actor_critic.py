@@ -840,7 +840,6 @@ class LoopActorCriticAgent(rl_training.Agent):
     self._collect_model = model_fn(mode='collect')
     self._collect_model.init(shapes.signature(sample_batch))
     if self._task._initial_trajectories == 0:  # pylint: disable=protected-access
-      self._task.remove_epoch(0)
       self._collect_trajectories()
 
   @property

@@ -309,20 +309,32 @@ def _sample_proportionally(inputs, weights):
 
   Args:
     inputs: a list, we will return one element of this list.
-    weights: a list of numbers of the same length as inputs; we will sample
+    weights: a sequence of numbers of the same length as inputs; we will sample
       the k-th input with probability weights[k] / sum(weights).
 
   Returns:
     an element from inputs.
   """
   l = len(inputs)
+  weights = np.array(weights)
   if l != len(weights):
     raise ValueError(f'Inputs and weights must have the same length, but do not'
                      f': {l} != {len(weights)}')
-  weights_sum = float(sum(weights))
-  norm_weights = [w / weights_sum for w in weights]
+  norm_weights = weights / np.sum(weights)
+  # TODO(pkozakowski): Currently this is O(n). It can be sped up to O(log n) by
+  # storing CDF and binsearching on it.
   idx = np.random.choice(l, p=norm_weights)
   return inputs[int(idx)]
+
+
+def _n_slices(trajectory, max_slice_length, margin):
+  """How many slices of length upto max_slice_length in a trajectory."""
+  # TODO(lukaszkaiser): add option to sample from n last trajectories.
+  if not max_slice_length:
+    return 1
+  # A trajectory [a, b, c, end_state] will have 2 slices of length 2:
+  # the slice [a, b] and the one [b, c], with margin=0; 3 with margin=1.
+  return max(1, len(trajectory) + margin - max_slice_length)
 
 
 @gin.configurable
@@ -385,25 +397,25 @@ class RLTask:
     self._initial_trajectories = initial_trajectories
     self._last_observation = None
     self._n_steps_left = time_limit
+    # Example trajectory for determining input/output shapes of the networks.
+    self._example_trajectory = self.play(
+        _random_policy(self.action_space), only_eval=True
+    )
     # TODO(lukaszkaiser): find a better way to pass initial trajectories,
     # whether they are an explicit list, a file, or a number of random ones.
     if isinstance(initial_trajectories, int):
-      if initial_trajectories > 0:
-        initial_trajectories = [
-            self.play(_random_policy(self.action_space))
-            for _ in range(initial_trajectories)
-        ]
-      else:
-        initial_trajectories = [
-            # Whatever we gather here is intended to be removed
-            # in PolicyTrainer. Here we just gather some example inputs.
-            self.play(_random_policy(self.action_space))
-        ]
+      initial_trajectories = [
+          self.play(_random_policy(self.action_space))
+          for _ in range(initial_trajectories)
+      ]
     if isinstance(initial_trajectories, str):
       initial_trajectories = self.load_initial_trajectories_from_path(
           initial_trajectories_path=initial_trajectories)
     if isinstance(initial_trajectories, list):
-      initial_trajectories = {0: initial_trajectories}
+      if initial_trajectories:
+        initial_trajectories = {0: initial_trajectories}
+      else:
+        initial_trajectories = {}
     self._timestep_to_np = timestep_to_np
     # Stored trajectories are indexed by epoch and within each epoch they
     # are stored in the order of generation so we can implement replay buffers.
@@ -560,14 +572,14 @@ class RLTask:
       assert self._n_steps_left >= 0
       if self._n_steps_left == 0:
         cur_trajectory.done = True
-    # Pass the last observation between trajectory slices.
-    if cur_trajectory.done:
-      self._last_observation = None
-      if not only_eval:
+      # Pass the last observation between trajectory slices.
+      if cur_trajectory.done:
+        self._last_observation = None
         # Reset the time limit.
         self._n_steps_left = self._time_limit
-    else:
-      self._last_observation = cur_trajectory.last_observation
+      else:
+        self._last_observation = cur_trajectory.last_observation
+
     cur_trajectory.calculate_returns(self._gamma)
     return cur_trajectory
 
@@ -640,10 +652,24 @@ class RLTask:
     del epochs
     return self._n_interactions
 
-  def remove_epoch(self, epoch):
-    """Useful when we need to remove an unwanted trajectory."""
-    if epoch in self._trajectories:
-      self._trajectories.pop(epoch)
+  def _random_slice(self, trajectory, max_slice_length, margin):
+    """Returns a random TrajectoryNp slice from a given trajectory."""
+    # Sample a slice from the trajectory.
+    slice_start = np.random.randint(
+        _n_slices(trajectory, max_slice_length, margin)
+    )
+
+    # Convert the whole trajectory to Numpy while adding the margin. The
+    # result is cached, so we don't have to repeat this for every sample.
+    trajectory_np = trajectory.to_np(margin, self._timestep_to_np)
+
+    # Slice and yield the result.
+    slice_end = slice_start + (
+        max_slice_length or trajectory_np.observations.shape[0]
+    )
+    return fastmath.nested_map(
+        lambda x: x[slice_start:slice_end], trajectory_np
+    )
 
   def trajectory_stream(self, epochs=None, max_slice_length=None,
                         sample_trajectories_uniformly=False, margin=0):
@@ -661,62 +687,78 @@ class RLTask:
       random trajectory slices sampled uniformly from all slices of length
       up to max_slice_length in all specified epochs
     """
-    # TODO(lukaszkaiser): add option to sample from n last trajectories.
-    def n_slices(t):
-      """How many slices of length upto max_slice_length in a trajectory."""
-      if not max_slice_length:
-        return 1
-      # A trajectory [a, b, c, end_state] will have 2 slices of length 2:
-      # the slice [a, b] and the one [b, c], with margin=0; 3 with margin=1.
-      return max(1, len(t) + margin - max_slice_length)
+    # {int: array[int]};
+    # epoch_to_ns_slices[epoch][i] = n_slices(self._trajectories[epoch][i])
+    # It stores arrays for faster sampling.
+    epoch_to_ns_slices = {}
+    # {int: int};
+    # epoch_to_total_n_slices[epoch] = sum(epoch_to_ns_slices[epoch])
+    epoch_to_total_n_slices = {}
+    # [int]: list of epoch indices to sample from.
+    epoch_indices = []
+    # epoch_to_total_n_slices filtered using epoch_indices. It's an array for
+    # faster sampling.
+    sampling_epoch_weights = None
 
-    while True:
+    def new_epoch(epoch_id):
+      """Updates the lists defined above to include the new epoch."""
       all_epochs = list(self._trajectories.keys())
       max_epoch = max(all_epochs) + 1
-      # Bind the epoch indices to a new name so they can be recalculated every
-      # epoch.
-      epoch_indices = epochs or all_epochs
-      epoch_indices = [
+
+      # Calculate the numbers of slices for the new epoch.
+      epoch_to_ns_slices[epoch_id] = np.array([
+          _n_slices(trajectory, max_slice_length, margin)
+          for trajectory in self._trajectories[epoch_id]
+      ])
+      epoch_to_total_n_slices[epoch_id] = np.sum(
+          epoch_to_ns_slices[epoch_id]
+      )
+
+      # Update the indices of epochs to sample from.
+      new_epoch_indices = epochs or all_epochs
+      new_epoch_indices = [
           # So -1 means "last".
-          ep % max_epoch for ep in epoch_indices
+          ep % max_epoch for ep in new_epoch_indices
       ]
       # Remove duplicates and consider only epochs where some trajectories
-      # were recorded.
-      epoch_indices = [epoch_id for epoch_id in list(set(epoch_indices))
-                       if self._trajectories[epoch_id]]
+      # were recorded and that we have processed in new_epoch.
+      new_epoch_indices = [
+          epoch_id for epoch_id in set(new_epoch_indices)
+          if self._trajectories[epoch_id] and epoch_id in epoch_to_ns_slices
+      ]
+      epoch_indices[:] = new_epoch_indices
+
+      nonlocal sampling_epoch_weights
+      sampling_epoch_weights = np.array(list(
+          epoch_to_total_n_slices[ep] for ep in epoch_indices
+      ))
+
+    while True:
+      # If we haven't collected any trajectories yet, yield an example
+      # trajectory. It's needed to determine the input/output shapes of
+      # networks.
+      if not self._trajectories:
+        yield self._random_slice(
+            self._example_trajectory, max_slice_length, margin
+        )
+        continue
+
+      # Catch up if we have a new epoch or we've restarted the experiment.
+      for epoch_id in self._trajectories.keys() - epoch_to_ns_slices.keys():  # pylint:disable=g-builtin-op
+        new_epoch(epoch_id)
 
       # Sample an epoch proportionally to number of slices in each epoch.
-      if len(epoch_indices) == 1:  # Skip this step if there's just 1 epoch.
-        epoch_id = epoch_indices[0]
-      else:
-        # NOTE: Bottleneck. TODO(pkozakowski): Optimize.
-        slices_per_epoch = [sum([n_slices(t) for t in self._trajectories[ep]])
-                            for ep in epoch_indices]
-        epoch_id = _sample_proportionally(epoch_indices, slices_per_epoch)
+      epoch_id = _sample_proportionally(epoch_indices, sampling_epoch_weights)
       epoch = self._trajectories[epoch_id]
 
       # Sample a trajectory proportionally to number of slices in each one.
       if sample_trajectories_uniformly:
-        slices_per_trajectory = [1] * len(epoch)
+        slices_per_trajectory = np.ones((len(epoch),))
       else:
-        # NOTE: Bottleneck. TODO(pkozakowski): Optimize.
-        slices_per_trajectory = [n_slices(t) for t in epoch]
+        slices_per_trajectory = epoch_to_ns_slices[epoch_id]
       trajectory = _sample_proportionally(epoch, slices_per_trajectory)
 
-      # Sample a slice from the trajectory.
-      slice_start = np.random.randint(n_slices(trajectory))
-
-      # Convert the whole trajectory to Numpy while adding the margin. The
-      # result is cached, so we don't have to repeat this for every sample.
-      trajectory_np = trajectory.to_np(margin, self._timestep_to_np)
-
-      # Slice and yield the result.
-      slice_end = slice_start + (
-          max_slice_length or trajectory_np.observations.shape[0]
-      )
-      yield fastmath.nested_map(
-          lambda x: x[slice_start:slice_end], trajectory_np
-      )
+      yield self._random_slice(trajectory, max_slice_length, margin)
 
   def trajectory_batch_stream(self, batch_size, epochs=None,
                               max_slice_length=None,

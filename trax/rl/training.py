@@ -361,7 +361,6 @@ class PolicyAgent(Agent):
         policy_model(mode='eval'), n_devices=1)  # Not collecting stats
     self._policy_eval_model.init(shapes.signature(policy_batch))
     if self._task._initial_trajectories == 0:
-      self._task.remove_epoch(0)
       self._collect_trajectories()
 
   @property
@@ -738,7 +737,6 @@ class ValueAgent(Agent):
         value_model(mode='collect'), n_devices=1)
     self._eval_model.init(shapes.signature(value_batch))
     if self._task._initial_trajectories == 0:
-      self._task.remove_epoch(0)
       self._collect_trajectories()
 
   @property
