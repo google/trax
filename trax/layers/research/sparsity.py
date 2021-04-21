@@ -243,7 +243,7 @@ class _RememberPad(base.Layer):
     else:
       pad_widths = [[0, 0] for _ in range(len(x.shape))]
       pad_widths[1][0] = self._n_items_to_remember
-      x = jnp.pad(x, pad_width=pad_widths)
+      x = jnp.pad(x, pad_width=pad_widths, mode='constant')
     return x
 
   def init_weights_and_state(self, input_signature):
