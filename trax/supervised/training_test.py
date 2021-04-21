@@ -52,15 +52,6 @@ class TrainingTest(absltest.TestCase):
     # Loop should initialize and run successfully, even with no eval task.
     training_session.run(n_steps=5)
 
-  def test_loop_no_eval_task_tfnp(self):
-    """Runs a training loop with no eval task(s), TFNP backend."""
-    with fastmath.use_backend(fastmath.Backend.TFNP):
-      model = tl.Serial(tl.Dense(1))
-      task = training.TrainTask(
-          _very_simple_data(), tl.L2Loss(), optimizers.Adam(.01))
-      training_session = training.Loop(model, [task])
-      # Loop should initialize and run successfully, even with no eval task.
-      training_session.run(n_steps=5)
 
   def test_loop_checkpoint_low_metric(self):
     """Runs a training loop that saves checkpoints for low metric values."""

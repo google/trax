@@ -38,7 +38,12 @@ jobs:
     strategy:
       matrix:
         python-version: [3.7]
-        tf-version: ["2.4.*", "tf-nightly"]
+        # tf-nightly has some pip version conflicts, so can't be installed.
+        # Use only numbered TF as of now.
+        # tf-version: ["2.4.*", "tf-nightly"]
+        tf-version: ["2.4.*"]
+        # Which set of tests to run.
+        trax-test: ["lib", "research"]
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -54,7 +59,7 @@ jobs:
         python -m pip install -q -U setuptools numpy
         python -m pip install flake8 pytest
         if [[ ${{matrix.tf-version}} == "tf-nightly" ]]; then python -m pip install tf-nightly; else python -m pip install -q "tensorflow=="${{matrix.tf-version}}; fi
-        pip install -e .[test]
+        pip install -e .[tests]
     # # Lint with flake8
     # - name: Lint with flake8
     #   run: |
@@ -65,7 +70,7 @@ jobs:
     # Test out right now with only testing one directory.
     - name: Test with pytest
       run: |
-        pytest trax/data
+        TRAX_TEST=" ${{matrix.trax-test}}" ./oss_scripts/oss_tests.sh
     # The below step just reports the success or failure of tests as a "commit status".
     # This is needed for copybara integration.
     - name: Report success or failure as github status

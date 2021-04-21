@@ -89,7 +89,8 @@ def _test_inputs_lm(vocab_size, seq_len, per_device_batch_size=2):
 
 
 
-BACKENDS = [fastmath.Backend.JAX, fastmath.Backend.TFNP]
+BACKENDS = [fastmath.Backend.JAX]
+BACKENDS_AND_CONFIGS = [(fastmath.Backend.JAX, [('Simple', None)])]
 
 
 def short_name(b):
@@ -229,11 +230,7 @@ class TraxTest(parameterized.TestCase):
   @parameterized.named_parameters(
       ('_%s_%s_%s' % (short_name(backend), model_name, opt_name(opt)),  # pylint: disable=g-complex-comprehension
        backend, model_name, opt)
-      for backend, configs in [
-          (fastmath.Backend.JAX, [('Simple', None)]),
-          (fastmath.Backend.TFNP, [('Simple', None),
-                                   ('Resnet50', trax_opt.Momentum),
-                                   ('Transformer', trax_opt.Adam)])]
+      for backend, configs in BACKENDS_AND_CONFIGS
       for model_name, opt in configs)
   def test_train_eval_predict(self, backend, model_name, opt):
     self._test_train_eval_predict(backend, model_name, opt)
@@ -532,37 +529,6 @@ class TraxTest(parameterized.TestCase):
     fastmath.tf.set_tf_xla_forced_compile(True)
     self._test_train_eval_predict('tf')
     fastmath.tf.set_tf_xla_forced_compile(old_flag)
-
-  def test_no_int32_or_uint32_returned(self):
-    """Tests that Trainer._jit_update_fn doesn't return int32 or uint32.
-
-    TF pins int32/uint32 tensors to CPU, which will cause XLA-forced-compiled
-    computation to copy int32/uint32 outputs to CPU. This test makes sure that
-    won't happen.
-    """
-    with fastmath.use_backend(fastmath.Backend.TFNP):
-      n_classes = 1001
-      model_fn = functools.partial(models.Resnet50,
-                                   n_output_classes=n_classes)
-      inputs = _test_inputs(n_classes, input_shape=(224, 224, 3))
-      trainer = trainer_lib.Trainer(
-          model=model_fn,
-          loss_fn=tl.WeightedCategoryCrossEntropy(),
-          optimizer=trax_opt.SM3,
-          lr_schedule=lr.multifactor(),
-          inputs=inputs,
-      )
-      output_dir = self.create_tempdir().full_path
-      trainer.reset(output_dir)
-      trainer.train_epoch(1, 0)
-      # Those are the things returned by Trainer._jit_update_fn
-      arrays = (trainer._opt_state.weights, trainer._opt_state.slots,
-                trainer._model_state, trainer._rngs)
-      arrays = tf.nest.flatten(arrays)
-      for x in arrays:
-        if isinstance(x, jnp.ndarray) and (x.dtype == jnp.int32 or
-                                           x.dtype == jnp.uint32):
-          raise ValueError('Found an array of int32 or uint32: %s' % x)
 
 
 

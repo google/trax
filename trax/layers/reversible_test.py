@@ -24,7 +24,7 @@ from trax import fastmath
 import trax.layers as tl
 
 
-BACKENDS = [fastmath.Backend.JAX, fastmath.Backend.TFNP]
+BACKENDS = [fastmath.Backend.JAX]
 
 
 class ReversibleLayerTest(parameterized.TestCase):

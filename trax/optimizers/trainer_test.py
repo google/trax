@@ -53,19 +53,6 @@ class TrainerTest(absltest.TestCase):
     rng = fastmath.random.get_prng(0)
     trainer.one_step(labeled_batch, rng)
 
-  def test_run_simple_task_tfnp(self):
-    """Runs an accelerated optimizer on a simple task, TFNP backend."""
-    with fastmath.use_backend(fastmath.Backend.TFNP):
-      inputs_batch = np.arange(8).reshape((8, 1))  # 8 items per batch
-      targets_batch = np.pi * np.ones_like(inputs_batch)
-      labeled_batch = (inputs_batch, targets_batch, np.ones_like(targets_batch))
-      loss_layer = tl.Serial(tl.Dense(1), tl.L2Loss())
-      loss_layer.init(labeled_batch)
-      optimizer = optimizers.Adam(.01)
-      optimizer.tree_init(loss_layer.weights)
-      trainer = optimizers.Trainer(loss_layer, optimizer)
-      rng = fastmath.random.get_prng(0)
-      trainer.one_step(labeled_batch, rng)
 
   def test_run_sharded_reformer2(self):
     """Runs Reformer2 with sharded weights (only on 2+-device systems)."""

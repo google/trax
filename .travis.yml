@@ -8,7 +8,7 @@ python:
   - "3.6"
 env:
   global:
-    - TF_VERSION="2.3.*"
+    - TF_VERSION="2.4.*"
   matrix:
     - TRAX_TEST="lib"
     - TRAX_TEST="research"
