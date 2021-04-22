@@ -172,8 +172,7 @@ def _adasum_merge(g1, g2):
 
 def _average_multidevice_gradients(gradients, adasum=False):
   """Averages gradients over all the devices across different hosts."""
-  n = jnp.array(fastmath.global_device_count() // base.N_WEIGHTS_SHARDS,
-                dtype=jnp.float32)
+  n = fastmath.global_device_count() // base.N_WEIGHTS_SHARDS
   if adasum:
     # This implements a version of the Adasum algorithm from the following
     # paper: https://arxiv.org/pdf/2006.02924.pdf
@@ -197,6 +196,7 @@ def _average_multidevice_gradients(gradients, adasum=False):
                                    axis_index_groups=groups)
   else:
     gradients_psum = fastmath.psum(gradients, 'batch')  # sum all gradients
+  n = jnp.array(n, dtype=jnp.float32)
   return fastmath.nested_map(lambda g: g / n, gradients_psum)
 
 
