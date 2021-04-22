@@ -24,9 +24,11 @@ from trax import fastmath
 from trax import shapes
 from trax.models import rnn
 
+BACKENDS = [fastmath.Backend.JAX]
+
 
 @parameterized.named_parameters(
-    ('_' + b.value, b) for b in (fastmath.Backend.JAX, fastmath.Backend.TFNP))
+    ('_' + b.value, b) for b in BACKENDS)
 class RNNTest(parameterized.TestCase):
 
   def test_rnnlm_forward_shape(self, backend):

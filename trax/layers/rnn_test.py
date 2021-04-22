@@ -25,8 +25,11 @@ from trax import shapes
 import trax.layers as tl
 
 
+BACKENDS = [fastmath.Backend.JAX]
+
+
 @parameterized.named_parameters(
-    ('_' + b.value, b) for b in (fastmath.Backend.JAX, fastmath.Backend.TFNP))
+    ('_' + b.value, b) for b in BACKENDS)
 class RnnTest(parameterized.TestCase):
 
   def test_conv_gru_cell(self, backend):

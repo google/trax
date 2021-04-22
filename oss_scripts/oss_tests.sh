@@ -32,9 +32,7 @@ function set_status() {
 }
 
 # Check env vars set
-echo "${TF_VERSION:?}" && \
-echo "${TRAX_TEST:?}" && \
-echo "${TRAVIS_PYTHON_VERSION:?}"
+echo "${TRAX_TEST:?}"
 set_status
 if [[ $STATUS -ne 0 ]]
 then
@@ -83,6 +81,7 @@ then
     --deselect=trax/layers/acceleration_test.py::AccelerationTest::test_chunk_grad_memory \
     --deselect=trax/layers/acceleration_test.py::AccelerationTest::test_chunk_memory \
     --ignore=trax/layers/initializers_test.py \
+    --ignore=trax/layers/test_utils.py \
     trax/layers
   set_status
 
@@ -124,8 +123,9 @@ else
   set_status
 
   ## Trax2Keras
-  pytest trax/trax2keras_test.py
-  set_status
+  # TODO(afrozm): Make public again after TF 2.5 releases.
+  # pytest trax/trax2keras_test.py
+  # set_status
 
   # Check notebooks.
 

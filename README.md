@@ -5,12 +5,12 @@
 version](https://badge.fury.io/py/trax.svg)](https://badge.fury.io/py/trax)
 [![GitHub
 Issues](https://img.shields.io/github/issues/google/trax.svg)](https://github.com/google/trax/issues)
+![GitHub Build](https://github.com/google/trax/actions/workflows/build.yaml/badge.svg)
 [![Contributions
 welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![License](https://img.shields.io/badge/License-Apache%202.0-brightgreen.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Gitter](https://img.shields.io/gitter/room/nwjs/nw.js.svg)](https://gitter.im/trax-ml/community)
 [![Travis](https://img.shields.io/travis/google/trax.svg)](https://travis-ci.org/google/trax)
-
 
 [Trax](https://trax-ml.readthedocs.io/en/latest/) is an end-to-end library for deep learning that focuses on clear code and speed. It is actively used and maintained in the [Google Brain team](https://research.google.com/teams/brain/). This notebook ([run it in colab](https://colab.research.google.com/github/google/trax/blob/master/trax/intro.ipynb)) shows how to use Trax and where you can find more information.
 
