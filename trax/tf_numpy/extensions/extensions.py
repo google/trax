@@ -40,6 +40,9 @@ _tf_nn_APIs = {1: [tf.nn.conv1d, tf.nn.conv1d_transpose],
                3: [tf.nn.conv3d, tf.nn.conv3d_transpose]}
 
 
+remat = tf.recompute_grad
+
+
 def most_precise_int_dtype(x):
   if not isinstance(x, six.integer_types) or isinstance(x, bool):
     return None

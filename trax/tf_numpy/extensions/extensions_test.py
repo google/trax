@@ -956,6 +956,47 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
     y = tf_np.random.randn(10, 2, 3)
     self.assertAllClose(tf_np.expand_dims(x, 1) + y, fn2(x, y))
 
+  def testRemat(self):
+    def f(a, b):
+      return tf_np.sum(tf_np.sqrt(tf_np.exp(a)) + b)
+
+    f_remat = extensions.remat(f)
+
+    shape = [10]
+    a = tf_np.random.randn(*shape)
+    b = tf_np.random.randn(*shape)
+
+    actual = extensions.grad(f_remat)(a, b)
+    expected = extensions.grad(f)(a, b)
+    self.assertAllClose(actual, expected)
+
+  def testRematLambdaFunction(self):
+    f = lambda a, b: tf_np.sum(tf_np.sqrt(tf_np.exp(a)) + b)
+    f_remat = extensions.remat(f)
+
+    shape = [10]
+    a = tf_np.random.randn(*shape)
+    b = tf_np.random.randn(*shape)
+
+    actual = extensions.grad(f_remat)(a, b)
+    expected = extensions.grad(f)(a, b)
+    self.assertAllClose(actual, expected)
+
+  def testRematJit(self):
+    @extensions.jit
+    def f(a, b):
+      return tf_np.sum(tf_np.sqrt(tf_np.exp(a)) + b)
+
+    f_remat = extensions.remat(f)
+
+    shape = [10]
+    a = tf_np.random.randn(*shape)
+    b = tf_np.random.randn(*shape)
+
+    actual = extensions.grad(f_remat)(a, b)
+    expected = extensions.grad(f)(a, b)
+    self.assertAllClose(actual, expected)
+
 
 if __name__ == "__main__":
   tf.compat.v1.enable_eager_execution()
