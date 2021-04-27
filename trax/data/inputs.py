@@ -14,11 +14,13 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Trax input pipeline.
+"""Data sources and input processing.
 
-In Trax we encourage to use combinators to construct input pipelines in a way
-that resembles layer combinators. Here is an example of an input pipeline for
-training sentiment analysis tasks on the IMDB dataset::
+Trax authors recommend constructing input pipelines using layer-like functions
+and combinators. For example, following is an input pipeline for training
+sentiment analysis tasks on the IMDB dataset::
+
+  from trax import data
 
   inputs = data.Serial(
     data.TFDS('imdb_reviews', keys=('text', 'label'), train=True),
@@ -31,26 +33,27 @@ training sentiment analysis tasks on the IMDB dataset::
     data.AddLossWeights()
   )
 
-Each of these combinators creates a python generator of tuples of data examples.
+Each of these functions creates a Python generator of tuples of data arrays.
 For example::
 
   data.TFDS('imdb_reviews', keys=('text', 'label'), train=True),
 
-creates a generator of examples from the TFDS imdb_reviews dataset, see here:
+creates a generator of examples (tuples of NumPy :py:class:`ndarray`s) from the
+TFDS imdb_reviews dataset, see here:
 https://www.tensorflow.org/datasets/catalog/imdb_reviews
 
 As you can see on the website above, this dataset has 'text' and 'label' fields
 and we create tuples containing the text and the label from the training split
 by specifying keys=('text', 'label'), train=True.
 
-The other combinators, like Tokenize and Shuffle, take a generator and output
+Other functions, like ``Tokenize`` and ``Shuffle``, take a generator and output
 another generator, in this way converting tuples into other tuples or mixing
-the training stream. For example, Tokenize(..., keys=[0]) will tokenize the
-first element of the tuple - and in this way convert it from text to a tensor of
-integers. Shuffle will not change the examples, but will randomize their order.
+the training stream. For example, ``Tokenize(..., keys=[0])`` tokenizes the
+first element of a tuple -- converting it from text to a NumPy integer array.
+And ``Shuffle`` randomizes the order of examples.
 
 Note that all elements in the data pipeline are just functions on generators,
-so you can use python's `map` and `filter` and other native functions too.
+so you can use Python's `map` and `filter` and other native functions too.
 For example, you can create an input pipeline for a language model reading
 lines from `my_file.txt` as follows::
 

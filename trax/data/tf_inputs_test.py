@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Tests for trax.supervised.tf_inputs."""
+"""Tests for trax.data.tf_inputs."""
 
 import collections
 import os
