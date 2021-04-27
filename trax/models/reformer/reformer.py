@@ -617,7 +617,8 @@ def Reformer2(input_vocab_size,
               mode='train'):
   """Reversible transformer encoder-decoder model.
 
-  This model expects an input pair: source, target.
+  If input_vocab_size is not None, this model expects an input pair: source,
+  target. Otherwise, it expects a triple: embedded_source, mask, target.
 
   At the moment, this model supports dot-product attention only. For the
   attention types in the Reformer paper, see ReformerLM.
@@ -811,14 +812,37 @@ def Reformer2(input_vocab_size,
         tl.ReversibleSelect([0, 0]),           # vec_ed vec_ed tok_e tok_d
     ]
 
+  if input_vocab_size is not None:
+    # Input in this case is tok_e, tok_d.
+    mask_layers = [
+        tl.PaddingMask(),
+        tl.Fn('Squeeze', lambda x: jnp.squeeze(x, (1, 2)), n_out=1)
+    ]
+    inp_layers = tl.Serial([
+        tl.Select([0, 0, 0, 1]),                       # tok_e tok_e tok_e tok_d
+        tl.Parallel(in_encoder, mask_layers)          # vec_e mask_e tok_e tok_d
+    ])
+    inp_layers = tl.AssertFunction('bt,bu->btf,bt,bt,bu', inp_layers)
+  else:
+    # Input in this case is vec_e, mask_e, tok_d. Where all downstream
+    # operations expect tok_e, we give it instead mask_e, expecting that
+    # downstream ops only are looking for padding/not padding.
+    make_tok = tl.Fn('MakeTok', lambda mask: mask.astype(jnp.int32))
+    inp_layers = tl.Serial([
+        tl.Select([0, 1, 1, 2]),                      # vec_e mask_e tok_e tok_d
+        tl.Parallel(in_encoder, [], make_tok)         # vec_e mask_e tok_e tok_d
+    ])
+    inp_layers = tl.AssertFunction('btg,bt,bu->btf,bt,bt,bu', inp_layers)
+
   # Assemble and return the model.
   return tl.Serial(
-      # Input: encoder_side_tokens, decoder_side_tokens
+      inp_layers,                                     # vec_e mask_e tok_e tok_d
+
       # Copy decoder tokens for use in loss.
-      tl.Select([0, 0, 0, 1, 1]),                # tok_e tok_e tok_e tok_d tok_d
+      tl.Select([0, 1, 2, 3, 3]),               # vec_e mask_e tok_e tok_d tok_d
 
       # Embed in and out tokens; done together as weights may be shared.
-      tl.Parallel(in_encoder, [], [],            # vec_e tok_e tok_e vec_d tok_d
+      tl.Parallel([], [], [],                   # vec_e mask_e tok_e vec_d tok_d
                   [tl.ShiftRight(mode=mode), out_encoder]),
 
       # Predict mode doesn't work with padding in encoder. Raising an exception
@@ -826,11 +850,6 @@ def Reformer2(input_vocab_size,
       # to convert every embedding to NaNs, so the user will not get subtly
       # wrong results, but clearly wrong results.
       (_ConvertToNaNsOnAnyZero() if mode == 'predict' else []),
-
-      tl.Parallel([], [tl.PaddingMask(),
-                       tl.Fn('Squeeze',
-                             lambda x: jnp.squeeze(x, (1, 2)), n_out=1)]),
-      #                                         # vec_e mask_e tok_e vec_d tok_d
 
       # Encode.
       encoder,                                  # vec_e mask_e tok_e vec_d tok_d
@@ -878,6 +897,6 @@ def _ReversibleSerialForget(layers, d_model, n_layers, forget_dense=True):
 
 def _ConvertToNaNsOnAnyZero():
   def _convert_to_nans(x, y):
-    # if all values in x are non-zeros, return x; otherwise return 0s
+    # if all values in y are non-zeros, return x; otherwise return 0s
     return jnp.where(jnp.all(y, keepdims=False), x, x/0.), y
   return tl.Fn('ConvertToNaNsOnAnyZero', _convert_to_nans, n_out=2)
