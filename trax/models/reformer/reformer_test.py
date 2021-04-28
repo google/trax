@@ -124,15 +124,22 @@ class ReformerTest(parameterized.TestCase):
     self.assertEqual(logits.shape, (1, 65536, 256))
 
   @parameterized.named_parameters(
-      ('_%s' % short_name(backend), backend)
-      for backend in BACKENDS)
-  def test_reformer2_quick(self, backend):
+      [('_%s_efficient' % short_name(backend), backend, tl.SelfAttention, False)
+       for backend in BACKENDS] +
+      [('_%s_causal' % short_name(backend), backend, tl.CausalAttention, False)
+       for backend in BACKENDS] +
+      # NOTE: tl.SelfAttention is not currently working for this case.
+      [('_%s_preembed' % short_name(backend), backend, tl.CausalAttention, True)
+       for backend in BACKENDS])
+  def test_reformer2_quick(self, backend, encoder_attention_type, preembed):
     with fastmath.use_backend(backend):
       vocab_size = 2
+      input_vocab_size = None if preembed else vocab_size
+      output_vocab_size = vocab_size if preembed else None
       max_len = 2
 
       model = reformer.Reformer2(
-          vocab_size,
+          input_vocab_size,
           d_model=4,
           d_ff=4,
           n_encoder_layers=1,
@@ -145,10 +152,16 @@ class ReformerTest(parameterized.TestCase):
           ff_use_sru=0,
           ff_chunk_size=2,
           mode='train',
+          output_vocab_size=output_vocab_size,
+          encoder_attention_type=encoder_attention_type,
       )
 
-      x = [np.ones((1, max_len)).astype(np.int32),
-           np.ones((1, max_len)).astype(np.int32)]
+      if preembed:
+        model_inputs = [np.ones((1, max_len, 3)).astype(np.float32),
+                        np.ones((1, max_len)).astype(np.bool)]
+      else:
+        model_inputs = [np.ones((1, max_len)).astype(np.int32)]
+      x = model_inputs + [np.ones((1, max_len)).astype(np.int32)]
       model.init(shapes.signature(x))
 
       logits, dec_toks = model(x)

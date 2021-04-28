@@ -104,7 +104,7 @@ def _n_weights_per_core(weights):  # pylint: disable=invalid-name
     return weights_sum
   else:
     try:
-      n_devices_total = fastmath.psum(jnp.array(1.0), 'batch')
+      n_devices_total = fastmath.psum(1, 'batch')
       return fastmath.psum(weights_sum, 'batch') / n_devices_total
     except (NameError, ValueError):  # running outside of pmap, e.g., on init
       return weights_sum  # fall back to the sum

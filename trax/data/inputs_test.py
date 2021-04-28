@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Tests for trax.supervised.inputs."""
+"""Tests for trax.data.inputs."""
 
 import os
 

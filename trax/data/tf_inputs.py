@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Trax TF input pipeline."""
+"""TensorFlow data sources and associated prepocessing functions."""
 
 import functools
 import itertools
