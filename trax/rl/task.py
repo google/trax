@@ -49,9 +49,29 @@ TimeStepBatch = collections.namedtuple('TimeStepBatch', [
     'done',
     'mask',
     'dist_inputs',
+    'env_info',
     'return_',
 ])
-TimeStepBatch.__new__.__defaults__ = (None,)  # return_ can be omitted.
+
+
+# EnvInfo stores additional information returned by
+# `trax.rl.envs.SequenceDataEnv`. In those environments, one timestep
+# corresponds to one token in the sequence. While the environment is emitting
+# observation tokens, actions taken by the agent don't matter. Actions can also
+# span multiple tokens, but the discount should only be applied once.
+# Fields:
+# * `control_mask` - mask determining whether the last interaction was
+#       controlled, so whether the action performed by the agent mattered;
+#       can be used to mask policy and value loss; negation can be used to mask
+#       world model observation loss; defaults to 1 - all actions matter
+# * `discount_mask` - mask determining whether the discount should be applied to
+#       the current reward; defaults to 1 - all rewards are discounted
+EnvInfo = collections.namedtuple('EnvInfo', ['control_mask', 'discount_mask'])
+EnvInfo.__new__.__defaults__ = (1, 1)
+
+
+# `env_info` and `return_` can be omitted in `TimeStepBatch`.
+TimeStepBatch.__new__.__defaults__ = (EnvInfo(), None,)
 
 
 class Trajectory:
@@ -253,14 +273,22 @@ def play(env, policy, dm_suite=False, max_steps=None, last_observation=None):
       (observation, reward, done) = (
           step.observation, step.reward, step.step_type.last()
       )
+      info = {}
     else:
-      (observation, reward, done) = step[:3]
+      (observation, reward, done, info) = step
+
+    # Make an EnvInfo out of the supported keys in the info dict.
+    env_info = EnvInfo(**{
+        key: value for (key, value) in info.items()
+        if key in EnvInfo._fields
+    })
     cur_trajectory.extend(
         action=action,
         dist_inputs=dist_inputs,
         reward=reward,
         done=done,
         new_observation=observation,
+        env_info=env_info,
     )
     cur_step += 1
   return cur_trajectory

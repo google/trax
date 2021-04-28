@@ -31,11 +31,17 @@ class DummyEnv:
   action_space = gym.spaces.Discrete(2)
 
   def reset(self):
+    self._step = 0
     return np.ones((2,))
 
   def step(self, action):
     del action
-    return np.ones((2,)), 0.0, False, None
+    info = {
+        'control_mask': self._step % 2 == 0,
+        'discount_mask': self._step % 3 == 0,
+    }
+    self._step += 1
+    return np.ones((2,)), 0.0, False, info
 
 
 class TaskTest(absltest.TestCase):
@@ -332,6 +338,14 @@ class TaskTest(absltest.TestCase):
     # Assert that we got a done somewhere, otherwise the test is not triggered.
     # Not getting done has low probability (1/2^20) but is possible, flaky test.
     self.assertTrue(got_done)
+
+  def test_trajectory_stream_propagates_env_info(self):
+    task = rl_task.RLTask(DummyEnv(), initial_trajectories=1, max_steps=4)
+    stream = task.trajectory_stream(max_slice_length=4)
+    tr_slice = next(stream)
+    # control_mask = step % 2 == 0, discount_mask = step % 3 == 0.
+    np.testing.assert_array_equal(tr_slice.env_info.control_mask, [1, 0, 1, 0])
+    np.testing.assert_array_equal(tr_slice.env_info.discount_mask, [1, 0, 0, 1])
 
   def test_trajectory_batch_stream_shape(self):
     task = rl_task.RLTask(DummyEnv(), initial_trajectories=1, max_steps=10)

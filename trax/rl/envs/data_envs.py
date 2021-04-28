@@ -114,6 +114,9 @@ class SequenceDataEnv(object):
     if cur_sequence_id >= len(self._cur_sequence):
       return np.array(self._eos, dtype=np.int32), 0.0, True, None
 
+    # Emit the control mask on the output.
+    control_mask = int(not self._on_input)
+
     if self._on_input:
       self._response = []
       if cur_token_id + 1 < len(self._cur_sequence[cur_sequence_id]):
@@ -122,7 +125,8 @@ class SequenceDataEnv(object):
       else:
         self._cur_position = (cur_sequence_id + 1, 0)
         done = cur_sequence_id + 1 >= len(self._cur_sequence)
-      return self.observation, 0.0, done, None
+      reward = 0.0
+      discount_mask = 0
 
     else:
       self._response.append(action)
@@ -131,10 +135,15 @@ class SequenceDataEnv(object):
         reward = self._metric(
             self._response[:-1], self._cur_sequence[cur_sequence_id])
         done = cur_sequence_id + 1 >= len(self._cur_sequence)
+        # Emit the discount mask on the last token of each action.
+        discount_mask = 1
       else:
         reward = 0.0
         done = False
-      return self.observation, reward, done, None
+        discount_mask = 0
+
+    info = {'control_mask': control_mask, 'discount_mask': discount_mask}
+    return self.observation, reward, done, info
 
 
 def copy_stream(length, low=2, high=15, n=1):
