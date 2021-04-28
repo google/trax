@@ -38,8 +38,8 @@ For example::
 
   data.TFDS('imdb_reviews', keys=('text', 'label'), train=True),
 
-creates a generator of examples (tuples of NumPy :py:class:`ndarray`s) from the
-TFDS imdb_reviews dataset, see here:
+creates a generator of examples (tuples of NumPy :py:class:`ndarray` objects)
+from the TFDS imdb_reviews dataset, see here:
 https://www.tensorflow.org/datasets/catalog/imdb_reviews
 
 As you can see on the website above, this dataset has 'text' and 'label' fields
