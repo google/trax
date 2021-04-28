@@ -28,56 +28,30 @@ from trax.supervised import training
 
 
 
-class _TimeStep:
-  """A single step of interaction with a RL environment.
-
-  TimeStep stores a single step in the trajectory of an RL run:
-  * observation (same as observation) at the beginning of the step
-  * action that was takes (or None if none taken yet)
-  * reward gotten when the action was taken (or None if action wasn't taken)
-  * log-probability of the action taken (or None if not specified)
-  * discounted return from that state (includes the reward from this step)
-  """
-
-  def __init__(
-      self, observation, action=None, reward=None, dist_inputs=None, done=None,
-      mask=None
-  ):
-    self.observation = observation
-    self.action = action
-    self.reward = reward
-    self.dist_inputs = dist_inputs
-    self.done = done
-    self.mask = mask
-    self.discounted_return = 0.0
-
-
-# Tuple for representing trajectories and batches of them in numpy; immutable.
-TrajectoryNp = collections.namedtuple('TrajectoryNp', [
-    'observations',
-    'actions',
-    'dist_inputs',
-    'rewards',
-    'returns',
-    'dones',
-    'mask',
-])
-
-
-# Same as TrajectoryNp, for timesteps. This is separate for documentation
-# purposes, but it's functionally redundant.
-# TODO(pkozakowski): Consider merging with TrajectoryNp and finding a common
-# name. At the very least it should be merged with _TimeStep - I'm not doing it
-# for now to keep backward compatibility with batch RL experiments.
-TimeStepNp = collections.namedtuple('TimeStepNp', [
+# TimeStepBatch stores a single step in the trajectory of an RL run, or
+# a sequence of timesteps (trajectory slice), or a batch of such sequences.
+# Fields:
+# * `observation` at the beginning of the step
+# * `action` that was taken
+# * `reward` gotten when the action was taken (or None if action wasn't taken)
+# * `done` - whether the trajectory has finished in this step
+# * `mask` - padding mask
+# * `return_` - discounted return from this state (includes the current reward);
+#       `None` if it hasn't been computed yet
+# * `dist_inputs` - parameters of the policy distribution, stored by some
+#       RL algortihms
+# TODO(pkozakowski): Generalize `dist_inputs` to `agent_info` - a namedtuple
+# storing agent-specific data.
+TimeStepBatch = collections.namedtuple('TimeStepBatch', [
     'observation',
     'action',
-    'dist_inputs',
     'reward',
-    'return_',
     'done',
     'mask',
+    'dist_inputs',
+    'return_',
 ])
+TimeStepBatch.__new__.__defaults__ = (None,)  # return_ can be omitted.
 
 
 class Trajectory:
@@ -90,25 +64,27 @@ class Trajectory:
   def __init__(self, observation):
     # TODO(lukaszkaiser): add support for saving and loading trajectories,
     # reuse code from base_trainer.dump_trajectories and related functions.
-    if observation is not None:
-      self._timesteps = [_TimeStep(observation)]
-    self._trajectory_np = None
+    self._last_observation = observation
+    self._timesteps = []
+    self._timestep_batch = None
     self._cached_to_np_args = None
 
   def __len__(self):
-    return len(self._timesteps)
-
-  def __str__(self):
-    return str([(ts.observation, ts.action, ts.reward, ts.done)
-                for ts in self._timesteps])
+    """Returns the number of observations in the trajectory."""
+    # We always have 1 more of observations than of everything else.
+    return len(self._timesteps) + 1
 
   def __repr__(self):
-    return repr([(ts.observation, ts.action, ts.reward, ts.done)
-                 for ts in self._timesteps])
+    return repr({
+        'timesteps': self._timesteps,
+        'last_observation': self._last_observation,
+    })
 
-  def __getitem__(self, key):
-    t = Trajectory(None)
-    t._timesteps = self._timesteps[key]  # pylint: disable=protected-access
+  def suffix(self, length):
+    """Returns a `Trajectory` with the last `length` observations."""
+    assert length >= 1
+    t = Trajectory(self._last_observation)
+    t._timesteps = self._timesteps[-(length - 1):]  # pylint: disable=protected-access
     return t
 
   @property
@@ -123,90 +99,84 @@ class Trajectory:
   @property
   def last_observation(self):
     """Return the last observation in this trajectory."""
-    last_timestep = self._timesteps[-1]
-    return last_timestep.observation
+    return self._last_observation
 
   @property
   def done(self):
     """Returns whether the trajectory is finished."""
-    if len(self._timesteps) < 2:
+    if not self._timesteps:
       return False
-    second_last_timestep = self._timesteps[-2]
-    return second_last_timestep.done
+    return self._timesteps[-1].done
 
   @done.setter
   def done(self, done):
     """Sets the `done` flag in the last timestep."""
-    if len(self._timesteps) < 2:
+    if not self._timesteps:
       raise ValueError('No interactions yet in the trajectory.')
-    last_timestep = self._timesteps[-2]
-    last_timestep.done = done
+    self._timesteps[-1] = self._timesteps[-1]._replace(done=done)
 
-  def extend(self, action, dist_inputs, new_observation, reward, done, mask=1):
+  def extend(self, new_observation, mask=1, **kwargs):
     """Take action in the last state, getting reward and going to new state."""
-    last_timestep = self._timesteps[-1]
-    last_timestep.action = action
-    last_timestep.dist_inputs = dist_inputs
-    last_timestep.reward = reward
-    last_timestep.done = done
-    last_timestep.mask = mask
-    new_timestep = _TimeStep(new_observation)
-    self._timesteps.append(new_timestep)
+    self._timesteps.append(TimeStepBatch(
+        observation=self._last_observation, mask=mask, **kwargs
+    ))
+    self._last_observation = new_observation
 
   def calculate_returns(self, gamma):
     """Calculate discounted returns."""
     ret = 0.0
-    for timestep in reversed(self._timesteps):
+    for i in reversed(range(len(self._timesteps))):
+      timestep = self._timesteps[i]
       cur_reward = timestep.reward or 0.0
       ret = gamma * ret + cur_reward
-      timestep.discounted_return = ret
+      self._timesteps[i] = timestep._replace(return_=ret)
 
   def _default_timestep_to_np(self, ts):
     """Default way to convert timestep to numpy."""
-    return fastmath.nested_map(np.array, TimeStepNp(
-        observation=ts.observation,
-        action=ts.action,
-        dist_inputs=ts.dist_inputs,
-        reward=ts.reward,
-        done=ts.done,
-        return_=ts.discounted_return,
-        mask=ts.mask,
-    ))
+    return fastmath.nested_map(np.array, ts)
 
-  def to_np(self, margin=0, timestep_to_np=None):
-    """Create a tuple of numpy arrays from a given trajectory."""
+  def to_np(self, margin=1, timestep_to_np=None):
+    """Create a tuple of numpy arrays from a given trajectory.
+
+    Args:
+        margin (int): Number of dummy timesteps past the trajectory end to
+            include. By default we include 1, which contains the last
+            observation.
+        timestep_to_np (callable or None): Optional function
+            TimeStepBatch[Any] -> TimeStepBatch[np.array], converting the
+            timestep data into numpy arrays.
+
+    Returns:
+        TimeStepBatch, where all fields have shape
+        (len(self) + margin - 1, ...).
+    """
     timestep_to_np = timestep_to_np or self._default_timestep_to_np
     args = (margin, timestep_to_np)
 
     # Return the cached result if the arguments agree and the trajectory has not
     # grown.
-    if self._trajectory_np:
+    if self._timestep_batch:
       result_length = len(self) + margin - 1
-      length_ok = self._trajectory_np.observations.shape[0] == result_length
+      length_ok = self._timestep_batch.observation.shape[0] == result_length
       if args == self._cached_to_np_args and length_ok:
-        return self._trajectory_np
+        return self._timestep_batch
 
-    observations, actions, dist_inputs, rewards, returns, dones, masks = (
-        [], [], [], [], [], [], []
-    )
+    # observation, action, reward, etc.
+    fields = TimeStepBatch._fields
+    # List of timestep data for each field.
+    data_lists = TimeStepBatch(**{field: [] for field in fields})
     for timestep in self._timesteps:
-      if timestep.action is None:
-        obs = timestep_to_np(timestep).observation
-        observations.append(obs)
-      else:
-        timestep_np = timestep_to_np(timestep)
-        observations.append(timestep_np.observation)
-        actions.append(timestep_np.action)
-        dist_inputs.append(timestep_np.dist_inputs)
-        rewards.append(timestep_np.reward)
-        dones.append(timestep_np.done)
-        returns.append(timestep_np.return_)
-        masks.append(timestep_np.mask)
+      timestep_np = timestep_to_np(timestep)
+      # Append each field of timestep_np to the appropriate list.
+      for field in fields:
+        getattr(data_lists, field).append(getattr(timestep_np, field))
+    # Append the last observation.
+    data_lists.observation.append(self._last_observation)
 
     # TODO(pkozakowski): The case len(obs) == 1 is for handling
     # "dummy trajectories", that are only there to determine data shapes. Check
     # if they're still required.
-    if len(observations) > 1:
+    if len(data_lists.observation) > 1:
       # Extend the trajectory with a given margin - this is to make sure that
       # the networks always "see" the "done" states in the training data, even
       # when a suffix is added to the trajectory slice for better estimation of
@@ -216,34 +186,33 @@ class Trajectory:
       # The rest of the fields don't matter, so we set them to 0 for easy
       # debugging (unless they're None). The list of observations is longer, so
       # we pad it with margin - 1.
-      masks.extend([0] * margin)
-      dones.extend([True] * margin)
-      observations.extend([np.zeros_like(observations[-1])] * (margin - 1))
-      for x in (actions, dist_inputs, rewards, returns):
-        filler = None if x[-1] is None else np.zeros_like(x[-1])
-        x.extend([filler] * margin)
+      data_lists.mask.extend([0] * margin)
+      data_lists.done.extend([True] * margin)
+      data_lists.observation.extend(
+          [np.zeros_like(data_lists.observation[-1])] * (margin - 1)
+      )
+      for field in set(fields) - {'mask', 'done', 'observation'}:
+        l = getattr(data_lists, field)
+        filler = None if l[-1] is None else np.zeros_like(l[-1])
+        l.extend([filler] * margin)
+
+      # Trim the observations to have the same length as the rest of the fields.
+      # This is not be the case when margin=0.
+      if margin == 0:
+        data_lists.observation.pop()
 
     def stack(x):
       if not x:
         return None
       return fastmath.nested_stack(x)
 
-    trajectory_np = TrajectoryNp(**{  # pylint: disable=g-complex-comprehension
-        key: stack(value) for (key, value) in [
-            ('observations', observations),
-            ('actions', actions),
-            ('dist_inputs', dist_inputs),
-            ('rewards', rewards),
-            ('dones', dones),
-            ('returns', returns),
-            ('mask', masks),
-        ]
-    })
+    # Stack the data_lists into numpy arrays.
+    timestep_batch = TimeStepBatch(*map(stack, data_lists))
 
-    self._trajectory_np = trajectory_np
+    self._timestep_batch = timestep_batch
     self._cached_to_np_args = args
 
-    return trajectory_np
+    return timestep_batch
 
 
 def play(env, policy, dm_suite=False, max_steps=None, last_observation=None):
@@ -281,14 +250,19 @@ def play(env, policy, dm_suite=False, max_steps=None, last_observation=None):
     action, dist_inputs = policy(cur_trajectory)
     step = env.step(action)
     if dm_suite:
-      observation_reward_done = (
+      (observation, reward, done) = (
           step.observation, step.reward, step.step_type.last()
       )
     else:
-      observation_reward_done = step[:3]
-    cur_trajectory.extend(action, dist_inputs, *observation_reward_done)
+      (observation, reward, done) = step[:3]
+    cur_trajectory.extend(
+        action=action,
+        dist_inputs=dist_inputs,
+        reward=reward,
+        done=done,
+        new_observation=observation,
+    )
     cur_step += 1
-    (_, _, done) = observation_reward_done
   return cur_trajectory
 
 
@@ -653,7 +627,7 @@ class RLTask:
     return self._n_interactions
 
   def _random_slice(self, trajectory, max_slice_length, margin):
-    """Returns a random TrajectoryNp slice from a given trajectory."""
+    """Returns a random TimeStepBatch slice from a given trajectory."""
     # Sample a slice from the trajectory.
     slice_start = np.random.randint(
         _n_slices(trajectory, max_slice_length, margin)
@@ -661,14 +635,14 @@ class RLTask:
 
     # Convert the whole trajectory to Numpy while adding the margin. The
     # result is cached, so we don't have to repeat this for every sample.
-    trajectory_np = trajectory.to_np(margin, self._timestep_to_np)
+    timestep_batch = trajectory.to_np(margin, self._timestep_to_np)
 
     # Slice and yield the result.
     slice_end = slice_start + (
-        max_slice_length or trajectory_np.observations.shape[0]
+        max_slice_length or timestep_batch.observation.shape[0]
     )
     return fastmath.nested_map(
-        lambda x: x[slice_start:slice_end], trajectory_np
+        lambda x: x[slice_start:slice_end], timestep_batch
     )
 
   def trajectory_stream(self, epochs=None, max_slice_length=None,
@@ -808,16 +782,15 @@ class RLTask:
     ):
       cur_batch.append(t)
       if len(cur_batch) == batch_size:
-        # bottleneck
         # zip(*cur_batch) transposes (batch_size, fields)
-        # -> (fields, batch_size). Then we build TrajectoryNp from the fields.
+        # -> (fields, batch_size). Then we build TimeStepBatch from the fields.
         # Fields are observations, actions, ...
-        batch_trajectory_np = TrajectoryNp(*zip(*cur_batch))
+        timestep_batch = TimeStepBatch(*zip(*cur_batch))
         # Actions, rewards and returns in the trajectory slice have shape
         # [batch_size, trajectory_length], which we denote as [B, L].
         # Observations are more complex: [B, L] + S, where S is the shape of the
         # observation space (self.observation_space.shape).
         # We stop the recursion at level 1, so we pass lists of arrays into
         # pad().
-        yield fastmath.nested_map(pad, batch_trajectory_np, level=1)
+        yield fastmath.nested_map(pad, timestep_batch, level=1)
         cur_batch = []

@@ -299,7 +299,7 @@ class ActorCriticAgent(rl_training.PolicyAgent):
     if not self._offline:
       return trajectory.dist_inputs
     else:
-      return trajectory.actions
+      return trajectory.action
 
   def value_batches_stream(self):
     """Use the RLTask self._task to create inputs to the value model."""
@@ -313,7 +313,7 @@ class ActorCriticAgent(rl_training.PolicyAgent):
     ):
       dist_inputs = self._get_dist_inputs(np_trajectory)
       (values, _, act_log_probs) = self._run_value_model(
-          np_trajectory.observations, dist_inputs
+          np_trajectory.observation, dist_inputs
       )
       values = self._aggregate_values(
           values, self._q_value_aggregate, act_log_probs)
@@ -322,18 +322,18 @@ class ActorCriticAgent(rl_training.PolicyAgent):
       # Calculate targets based on the advantages over the target network - this
       # allows TD learning for value networks.
       advantages = self._advantage_estimator(
-          rewards=np_trajectory.rewards,
-          returns=np_trajectory.returns,
+          rewards=np_trajectory.reward,
+          returns=np_trajectory.return_,
           values=values,
-          dones=np_trajectory.dones,
+          dones=np_trajectory.done,
       )
       length = advantages.shape[1]
       values = values[:, :length]
       target_returns = values + advantages
 
-      inputs = (np_trajectory.observations[:, :length],)
+      inputs = (np_trajectory.observation[:, :length],)
       if self._q_value:
-        inputs += (np_trajectory.actions[:, :length],)
+        inputs += (np_trajectory.action[:, :length],)
 
       # Insert an extra depth dimension, so the target shape is consistent with
       # the network output shape.
@@ -347,10 +347,10 @@ class ActorCriticAgent(rl_training.PolicyAgent):
       )
 
   def policy_inputs(self, trajectory, values):
-    """Create inputs to policy model from a TrajectoryNp and values.
+    """Create inputs to policy model from a TimeStepBatch and values.
 
     Args:
-      trajectory: a TrajectoryNp, the trajectory to create inputs from
+      trajectory: a TimeStepBatch, the trajectory to create inputs from
       values: a numpy array: value function computed on trajectory
 
     Returns:
@@ -373,7 +373,7 @@ class ActorCriticAgent(rl_training.PolicyAgent):
     ):
       dist_inputs = self._get_dist_inputs(np_trajectory)
       (values, _, act_log_probs) = self._run_value_model(
-          np_trajectory.observations, dist_inputs)
+          np_trajectory.observation, dist_inputs)
       values = self._aggregate_values(values, 'mean', act_log_probs)
       if len(values.shape) != 2:
         raise ValueError('Values are expected to have shape ' +
@@ -499,19 +499,19 @@ class AdvantageBasedActorCriticAgent(ActorCriticAgent):
     )
 
   def policy_inputs(self, trajectory, values):
-    """Create inputs to policy model from a TrajectoryNp and values."""
+    """Create inputs to policy model from a TimeStepBatch and values."""
     # How much TD to use is determined by the added policy slice length,
     # as the policy batches need to be this much longer to calculate TD.
     advantages = self._advantage_estimator(
-        rewards=trajectory.rewards,
-        returns=trajectory.returns,
+        rewards=trajectory.reward,
+        returns=trajectory.return_,
         values=values,
-        dones=trajectory.dones,
+        dones=trajectory.done,
     )
     # Observations should be the same length as advantages - so if we are
     # using n_extra_steps, we need to trim the length to match.
-    obs = trajectory.observations[:, :advantages.shape[1]]
-    act = trajectory.actions[:, :advantages.shape[1]]
+    obs = trajectory.observation[:, :advantages.shape[1]]
+    act = trajectory.action[:, :advantages.shape[1]]
     mask = trajectory.mask[:, :advantages.shape[1]]  # Mask to zero-out padding.
     if trajectory.dist_inputs is not None:
       dist_inputs = self._get_dist_inputs(trajectory)
@@ -849,7 +849,7 @@ class LoopActorCriticAgent(rl_training.Agent):
 
   def policy(self, trajectory, temperature=1.0):
     """Policy function that allows to play using this agent."""
-    tr_slice = trajectory[-self._max_slice_length:]
+    tr_slice = trajectory.suffix(self._max_slice_length)
     trajectory_np = tr_slice.to_np(timestep_to_np=self.task.timestep_to_np)
     return rl_training.network_policy(
         collect_model=self._collect_model,
@@ -1189,7 +1189,7 @@ class SamplingAWR(AdvantageBasedActorCriticAgent):
     ):
       dist_inputs = self._get_dist_inputs(np_trajectory)
       (q_values, actions, act_log_probs) = self._run_value_model(
-          np_trajectory.observations, dist_inputs)
+          np_trajectory.observation, dist_inputs)
       shapes.assert_same_shape(q_values, act_log_probs)
 
       # q_values shape: (batch_size, n_samples, length)
@@ -1207,4 +1207,4 @@ class SamplingAWR(AdvantageBasedActorCriticAgent):
       mask = np.reshape(mask, [mask.shape[0], 1] + list(mask.shape[1:]))
       mask = jnp.broadcast_to(mask, q_values.shape)
       shapes.assert_same_shape(mask, q_values)
-      yield (np_trajectory.observations, actions, q_values, act_log_probs, mask)
+      yield (np_trajectory.observation, actions, q_values, act_log_probs, mask)
