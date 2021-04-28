@@ -16,6 +16,7 @@
 # Lint as: python3
 """Tests for trax.data.inputs."""
 
+import itertools
 import os
 
 from absl.testing import absltest
@@ -123,7 +124,7 @@ class InputsTest(parameterized.TestCase):
     self.assertEqual(data.inputs.data_counters['toy_data'], 1)
 
   def test_parallel(self):
-    """Check that data.Serial works inside another data.Serial."""
+    """Basic test of the parallel ccmbinator."""
     dataset1 = lambda: (i for i in range(10))
     dataset2 = lambda: (i for i in range(10, 20))
     parallel = data.Parallel([dataset1, dataset2])
@@ -137,7 +138,7 @@ class InputsTest(parameterized.TestCase):
     self.assertEqual(next(generator), 12)
 
   def test_parallel_with_gen_not_none(self):
-    """Check that data.Serial works inside another data.Serial."""
+    """Test of the parallel ccmbinator with a not none generator."""
     dataset1 = lambda _: (i for i in range(10))
     dataset2 = lambda _: (i for i in range(10, 20))
     parallel = data.Parallel([dataset1, dataset2])
@@ -155,7 +156,7 @@ class InputsTest(parameterized.TestCase):
     self.assertEqual(next(generator), 12)
 
   def test_parallel_with_weights(self):
-    """Check that data.Serial works inside another data.Serial."""
+    """Test of the parallel ccmbinator with weights."""
     dataset1 = lambda: (i for i in range(10))
     dataset2 = lambda: (i for i in range(10, 20))
     parallel = data.Parallel([dataset1, dataset2], counters=(2, 1))
@@ -171,6 +172,103 @@ class InputsTest(parameterized.TestCase):
     self.assertEqual(next(generator), 4)
     self.assertEqual(next(generator), 5)
     self.assertEqual(next(generator), 13)
+
+  def test_parallel_with_weights_and_minimum(self):
+    """Test of the parallel ccmbinator with weights and minimum."""
+    dataset1 = lambda: (i for i in range(10))
+    dataset2 = lambda: (i for i in range(10, 110))
+    parallel = data.Parallel([dataset1, dataset2],
+                             counters=(10, 100),
+                             reweight_by_minimum=True)
+    generator = parallel()
+
+    self.assertEqual(next(generator), 0)
+    self.assertEqual(next(generator), 10)
+    self.assertEqual(next(generator), 11)
+    self.assertEqual(next(generator), 12)
+    self.assertEqual(next(generator), 13)
+    self.assertEqual(next(generator), 14)
+    self.assertEqual(next(generator), 15)
+    self.assertEqual(next(generator), 16)
+    self.assertEqual(next(generator), 17)
+    self.assertEqual(next(generator), 18)
+    self.assertEqual(next(generator), 19)
+    self.assertEqual(next(generator), 1)
+    self.assertEqual(next(generator), 20)
+    self.assertEqual(next(generator), 21)
+    self.assertEqual(next(generator), 22)
+    self.assertEqual(next(generator), 23)
+    self.assertEqual(next(generator), 24)
+    self.assertEqual(next(generator), 25)
+    self.assertEqual(next(generator), 26)
+    self.assertEqual(next(generator), 27)
+    self.assertEqual(next(generator), 28)
+    self.assertEqual(next(generator), 29)
+    self.assertEqual(next(generator), 2)
+
+  def test_parallel_with_gradual_reweighting(self):
+    """Test of the parallel ccmbinator with weights and minimum."""
+    dataset1 = lambda: (i for i in itertools.cycle(range(1)))
+    dataset2 = lambda: (i for i in itertools.cycle(range(10, 30)))
+    dataset3 = lambda: (i for i in itertools.cycle(range(30, 70)))
+    parallel = data.Parallel([dataset2, dataset1, dataset3],
+                             counters=(20, 1, 40),
+                             gradually_reweight=True)
+    generator = parallel()
+
+    for _ in range(3):
+      self.assertEqual(next(generator), 0)
+      for i in range(20):
+        self.assertEqual(next(generator), 10 + i)
+        self.assertEqual(next(generator), 30 + 2 * i)
+        self.assertEqual(next(generator), 30 + 2 * i + 1)
+
+  def test_parallel_with_gradual_reweighting_remainders(self):
+    """Test of the parallel ccmbinator with weights and minimum."""
+    dataset1 = lambda: (i for i in itertools.cycle(range(1)))
+    dataset2 = lambda: (i for i in itertools.cycle(range(10, 30)))
+    dataset3 = lambda: (i for i in itertools.cycle(range(30, 80)))
+    parallel = data.Parallel([dataset2, dataset1, dataset3],
+                             counters=(20, 1, 50),
+                             gradually_reweight=True,
+                             use_remainders=True)
+    generator = parallel()
+
+    for _ in range(3):
+      self.assertEqual(next(generator), 0)
+      for i in range(20):
+        self.assertEqual(next(generator), 10 + i)
+        self.assertEqual(next(generator), 30 + 2 * i)
+        self.assertEqual(next(generator), 30 + 2 * i + 1)
+      # Here we process the remainder from dataset 3:
+      for i in range(10):
+        self.assertEqual(next(generator), 70 + i)
+
+  def test_parallel_with_gradual_reweighting_remainders_big(self):
+    """Test of the parallel ccmbinator with weights and minimum."""
+    dataset1 = lambda: (i for i in itertools.cycle(range(1)))
+    dataset2 = lambda: (i for i in itertools.cycle(range(10, 30)))
+    dataset3 = lambda: (i for i in itertools.cycle(range(30, 80)))
+    dataset4 = lambda: (i for i in itertools.cycle(range(100, 220)))
+    parallel = data.Parallel([dataset2, dataset1, dataset4, dataset3],
+                             counters=(20, 1, 120, 50),
+                             gradually_reweight=True,
+                             use_remainders=True)
+    generator = parallel()
+
+    for _ in range(3):
+      self.assertEqual(next(generator), 0)
+      for i in range(20):
+        self.assertEqual(next(generator), 10 + i)
+        for j in range(2):
+          self.assertEqual(next(generator), 30 + 2 * i + j)
+          for k in range(2):
+            self.assertEqual(next(generator), 100 + 2 * 2 * i + 2 * j + k)
+      # Here we process the remainder from datasets 3 and 4:
+      for i in range(10):
+        self.assertEqual(next(generator), 70 + i)
+      for i in range(40):
+        self.assertEqual(next(generator), 180 + i)
 
   def test_parallel_with_weights_three_datasets(self):
     """Check that data.Serial works inside another data.Serial."""
