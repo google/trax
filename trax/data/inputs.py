@@ -99,13 +99,35 @@ def Serial(*fns):  # pylint: disable=invalid-name
   return composed_fns
 
 
-def Parallel(fns=None, counters=None):  # pylint: disable=invalid-name
+def Parallel(  # pylint: disable=invalid-name
+    fns=None,
+    counters=None,
+    reweight_by_minimum=False,
+    gradually_reweight=False,
+    use_remainders=False):
   """Combines generator functions into one that runs them in parallel.
 
   Args:
     fns: a sequence of datasets which are combined in parallel.
     counters: a sequence of ints with same length as fns, please see comments on
       its use below.
+    reweight_by_minimum: if set to True, then we re-weight every counter by the
+      minimal counter. E.g. counters (10000, 100000) are translated to (1, 10)
+      and hence for every 10 examples from the second dataset we are getting
+      1 example from the first dataset. Without reweighting first we would see
+      20 examples from the first and second dataset and then 90 thousand eamples
+      only from the first dataset.
+    gradually_reweight: if set to True, then we loop through the generators
+      using a recursive rule defined in emit_examples. First we sort generators
+      by the counters. If we have datasets with counters 1, 20, 40
+      (after sorting) then we yield examples (a(b c^2)^20)^*, where examples of
+      type a come from the first dataset, of type b from the second and of type
+      c from the third. The exponents are obtained through divisions of
+      subsequent counters.
+    use_remainders: if set to True as weell as gradually_reweight is set to
+      True and counters are 1, 20, 45 then after dealing with all examples in
+      the format (a(b c^2)^20)^*, the generator yields the remaining 5 examples
+      from the dataset with counter 45.
   Returns:
     parallel_generator: the generator yields samples according to given;
     if counters are not given then samples are genereted uniformly.
@@ -130,11 +152,25 @@ def Parallel(fns=None, counters=None):  # pylint: disable=invalid-name
   else:
     counters = [1] * len(fns)
 
+  if reweight_by_minimum:
+    counters = [math.floor(counter / min(counters)) for counter in counters]
+
+  def emit_examples(sorted_counters_with_gens, prev_counter):
+    if sorted_counters_with_gens:
+      _, counter, generator = sorted_counters_with_gens[0]
+      repeats = math.floor(counter / prev_counter)
+      for _ in range(repeats):
+        yield next(generator)
+        yield from emit_examples(sorted_counters_with_gens[1:], counter)
+
   def parallel_generator(gen=None):
+    # If gradually_reweight is set to False then
     # current_counters are increased step by step; they are reset to 0s when
     # current_counters[idx] == counters[idx] for all idx. See
     # test_parallel_with_weights_three_datasets for an example of how
     # current_counters are changed during computation.
+    # If gradually_reweight is set to False then we loop using a
+    # recursive rule defined in emit_examples.
 
     generators = []
     for f in fns:
@@ -145,16 +181,37 @@ def Parallel(fns=None, counters=None):  # pylint: disable=invalid-name
         # called on None.
         generators.append(f())
 
-    current_counters = [0]*len(generators)
-    while True:
-      for idx, generator in enumerate(generators):
-        if current_counters[idx] < counters[idx]:
-          current_counters[idx] += 1
-          # instead of checking current_counters[idx] == counters[idx] for
-          # all idx, we check the equivalent condition:
-          if sum(current_counters) == sum(counters):
-            current_counters = [0]*len(generators)
-          yield next(generator)
+    if gradually_reweight:
+      counters_with_gens = zip(range(len(generators)), counters, generators)
+      sorted_counters_with_gens = sorted(counters_with_gens, key=lambda x: x[1])
+      while True:
+        yield from emit_examples(sorted_counters_with_gens, min(counters))
+        if use_remainders:
+          # Below we are dealing with remainders.
+          fractions = []
+          for i in range(len(sorted_counters_with_gens)):
+            _, counter, generator = sorted_counters_with_gens[i]
+            processed = 1
+            for fraction in fractions:
+              processed *= fraction
+            remainder = counter - processed
+            for _ in range(remainder):
+              yield next(generator)
+            if i < len(sorted_counters_with_gens) - 1:
+              _, next_counter, _ = sorted_counters_with_gens[i + 1]
+              fractions.append(math.floor(next_counter / counter))
+    else:
+      current_counters = [0] * len(generators)
+      while True:
+        for idx, generator in enumerate(generators):
+          if current_counters[idx] < counters[idx]:
+            current_counters[idx] += 1
+            # instead of checking current_counters[idx] == counters[idx] for
+            # all idx, we check the equivalent condition:
+            if sum(current_counters) == sum(counters):
+              current_counters = [0] * len(generators)
+            yield next(generator)
+
   return parallel_generator
 
 

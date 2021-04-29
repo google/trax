@@ -17,10 +17,14 @@
 """Tests for RL environments created from supervised data-sets."""
 
 from absl.testing import absltest
+import numpy as np
 from trax.rl.envs import data_envs
 
 
 class SequenceDataEnvTest(absltest.TestCase):
+
+  def _assert_masks(self, info, control, discount):
+    self.assertEqual(info, {'control_mask': control, 'discount_mask': discount})
 
   def test_copy_task_short_sequence_correct_actions(self):
     """Test sequence data env on the copying task, correct replies.
@@ -36,25 +40,30 @@ class SequenceDataEnvTest(absltest.TestCase):
     """
     env = data_envs.SequenceDataEnv(data_envs.copy_stream(2, n=1), 16)
     x1 = env.reset()
-    x2, r0, d0, _ = env.step(0)
+    x2, r0, d0, i0 = env.step(0)
     self.assertEqual(r0, 0.0)
     self.assertEqual(d0, False)
-    eos, r1, d1, _ = env.step(0)
+    self._assert_masks(i0, control=0, discount=0)
+    eos, r1, d1, i1 = env.step(0)
     self.assertEqual(eos, 1)
     self.assertEqual(r1, 0.0)
     self.assertEqual(d1, False)
-    y1, r2, d2, _ = env.step(x1)
+    self._assert_masks(i1, control=0, discount=0)
+    y1, r2, d2, i2 = env.step(x1)
     self.assertEqual(y1, x1)
     self.assertEqual(r2, 0.0)
     self.assertEqual(d2, False)
-    y2, r3, d3, _ = env.step(x2)
+    self._assert_masks(i2, control=1, discount=0)
+    y2, r3, d3, i3 = env.step(x2)
     self.assertEqual(y2, x2)
     self.assertEqual(r3, 0.0)
     self.assertEqual(d3, False)
-    eos2, r4, d4, _ = env.step(1)
+    self._assert_masks(i3, control=1, discount=0)
+    eos2, r4, d4, i4 = env.step(1)
     self.assertEqual(eos2, 1)
     self.assertEqual(r4, 1.0)
     self.assertEqual(d4, True)
+    self._assert_masks(i4, control=1, discount=1)
 
   def test_copy_task_longer_sequnece_mixed_actions(self):
     """Test sequence data env on the copying task, mixed replies.
@@ -121,6 +130,41 @@ class SequenceDataEnvTest(absltest.TestCase):
     obs, reward, done, _ = env.step(10)
     self.assertEqual(done, True)  # continue producing done = True
     self.assertEqual(obs, 1)      # continue producing EOS
+
+  def test_number_of_active_masks(self):
+    """Test that we have the correct number of control and discount masks."""
+    n_input_seqs = 3
+    n_output_seqs = 2
+    input_len = 4
+    output_len = 5
+
+    def data_stream():
+      i = 2 * np.ones(input_len)
+      o = np.zeros(output_len)
+      while True:
+        yield (i, o, i, o, i)  # 3 input, 2 output sequences.
+
+    env = data_envs.SequenceDataEnv(data_stream(), 16, max_length=output_len)
+    env.reset()
+
+    n_discount = 0
+    n_control = 0
+    n_steps = 0
+    done = False
+    while not done:
+      (_, _, done, info) = env.step(action=0)
+      n_discount += info['discount_mask']
+      n_control += info['control_mask']
+      n_steps += 1
+
+    # One discount_mask=1 per output sequence.
+    self.assertEqual(n_discount, n_output_seqs)
+    # One control_mask=1 per output token, including EOS, because it's also
+    # controlled by the agent.
+    self.assertEqual(n_control, (output_len + 1) * n_output_seqs)
+    # One control_mask=0 per input token, excluding EOS, because when the env
+    # emits it, control transfers to the agent immediately.
+    self.assertEqual(n_steps - n_control, input_len * n_input_seqs)
 
 
 if __name__ == '__main__':

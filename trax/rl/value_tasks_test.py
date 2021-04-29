@@ -50,7 +50,7 @@ class ValueTasksTest(absltest.TestCase):
     for _ in range(10):
       batch = next(self._trajectory_batch_stream)
       values = value_fn(batch)
-      errors.append(np.mean((values - batch.returns) ** 2))
+      errors.append(np.mean((values - batch.return_) ** 2))
     return np.mean(errors)
 
   def test_value_tasks_smoke(self):

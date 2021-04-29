@@ -383,10 +383,10 @@ class PolicyAgent(Agent):
       model = self._policy_eval_model
       model.state = self._policy_collect_model.state
     model.replicate_weights(self._policy_trainer.model_weights)
-    tr_slice = trajectory[-self._max_slice_length:]
+    tr_slice = trajectory.suffix(self._max_slice_length)
     trajectory_np = tr_slice.to_np(timestep_to_np=self.task.timestep_to_np)
     # Add batch dimension to trajectory_np and run the model.
-    pred = model(trajectory_np.observations[None, ...])
+    pred = model(trajectory_np.observation[None, ...])
     # Pick element 0 from the batch (the only one), last (current) timestep.
     pred = pred[0, -1, :]
     sample = self._policy_dist.sample(pred, temperature=temperature)
@@ -530,7 +530,7 @@ class PolicyGradient(Agent):
 
   def policy(self, trajectory, temperature=1.0):
     """Policy function that allows to play using this agent."""
-    tr_slice = trajectory[-self._max_slice_length:]
+    tr_slice = trajectory.suffix(self._max_slice_length)
     trajectory_np = tr_slice.to_np(timestep_to_np=self.task.timestep_to_np)
     return network_policy(
         collect_model=self._collect_model,
@@ -551,8 +551,8 @@ class PolicyGradient(Agent):
   def _value_fn(trajectory_batch):
     # Estimate the value of every state as the mean return across trajectories
     # and timesteps in a batch.
-    value = np.mean(trajectory_batch.returns)
-    return np.broadcast_to(value, trajectory_batch.returns.shape)
+    value = np.mean(trajectory_batch.return_)
+    return np.broadcast_to(value, trajectory_batch.return_.shape)
 
 
 def network_policy(
@@ -571,7 +571,7 @@ def network_policy(
     collect_model: the model used for collecting trajectories
     policy_distribution: an instance of trax.rl.distributions.Distribution
     loop: trax.supervised.training.Loop used to train the policy network
-    trajectory_np: an instance of trax.rl.task.TrajectoryNp
+    trajectory_np: an instance of trax.rl.task.TimeStepBatch
     head_index: index of the policy head a multihead model.
     temperature: temperature used to sample from the policy (default=1.0)
 
@@ -595,12 +595,12 @@ def network_policy(
   acc = loop._trainer_per_task[0].accelerated_model_with_loss  # pylint: disable=protected-access
   model.weights = acc._unreplicate(acc.weights[0])  # pylint: disable=protected-access
   # Add batch dimension to trajectory_np and run the model.
-  pred = model(trajectory_np.observations[None, ...])
+  pred = model(trajectory_np.observation[None, ...])
   if isinstance(pred, (tuple, list)):
     # For multihead models, extract the policy head output.
     pred = pred[head_index]
   assert pred.shape == (
-      1, trajectory_np.observations.shape[0], policy_distribution.n_inputs
+      1, trajectory_np.observation.shape[0], policy_distribution.n_inputs
   )
   # Pick element 0 from the batch (the only one), last (current) timestep.
   pred = pred[0, -1, :]
@@ -889,10 +889,10 @@ class DQN(ValueAgent):
         epochs=self._replay_epochs,
     ):
       values_target = self._run_value_model(
-          np_trajectory.observations, use_eval_model=True)
+          np_trajectory.observation, use_eval_model=True)
       if self._double_dqn:
         values = self._run_value_model(
-            np_trajectory.observations, use_eval_model=False
+            np_trajectory.observation, use_eval_model=False
         )
         index_max = np.argmax(values, axis=-1)
         ind_0, ind_1 = np.indices(index_max.shape)
@@ -909,22 +909,22 @@ class DQN(ValueAgent):
       # is the same as values_max[:, :-1].
       n_step_returns = values_max[:, :-self._margin] + \
           self._advantage_estimator(
-              rewards=np_trajectory.rewards,
-              returns=np_trajectory.returns,
+              rewards=np_trajectory.reward,
+              returns=np_trajectory.return_,
               values=values_max,
-              dones=np_trajectory.dones
+              dones=np_trajectory.done
               )
 
       length = n_step_returns.shape[1]
       target_returns = n_step_returns[:, :length]
-      inputs = np_trajectory.observations[:, :length, :]
+      inputs = np_trajectory.observation[:, :length, :]
 
       yield (
           # Inputs are observations
           # (batch, length, obs)
           inputs,
           # the max indices will be needed to compute the loss
-          np_trajectory.actions[:, :length],  # index_max,
+          np_trajectory.action[:, :length],  # index_max,
           # Targets: computed returns.
           # target_returns, we expect here shapes such as
           # (batch, length, num_actions)
@@ -937,10 +937,10 @@ class DQN(ValueAgent):
 
   def policy(self, trajectory, temperature=1):
     """Chooses an action to play after a trajectory."""
-    tr_slice = trajectory[-self._max_slice_length:]
+    tr_slice = trajectory.suffix(self._max_slice_length)
     trajectory_np = tr_slice.to_np(timestep_to_np=self.task.timestep_to_np)
     # Add batch dimension to trajectory_np and run the model.
-    obs = trajectory_np.observations[None, ...]
+    obs = trajectory_np.observation[None, ...]
     values = self._run_value_model(obs, use_eval_model=False)
     # We insisit that values and observations have the shape
     # (batch, length, ...), where the length is the number of subsequent

@@ -184,10 +184,10 @@ class ActorCriticJointAgent(rl_training.Agent):
     model.replicate_weights(self._trainer.model_weights)
     # The two lines below along with the copying
     # before return make the TPU happy
-    tr_slice = trajectory[-self._max_slice_length:]
+    tr_slice = trajectory.suffix(self._max_slice_length)
     trajectory_np = tr_slice.to_np(timestep_to_np=self.task.timestep_to_np)
     # Add batch dimension to trajectory_np and run the model.
-    pred = model(trajectory_np.observations[None, ...])[0]
+    pred = model(trajectory_np.observation[None, ...])[0]
     # Pick element 0 from the batch (the only one), last (current) timestep.
     pred = pred[0, -1, :]
     sample = self._policy_dist.sample(pred, temperature=temperature)
@@ -253,18 +253,18 @@ class PPOJoint(ActorCriticJointAgent):
         old_dist_inputs = np_trajectory.dist_inputs
       else:
         old_dist_inputs = jnp.zeros(
-            np_trajectory.rewards.shape + (self._policy_dist.n_inputs,)
+            np_trajectory.reward.shape + (self._policy_dist.n_inputs,)
         )
       old_log_probs = self._policy_dist.log_prob(
-          old_dist_inputs, np_trajectory.actions
+          old_dist_inputs, np_trajectory.action
       )
       # Insert an extra depth dimension, so the target shape is consistent with
       # the network output shape.
-      yield (np_trajectory.observations,         # Inputs to the value model.
-             np_trajectory.returns[:, :, None],
-             np_trajectory.dones[:, :, None],
-             np_trajectory.rewards[:, :, None],
-             np_trajectory.actions,
+      yield (np_trajectory.observation,         # Inputs to the value model.
+             np_trajectory.return_[:, :, None],
+             np_trajectory.done[:, :, None],
+             np_trajectory.reward[:, :, None],
+             np_trajectory.action,
              old_log_probs,
              np_trajectory.mask)
 
@@ -494,11 +494,11 @@ class A2CJoint(ActorCriticJointAgent):
         self._batch_size, max_slice_length=self._max_slice_length, epochs=[-1]):
       # Insert an extra depth dimension, so the target shape is consistent with
       # the network output shape.
-      yield (np_trajectory.observations,         # Inputs to the value model.
-             np_trajectory.returns[:, :, None],
-             np_trajectory.dones[:, :, None],
-             np_trajectory.rewards[:, :, None],
-             np_trajectory.actions,
+      yield (np_trajectory.observation,         # Inputs to the value model.
+             np_trajectory.return_[:, :, None],
+             np_trajectory.done[:, :, None],
+             np_trajectory.reward[:, :, None],
+             np_trajectory.action,
              jnp.zeros_like(np_trajectory.mask),
              np_trajectory.mask)
 
@@ -639,9 +639,9 @@ class AWRJoint(ActorCriticJointAgent):
         self._batch_size, max_slice_length=self._max_slice_length):
       # Insert an extra depth dimension, so the target shape is consistent with
       # the network output shape.
-      yield (np_trajectory.observations,         # Inputs to the value model.
-             np_trajectory.returns[:, :, None],  # Targets: regress to returns.
-             np_trajectory.actions,              # Policy targets: actions.
+      yield (np_trajectory.observation,         # Inputs to the value model.
+             np_trajectory.return_[:, :, None],  # Targets: regress to returns.
+             np_trajectory.action,              # Policy targets: actions.
              np_trajectory.mask)                 # Padding mask.
 
   @property

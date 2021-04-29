@@ -44,7 +44,7 @@ class ValueTrainTask(training.TrainTask):
     """Initializes ValueTrainTask.
 
     Args:
-      trajectory_batch_stream: Generator of trax.rl.task.TrajectoryNp.
+      trajectory_batch_stream: Generator of trax.rl.task.TimeStepBatch.
       optimizer: Optimizer for network training.
       lr_schedule: Learning rate schedule for network training.
       advantage_estimator: Function
@@ -113,7 +113,7 @@ class ValueTrainTask(training.TrainTask):
     """Computes a value training batch based on a trajectory batch.
 
     Args:
-      trajectory_batch: trax.rl.task.TrajectoryNp with a batch of trajectory
+      trajectory_batch: trax.rl.task.TimeStepBatch with a batch of trajectory
         slices. Elements should have shape (batch_size, seq_len, ...).
       shape_only: Whether to return dummy zero arrays of correct shape. Useful
         for initializing models.
@@ -129,17 +129,17 @@ class ValueTrainTask(training.TrainTask):
     if self._sync_at(self._step) and not shape_only:
       self._sync_target_model()
 
-    (batch_size, seq_len) = trajectory_batch.observations.shape[:2]
-    assert trajectory_batch.actions.shape[:2] == (batch_size, seq_len)
+    (batch_size, seq_len) = trajectory_batch.observation.shape[:2]
+    assert trajectory_batch.action.shape[:2] == (batch_size, seq_len)
     assert trajectory_batch.mask.shape == (batch_size, seq_len)
     # Compute the value from the target network.
     values = np.array(self.value(trajectory_batch, shape_only=shape_only))
     assert values.shape == (batch_size, seq_len)
     # Compute the advantages - the TD errors of the target network.
     advantages = self._advantage_estimator(
-        rewards=trajectory_batch.rewards,
-        returns=trajectory_batch.returns,
-        dones=trajectory_batch.dones,
+        rewards=trajectory_batch.reward,
+        returns=trajectory_batch.return_,
+        dones=trajectory_batch.done,
         values=values,
     )
     adv_seq_len = advantages.shape[1]
@@ -152,7 +152,7 @@ class ValueTrainTask(training.TrainTask):
     # advantages are zero.
     targets = (values[:, :adv_seq_len] + advantages) * self._target_scale
     # Trim observations and the mask to match the target length.
-    observations = trajectory_batch.observations[:, :adv_seq_len]
+    observations = trajectory_batch.observation[:, :adv_seq_len]
     mask = trajectory_batch.mask[:, :adv_seq_len]
     # Add a singleton depth dimension to the targets and the mask.
     targets = targets[:, :, None]
@@ -176,12 +176,12 @@ class ValueTrainTask(training.TrainTask):
     if shape_only:
       # The target model hasn't been initialized yet, and we are asked for the
       # initial, sample batch. Only shape matters here, so just return zeros.
-      return np.zeros(trajectory_batch.observations.shape[:2])
+      return np.zeros(trajectory_batch.observation.shape[:2])
 
     if not self._synced:
       self._sync_target_model()
 
-    values = self._target_model(trajectory_batch.observations)
+    values = self._target_model(trajectory_batch.observation)
     # Squeeze the singleton depth axis.
     return np.squeeze(values, axis=-1) / self._target_scale
 
