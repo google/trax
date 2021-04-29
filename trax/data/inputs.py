@@ -99,6 +99,7 @@ def Serial(*fns):  # pylint: disable=invalid-name
   return composed_fns
 
 
+# TODO(jonni): Rename to Blend/Merge/Mix/Interleave/...?
 def Parallel(  # pylint: disable=invalid-name
     fns=None,
     counters=None,
@@ -216,26 +217,345 @@ def Parallel(  # pylint: disable=invalid-name
 
 
 @gin.configurable(module='trax.data')
-def Log(n_steps_per_example=1, only_shapes=True):  # pylint: disable=invalid-name
-  """Creates a logging component of the input pipeline."""
-  def log(stream):
-    counter = 0
-    for example in stream:
-      item_to_log = example
-      if only_shapes:
-        item_to_log = fastmath.nested_map(shapes.signature, example)
-      if counter % n_steps_per_example == 0:
-        logging.info(str(item_to_log))
-        print(item_to_log)
-      counter += 1
+def Shuffle(queue_size=1024):  # pylint: disable=invalid-name
+  """Returns a shuffle function with the given queue size."""
+  return lambda g: shuffle(g, queue_size)
+
+
+@gin.configurable(module='trax.data')
+def Batch(batch_size):  # pylint: disable=invalid-name
+  """Returns a batching function with given batch size."""
+  return lambda g: batch(g, batch_size)
+
+
+@gin.configurable(module='trax.data')
+def FilterEmptyExamples(axes=None, debug=False):  # pylint: disable=invalid-name
+  """Filters empty examples.
+
+  Filters any example that has an array of size (0,) (if axes=None).
+  Alternatively, checks only axes provided in `axes' list. Contrary to
+  FilterByLength used with several elements with length_axis, here the example
+  would be filtered if ANY of the dimensions listed in `axes' contains an empty
+  array.
+
+  Args:
+    axes: list of indices to check, if None, all of them.
+    debug: If true, emits a log everytime we filter out an empty example.
+
+  Returns:
+    Function filtering empty examples.
+  """
+  def _filter_examples(generator):
+    for example in generator:
+      correct = True
+      for i, unused_tuple_element in enumerate(example):
+        if axes is None or i in axes:
+          if example[i].shape == (0,):
+            correct = False
+            break
+      if correct:
+        yield example
+      elif debug:
+        logging.info('Filtered example: %r', example)
+  return _filter_examples
+
+
+@gin.configurable(module='trax.data')
+def FilterByLength(max_length, min_length=0,  # pylint: disable=invalid-name
+                   length_keys=None, length_axis=0):
+  """Returns a function that filters out examples by length.
+
+  Args:
+    max_length: int. If not None, indicates maximum length.
+    min_length: int. If not None, indicates minimum length.
+    length_keys: (list) which example keys to take into account.
+    length_axis: which shape axis to take into account.
+  Returns:
+    a function that filters out examples by length.
+  """
+
+  assert max_length is not None or min_length is not None
+  length_keys = length_keys or [0, 1]
+  length_fn = lambda x: _length_fn(x, length_axis, length_keys)
+  def filtered(gen):
+    for example in gen:
+      example_len = length_fn(example)
+
+      # Checking max length boundary.
+      if max_length is not None:
+        if example_len > max_length:
+          continue
+      # Checking min length boundary.
+      if min_length is not None:
+        if example_len < min_length:
+          continue
+      # Within bounds.
       yield example
-  return log
+  return filtered
 
 
-def _generator_process(generator, in_q, out_q):
-  for example in generator:
-    in_q.get()
-    out_q.put(example)
+@gin.configurable(module='trax.data')
+def TruncateToLength(len_map=None):  # pylint: disable=invalid-name
+  """Returns a stream function that resizes items as specified by ``len_map``.
+
+  Args:
+    len_map: Dictionary that specifies maximum shapes for potentially multiple
+        features per stream item. For example, given a stream of tokenized
+        string pairs, one could enforce a maximum length of 256 tokens for each
+        string by using ``len_map={0: (256,), 1: (256,)}``.
+  """
+  @debug_data_pipeline.debug_pipeline
+  def _truncate_to_length(generator):
+    for example in generator:
+      if isinstance(example, np.ndarray):
+        example = (example,)
+      if isinstance(example, (list, tuple)):
+        example = list(example)
+        if len_map is not None:
+          for key, max_len in len_map.items():
+            example_len = example[key].shape
+            if example_len > max_len:
+              example[key] = np.resize(example[key], max_len)
+        output = tuple(example)
+      else:
+        output = None
+        raise ValueError(f'Unknown example type: {example}')
+      yield output
+
+  return _truncate_to_length
+
+
+@gin.configurable(module='trax.data')
+def PadToLength(  # pylint: disable=invalid-name
+    len_map=None, pad_value=0, multiple=False):
+  """Pads the values to lengths given in `len_map'.
+
+  len_map contains a dictionary of example keys to dimension sizes.
+
+  Args:
+    len_map: dict of int to int, we pad examples to lengths
+      given by the values of the dict. If multiple is True, the dimensions are
+      padded to multiple of this value.
+    pad_value: dict of int to int. The value gets applied to
+      constant_values on numpy.pad per given dimension.
+    multiple: boolean. If False, pads to the value of len_map. If True, pads to
+      closest multiple of value of len_map.
+  Returns:
+    Function to pad examples to given lengths.
+  """
+  @debug_data_pipeline.debug_pipeline
+  def _pad_to_length(generator):
+    for example in generator:
+      if isinstance(example, (list, tuple)):
+        example = list(example)
+        for key, value in len_map.items():
+          array_length = example[key].shape[0]
+          if multiple:
+            padding_len = array_length - ((array_length // value) * value)
+          else:
+            padding_len = max([0, value-example[key].shape[0]])
+          example[key] = np.pad(example[key],
+                                pad_width=(0, padding_len),
+                                mode='constant',
+                                constant_values=pad_value[key])
+        output = tuple(example)
+      else:
+        if not isinstance(example, np.ndarray):
+          raise ValueError(f'example isn\'t nparray, but should be: {example}')
+        array_length = example.shape[0]
+        if multiple:
+          padding_len = array_length - ((array_length // value) * value)
+        else:
+          padding_len = max(0, len_map[0] - array_length)
+        output = np.pad(example,
+                        pad_width=(0, padding_len),
+                        mode='constant',
+                        constant_values=pad_value[0])
+      yield output
+  if len_map is None:
+    raise ValueError('len_map parameter should be provided.')
+  return _pad_to_length
+
+
+@gin.configurable(module='trax.data')
+def BucketByLength(boundaries, batch_sizes,  # pylint: disable=invalid-name
+                   length_keys=None, length_axis=0, strict_pad_on_len=False):
+  """Returns a function for bucketing inputs, see `bucket_by_length`."""
+  length_keys = length_keys or [0, 1]
+  # In all cases so far, we use a length function of the following form.
+  length_fn = lambda x: _length_fn(x, length_axis, length_keys)
+  return lambda g: bucket_by_length(  # pylint: disable=g-long-lambda
+      g, length_fn, boundaries, batch_sizes, strict_pad_on_len)
+
+
+@gin.configurable(module='trax.data')
+def MLM(vocab_size=None,  # pylint:disable=invalid-name
+        max_length=None,
+        noise_density=0.15,
+        mean_noise_span_length=3.0):
+  """Pipeline that just does MLM."""
+  return Serial(
+      # Generate sequential chunks.
+      generate_sequential_chunks(max_length=max_length),
+      # Generate mask and chunk.
+      generate_random_noise_mask(
+          noise_density=noise_density,
+          mean_noise_span_length=mean_noise_span_length),
+      # Consume mask and chunk to give (input, targets).
+      consume_noise_mask(vocab_size=vocab_size),
+  )
+
+
+@gin.configurable(module='trax.data')
+def PrefixLM(input_length=128, output_length=512):  # pylint:disable=invalid-name
+  """Chunks examples so as to make inputs/outputs of specified lenghts."""
+  def _f(generator):
+    for example in generator:
+      n_tokens = len(example)
+      # Iterate:
+      # |--------|<---- input_length ---->|<- output_length ->|--------------|
+      # ^        ^                        ^                   ^
+      # |        |                        |                   |
+      # 0        input_begin_idx          input_end_idx       output_end_idx
+      input_begin_idx = 0
+      # While you can make an input batch, keep going.
+      while input_begin_idx + input_length < n_tokens:
+        input_end_idx = input_begin_idx + input_length
+        output_end_idx = min(input_end_idx + output_length, n_tokens)
+        yield (example[input_begin_idx:input_end_idx],
+               example[input_end_idx:output_end_idx])
+        # Update the indices.
+        input_begin_idx = output_end_idx
+  return _f
+
+
+@gin.configurable(module='trax.data')
+def ConcatenateToLMInput(pad_to_length=None):  # pylint: disable=invalid-name
+  """Prepares the input needed for training of Language Models.
+
+  Each example needs to contain two elements (input and target).
+  Input is concatenated to target and, if pad_to_length is given, padded to
+  length provided.
+  The loss_weights indicates only the target, without input nor padding.
+
+  Args:
+    pad_to_length: int, total length of padding of input and target arrays.
+  Returns:
+    Function to return input for a LM.
+  """
+  @debug_data_pipeline.debug_pipeline
+  def _concatenate_to_lm_input(generator):
+    for example in generator:
+      if isinstance(example, (list, tuple)) and (len(example) == 2):
+        concatenated = np.concatenate((example[0], example[1]), axis=-1)
+        loss_weights = np.concatenate((np.zeros_like(example[0]),
+                                       np.ones_like(example[1])))
+        if pad_to_length is not None:
+          padding_len = pad_to_length - (
+              example[0].shape[0] + example[1].shape[0])
+          if padding_len < 0:
+            raise ValueError(
+                'Example lengths '
+                f'({example[0].shape[0]}, {example[1].shape[0]}) '
+                f'longer than pad_to_length ({pad_to_length}).')
+          loss_weights = np.pad(loss_weights, (0, padding_len), 'constant')
+          concatenated = np.pad(concatenated, (0, padding_len), 'constant')
+        output = (concatenated, concatenated, loss_weights)
+      elif isinstance(example, (list, tuple)) and (len(example) == 1):
+        # Make x into (x, x)
+        output = (example[0], example[0])
+      elif isinstance(example, np.ndarray):
+        # Make x into (x, x)
+        output = (example, example)
+      else:
+        output = None
+        raise ValueError(f'Unknown input to ConcatenateToLMInput: {example}')
+      yield output
+
+  return _concatenate_to_lm_input
+
+
+@gin.configurable(module='trax.data')
+def CastTo(dtype=np.int32, indices=(0, 1,), debug=False):  # pylint: disable=invalid-name
+  """Casts the given indices to the given dtype."""
+  def _cast_fn(generator):
+    debug_count = 0
+    for example in generator:
+      debug_count += 1
+      assert isinstance(example, tuple)
+      example = list(example)
+      dtype_mismatch = False
+      original_index_and_dtype = []
+      for i in range(len(example)):
+        if i not in indices:
+          continue
+        original_type = example[i].dtype
+        if original_type != dtype:
+          if not (original_type == np.int64 and dtype == np.int32):
+            # Downcasting from np.int64 to np.int32 is OK
+            original_index_and_dtype.append((i, original_type))
+          example[i] = example[i].astype(dtype)
+          dtype_mismatch = True
+      if debug and dtype_mismatch and original_index_and_dtype:
+        logging.info('dtype mismatch in example[%d] = %r was earlier: %r',
+                     debug_count, example, original_index_and_dtype)
+      yield tuple(example)
+  return _cast_fn
+
+
+@gin.configurable(module='trax.data')
+def AppendValue(val=None):  # pylint: disable=invalid-name
+  """Appends values provided in 'val` to inputs.
+
+  val are keyed by example keys, its values contain appended tensors.
+
+  Args:
+    val: dict of int to tensors. Specific keys get the tensors specified in
+      values appended.
+  Returns:
+    Funtion to append tensors to examples.
+  """
+  @debug_data_pipeline.debug_pipeline
+  def _append_value(generator):
+    for example in generator:
+      if isinstance(example, tuple):
+        example = list(example)
+        if val is not None:
+          for key, value in val.items():
+            example[key] = np.append(example[key], value, -1)
+        output = tuple(example)
+      else:
+        if not isinstance(example, np.ndarray):
+          raise ValueError(f'example isn\'t nparray, but should be: {example}')
+        output = np.append(example, val[0])
+      yield output
+
+  return _append_value
+
+
+@gin.configurable(module='trax.data')
+def AddLossWeights(id_to_mask=None):  # pylint: disable=invalid-name
+  """Returns a function to add loss weights; see `add_loss_weights`."""
+  return lambda g: add_loss_weights(g, id_to_mask=id_to_mask)
+
+
+@gin.configurable(module='trax.data')
+def UnBatch():  # pylint: disable=invalid-name
+  """Returns a function which unbatches."""
+  def _unbatch(generator):
+    for batched_example in generator:
+      # batched_example is usually like:
+      # (batched_inputs, batched_outputs) or
+      # (batched_inputs, batched_outputs, batched_weights)
+      assert isinstance(batched_example, tuple)
+      # assert all lengths are the same.
+      batch_sizes = list(set(map(lambda example: example.shape[0],
+                                 batched_example)))
+      assert len(batch_sizes) == 1
+      # Now unbatch examples.
+      for example_idx in range(batch_sizes[0]):
+        yield tuple(map(lambda x: x[example_idx], batched_example))  # pylint: disable=cell-var-from-loop
+  return _unbatch
 
 
 @gin.configurable(module='trax.data')
@@ -251,6 +571,56 @@ def Prefetch(n_prefetch=2):  # pylint: disable=invalid-name
       yield out_q.get()
       in_q.put(None)
   return prefetch
+
+
+@gin.configurable(module='trax.data')
+def UniformlySeek(name=None, host_id=None, n_hosts=None, dataset_size=None):  # pylint: disable=invalid-name
+  """Sets each host at (dataset_size/n_hosts)-th of the dataset."""
+  if not dataset_size:
+    dataset_size = 2 ** 18  # 512 * 512
+    logging.error(
+        'No dataset size given to Uniformly seek, assuming: %d', dataset_size)
+  assert name
+  host_id = jax.host_id() if host_id is None else host_id
+  n_hosts = n_hosts or jax.host_count()
+  each_host = int(dataset_size / n_hosts)
+  def _f(generator):
+    # Each host seeks to the appropriate point in the dataset.
+    num_to_seek = int(host_id * each_host)
+    start_time = time.time()
+    logging.info('Dataset[%s] host_id[%d] is seeking to position[%d]',
+                 name, host_id, num_to_seek)
+    for _ in range(num_to_seek):
+      next(generator)
+    logging.info('Dataset[%s] host_id[%d] reached position[%d]. '
+                 'Time taken [%s] seconds',
+                 name, host_id, num_to_seek, time.time() - start_time)
+    for example in generator:
+      yield example
+  return _f
+
+
+@gin.configurable(module='trax.data')
+def CountAndSkip(name):  # pylint: disable=invalid-name
+  """Returns a function that counts and skips examples (see above)."""
+  return lambda g: count_and_skip(g, name)
+
+
+@gin.configurable(module='trax.data')
+def Log(n_steps_per_example=1, only_shapes=True):  # pylint: disable=invalid-name
+  """Creates a logging component of the input pipeline."""
+  def log(stream):
+    counter = 0
+    for example in stream:
+      item_to_log = example
+      if only_shapes:
+        item_to_log = fastmath.nested_map(shapes.signature, example)
+      if counter % n_steps_per_example == 0:
+        logging.info(str(item_to_log))
+        print(item_to_log)
+      counter += 1
+      yield example
+  return log
 
 
 def shuffle(samples, queue_size):
@@ -293,100 +663,6 @@ def shuffle(samples, queue_size):
     yield sample
 
 
-@gin.configurable(module='trax.data')
-def Shuffle(queue_size=1024):  # pylint: disable=invalid-name
-  """Returns a shuffle function with the given queue size."""
-  return lambda g: shuffle(g, queue_size)
-
-
-data_counters = {}
-
-
-def save_data_counters(output_dir, host_id=None):
-  """Checkpoint data counters."""
-  global data_counters
-  host_id = jax.host_id() if host_id is None else host_id
-  fname = os.path.join(output_dir, 'data_counters%d.pkl' % host_id)
-  with tf.io.gfile.GFile(fname, 'wb') as f:
-    pickle.dump(data_counters, f)
-
-
-def load_data_counters(output_dir, host_id=None):
-  """Checkpoint data counters."""
-  global data_counters
-  host_id = jax.host_id() if host_id is None else host_id
-  fname = os.path.join(output_dir, 'data_counters%d.pkl' % host_id)
-  if not tf.io.gfile.exists(fname):
-    logging.info('Did not load data counters as %s does not exist.', fname)
-    return
-  with tf.io.gfile.GFile(fname, 'rb') as f:
-    obj = pickle.load(f)
-  data_counters = obj
-
-
-def count_and_skip(generator, name):
-  """Count the number of items in the generator, skip already counted ones.
-
-  This function counts the number of processed examples and puts it into
-  the global variable `counters`. This variable can be saved and restored,
-  and if restored, this function will skip examples until the restored counter
-  is reached. When the data generator is deterministic, this allows to restore
-  the data reading process from a checkpoint.
-
-  Args:
-    generator: generator for examples in the dataset.
-    name: string, a unique id that we use to count the examples
-
-  Yields:
-    The examples from generator but first skip the number specified in the
-    global variable counters[name] and next increment this variable every
-    time a new example appears.
-  """
-  global data_counters
-  local_counter = 0
-  for example in generator:
-    local_counter += 1
-    # This check must be inside the loop due to asynchronous initializations.
-    if name not in data_counters:
-      data_counters[name] = 0
-    if local_counter > data_counters[name]:
-      data_counters[name] += 1
-      yield example
-
-
-@gin.configurable(module='trax.data')
-def CountAndSkip(name):  # pylint: disable=invalid-name
-  """Returns a function that counts and skips examples (see above)."""
-  return lambda g: count_and_skip(g, name)
-
-
-@gin.configurable(module='trax.data')
-def UniformlySeek(name=None, host_id=None, n_hosts=None, dataset_size=None):  # pylint: disable=invalid-name
-  """Sets each host at (dataset_size/n_hosts)-th of the dataset."""
-  if not dataset_size:
-    dataset_size = 2 ** 18  # 512 * 512
-    logging.error(
-        'No dataset size given to Uniformly seek, assuming: %d', dataset_size)
-  assert name
-  host_id = jax.host_id() if host_id is None else host_id
-  n_hosts = n_hosts or jax.host_count()
-  each_host = int(dataset_size / n_hosts)
-  def _f(generator):
-    # Each host seeks to the appropriate point in the dataset.
-    num_to_seek = int(host_id * each_host)
-    start_time = time.time()
-    logging.info('Dataset[%s] host_id[%d] is seeking to position[%d]',
-                 name, host_id, num_to_seek)
-    for _ in range(num_to_seek):
-      next(generator)
-    logging.info('Dataset[%s] host_id[%d] reached position[%d]. '
-                 'Time taken [%s] seconds',
-                 name, host_id, num_to_seek, time.time() - start_time)
-    for example in generator:
-      yield example
-  return _f
-
-
 def batch(generator, batch_size):
   """Batch and pad generator as in tf.data.Dataset.padded_batch."""
   if batch_size <= 0:
@@ -411,31 +687,6 @@ def batch(generator, batch_size):
       i += 1
       yield batched_example
       buf = []
-
-
-@gin.configurable(module='trax.data')
-def Batch(batch_size):  # pylint: disable=invalid-name
-  """Returns a batching function with given batch size."""
-  return lambda g: batch(g, batch_size)
-
-
-@gin.configurable(module='trax.data')
-def UnBatch():  # pylint: disable=invalid-name
-  """Returns a function which unbatches."""
-  def _unbatch(generator):
-    for batched_example in generator:
-      # batched_example is usually like:
-      # (batched_inputs, batched_outputs) or
-      # (batched_inputs, batched_outputs, batched_weights)
-      assert isinstance(batched_example, tuple)
-      # assert all lengths are the same.
-      batch_sizes = list(set(map(lambda example: example.shape[0],
-                                 batched_example)))
-      assert len(batch_sizes) == 1
-      # Now unbatch examples.
-      for example_idx in range(batch_sizes[0]):
-        yield tuple(map(lambda x: x[example_idx], batched_example))  # pylint: disable=cell-var-from-loop
-  return _unbatch
 
 
 def pad_to_max_dims(tensors, boundary=None, strict_pad_on_len=False):
@@ -521,6 +772,326 @@ def pad_to_max_dims(tensors, boundary=None, strict_pad_on_len=False):
   return np.stack(padded_tensors)
 
 
+def bucket_by_length(generator, length_fn, boundaries, batch_sizes,
+                     strict_pad_on_len=False):
+  """Bucket by length, like tf.data.experimental.bucket_by_sequence_length.
+
+  This function draws examples from the provided `generator` and puts an
+  example into a bucket depending on `l = length_fn(example)`. Which bucket
+  is used depends on between which `boundaries` is l. When a bucket reaches
+  its batch size, as specified by `batch_sizes`, generates a batch of
+  padded examples from this bucket.
+
+  Args:
+    generator: python generator to draw data from.
+    length_fn: a function taking the example and returning the length.
+    boundaries: a list of bucket boundaries.
+    batch_sizes: a list of batch sizes.
+    strict_pad_on_len: bool; if true we pad on the length dimension, dim[0]
+      strictly as a multiple of boundary.
+
+  Yields:
+    An input batch, which comes from one of the buckets.
+  """
+  buckets = [[] for _ in range(len(batch_sizes))]
+  boundaries = boundaries + [math.inf]  # Max boundary is unlimited.
+  for example in generator:
+    length = length_fn(example)
+    # `bucket_idx` will always be < len(boundaries), since boundaries is right
+    # padded by `math.inf`.
+    bucket_idx = min([i for i, b in enumerate(boundaries) if length <= b])
+    buckets[bucket_idx].append(example)
+    if len(buckets[bucket_idx]) == batch_sizes[bucket_idx]:
+      batched = zip(*buckets[bucket_idx])
+      boundary = boundaries[bucket_idx]
+      boundary = None if boundary == math.inf else boundary
+      padded_batch = tuple(
+          pad_to_max_dims(x, boundary, strict_pad_on_len) for x in batched)
+      yield padded_batch
+      buckets[bucket_idx] = []
+
+
+@debug_data_pipeline.debug_pipeline
+def add_loss_weights(generator, id_to_mask=None):
+  """Add weights to inputs without weights and masks by id if requested.
+
+  The generator stream is augmented in the following way:
+
+  - If the stream consists of pairs `(inputs, targets)`, a loss mask is added
+    that is creates as a tensor of ones of the same shape as targets.
+  - If `id_to_mask` is not `None`, and the stream (after the previous point)
+    has triples `(inputs, targets, weights)`, the weights are multiplied by a
+    0/1 mask that is 0 iff targets is equal to `id_to_mask` (1 otherwise).
+
+  Args:
+    generator: Stream of tuples.
+    id_to_mask: If not None, int-valued id that represents padding, as opposed
+        to true target IDs.
+
+  Yields:
+    Examples from the augmented stream.
+  """
+  for example in generator:
+    if len(example) > 3 or len(example) < 2:
+      assert id_to_mask is None, 'Cannot automatically mask this stream.'
+      yield example
+    else:
+      if len(example) == 2:
+        weights = np.ones_like(example[1]).astype(np.float32)
+      else:
+        weights = example[2].astype(np.float32)
+      mask = 1.0 - np.equal(example[1], id_to_mask).astype(np.float32)
+      weights *= mask
+      output = (example[0], example[1], weights)
+      yield output
+
+
+@gin.configurable(module='trax.data')
+def generate_random_noise_mask(noise_density=0.15,
+                               mean_noise_span_length=3.0,
+                               seed1=None,
+                               seed2=None):
+  """Returns a function that generates a random noise mask."""
+  def _f(generator):
+    for example in generator:
+      length = len(example)
+      noise_mask = random_spans_noise_mask(
+          length, noise_density=noise_density,
+          mean_noise_span_length=mean_noise_span_length,
+          seed1=seed1, seed2=seed2, example=example)
+      yield (example, noise_mask)
+  return _f
+
+
+@gin.configurable(module='trax.data')
+def consume_noise_mask(vocab_size=32100):
+  """Consumes (tokens, noise mask) and returns (inputs, targets)."""
+  def _noise_span_to_unique_sentinel(tokens, noise_mask):
+    prev_token_is_noise = np.pad(
+        noise_mask[:-1], [1, 0], mode='constant', constant_values=False)
+    first_noise_tokens = np.logical_and(noise_mask,
+                                        np.logical_not(prev_token_is_noise))
+    subsequent_noise_tokens = np.logical_and(noise_mask, prev_token_is_noise)
+    sentinel = vocab_size - np.cumsum(first_noise_tokens)
+    tokens = np.where(first_noise_tokens, sentinel, tokens)
+    return tokens[np.logical_not(subsequent_noise_tokens)]
+
+  def _f(generator):
+    for tokens, noise_mask in generator:
+      # Returns inputs and targets.
+      yield (_noise_span_to_unique_sentinel(tokens, noise_mask),
+             _noise_span_to_unique_sentinel(tokens, np.logical_not(noise_mask)))
+  return _f
+
+
+@gin.configurable(module='trax.data')
+def generate_sequential_chunks(max_length=None):
+  """Returns a function that generates chunks of atmost max_length length."""
+  def _f(generator):
+    for example in generator:
+      n_tokens = len(example)
+      if n_tokens <= max_length:
+        yield example
+      n_segments = int(math.ceil(float(n_tokens) / float(max_length)))
+      for i in range(n_segments):
+        start = max_length * i
+        end = min(start + max_length, n_tokens)
+        yield example[start:end]
+  return _f
+
+
+@gin.configurable(module='trax.data')
+def addition_input_stream(
+    vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, min_length=gin.REQUIRED,
+    max_length=gin.REQUIRED, pad_to_multiple=32, encdec=False):
+  """Data stream for the add problem: <S>x+y<S>(x+y).
+
+  Args:
+    vocab_size: how many symbols to use.
+    batch_size: how large are the batches.
+    min_length: minimal length of w.
+    max_length: maximal length of w.
+    pad_to_multiple: int, pad length to be multiple of this number.
+    encdec: bool, if True return encoder-decoder style inputs (default: False)
+
+  Returns:
+    python generator of tuples of data examples
+  """
+  base = vocab_size - 3  # We use 0 to pad, base+1 as "+" and base+2 as "<S>".
+  def single_example(max_length, min_length):
+    """Generate a stream of random mini-batches."""
+    add_len = (min_length - 1) // 2
+    l1 = np.random.randint((max_length - add_len + 1) // 2) + add_len
+    l2 = np.random.randint(max_length - l1 - 1) + 1
+    n1 = random_number_lower_endian(l1, base)
+    n2 = random_number_lower_endian(l2, base)
+    result = lower_endian_to_number(n1, base) + lower_endian_to_number(
+        n2, base)
+    inp = n1 + [base] + n2
+    tgt = number_to_lower_endian(result, base)
+    if encdec:
+      x = [i + 1 for i in inp]
+      y = [i + 1 for i in tgt]
+      weights = [1] * len(tgt)
+      candidate_example = (np.array(x), np.array(y), np.array(weights))
+      if any(len(sample) > max_length for sample in candidate_example):
+        # sample too long, try again
+        return single_example(max_length, min_length)
+      return (np.array(x), np.array(y), np.array(weights))
+    else:
+      x = [base+2] + [i+1 for i in inp] + [base+2] + [i+1 for i in tgt]
+      weights = ([0] * (len(inp) + 2)) + ([1] * len(tgt))
+      return (np.array(x), np.array(x), np.array(weights))
+
+  def batches(max_length, min_length):
+    """Batches of examples."""
+    if max_length < 3 or min_length < 3:
+      raise ValueError('Maximum/minimum length must be at least 3.')
+    while True:
+      ex = [single_example(max_length, min_length) for _ in range(batch_size)]
+      padded_batch = [pad_to_max_dims(x, boundary=pad_to_multiple,
+                                      strict_pad_on_len=True)
+                      for x in zip(*ex)]
+      yield tuple(padded_batch)
+
+  return batches(max_length, min_length)
+
+
+# This is a straightforward translation of T5's random_spans_noise_mask.
+def random_spans_noise_mask(length,
+                            noise_density=0.15,
+                            mean_noise_span_length=3.0,
+                            seed1=None,
+                            seed2=None,
+                            example=None):
+  """Computes span corruption masks given input parameters."""
+  # Passing this in case if we want to use for debugging/logging
+  del example
+  orig_length = length
+  # increase length to avoid degeneracy
+  length = max(length, 2)
+  num_noise_tokens = int(round(length * noise_density))
+  # avoid degeneracy by ensuring positive numbers of noise and nonnoise tokens.
+  num_noise_tokens = min(max(num_noise_tokens, 1), length - 1)
+  num_noise_spans = int(round(num_noise_tokens / mean_noise_span_length))
+  # avoid degeneracy by ensuring positive number of noise spans
+  num_noise_spans = max(num_noise_spans, 1)
+  num_nonnoise_tokens = length - num_noise_tokens
+
+  # Pick the lengths of the noise spans and the non-noise spans
+  def randomly_segment(num_items, num_segments, seed):
+    x = np.arange(num_items - 1) < num_segments - 1
+    # Set random seed if passed (only in tests for now).
+    if seed is not None:
+      np.random.seed(seed)
+    np.random.shuffle(x)
+    first_in_segment = np.pad(x, (1, 0), mode='constant')
+    segment_id = np.cumsum(first_in_segment)
+
+    y = np.roll(segment_id, 1)
+    y[0] = 0
+    idxs = np.pad(np.squeeze(np.argwhere(segment_id - y), axis=1),
+                  (1, 0),
+                  mode='constant')
+    segment_lengths = np.add.reduceat(np.ones_like(segment_id), idxs, axis=0)
+    return segment_lengths
+
+  noise_span_lengths = randomly_segment(
+      num_noise_tokens, num_noise_spans, seed1)
+  nonnoise_span_lengths = randomly_segment(
+      num_nonnoise_tokens, num_noise_spans, seed2)
+  interleaved_span_lengths = np.reshape(
+      np.stack([nonnoise_span_lengths, noise_span_lengths], axis=1),
+      [num_noise_spans * 2])
+  span_starts = np.cumsum(interleaved_span_lengths)[:-1]
+  span_start_indicator = np.zeros(length)  # all 0s to begin with
+  span_start_indicator[span_starts] = 1
+  span_num = np.cumsum(span_start_indicator)
+  is_noise = np.equal(span_num % 2, 1)
+  return is_noise[:orig_length]
+
+
+def lower_endian_to_number(l, base):
+  """Helper function: convert a list of digits in the given base to a number."""
+  return sum([d * (base**i) for i, d in enumerate(l)])
+
+
+def number_to_lower_endian(n, base):
+  """Helper function: convert a number to a list of digits in the given base."""
+  if n < base:
+    return [n]
+  return [n % base] + number_to_lower_endian(n // base, base)
+
+
+def random_number_lower_endian(length, base):
+  """Helper function: generate a random number as a lower-endian digits list."""
+  if length == 1:  # Last digit can be 0 only if length is 1.
+    return [np.random.randint(base)]
+  prefix = [np.random.randint(base) for _ in range(length - 1)]
+  return prefix + [np.random.randint(base - 1) + 1]  # Last digit is not 0.
+
+
+data_counters = {}  # Used by {load,save}_data_counters and count_and_skip
+
+
+def count_and_skip(generator, name):
+  """Count the number of items in the generator, skip already counted ones.
+
+  This function counts the number of processed examples and puts it into
+  the global variable `counters`. This variable can be saved and restored,
+  and if restored, this function will skip examples until the restored counter
+  is reached. When the data generator is deterministic, this allows to restore
+  the data reading process from a checkpoint.
+
+  Args:
+    generator: generator for examples in the dataset.
+    name: string, a unique id that we use to count the examples
+
+  Yields:
+    The examples from generator but first skip the number specified in the
+    global variable counters[name] and next increment this variable every
+    time a new example appears.
+  """
+  global data_counters
+  local_counter = 0
+  for example in generator:
+    local_counter += 1
+    # This check must be inside the loop due to asynchronous initializations.
+    if name not in data_counters:
+      data_counters[name] = 0
+    if local_counter > data_counters[name]:
+      data_counters[name] += 1
+      yield example
+
+
+def save_data_counters(output_dir, host_id=None):
+  """Checkpoint data counters."""
+  global data_counters
+  host_id = jax.host_id() if host_id is None else host_id
+  fname = os.path.join(output_dir, 'data_counters%d.pkl' % host_id)
+  with tf.io.gfile.GFile(fname, 'wb') as f:
+    pickle.dump(data_counters, f)
+
+
+def load_data_counters(output_dir, host_id=None):
+  """Checkpoint data counters."""
+  global data_counters
+  host_id = jax.host_id() if host_id is None else host_id
+  fname = os.path.join(output_dir, 'data_counters%d.pkl' % host_id)
+  if not tf.io.gfile.exists(fname):
+    logging.info('Did not load data counters as %s does not exist.', fname)
+    return
+  with tf.io.gfile.GFile(fname, 'rb') as f:
+    obj = pickle.load(f)
+  data_counters = obj
+
+
+def _generator_process(generator, in_q, out_q):
+  for example in generator:
+    in_q.get()
+    out_q.put(example)
+
+
 def _buckets_for_length(bucket_length, batch_size, max_eval_length, n_devices,
                         training):
   """Creates heuristically a set of bucket boundaries and sizes.
@@ -572,45 +1143,6 @@ def _buckets_for_length(bucket_length, batch_size, max_eval_length, n_devices,
   return (bucket_boundaries, bucket_batch_sizes)
 
 
-def bucket_by_length(generator, length_fn, boundaries, batch_sizes,
-                     strict_pad_on_len=False):
-  """Bucket by length, like tf.data.experimental.bucket_by_sequence_length.
-
-  This function draws examples from the provided `generator` and puts an
-  example into a bucket depending on `l = length_fn(example)`. Which bucket
-  is used depends on between which `boundaries` is l. When a bucket reaches
-  its batch size, as specified by `batch_sizes`, generates a batch of
-  padded examples from this bucket.
-
-  Args:
-    generator: python generator to draw data from.
-    length_fn: a function taking the example and returning the length.
-    boundaries: a list of bucket boundaries.
-    batch_sizes: a list of batch sizes.
-    strict_pad_on_len: bool; if true we pad on the length dimension, dim[0]
-      strictly as a multiple of boundary.
-
-  Yields:
-    An input batch, which comes from one of the buckets.
-  """
-  buckets = [[] for _ in range(len(batch_sizes))]
-  boundaries = boundaries + [math.inf]  # Max boundary is unlimited.
-  for example in generator:
-    length = length_fn(example)
-    # `bucket_idx` will always be < len(boundaries), since boundaries is right
-    # padded by `math.inf`.
-    bucket_idx = min([i for i, b in enumerate(boundaries) if length <= b])
-    buckets[bucket_idx].append(example)
-    if len(buckets[bucket_idx]) == batch_sizes[bucket_idx]:
-      batched = zip(*buckets[bucket_idx])
-      boundary = boundaries[bucket_idx]
-      boundary = None if boundary == math.inf else boundary
-      padded_batch = tuple(
-          pad_to_max_dims(x, boundary, strict_pad_on_len) for x in batched)
-      yield padded_batch
-      buckets[bucket_idx] = []
-
-
 def _length_fn(example, length_axis, length_keys):
   """Length is the maximum of shape on length_axis over length_keys."""
   if isinstance(example, (list, tuple)):
@@ -618,313 +1150,11 @@ def _length_fn(example, length_axis, length_keys):
   return example.shape[length_axis]
 
 
-@gin.configurable(module='trax.data')
-def BucketByLength(boundaries, batch_sizes,  # pylint: disable=invalid-name
-                   length_keys=None, length_axis=0, strict_pad_on_len=False):
-  """Returns a function for bucketing inputs, see `bucket_by_length`."""
-  length_keys = length_keys or [0, 1]
-  # In all cases so far, we use a length function of the following form.
-  length_fn = lambda x: _length_fn(x, length_axis, length_keys)
-  return lambda g: bucket_by_length(  # pylint: disable=g-long-lambda
-      g, length_fn, boundaries, batch_sizes, strict_pad_on_len)
-
-
-@gin.configurable(module='trax.data')
-def FilterByLength(max_length, min_length=0,  # pylint: disable=invalid-name
-                   length_keys=None, length_axis=0):
-  """Returns a function that filters out examples by length.
-
-  Args:
-    max_length: int. If not None, indicates maximum length.
-    min_length: int. If not None, indicates minimum length.
-    length_keys: (list) which example keys to take into account.
-    length_axis: which shape axis to take into account.
-  Returns:
-    a function that filters out examples by length.
-  """
-
-  assert max_length is not None or min_length is not None
-  length_keys = length_keys or [0, 1]
-  length_fn = lambda x: _length_fn(x, length_axis, length_keys)
-  def filtered(gen):
-    for example in gen:
-      example_len = length_fn(example)
-
-      # Checking max length boundary.
-      if max_length is not None:
-        if example_len > max_length:
-          continue
-      # Checking min length boundary.
-      if min_length is not None:
-        if example_len < min_length:
-          continue
-      # Within bounds.
-      yield example
-  return filtered
-
-
-@gin.configurable(module='trax.data')
-def FilterEmptyExamples(axes=None, debug=False):  # pylint: disable=invalid-name
-  """Filters empty examples.
-
-  Filters any example that has an array of size (0,) (if axes=None).
-  Alternatively, checks only axes provided in `axes' list. Contrary to
-  FilterByLength used with several elements with length_axis, here the example
-  would be filtered if ANY of the dimensions listed in `axes' contains an empty
-  array.
-
-  Args:
-    axes: list of indices to check, if None, all of them.
-    debug: If true, emits a log everytime we filter out an empty example.
-
-  Returns:
-    Function filtering empty examples.
-  """
-  def _filter_examples(generator):
-    for example in generator:
-      correct = True
-      for i, unused_tuple_element in enumerate(example):
-        if axes is None or i in axes:
-          if example[i].shape == (0,):
-            correct = False
-            break
-      if correct:
-        yield example
-      elif debug:
-        logging.info('Filtered example: %r', example)
-  return _filter_examples
-
-
-@gin.configurable(module='trax.data')
-def CastTo(dtype=np.int32, indices=(0, 1,), debug=False):  # pylint: disable=invalid-name
-  """Casts the given indices to the given dtype."""
-  def _cast_fn(generator):
-    debug_count = 0
-    for example in generator:
-      debug_count += 1
-      assert isinstance(example, tuple)
-      example = list(example)
-      dtype_mismatch = False
-      original_index_and_dtype = []
-      for i in range(len(example)):
-        if i not in indices:
-          continue
-        original_type = example[i].dtype
-        if original_type != dtype:
-          if not (original_type == np.int64 and dtype == np.int32):
-            # Downcasting from np.int64 to np.int32 is OK
-            original_index_and_dtype.append((i, original_type))
-          example[i] = example[i].astype(dtype)
-          dtype_mismatch = True
-      if debug and dtype_mismatch and original_index_and_dtype:
-        logging.info('dtype mismatch in example[%d] = %r was earlier: %r',
-                     debug_count, example, original_index_and_dtype)
-      yield tuple(example)
-  return _cast_fn
-
-
-@gin.configurable(module='trax.data')
-def ConcatenateToLMInput(pad_to_length=None):  # pylint: disable=invalid-name
-  """Prepares the input needed for training of Language Models.
-
-  Each example needs to contain two elements (input and target).
-  Input is concatenated to target and, if pad_to_length is given, padded to
-  length provided.
-  The loss_weights indicates only the target, without input nor padding.
-
-  Args:
-    pad_to_length: int, total length of padding of input and target arrays.
-  Returns:
-    Function to return input for a LM.
-  """
-  @debug_data_pipeline.debug_pipeline
-  def _concatenate_to_lm_input(generator):
-    for example in generator:
-      if isinstance(example, (list, tuple)) and (len(example) == 2):
-        concatenated = np.concatenate((example[0], example[1]), axis=-1)
-        loss_weights = np.concatenate((np.zeros_like(example[0]),
-                                       np.ones_like(example[1])))
-        if pad_to_length is not None:
-          padding_len = pad_to_length - (
-              example[0].shape[0] + example[1].shape[0])
-          if padding_len < 0:
-            raise ValueError(
-                'Example lengths '
-                f'({example[0].shape[0]}, {example[1].shape[0]}) '
-                f'longer than pad_to_length ({pad_to_length}).')
-          loss_weights = np.pad(loss_weights, (0, padding_len), 'constant')
-          concatenated = np.pad(concatenated, (0, padding_len), 'constant')
-        output = (concatenated, concatenated, loss_weights)
-      elif isinstance(example, (list, tuple)) and (len(example) == 1):
-        # Make x into (x, x)
-        output = (example[0], example[0])
-      elif isinstance(example, np.ndarray):
-        # Make x into (x, x)
-        output = (example, example)
-      else:
-        output = None
-        raise ValueError(f'Unknown input to ConcatenateToLMInput: {example}')
-      yield output
-
-  return _concatenate_to_lm_input
-
-
-@gin.configurable(module='trax.data')
-def PadToLength(  # pylint: disable=invalid-name
-    len_map=None, pad_value=0, multiple=False):
-  """Pads the values to lengths given in `len_map'.
-
-  len_map contains a dictionary of example keys to dimension sizes.
-
-  Args:
-    len_map: dict of int to int, we pad examples to lengths
-      given by the values of the dict. If multiple is True, the dimensions are
-      padded to multiple of this value.
-    pad_value: dict of int to int. The value gets applied to
-      constant_values on numpy.pad per given dimension.
-    multiple: boolean. If False, pads to the value of len_map. If True, pads to
-      closest multiple of value of len_map.
-  Returns:
-    Function to pad examples to given lengths.
-  """
-  @debug_data_pipeline.debug_pipeline
-  def _pad_to_length(generator):
-    for example in generator:
-      if isinstance(example, (list, tuple)):
-        example = list(example)
-        for key, value in len_map.items():
-          array_length = example[key].shape[0]
-          if multiple:
-            padding_len = array_length - ((array_length // value) * value)
-          else:
-            padding_len = max([0, value-example[key].shape[0]])
-          example[key] = np.pad(example[key],
-                                pad_width=(0, padding_len),
-                                mode='constant',
-                                constant_values=pad_value[key])
-        output = tuple(example)
-      else:
-        if not isinstance(example, np.ndarray):
-          raise ValueError(f'example isn\'t nparray, but should be: {example}')
-        array_length = example.shape[0]
-        if multiple:
-          padding_len = array_length - ((array_length // value) * value)
-        else:
-          padding_len = max(0, len_map[0] - array_length)
-        output = np.pad(example,
-                        pad_width=(0, padding_len),
-                        mode='constant',
-                        constant_values=pad_value[0])
-      yield output
-  if len_map is None:
-    raise ValueError('len_map parameter should be provided.')
-  return _pad_to_length
-
-
-@gin.configurable(module='trax.data')
-def AppendValue(val=None):  # pylint: disable=invalid-name
-  """Appends values provided in 'val` to inputs.
-
-  val are keyed by example keys, its values contain appended tensors.
-
-  Args:
-    val: dict of int to tensors. Specific keys get the tensors specified in
-      values appended.
-  Returns:
-    Funtion to append tensors to examples.
-  """
-  @debug_data_pipeline.debug_pipeline
-  def _append_value(generator):
-    for example in generator:
-      if isinstance(example, tuple):
-        example = list(example)
-        if val is not None:
-          for key, value in val.items():
-            example[key] = np.append(example[key], value, -1)
-        output = tuple(example)
-      else:
-        if not isinstance(example, np.ndarray):
-          raise ValueError(f'example isn\'t nparray, but should be: {example}')
-        output = np.append(example, val[0])
-      yield output
-
-  return _append_value
-
-
-@gin.configurable(module='trax.data')
-def TruncateToLength(len_map=None):  # pylint: disable=invalid-name
-  """Returns a stream function that resizes items as specified by ``len_map``.
-
-  Args:
-    len_map: Dictionary that specifies maximum shapes for potentially multiple
-        features per stream item. For example, given a stream of tokenized
-        string pairs, one could enforce a maximum length of 256 tokens for each
-        string by using ``len_map={0: (256,), 1: (256,)}``.
-  """
-  @debug_data_pipeline.debug_pipeline
-  def _truncate_to_length(generator):
-    for example in generator:
-      if isinstance(example, np.ndarray):
-        example = (example,)
-      if isinstance(example, (list, tuple)):
-        example = list(example)
-        if len_map is not None:
-          for key, max_len in len_map.items():
-            example_len = example[key].shape
-            if example_len > max_len:
-              example[key] = np.resize(example[key], max_len)
-        output = tuple(example)
-      else:
-        output = None
-        raise ValueError(f'Unknown example type: {example}')
-      yield output
-
-  return _truncate_to_length
-
-
-@debug_data_pipeline.debug_pipeline
-def add_loss_weights(generator, id_to_mask=None):
-  """Add weights to inputs without weights and masks by id if requested.
-
-  The generator stream is augmented in the following way:
-
-  - If the stream consists of pairs `(inputs, targets)`, a loss mask is added
-    that is creates as a tensor of ones of the same shape as targets.
-  - If `id_to_mask` is not `None`, and the stream (after the previous point)
-    has triples `(inputs, targets, weights)`, the weights are multiplied by a
-    0/1 mask that is 0 iff targets is equal to `id_to_mask` (1 otherwise).
-
-  Args:
-    generator: Stream of tuples.
-    id_to_mask: If not None, int-valued id that represents padding, as opposed
-        to true target IDs.
-
-  Yields:
-    Examples from the augmented stream.
-  """
-  for example in generator:
-    if len(example) > 3 or len(example) < 2:
-      assert id_to_mask is None, 'Cannot automatically mask this stream.'
-      yield example
-    else:
-      if len(example) == 2:
-        weights = np.ones_like(example[1]).astype(np.float32)
-      else:
-        weights = example[2].astype(np.float32)
-      mask = 1.0 - np.equal(example[1], id_to_mask).astype(np.float32)
-      weights *= mask
-      output = (example[0], example[1], weights)
-      yield output
-
-
-@gin.configurable(module='trax.data')
-def AddLossWeights(id_to_mask=None):  # pylint: disable=invalid-name
-  """Returns a function to add loss weights; see `add_loss_weights`."""
-  return lambda g: add_loss_weights(g, id_to_mask=id_to_mask)
-
-
-# Inputs class used for setting up Trainer.
-# Note: as we move from Trainer to Loop this class may become obsolete.
+# ########################################################################
+# Inputs class used by Trainer, and associated helper functions.
+#
+# Note: In the planned move from Trainer to Loop, the Inputs class should be
+# deprecated and finally removed.
 
 
 class Inputs:
@@ -1167,15 +1397,6 @@ def random_inputs(
   return Inputs(random_minibatches)
 
 
-def _pad_to_multiple_of(x, y, axis):
-  """Pads x to multiple of y on the given axis."""
-  pad_len = np.ceil(x.shape[axis] / float(y)) * y
-  pad_widths = [(0, 0)] * len(x.shape)
-  pad_widths[axis] = (0, int(pad_len - x.shape[axis]))
-  return np.pad(x, pad_widths, mode='constant',
-                constant_values=x.dtype.type(0))
-
-
 @gin.configurable(module='trax.data')
 def sequence_copy_inputs(
     vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, train_length=gin.REQUIRED,
@@ -1259,83 +1480,6 @@ def simple_sequence_copy_inputs(
   )
 
 
-def lower_endian_to_number(l, base):
-  """Helper function: convert a list of digits in the given base to a number."""
-  return sum([d * (base**i) for i, d in enumerate(l)])
-
-
-def number_to_lower_endian(n, base):
-  """Helper function: convert a number to a list of digits in the given base."""
-  if n < base:
-    return [n]
-  return [n % base] + number_to_lower_endian(n // base, base)
-
-
-def random_number_lower_endian(length, base):
-  """Helper function: generate a random number as a lower-endian digits list."""
-  if length == 1:  # Last digit can be 0 only if length is 1.
-    return [np.random.randint(base)]
-  prefix = [np.random.randint(base) for _ in range(length - 1)]
-  return prefix + [np.random.randint(base - 1) + 1]  # Last digit is not 0.
-
-
-@gin.configurable(module='trax.data')
-def addition_input_stream(
-    vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, min_length=gin.REQUIRED,
-    max_length=gin.REQUIRED, pad_to_multiple=32, encdec=False):
-  """Data stream for the add problem: <S>x+y<S>(x+y).
-
-  Args:
-    vocab_size: how many symbols to use.
-    batch_size: how large are the batches.
-    min_length: minimal length of w.
-    max_length: maximal length of w.
-    pad_to_multiple: int, pad length to be multiple of this number.
-    encdec: bool, if True return encoder-decoder style inputs (default: False)
-
-  Returns:
-    python generator of tuples of data examples
-  """
-  base = vocab_size - 3  # We use 0 to pad, base+1 as "+" and base+2 as "<S>".
-  def single_example(max_length, min_length):
-    """Generate a stream of random mini-batches."""
-    add_len = (min_length - 1) // 2
-    l1 = np.random.randint((max_length - add_len + 1) // 2) + add_len
-    l2 = np.random.randint(max_length - l1 - 1) + 1
-    n1 = random_number_lower_endian(l1, base)
-    n2 = random_number_lower_endian(l2, base)
-    result = lower_endian_to_number(n1, base) + lower_endian_to_number(
-        n2, base)
-    inp = n1 + [base] + n2
-    tgt = number_to_lower_endian(result, base)
-    if encdec:
-      x = [i + 1 for i in inp]
-      y = [i + 1 for i in tgt]
-      weights = [1] * len(tgt)
-      candidate_example = (np.array(x), np.array(y), np.array(weights))
-      if any(len(sample) > max_length for sample in candidate_example):
-        # sample too long, try again
-        return single_example(max_length, min_length)
-      return (np.array(x), np.array(y), np.array(weights))
-    else:
-      x = [base+2] + [i+1 for i in inp] + [base+2] + [i+1 for i in tgt]
-      weights = ([0] * (len(inp) + 2)) + ([1] * len(tgt))
-      return (np.array(x), np.array(x), np.array(weights))
-
-  def batches(max_length, min_length):
-    """Batches of examples."""
-    if max_length < 3 or min_length < 3:
-      raise ValueError('Maximum/minimum length must be at least 3.')
-    while True:
-      ex = [single_example(max_length, min_length) for _ in range(batch_size)]
-      padded_batch = [pad_to_max_dims(x, boundary=pad_to_multiple,
-                                      strict_pad_on_len=True)
-                      for x in zip(*ex)]
-      yield tuple(padded_batch)
-
-  return batches(max_length, min_length)
-
-
 @gin.configurable(module='trax.data')
 def addition_inputs(
     vocab_size=gin.REQUIRED, batch_size=gin.REQUIRED, train_length=gin.REQUIRED,
@@ -1363,155 +1507,6 @@ def addition_inputs(
   return Inputs(
       train_stream=lambda _: train_stream,
       eval_stream=lambda _: eval_stream
-  )
-
-
-# This is a straightforward translation of T5's random_spans_noise_mask.
-def random_spans_noise_mask(length,
-                            noise_density=0.15,
-                            mean_noise_span_length=3.0,
-                            seed1=None,
-                            seed2=None,
-                            example=None):
-  """Computes span corruption masks given input parameters."""
-  # Passing this in case if we want to use for debugging/logging
-  del example
-  orig_length = length
-  # increase length to avoid degeneracy
-  length = max(length, 2)
-  num_noise_tokens = int(round(length * noise_density))
-  # avoid degeneracy by ensuring positive numbers of noise and nonnoise tokens.
-  num_noise_tokens = min(max(num_noise_tokens, 1), length - 1)
-  num_noise_spans = int(round(num_noise_tokens / mean_noise_span_length))
-  # avoid degeneracy by ensuring positive number of noise spans
-  num_noise_spans = max(num_noise_spans, 1)
-  num_nonnoise_tokens = length - num_noise_tokens
-
-  # Pick the lengths of the noise spans and the non-noise spans
-  def randomly_segment(num_items, num_segments, seed):
-    x = np.arange(num_items - 1) < num_segments - 1
-    # Set random seed if passed (only in tests for now).
-    if seed is not None:
-      np.random.seed(seed)
-    np.random.shuffle(x)
-    first_in_segment = np.pad(x, (1, 0), mode='constant')
-    segment_id = np.cumsum(first_in_segment)
-
-    y = np.roll(segment_id, 1)
-    y[0] = 0
-    idxs = np.pad(np.squeeze(np.argwhere(segment_id - y), axis=1),
-                  (1, 0),
-                  mode='constant')
-    segment_lengths = np.add.reduceat(np.ones_like(segment_id), idxs, axis=0)
-    return segment_lengths
-
-  noise_span_lengths = randomly_segment(
-      num_noise_tokens, num_noise_spans, seed1)
-  nonnoise_span_lengths = randomly_segment(
-      num_nonnoise_tokens, num_noise_spans, seed2)
-  interleaved_span_lengths = np.reshape(
-      np.stack([nonnoise_span_lengths, noise_span_lengths], axis=1),
-      [num_noise_spans * 2])
-  span_starts = np.cumsum(interleaved_span_lengths)[:-1]
-  span_start_indicator = np.zeros(length)  # all 0s to begin with
-  span_start_indicator[span_starts] = 1
-  span_num = np.cumsum(span_start_indicator)
-  is_noise = np.equal(span_num % 2, 1)
-  return is_noise[:orig_length]
-
-
-@gin.configurable(module='trax.data')
-def generate_sequential_chunks(max_length=None):
-  """Returns a function that generates chunks of atmost max_length length."""
-  def _f(generator):
-    for example in generator:
-      n_tokens = len(example)
-      if n_tokens <= max_length:
-        yield example
-      n_segments = int(math.ceil(float(n_tokens) / float(max_length)))
-      for i in range(n_segments):
-        start = max_length * i
-        end = min(start + max_length, n_tokens)
-        yield example[start:end]
-  return _f
-
-
-@gin.configurable(module='trax.data')
-def generate_random_noise_mask(noise_density=0.15,
-                               mean_noise_span_length=3.0,
-                               seed1=None,
-                               seed2=None):
-  """Returns a function that generates a random noise mask."""
-  def _f(generator):
-    for example in generator:
-      length = len(example)
-      noise_mask = random_spans_noise_mask(
-          length, noise_density=noise_density,
-          mean_noise_span_length=mean_noise_span_length,
-          seed1=seed1, seed2=seed2, example=example)
-      yield (example, noise_mask)
-  return _f
-
-
-@gin.configurable(module='trax.data')
-def consume_noise_mask(vocab_size=32100):
-  """Consumes (tokens, noise mask) and returns (inputs, targets)."""
-  def _noise_span_to_unique_sentinel(tokens, noise_mask):
-    prev_token_is_noise = np.pad(
-        noise_mask[:-1], [1, 0], mode='constant', constant_values=False)
-    first_noise_tokens = np.logical_and(noise_mask,
-                                        np.logical_not(prev_token_is_noise))
-    subsequent_noise_tokens = np.logical_and(noise_mask, prev_token_is_noise)
-    sentinel = vocab_size - np.cumsum(first_noise_tokens)
-    tokens = np.where(first_noise_tokens, sentinel, tokens)
-    return tokens[np.logical_not(subsequent_noise_tokens)]
-
-  def _f(generator):
-    for tokens, noise_mask in generator:
-      # Returns inputs and targets.
-      yield (_noise_span_to_unique_sentinel(tokens, noise_mask),
-             _noise_span_to_unique_sentinel(tokens, np.logical_not(noise_mask)))
-  return _f
-
-
-@gin.configurable(module='trax.data')
-def PrefixLM(input_length=128, output_length=512):  # pylint:disable=invalid-name
-  """Chunks examples so as to make inputs/outputs of specified lenghts."""
-  def _f(generator):
-    for example in generator:
-      n_tokens = len(example)
-      # Iterate:
-      # |--------|<---- input_length ---->|<- output_length ->|--------------|
-      # ^        ^                        ^                   ^
-      # |        |                        |                   |
-      # 0        input_begin_idx          input_end_idx       output_end_idx
-      input_begin_idx = 0
-      # While you can make an input batch, keep going.
-      while input_begin_idx + input_length < n_tokens:
-        input_end_idx = input_begin_idx + input_length
-        output_end_idx = min(input_end_idx + output_length, n_tokens)
-        yield (example[input_begin_idx:input_end_idx],
-               example[input_end_idx:output_end_idx])
-        # Update the indices.
-        input_begin_idx = output_end_idx
-  return _f
-
-
-@gin.configurable(module='trax.data')
-def MLM(vocab_size=None,  # pylint:disable=invalid-name
-        max_length=None,
-        noise_density=0.15,
-        mean_noise_span_length=3.0):
-  """Pipeline that just does MLM."""
-  return Serial(
-      # Generate sequential chunks.
-      generate_sequential_chunks(max_length=max_length),
-      # Generate mask and chunk.
-      generate_random_noise_mask(
-          noise_density=noise_density,
-          mean_noise_span_length=mean_noise_span_length),
-      # Consume mask and chunk to give (input, targets).
-      consume_noise_mask(vocab_size=vocab_size),
   )
 
 
@@ -1554,3 +1549,12 @@ def sine_inputs(
         yield (obs, act, obs, mask)
 
   return Inputs(train_stream=random_minibatches, eval_stream=random_minibatches)
+
+
+def _pad_to_multiple_of(x, y, axis):
+  """Pads x to multiple of y on the given axis."""
+  pad_len = np.ceil(x.shape[axis] / float(y)) * y
+  pad_widths = [(0, 0)] * len(x.shape)
+  pad_widths[axis] = (0, int(pad_len - x.shape[axis]))
+  return np.pad(x, pad_widths, mode='constant',
+                constant_values=x.dtype.type(0))
