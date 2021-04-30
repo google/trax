@@ -55,8 +55,8 @@ class Trainer:
     self._adasum = adasum
 
     # optimizer slots and opt_params may need to be replicated
-    self._slots, self._opt_params = tl.for_n_devices(
-        (self._optimizer.slots, self._optimizer.opt_params), self._n_devices)
+    self._slots, self._opt_params = tl.on_cpu(tl.for_n_devices(
+        (self._optimizer.slots, self._optimizer.opt_params), self._n_devices))
 
     # accelerated version of model+loss to replicate weights and state
     self._accelerated_model_with_loss = tl.Accelerate(
@@ -107,7 +107,7 @@ class Trainer:
   def slots(self, slots):
     """Sets the slots of the optimizers and this class (replicated)."""
     self._optimizer.slots = slots
-    self._slots = tl.for_n_devices(slots, self._n_devices)
+    self._slots = tl.on_cpu(tl.for_n_devices(slots, self._n_devices))
 
   def one_step(self, batch, rng, step=0, learning_rate=None):
     """Runs one training step, to update model and optimizer parameters.
