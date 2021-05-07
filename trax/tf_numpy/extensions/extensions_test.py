@@ -545,7 +545,7 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters(
       (f"_{jit_scan}_{jit_f}", jit_scan, jit_f)  # pylint: disable=g-complex-comprehension
       for jit_f in [False, True]
-      for jit_scan in [False, True])
+      for jit_scan in ["no", "no_xla", "xla_forced_compile"])
   def testScanImpl(self, jit_scan, jit_f):
     rng = np.random.RandomState(0)
 
@@ -562,8 +562,11 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
     if jit_f:
       f = extensions.jit(f)
 
-    if jit_scan:
-      scan = extensions.jit(extensions.scan, (0,))
+    if jit_scan == "no_xla":
+      scan = extensions.jit(extensions.scan, static_argnums=(0,))
+    elif jit_scan == "xla_forced_compile":
+      scan = extensions.jit(extensions.scan, static_argnums=(0,),
+                            xla_forced_compile=True)
     else:
       scan = extensions.scan
 
@@ -572,6 +575,11 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
 
     ans = scan(f, c, xs)
     expected = scan_reference(f, c, xs)
+    if jit_scan == "xla_forced_compile":
+      # xla.compile doesn't preserve list-vs-tuple properly for the outputs, so
+      # we canonicalize them to lists here.
+      expected = list(expected)
+      ans = list(ans)
     self.assertDTypesEqual(expected, ans)
     self.assertAllClose(expected, ans)
 
@@ -619,10 +627,11 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
     self.assertIsNone(h)
 
   @parameterized.named_parameters(
-      (f"_{jit_scan}_{jit_f}", jit_scan, jit_f)  # pylint: disable=g-complex-comprehension
+      (f"_{jit_grad}_{jit_scan}_{jit_f}", jit_grad, jit_scan, jit_f)  # pylint: disable=g-complex-comprehension
       for jit_f in [False, True]
-      for jit_scan in [False, True])
-  def testScanGrad(self, jit_scan, jit_f):
+      for jit_scan in ["no", "no_xla", "xla_forced_compile"]
+      for jit_grad in ["no", "no_xla", "xla_forced_compile"])
+  def testScanGrad(self, jit_grad, jit_scan, jit_f):
     rng = np.random.RandomState(0)
 
     d = rng.randn(2)
@@ -638,8 +647,18 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
     if jit_f:
       f = extensions.jit(f)
 
-    if jit_scan:
+    if jit_scan == "no_xla":
       scan = extensions.jit(extensions.scan, static_argnums=(0,))
+    elif jit_scan == "xla_forced_compile":
+      # TODO(b/187107596): Remove `skipTest`
+      self.skipTest(
+          "Taking gradients of `jit(scan, experimental_compile=True)` triggers "
+          "'Support for TensorList crossing the XLA/TF boundary is not "
+          "implemented' error")
+      # `xla_forced_compile=True` doesn't support gradients, so we use
+      # `experimental_compile=True`.
+      scan = extensions.jit(extensions.scan, static_argnums=(0,),
+                            experimental_compile=True)
     else:
       scan = extensions.scan
 
@@ -653,7 +672,17 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
     def loss(scan, c, xs):
       return tf_np.sum(losses(scan, c, xs))
 
-    ans = extensions.grad(functools.partial(loss, scan))(c, xs)
+    def grad_origin(c, xs):
+      return extensions.grad(functools.partial(loss, scan))(c, xs)
+
+    if jit_grad == "no_xla":
+      grad_jit = extensions.jit(grad_origin)
+    elif jit_grad == "xla_forced_compile":
+      grad_jit = extensions.jit(grad_origin, xla_forced_compile=True)
+    else:
+      grad_jit = grad_origin
+
+    ans = grad_jit(c, xs)
     expected = extensions.grad(functools.partial(loss, scan_reference))(c, xs)
     self.assertDTypesEqual(expected, ans)
     self.assertAllClose(expected, ans)
