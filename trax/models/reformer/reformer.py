@@ -371,7 +371,7 @@ def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
   # return the mask to be compatible with the EfficientAttention API.
   if attention.n_out == 2:
     attention = tl.Serial(
-        tl.Parallel([], _ReshapeMask()),
+        tl.Parallel([], _InsertAxes12()),
         attention,
         tl.Select([0], n_in=2)
     )
@@ -531,7 +531,7 @@ def Reformer(input_vocab_size,
       in_encoder,
       tl.Dup(),
       tl.ReversibleSerial(encoder_blocks),
-      tl.Fn('XYAvg', lambda x, y: (x + y) / 2.0),
+      _XYAvg(),
       tl.LayerNorm(),
   ])
   if mode == 'predict':
@@ -552,9 +552,7 @@ def Reformer(input_vocab_size,
       # Copy decoder tokens for use in loss.
       tl.Select([0, 1, 1]),                 # tok_e tok_d tok_d
       tl.Branch([], [tl.PaddingMask(),
-                     tl.Fn('Squeeze',
-                           lambda x: jnp.squeeze(x, (1, 2)), n_out=1)]),
-      #                                     # tok_e mask  tok_d .....
+                     _RemoveAxes12()]),     # tok_e mask  tok_d .....
 
       # Encode.
       encoder,                              # vec_e  mask tok_d .....
@@ -565,8 +563,7 @@ def Reformer(input_vocab_size,
       out_encoder,                          # vec_d vec_e mask .....
       tl.Dup(),                             # vec_d1 vec_d2 vec_e mask .....
       tl.ReversibleSerial(encoder_decoder_blocks),
-      tl.Fn('XYAvg',
-            lambda x, y: (x + y) / 2.0),    # vec_d vec_e mask .....
+      _XYAvg(),                             # vec_d vec_e mask .....
       tl.LayerNorm(),                       # vec_d vec_e mask .....
 
       # Map to output vocab.
@@ -744,7 +741,7 @@ def Reformer2(input_vocab_size,
   ]
   if not reversible_encoder:
     encoder += [
-        tl.Fn('XYAvg', lambda x, y: (x + y) / 2.0),
+        _XYAvg(),
         tl.Dense(d_model1, use_bfloat16=use_bfloat16),
         tl.LayerNorm(),
     ]
@@ -814,33 +811,32 @@ def Reformer2(input_vocab_size,
     # Input in this case is tok_e, tok_d.
     mask_layers = [
         tl.PaddingMask(),
-        tl.Fn('Squeeze', lambda x: jnp.squeeze(x, (1, 2)), n_out=1)
+        _RemoveAxes12(),
     ]
     inp_layers = tl.Serial([
-        tl.Select([0, 0, 0, 1]),                       # tok_e tok_e tok_e tok_d
-        tl.Parallel(in_encoder, mask_layers)          # vec_e mask_e tok_e tok_d
+        tl.Select([0, 0, 0, 1]),               # tok_e tok_e tok_e tok_d
+        tl.Parallel(in_encoder, mask_layers)   # vec_e mask_e tok_e tok_d
     ])
     inp_layers = tl.AssertFunction('bt,bu->btf,bt,bt,bu', inp_layers)
   else:
     # Input in this case is vec_e, mask_e, tok_d. Where all downstream
     # operations expect tok_e, we give it instead mask_e, expecting that
     # downstream ops only are looking for padding/not padding.
-    make_tok = tl.Fn('MakeTok', lambda mask: mask.astype(jnp.int32))
     inp_layers = tl.Serial([
-        tl.Select([0, 1, 1, 2]),                      # vec_e mask_e tok_e tok_d
-        tl.Parallel(in_encoder, [], make_tok)         # vec_e mask_e tok_e tok_d
+        tl.Select([0, 1, 1, 2]),                    # vec_e mask_e tok_e tok_d
+        tl.Parallel(in_encoder, [], _AsTokenIDs())  # vec_e mask_e tok_e tok_d
     ])
     inp_layers = tl.AssertFunction('btg,bt,bu->btf,bt,bt,bu', inp_layers)
 
   # Assemble and return the model.
   return tl.Serial(
-      inp_layers,                                     # vec_e mask_e tok_e tok_d
+      inp_layers,                             # vec_e mask_e tok_e tok_d
 
       # Copy decoder tokens for use in loss.
-      tl.Select([0, 1, 2, 3, 3]),               # vec_e mask_e tok_e tok_d tok_d
+      tl.Select([0, 1, 2, 3, 3]),             # vec_e mask_e tok_e tok_d tok_d
 
       # Embed in and out tokens; done together as weights may be shared.
-      tl.Parallel([], [], [],                   # vec_e mask_e tok_e vec_d tok_d
+      tl.Parallel([], [], [],                 # vec_e mask_e tok_e vec_d tok_d
                   [tl.ShiftRight(mode=mode), out_encoder]),
 
       # Predict mode doesn't work with padding in encoder. Raising an exception
@@ -850,17 +846,16 @@ def Reformer2(input_vocab_size,
       (_ConvertToNaNsOnAnyZero() if mode == 'predict' else []),
 
       # Encode.
-      encoder,                                  # vec_e mask_e tok_e vec_d tok_d
+      encoder,                                # vec_e mask_e tok_e vec_d tok_d
 
       # Concat encoder and decoder, given encoder mask.
       encdec_layers,
 
       # Run decoder blocks.
       _ReversibleSerialForget(decoder_blocks, d_model2, n_layers_forget,
-                              forget_dense),    # vec_ed1 vec_ed2 tok_e tok_d
-      tl.Fn('XYAvg',
-            lambda x, y: (x + y) / 2.0),           # vec_ed tok_e tok_d
-      tl.LayerNorm(),                              # vec_ed tok_e tok_d
+                              forget_dense),  # vec_ed1 vec_ed2 tok_e tok_d
+      _XYAvg(),                               # vec_ed tok_e tok_d
+      tl.LayerNorm(),                         # vec_ed tok_e tok_d
 
       # Separate out the encoder part from the concatenated vector.
       tl.Select([0, 1, 2, 2]),                        # vec_ed tok_e tok_d tok_d
@@ -871,10 +866,25 @@ def Reformer2(input_vocab_size,
   )
 
 
-def _ReshapeMask():
-  """Returns a layer that adds two internal dimensions of size 1 to an array."""
-  return tl.Fn('ReshapeMask',
+def _InsertAxes12():
+  """Returns a layer that inserts two internal size-1 axes into an array."""
+  return tl.Fn('InsertAxes12',
                lambda x: jnp.reshape(x, (x.shape[0], 1, 1, x.shape[1])))
+
+
+def _RemoveAxes12():
+  """Returns a layer that removes two internal size-1 axes from an array."""
+  return tl.Fn('RemoveAxes12', lambda x: jnp.squeeze(x, (1, 2)))
+
+
+def _AsTokenIDs():
+  """Returns a layer that makes mask values look like token ID ints."""
+  return tl.Fn('AsTokenIDs', lambda x: x.astype(jnp.int32))
+
+
+def _XYAvg():
+  """Returns a layer that computes the element-wise average of two arrays."""
+  return tl.Fn('XYAvg', lambda x, y: (x + y) / 2.0)
 
 
 def _ReversibleSerialForget(layers, d_model, n_layers, forget_dense=True):
@@ -885,10 +895,10 @@ def _ReversibleSerialForget(layers, d_model, n_layers, forget_dense=True):
 
   if forget_dense:
     forgetting_layer = tl.Serial(
-        tl.Fn('XYAvg', lambda x, y: (x + y) / 2.0),
+        _XYAvg(),
         tl.Dense(d_model),
         tl.Dup(),
-        )
+    )
   else:
     forgetting_layer = tl.Select([0, 1])
 
