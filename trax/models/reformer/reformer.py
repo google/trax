@@ -370,10 +370,8 @@ def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
   # If we're using standard attention, we need to pass reshaped mask and not
   # return the mask to be compatible with the EfficientAttention API.
   if attention.n_out == 2:
-    def reshape_mask(mask):
-      return jnp.reshape(mask, (mask.shape[0], 1, 1, mask.shape[1]))
     attention = tl.Serial(
-        tl.Fn('ReshapeMask', lambda x, y: (x, reshape_mask(y)), n_out=2),
+        tl.Parallel([], _ReshapeMask()),
         attention,
         tl.Select([0], n_in=2)
     )
@@ -871,6 +869,12 @@ def Reformer2(input_vocab_size,
       # Map to output vocab.
       dense_loss_layer,  # vec_d tok_d
   )
+
+
+def _ReshapeMask():
+  """Returns a layer that adds two internal dimensions of size 1 to an array."""
+  return tl.Fn('ReshapeMask',
+               lambda x: jnp.reshape(x, (x.shape[0], 1, 1, x.shape[1])))
 
 
 def _ReversibleSerialForget(layers, d_model, n_layers, forget_dense=True):
