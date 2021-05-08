@@ -1063,8 +1063,8 @@ def scan(f, init, xs, length=None, reverse=False):
     raise ValueError(
         "Can't determine length. Please set the `length` argument.")
   xs_ta = tf.nest.map_structure(
-      lambda t: (tf.TensorArray(t.dtype, size=0, dynamic_size=True).unstack(t)  # pylint: disable=g-long-lambda
-                 if t is not None else None),
+      lambda t: (tf.TensorArray(t.dtype, size=length, dynamic_size=False)  # pylint: disable=g-long-lambda
+                 .unstack(t) if t is not None else None),
       xs)
   # tf.while_loop doesn't allow None in loop_vars, so we mask them.
   is_init_none = tf.nest.map_structure(lambda x: x is None, init)
@@ -1096,12 +1096,13 @@ def scan(f, init, xs, length=None, reverse=False):
   # ys_ta can't contain None because tf.while_loop doesn't allow None in
   # loop_vars.
   ys_ta = tf.nest.map_structure(
-      lambda y: tf.TensorArray(y.dtype if y is not None else tf.float32, size=0,  # pylint: disable=g-long-lambda
-                               dynamic_size=True),
+      lambda y: tf.TensorArray(y.dtype if y is not None else tf.float32,  # pylint: disable=g-long-lambda
+                               size=length, dynamic_size=False),
       ys_spec)
   safe_init = to_safe(init)
   _, safe_carry, ys_ta = tf.while_loop(
-      lambda i, *_: i < length, body, (0, safe_init, ys_ta))
+      lambda i, *_: i < length, body, (0, safe_init, ys_ta),
+      maximum_iterations=length)
   carry = from_safe(safe_carry)
   def _stack(a, spec):
     if spec is None:
