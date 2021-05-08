@@ -61,28 +61,35 @@ def DecoderBlock(d_model, d_ff, d_attention_key, d_attention_value,
     the layer.
   """
   # pylint: disable=g-complex-comprehension
-  attention_half_residuals = [
-      [tl.ReversibleHalfResidual(
-          tl.LayerNorm(center=center_layernorm),
-          attention_layer=ct.ApplyAttentionLayer(
-              attention_type, d_model, n_heads, d_attention_key,
-              d_attention_value, True, False, dropout, dropout,
-              attention_chunk_size, mode),
-          name='ReversibleHalfResidualDecoderAttn'),
-       tl.ReversibleSwap()
-      ] for _ in range(n_attention_layers)]
+  def _Attn():
+    return ct.ApplyAttentionLayer(
+        attention_type, d_model, n_heads, d_attention_key,
+        d_attention_value, True, False, dropout, dropout,
+        attention_chunk_size, mode)
 
-  feed_forwards = [
-      [tl.ReversibleHalfResidual(
-          ct.FeedForwardWithOptions(
-              d_model, d_ff, dropout, [-2], ff_activation, ff_dropout,
-              ff_chunk_size, ff_use_sru, ff_sparsity, center_layernorm,
-              mode, use_bfloat16),
-          name='ReversibleHalfResidualDecoderFF'),
-       tl.ReversibleSwap()
-      ] for _ in range(n_feedforward_layers)]
-  # pylint: enable=g-complex-comprehension
-  return attention_half_residuals + feed_forwards
+  def _FF():
+    return ct.FeedForwardWithOptions(
+        d_model, d_ff, dropout, [-2], ff_activation, ff_dropout,
+        ff_chunk_size, ff_use_sru, ff_sparsity, center_layernorm,
+        mode, use_bfloat16)
+
+  def _attention_half_residual():
+    return [
+        tl.ReversibleHalfResidual(tl.LayerNorm(center=center_layernorm),
+                                  attention_layer=_Attn(),
+                                  name='ReversibleHalfResidualDecoderAttn'),
+        tl.ReversibleSwap()
+    ]
+
+  def _feed_forward():
+    return [
+        tl.ReversibleHalfResidual(_FF(),
+                                  name='ReversibleHalfResidualDecoderFF'),
+        tl.ReversibleSwap()
+    ]
+
+  return ([_attention_half_residual() for _ in range(n_attention_layers)]
+          + [_feed_forward() for _ in range(n_feedforward_layers)])
 
 
 def ReformerLM(vocab_size,
@@ -361,14 +368,23 @@ def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
     # to 'eval' mode instead.
     mode = 'eval'
 
-  attention = ct.ApplyAttentionLayer(
-      attention_type=attention_type, d_model=d_model, n_heads=n_heads,
-      d_qk=d_model//n_heads, d_v=d_model//n_heads, masked=True, causal=False,
-      attention_dropout=dropout, output_dropout=dropout,
-      attention_chunk_size=attention_chunk_size, mode=mode)
+  def _Attn():
+    return ct.ApplyAttentionLayer(
+        attention_type=attention_type, d_model=d_model, n_heads=n_heads,
+        d_qk=d_model//n_heads, d_v=d_model//n_heads, masked=True, causal=False,
+        attention_dropout=dropout, output_dropout=dropout,
+        attention_chunk_size=attention_chunk_size, mode=mode)
+
+  def _FF():
+    return ct.FeedForwardWithOptions(
+        d_model, d_ff, dropout, [-2], ff_activation, ff_dropout,
+        ff_chunk_size, ff_use_sru, ff_sparsity, center_layernorm,
+        mode, use_bfloat16)
+
   # TODO(lukaszkaiser): refactor efficient attention layers to unify the API
   # If we're using standard attention, we need to pass reshaped mask and not
   # return the mask to be compatible with the EfficientAttention API.
+  attention = _Attn()
   if attention.n_out == 2:
     attention = tl.Serial(
         tl.Parallel([], _InsertAxes12()),
@@ -376,26 +392,24 @@ def EncoderBlock(d_model, d_ff, n_heads, attention_type, dropout, ff_activation,
         tl.Select([0], n_in=2)
     )
 
-  attention_half_residual = tl.ReversibleHalfResidual(
-      tl.LayerNorm(center=center_layernorm),
-      attention_layer=attention,
-      name='ReversibleHalfResidualEncoderAttn'
-  )
+  def _attention_half_residual():
+    return [
+        tl.ReversibleHalfResidual(tl.LayerNorm(center=center_layernorm),
+                                  attention_layer=attention,
+                                  name='ReversibleHalfResidualEncoderAttn'),
+        tl.ReversibleSwap()
+    ]
 
-  feed_forward = ct.FeedForwardWithOptions(
-      d_model, d_ff, dropout, [-2], ff_activation, ff_dropout,
-      ff_chunk_size, ff_use_sru, ff_sparsity, center_layernorm,
-      mode, use_bfloat16)
+  def _feed_forward():
+    layers = [
+        tl.ReversibleHalfResidual(_FF(),
+                                  name='ReversibleHalfResidualEncoderFF')
+    ]
+    if use_two_swaps_per_block:
+      layers.append(tl.ReversibleSwap())
+    return layers
 
-  encoder_block = [
-      attention_half_residual,
-      tl.ReversibleSwap(),
-      tl.ReversibleHalfResidual(feed_forward,
-                                name='ReversibleHalfResidualEncoderFF'),
-  ]
-  if use_two_swaps_per_block:
-    encoder_block.append(tl.ReversibleSwap())
-  return encoder_block
+  return _attention_half_residual() + _feed_forward()
 
 
 def EncoderDecoderBlock(d_model, d_ff, n_heads, dropout, ff_activation,
