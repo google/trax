@@ -22,21 +22,26 @@ import trax.supervised.trainer_lib
 n_rel_layers = 12
 rel_chunk_len = 512
 vanilla_chunk_len = 512
-dropout = 0.2
+dropout = 0.1
 
 d_model = 1024
 d_ff = 4096
 n_heads = 16
 
-# We are using T5's 32k SPM model by default.
+
+max_length = 3072
+mean_noise_span_length = 3.0
+noise_density = 0.15
 vocab_size = 32000
+
 
 # Parameters for TFDS data pipeline:
 # ==============================================================================
 make_inputs.train_stream = [
-  @train/data.TFDS(),
-  @data.ConvertToUnicode(),
-  @data.Tokenize(),
+  @training/data.TFDS(),
+  @data.CountAndSkip(),
+  @data.SentencePieceTokenize(),
+  @data.MLM(),
   @data.FilterEmptyExamples(),
   @data.TruncateToLength(),
   @data.AppendValue(),
@@ -44,64 +49,80 @@ make_inputs.train_stream = [
   @data.Shuffle(),
   @data.Batch(),
 ]
-train/data.TFDS.dataset_name = 'scientific_papers/arxiv:1.1.1'
-train/data.TFDS.keys = ('article', 'abstract')
-train/data.TFDS.train = True
-data.ConvertToUnicode.keys = [0, 1]
-data.Tokenize.vocab_file = 'gs://t5-data/vocabs/cc_all.32000/sentencepiece.model'
-data.Tokenize.keys = [0, 1]
-data.Tokenize.vocab_type = 'sentencepiece'
-data.TruncateToLength.len_map = {0: (15359, ), 1: (1023, )}
-data.AppendValue.val = {0:[0], 1:[1]}
-data.ConcatenateToLMInput.pad_to_length = 16384
-data.Batch.batch_size = 8
 
 make_inputs.eval_stream = [
-  @eval/data.TFDS(),
-  @data.ConvertToUnicode(),
-  @data.Tokenize(),
+  @validation/data.TFDS(),
+  @data.SentencePieceTokenize(),
+  @data.MLM(),
   @data.FilterEmptyExamples(),
   @data.TruncateToLength(),
   @data.AppendValue(),
   @data.ConcatenateToLMInput(),
-  @data.Batch(),
+  @validation/data.Batch(),
 ]
-eval/data.TFDS.dataset_name = 'scientific_papers/arxiv:1.1.1'
-eval/data.TFDS.keys = ('article', 'abstract')
-eval/data.TFDS.train = False
 
+# Parameters for data.TFDS:
+# ==============================================================================
+data.TFDS.dataset_name = 'c4/en:2.3.0'
+data.TFDS.keys = ('text',)
+data.TFDS.shuffle_train = False
+training/data.TFDS.train = True
+validation/data.TFDS.train = False
+
+# Parameters for data.MLM:
+# ==============================================================================
+data.MLM.vocab_size = %vocab_size
+data.MLM.max_length = %max_length
+data.MLM.noise_density = %noise_density
+data.MLM.mean_noise_span_length = %mean_noise_span_length
+
+# Parameters for data.AppendValue:
+# ==============================================================================
+data.AppendValue.val = {0:[0], 1:[1]}
+
+# Parameters for data.CountAndSkip
+# ==============================================================================
+data.CountAndSkip.name = 'c4'
+
+# Parameters for data.PadToLength:
+# ==============================================================================
+data.ConcatenateToLMInput.pad_to_length = 4096
+data.TruncateToLength.len_map = {0: (3072, ), 1: (1024, )}
+
+# Parameters for data.Batch:
+# ==============================================================================
+data.Batch.batch_size = 32  # On one 2x2, 8 chips, batch_size 4 per chip for 32.
+validation/data.Batch.batch_size = 64
+
+# Parameters for train:
+# ==============================================================================
+train.eval_frequency = 1000
+train.eval_steps = 10
+train.model = @trax.models.RelformerLM
+train.steps = 500000
+train.optimizer = @trax.optimizers.Adafactor
+train.checkpoint_highest = 'neg_log_perplexity'
+train.checkpoint_lowest = 'loss'
+train.permanent_checkpoint_frequency = 50000
+# train.use_memory_efficient_trainer = True
+train.inputs = @data.make_inputs
 
 # Parameters for multifactor:
 # ==============================================================================
 multifactor.constant = 1.0
-multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
+multifactor.factors = 'constant * rsqrt_decay'
 multifactor.warmup_steps = 10000
-
 
 # Parameters for Adafactor:
 # ==============================================================================
+Adafactor.weight_decay_rate = 0.0
 Adafactor.beta1 = 0.0
-Adafactor.decay_rate = 0.95  # Used to be 0.8
+Adafactor.decay_rate = 0.8
 Adafactor.clipping_threshold = 1.0
-#Adafactor.epsilon1 = 1e-16
-Adafactor.epsilon1 = 1e-25
+Adafactor.epsilon1 = 1e-16
 Adafactor.epsilon2 = 0.001
 Adafactor.factored = True
 Adafactor.multiply_by_parameter_scale = True
-
-
-# Parameters for train:
-# ==============================================================================
-train.eval_frequency = 500
-train.eval_steps = 10
-train.model = @trax.models.RelformerLM
-train.steps = 100000
-train.optimizer = @trax.optimizers.Adafactor
-train.checkpoint_highest = 'neg_log_perplexity'
-train.checkpoint_lowest = 'loss'
-# train.use_memory_efficient_trainer = True
-train.inputs = @trax.data.make_inputs
-
 
 # Parameters for RelformerLM:
 # ==============================================================================
@@ -110,8 +131,10 @@ RelformerLM.d_model = %d_model
 RelformerLM.d_ff = %d_ff
 RelformerLM.vanilla_layers = (3, 3)
 RelformerLM.shorten_factor = 4
+RelformerLM.prefix_lm = True
 RelformerLM.n_rel_layers = %n_rel_layers
 RelformerLM.rel_chunk_len = %rel_chunk_len
+RelformerLM.vanilla_chunk_len = %vanilla_chunk_len
 RelformerLM.n_heads = %n_heads
 RelformerLM.dropout = %dropout
 RelformerLM.max_len = 16384
