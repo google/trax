@@ -46,11 +46,25 @@ class RelAttentionTest(absltest.TestCase):
                                           0.], [-3., -2., -1., 0.],
                     [-3., -2., -1., 0.]]]]).astype(np.float32)
 
-    y = layer(x)
+    y = layer(x, is_bidirectional=False)
     self.assertEqual(y.dtype, np.float32)
     self.assertEqual(
         tl.to_list(y), [[[[0., 0., -3., -2.], [-1., 0., 0., -3.],
                           [-2., -1., 0., 0.], [-3., -2., -1., 0.]]]])
+
+  def test_fast_shift_matrix_bidirectional(self):
+    layer = ra._fast_matrix_shift
+    x = np.array([[[[-3., -2., -1., 0., 1., 2., 3.],
+                    [-3., -2., -1., 0., 1., 2., 3.],
+                    [-3., -2., -1., 0., 1., 2., 3.],
+                    [-3., -2., -1., 0., 1., 2., 3.]]]]).astype(np.float32)
+
+    y = layer(x, is_bidirectional=True)
+    self.assertEqual(y.dtype, np.float32)
+    self.assertEqual(tl.to_list(y), [[[[0., 1., 2., 3.],
+                                       [-1., 0., 1., 2.],
+                                       [-2., -1., 0., 1.],
+                                       [-3., -2., -1., 0.]]]])
 
   def test_create_mask_layer(self):
     layer = ra.AttentionMaskLayer()
@@ -59,6 +73,26 @@ class RelAttentionTest(absltest.TestCase):
     mask = layer(xs)
     self.assertEqual(mask.shape, (2, 2))
     np.testing.assert_equal(tl.to_list(mask), [[True, False], [True, True]])
+
+  def test_prefix_lm_mask(self):
+    inputs_len, batch_size = 4, 3
+    target_start_indices = np.array([0, 2, 1, 3])
+    mask = ra.AttentionMaskLayer._prefix_lm_mask(target_start_indices,
+                                                 inputs_len)
+    tril = tl.to_list(np.tril(np.ones((inputs_len, inputs_len), dtype=np.bool)))
+
+    np.testing.assert_equal(tl.to_list(mask), [
+        tril,
+        [[True, True, False, False],
+         [True, True, False, False],
+         [True, True, True, False],
+         [True, True, True, True]],
+        tril,
+        [[True, True, True, False],
+         [True, True, True, False],
+         [True, True, True, False],
+         [True, True, True, True]],
+    ])
 
   def test_create_mask_layer_predict(self):
     layer = ra.AttentionMaskLayer(

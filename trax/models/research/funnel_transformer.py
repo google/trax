@@ -817,6 +817,7 @@ def RelformerLM(vocab_size,
                 n_rel_layers=6,
                 rel_chunk_len=None,
                 vanilla_chunk_len=None,
+                prefix_lm=False,
                 n_heads=8,
                 dropout=0.1,
                 dropout_shared_axes=None,
@@ -858,6 +859,9 @@ def RelformerLM(vocab_size,
         will enable chunked relative attention.
     vanilla_chunk_len (optional): If set, enables chunked relative attention
         also in layers before and after shortening.
+    prefix_lm: enables bidirectional masks for the input sequence. Useful for
+        seq2seq tasks, works only if input and target are be separated by zeros,
+        like: [input 0 target].
     n_heads: Number of attention heads.
     dropout: Stochastic rate (probability) for dropping an activation value
         when applying dropout within an encoder block.
@@ -883,6 +887,14 @@ def RelformerLM(vocab_size,
     A Transformer language model as a layer that maps from a tensor of tokens
     to activations over a vocab set.
   """
+  if prefix_lm:
+    find_splitting_token_fun = tl.Fn('FindSplittingToken',
+                                   lambda x: jnp.argmin(x, axis=-1))
+    find_splitting_token = tl.Branch(None, find_splitting_token_fun),
+  else:
+    find_splitting_token = []
+
+  shift_right = tl.ShiftRight(mode=mode)
 
   token_encoder = [
       tl.Embedding(vocab_size, d_model),
@@ -919,7 +931,8 @@ def RelformerLM(vocab_size,
           max_inference_length=max_len,
           total_kv_pooling=total_kv_pooling,
           chunk_len=layer_chunk_len,
-          chunk_offset=chunk_offset)
+          chunk_offset=chunk_offset,
+          prefix_lm=prefix_lm)
 
     d_per_head = d_model // n_heads
 
@@ -992,11 +1005,12 @@ def RelformerLM(vocab_size,
   picker_conv = PickLastTokenInPredict(mode=mode)
 
   # Assemble and return the model.
-  return tl.Serial(  # tokens (or chunked tuple of tokens)
-      tl.ShiftRight(mode=mode),  # toks
-      token_encoder,  # vecs
+  return tl.Serial(           # tokens (or chunked tuple of tokens)
+      find_splitting_token,   # true for prefix_lm = True
+      shift_right,
+      token_encoder,          # vecs
       positional_encoder,
-      pre_decoder_blocks,  # vecs
+      pre_decoder_blocks,     # vecs
       tl.Dup(),
       cacher,
       tl.ShiftRight(n_positions=shorten_factor - 1, mode=mode),
@@ -1011,5 +1025,6 @@ def RelformerLM(vocab_size,
       conv_layer,
       picker_conv,
       post_decoder_blocks,
-      tl.Dense(vocab_size),  # vecs
+      tl.Select([0], n_in=2) if prefix_lm else [],  # Remove target starts
+      tl.Dense(vocab_size),   # vecs
   )
