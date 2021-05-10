@@ -730,38 +730,43 @@ def Reformer2(input_vocab_size,
           use_bfloat16=use_bfloat16)
   )
 
-  # pylint: disable=g-complex-comprehension
-  encoder_blocks = [
-      EncoderBlock(
-          d_model1, d_ff1, n_heads, encoder_attention_type,
-          dropout=dropout,
-          ff_activation=ff_activation,
-          ff_dropout=ff_dropout,
-          ff_use_sru=ff_use_sru,
-          ff_chunk_size=ff_chunk_size,
-          ff_sparsity=ff_sparsity,
-          attention_chunk_size=attention_chunk_size,
-          center_layernorm=center_layernorm,
-          use_bfloat16=use_bfloat16,
-          use_two_swaps_per_block=use_two_swaps_per_encoder_block,
-          mode=mode)
-      for _ in range(n_encoder_layers)]
-  # pylint: enable=g-complex-comprehension
+  def _EncoderBlock():
+    return EncoderBlock(
+        d_model1,
+        d_ff1,
+        n_heads,
+        encoder_attention_type,
+        dropout=dropout,
+        ff_activation=ff_activation,
+        ff_dropout=ff_dropout,
+        ff_use_sru=ff_use_sru,
+        ff_chunk_size=ff_chunk_size,
+        ff_sparsity=ff_sparsity,
+        attention_chunk_size=attention_chunk_size,
+        center_layernorm=center_layernorm,
+        use_bfloat16=use_bfloat16,
+        use_two_swaps_per_block=use_two_swaps_per_encoder_block,
+        mode=mode)
 
-  encoder = [     # vec_e mask_e tok_e tok_d tok_d
-      tl.ReversibleSelect([0, 0]),     # vec_e1 vec_e2 mask_e tok_e tok_d tok_d
-      _ReversibleSerialForget(encoder_blocks, d_model1, n_layers_forget,
-                              forget_dense)
-  ]
-  if not reversible_encoder:
-    encoder += [
-        _XYAvg(),
-        tl.Dense(d_model1, use_bfloat16=use_bfloat16),
-        tl.LayerNorm(),
+  def _Encoder():  # vec_e mask_e tok_e tok_d tok_d
+    layers = [
+        tl.ReversibleSelect([0, 0]),
+        _ReversibleSerialForget(
+            [_EncoderBlock() for _ in range(n_encoder_layers)],
+            d_model1,
+            n_layers_forget,
+            forget_dense)
     ]
-  encoder = tl.Serial(encoder)
-  if mode == 'predict':
-    encoder = tl.Cache(encoder)
+    if not reversible_encoder:
+      layers += [
+          _XYAvg(),
+          tl.Dense(d_model1, use_bfloat16=use_bfloat16),
+          tl.LayerNorm(),
+      ]
+    if mode == 'predict':
+      return tl.Cache(tl.Serial(layers))
+    else:
+      return tl.Serial(layers)
 
   decoder_blocks = []
 
@@ -798,72 +803,70 @@ def Reformer2(input_vocab_size,
     if double_after_layer and layer_idx == double_after_layer:
       decoder_blocks.append(tl.ReversibleConcatenatePair())
 
-  dense_loss_layer = tl.SparseDenseWithOptions(
-      output_vocab_size,
-      d_input=d_model2,
-      sparsity_type=loss_sparsity_type,
-      sparsity=loss_sparsity,
-      d_lowrank=loss_d_lowrank,
-      prob_sparse=loss_sparsity_prob,
-      use_bfloat16=use_bfloat16,
-      mode=mode)
+  def _Loss():
+    return tl.SparseDenseWithOptions(
+        output_vocab_size,
+        d_input=d_model2,
+        sparsity_type=loss_sparsity_type,
+        sparsity=loss_sparsity,
+        d_lowrank=loss_d_lowrank,
+        prob_sparse=loss_sparsity_prob,
+        use_bfloat16=use_bfloat16,
+        mode=mode)
 
-  # Layers to merge encoder and decoder, see below for details.
-  if reversible_encoder:
-    encdec_layers = [
-        tl.ReversibleSelect([0, 1, 4, 2, 3]),  # vec_e vec_d mask_e tok_e tok_d
-        t2.ConcatWithPadding2(mode=mode),      # vec_ed vec_ed tok_e tok_d
-    ]
-  else:
-    encdec_layers = [
-        tl.ReversibleSelect([0, 3, 1, 2]),     # vec_e vec_d mask_e tok_e tok_d
-        t2.ConcatWithPadding(mode=mode),       # vec_ed tok_e tok_d
-        tl.ReversibleSelect([0, 0]),           # vec_ed vec_ed tok_e tok_d
-    ]
+  def _enc_dec_concat():
+    """Layers to merge encoder and decoder."""
+    if reversible_encoder:
+      return [
+          tl.ReversibleSelect([0, 1, 4, 2, 3]),  # v_e v_d mask_e tok_e tok_d
+          t2.ConcatWithPadding2(mode=mode),      # v_ed v_ed tok_e tok_d
+      ]
+    else:
+      return [
+          tl.ReversibleSelect([0, 3, 1, 2]),     # v_e v_d mask_e tok_e tok_d
+          t2.ConcatWithPadding(mode=mode),       # v_ed tok_e tok_d
+          tl.ReversibleSelect([0, 0]),           # v_ed v_ed tok_e tok_d
+      ]
 
-  if input_vocab_size is not None:
-    # Input in this case is tok_e, tok_d.
-    mask_layers = [
-        tl.PaddingMask(),
-        _RemoveAxes12(),
-    ]
-    inp_layers = tl.Serial([
-        tl.Select([0, 0, 0, 1]),               # tok_e tok_e tok_e tok_d
-        tl.Parallel(in_encoder, mask_layers)   # vec_e mask_e tok_e tok_d
-    ])
-    inp_layers = tl.AssertFunction('bt,bu->btf,bt,bt,bu', inp_layers)
-  else:
-    # Input in this case is vec_e, mask_e, tok_d. Where all downstream
-    # operations expect tok_e, we give it instead mask_e, expecting that
-    # downstream ops only are looking for padding/not padding.
-    inp_layers = tl.Serial([
-        tl.Select([0, 1, 1, 2]),                    # vec_e mask_e tok_e tok_d
-        tl.Parallel(in_encoder, [], _AsTokenIDs())  # vec_e mask_e tok_e tok_d
-    ])
-    inp_layers = tl.AssertFunction('btg,bt,bu->btf,bt,bt,bu', inp_layers)
+  def _inp_layers():
+    if input_vocab_size is not None:
+      return tl.AssertFunction(
+          'bl,br->bld,bl,bl,br',  # b: batch, l/r: enc/dec length, d: vec depth
+          tl.Serial(  # tok_e tok_d
+              tl.Select([0, 0, 0, 1]),
+              tl.Parallel(in_encoder, [tl.PaddingMask(),
+                                       _RemoveAxes12()])
+          ))  # vec_e mask_e tok_e tok_d
+    else:
+      # Input in this case is vec_e, mask_e, tok_d. Where all downstream
+      # operations expect tok_e, we give it instead mask_e, expecting that
+      # downstream ops only are looking for padding/not padding.
+      return tl.AssertFunction(
+          'blf,bl,br->bld,bl,bl,br',  # f: in-feature depth, d: out-vector depth
+          tl.Serial(  # vec_e mask_e tok_d
+              tl.Select([0, 1, 1, 2]),
+              tl.Parallel(in_encoder, [], _AsTokenIDs())
+          ))  # vec_e mask_e tok_e tok_d
 
   # Assemble and return the model.
   return tl.Serial(
-      inp_layers,                             # vec_e mask_e tok_e tok_d
+      _inp_layers(),               # vec_e mask_e tok_e tok_d
 
-      # Copy decoder tokens for use in loss.
-      tl.Select([0, 1, 2, 3, 3]),             # vec_e mask_e tok_e tok_d tok_d
+      tl.Select([0, 1, 2, 3, 3]),  # Copy decoder tokens for use in loss.
 
       # Embed in and out tokens; done together as weights may be shared.
-      tl.Parallel([], [], [],                 # vec_e mask_e tok_e vec_d tok_d
-                  [tl.ShiftRight(mode=mode), out_encoder]),
+      tl.Parallel([], [], [], [tl.ShiftRight(mode=mode),
+                               out_encoder]),  # vec_e mask_e tok_e vec_d tok_d
 
       # Predict mode doesn't work with padding in encoder. Raising an exception
-      # in jitted function isn't possible, so the second next best thing is
-      # to convert every embedding to NaNs, so the user will not get subtly
-      # wrong results, but clearly wrong results.
+      # in jitted function isn't possible, so the next best thing is to convert
+      # every embedding to NaNs, so the user will get unmistakably wrong
+      # results.
       (_ConvertToNaNsOnAnyZero() if mode == 'predict' else []),
 
-      # Encode.
-      encoder,                                # vec_e mask_e tok_e vec_d tok_d
-
-      # Concat encoder and decoder, given encoder mask.
-      encdec_layers,
+      # Encode; then concat encoder and decoder, given encoder mask.
+      _Encoder(),                             # vec_e mask_e tok_e vec_d tok_d
+      _enc_dec_concat(),
 
       # Run decoder blocks.
       _ReversibleSerialForget(decoder_blocks, d_model2, n_layers_forget,
@@ -871,12 +874,11 @@ def Reformer2(input_vocab_size,
       _XYAvg(),                               # vec_ed tok_e tok_d
       tl.LayerNorm(),                         # vec_ed tok_e tok_d
 
-      # Separate out the encoder part from the concatenated vector.
+      # Separate out the encoder part from the concatenated vector,
+      # then compute loss.
       tl.Select([0, 1, 2, 2]),                        # vec_ed tok_e tok_d tok_d
       t2.StripFromConcatenateWithPadding(mode=mode),  # vec_d tok_d
-
-      # Map to output vocab.
-      dense_loss_layer,  # vec_d tok_d
+      _Loss(),  # vec_d tok_d
   )
 
 
