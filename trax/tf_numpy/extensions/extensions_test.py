@@ -1046,6 +1046,14 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
         extensions.grad(f), experimental_compile=True)(a, b)
     self.assertAllClose(actual, expected)
 
+  def testStaticStopGradient(self):
+    self.assertEqual(extensions.stop_gradient(5.), 5.)
+    self.assertEqual(type(extensions.stop_gradient(5.)), type(5.))
+
+    self.assertEqual(extensions.stop_gradient(tf_np.asarray(5.)), 5.)
+    self.assertNotEqual(
+        type(extensions.stop_gradient(tf_np.asarray(5.))), type(5.))
+
 
 if __name__ == "__main__":
   tf.compat.v1.enable_eager_execution()

@@ -116,7 +116,15 @@ def _tf_to_np(inp):
 
 
 def stop_gradient(x):
-  return _tf_to_np(tf.nest.map_structure(tf.stop_gradient, x))
+
+  def static_stop_gradient(x):
+    # `tf.stop_gradient` is a no-op for non-Tensor. Returning the original type
+    # allows it to be used in the conditional without Autograph, if static. For
+    # example:
+    # `if fastmath.stop_gradient(5) > 4:`
+    return tf.stop_gradient(x) if tf.is_tensor(x) else x
+
+  return _tf_to_np(tf.nest.map_structure(static_stop_gradient, x))
 
 
 def custom_grad(f_vjp, f_original=None):
