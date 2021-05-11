@@ -912,8 +912,9 @@ class DQN(ValueAgent):
               rewards=np_trajectory.reward,
               returns=np_trajectory.return_,
               values=values_max,
-              dones=np_trajectory.done
-              )
+              dones=np_trajectory.done,
+              discount_mask=np_trajectory.env_info.discount_mask,
+          )
 
       length = n_step_returns.shape[1]
       target_returns = n_step_returns[:, :length]

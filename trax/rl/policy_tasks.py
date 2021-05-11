@@ -115,6 +115,7 @@ class PolicyTrainTask(training.TrainTask):
         returns=trajectory_batch.return_,
         dones=trajectory_batch.done,
         values=values,
+        discount_mask=trajectory_batch.env_info.discount_mask,
     )
 
   def calculate_weights(self, advantages):

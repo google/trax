@@ -326,6 +326,7 @@ class ActorCriticAgent(rl_training.PolicyAgent):
           returns=np_trajectory.return_,
           values=values,
           dones=np_trajectory.done,
+          discount_mask=np_trajectory.env_info.discount_mask,
       )
       length = advantages.shape[1]
       values = values[:, :length]
@@ -507,6 +508,7 @@ class AdvantageBasedActorCriticAgent(ActorCriticAgent):
         returns=trajectory.return_,
         values=values,
         dones=trajectory.done,
+        discount_mask=trajectory.env_info.discount_mask,
     )
     # Observations should be the same length as advantages - so if we are
     # using n_extra_steps, we need to trim the length to match.

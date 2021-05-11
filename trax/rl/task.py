@@ -24,6 +24,7 @@ import gym
 import numpy as np
 
 from trax import fastmath
+from trax.rl import advantages
 from trax.supervised import training
 
 
@@ -144,12 +145,14 @@ class Trajectory:
 
   def calculate_returns(self, gamma):
     """Calculate discounted returns."""
-    ret = 0.0
-    for i in reversed(range(len(self._timesteps))):
-      timestep = self._timesteps[i]
-      cur_reward = timestep.reward or 0.0
-      ret = gamma * ret + cur_reward
-      self._timesteps[i] = timestep._replace(return_=ret)
+    rewards = np.array([ts.reward for ts in self._timesteps])
+    discount_mask = np.array([
+        ts.env_info.discount_mask for ts in self._timesteps
+    ])
+    gammas = advantages.mask_discount(gamma, discount_mask)
+    returns = advantages.discounted_returns(rewards, gammas)
+    for (i, return_) in enumerate(returns):
+      self._timesteps[i] = self._timesteps[i]._replace(return_=return_)
 
   def _default_timestep_to_np(self, ts):
     """Default way to convert timestep to numpy."""
@@ -810,10 +813,8 @@ class RLTask:
     ):
       cur_batch.append(t)
       if len(cur_batch) == batch_size:
-        # zip(*cur_batch) transposes (batch_size, fields)
-        # -> (fields, batch_size). Then we build TimeStepBatch from the fields.
-        # Fields are observations, actions, ...
-        timestep_batch = TimeStepBatch(*zip(*cur_batch))
+        # Make a nested TimeStepBatch of lists out of a list of TimeStepBatches.
+        timestep_batch = fastmath.nested_zip(cur_batch)
         # Actions, rewards and returns in the trajectory slice have shape
         # [batch_size, trajectory_length], which we denote as [B, L].
         # Observations are more complex: [B, L] + S, where S is the shape of the
