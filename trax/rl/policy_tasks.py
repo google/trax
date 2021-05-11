@@ -129,7 +129,7 @@ class PolicyTrainTask(training.TrainTask):
     assert weights.shape == advantages.shape
     return weights
 
-  def trim_batch(self, trajectory_batch, advantages):
+  def trim_and_mask_batch(self, trajectory_batch, advantages):
     (batch_size, seq_len) = trajectory_batch.observation.shape[:2]
     adv_seq_len = advantages.shape[1]
     # The advantage sequence should be shorter by the margin. Margin is the
@@ -146,6 +146,9 @@ class PolicyTrainTask(training.TrainTask):
     observations = trajectory_batch.observation[:, :adv_seq_len]
     actions = trajectory_batch.action[:, :adv_seq_len]
     mask = trajectory_batch.mask[:, :adv_seq_len]
+    # Apply the control mask, so we only compute policy loss for controllable
+    # timesteps.
+    mask *= trajectory_batch.env_info.control_mask[:, :adv_seq_len]
     return (observations, actions, mask)
 
   def policy_batch(self, trajectory_batch, shape_only=False):
@@ -167,7 +170,7 @@ class PolicyTrainTask(training.TrainTask):
     advantages = self.calculate_advantages(
         trajectory_batch, shape_only=shape_only
     )
-    (observations, actions, mask) = self.trim_batch(
+    (observations, actions, mask) = self.trim_and_mask_batch(
         trajectory_batch, advantages
     )
     weights = self.calculate_weights(advantages) * mask / jnp.sum(mask)
@@ -215,7 +218,7 @@ class PolicyEvalTask(training.EvalTask):
     advantages = self._train_task.calculate_advantages(
         trajectory_batch, shape_only=shape_only
     )
-    (observations, actions, mask) = self._train_task.trim_batch(
+    (observations, actions, mask) = self._train_task.trim_and_mask_batch(
         trajectory_batch, advantages
     )
     return (observations, actions, advantages, mask)
