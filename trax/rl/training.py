@@ -442,11 +442,17 @@ def remaining_evals(cur_step, epoch, train_steps_per_epoch, evals_per_epoch):
   return evals_per_epoch - (done_steps_this_epoch // train_steps_per_eval)
 
 
-class PolicyGradient(Agent):
-  """Trains a policy model using policy gradient on the given RLTask."""
+class LoopPolicyAgent(Agent):
+  """Base class for policy-only Agents based on Loop."""
 
   def __init__(
-      self, task, model_fn,
+      self,
+      task,
+      model_fn,
+      value_fn,
+      weight_fn,
+      n_replay_epochs,
+      n_train_steps_per_epoch,
       optimizer=adam.Adam,
       lr_schedule=lr.multifactor,
       batch_size=64,
@@ -455,11 +461,19 @@ class PolicyGradient(Agent):
       max_slice_length=1,
       **kwargs
   ):
-    """Initializes PolicyGradient.
+    """Initializes LoopPolicyAgent.
 
     Args:
       task: Instance of trax.rl.task.RLTask.
       model_fn: Function (policy_distribution, mode) -> policy_model.
+      value_fn: Function TimeStepBatch -> array (batch_size, seq_len)
+        calculating the baseline for advantage calculation.
+      weight_fn: Function float -> float to apply to advantages when calculating
+        policy loss.
+      n_replay_epochs: Number of last epochs to take into the replay buffer;
+        only makes sense for off-policy algorithms.
+      n_train_steps_per_epoch: Number of steps to train the policy network for
+        in each epoch.
       optimizer: Optimizer for network training.
       lr_schedule: Learning rate schedule for network training.
       batch_size: Batch size for network training.
@@ -469,12 +483,14 @@ class PolicyGradient(Agent):
       max_slice_length: The length of trajectory slices to run the network on.
       **kwargs: Keyword arguments passed to the superclass.
     """
+    self._n_train_steps_per_epoch = n_train_steps_per_epoch
     super().__init__(task, **kwargs)
 
+    task.set_n_replay_epochs(n_replay_epochs)
     self._max_slice_length = max_slice_length
     trajectory_batch_stream = task.trajectory_batch_stream(
         batch_size,
-        epochs=[-1],
+        epochs=[-(ep + 1) for ep in range(n_replay_epochs)],
         max_slice_length=self._max_slice_length,
         sample_trajectories_uniformly=True,
     )
@@ -484,10 +500,11 @@ class PolicyGradient(Agent):
         optimizer(),
         lr_schedule(),
         self._policy_dist,
-        # Policy gradient uses the MC estimator. No need for margin - the MC
-        # estimator only uses empirical returns.
+        # Without a value network it doesn't make a lot of sense to use
+        # a better advantage estimator than MC.
         advantage_estimator=advantages.monte_carlo(task.gamma, margin=0),
-        value_fn=self._value_fn,
+        value_fn=value_fn,
+        weight_fn=weight_fn,
     )
     eval_task = policy_tasks.PolicyEvalTask(train_task, n_eval_batches)
     model_fn = functools.partial(
@@ -499,8 +516,8 @@ class PolicyGradient(Agent):
       policy_output_dir = os.path.join(self._output_dir, 'policy')
     else:
       policy_output_dir = None
-    # Checkpoint every epoch. We do one step per epoch, so that's every step.
-    checkpoint_at = lambda _: True
+    # Checkpoint every epoch.
+    checkpoint_at = lambda step: step % n_train_steps_per_epoch == 0
     self._loop = supervised.training.Loop(
         model=model_fn(mode='train'),
         tasks=[train_task],
@@ -513,14 +530,14 @@ class PolicyGradient(Agent):
     self._collect_model = model_fn(mode='collect')
     self._collect_model.init(shapes.signature(train_task.sample_batch))
 
-    # Validate the restored checkpoints. The number of network training steps
-    # (self.loop.step) should be equal to the number of epochs (self._epoch),
-    # because we do exactly one gradient step per epoch.
+    # Validate the restored checkpoints.
     # TODO(pkozakowski): Move this to the base class once all Agents use Loop.
-    if self.loop.step != self._epoch:
+    if self._loop.step != self._epoch * self._n_train_steps_per_epoch:
       raise ValueError(
-          'The number of Loop steps must equal the number of Agent epochs, '
-          'got {} and {}.'.format(self.loop.step, self._epoch)
+          'The number of Loop steps must equal the number of Agent epochs '
+          'times the number of steps per epoch, got {}, {} and {}.'.format(
+              self._loop.step, self._epoch, self._n_train_steps_per_epoch
+          )
       )
 
   @property
@@ -528,8 +545,41 @@ class PolicyGradient(Agent):
     """Loop exposed for testing."""
     return self._loop
 
+  def train_epoch(self):
+    """Trains RL for one epoch."""
+    # Copy policy state accumulated during data collection to the trainer.
+    self._loop.update_weights_and_state(state=self._collect_model.state)
+    # Train for the specified number of steps.
+    self._loop.run(n_steps=self._n_train_steps_per_epoch)
+
+
+class PolicyGradient(LoopPolicyAgent):
+  """Trains a policy model using policy gradient on the given RLTask."""
+
+  def __init__(self, task, model_fn, **kwargs):
+    """Initializes PolicyGradient.
+
+    Args:
+      task: Instance of trax.rl.task.RLTask.
+      model_fn: Function (policy_distribution, mode) -> policy_model.
+      **kwargs: Keyword arguments passed to the superclass.
+    """
+    super().__init__(
+        task, model_fn,
+        # We're on-policy, so we can only use data from the last epoch.
+        n_replay_epochs=1,
+        # Each gradient computation needs a new data sample, so we do 1 step
+        # per epoch.
+        n_train_steps_per_epoch=1,
+        # Very simple baseline: mean return across trajectories.
+        value_fn=self._value_fn,
+        # Weights are just advantages.
+        weight_fn=(lambda x: x),
+        **kwargs
+    )
+
   def policy(self, trajectory, temperature=1.0):
-    """Policy function that allows to play using this agent."""
+    """Policy function that samples from the trained network."""
     tr_slice = trajectory.suffix(self._max_slice_length)
     trajectory_np = tr_slice.to_np(timestep_to_np=self.task.timestep_to_np)
     return network_policy(
@@ -539,13 +589,6 @@ class PolicyGradient(Agent):
         trajectory_np=trajectory_np,
         temperature=temperature,
     )
-
-  def train_epoch(self):
-    """Trains RL for one epoch."""
-    # Copy policy state accumulated during data collection to the trainer.
-    self._loop.update_weights_and_state(state=self._collect_model.state)
-    # Perform one gradient step per training epoch to ensure we stay on policy.
-    self._loop.run(n_steps=1)
 
   @staticmethod
   def _value_fn(trajectory_batch):
