@@ -339,13 +339,17 @@ class TaskTest(absltest.TestCase):
     # Not getting done has low probability (1/2^20) but is possible, flaky test.
     self.assertTrue(got_done)
 
-  def test_trajectory_stream_propagates_env_info(self):
+  def test_trajectory_batch_stream_propagates_env_info(self):
     task = rl_task.RLTask(DummyEnv(), initial_trajectories=1, max_steps=4)
-    stream = task.trajectory_stream(max_slice_length=4)
+    stream = task.trajectory_batch_stream(batch_size=1, max_slice_length=4)
     tr_slice = next(stream)
     # control_mask = step % 2 == 0, discount_mask = step % 3 == 0.
-    np.testing.assert_array_equal(tr_slice.env_info.control_mask, [1, 0, 1, 0])
-    np.testing.assert_array_equal(tr_slice.env_info.discount_mask, [1, 0, 0, 1])
+    np.testing.assert_array_equal(
+        tr_slice.env_info.control_mask, [[1, 0, 1, 0]]
+    )
+    np.testing.assert_array_equal(
+        tr_slice.env_info.discount_mask, [[1, 0, 0, 1]]
+    )
 
   def test_trajectory_batch_stream_shape(self):
     task = rl_task.RLTask(DummyEnv(), initial_trajectories=1, max_steps=10)

@@ -24,6 +24,21 @@ from trax import fastmath
 common_args = ['gamma', 'margin']
 
 
+def mask_discount(discount, discount_mask):
+  """Computes a discount to apply at a given timestep, based on the mask."""
+  return fastmath.numpy.where(discount_mask, discount, 1.0)
+
+
+def discounted_returns(rewards, gammas):
+  """Computes discounted returns for a trajectory or a batch of them."""
+  returns = np.zeros_like(rewards)
+  ret = 0.0
+  for i in reversed(range(rewards.shape[-1])):
+    ret = rewards[..., i] + gammas[..., i] * ret
+    returns[..., i] = ret
+  return returns
+
+
 @gin.configurable(denylist=common_args)
 def monte_carlo(gamma, margin):
   """Calculate Monte Carlo advantage.
@@ -40,7 +55,8 @@ def monte_carlo(gamma, margin):
     advantages is an array of shape [batch_size, length - margin].
   """
   del gamma
-  def estimator(rewards, returns, values, dones):
+  def estimator(rewards, returns, values, dones, discount_mask):
+    del discount_mask
     (_, length) = returns.shape
     # Make sure that the future returns and values at "done" states are zero.
     returns[dones] = rewards[dones]
@@ -70,16 +86,18 @@ def td_k(gamma, margin):
     Function (rewards, returns, values, dones) -> advantages, where advantages
     advantages is an array of shape [batch_size, length - margin].
   """
-  def estimator(rewards, returns, values, dones):
+  def estimator(rewards, returns, values, dones, discount_mask):
     del returns
+    gammas = mask_discount(gamma, discount_mask)
     # Here we calculate advantage with TD-k, where k=margin.
     k = margin
     assert k > 0
-    advantages = (gamma ** k) * values[:, k:]
+    advantages = np.zeros_like(values[:, k:])
     discount = 1.0
     for i in range(margin):
       advantages += discount * rewards[:, i:-(margin - i)]
-      discount *= gamma
+      discount *= gammas[:, i:-(margin - i)]
+    advantages += discount * values[:, k:]
     # Zero out the future returns at "done" states.
     dones = dones[:, :-k]
     # TPU friendly version of the formula
@@ -109,13 +127,16 @@ def td_lambda(gamma, margin, lambda_=0.95):
     Function (rewards, returns, values, dones) -> advantages, where advantages
     advantages is an array of shape [batch_size, length - margin].
   """
-  def estimator(rewards, returns, values, dones):
+  def estimator(rewards, returns, values, dones, discount_mask):
+    gammas = mask_discount(gamma, discount_mask)
+    lambdas = mask_discount(lambda_, discount_mask)
     td_returns = np.zeros_like(returns)
     (_, length) = returns.shape
     td_returns[:, -1] = values[:, -1]
     for i in reversed(range(length - 1)):
-      td_returns[:, i] = rewards[:, i] + (1 - dones[:, i]) * gamma * (
-          (1 - lambda_) * values[:, i + 1] + lambda_ * td_returns[:, i + 1]
+      lambda_i = lambdas[:, i]
+      td_returns[:, i] = rewards[:, i] + (1 - dones[:, i]) * gammas[:, i] * (
+          (1 - lambda_i) * values[:, i + 1] + lambda_i * td_returns[:, i + 1]
       )
     return (td_returns - values)[:, :(returns.shape[1] - margin)]
   return estimator
@@ -137,17 +158,19 @@ def gae(gamma, margin, lambda_=0.95):
     Function (rewards, returns, values, dones) -> advantages, where advantages
     advantages is an array of shape [batch_size, length - margin].
   """
-  def estimator(rewards, returns, values, dones):
+  def estimator(rewards, returns, values, dones, discount_mask):
     del returns
+    gammas = mask_discount(gamma, discount_mask)
+    lambdas = mask_discount(lambda_, discount_mask)
     advantages = np.zeros_like(rewards)
     (_, length) = rewards.shape
 
     for i in reversed(range(length - 1)):
       bellman_delta = rewards[:, i] - values[:, i] + (1 - dones[:, i]) * (
-          gamma * values[:, i + 1]
+          gammas[:, i] * values[:, i + 1]
       )
       advantages[:, i] = bellman_delta + (1 - dones[:, i]) * (
-          gamma * lambda_ * advantages[:, i + 1]
+          gammas[:, i] * lambdas[:, i] * advantages[:, i + 1]
       )
 
     return advantages[:, :(rewards.shape[1] - margin)]

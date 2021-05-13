@@ -141,6 +141,7 @@ class ValueTrainTask(training.TrainTask):
         returns=trajectory_batch.return_,
         dones=trajectory_batch.done,
         values=values,
+        discount_mask=trajectory_batch.env_info.discount_mask,
     )
     adv_seq_len = advantages.shape[1]
     # The advantage sequence should be shorter by the margin. For more details,

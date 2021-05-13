@@ -38,11 +38,11 @@ class ActorCriticJointTest(absltest.TestCase):
 
   def test_awrjoint_save_restore(self):
     """Check save and restore of joint AWR trainer."""
-    task = rl_task.RLTask('CartPole-v0', initial_trajectories=100,
-                          max_steps=200)
+    task = rl_task.RLTask('CartPole-v0', initial_trajectories=2,
+                          max_steps=2)
     joint_model = functools.partial(
         models.PolicyAndValue,
-        body=lambda mode: tl.Serial(tl.Dense(64), tl.Relu()),
+        body=lambda mode: tl.Serial(tl.Dense(4), tl.Relu()),
     )
     tmp_dir = self.create_tempdir().full_path
     trainer1 = actor_critic_joint.AWRJoint(
@@ -97,8 +97,8 @@ class ActorCriticJointTest(absltest.TestCase):
 
   def test_jointawrtrainer_cartpole(self):
     """Test-runs joint AWR on cartpole."""
-    task = rl_task.RLTask('CartPole-v0', initial_trajectories=100,
-                          max_steps=200)
+    task = rl_task.RLTask('CartPole-v0', initial_trajectories=1,
+                          max_steps=2)
     joint_model = functools.partial(
         models.PolicyAndValue,
         body=lambda mode: tl.Serial(tl.Dense(64), tl.Relu()),
@@ -118,8 +118,8 @@ class ActorCriticJointTest(absltest.TestCase):
 
   def test_jointa2ctrainer_cartpole(self):
     """Test-runs joint A2C on cartpole."""
-    task = rl_task.RLTask('CartPole-v0', initial_trajectories=100,
-                          max_steps=200)
+    task = rl_task.RLTask('CartPole-v0', initial_trajectories=1,
+                          max_steps=2)
     joint_model = functools.partial(
         models.PolicyAndValue,
         body=lambda mode: tl.Serial(tl.Dense(64), tl.Relu()),
@@ -142,7 +142,7 @@ class ActorCriticJointTest(absltest.TestCase):
     task = rl_task.RLTask('CartPole-v0', initial_trajectories=1,
                           max_steps=2)
     body = lambda mode: models.TransformerDecoder(  # pylint: disable=g-long-lambda
-        d_model=32, d_ff=32, n_layers=1, n_heads=1, mode=mode)
+        d_model=4, d_ff=4, n_layers=1, n_heads=1, mode=mode)
     joint_model = functools.partial(models.PolicyAndValue, body=body)
     trainer = actor_critic_joint.AWRJoint(
         task,
@@ -157,10 +157,10 @@ class ActorCriticJointTest(absltest.TestCase):
 
   def test_jointa2ctrainer_cartpole_transformer(self):
     """Test-runs joint A2C on cartpole with Transformer."""
-    task = rl_task.RLTask('CartPole-v0', initial_trajectories=100,
-                          max_steps=200)
+    task = rl_task.RLTask('CartPole-v0', initial_trajectories=1,
+                          max_steps=2)
     body = lambda mode: models.TransformerDecoder(  # pylint: disable=g-long-lambda
-        d_model=32, d_ff=32, n_layers=1, n_heads=1, mode=mode)
+        d_model=4, d_ff=4, n_layers=1, n_heads=1, mode=mode)
     joint_model = functools.partial(models.PolicyAndValue, body=body)
     trainer = actor_critic_joint.A2CJoint(
         task,
