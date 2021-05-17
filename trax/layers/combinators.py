@@ -125,9 +125,8 @@ class Serial(base.Layer):
   def _validate_forward_inputs(self, xs):
     if not isinstance(xs, (tuple, list)) and self._n_in != 1:
       raise TypeError(f'Serial.forward input must be a tuple or list; '
-                      f'instead got {type(xs)}.')
-      # TODO(jonni): Include full xs (or shape) in error message?
-    len_xs = 1 if isinstance(xs, jnp.ndarray) else len(xs)
+                      f'instead got {type(xs)}. Input is {xs}')
+    len_xs = len(xs) if isinstance(xs, (tuple, list)) else 1
     if len_xs < self.n_in:
       raise ValueError(
           f'Number of inputs ({len(xs)}) to Serial.forward less than n_in '

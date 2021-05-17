@@ -41,7 +41,7 @@ jobs:
         # tf-nightly has some pip version conflicts, so can't be installed.
         # Use only numbered TF as of now.
         # tf-version: ["2.4.*", "tf-nightly"]
-        tf-version: ["2.4.*"]
+        tf-version: ["2.5.*"]
         # Which set of tests to run.
         trax-test: ["lib", "research"]
 
@@ -58,8 +58,10 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install -q -U setuptools numpy
         python -m pip install flake8 pytest
-        if [[ ${{matrix.tf-version}} == "tf-nightly" ]]; then python -m pip install tf-nightly; else python -m pip install -q "tensorflow=="${{matrix.tf-version}}; fi
+        if [[ ${{matrix.tf-version}} == "tf-nightly" ]]; then python -m pip install tf-nightly; else python -m pip install -q -U tensorflow==${{matrix.tf-version}}; fi
         pip install -e .[tests]
+        python -c 'import numpy; print(numpy.__version__)'
+        python -c 'import tensorflow; print(tensorflow.__version__)'
     # # Lint with flake8
     # - name: Lint with flake8
     #   run: |

@@ -30,7 +30,7 @@ from trax.layers import test_utils
 from trax.models.reformer import reformer
 
 
-BACKENDS = [fastmath.Backend.JAX]
+BACKENDS = [fastmath.Backend.JAX, fastmath.Backend.TFNP]
 
 
 def short_name(b):

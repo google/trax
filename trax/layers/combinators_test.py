@@ -519,11 +519,8 @@ class SerialWithSideOutputsTest(absltest.TestCase):
     self.assertEqual(output_shapes, [(3,), (5,), (2,)])
 
 
-BACKENDS = [fastmath.Backend.JAX]
-
-
 @parameterized.named_parameters(
-    ('_' + b.value, b) for b in BACKENDS)
+    ('_' + b.value, b) for b in (fastmath.Backend.JAX, fastmath.Backend.TFNP))
 class ScanTest(parameterized.TestCase):
 
   def _AddWithCarry(self):  # pylint: disable=invalid-name
