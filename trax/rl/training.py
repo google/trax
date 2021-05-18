@@ -221,10 +221,6 @@ class Agent:
       for _ in range(n_epochs_to_run):
         self._epoch += 1
         cur_time = time.time()
-        self.train_epoch()
-        supervised.trainer_lib.log(
-            'RL training took %.2f seconds.' % (time.time() - cur_time))
-        cur_time = time.time()
         avg_return = self._collect_trajectories()
         self._avg_returns.append(avg_return)
         if self._n_trajectories_per_epoch:
@@ -272,6 +268,12 @@ class Agent:
           sw.scalar('rl/n_trajectories', self.task.n_trajectories(),
                     step=self._epoch)
           sw.flush()
+
+        cur_time = time.time()
+        self.train_epoch()
+        supervised.trainer_lib.log(
+            'RL training took %.2f seconds.' % (time.time() - cur_time))
+
         if self._output_dir is not None and self._epoch == 1:
           self.save_gin(sw)
         if self._output_dir is not None:
@@ -360,8 +362,6 @@ class PolicyAgent(Agent):
     self._policy_eval_model = tl.Accelerate(
         policy_model(mode='eval'), n_devices=1)  # Not collecting stats
     self._policy_eval_model.init(shapes.signature(policy_batch))
-    if self._task._initial_trajectories == 0:
-      self._collect_trajectories()
 
   @property
   def policy_loss(self):
@@ -453,6 +453,7 @@ class LoopPolicyAgent(Agent):
       weight_fn,
       n_replay_epochs,
       n_train_steps_per_epoch,
+      advantage_normalization,
       optimizer=adam.Adam,
       lr_schedule=lr.multifactor,
       batch_size=64,
@@ -474,6 +475,8 @@ class LoopPolicyAgent(Agent):
         only makes sense for off-policy algorithms.
       n_train_steps_per_epoch: Number of steps to train the policy network for
         in each epoch.
+      advantage_normalization: Whether to normalize the advantages before
+        passing them to weight_fn.
       optimizer: Optimizer for network training.
       lr_schedule: Learning rate schedule for network training.
       batch_size: Batch size for network training.
@@ -503,6 +506,7 @@ class LoopPolicyAgent(Agent):
         # Without a value network it doesn't make a lot of sense to use
         # a better advantage estimator than MC.
         advantage_estimator=advantages.monte_carlo(task.gamma, margin=0),
+        advantage_normalization=advantage_normalization,
         value_fn=value_fn,
         weight_fn=weight_fn,
     )
@@ -575,6 +579,8 @@ class PolicyGradient(LoopPolicyAgent):
         value_fn=self._value_fn,
         # Weights are just advantages.
         weight_fn=(lambda x: x),
+        # Normalize advantages, because this makes optimization nicer.
+        advantage_normalization=True,
         **kwargs
     )
 
@@ -596,6 +602,90 @@ class PolicyGradient(LoopPolicyAgent):
     # and timesteps in a batch.
     value = np.mean(trajectory_batch.return_)
     return np.broadcast_to(value, trajectory_batch.return_.shape)
+
+
+@gin.configurable
+def sharpened_network_policy(
+    temperature,
+    temperature_multiplier=1.0,
+    **kwargs
+):
+  """Expert function that runs a policy network with lower temperature.
+
+  Args:
+    temperature: Temperature passed from the Agent.
+    temperature_multiplier: Multiplier to apply to the temperature to "sharpen"
+      the policy distribution. Should be <= 1, but this is not a requirement.
+    **kwargs: Keyword arguments passed to network_policy.
+
+  Returns:
+    Pair (action, dist_inputs) where action is the action taken and dist_inputs
+    is the parameters of the policy distribution, that will later be used for
+    training.
+  """
+  return network_policy(
+      temperature=(temperature_multiplier * temperature),
+      **kwargs
+  )
+
+
+class ExpertIteration(LoopPolicyAgent):
+  """Trains a policy model using expert iteration with a given expert."""
+
+  def __init__(
+      self, task, model_fn,
+      expert_policy_fn=sharpened_network_policy,
+      quantile=0.9,
+      n_replay_epochs=10,
+      n_train_steps_per_epoch=1000,
+      **kwargs
+  ):
+    """Initializes ExpertIteration.
+
+    Args:
+      task: Instance of trax.rl.task.RLTask.
+      model_fn: Function (policy_distribution, mode) -> policy_model.
+      expert_policy_fn: Function of the same signature as `network_policy`, to
+        be used as an expert. The policy will be trained to mimic the expert on
+        the "solved" trajectories.
+      quantile: Quantile of best trajectories to be marked as "solved". They
+        will be used to train the policy.
+      n_replay_epochs: Number of last epochs to include in the replay buffer.
+      n_train_steps_per_epoch: Number of policy training steps to run in each
+        epoch.
+      **kwargs: Keyword arguments passed to the superclass.
+    """
+    self._expert_policy_fn = expert_policy_fn
+    self._quantile = quantile
+    super().__init__(
+        task, model_fn,
+        # Don't use a baseline - it's not useful in our weights.
+        value_fn=(lambda batch: jnp.zeros_like(batch.return_)),
+        # The weight_fn filters out trajectories below the return threshold.
+        weight_fn=self._weight_fn,
+        # Don't normalize advantages, so the weight_fn can look at real returns.
+        advantage_normalization=False,
+        n_replay_epochs=n_replay_epochs,
+        n_train_steps_per_epoch=n_train_steps_per_epoch,
+        **kwargs
+    )
+
+  def policy(self, trajectory, temperature=1.0):
+    """Policy function that runs the expert."""
+    tr_slice = trajectory.suffix(self._max_slice_length)
+    trajectory_np = tr_slice.to_np(timestep_to_np=self.task.timestep_to_np)
+    return self._expert_policy_fn(
+        collect_model=self._collect_model,
+        policy_distribution=self._policy_dist,
+        loop=self.loop,
+        trajectory_np=trajectory_np,
+        temperature=temperature,
+    )
+
+  def _weight_fn(self, adv):
+    """Weight function that filters trajectories based on the quantile."""
+    threshold = jnp.quantile(adv, q=self._quantile)
+    return adv > threshold
 
 
 def network_policy(
@@ -779,8 +869,6 @@ class ValueAgent(Agent):
     self._eval_model = tl.Accelerate(
         value_model(mode='collect'), n_devices=1)
     self._eval_model.init(shapes.signature(value_batch))
-    if self._task._initial_trajectories == 0:
-      self._collect_trajectories()
 
   @property
   def _value_model_signature(self):

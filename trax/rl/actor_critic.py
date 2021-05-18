@@ -841,8 +841,6 @@ class LoopActorCriticAgent(rl_training.Agent):
   def _init_collection(self, model_fn, sample_batch):
     self._collect_model = model_fn(mode='collect')
     self._collect_model.init(shapes.signature(sample_batch))
-    if self._task._initial_trajectories == 0:  # pylint: disable=protected-access
-      self._collect_trajectories()
 
   @property
   def loop(self):

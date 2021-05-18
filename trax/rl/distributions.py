@@ -110,7 +110,7 @@ class Categorical(Distribution):
     )
 
   def entropy(self, inputs):
-    log_probs = inputs
+    log_probs = tl.LogSoftmax()(inputs)
     probs = jnp.exp(log_probs)
     return -jnp.sum(probs * log_probs, axis=-1)
 
