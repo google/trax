@@ -460,6 +460,7 @@ class LoopPolicyAgent(Agent):
       network_eval_at=None,
       n_eval_batches=1,
       max_slice_length=1,
+      trajectory_stream_preprocessing_fn=None,
       **kwargs
   ):
     """Initializes LoopPolicyAgent.
@@ -484,6 +485,8 @@ class LoopPolicyAgent(Agent):
         network evaluation should be performed.
       n_eval_batches: Number of batches to run during network evaluation.
       max_slice_length: The length of trajectory slices to run the network on.
+      trajectory_stream_preprocessing_fn: Function to apply to the trajectory
+        stream before batching. Can be used e.g. to filter trajectories.
       **kwargs: Keyword arguments passed to the superclass.
     """
     self._n_train_steps_per_epoch = n_train_steps_per_epoch
@@ -496,6 +499,7 @@ class LoopPolicyAgent(Agent):
         epochs=[-(ep + 1) for ep in range(n_replay_epochs)],
         max_slice_length=self._max_slice_length,
         sample_trajectories_uniformly=True,
+        trajectory_stream_preprocessing_fn=trajectory_stream_preprocessing_fn,
     )
     self._policy_dist = distributions.create_distribution(task.action_space)
     train_task = policy_tasks.PolicyTrainTask(
@@ -638,6 +642,7 @@ class ExpertIteration(LoopPolicyAgent):
       quantile=0.9,
       n_replay_epochs=10,
       n_train_steps_per_epoch=1000,
+      filter_buffer_size=256,
       **kwargs
   ):
     """Initializes ExpertIteration.
@@ -653,17 +658,23 @@ class ExpertIteration(LoopPolicyAgent):
       n_replay_epochs: Number of last epochs to include in the replay buffer.
       n_train_steps_per_epoch: Number of policy training steps to run in each
         epoch.
+      filter_buffer_size: Number of trajectories in the trajectory filter
+        buffer, used to select the best trajectories based on the quantile.
       **kwargs: Keyword arguments passed to the superclass.
     """
     self._expert_policy_fn = expert_policy_fn
     self._quantile = quantile
+    self._filter_buffer_size = filter_buffer_size
     super().__init__(
         task, model_fn,
         # Don't use a baseline - it's not useful in our weights.
         value_fn=(lambda batch: jnp.zeros_like(batch.return_)),
-        # The weight_fn filters out trajectories below the return threshold.
-        weight_fn=self._weight_fn,
-        # Don't normalize advantages, so the weight_fn can look at real returns.
+        # Don't weight trajectories - the training signal is provided by
+        # filtering trajectories.
+        weight_fn=jnp.ones_like,
+        # Filter trajectories based on the quantile.
+        trajectory_stream_preprocessing_fn=self._filter_trajectories,
+        # Advantage normalization is a no-op here.
         advantage_normalization=False,
         n_replay_epochs=n_replay_epochs,
         n_train_steps_per_epoch=n_train_steps_per_epoch,
@@ -682,10 +693,19 @@ class ExpertIteration(LoopPolicyAgent):
         temperature=temperature,
     )
 
-  def _weight_fn(self, adv):
-    """Weight function that filters trajectories based on the quantile."""
-    threshold = jnp.quantile(adv, q=self._quantile)
-    return adv > threshold
+  def _filter_trajectories(self, trajectory_stream):
+    """Filter trajectories based on the quantile."""
+    def trajectory_return(trajectory):
+      return trajectory.timesteps[0].return_
+
+    trajectory_buffer = []
+    for trajectory in trajectory_stream:
+      trajectory_buffer.append(trajectory)
+      if len(trajectory_buffer) == self._filter_buffer_size:
+        n_best = int((1 - self._quantile) * self._filter_buffer_size) or 1
+        trajectory_buffer.sort(key=trajectory_return, reverse=True)
+        yield from trajectory_buffer[:n_best]
+        trajectory_buffer.clear()
 
 
 def network_policy(
