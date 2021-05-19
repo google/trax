@@ -1524,7 +1524,10 @@ def T5GlueTrainStream(benchmark=gin.REQUIRED):
 
 
 @gin.configurable(module='trax.data')
-def T5GlueTrainStreamsParallel(benchmark_list=gin.REQUIRED, counters=None):
+def T5GlueTrainStreamsParallel(benchmark_list=gin.REQUIRED,
+                               counters=None,
+                               reweight_by_minimum=False,
+                               gradually_reweight=False):
   """Returns a parallel set of training streams, based on ``benchmark_list``.
 
   Args:
@@ -1535,9 +1538,16 @@ def T5GlueTrainStreamsParallel(benchmark_list=gin.REQUIRED, counters=None):
     benchmark_list = ["cola", "mnli", "rte"], see
     https://github.com/google-research/text-to-text-transfer-transformer/blob/master/t5/data/glue_utils.py#L42
     for more details on counters.
+    reweight_by_minimum: divide by the minimal counter.
+    gradually_reweight: a more refined reweighting policy, see inputs.py
+      for more details.
   """
   stream_list = list(map(T5GlueTrainStream, benchmark_list))
-  return data.Parallel(stream_list, counters)()
+  return data.Parallel(
+      stream_list,
+      counters=counters,
+      reweight_by_minimum=reweight_by_minimum,
+      gradually_reweight=gradually_reweight)()
 
 
 @gin.configurable(module='trax.data')
