@@ -334,7 +334,7 @@ class ReversibleHalfResidual(ReversibleLayer):
       state_to_pass = state[0]  # old_state
 
       # _replace_second_time is currently used exclusively in _RememberInReverse
-      # layer to combat numerical instability in Reformer2 when quantizing
+      # layer to combat numerical instability in Terraformer when quantizing
       # the mask in SparseFF.
       def _replace_second_time(stt, nstt):
         if (isinstance(stt, tuple) and len(stt) == 2 and

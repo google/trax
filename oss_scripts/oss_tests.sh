@@ -114,7 +114,9 @@ else
   pytest \
     --ignore=trax/models/reformer/reformer_e2e_test.py \
     --ignore=trax/models/reformer/reformer_memory_test.py \
-    --ignore=trax/models/reformer/reformer_oom_test.py \
+    --ignore=trax/models/research/terraformer_e2e_test.py \
+    --ignore=trax/models/research/terraformer_memory_test.py \
+    --ignore=trax/models/research/terraformer_oom_test.py \
     trax/models
   set_status
 

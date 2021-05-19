@@ -22,13 +22,13 @@ import trax.supervised.trainer_lib
 # Maximum length of an input sequence.
 max_len = 16384
 pos_axial_shape  = (128, 128)  # should multiply out to max_len
-attn_kv = 64
-n_layers = 24
+attn_kv = 128
+n_layers = 8 # TODO(wgaj): used to be 12
 dropout = 0.2
 d_model = 1024
 pos_d_axial_embs = (512, 512)
 d_ff = 4096
-n_heads = 16
+n_heads = 8
 ff_chunk_size = 0
 
 # Parameters for TFDS data pipeline:
@@ -56,7 +56,7 @@ data.TruncateToLength.len_map = {0: (15359, ), 1: (1023, )}
 data.AppendValue.val = {0:[0], 1:[1]}
 data.PadToLength.len_map = {0: 15360, 1: 1024}
 data.PadToLength.pad_value = {0: 0, 1: 0}
-data.Batch.batch_size = 4  # set to the number of accelerators on machine
+data.Batch.batch_size = 8
 data.AddLossWeights.id_to_mask = 0
 
 make_inputs.eval_stream = [
@@ -107,12 +107,12 @@ Adafactor.multiply_by_parameter_scale = True
 # ==============================================================================
 train.eval_frequency = 500
 train.eval_steps = 10
-train.model = @trax.models.Reformer2
+train.model = @trax.models.ConfigurableTerraformer
 train.steps = 1000000
 train.optimizer = @trax.optimizers.Adafactor
 train.checkpoint_highest = 'neg_log_perplexity'
 train.checkpoint_lowest = 'loss'
-train.use_memory_efficient_trainer = False
+train.use_memory_efficient_trainer = True
 train.inputs = @trax.data.make_inputs
 
 
@@ -120,45 +120,24 @@ train.inputs = @trax.data.make_inputs
 vocab_size = 32000
 
 
-# Parameters for PureLSHSelfAttention:
+# Parameters for ConfigurableTerraformer:
 # ==============================================================================
-PureLSHSelfAttention.attention_dropout = 0.2
-PureLSHSelfAttention.chunk_len = 128
-PureLSHSelfAttention.n_buckets = 128
-PureLSHSelfAttention.n_chunks_after = 0
-PureLSHSelfAttention.n_chunks_before = 1
-PureLSHSelfAttention.n_hashes = 2
-PureLSHSelfAttention.n_parallel_heads = 1
-PureLSHSelfAttention.predict_drop_len = %max_len
-PureLSHSelfAttention.predict_mem_len = %max_len
-# Reformer2's *encoder* is bidirectional.
-ref2_encoder/PureLSHSelfAttention.n_chunks_after = 1
+ConfigurableTerraformer.d_model = %d_model  # was  512
+ConfigurableTerraformer.d_ff = %d_ff        # was 2048
+ConfigurableTerraformer.dropout = %dropout  # was  0.1
+ConfigurableTerraformer.ff_activation = @trax.layers.Relu
+ConfigurableTerraformer.ff_dropout = 0.1
+ConfigurableTerraformer.ff_chunk_size = %ff_chunk_size
+ConfigurableTerraformer.max_len = %max_len
+ConfigurableTerraformer.mode = 'train'
+ConfigurableTerraformer.n_heads = %n_heads
+ConfigurableTerraformer.n_encoder_layers = %n_layers
+ConfigurableTerraformer.n_decoder_layers = %n_layers
+ConfigurableTerraformer.input_vocab_size = %vocab_size
+ConfigurableTerraformer.d_attention_key = %attn_kv    # d_model // n_heads
+ConfigurableTerraformer.d_attention_value = %attn_kv  # d_model // n_heads
+ConfigurableTerraformer.encoder_attention_type = @Favor
+ConfigurableTerraformer.encoder_decoder_attention_type = @CausalFavor
+ConfigurableTerraformer.pos_type = 'fixed-base'
+ConfigurableTerraformer.pos_d_axial_embs = %pos_d_axial_embs
 
-# Parameters for PureLSHSelfAttentionWrapper:
-# ==============================================================================
-PureLSHSelfAttentionWrapper.pure_lsh_implementation = @PureLSHSelfAttention
-ref2_encoder/PureLSHSelfAttentionWrapper.pure_lsh_implementation = @ref2_encoder/PureLSHSelfAttention
-
-
-# Parameters for Reformer2:
-# ==============================================================================
-Reformer2.d_model = %d_model  # was  512
-Reformer2.d_ff = %d_ff        # was 2048
-Reformer2.dropout = %dropout  # was  0.1
-Reformer2.ff_activation = @trax.layers.Relu
-Reformer2.ff_dropout = 0.1
-Reformer2.ff_chunk_size = %ff_chunk_size
-Reformer2.max_len = 32768
-Reformer2.mode = 'train'
-Reformer2.n_heads = %n_heads
-Reformer2.n_encoder_layers = %n_layers
-Reformer2.n_decoder_layers = %n_layers
-Reformer2.input_vocab_size = %vocab_size
-Reformer2.d_attention_key = %attn_kv    # d_model // n_heads
-Reformer2.d_attention_value = %attn_kv  # d_model // n_heads
-Reformer2.encoder_attention_type = @ref2_encoder/PureLSHSelfAttentionWrapper
-Reformer2.encoder_decoder_attention_type = @PureLSHSelfAttentionWrapper
-Reformer2.use_two_swaps_per_encoder_block = False
-Reformer2.reversible_encoder = True
-Reformer2.pos_type = None
-Reformer2.pos_d_axial_embs = %pos_d_axial_embs

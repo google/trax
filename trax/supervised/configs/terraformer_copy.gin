@@ -21,26 +21,26 @@ import trax.models
 import trax.optimizers
 import trax.supervised.trainer_lib
 
-# Parameters for Reformer2:
+# Parameters for ConfigurableTerraformer:
 # ==============================================================================
-Reformer2.d_model = 256
-Reformer2.d_ff = 512
-Reformer2.dropout = 0.05
-Reformer2.max_len = %max_len
-Reformer2.n_heads = 4
-Reformer2.mode = 'train'
-Reformer2.n_encoder_layers = 3
-Reformer2.n_decoder_layers = 3
-Reformer2.ff_use_sru = 0
-Reformer2.d_attention_key = 64
-Reformer2.d_attention_value = 64
-Reformer2.encoder_attention_type = @LSHSelfAttention
-Reformer2.encoder_decoder_attention_type = @LSHSelfAttention
-Reformer2.n_decoder_attention_layers = 1
-Reformer2.input_vocab_size = %vocab_size
-Reformer2.pos_type  = 'fixed-base'
+ConfigurableTerraformer.d_model = 256
+ConfigurableTerraformer.d_ff = 512
+ConfigurableTerraformer.dropout = 0.05
+ConfigurableTerraformer.max_len = %max_len
+ConfigurableTerraformer.n_heads = 4
+ConfigurableTerraformer.mode = 'train'
+ConfigurableTerraformer.n_encoder_layers = 3
+ConfigurableTerraformer.n_decoder_layers = 3
+ConfigurableTerraformer.ff_use_sru = 0
+ConfigurableTerraformer.d_attention_key = 64
+ConfigurableTerraformer.d_attention_value = 64
+ConfigurableTerraformer.encoder_attention_type = @LSHSelfAttention
+ConfigurableTerraformer.encoder_decoder_attention_type = @LSHSelfAttention
+ConfigurableTerraformer.n_decoder_attention_layers = 1
+ConfigurableTerraformer.input_vocab_size = %vocab_size
+ConfigurableTerraformer.pos_type  = 'fixed-base'
 
 # Parameters for train:
 # ==============================================================================
 train.inputs = @trax.data.simple_sequence_copy_inputs
-train.model = @trax.models.Reformer2
+train.model = @trax.models.ConfigurableTerraformer

@@ -67,7 +67,7 @@ def _memory_usage():
 
 class DecodingTimingTest(test.TestCase):
 
-  def _reformer2_decoding_time(self, settings):
+  def _terraformer_decoding_time(self, settings):
     # Garbage collection influences the timing, so we turn it off.
     gc.disable()
     max_len = 16
@@ -84,7 +84,7 @@ class DecodingTimingTest(test.TestCase):
           attn_layer,
           max_inference_length=2 * max_len, **attn_kwargs)
 
-    pred_model = models.Reformer2(
+    pred_model = models.ConfigurableTerraformer(
         mode='predict',
         d_model=settings['d_model'],
         d_ff=settings['d_ff'],
@@ -159,7 +159,7 @@ class DecodingTimingTest(test.TestCase):
     gc.enable()
     return model_size, elapsed_times, peak_memory
 
-  def test_autoregressive_sample_reformer2_timing(self):
+  def test_autoregressive_sample_terraformer_timing(self):
     template_to_use = 'medium_model'
 
     settings_templates = {
@@ -248,7 +248,8 @@ class DecodingTimingTest(test.TestCase):
       settings.update(override_settings)
 
       init_memory = _memory_usage()
-      size, elapsed_times, peak_memory = self._reformer2_decoding_time(settings)
+      size, elapsed_times, peak_memory = (
+          self._terraformer_decoding_time(settings))
 
       # TODO(jaszczur): Why is elapsed_times[0] always small?
       encoding_time = elapsed_times[1]

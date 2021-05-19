@@ -86,7 +86,7 @@ LSHSelfAttention.n_hashes = 2
 LSHSelfAttention.n_parallel_heads = 1
 LSHSelfAttention.predict_drop_len = %max_len
 LSHSelfAttention.predict_mem_len = %max_len
-# Reformer2's *encoder* is bidirectional.
+# ConfigurableTerraformer's *encoder* is bidirectional.
 ref2_encoder/LSHSelfAttention.n_chunks_after = 1
 
 
@@ -167,7 +167,7 @@ Adafactor.multiply_by_parameter_scale = True
 # ==============================================================================
 train.eval_frequency = 500
 train.eval_steps = 10
-train.model = @trax.models.Reformer2
+train.model = @trax.models.ConfigurableTerraformer
 train.steps = 1000000
 train.optimizer = @trax.optimizers.Adafactor
 train.checkpoint_highest = 'neg_log_perplexity'
@@ -179,26 +179,26 @@ train.inputs = @trax.data.make_inputs
 vocab_size = 32000
 
 
-# Parameters for Reformer2:
+# Parameters for ConfigurableTerraformer:
 # ==============================================================================
-Reformer2.d_model = %d_model  # was  512
-Reformer2.d_ff = %d_ff        # was 2048
-Reformer2.dropout = %dropout  # was  0.1
-Reformer2.ff_activation = @trax.layers.Relu
-Reformer2.ff_dropout = 0.1
-Reformer2.ff_chunk_size = %ff_chunk_size
-Reformer2.max_len = %max_len
-Reformer2.mode = 'train'
-Reformer2.n_heads = %n_heads
-Reformer2.n_encoder_layers = %n_layers
-Reformer2.n_decoder_layers = %n_layers
-Reformer2.input_vocab_size = %vocab_size
-Reformer2.d_attention_key = %attn_kv    # d_model // n_heads
-Reformer2.d_attention_value = %attn_kv  # d_model // n_heads
-Reformer2.encoder_attention_type = @ref2_encoder/LSHSelfAttention
-Reformer2.encoder_decoder_attention_type = @LSHSelfAttention
-Reformer2.pos_type = 'fixed-base'
-Reformer2.pos_d_axial_embs = %pos_d_axial_embs
+ConfigurableTerraformer.d_model = %d_model  # was  512
+ConfigurableTerraformer.d_ff = %d_ff        # was 2048
+ConfigurableTerraformer.dropout = %dropout  # was  0.1
+ConfigurableTerraformer.ff_activation = @trax.layers.Relu
+ConfigurableTerraformer.ff_dropout = 0.1
+ConfigurableTerraformer.ff_chunk_size = %ff_chunk_size
+ConfigurableTerraformer.max_len = %max_len
+ConfigurableTerraformer.mode = 'train'
+ConfigurableTerraformer.n_heads = %n_heads
+ConfigurableTerraformer.n_encoder_layers = %n_layers
+ConfigurableTerraformer.n_decoder_layers = %n_layers
+ConfigurableTerraformer.input_vocab_size = %vocab_size
+ConfigurableTerraformer.d_attention_key = %attn_kv    # d_model // n_heads
+ConfigurableTerraformer.d_attention_value = %attn_kv  # d_model // n_heads
+ConfigurableTerraformer.encoder_attention_type = @ref2_encoder/LSHSelfAttention
+ConfigurableTerraformer.encoder_decoder_attention_type = @LSHSelfAttention
+ConfigurableTerraformer.pos_type = 'fixed-base'
+ConfigurableTerraformer.pos_d_axial_embs = %pos_d_axial_embs
 
 
 # Parameters for ReformerLM:

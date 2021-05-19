@@ -1,3 +1,4 @@
+# coding=utf-8
 # Copyright 2021 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,8 +13,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-ConfigurableTerraformer.d_ff: [2048, 4096]
-ConfigurableTerraformer.ff_chunk_size: [0, 2048, 4096, 8192]
-LSHSelfAttention.chunk_len: [64, 128, 256]
-LSHSelfAttention.n_buckets: [128, 256, 512]
-multifactor.constant: [0.03125, 0.0442, 1.0]
+# Lint as: python3
+"""Test for memory usage in Terraformer models.
+
+This test is designed to run on TPUv3 hardware, processing 1 million tokens at a
+time while just barely fitting within the 16 GB memory budget.
+"""
+
+
+from absl.testing import absltest
+
+
+
+class TerraformerMemoryTest(absltest.TestCase):
+
+
+  def test_terraformer_memory(self):
+    pass  # TODO(jonni): Figure out an OSS-compatible memory test.
+
+
+if __name__ == '__main__':
+  config.config_with_absl()
+  absltest.main()

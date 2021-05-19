@@ -206,10 +206,10 @@ class DecodingTest(test.TestCase):
                                        eos_id=1, max_length=10, temperature=0.0)
     self.assertEqual(str(s[0]), '[3 7 5 3 2 4 1]')
 
-  def test_autoregressive_sample_reformer2_lsh(self):
+  def test_autoregressive_sample_terraformer_lsh(self):
     max_len = 128
 
-    pred_model = models.Reformer2(
+    pred_model = models.ConfigurableTerraformer(
         mode='predict',
         d_model=256,
         d_ff=512,
@@ -243,7 +243,7 @@ class DecodingTest(test.TestCase):
     self.assertEqual(s.shape[0], 1)
     self.assertEqual(s.shape[1], 10)
 
-  def test_autoregressive_sample_reformer2_lsh_attn_quality(self):
+  def test_autoregressive_sample_terraformer_lsh_attn_quality(self):
     gin.add_config_file_search_path(_CONFIG_DIR)
     max_len = 32  # 32 is the max length we trained the checkpoint for.
     test_lengths = [8, 16, 32]
@@ -252,16 +252,16 @@ class DecodingTest(test.TestCase):
     np.random.seed(0)
     for test_len in test_lengths:
       gin.clear_config()
-      gin.parse_config_file('reformer2_copy.gin')
+      gin.parse_config_file('terraformer_copy.gin')
       gin.bind_parameter('LSHSelfAttention.predict_mem_len', 2 * max_len)
       gin.bind_parameter('LSHSelfAttention.predict_drop_len', 2 * max_len)
 
-      pred_model = models.Reformer2(mode='predict')
+      pred_model = models.ConfigurableTerraformer(mode='predict')
 
       shape11 = shapes.ShapeDtype((1, 1), dtype=np.int32)
       shape1l = shapes.ShapeDtype((1, max_len), dtype=np.int32)
 
-      model_path = os.path.join(_TESTDATA, 'reformer2_copy_lsh_attn.pkl.gz')
+      model_path = os.path.join(_TESTDATA, 'terraformer_copy_lsh_attn.pkl.gz')
       pred_model.init_from_file(model_path, weights_only=True,
                                 input_signature=(shape1l, shape11))
       initial_state = pred_model.state
@@ -270,7 +270,7 @@ class DecodingTest(test.TestCase):
         # Pick a length in [1, test_len] at random.
         inp_len = np.random.randint(low=1, high=test_len + 1)
         inputs = np.random.randint(low=1, high=vocab_size-1, size=(1, max_len))
-        # TODO(jaszczur): properly fix padding in Reformer2 predict mode,
+        # TODO(jaszczur): properly fix padding in terraformer predict mode,
         # and add a test here.
         s = decoding.autoregressive_sample(
             pred_model, inputs=inputs, eos_id=-1, max_length=inp_len,
@@ -361,10 +361,10 @@ class DecodingTest(test.TestCase):
     np.testing.assert_equal(s[0], inputs[0, 1:inp_len-1])
     # pylint: enable=unreachable
 
-  def test_autoregressive_sample_reformer2_pure_lsh(self):
+  def test_autoregressive_sample_terraformer_pure_lsh(self):
     max_len = 128
 
-    pred_model = models.Reformer2(
+    pred_model = models.ConfigurableTerraformer(
         mode='predict',
         d_model=256,
         d_ff=512,
@@ -399,7 +399,7 @@ class DecodingTest(test.TestCase):
     self.assertEqual(s.shape[0], 1)
     self.assertEqual(s.shape[1], 10)
 
-  def test_autoregressive_sample_reformer2_pure_lsh_attn_quality(self):
+  def test_autoregressive_sample_terraformer_pure_lsh_attn_quality(self):
     gin.add_config_file_search_path(_CONFIG_DIR)
     max_len = 32  # 32 is the max length we trained the checkpoint for.
     test_lengths = [8, 16, 32]
@@ -408,18 +408,18 @@ class DecodingTest(test.TestCase):
     np.random.seed(0)
     for test_len in test_lengths:
       gin.clear_config()
-      gin.parse_config_file('reformer2_purelsh_copy.gin')
+      gin.parse_config_file('terraformer_purelsh_copy.gin')
       gin.bind_parameter('PureLSHSelfAttention.predict_mem_len', 2 * max_len)
       gin.bind_parameter('PureLSHSelfAttention.predict_drop_len', 2 * max_len)
       gin.bind_parameter('PureLSHSelfAttentionWrapper.bias', False)
       gin.bind_parameter('PureLSHSelfAttentionWrapper.num_weights', 2)
 
-      pred_model = models.Reformer2(mode='predict')
+      pred_model = models.ConfigurableTerraformer(mode='predict')
 
       shape11 = shapes.ShapeDtype((1, 1), dtype=np.int32)
       shape1l = shapes.ShapeDtype((1, max_len), dtype=np.int32)
 
-      model_path = os.path.join(_TESTDATA, 'reformer2_purelsh_copy.pkl.gz')
+      model_path = os.path.join(_TESTDATA, 'terraformer_purelsh_copy.pkl.gz')
       pred_model.init_from_file(model_path, weights_only=True,
                                 input_signature=(shape1l, shape11))
       initial_state = pred_model.state
@@ -428,7 +428,7 @@ class DecodingTest(test.TestCase):
         # Pick a length in [1, test_len] at random.
         inp_len = np.random.randint(low=1, high=test_len + 1)
         inputs = np.random.randint(low=1, high=vocab_size-1, size=(1, max_len))
-        # TODO(jaszczur): properly fix padding in Reformer2 predict mode,
+        # TODO(jaszczur): properly fix padding in terraformer predict mode,
         # and add a test here.
         s = decoding.autoregressive_sample(
             pred_model, inputs=inputs, eos_id=-1, max_length=inp_len,

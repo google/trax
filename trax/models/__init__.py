@@ -30,6 +30,7 @@ from trax.models.research import funnel_transformer
 from trax.models.research import layerdrop_transformer
 from trax.models.research import rezero
 from trax.models.research import rse
+from trax.models.research import terraformer
 from trax.models.research import transformer2
 
 
@@ -46,6 +47,7 @@ FrameStackMLP = model_configure(atari_cnn.FrameStackMLP)
 BERT = model_configure(bert.BERT)
 BERTClassifierHead = model_configure(bert.BERTClassifierHead)
 BERTRegressionHead = model_configure(bert.BERTRegressionHead)
+ConfigurableTerraformer = model_configure(terraformer.ConfigurableTerraformer)
 ConfigurableTransformer = model_configure(
     configurable_transformer.ConfigurableTransformer)
 ConfigurableTransformerEncoder = model_configure(
@@ -57,7 +59,6 @@ NeuralGPU = model_configure(neural_gpu.NeuralGPU)
 Reformer = model_configure(reformer.Reformer)
 ReformerLM = model_configure(reformer.ReformerLM)
 ReformerShortenLM = model_configure(reformer.ReformerShortenLM)
-Reformer2 = model_configure(reformer.Reformer2)
 Resnet50 = model_configure(resnet.Resnet50)
 ReZeroTransformer = model_configure(
     rezero.ReZeroTransformer)

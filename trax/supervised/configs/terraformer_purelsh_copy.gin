@@ -14,7 +14,7 @@
 
 # -*-Python-*-
 
-include 'reformer2_copy.gin'
+include 'terraformer_copy.gin'
 
 import trax.data
 import trax.models
@@ -44,12 +44,12 @@ PureLSHSelfAttentionWrapper.pure_lsh_implementation = @PureLSHSelfAttention
 enc/PureLSHSelfAttention.n_chunks_after = 1
 encoder/PureLSHSelfAttentionWrapper.pure_lsh_implementation = @enc/PureLSHSelfAttention
 
-# Parameters for Reformer2:
+# Parameters for ConfigurableTerraformer:
 # ==============================================================================
-Reformer2.encoder_attention_type = @encoder/PureLSHSelfAttentionWrapper
-Reformer2.encoder_decoder_attention_type = @PureLSHSelfAttentionWrapper
+ConfigurableTerraformer.encoder_attention_type = @encoder/PureLSHSelfAttentionWrapper
+ConfigurableTerraformer.encoder_decoder_attention_type = @PureLSHSelfAttentionWrapper
 
 # Parameters for train:
 # ==============================================================================
 train.inputs = @trax.data.simple_sequence_copy_inputs
-train.model = @trax.models.Reformer2
+train.model = @trax.models.ConfigurableTerraformer
