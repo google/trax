@@ -229,17 +229,21 @@ def _train_and_eval_dataset(dataset_name,
   train_examples = info.splits[train_split].num_examples
   eval_holdout_examples = int(train_examples * eval_holdout_size)
   if eval_holdout_examples > 0 or subsplit is not None:
+    if subsplit is None:
+      subsplit = (0, 1)
     n_train = train_examples - eval_holdout_examples
     train_start = int(n_train * subsplit[0])
     train_end = int(n_train * subsplit[1])
     if train_end - train_start < 1:
       raise ValueError('Requested train subsplit has no examples: '
                        'n_train %d subsplit %s' % (n_train, subsplit))
+    # Eval holdout examples from the end of the training set.
+    if eval_holdout_examples > 0:
+      eval_split = f'{train_split}[-{eval_holdout_examples}:]'
+    # Shard the training set for this host.
     train_split = f'{train_split}[{train_start}:{train_end}]'
 
-  if eval_holdout_examples > 0:
-    eval_split = f'{train_split}[{eval_holdout_examples}:]'
-  elif dataset_name == 'glue/mnli':
+  if dataset_name == 'glue/mnli':
     eval_split = (
         'validation_mismatched' if use_alt_eval else 'validation_matched')
   elif dataset_name == 'c4/multilingual':
@@ -250,6 +254,7 @@ def _train_and_eval_dataset(dataset_name,
     eval_split = tfds.Split.VALIDATION
     if tfds.Split.VALIDATION not in splits:
       eval_split = tfds.Split.TEST
+
   train = tfds.load(
       name=dataset_name,
       split=train_split,
