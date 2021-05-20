@@ -293,6 +293,27 @@ class InputsTest(parameterized.TestCase):
     self.assertEqual(next(generator), 25)   # (2,1,3)
     self.assertEqual(next(generator), 4)    # (1,0,0)
 
+  def test_stack_parallel(self):
+    """Test of stacked parallel ccmbinators."""
+    dataset1 = lambda: (i for i in range(10))
+    dataset2 = lambda: (i for i in range(10, 20))
+    dataset3 = lambda: (i for i in range(20, 30))
+    parallel_lev0 = data.Parallel([dataset1, dataset2])
+    parallel_lev1 = data.Parallel([parallel_lev0, dataset3])
+    generator = parallel_lev1()
+
+    self.assertEqual(next(generator), 0)
+    self.assertEqual(next(generator), 20)
+    self.assertEqual(next(generator), 10)
+    self.assertEqual(next(generator), 21)
+    self.assertEqual(next(generator), 1)
+    self.assertEqual(next(generator), 22)
+    self.assertEqual(next(generator), 11)
+    self.assertEqual(next(generator), 23)
+    self.assertEqual(next(generator), 2)
+    self.assertEqual(next(generator), 24)
+    self.assertEqual(next(generator), 12)
+
   def test_serial_with_python(self):
     dataset = lambda _: ((i, i+1) for i in range(10))
     batches = data.Serial(
