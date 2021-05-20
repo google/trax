@@ -68,66 +68,122 @@ def ConfigurableTerraformer(input_vocab_size,
                             half_before_layer=None,
                             double_after_layer=None,
                             mode='train'):
-  """Terraformer encoder-decoder model.
+  """Returns a highly configurable Terraformer encoder-decoder model.
 
-  If input_vocab_size is not None, this model expects an input pair: source,
-  target. Otherwise, it expects a triple: embedded_source, mask, target.
+  This model maps paired text sequences (source and target) to float-valued
+  losses. If ``input_vocab_size`` is not ``None``, the layer takes
+  two input sequences:
+
+    - inputs (2):
+
+        - source: 2-D int array representing a batch of text strings via token
+          IDs plus padding markers; shape is `(batch_size, sequence_length)`,
+          where sequence_length <= ``max_len``. Array elements are in
+          ``range(input_vocab_size)``, and 0 values mark padding positions.
+
+        - target: 2-D int array representing a batch of text strings via token
+          IDs plus padding markers; shape is `(batch_size, sequence_length)`,
+          where sequence_length <= ``max_len``. Array elements are in
+          ``range(output_vocab_size)``, and 0 values mark padding positions.
+
+    - output: 1-D float array of losses; shape is `(batch_size)`.
+
+  If ``input_vocab_size`` is ``None``, the layer takes three input sequences:
+
+    - inputs (3):
+
+        - source: 3-D float array representing a batch of already-embedded text
+          strings; shape is `(batch_size, sequence_length, d_model)`, where
+          sequence_length <= ``max_len``.
+
+        - mask: 2-D int array representing active versus masked positions; 0
+          values mark masked (padding) positions.
+
+        - target: 2-D int array representing a batch of text strings via token
+          IDs plus padding markers; shape is `(batch_size, sequence_length)`,
+          where sequence_length <= ``max_len``. Array elements are in
+          ``range(output_vocab_size)``, and 0 values mark padding positions.
+
+    - output: 1-D float array of losses; shape is `(batch_size)`.
 
   Args:
-    input_vocab_size: int: vocab size of the source.
-    output_vocab_size: int (optional): vocab size of the target. If None, the
-      source and target are assumed to have the same vocab.
-    d_model: int:  depth of embedding
-    d_ff: int: depth of feed-forward layer
-    d_attention_key: int: depth of key vector for each attention head
-    d_attention_value: int: depth of value vector for each attention head
-    n_encoder_layers: int: number of encoder layers
-    n_decoder_layers: int: number of decoder layers
-    n_heads: int: number of attention heads
-    dropout: float: dropout rate (how much to drop out)
-    max_len: int: maximum symbol length for positional encoding
-    encoder_attention_type: class: attention class to use, such as SelfAttention
-    encoder_decoder_attention_type: class: attention class to use, such as
-      SelfAttention
-    pos_type: string, the type of positional embeddings to use.
-    pos_axial_shape: tuple of ints: input shape to use for the axial position
+    input_vocab_size: Input vocabulary size -- each element of the input tensor
+        should be an integer in ``range(vocab_size)``. These integers typically
+        represent token IDs from a vocabulary-based tokenizer.
+    output_vocab_size: If specified, gives the vocabulary size for the targets;
+        if ``None``, then input and target integers (token IDs) are assumed to
+        come from the same vocabulary.
+    d_model: Last/innermost dimension of activation arrays at most points in
+        the model, including the initial embedding output.
+    d_ff: Last/innermost dimension of special (typically wider)
+        :py:class:`Dense` layer in the feedforward part of each encoder block.
+    d_attention_key: Depth of key vectors in each attention head.
+    d_attention_value: Depth of value vectors in each attention head.
+    n_encoder_layers: Number of encoder blocks.
+    n_decoder_layers: Number of decoder blocks.
+    n_heads: Number of attention heads.
+    dropout: Stochastic rate (probability) for dropping an activation value
+        when applying dropout within encoder/decoder blocks. The same rate is
+        also used for attention dropout in encoder/decoder blocks.
+    max_len: Maximum symbol length for positional encoding.
+    encoder_attention_type: Type of attention to use in the encoder; must be
+        an attention-type subclass of :py:class:`trax.layers.Layer`.
+    encoder_decoder_attention_type: Type of attention to use in the decoder;
+        must be an attention-type subclass of :py:class:`trax.layers.Layer`.
+    pos_type: String indicating the type of positional embeddings to use.
+    pos_axial_shape: Shape (tuple of ints) to use for the axial position
       encoding. If unset, axial position encoding is disabled.
-    pos_d_axial_embs: tuple of ints: depth of position embedding for each axis.
-      Tuple length must match pos_axial_shape, and values must sum to d_model.
-    pos_start_from_zero_prob: how often to start from 0 during training,
-          (if 1.0, we always start from position 0, if less, we randomize).
-    pos_max_offset_to_add: maximum offset to add to positions during training
-        when randomizing; this offset plus input length must still be less than
-        max_len for all training examples.
-    ff_activation: the non-linearity in feed-forward layer
-    ff_use_sru: int; if > 0, we use this many SRU layers instead of feed-forward
-    ff_chunk_size: int; if > 0, chunk feed-forward into this-sized chunks
-    ff_dropout: float: (optional) separate dropout rate at feed-forward
-      nonlinearity. This is called relu_dropout in T2T.
-    ff_sparsity: int, if > 0 use sparse feed-forward block with this sparsity
-    loss_sparsity_type: str, type of sparsity to used in loss layer. See
-      SparseDenseWithOptions for options. None if no sparsity should be used.
-    loss_sparsity: int, the sparsity for loss layer (if used)
-    loss_d_lowrank: int, the dimensions for intermediate layer (if used)
-    loss_sparsity_prob: float, the probability for sparse version of loss to be
-      used. If None, only sparse version is used.
-    attention_chunk_size: int, if > 0 run attention chunked at this size
-    n_layers_forget: how often to have a forgetting block between layers
-    forget_dense: whether to use Dense or no-op (Serial) as a forget layer.
-    n_decoder_attention_layers: how many attention layers in a decoder block
-    use_bfloat16: whether to use bfloat16 for weights (default: False)
-    reversible_encoder: whether to be reversible through the encoder
-    use_two_swaps_per_encoder_block: whether to allow even number of swaps in
-      the encoder
-    center_layernorm: whether to use centering in LayerNorm (default) or if
-      to skip it, which is known as RMS normalization.
-    half_before_layer: int, half d_model and d_ff before that layer
-    double_after_layer: int, double d_model and d_ff after that layer
-    mode: str: 'train' or 'eval'
+    pos_d_axial_embs: Tuple of ints specifying the depth of position embedding
+        for each axis. Tuple length must match ``pos_axial_shape``, and values
+        must sum to ``d_model``.
+    pos_start_from_zero_prob: Stochastic rate (probability) for starting
+        positional encoding at position 0 during training. If 1.0, always start
+        from position 0; if < 1.0, the non-zero starts will be uniformly
+        distributed up to ``pos_max_offset_to_add``.
+    pos_max_offset_to_add: Maximum offset to add to positions during training
+        when randomizing. This offset plus input length must be less than
+        ``max_len`` for all training examples.
+    ff_activation: Type of activation function at the end of each block; must
+        be an activation-type subclass of :py:class:`trax.layers.Layer`.
+    ff_use_sru: If > 0, use this number of SRU layers in place of feedforward
+        layers.
+    ff_chunk_size: If > 0, chunk each feedforward layer into chunks of this
+        size.
+    ff_dropout: Stochastic rate (probability) for dropping an activation value
+        at feedforward nonlinearities.
+    ff_sparsity: If > 0, use sparse feedforward blocks with this level of
+        sparsity.
+    loss_sparsity_type: String indicating the type of sparsity to used in loss
+        layer; see :py:class:`SparseDenseWithOptions` for options. If ``None``,
+        use no sparsity.
+    loss_sparsity: If > 0, use this level of sparsity in the loss layer.
+    loss_d_lowrank: If > 0, use a (low-rank) intermediate layer, with this
+        dimension, in the loss.
+    loss_sparsity_prob: Stochastic rate (probability) for using the sparse
+        version of the loss. If ``None``, use the sparse version exclusively.
+    attention_chunk_size: If > 0, compute attention using chunks of this size.
+    n_layers_forget: How often to have a forgetting block between layers.
+    forget_dense: If True, use :py:class:`Dense` instances as forget layers;
+        else use no-ops.
+    n_decoder_attention_layers: Number of attention layers in a decoder block.
+    use_bfloat16: If True, use bfloat16 for weights; else use float32.
+    reversible_encoder: If True, make the encoder be reversible.
+    use_two_swaps_per_encoder_block: If True, ensure that there is a an even
+        number of swaps across the encoder.
+    center_layernorm: If True, use centering in :py:class:`LayerNorm` (the
+        default); else omit centering (which is known as RMS normalization).
+    half_before_layer: If not None, specifies an n'th layer such that all
+        layers before the n'th use half the normal values for ``d_model`` and
+        ``d_ff``.
+    double_after_layer: If not None, specifies an n'th layer such that all
+        layers after the n'th use double the normal values for ``d_model`` and
+        ``d_ff``.
+    mode: If ``'train'``, include dropout in each encoder/decoder block; else
+        dropout layers have no effect.
 
   Returns:
-    A Reformer model as a layer that maps from a target, source pair to
-    activations over a vocab set.
+    A Terraformer encoder-decoder as a layer that maps from target and source
+    text sequences to a scalar loss.
   """
   # Set default dimensions for attention head key and value sizes.
   if (d_model / 2) % n_heads != 0:
