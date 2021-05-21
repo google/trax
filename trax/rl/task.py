@@ -676,8 +676,8 @@ class RLTask:
         lambda x: x[slice_start:slice_end], timestep_batch
     )
 
-  def trajectory_stream(self, epochs=None, max_slice_length=None,
-                        sample_trajectories_uniformly=False, margin=0):
+  def _trajectory_stream(self, epochs=None, max_slice_length=None,
+                         sample_trajectories_uniformly=False, margin=0):
     """Return a stream of random trajectory slices from the specified epochs.
 
     Args:
@@ -743,9 +743,7 @@ class RLTask:
       # trajectory. It's needed to determine the input/output shapes of
       # networks.
       if not self._trajectories:
-        yield self._random_slice(
-            self._example_trajectory, max_slice_length, margin
-        )
+        yield self._example_trajectory
         continue
 
       # Catch up if we have a new epoch or we've restarted the experiment.
@@ -763,13 +761,55 @@ class RLTask:
         slices_per_trajectory = epoch_to_ns_slices[epoch_id]
       trajectory = _sample_proportionally(epoch, slices_per_trajectory)
 
+      yield trajectory
+
+  def trajectory_slice_stream(
+      self,
+      epochs=None,
+      max_slice_length=None,
+      sample_trajectories_uniformly=False,
+      margin=0,
+      trajectory_stream_preprocessing_fn=None,
+  ):
+    """Return a stream of random trajectory slices from the specified epochs.
+
+    Args:
+      epochs: a list of epochs to use; we use all epochs if None
+      max_slice_length: maximum length of the slices of trajectories to return
+      sample_trajectories_uniformly: whether to sample trajectories uniformly,
+        or proportionally to the number of slices in each trajectory (default)
+      margin: number of extra steps after "done" that should be included in
+        slices, so that networks see the terminal states in the training data
+      trajectory_stream_preprocessing_fn: function to apply to the trajectory
+        stream before batching; can be used e.g. to filter trajectories
+
+    Yields:
+      random trajectory slices sampled uniformly from all slices of length
+      up to max_slice_length in all specified epochs
+    """
+    trajectory_stream = self._trajectory_stream(
+        epochs=epochs,
+        max_slice_length=max_slice_length,
+        sample_trajectories_uniformly=sample_trajectories_uniformly,
+        margin=margin,
+    )
+
+    if trajectory_stream_preprocessing_fn is not None:
+      trajectory_stream = trajectory_stream_preprocessing_fn(trajectory_stream)
+
+    for trajectory in trajectory_stream:
       yield self._random_slice(trajectory, max_slice_length, margin)
 
-  def trajectory_batch_stream(self, batch_size, epochs=None,
-                              max_slice_length=None,
-                              min_slice_length=None,
-                              margin=0,
-                              sample_trajectories_uniformly=False):
+  def trajectory_batch_stream(
+      self,
+      batch_size,
+      epochs=None,
+      max_slice_length=None,
+      min_slice_length=None,
+      margin=0,
+      sample_trajectories_uniformly=False,
+      trajectory_stream_preprocessing_fn=None,
+  ):
     """Return a stream of trajectory batches from the specified epochs.
 
     This function returns a stream of tuples of numpy arrays (tensors).
@@ -783,7 +823,9 @@ class RLTask:
       margin: number of extra steps after "done" that should be included in
         slices, so that networks see the terminal states in the training data
       sample_trajectories_uniformly: whether to sample trajectories uniformly,
-       or proportionally to the number of slices in each trajectory (default)
+        or proportionally to the number of slices in each trajectory (default)
+      trajectory_stream_preprocessing_fn: function to apply to the trajectory
+        stream before batching; can be used e.g. to filter trajectories
 
     Yields:
       batches of trajectory slices sampled uniformly from all slices of length
@@ -807,10 +849,17 @@ class RLTask:
       pad_len = 2**int(np.ceil(np.log2(max_len)))
       return np.array([_zero_pad(t, (0, pad_len - t.shape[0]), axis=0)
                        for t in tensor_list])
+
+    trajectory_slice_stream = self.trajectory_slice_stream(
+        epochs=epochs,
+        max_slice_length=max_slice_length,
+        sample_trajectories_uniformly=sample_trajectories_uniformly,
+        margin=margin,
+        trajectory_stream_preprocessing_fn=trajectory_stream_preprocessing_fn,
+    )
+
     cur_batch = []
-    for t in self.trajectory_stream(
-        epochs, max_slice_length, sample_trajectories_uniformly, margin=margin
-    ):
+    for t in trajectory_slice_stream:
       cur_batch.append(t)
       if len(cur_batch) == batch_size:
         # Make a nested TimeStepBatch of lists out of a list of TimeStepBatches.

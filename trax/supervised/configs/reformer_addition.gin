@@ -103,24 +103,24 @@ ReformerLM.pos_type = 'fixed-base'
 ReformerLM.attention_type = @CausalAttention  # @LSHSelfAttention
 ReformerLM.vocab_size = %vocab_size
 
-# Parameters for Reformer2:
+# Parameters for ConfigurableTerraformer:
 # ==============================================================================
-Reformer2.d_model = 256
-Reformer2.d_ff = 512
-Reformer2.dropout = 0.3
-Reformer2.max_len = 2048
-Reformer2.n_heads = 4
-Reformer2.n_encoder_layers = 12
-Reformer2.n_decoder_layers = 4
-Reformer2.ff_use_sru = 1
-Reformer2.encoder_attention_type = @Attention
-Reformer2.encoder_decoder_attention_type = @CausalAttention
-# Reformer2.encoder_attention_type = @encoder/PureLSHSelfAttentionWrapper
-# Reformer2.encoder_decoder_attention_type = @PureLSHSelfAttentionWrapper
-Reformer2.input_vocab_size = %vocab_size
-Reformer2.pos_type = None
-Reformer2.pos_start_from_zero_prob = 0.95
-Reformer2.pos_max_offset_to_add = 300
+ConfigurableTerraformer.d_model = 256
+ConfigurableTerraformer.d_ff = 512
+ConfigurableTerraformer.dropout = 0.3
+ConfigurableTerraformer.max_len = 2048
+ConfigurableTerraformer.n_heads = 4
+ConfigurableTerraformer.n_encoder_layers = 12
+ConfigurableTerraformer.n_decoder_layers = 4
+ConfigurableTerraformer.ff_use_sru = 1
+ConfigurableTerraformer.encoder_attention_type = @Attention
+ConfigurableTerraformer.encoder_decoder_attention_type = @CausalAttention
+# ConfigurableTerraformer.encoder_attention_type = @encoder/PureLSHSelfAttentionWrapper
+# ConfigurableTerraformer.encoder_decoder_attention_type = @PureLSHSelfAttentionWrapper
+ConfigurableTerraformer.input_vocab_size = %vocab_size
+ConfigurableTerraformer.pos_type = None
+ConfigurableTerraformer.pos_start_from_zero_prob = 0.95
+ConfigurableTerraformer.pos_max_offset_to_add = 300
 
 # Parameters for train:
 # ==============================================================================
@@ -130,4 +130,4 @@ train.eval_frequency = 1000
 train.eval_steps = 50
 train.optimizer = @trax.optimizers.Adafactor
 train.steps = 300000
-train.model = @trax.models.Reformer2
+train.model = @trax.models.ConfigurableTerraformer

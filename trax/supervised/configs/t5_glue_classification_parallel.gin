@@ -122,35 +122,35 @@ LSHSelfAttention.n_hashes = 2
 LSHSelfAttention.n_parallel_heads = 1
 LSHSelfAttention.predict_drop_len = %max_length
 LSHSelfAttention.predict_mem_len = %max_length
-# Reformer2's *encoder* is bidirectional.
+# ConfigurableTerraformer's *encoder* is bidirectional.
 ref2_encoder/LSHSelfAttention.n_chunks_after = 1
 
-# Parameters for Reformer2:
+# Parameters for ConfigurableTerraformer:
 # ==============================================================================
 ff_chunk_size = 0
 # enc_attn_type = @LSHSelfAttention
 # dec_attn_type = @ref2_encoder/LSHSelfAttention
 enc_attn_type = @Attention
 dec_attn_type = @CausalAttention
-Reformer2.d_model = %d_model  # was  512
-Reformer2.d_ff = %d_ff        # was 2048
-Reformer2.dropout = %dropout  # was  0.1
-Reformer2.ff_activation = @trax.layers.Relu
-Reformer2.ff_dropout = 0.1
-Reformer2.ff_chunk_size = %ff_chunk_size
-Reformer2.ff_sparsity = 0
-Reformer2.max_len = %max_length
-Reformer2.mode = 'train'
-Reformer2.n_heads = %n_heads
-Reformer2.n_encoder_layers = %n_layers
-Reformer2.n_decoder_layers = %n_layers
-Reformer2.input_vocab_size = %vocab_size
-Reformer2.d_attention_key = %attn_kv    # d_model // n_heads
-Reformer2.d_attention_value = %attn_kv  # d_model // n_heads
-Reformer2.encoder_attention_type = %enc_attn_type
-Reformer2.encoder_decoder_attention_type = %dec_attn_type
-Reformer2.n_layers_forget = 0
-Reformer2.pos_type = None
+ConfigurableTerraformer.d_model = %d_model  # was  512
+ConfigurableTerraformer.d_ff = %d_ff        # was 2048
+ConfigurableTerraformer.dropout = %dropout  # was  0.1
+ConfigurableTerraformer.ff_activation = @trax.layers.Relu
+ConfigurableTerraformer.ff_dropout = 0.1
+ConfigurableTerraformer.ff_chunk_size = %ff_chunk_size
+ConfigurableTerraformer.ff_sparsity = 0
+ConfigurableTerraformer.max_len = %max_length
+ConfigurableTerraformer.mode = 'train'
+ConfigurableTerraformer.n_heads = %n_heads
+ConfigurableTerraformer.n_encoder_layers = %n_layers
+ConfigurableTerraformer.n_decoder_layers = %n_layers
+ConfigurableTerraformer.input_vocab_size = %vocab_size
+ConfigurableTerraformer.d_attention_key = %attn_kv    # d_model // n_heads
+ConfigurableTerraformer.d_attention_value = %attn_kv  # d_model // n_heads
+ConfigurableTerraformer.encoder_attention_type = %enc_attn_type
+ConfigurableTerraformer.encoder_decoder_attention_type = %dec_attn_type
+ConfigurableTerraformer.n_layers_forget = 0
+ConfigurableTerraformer.pos_type = None
 
 # Parameters for Adafactor:
 # ==============================================================================

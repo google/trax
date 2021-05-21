@@ -1107,8 +1107,8 @@ class _RememberInReverse(base.Layer):
     During the first pass through the model this layer saves the input as
     state, and returns the input unmodified. During the second pass through the
     model the layer outputs the input from the first pass. This is used to
-    combat numerical stability problems in Reformer2. It doesn't do anything in
-    non-reversible models.
+    combat numerical stability problems in Terraformer. It doesn't do anything
+    in non-reversible models.
 
     Args:
       output: Whether to pass the input or not.

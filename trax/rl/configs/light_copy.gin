@@ -21,15 +21,18 @@ import trax.rl.distributions
 import trax.rl.normalization
 import trax.rl_trainer
 
+copy_length = 2
+
 batch_size = 256
 train_steps = 200
 policy_train_steps = %train_steps
 value_train_steps = %train_steps
-policy_lr = 0.0001
+policy_lr = 0.001
 value_lr = 0.001
 margin = 3
 q_value_n_samples = 3
 model = @trax.models.TransformerDecoder
+d_model = 32
 slice_len = 4
 
 # Parameters for Policy:
@@ -54,11 +57,11 @@ PolicyAndValue.value_top = @trax.models.Value
 
 # Parameters for TransformerDecoder:
 # ==============================================================================
-TransformerDecoder.d_model = 256
-TransformerDecoder.d_ff = 512
+TransformerDecoder.d_model = %d_model
+TransformerDecoder.d_ff = %d_model
 TransformerDecoder.dropout = 0.0
-TransformerDecoder.n_heads = 4
-TransformerDecoder.n_layers = 2
+TransformerDecoder.n_heads = 1
+TransformerDecoder.n_layers = 1
 TransformerDecoder.vocab_size = 32
 
 # Parameters for MLP:
@@ -82,18 +85,18 @@ Momentum.nesterov = False
 # Parameters for RLTask:
 # ==============================================================================
 RLTask.env = @trax.rl.envs.SequenceDataEnv()
-RLTask.initial_trajectories = 0
+RLTask.initial_trajectories = 1000
 RLTask.gamma = 0.99
 RLTask.max_steps = 1000
 
 # Parameters for SequenceDataEnv:
 # ==============================================================================
 SequenceDataEnv.vocab_size = 32
-SequenceDataEnv.max_length = 2
+SequenceDataEnv.max_length = %copy_length
 SequenceDataEnv.data_stream = @trax.rl.envs.copy_stream()
 copy_stream.low = 2
 copy_stream.high = 32
-copy_stream.length = 2
+copy_stream.length = %copy_length
 
 # Parameters for td_lambda:
 # ==============================================================================
@@ -193,9 +196,36 @@ SamplingAWR.q_value_normalization = 'abs'
 SamplingAWR.advantage_normalization_factor = 1.0
 SamplingAWR.reweight = False
 
+# Parameters for PolicyGradient:
+# ==============================================================================
+PolicyGradient.model_fn = @trax.models.Policy
+PolicyGradient.optimizer = @trax.optimizers.Adam
+PolicyGradient.batch_size = %batch_size
+PolicyGradient.max_slice_length = 1024  # ~= inf
+PolicyGradient.n_trajectories_per_epoch = %batch_size
+PolicyGradient.n_eval_episodes = 10
+
+# Parameters for ExpertIteration:
+# ==============================================================================
+ExpertIteration.model_fn = @trax.models.Policy
+ExpertIteration.optimizer = @trax.optimizers.Adam
+ExpertIteration.lr_schedule = @policy/multifactor
+ExpertIteration.batch_size = %batch_size
+ExpertIteration.max_slice_length = 1024  # ~= inf
+ExpertIteration.n_trajectories_per_epoch = 100
+ExpertIteration.n_eval_episodes = 30
+ExpertIteration.expert_policy_fn = @trax.rl.training.sharpened_network_policy
+# Train on 50% best trajectories.
+ExpertIteration.quantile = 0.5
+ExpertIteration.n_replay_epochs = 10
+ExpertIteration.n_train_steps_per_epoch = 100
+
+# Parameters for sharpened_network_policy:
+# ==============================================================================
+sharpened_network_policy.temperature_multiplier = 1.0
+
 # Parameters for train_rl:
 # ==============================================================================
 train_rl.light_rl = True
-train_rl.light_rl_trainer = @trax.rl.AWR
-train_rl.n_epochs = 10000000
-
+train_rl.light_rl_trainer = @trax.rl.ExpertIteration
+train_rl.n_epochs = 10000

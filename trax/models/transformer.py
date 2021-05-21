@@ -90,7 +90,7 @@ def TransformerEncoder(vocab_size,
     raw (non-normalized) activations over a range of output classes.
   """
   def _Dropout():
-    tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
+    return tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
 
   def _EncBlock():
     return _EncoderBlock(d_model, d_ff, n_heads, dropout, dropout_shared_axes,
@@ -615,4 +615,3 @@ def _FeedForwardBlock(d_model,
       _Dropout(),
       tl.Dense(d_model),
   ]
-

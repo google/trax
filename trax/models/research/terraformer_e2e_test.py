@@ -21,7 +21,7 @@ from absl.testing import absltest
 import gin
 
 from trax import test_utils
-from trax.models.reformer import reformer  # pylint: disable=unused-import
+from trax.models.research import terraformer  # pylint: disable=unused-import
 from trax.supervised import trainer_lib
 from trax.tf_numpy import numpy as tf_np  # pylint: disable=unused-import
 
@@ -30,7 +30,7 @@ _TESTDATA = os.path.join(pkg_dir, 'testdata')
 _CONFIG_DIR = os.path.join(pkg_dir, '../../supervised/configs/')
 
 
-class ReformerE2ETest(absltest.TestCase):
+class TerraformerE2ETest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
@@ -38,39 +38,58 @@ class ReformerE2ETest(absltest.TestCase):
     gin.add_config_file_search_path(_CONFIG_DIR)
     test_utils.ensure_flag('test_tmpdir')
 
-  def test_reformer_wmt_ende(self):
+  def test_terraformer_wmt_ende(self):
     batch_size_per_device = 2
     steps = 1
     n_layers = 2
     d_ff = 32
 
-    gin.parse_config_file('reformer_wmt_ende.gin')
+    gin.parse_config_file('terraformer_wmt_ende.gin')
 
     gin.bind_parameter('data_streams.data_dir', _TESTDATA)
     gin.bind_parameter('batcher.batch_size_per_device', batch_size_per_device)
+    gin.bind_parameter('batcher.buckets',
+                       ([512], [batch_size_per_device, batch_size_per_device]))
     gin.bind_parameter('train.steps', steps)
-    gin.bind_parameter('Reformer.n_encoder_layers', n_layers)
-    gin.bind_parameter('Reformer.n_decoder_layers', n_layers)
-    gin.bind_parameter('Reformer.d_ff', d_ff)
+    gin.bind_parameter('ConfigurableTerraformer.n_encoder_layers', n_layers)
+    gin.bind_parameter('ConfigurableTerraformer.n_decoder_layers', n_layers)
+    gin.bind_parameter('ConfigurableTerraformer.d_ff', d_ff)
 
     output_dir = self.create_tempdir().full_path
     _ = trainer_lib.train(output_dir=output_dir)
 
-  def test_reformer_copy(self):
+  def test_terraformer_copy(self):
     batch_size_per_device = 2
     steps = 1
     n_layers = 2
     d_ff = 32
-    d_model = 32
 
-    gin.parse_config_file('reformer_copy.gin')
+    gin.parse_config_file('terraformer_copy.gin')
 
-    gin.bind_parameter('data_streams.data_dir', _TESTDATA)
     gin.bind_parameter('batcher.batch_size_per_device', batch_size_per_device)
+    gin.bind_parameter('batcher.buckets', ([64], [1, 1]))  # batch size 1.
     gin.bind_parameter('train.steps', steps)
-    gin.bind_parameter('ReformerLM.n_layers', n_layers)
-    gin.bind_parameter('ReformerLM.d_ff', d_ff)
-    gin.bind_parameter('ReformerLM.d_model', d_model)
+    gin.bind_parameter('ConfigurableTerraformer.n_encoder_layers', n_layers)
+    gin.bind_parameter('ConfigurableTerraformer.n_decoder_layers', n_layers)
+    gin.bind_parameter('ConfigurableTerraformer.d_ff', d_ff)
+
+    output_dir = self.create_tempdir().full_path
+    _ = trainer_lib.train(output_dir=output_dir)
+
+  def test_terraformer_purelsh_copy(self):
+    batch_size_per_device = 2
+    steps = 1
+    n_layers = 2
+    d_ff = 32
+
+    gin.parse_config_file('terraformer_purelsh_copy.gin')
+
+    gin.bind_parameter('batcher.batch_size_per_device', batch_size_per_device)
+    gin.bind_parameter('batcher.buckets', ([64], [1, 1]))  # batch size 1.
+    gin.bind_parameter('train.steps', steps)
+    gin.bind_parameter('ConfigurableTerraformer.n_encoder_layers', n_layers)
+    gin.bind_parameter('ConfigurableTerraformer.n_decoder_layers', n_layers)
+    gin.bind_parameter('ConfigurableTerraformer.d_ff', d_ff)
 
     output_dir = self.create_tempdir().full_path
     _ = trainer_lib.train(output_dir=output_dir)

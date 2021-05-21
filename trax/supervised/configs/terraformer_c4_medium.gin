@@ -66,7 +66,7 @@ Adafactor.multiply_by_parameter_scale = True
 # ==============================================================================
 train.eval_frequency = 1000
 train.eval_steps = 10
-train.model = @trax.models.Reformer2
+train.model = @trax.models.ConfigurableTerraformer
 train.steps = 524288
 train.optimizer = @trax.optimizers.Adafactor
 train.checkpoint_highest = 'accuracy'
@@ -93,7 +93,7 @@ LSHSelfAttention.n_hashes = 2
 LSHSelfAttention.n_parallel_heads = 1
 LSHSelfAttention.predict_drop_len = %max_length
 LSHSelfAttention.predict_mem_len = %max_length
-# Reformer2's *encoder* is bidirectional.
+# ConfigurableTerraformer's *encoder* is bidirectional.
 encoder/LSHSelfAttention.n_chunks_after = 1
 
 # Parameters for PureLSHSelfAttention:
@@ -107,7 +107,7 @@ PureLSHSelfAttention.n_hashes = 4
 PureLSHSelfAttention.n_parallel_heads = 1
 PureLSHSelfAttention.predict_drop_len = %max_length
 PureLSHSelfAttention.predict_mem_len = %max_length
-# Reformer2's *encoder* is bidirectional.
+# ConfigurableTerraformer's *encoder* is bidirectional.
 encoder/PureLSHSelfAttention.n_chunks_after = 1
 
 # Parameters for PureLSHSelfAttentionWrapper:
@@ -118,33 +118,33 @@ encoder/PureLSHSelfAttentionWrapper.pure_lsh_implementation = @encoder/PureLSHSe
 encoder/PureLSHSelfAttentionWrapper.weights_format = 'model'
 
 
-# Parameters for Reformer2:
+# Parameters for ConfigurableTerraformer:
 # ==============================================================================
-Reformer2.d_model = %d_model  # was  512
-Reformer2.d_ff = %d_ff        # was 2048
-Reformer2.dropout = %dropout  # was  0.1
-Reformer2.ff_activation = @trax.layers.Relu
-Reformer2.ff_dropout = 0.1
-Reformer2.ff_chunk_size = %ff_chunk_size
-Reformer2.ff_sparsity = %ff_sparsity
-Reformer2.ff_use_sru = (1, 32)
-Reformer2.max_len = 32768  # 32*1024
-Reformer2.mode = 'train'
-Reformer2.n_heads = %n_heads
-Reformer2.n_encoder_layers = %n_layers
-Reformer2.n_decoder_layers = %n_layers
-Reformer2.input_vocab_size = %vocab_size
-Reformer2.d_attention_key = %attn_kv    # d_model // n_heads
-Reformer2.d_attention_value = %attn_kv  # d_model // n_heads
-Reformer2.encoder_attention_type = %enc_attn_type
-Reformer2.encoder_decoder_attention_type = %dec_attn_type
-Reformer2.use_two_swaps_per_encoder_block = True
-Reformer2.reversible_encoder = True
-Reformer2.loss_sparsity = %loss_sparsity
-Reformer2.n_layers_forget = 0
-Reformer2.pos_type = None
-Reformer2.attention_chunk_size = 0  # use 4 if it OOMs
-Reformer2.use_bfloat16 = False
+ConfigurableTerraformer.d_model = %d_model  # was  512
+ConfigurableTerraformer.d_ff = %d_ff        # was 2048
+ConfigurableTerraformer.dropout = %dropout  # was  0.1
+ConfigurableTerraformer.ff_activation = @trax.layers.Relu
+ConfigurableTerraformer.ff_dropout = 0.1
+ConfigurableTerraformer.ff_chunk_size = %ff_chunk_size
+ConfigurableTerraformer.ff_sparsity = %ff_sparsity
+ConfigurableTerraformer.ff_use_sru = (1, 32)
+ConfigurableTerraformer.max_len = 32768  # 32*1024
+ConfigurableTerraformer.mode = 'train'
+ConfigurableTerraformer.n_heads = %n_heads
+ConfigurableTerraformer.n_encoder_layers = %n_layers
+ConfigurableTerraformer.n_decoder_layers = %n_layers
+ConfigurableTerraformer.input_vocab_size = %vocab_size
+ConfigurableTerraformer.d_attention_key = %attn_kv    # d_model // n_heads
+ConfigurableTerraformer.d_attention_value = %attn_kv  # d_model // n_heads
+ConfigurableTerraformer.encoder_attention_type = %enc_attn_type
+ConfigurableTerraformer.encoder_decoder_attention_type = %dec_attn_type
+ConfigurableTerraformer.use_two_swaps_per_encoder_block = True
+ConfigurableTerraformer.reversible_encoder = True
+ConfigurableTerraformer.loss_sparsity = %loss_sparsity
+ConfigurableTerraformer.n_layers_forget = 0
+ConfigurableTerraformer.pos_type = None
+ConfigurableTerraformer.attention_chunk_size = 0  # use 4 if it OOMs
+ConfigurableTerraformer.use_bfloat16 = False
 
 # Parameters for Transformer2:
 # ==============================================================================

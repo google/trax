@@ -361,7 +361,7 @@ class TraxTest(parameterized.TestCase):
     with fastmath.use_backend(backend):
       # Prepare model and inputs
       def model(mode='train'):
-        return models.Reformer2(
+        return models.ConfigurableTerraformer(
             mode=mode,
             d_model=16,
             d_ff=16,
@@ -405,7 +405,7 @@ class TraxTest(parameterized.TestCase):
       # Prepare model and inputs
 
       def model(mode='train'):
-        return models.Reformer2(
+        return models.ConfigurableTerraformer(
             mode=mode,
             d_model=16,
             d_ff=16,

@@ -94,7 +94,7 @@ ConfigurableTransformerLM.attention_type = %attn_type
 ConfigurableTransformerLM.ff_use_sru = 0
 ConfigurableTransformerLM.loss_sparsity = %loss_sparsity
 
-# Parameters for Reformer2:
+# Parameters for ConfigurableTerraformer:
 # ==============================================================================
 ReformerLM.d_model = %d_model  # was  512
 ReformerLM.d_ff = %d_ff        # was 2048

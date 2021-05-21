@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Lint as: python3
-"""Tests for OOM for Reformer2 ."""
+"""Tests for OOM for Terraformer ."""
 
 import functools
 import operator
@@ -26,10 +26,10 @@ import numpy as np
 from trax import fastmath
 from trax import layers as tl
 from trax import shapes
-from trax.models.reformer import reformer
+from trax.models.research import terraformer
 
 
-class ReformerOOMTest(absltest.TestCase):
+class TerraformerOOMTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
@@ -49,7 +49,7 @@ class ReformerOOMTest(absltest.TestCase):
         predict_mem_len=1024,
     )
 
-  def test_reformer2_one_step(self):
+  def test_terraformer_one_step(self):
     d_model = 1024
     vocab_size = 14041
     max_len = 16384
@@ -79,7 +79,7 @@ class ReformerOOMTest(absltest.TestCase):
         lsh_self_attention, n_chunks_after=0,
         chunk_len=decoder_chunk_len)
 
-    model = reformer.Reformer2(
+    model = terraformer.ConfigurableTerraformer(
         vocab_size,
         d_model=d_model,
         d_ff=d_ff,

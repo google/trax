@@ -59,7 +59,7 @@ wmt_preprocess.max_eval_length = %MAX_EVAL_LENGTH
 # ==============================================================================
 train.eval_frequency = 1000
 train.eval_steps = 10
-train.model = @trax.models.Reformer2
+train.model = @trax.models.ConfigurableTerraformer
 train.optimizer = @trax.optimizers.Adam
 train.steps = 1000000
 train.save_graphs = False
@@ -87,22 +87,22 @@ LSHSelfAttention.n_hashes = 2
 
 encoder/LSHSelfAttention.n_chunks_after = 1  # Since this is not causal.
 
-# Parameters for Reformer2:
+# Parameters for ConfigurableTerraformer:
 # ==============================================================================
-Reformer2.d_model = 512
-Reformer2.d_ff = 2048
-Reformer2.dropout = 0.1
-Reformer2.ff_activation = @trax.layers.Relu
-Reformer2.ff_dropout = 0.1
-Reformer2.max_len = %MAX_EVAL_LENGTH
-Reformer2.mode = 'train'
-Reformer2.n_heads = 8
-Reformer2.n_encoder_layers = 6
-Reformer2.n_decoder_layers = 6
-Reformer2.input_vocab_size = 33300
-Reformer2.d_attention_key = 64     # d_model // n_heads
-Reformer2.d_attention_value = 64     # d_model // n_heads
-Reformer2.encoder_attention_type = @encoder/LSHSelfAttention
-Reformer2.encoder_decoder_attention_type = @LSHSelfAttention
-Reformer2.pos_axial_shape  = (32, 16)  # should multiply out to max_len
-Reformer2.pos_d_axial_embs = (256, 256)  # should sum to d_model
+ConfigurableTerraformer.d_model = 512
+ConfigurableTerraformer.d_ff = 2048
+ConfigurableTerraformer.dropout = 0.1
+ConfigurableTerraformer.ff_activation = @trax.layers.Relu
+ConfigurableTerraformer.ff_dropout = 0.1
+ConfigurableTerraformer.max_len = %MAX_EVAL_LENGTH
+ConfigurableTerraformer.mode = 'train'
+ConfigurableTerraformer.n_heads = 8
+ConfigurableTerraformer.n_encoder_layers = 6
+ConfigurableTerraformer.n_decoder_layers = 6
+ConfigurableTerraformer.input_vocab_size = 33300
+ConfigurableTerraformer.d_attention_key = 64     # d_model // n_heads
+ConfigurableTerraformer.d_attention_value = 64     # d_model // n_heads
+ConfigurableTerraformer.encoder_attention_type = @encoder/LSHSelfAttention
+ConfigurableTerraformer.encoder_decoder_attention_type = @LSHSelfAttention
+ConfigurableTerraformer.pos_axial_shape  = (32, 16)  # should multiply out to max_len
+ConfigurableTerraformer.pos_d_axial_embs = (256, 256)  # should sum to d_model
