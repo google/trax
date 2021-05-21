@@ -1,0 +1,9 @@
+{
+    "type": "tensorflow_datasets.core.features.translation_feature.Translation",
+    "content": {
+        "languages": [
+            "de",
+            "en"
+        ]
+    }
+}
