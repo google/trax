@@ -153,9 +153,9 @@ def Parallel(  # pylint: disable=invalid-name
     # Remove generators with zero counters
     counters = list(counters)
     fns = list(fns)
-    zeros = [j for j in range(len(counters)) if counters[j] != 0]
-    counters = [counters[j] for j in zeros]
-    fns = [fns[j] for j in zeros]
+    non_zeros = [j for j in range(len(counters)) if counters[j] != 0]
+    counters = [counters[j] for j in non_zeros]
+    fns = [fns[j] for j in non_zeros]
   else:
     counters = [1] * len(fns)
 

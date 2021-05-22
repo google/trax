@@ -143,6 +143,37 @@ class TFInputsTest(tf.test.TestCase):
       print(f'Eval: {d}')
       break
 
+  def test_TFDS_single_host_with_eval_holdout_no_valid_split(self):
+    train_ds_gen = tf_inputs.TFDS(
+        'para_crawl/ende',
+        data_dir=_TESTDATA,
+        train=True,
+        host_id=0,
+        keys=('en', 'de'),
+        n_hosts=1,
+        eval_holdout_size=0.1)
+
+    # Just ensure that this doesn't crash.
+    for d in train_ds_gen():
+      print(f'Train: {d}')
+      break
+
+    # para_crawl doesn't have a validation set, see that this still doesn't
+    # crash because of eval_holdout_set.
+    valid_ds_gen = tf_inputs.TFDS(
+        'para_crawl/ende',
+        data_dir=_TESTDATA,
+        train=False,
+        host_id=0,
+        keys=('en', 'de'),
+        n_hosts=1,
+        eval_holdout_size=0.1)
+
+    # Just ensure that this doesn't crash.
+    for d in valid_ds_gen():
+      print(f'Eval: {d}')
+      break
+
   def test_TFDS_mnli_split_is_eval(self):
     with mock.patch('tensorflow_datasets.load') as tfds_load:
       with mock.patch('trax.data.tf_inputs.download_and_prepare',

@@ -226,6 +226,7 @@ def _train_and_eval_dataset(dataset_name,
   if dataset_name != 'c4/multilingual' and tfds.Split.TRAIN not in splits:
     raise ValueError('To train we require a train split in the dataset.')
   train_split = tfds.Split.TRAIN if dataset_name != 'c4/multilingual' else 'en'
+  eval_split = None
   train_examples = info.splits[train_split].num_examples
   eval_holdout_examples = int(train_examples * eval_holdout_size)
   if eval_holdout_examples > 0 or subsplit is not None:
@@ -248,7 +249,7 @@ def _train_and_eval_dataset(dataset_name,
         'validation_mismatched' if use_alt_eval else 'validation_matched')
   elif dataset_name == 'c4/multilingual':
     eval_split = 'en-validation'
-  else:
+  elif eval_split is None:
     if tfds.Split.VALIDATION not in splits and 'test' not in splits:
       raise ValueError('We require a validation or test split in the dataset.')
     eval_split = tfds.Split.VALIDATION
