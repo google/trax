@@ -233,13 +233,29 @@ class _RememberPad(base.Layer):
     super().__init__(name='_RememberPad')
     self._n_items_to_remember = n_items_to_remember
     self._mode = mode
+    self._portal_mask = self.monkey_patched_mask()  # pylint: disable=assignment-from-none
+
+  def monkey_patched_mask(self):
+    # This is necessary for Terraformer model. See comments there.
+    # The mask will only be used in Terraformer in predict mode.
+    return None
 
   def forward(self, x):
     if self._n_items_to_remember == 0:
       return x
     if self._mode == 'predict':
-      x = jnp.concatenate([self.state, x], axis=1)
-      self.state = x[:, -self._n_items_to_remember:, ...]
+      x = jnp.concatenate([self.state[0], x], axis=1)
+      if self._portal_mask is not None and 'init' in self.state[1]:
+        # TODO(jaszczur): In predict mode with monkey-patched mask, we
+        # currently assume that batch size is 1.
+        assert x.shape[0] == 1
+        mask = self._portal_mask.get_value()
+        count_padding = jnp.sum(mask == 0, dtype=jnp.int32)
+        self.state = (fastmath.dynamic_slice_in_dim(
+            x, x.shape[1] - (self._n_items_to_remember + count_padding),
+            self._n_items_to_remember, axis=1), {'forward': ()})
+      else:
+        self.state = (x[:, -self._n_items_to_remember:, ...], {'forward': ()})
     else:
       pad_widths = [[0, 0] for _ in range(len(x.shape))]
       pad_widths[1][0] = self._n_items_to_remember
@@ -254,7 +270,7 @@ class _RememberPad(base.Layer):
     if self._mode == 'predict':
       shape = list(input_signature.shape)
       shape[1] = self._n_items_to_remember
-      self.state = jnp.zeros(shape, dtype=jnp.float32)
+      self.state = (jnp.zeros(shape, dtype=jnp.float32), {'init': ()})
     else:
       self.state = ()
 

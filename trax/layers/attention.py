@@ -500,6 +500,12 @@ class DotProductCausalAttention(base.Layer):
     self._dropout = dropout
     self._mode = mode
     self._max_len = max_inference_length
+    self._portal_mask = self.monkey_patched_mask()  # pylint: disable=assignment-from-none
+
+  def monkey_patched_mask(self):
+    # This is necessary for Terraformer model. See comments there.
+    # The mask will only be used in Terraformer in predict mode.
+    return None
 
   def forward(self, inputs):
     """Returns attention-computed activations.
@@ -509,9 +515,19 @@ class DotProductCausalAttention(base.Layer):
     """
     q, k, v = inputs
 
+    if self._portal_mask is not None:
+      mask_for_predict = self._portal_mask.get_value()
+    else:
+      mask_for_predict = None
+
     if self._mode == 'predict':
-      self.state, mask = _fast_inference_update_state(inputs, self.state)
-      (k, v, _) = self.state
+      self.state, mask = _fast_inference_update_state(
+          inputs, self.state,
+          mask_for_predict=mask_for_predict)
+      if self._portal_mask is not None:
+        (_, k, v, _) = self.state
+      else:
+        (k, v, _) = self.state
     else:
       sequence_length = q.shape[-2]
       mask = _causal_mask(sequence_length)
@@ -525,7 +541,9 @@ class DotProductCausalAttention(base.Layer):
   def init_weights_and_state(self, input_signature):
     """Initializes this layer for fast inference, if in ``'predict'`` mode."""
     if self._mode == 'predict':
-      self.state = _fast_inference_init_state(input_signature, self._max_len)
+      self.state = _fast_inference_init_state(
+          input_signature, self._max_len,
+          predict_mask=self._portal_mask)
 
 
 def _causal_mask(length):
@@ -741,7 +759,8 @@ def _zero_pad(x, pad, axis):
   return jnp.pad(x, pad_widths, mode='constant')
 
 
-def _fast_inference_init_state(input_signature, buffer_length):
+def _fast_inference_init_state(input_signature, buffer_length,
+                               predict_mask=None):
   """Returns an initial state for causal attention layer fast inference."""
   def zeros_for(batch_size, shape_dtype):
     shape, dtype = shape_dtype.as_tuple()
@@ -751,10 +770,14 @@ def _fast_inference_init_state(input_signature, buffer_length):
   batch_size = input_signature[0].shape[0]
   k = zeros_for(batch_size, input_signature[1])
   v = zeros_for(batch_size, input_signature[2])
-  return (k, v, jnp.array(0))
+  if predict_mask is not None:
+    mask_for_predict = jnp.zeros((buffer_length,)) != 0
+    return (mask_for_predict, k, v, jnp.array(0))
+  else:
+    return (k, v, jnp.array(0))
 
 
-def _fast_inference_update_state(inputs, state):
+def _fast_inference_update_state(inputs, state, mask_for_predict=None):
   """Updates state of a causal attention layer for fast inference.
 
   The layer state stores arrays with cached values of keys and values,
@@ -769,6 +792,8 @@ def _fast_inference_update_state(inputs, state):
   Args:
     inputs: a triple (new_queries, new_keys, new_values)
     state: layer state with (keys, values, index)
+    mask_for_predict: mask used for predict mode. This is used only in
+      Terraformer.
 
   Returns:
     Updated state and mask to be used.
@@ -776,8 +801,11 @@ def _fast_inference_update_state(inputs, state):
   # Fast inference: run step-by-step, storing the sequence
   # of keys and values calculated so far in state.
   (_, new_k, new_v) = inputs
+  if mask_for_predict is not None:
+    (state_mask_for_predict, ks, vs, idx) = state
+  else:
+    (ks, vs, idx) = state
   length = new_k.shape[1]
-  (ks, vs, idx) = state
   # TODO(lukaszkaiser): benchmark speed and decide if using a separate code path
   # with index_update when length == 1 is worth it.
   # Keys and values are of shape [batch_size, length, d_kv].
@@ -790,5 +818,21 @@ def _fast_inference_update_state(inputs, state):
   # index of query_token is equal or larger to index of key_token.
   mask = (jnp.reshape(jnp.arange(k_length), (1, 1, k_length))
           <= jnp.reshape(jnp.arange(length) + idx, (1, length, 1)))
+  if mask_for_predict is None:
+    return (ks, vs, idx + length), mask
+  else:
+    state_mask_for_predict = fastmath.dynamic_update_slice_in_dim(
+        state_mask_for_predict != 0, mask_for_predict.reshape((-1)) != 0, 0,
+        axis=0)
 
-  return (ks, vs, idx + length), mask
+    state_mask_for_predict = fastmath.dynamic_update_slice_in_dim(
+        state_mask_for_predict != 0, jnp.ones((1,)) != 0,
+        jnp.sum(mask_for_predict, dtype=jnp.int32), axis=0)
+
+    state_mask_for_predict = fastmath.dynamic_update_slice_in_dim(
+        state_mask_for_predict != 0, jnp.ones((1,)) != 0, idx, axis=0)
+    placeholder = jnp.reshape(state_mask_for_predict != 0,
+                              (1, 1, mask.shape[2],))
+    mask = mask * placeholder
+
+    return (state_mask_for_predict, ks, vs, idx + length), mask

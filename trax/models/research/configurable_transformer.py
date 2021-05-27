@@ -463,7 +463,9 @@ def ConfigurableTransformerLM(vocab_size,
                               attention_type=tl.CausalAttention,
                               pos_type=None,
                               pos_axial_shape=None,
-                              pos_d_axial_embs=None):
+                              pos_d_axial_embs=None,
+                              pos_start_from_zero_prob=1.0,
+                              pos_max_offset_to_add=0):
   """Returns a Transformer language model.
 
   This model performs autoregressive language modeling:
@@ -523,6 +525,11 @@ def ConfigurableTransformerLM(vocab_size,
       encoding. If unset, axial position encoding is disabled.
     pos_d_axial_embs: tuple of ints: depth of position embedding for each axis.
       Tuple length must match pos_axial_shape, and values must sum to d_model.
+    pos_start_from_zero_prob: how often to start from 0 during training,
+      (if 1.0, we always start from position 0, if less, we randomize).
+    pos_max_offset_to_add: maximum offset to add to positions during training
+      when randomizing; this offset plus input length must still be less than
+      max_len for all training examples.
 
   Returns:
     A Transformer language model as a layer that maps from a tensor of tokens
@@ -532,7 +539,8 @@ def ConfigurableTransformerLM(vocab_size,
       tl.Embedding(vocab_size, d_model),
       tl.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode),
       PositionalEncoder(
-          mode, dropout, max_len, pos_type, pos_axial_shape, pos_d_axial_embs)
+          mode, dropout, max_len, pos_type, pos_axial_shape, pos_d_axial_embs,
+          pos_start_from_zero_prob, pos_max_offset_to_add)
   ]
 
   # pylint: disable=g-complex-comprehension

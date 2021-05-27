@@ -19,12 +19,12 @@
 Implements the Terraformer model, introduced in the paper ...
 """
 
+import functools
 from trax import layers as tl
 from trax.fastmath import numpy as jnp
 from trax.models.reformer import reformer
 from trax.models.research import configurable_transformer as ct
 from trax.models.research import transformer2 as t2
-
 
 # Layers are always CamelCase, but functions in general are snake_case
 # pylint: disable=invalid-name
@@ -185,6 +185,11 @@ def ConfigurableTerraformer(input_vocab_size,
     A Terraformer encoder-decoder as a layer that maps from target and source
     text sequences to a scalar loss.
   """
+  if mode == 'predict':
+    portal_mask = _PortalInput()
+  else:
+    portal_mask = None
+
   # Set default dimensions for attention head key and value sizes.
   if (d_model / 2) % n_heads != 0:
     raise ValueError(f'n_heads ({n_heads}) must divide d_model/2 ({d_model/2})')
@@ -265,6 +270,20 @@ def ConfigurableTerraformer(input_vocab_size,
     else:
       return tl.Serial(layers)
 
+  if mode == 'predict':
+    # TODO(jaszczur): Remove temporary fix of Terraformer padding in predict.
+    # In predict mode Terraformer needs masking for merged encoder-decoder
+    # sequence. This monkey patches the layer with a mask to neccessary places.
+    # This shouldn't be a permanent solution - mask should be passed through
+    # the stack and all the layers.
+    tl.attention.DotProductCausalAttention.monkey_patched_mask = (
+        lambda x: portal_mask)
+    tl.research.sparsity._RememberPad.monkey_patched_mask = (  # pylint: disable=protected-access
+        lambda x: portal_mask)
+    originalScanSRUCell = tl.rnn.ScanSRUCell
+    tl.rnn.ScanSRUCell = functools.partial(tl.rnn.ScanSRUCell,
+                                           monkey_patched_mask=portal_mask)
+
   decoder_blocks = []
 
   if isinstance(encoder_decoder_attention_type, (tuple, list)):
@@ -299,6 +318,14 @@ def ConfigurableTerraformer(input_vocab_size,
       decoder_blocks.append(tl.ReversibleConcatenatePair())
     if double_after_layer and layer_idx == double_after_layer:
       decoder_blocks.append(tl.ReversibleConcatenatePair())
+
+  if mode == 'predict':
+    # After initializing the decoder we can revert to original state of
+    # previously monkey-patched classes/functions.
+    tl.attention.DotProductCausalAttention.monkey_patched_mask = (
+        lambda x: None)
+    tl.research.sparsity._RememberPad.monkey_patched_mask = (lambda x: None)  # pylint: disable=protected-access
+    tl.rnn.ScanSRUCell = originalScanSRUCell
 
   def _Loss():
     return tl.SparseDenseWithOptions(
@@ -348,18 +375,13 @@ def ConfigurableTerraformer(input_vocab_size,
   # Assemble and return the model.
   return tl.Serial(
       _inp_layers(),               # vec_e mask_e tok_e tok_d
+      tl.Parallel([], portal_mask),
 
       tl.Select([0, 1, 2, 3, 3]),  # Copy decoder tokens for use in loss.
 
       # Embed in and out tokens; done together as weights may be shared.
       tl.Parallel([], [], [], [tl.ShiftRight(mode=mode),
                                out_encoder]),  # vec_e mask_e tok_e vec_d tok_d
-
-      # Predict mode doesn't work with padding in encoder. Raising an exception
-      # in jitted function isn't possible, so the next best thing is to convert
-      # every embedding to NaNs, so the user will get unmistakably wrong
-      # results.
-      (_ConvertToNaNsOnAnyZero() if mode == 'predict' else []),
 
       # Encode; then concat encoder and decoder, given encoder mask.
       _Encoder(),                             # vec_e mask_e tok_e vec_d tok_d
@@ -427,3 +449,43 @@ def _ConvertToNaNsOnAnyZero():
     # if all values in y are non-zeros, return x; otherwise return 0s
     return jnp.where(jnp.all(y, keepdims=False), x, x/0.), y
   return tl.Fn('ConvertToNaNsOnAnyZero', _convert_to_nans, n_out=2)
+
+
+class _PortalInput(tl.Layer):
+  """Portal input for monkey-patching of mask in predict mode."""
+
+  def __init__(self):
+    super().__init__(name='_PortalInput', n_out=1, n_in=1)
+    self._portal_output = _PortalOutput(self)
+
+  def forward(self, x):
+    if isinstance(x, (list, tuple)):
+      x = x[0]
+    self.state = (x,)
+    return x
+
+  def init_weights_and_state(self, input_signature):
+    """Initializes this layer's weights."""
+    if isinstance(input_signature, (list, tuple)):
+      input_signature = input_signature[0]
+    self.state = (jnp.zeros(input_signature.shape),)
+
+  def get_value(self):
+    return self.state[0]
+
+  def get_layer(self):
+    return self._portal_output
+
+
+class _PortalOutput(tl.Layer):
+  """Portal input for monkey-patching of mask in predict mode."""
+
+  def __init__(self, portal_input):
+    super().__init__(name='_PortalOutput', n_out=1, n_in=0)
+    self._portal_input = portal_input
+
+  def forward(self, x):
+    return self._portal_input.get_value()
+
+  def get_value(self):
+    return self._portal_input.get_value()
