@@ -84,28 +84,55 @@ class DecodingTimingTest(test.TestCase):
           attn_layer,
           max_inference_length=2 * max_len, **attn_kwargs)
 
-    pred_model = models.ConfigurableTerraformer(
-        mode='predict',
-        d_model=settings['d_model'],
-        d_ff=settings['d_ff'],
-        dropout=0.1,
-        max_len=max_len,
-        n_heads=settings['n_heads'],
-        n_encoder_layers=settings['encoder_layers'],
-        n_decoder_layers=settings['decoder_layers'],
-        encoder_attention_type=_self_attention_fn(),
-        encoder_decoder_attention_type=_causal_attention_fn(),
-        input_vocab_size=settings['vocab'],
-        ff_sparsity=settings['ff_sparsity'],
-        ff_use_sru=settings['ff_use_sru'],
-        ff_dropout=0.1,
-        ff_chunk_size=1024,
-        attention_chunk_size=1,
-        n_decoder_attention_layers=settings['attention_layers'],
-        loss_sparsity=settings['loss_sparsity'],
-        pos_axial_shape=None,
-        use_bfloat16=True,
-    )
+    if settings['model'] == 'terraformer':
+      pred_model = models.ConfigurableTerraformer(
+          mode='predict',
+          d_model=settings['d_model'],
+          d_ff=settings['d_ff'],
+          dropout=0.1,
+          max_len=max_len,
+          n_heads=settings['n_heads'],
+          n_encoder_layers=settings['encoder_layers'],
+          n_decoder_layers=settings['decoder_layers'],
+          encoder_attention_type=_self_attention_fn(),
+          encoder_decoder_attention_type=_causal_attention_fn(),
+          input_vocab_size=settings['vocab'],
+          ff_sparsity=settings['ff_sparsity'],
+          ff_use_sru=settings['ff_use_sru'],
+          ff_dropout=0.1,
+          # ff_chunk_size=1024,
+          # attention_chunk_size=1,
+          n_decoder_attention_layers=settings['attention_layers'],
+          loss_sparsity=settings['loss_sparsity'],
+          pos_axial_shape=None,
+          use_bfloat16=True,
+      )
+    elif settings['model'] == 'transformer':
+      pred_model = models.ConfigurableTransformer(
+          mode='predict',
+          d_model=settings['d_model'],
+          d_ff=settings['d_ff'],
+          dropout=0.1,
+          max_len=max_len,
+          n_heads=settings['n_heads'],
+          n_encoder_layers=settings['encoder_layers'],
+          n_decoder_layers=settings['decoder_layers'],
+          # encoder_attention_type=_self_attention_fn(),
+          encoder_decoder_attention_type=_causal_attention_fn(),
+          input_vocab_size=settings['vocab'],
+          ff_sparsity=settings['ff_sparsity'],
+          ff_use_sru=settings['ff_use_sru'],
+          # ff_dropout=0.1,
+          # ff_chunk_size=1024,
+          # attention_chunk_size=1,
+          # n_decoder_attention_layers=settings['attention_layers'],
+          loss_sparsity=settings['loss_sparsity'],
+          pos_axial_shape=None,
+          # enc_dec_attention_sparsity=settings['enc_dec_sparsity'],
+          # use_bfloat16=True,
+      )
+    else:
+      assert False
     # We put acceleration outside of autoregressive_sample_stream, because
     # we want to have a separate run (separate input) for model compilation.
     pred_model = tl.Accelerate(pred_model)
@@ -160,90 +187,146 @@ class DecodingTimingTest(test.TestCase):
     return model_size, elapsed_times, peak_memory
 
   def test_autoregressive_sample_terraformer_timing(self):
-    template_to_use = 'medium_model'
+    template_to_use = 'medium_transformer'
 
     settings_templates = {
         # full model
-        # 54B params
-        'full_model': {
-            'encoder_layers': 6, 'decoder_layers': 36, 'vocab': 32000,
-            'attention_layers': 2,
-            'd_ff': 64*1024, 'd_model': 96*96, 'n_heads': 96,
-            'ff_use_sru': (1, 64), 'ff_sparsity': (256, 32), 'loss_sparsity': 8,
-            'attn': (tl.MultiplicativeConvCausalAttention,
-                     {'length_kernel_size': 1, 'sparsity': 64})},
+        # # 54B params
+        # 'full_model': {
+        #     'encoder_layers': 6, 'decoder_layers': 36, 'vocab': 32000,
+        #     'attention_layers': 2,
+        #     'd_ff': 64*1024, 'd_model': 96*96, 'n_heads': 96,
+        #     'ff_use_sru': (1, 64), 'ff_sparsity': (256, 32),
+        #     'loss_sparsity': 8,
+        #     'attn': (tl.MultiplicativeConvCausalAttention,
+        #              {'length_kernel_size': 3, 'sparsity': 64})},
 
         # 1/18 of model (1/6 of encoder, 1/18 of decoder, full vocab)
         # 4B params
-        'full_short_model': {
-            'encoder_layers': 1, 'decoder_layers': 2, 'vocab': 32000,
-            'attention_layers': 2,
-            'd_ff': 64*1024, 'd_model': 96*96, 'n_heads': 96,
-            'ff_use_sru': (1, 64), 'ff_sparsity': (256, 32), 'loss_sparsity': 8,
-            'attn': (tl.MultiplicativeConvCausalAttention,
-                     {'length_kernel_size': 1, 'sparsity': 64})},
+        # 'big_terraformer': {
+        #     'model': 'terraformer',
+        #     'encoder_layers': 1, 'decoder_layers': 2, 'vocab': 32000,
+        #     'attention_layers': 2,
+        #     'd_ff': int(5/8 * 64*1024), 'd_model': 96*96, 'n_heads': 96,
+        #     'ff_use_sru': 0, 'ff_sparsity': 0, 'loss_sparsity': 0,
+        #     'attn': (tl.CausalAttention, {})},
+
+        # 'big_transformer': {
+        #     'model': 'transformer',
+        #     'encoder_layers': 1, 'decoder_layers': 2, 'vocab': 32000,
+        #     'attention_layers': 2,
+        #     'd_ff': int(5/8 * 64*1024), 'd_model': 96*96, 'n_heads': 96,
+        #     'ff_use_sru': 0, 'ff_sparsity': 0, 'loss_sparsity': 0,
+        #     'attn': (tl.CausalAttention, {})},
 
         # medium model
-        # 275M params
-        'medium_model': {
+        # 275M params (only decoder)
+        'medium_transformer': {
+            'model': 'transformer',
             'encoder_layers': 2, 'decoder_layers': 24, 'vocab': 32000,
             'attention_layers': 2,
             'd_ff': 4*1024, 'd_model': 1024, 'n_heads': 16,
-            'ff_use_sru': 0, 'ff_sparsity': 64, 'loss_sparsity': 4,
-            'attn': (tl.MultiplicativeConvCausalAttention,
-                     {'length_kernel_size': 1, 'sparsity': 16})},
+            'ff_use_sru': 0, 'ff_sparsity': 0, 'loss_sparsity': 0,
+            'attn': (tl.CausalAttention, {})},
+        # 'medium_terraformer': {
+        #     'model': 'terraformer',
+        #     'encoder_layers': 2, 'decoder_layers': 24, 'vocab': 32000,
+        #     'attention_layers': 2,
+        #     'd_ff': 4*1024, 'd_model': 1024, 'n_heads': 16,
+        #     'ff_use_sru': 0, 'ff_sparsity': 0, 'loss_sparsity': 0,
+        #     'attn': (tl.CausalAttention, {})},
 
-        # small model
-        # 24M params
-        'small_model': {
-            'encoder_layers': 1, 'decoder_layers': 1, 'vocab': 1000,
-            'attention_layers': 1,
-            'd_ff': 4*1024, 'd_model': 1024, 'n_heads': 16,
-            'ff_use_sru': 0, 'ff_sparsity': 64, 'loss_sparsity': 4,
-            'attn': (tl.MultiplicativeConvCausalAttention,
-                     {'length_kernel_size': 1, 'sparsity': 16})},
     }
 
-    sweep_settings = [
-        # different attention layers
-        {'attn': (tl.MultiplicativeConvCausalAttention,
-                  {'length_kernel_size': 1, 'sparsity': 64})},
-        {'attn': (tl.MultiplicativeConvCausalAttention,
-                  {'length_kernel_size': 3, 'sparsity': 64})},
-        {'attn': (tl.MultiplicativeModularCausalAttention,
-                  {'sparsity': 64})},
-        {'attn': (tl.MultiplicativeCausalAttention,
-                  {'sparsity': 64})},
-        {'attn': (tl.CausalAttention, {})},  # +40% params
-        {'attn': (tl.CausalAttention, {}),
-         'd_ff': int(5/8 * 64*1024)},        # + 0% params
+    sweep_settings = {
+        # 'big_transformer': [  # for big
+        #     dict(), # baseline
+        #     {'ff_sparsity': (256, 32)},  # + Sparse FF
+        #     {'attn': (  # + Sparse QKV
+        #         tl.MultiplicativeConvCausalAttention,
+        #         {'length_kernel_size': 3, 'sparsity': 64}),
+        #      'd_ff': 64*1024,
+        #      },
+        #     {'ff_sparsity': (256, 32),
+        #      'attn': (  # + Sparse FF+QKV
+        #         tl.MultiplicativeConvCausalAttention,
+        #         {'length_kernel_size': 3, 'sparsity': 64}),
+        #      'd_ff': 64*1024,
+        #      },
+        # ],
 
-        # different loss layers
-        {'loss_sparsity': 8},
-        {'loss_sparsity': 4},
-        {'loss_sparsity': 2},
-        {'loss_sparsity': 0},
+        'medium_transformer': [  # for medium
+            dict(),  # baseline
 
-        # different feed forward layers
-        {'ff_use_sru': (1, 64), 'ff_sparsity': (256, 32)},
-        {'ff_use_sru': 0, 'ff_sparsity': (256, 32)},
-        {'ff_use_sru': (1, 64), 'ff_sparsity': 0},
-        {'ff_use_sru': 0, 'ff_sparsity': 0},
+            {'ff_sparsity': 64,
+             'attn': (  # Sparse FF+QKV
+                 tl.MultiplicativeConvCausalAttention,
+                 {'length_kernel_size': 3, 'sparsity': 16}),
+             'd_ff': 6*1024,
+             },
 
-        # no sparsity at all
-        {'ff_use_sru': (1, 64), 'ff_sparsity': 0, 'loss_sparsity': 0,
-         'attn': (tl.CausalAttention, {})},  # +40% params
-        {'ff_use_sru': (1, 64), 'ff_sparsity': 0, 'loss_sparsity': 0,
-         'attn': (tl.CausalAttention, {}),   # + 0% params
-         'd_ff': int(5/8 * 64*1024)},
-    ]
+            # {'ff_sparsity': 64,  # Sparse FF+QKV + Loss
+            #  'attn': (
+            #     tl.MultiplicativeConvCausalAttention,
+            #     {'length_kernel_size': 3, 'sparsity': 16}),
+            #  'd_ff': 6*1024,
+            #  'loss_sparsity': 4,
+            #  },
+
+            # {'attn': (  # Sparse QKV
+            #     tl.MultiplicativeConvCausalAttention,
+            #     {'length_kernel_size': 3, 'sparsity': 16}),
+            #  'd_ff': 6*1024,
+            #  },
+            # {'loss_sparsity': 4},  # Sparse Loss
+            # {'ff_sparsity': 64},  # Sparse FF
+
+            # {'ff_sparsity': 128},  # + Sparse FF 128
+
+            # APPENDIX below
+
+            # different loss layers
+            # {'loss_sparsity': 8},
+            # {'loss_sparsity': 2},
+            # {'loss_sparsity': 0},
+        ],
+
+        #  'big_terraformer': [  # for big terraformer
+        #      dict(), # baseline
+        #      {'ff_sparsity': 64},  # + Sparse FF  / Sparse FF 64
+        #      {'ff_sparsity': 64,
+        #       'attn': (  # + Sparse FF+QKV
+        #          tl.MultiplicativeConvCausalAttention,
+        #          {'length_kernel_size': 3, 'sparsity': 16}),
+        #       'd_ff': 6*1024,
+        #       },
+        #      {'ff_sparsity': 64,  # + Sparse FF+QKV+Loss
+        #       'attn': (
+        #          tl.MultiplicativeConvCausalAttention,
+        #          {'length_kernel_size': 3, 'sparsity': 16}),
+        #       'd_ff': 6*1024,
+        #       'loss_sparsity': 4,
+        #       },
+
+        #         ],
+
+        # 'medium_terraformer': [  # for medium terraformer
+        #     {'ff_sparsity': 64,  # + Sparse FF+QKV+Loss
+        #      'attn': (
+        #         tl.MultiplicativeConvCausalAttention,
+        #         {'length_kernel_size': 3, 'sparsity': 16}),
+        #      'd_ff': 6*1024,
+        #      'loss_sparsity': 4,
+        #      },
+        # ],
+    }
 
     encoding_times = []
     decoding_times = []
     sizes = []
     memories = []
     messages = []
-    for override_settings in sweep_settings:
+    for override_settings in sweep_settings[template_to_use]:
       settings = copy.deepcopy(settings_templates[template_to_use])
       settings.update(override_settings)
 
@@ -290,9 +373,9 @@ class DecodingTimingTest(test.TestCase):
       print(message)
 
     # This is useful for copying results into a spreadsheet etc.
-    for i in range(len(sweep_settings)):
-      print('{}\t{}\t{}\t{:.1f}'.format(
-          sizes[i], encoding_times[i], decoding_times[i], memories[i]))
+    # for i in range(len(sweep_settings)):
+    #   print('{}\t{}\t{}\t{:.1f}'.format(
+    #       sizes[i], encoding_times[i], decoding_times[i], memories[i]))
 
   def test_loss_layer_timing(self):
     all_settings = [
