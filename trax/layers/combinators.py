@@ -21,6 +21,7 @@ from trax.fastmath import numpy as jnp
 from trax.layers import base
 from trax.layers.base import Fn
 from trax.shapes import ShapeDtype
+import copy
 
 
 class Serial(base.Layer):
@@ -976,6 +977,34 @@ class BatchLeadingAxes(base.Layer):
     weights, layer_state = self.sublayer.init(batched_signature, use_cache=True)
     self.state = (layer_state,)
     self.weights = (weights,)
+
+
+def Bidirectional(forward_layer, axis=1, merge_layer=Concatenate()):
+  """Bidirectional combinator for RNNs.
+
+  Args:
+    forward_layer: A layer, such as `trax.layers.LSTM` or `trax.layers.GRU`.
+    axis: a time axis of the inputs. Default value is `1`.
+    merge_layer: A combinator used to combine outputs of the forward
+      and backward RNNs. Default value is 'trax.layers.Concatenate'.
+
+  Example:
+
+      Bidirectional(RNN(n_units=8))
+
+  """
+  backward_layer = copy.deepcopy(forward_layer)
+  flip = base.Fn('_FlipAlongTimeAxis', lambda x: jnp.flip(x, axis=axis))
+  backward = Serial(
+    flip,
+    backward_layer,
+    flip,
+  )
+
+  return Serial(
+    Branch(forward_layer, backward),
+    merge_layer,
+  )
 
 
 # All module-private helper functions are below.
