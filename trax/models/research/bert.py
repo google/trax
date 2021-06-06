@@ -312,3 +312,7 @@ class PretrainedBERT(tl.Serial):
     self.weights = jax.tree_unflatten(jax.tree_structure(self.weights), new_w)
     move_to_device = jax.jit(lambda x: x)
     self.weights = jax.tree_map(move_to_device, self.weights)
+
+  def _settable_attrs(self):
+    """We allow to set attributes required for loading the model from its checkpoints."""
+    return (*super()._settable_attrs(), 'init_checkpoint')
