@@ -680,7 +680,7 @@ class PositionalEncoding(base.Layer):
   def forward(self, inputs):
     """Returns the input activations, with added positional information."""
     weights = self.weights
-    if self._d_feature is not None and self._mode != 'predict':
+    if self._d_feature is not None:
       weights, ff = weights
       weights = jnp.dot(weights[:inputs.shape[1], :], ff)
     if len(weights.shape) < 3:  # old checkpoints have 1 in first dim already

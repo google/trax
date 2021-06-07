@@ -169,6 +169,23 @@ class PositionalEncodingTest(absltest.TestCase):
     self.assertEqual(y2.shape, (1, 1, 2))
     self.assertTrue(np.array_equal(y2, y[:, 3:4, :]))
 
+  def test_predict_equals_eval(self):
+    x = np.array([[[2.0, 3.0], [1.0, 2.0], [0.0, 1.0], [3.0, 4.0]]])
+    self.assertEqual(x.shape, (1, 4, 2))
+
+    layer_eval = tl.PositionalEncoding(max_len=8, d_feature=4, mode='eval')
+    layer_eval.init(shapes.signature(x))
+
+    output_eval = layer_eval(x)
+
+    layer_predict = tl.PositionalEncoding(max_len=8, d_feature=4,
+                                          mode='predict')
+    layer_predict.init(shapes.signature(x))
+    layer_predict.weights = layer_eval.weights
+
+    output_predict = layer_predict(x)
+    self.assertTrue(np.array_equal(output_eval, output_predict))
+
 
 if __name__ == '__main__':
   absltest.main()
