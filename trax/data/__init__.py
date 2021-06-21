@@ -45,6 +45,7 @@ from trax.data.inputs import CastTo
 from trax.data.inputs import ConcatenateToLMInput
 from trax.data.inputs import consume_noise_mask
 from trax.data.inputs import CountAndSkip
+from trax.data.inputs import Dup
 from trax.data.inputs import FilterByLength
 from trax.data.inputs import FilterEmptyExamples
 from trax.data.inputs import generate_random_noise_mask
