@@ -2195,6 +2195,8 @@ def convert_to_subtract(const_string):
 def CreateMathQAInputs(  # pylint: disable=invalid-name
     dataset_path=None,
     train=True,
+    test=False,
+    challenge=False,
     tolerance=0.01,
     cumulative=True,
     python_code=False,
@@ -2220,8 +2222,12 @@ def CreateMathQAInputs(  # pylint: disable=invalid-name
 
   Args:
     dataset_path: a path with the MathQA dataset.
-    train: if True, then generate training examples, otherwhise generate
-      validation examples (the dataset has also a test set).
+    train: if True, then generate training examples; if train, test and
+      challenge are set to False generate validation examples.
+    test: if train is set to False and test is set to True,
+      then generate test examples.
+    challenge: if train and test are set to False and challenge is set to True,
+      then generate challenge examples.
     tolerance: if for a given example relative difference between Python result
       and the result declared in the dataset exceeds the level, then the example
       is dropped; tolerances ranging from 0.1 to 0.001 yield from 18K to 21K
@@ -2264,6 +2270,10 @@ def CreateMathQAInputs(  # pylint: disable=invalid-name
   """
   if train:
     dataset_path = os.path.join(dataset_path, 'train.json')
+  elif test:
+    dataset_path = os.path.join(dataset_path, 'test.json')
+  elif challenge:
+    dataset_path = os.path.join(dataset_path, 'challenge_test.json')
   else:
     dataset_path = os.path.join(dataset_path, 'dev.json')
   # Opening with GFile allows to use remotely stored files, e.g.
