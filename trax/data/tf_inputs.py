@@ -1721,7 +1721,7 @@ def compute_single_result(op_name, num_args):
   elif op_name == 'circumface':
     return 2 * math.pi * num_args[0]
   elif op_name == 'choose':
-    return scipy.special.comb(num_args[0], num_args[1])
+    return scipy.misc.comb(num_args[0], num_args[1])
   elif op_name == 'cosine':
     return math.cos(num_args[0])
   elif op_name == 'cube_edge_by_volume':
@@ -2191,6 +2191,71 @@ def convert_to_subtract(const_string):
   return 'subtract({},const_0)'.format(const_string)
 
 
+def execute_mathqa_dsl_program(problem, dsl_code):
+  """Executes the DSL code for a given problem.
+
+  Args:
+    problem: problem formulation (needed to get parameters).
+    dsl_code: DSL code.
+
+  Returns:
+    the result of executing of the DSL code.
+  """
+  n0_loc = problem.find('n0')
+  list_num = compute_nums(problem[n0_loc:])
+  # The list contains _all_ numbers in the string, hence in particular
+  # for n0 = 2.0 n1 = 3.0 we are getting list_num = [0.0, 2.0, 1.0, 3.0],
+  # so that below we are filtering the odd occurrences.
+  assert len(list_num) % 2 == 0
+  list_num = [list_num[2 * i + 1] for i in range(int(len(list_num) / 2))]
+
+  # dsl_code is a list of strings; since all DSL programs are single liners,
+  # we need to guess the correct line. For now we use the same location as in
+  # in the ground truth examples, that is the first line.
+  list_op = compute_ops(dsl_code[0])
+
+  try:
+    results = compute_result(list_op, list_num)[-1]
+  except:  # pylint: disable=bare-except
+    results = None
+  return results
+
+
+def is_number(s):
+  try:
+    float(s)
+    return True
+  except:  # pylint: disable=bare-except
+    return False
+
+
+def execute_mathqa_program(problem, program):
+  """Executes the DSL code for a given problem.
+
+  Args:
+    problem: problem formulation (not needed, but we want the same API as
+      in the DSL case).
+    program: Python code.
+
+  Returns:
+    the result of executing of the Python code.
+  """
+  del problem  # problem only needed in the DSL version.
+  # Programs are lists of strings. We need to concatenate them in order to exec.
+  program = '\n'.join(program)
+  var_dict = {}
+  try:
+    # The logic of this is the following: if exec with timeout is working
+    # without exceptions, then we can call exec again and gather the variables.
+    exec(program, globals(), var_dict)  # pylint: disable=exec-used
+    if 'answer' in var_dict and is_number(var_dict['answer']):
+      return float(var_dict['answer'])
+    else:
+      return None
+  except:  # pylint: disable=bare-except
+    return None
+
+
 @gin.configurable(module='trax.data')
 def CreateMathQAInputs(  # pylint: disable=invalid-name
     dataset_path=None,
@@ -2200,6 +2265,7 @@ def CreateMathQAInputs(  # pylint: disable=invalid-name
     tolerance=0.01,
     cumulative=True,
     python_code=False,
+    full_dict=False,
     partial_results=True,
     nlp_rationale=False,
     correct_answer=False,
@@ -2238,6 +2304,8 @@ def CreateMathQAInputs(  # pylint: disable=invalid-name
       operations.
     python_code: if set to True, then generates python code instead of
       MathQA commands.
+    full_dict: if set to True, then Python examples are returned together with
+      the DSL code and the NLP rationale.
     partial_results: if set to True, then partial results will be reported as
       part of the input, e.g. input - problem + numbers + op1 + #1 + op2 + #2 +
       op3 + #3, target - op4, where #k is the partial results from operation
@@ -2328,9 +2396,12 @@ def CreateMathQAInputs(  # pylint: disable=invalid-name
             # is coorect.
             exec(target_values, globals(), var_dict)  # pylint: disable=exec-used
             if math.isclose(answer_num, var_dict['answer'], rel_tol=tolerance):
-              yield input_values, target_values, np.array([1] *
-                                                          len(target_values))
-
+              if full_dict:
+                yield input_values, target_values, example[
+                    'linear_formula'], example['Rationale']
+              else:
+                yield input_values, target_values, np.array([1] *
+                                                            len(target_values))
           elif nlp_rationale:
             input_values = 'infer full rationale: ' + input_prefix
             target_values = example['Rationale']

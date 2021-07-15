@@ -839,15 +839,24 @@ class TFInputsTest(tf.test.TestCase):
     self.assertEqual(list_op, ['divide(n0,const_3)', 'sqrt(#0)'])
     self.assertEqual(list_num, [588])
 
+    # Below we execute twice the Python program and once the DSL program.
     target_values = 'import math\n'
+    problem = example['Problem']
     for i in range(len(list_num)):
       target_values += 'n{} = {}\n'.format(i, list_num[i])
+      problem += ' n{} = {}'.format(i, list_num[i])
     target_values += '\n'.join(python_program[:-1])
     final_line = python_program[-1].split('=')[1]
     target_values += '\nanswer ={}'.format(final_line)
     var_dict = {}
     exec(target_values, globals(), var_dict)  # pylint: disable=exec-used
     self.assertAllClose(var_dict['answer'], 14)
+    self.assertAllClose(
+        tf_inputs.execute_mathqa_program(problem, target_values.split('\n')),
+        14)
+    self.assertAllClose(
+        tf_inputs.execute_mathqa_dsl_program(problem,
+                                             [example['linear_formula']]), 14)
 
 
   def test_sentencepiece_tokenize(self):
