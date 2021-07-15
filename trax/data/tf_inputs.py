@@ -1721,7 +1721,8 @@ def compute_single_result(op_name, num_args):
   elif op_name == 'circumface':
     return 2 * math.pi * num_args[0]
   elif op_name == 'choose':
-    return scipy.misc.comb(num_args[0], num_args[1])
+    # Older versions of scipy may require scipy.misc.comb.
+    return scipy.special.comb(num_args[0], num_args[1])  # pylint: disable=unreachable
   elif op_name == 'cosine':
     return math.cos(num_args[0])
   elif op_name == 'cube_edge_by_volume':
@@ -1917,7 +1918,8 @@ def single_op_to_python_command(op_name, num_args):
   elif op_name == 'circumface':
     return '2 * math.pi * {}'.format(num_args[0])
   elif op_name == 'choose':
-    return 'scipy.misc.comb({}, {})'.format(num_args[0], num_args[1])
+    # Older versions of scipy may require scipy.misc.comb.
+    return 'scipy.special.comb({}, {})'.format(num_args[0], num_args[1])  # pylint: disable=unreachable
   elif op_name == 'cosine':
     return 'math.cos({})'.format(num_args[0])
   elif op_name == 'cube_edge_by_volume':
