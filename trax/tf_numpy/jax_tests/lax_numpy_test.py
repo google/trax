@@ -2680,6 +2680,9 @@ class LaxBackedNumpyTests(jtu.TestCase):
         for rng_factory in [jtu.rand_default]))
   def testLinspace(self, start_shape, stop_shape, num, endpoint,
                    retstep, dtype, rng_factory):
+    if dtype in (onp.complex64, onp.complex128):
+      self.skipTest("b/xxxxxx")
+
     if not endpoint and onp.issubdtype(dtype, onp.integer):
       # TODO(b/157597565): Support all dtypes when the tf op supports endpoint
       # Currently, subtracting the step early leads to rounding errors for
