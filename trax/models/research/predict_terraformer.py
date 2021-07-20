@@ -197,12 +197,12 @@ f.close()
 # NOTE: Change to 16*1024 to predict on complete papers.
 gin_config = [l.replace('Reformer2', 'ConfigurableTerraformer') for l in gin_config]
 gin_config.append(
-    'DotProductCausalAttention.max_inference_length = 2048'
+    'DotProductCausalAttention.max_inference_length = 16384'
 )
 
 og_DotProductCausalAttention = trax.layers.attention.DotProductCausalAttention
 trax.layers.attention.DotProductCausalAttention = functools.partial(
-    og_DotProductCausalAttention, max_inference_length=2048,
+    og_DotProductCausalAttention, max_inference_length = 16384,
 )
 
 # gin_config.append(
@@ -225,7 +225,7 @@ def model(mode):
 
 # ####
 
-padding_fun = trax.data.PadToLength(len_map={0: 512, 1: 512, 2: 512}, pad_value = {0: 0, 1: 0, 2:0})
+padding_fun = trax.data.PadToLength(len_map={0: 15*1024, 1: 15*1024, 2: 15*1024}, pad_value = {0: 0, 1: 0, 2:0})
 # question = """code:
 # def square_list(xs):
 #   return [<SENTINEL> for x in xs]
@@ -331,9 +331,7 @@ for x in valid:
 
 model_file = xm2a_main
 shape11 = trax.shapes.ShapeDtype((1, 1), dtype=numpy_math.int32)
-# The model does not like other numbers than 1024 in the line below.
-# In particular 15 * 1024 does not work.
-shape1l = trax.shapes.ShapeDtype((1, 1024), dtype=numpy_math.int32)
+shape1l = trax.shapes.ShapeDtype((1, 15*1024), dtype=numpy_math.int32)
 
 with trax.fastmath.use_backend(trax.fastmath.Backend.JAX):
   model_predict = model(mode='predict')
@@ -353,7 +351,6 @@ tokenized = next(padding_fun(trax.data.tokenize([question,], vocab_file=VOCAB_FI
 with trax.fastmath.use_backend(trax.fastmath.Backend.JAX):
   model_predict.state = old_state
 
-  # Putting below 15*1024 does not work.
-  tokens = autoregressive_sample(model_predict, tokenized[None, :1024], temperature=0.0, max_length=50)
+  tokens = autoregressive_sample(model_predict, tokenized[None, :15*1024], temperature=0.0, max_length=50)
   print(tokens)
   print(trax.data.detokenize(tokens[0], vocab_file=VOCAB_FILE, vocab_dir=VOCAB_DIR, n_reserved_ids=100))
