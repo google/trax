@@ -926,10 +926,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
     # XLA lacks int32/int64 MatMul kernels (b/168657656).
     check_xla = not set((lhs_dtype, rhs_dtype)).intersection(
         (onp.int32, onp.int64))
+
+    tol = max(jtu.tolerance(lhs_dtype), jtu.tolerance(rhs_dtype))
     self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True,
                           check_incomplete_shape=True,
                           check_experimental_compile=check_xla,
-                          check_xla_forced_compile=check_xla)
+                          check_xla_forced_compile=check_xla,
+                          atol = tol,
+                          rtol = tol)
 
   @named_parameters(jtu.cases_from_list(
       {"testcase_name": "_{}_{}".format(
