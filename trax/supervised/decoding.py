@@ -78,7 +78,8 @@ def autoregressive_sample_stream(model, inputs=None,
     current_symbols = start_symbol
 
   if eval_mode:
-    current_symbols = current_symbols[:, 1:]  # no start symbol needed in eval mode
+    # no start symbol needed in eval mode
+    current_symbols = current_symbols[:, 1:]
 
   while True:
     # Pad inputs to power-of-2 length if needed.
@@ -87,7 +88,8 @@ def autoregressive_sample_stream(model, inputs=None,
       l = max(eval_min_length, current_symbols.shape[1] + 1)
       pad_len = int(2**np.ceil(np.log2(l))) - current_symbols.shape[1]
       unpadded_symbols = current_symbols
-      current_symbols = np.pad(current_symbols, [[0, 0], [0, pad_len]], mode='constant')
+      current_symbols = np.pad(
+          current_symbols, [[0, 0], [0, pad_len]], mode='constant')
       last_index = -pad_len  # no -1 as the starting one will be added
     else:
       last_index = -1
@@ -100,7 +102,8 @@ def autoregressive_sample_stream(model, inputs=None,
     sample = tl.logsoftmax_sample(logits, temperature=temperature)
     yield sample
     if eval_mode:
-      current_symbols = np.concatenate([unpadded_symbols, sample[:, None]], axis=1)
+      current_symbols = np.concatenate(
+          [unpadded_symbols, sample[:, None]], axis=1)
     else:
       # NOTE: Because the model is autoregressive and in 'predict' mode, its
       # history is cached in the model state and the next input is the single
