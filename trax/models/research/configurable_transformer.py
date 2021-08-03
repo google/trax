@@ -205,6 +205,8 @@ def PositionalEncoder(mode,
     positional_encoding = tl.InfinitePositionalEncoding()
   elif pos_type == 'time-bin':
     positional_encoding = tl.TimeBinPositionalEncoding()
+  elif pos_type == 'no':
+    positional_encoding = tl.Serial()  # no positional encoding at all
   else:  # TODO(lukaszkaiser): name this type and check for the correct name
     assert pos_d_axial_embs is not None
     positional_encoding = tl.AxialPositionalEncoding(

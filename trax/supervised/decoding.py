@@ -22,7 +22,7 @@ from trax import layers as tl
 
 def autoregressive_sample_stream(model, inputs=None,
                                  batch_size=1, temperature=1.0,
-                                 start_id=0, accelerate=True):
+                                 start_id=0, accelerate=True, eval_mode=False):
   """Yields samples from `model`, in autoregressive language model fashion.
 
   This function uses `model` to generate outputs one position at a time, with
@@ -39,7 +39,9 @@ def autoregressive_sample_stream(model, inputs=None,
     model: A layer object (subclass of `trax.layers.Layer`) created in
         `'predict'` mode and initialized from trained weights. The model
         must have a structure that allows it to run as an autoregressive
-        one-sample-at-a-time predictor (e.g., `trax.models.TransformerLM`).
+        one-sample-at-a-time predictor (e.g., `trax.models.TransformerLM`),
+        except if `eval_mode` is set -- any model can be sampled then,
+        but the sampling process may be much slower.
     inputs: Sequence of symbols the model sees as input the first time it
         generates an output. If None, the model generates the first output
         based on just the start symbol.
@@ -52,6 +54,8 @@ def autoregressive_sample_stream(model, inputs=None,
         process, or array of shape (`batch_size`, 1) of such integers.
     accelerate: If True, create an accelerated version of `model` and use it
         for generating outputs.
+    eval_mode: If True, assume the model is created in `eval` mode and sample
+        by collecting all previous outputs and passing the whole tensor.
 
   Yields:
     Tensor of integers with shape (`batch_size`, 1), representing the batch of
@@ -71,24 +75,44 @@ def autoregressive_sample_stream(model, inputs=None,
   else:
     current_symbols = start_symbol
 
+  if eval_mode:
+    # no start symbol needed in eval mode
+    current_symbols = current_symbols[:, 1:]
+
   while True:
+    # Pad inputs to power-of-2 length if needed.
+    if eval_mode:
+      # one extra symbol as an initial one will be added
+      l = len(current_symbols) + 1
+      pad_len = int(2**np.ceil(np.log2(l))) - len(current_symbols)
+      unpadded_symbols = current_symbols
+      current_symbols = np.pad(
+          current_symbols, [[0, 0], [0, pad_len]], mode='constant')
+      last_index = -pad_len  # no -1 as the starting one will be added
+    else:
+      last_index = -1
+    # Run the model.
     if model.n_in > 1 and inputs is not None:
       logits = fast_model((inputs, current_symbols))[0]
     else:
       logits = fast_model(current_symbols)
-    logits = tl.log_softmax(logits[:, -1, :])
+    logits = tl.log_softmax(logits[:, last_index, :])
     sample = tl.logsoftmax_sample(logits, temperature=temperature)
     yield sample
-    # NOTE: Because the model is autoregressive and in 'predict' mode, its
-    # history is cached in the model state and the next input is the single
-    # symbol just sampled.
-    current_symbols = sample[:, None]
+    if eval_mode:
+      current_symbols = np.concatenate(
+          [unpadded_symbols, sample[:, None]], axis=1)
+    else:
+      # NOTE: Because the model is autoregressive and in 'predict' mode, its
+      # history is cached in the model state and the next input is the single
+      # symbol just sampled.
+      current_symbols = sample[:, None]
 
 
 def autoregressive_sample(model, inputs=None,
                           batch_size=1, temperature=1.0,
                           start_id=0, eos_id=1, max_length=100,
-                          accelerate=True):
+                          accelerate=True, eval_mode=False):
   """Returns a batch of sequences created by autoregressive sampling.
 
   This function uses `model` to generate outputs one position at a time, with
@@ -101,7 +125,9 @@ def autoregressive_sample(model, inputs=None,
     model: A layer object (subclass of `trax.layers.Layer`) created in
         `'predict'` mode and initialized from trained weights. The model
         must have a structure that allows it to run as autoregressive
-        one-sample-at-a-time predictor (e.g., `trax.models.TransformerLM`).
+        one-sample-at-a-time predictor (e.g., `trax.models.TransformerLM`),
+        except if `eval_mode` is set -- any model can be sampled then,
+        but the sampling process may be much slower.
     inputs: Sequence of symbols the model sees as input the first time it
         generates an output. If None, the model must generate the first output
         with no input to guide it.
@@ -117,6 +143,8 @@ def autoregressive_sample(model, inputs=None,
     max_length: Maximum length for generated sequences.
     accelerate: If True, create an accelerated version of `model` and use it
         for generating outputs.
+    eval_mode: If True, assume the model is created in `eval` mode and sample
+        by collecting all previous outputs and passing the whole tensor.
 
   Returns:
     Tensor of integers with shape (`batch_size`, output_length) representing
@@ -128,7 +156,7 @@ def autoregressive_sample(model, inputs=None,
   counter = 0
   for sample in autoregressive_sample_stream(
       model, inputs, batch_size=batch_size, temperature=temperature,
-      start_id=start_id, accelerate=accelerate):
+      start_id=start_id, accelerate=accelerate, eval_mode=eval_mode):
     sample = sample[:, None]
     result.append(sample)
     counter += 1

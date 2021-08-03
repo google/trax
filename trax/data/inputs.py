@@ -370,7 +370,8 @@ def PadToLength(  # pylint: disable=invalid-name
           raise ValueError(f'example isn\'t nparray, but should be: {example}')
         array_length = example.shape[0]
         if multiple:
-          padding_len = array_length - ((array_length // value) * value)
+          padding_len = (
+              array_length - ((array_length // len_map[0]) * len_map[0]))
         else:
           padding_len = max(0, len_map[0] - array_length)
         output = np.pad(example,
