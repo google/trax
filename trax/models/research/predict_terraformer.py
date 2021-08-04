@@ -193,7 +193,8 @@ def model(mode):
 
 # ####
 
-padding_fun = trax.data.PadToLength(len_map={0: 30*512, 1: 30*512, 2: 30*512}, pad_value = {0: 0, 1: 0, 2:0})
+padding_fun = trax.data.PadToLength(len_map={0: 15*1024, 1: 15*1024, 2: 15*1024},
+                                    pad_value = {0: 0, 1: 0, 2:0})
 # padding_fun = lambda x: x
 # padding_fun = trax.data.PadToLength(len_map={0: 128, 1: 128, 2:128}, pad_value={0: 0, 1: 0, 2: 0}, multiple=True)
 
@@ -216,10 +217,10 @@ shape11 = trax.shapes.ShapeDtype((1, 1), dtype=numpy_math.int32)
 shape1l = trax.shapes.ShapeDtype((1, 15*1024), dtype=numpy_math.int32)
 
 with trax.fastmath.use_backend(trax.fastmath.Backend.JAX):
-  model_predict = model(mode='eval')
-  model_predict.init_from_file(model_file, weights_only=True)
+  model = model(mode='eval')
+  model.init_from_file(model_file, weights_only=True)
   # in mode='predict' use input_signature=(shape1l, shape11)
-  old_state = model_predict.state
+  old_state = model.state
 
 
 # Decode the first article
@@ -229,10 +230,21 @@ question = xart.numpy().decode()
 
 tokenized = next(padding_fun(trax.data.tokenize([question,], vocab_file=VOCAB_FILE, vocab_dir=VOCAB_DIR, n_reserved_ids=100)))
 
+def detokenize(x):
+  return trax.data.detokenize(x, vocab_file=VOCAB_FILE, vocab_dir=VOCAB_DIR,
+                              n_reserved_ids=100)
 
 with trax.fastmath.use_backend(trax.fastmath.Backend.JAX):
-  model_predict.state = old_state
-
-  tokens = decoding.autoregressive_sample(model_predict, tokenized[None, :15*1024], temperature=0.0, max_length=50, eval_mode=True, eval_min_length=1024)
+  model.state = old_state
+  counter, tokens, max_length = 0, [], 30
+  for token in decoding.autoregressive_sample_stream(
+      model, tokenized[None, :15*1024], batch_size=1, temperature=0.0,
+      eval_mode=True, eval_min_length=1024):
+    print(f'Token {counter}: "{detokenize(token)}" {token}')
+    tokens.append(token[:, None])
+    counter += 1
+    if counter > max_length:
+      break
+  tokens = np.concatenate(tokens, axis=1)
   print(tokens)
-  print(trax.data.detokenize(tokens[0], vocab_file=VOCAB_FILE, vocab_dir=VOCAB_DIR, n_reserved_ids=100))
+  print(detokenize(tokens[0]))
