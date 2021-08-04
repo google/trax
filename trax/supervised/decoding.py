@@ -22,7 +22,8 @@ from trax import layers as tl
 
 def autoregressive_sample_stream(model, inputs=None,
                                  batch_size=1, temperature=1.0,
-                                 start_id=0, accelerate=True, eval_mode=False):
+                                 start_id=0, accelerate=True,
+                                 eval_mode=False, eval_min_length=1):
   """Yields samples from `model`, in autoregressive language model fashion.
 
   This function uses `model` to generate outputs one position at a time, with
@@ -56,6 +57,7 @@ def autoregressive_sample_stream(model, inputs=None,
         for generating outputs.
     eval_mode: If True, assume the model is created in `eval` mode and sample
         by collecting all previous outputs and passing the whole tensor.
+    eval_min_length: If set, the minimum length to pad to in eval mode.
 
   Yields:
     Tensor of integers with shape (`batch_size`, 1), representing the batch of
@@ -83,8 +85,8 @@ def autoregressive_sample_stream(model, inputs=None,
     # Pad inputs to power-of-2 length if needed.
     if eval_mode:
       # one extra symbol as an initial one will be added
-      l = len(current_symbols) + 1
-      pad_len = int(2**np.ceil(np.log2(l))) - len(current_symbols)
+      l = max(eval_min_length, current_symbols.shape[1] + 1)
+      pad_len = int(2**np.ceil(np.log2(l))) - current_symbols.shape[1]
       unpadded_symbols = current_symbols
       current_symbols = np.pad(
           current_symbols, [[0, 0], [0, pad_len]], mode='constant')
@@ -112,7 +114,7 @@ def autoregressive_sample_stream(model, inputs=None,
 def autoregressive_sample(model, inputs=None,
                           batch_size=1, temperature=1.0,
                           start_id=0, eos_id=1, max_length=100,
-                          accelerate=True, eval_mode=False):
+                          accelerate=True, eval_mode=False, eval_min_length=1):
   """Returns a batch of sequences created by autoregressive sampling.
 
   This function uses `model` to generate outputs one position at a time, with
@@ -145,6 +147,7 @@ def autoregressive_sample(model, inputs=None,
         for generating outputs.
     eval_mode: If True, assume the model is created in `eval` mode and sample
         by collecting all previous outputs and passing the whole tensor.
+    eval_min_length: If set, the minimum length to pad to in eval mode.
 
   Returns:
     Tensor of integers with shape (`batch_size`, output_length) representing
@@ -156,7 +159,8 @@ def autoregressive_sample(model, inputs=None,
   counter = 0
   for sample in autoregressive_sample_stream(
       model, inputs, batch_size=batch_size, temperature=temperature,
-      start_id=start_id, accelerate=accelerate, eval_mode=eval_mode):
+      start_id=start_id, accelerate=accelerate, eval_mode=eval_mode,
+      eval_min_length=eval_min_length):
     sample = sample[:, None]
     result.append(sample)
     counter += 1

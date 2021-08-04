@@ -151,10 +151,10 @@ def model_configure(*args, **kwargs):
 
 ####
 
-xm2a_main = '/tmp/Terraformer/terraformer_med_model_200000.pkl.gz'
-xm2a_weights = '/tmp/Terraformer/terraformer_med_model_200000.weights.npy.gz'
-xm2a_opt_slots = '/tmp/Terraformer/terraformer_med_model_200000.opt_slots0.npy.gz'
-xm2a_config = '/tmp/Terraformer/terraformer_med_config.gin'
+xm2a_main = '/tmp/Terraformer/model_200000.pkl.gz'
+xm2a_weights = '/tmp/Terraformer/model_200000.weights.npy.gz'
+xm2a_opt_slots = '/tmp/Terraformer/model_200000.opt_slots0.npy.gz'
+xm2a_config = '/tmp/Terraformer/config.gin'
 
 VOCAB_FILE = 'en_16k.subword'
 VOCAB_DIR = '/tmp/Terraformer'
@@ -164,49 +164,17 @@ VOCAB_DIR = '/tmp/Terraformer'
 f = open(xm2a_config)
 gin_config = list(f)
 f.close()
-#
-#  Uncomment this part to get the original results from the docs
-#
-# keep_gin = [l for l in gin_config if 'predict_mem' not in l]
-# change_gin = [l for l in gin_config if 'predict_mem' in l]
-# changed_gin = [l[:-6] + '2048\n' for l in change_gin]
-# gin_config = keep_gin + changed_gin
-# keep_gin = [l for l in gin_config if 'predict_drop' not in l]
-# change_gin = [l for l in gin_config if 'predict_drop' in l]
-# changed_gin = [l[:-6] + '2048\n' for l in change_gin]
-# gin_config = keep_gin + changed_gin
 
-
-# # NOTE: you can change config to 16*1024 to just use standard (non-LSH)
-# # attention. It may be useful to debug/check if LSH attention works.
-# keep_gin = [l for l in gin_config if 'std_length' not in l]
-# change_gin = [l for l in gin_config if 'std_length' in l]
-# changed_gin = [l[:-5] + '2048\n' for l in change_gin]
-# gin_config = keep_gin + changed_gin
-
-
-# keep_gin = [l for l in gin_config if 'max_length = 512' not in l]
-# change_gin = [l for l in gin_config if 'max_length = 512' in l]
-# changed_gin = ['max_length = 2048\n' for l in change_gin]
-# gin_config = keep_gin + changed_gin
-#
-#  End of the part that needs to be uncommented.
-#
-
-
-# NOTE: Change to 16*1024 to predict on complete papers.
-gin_config = [l.replace('Reformer2', 'ConfigurableTerraformer') for l in gin_config]
-gin_config.append(
-    'DotProductCausalAttention.max_inference_length = 2048'
-)
-
+# gin_config.append(
+#     'DotProductCausalAttention.max_inference_length = 16384'
+# )
 og_DotProductCausalAttention = trax.layers.attention.DotProductCausalAttention
 trax.layers.attention.DotProductCausalAttention = functools.partial(
-    og_DotProductCausalAttention, max_inference_length=2048,
+    og_DotProductCausalAttention, max_inference_length=16384,
 )
 
 # gin_config.append(
-#     'MixedLSHSelfAttention.std_length='
+#     '\nMixedLSHSelfAttention.std_length=16384'
 # )
 
 gin_config = [l for l in gin_config if 'mira' not in l]
@@ -225,98 +193,12 @@ def model(mode):
 
 # ####
 
-padding_fun = trax.data.PadToLength(len_map={0: 512, 1: 512, 2: 512}, pad_value = {0: 0, 1: 0, 2:0})
-# question = """code:
-# def square_list(xs):
-#   return [<SENTINEL> for x in xs]
-# print(square_list([1, 2, 3, 4]))
+padding_fun = trax.data.PadToLength(len_map={0: 30*512, 1: 30*512, 2: 30*512}, pad_value = {0: 0, 1: 0, 2:0})
+# padding_fun = lambda x: x
+# padding_fun = trax.data.PadToLength(len_map={0: 128, 1: 128, 2:128}, pad_value={0: 0, 1: 0, 2: 0}, multiple=True)
 
-# output:
-# [1, 4, 9, 16]"""
-
-# tokenized = next(padding_fun(trax.data.tokenize([question,], vocab_file=VOCAB_FILE, vocab_dir=VOCAB_DIR, n_reserved_ids=100)))
-# print(trax.data.detokenize(tokenized, vocab_file=VOCAB_FILE, vocab_dir=VOCAB_DIR, n_reserved_ids=100))
-# print(tokenized.shape)
 
 ####
-
-
-def autoregressive_sample_stream(model, inputs=None,
-                                 batch_size=1, temperature=1.0,
-                                 start_id=2, accelerate=True, prefix=None):
-  if inputs is not None and inputs.shape[0] != batch_size:
-    raise ValueError(f'Inputs batch size ({inputs.shape[0]}) does not match '
-                     f'batch_size arg ({batch_size}.')
-
-  fast_model = tl.Accelerate(model) if accelerate else model
-  if np.isscalar(start_id):
-    start_symbol = np.full((batch_size, 1), start_id, dtype=np.int32)
-  else:
-    start_symbol = start_id
-  if model.n_in == 1 and inputs is not None:
-    current_symbols = np.concatenate([start_symbol, inputs], axis=1)
-  else:
-    if prefix is None:
-      current_symbols = start_symbol
-    else:
-      current_symbols = np.concatenate([start_symbol, prefix], axis=1)
-
-  while True:
-    t0 = time.time()
-    if model.n_in > 1 and inputs is not None:
-      # print("inp, curr:", inputs.shape, current_symbols.shape)
-      logits = fast_model((inputs, current_symbols))[0]
-    else:
-      logits = fast_model(current_symbols)
-    # print('logits:', str(logits)[:100])
-    logits = tl.log_softmax(logits[:, -1, :])
-    sample = tl.logsoftmax_sample(logits, temperature=temperature)
-
-    print(trax.data.detokenize(sample, vocab_file=VOCAB_FILE, vocab_dir=VOCAB_DIR, n_reserved_ids=100))
-    print("Time per token: {}".format(time.time() - t0))
-    sys.stdout.flush()
-
-    yield sample
-    # NOTE: Because the model is autoregressive and in 'predict' mode, its
-    # history is cached in the model state and the next input is the single
-    # symbol just sampled.
-    current_symbols = sample[:, None]
-
-
-START_INDEX = 10
-
-def autoregressive_sample(model, inputs=None,
-                          batch_size=1, temperature=1.0,
-                          start_id=0, eos_id=1, max_length=100,
-                          accelerate=True, prefix=None):
-  result = []
-  eos_seen = []
-  counter = 0
-  index = START_INDEX
-  for index, sample in enumerate(autoregressive_sample_stream(
-      model, inputs, batch_size=batch_size, temperature=temperature,
-      start_id=start_id, accelerate=accelerate, prefix=prefix)):
-    if index == START_INDEX:
-      start_time = time.time()
-    sample = sample[:, None]
-    result.append(sample)
-    counter += 1
-    if counter >= max_length:
-      print('decoded one token per {} s'.format(
-          (time.time()-start_time)/(index-START_INDEX)))
-      return np.concatenate(result, axis=1)
-    # Check at which batch positions have we already encountered EOS.
-    for j in range(batch_size):
-      if int(sample[j, 0]) == eos_id:
-        eos_seen.append(j)
-    # If EOS has been seen on all positions, stop.
-    if all([j in eos_seen for j in range(batch_size)]):
-      print('decoded one token per {} s'.format(
-          (time.time()-start_time)/(index-START_INDEX)))
-      return np.concatenate(result, axis=1)
-  print('decoded one token per {} s'.format(
-      (time.time()-start_time)/(index-START_INDEX)))
-  return np.concatenate(result, axis=1)
 
 
 dataset = tfds.summarization.scientific_papers.ScientificPapers()
@@ -331,14 +213,12 @@ for x in valid:
 
 model_file = xm2a_main
 shape11 = trax.shapes.ShapeDtype((1, 1), dtype=numpy_math.int32)
-# The model does not like other numbers than 1024 in the line below.
-# In particular 15 * 1024 does not work.
-shape1l = trax.shapes.ShapeDtype((1, 1024), dtype=numpy_math.int32)
+shape1l = trax.shapes.ShapeDtype((1, 15*1024), dtype=numpy_math.int32)
 
 with trax.fastmath.use_backend(trax.fastmath.Backend.JAX):
-  model_predict = model(mode='predict')
-  model_predict.init_from_file(model_file, weights_only=True,
-                               input_signature=(shape1l, shape11))
+  model_predict = model(mode='eval')
+  model_predict.init_from_file(model_file, weights_only=True)
+  # in mode='predict' use input_signature=(shape1l, shape11)
   old_state = model_predict.state
 
 
@@ -353,7 +233,6 @@ tokenized = next(padding_fun(trax.data.tokenize([question,], vocab_file=VOCAB_FI
 with trax.fastmath.use_backend(trax.fastmath.Backend.JAX):
   model_predict.state = old_state
 
-  # Putting below 15*1024 does not work.
-  tokens = autoregressive_sample(model_predict, tokenized[None, :1024], temperature=0.0, max_length=50)
+  tokens = decoding.autoregressive_sample(model_predict, tokenized[None, :15*1024], temperature=0.0, max_length=50, eval_mode=True, eval_min_length=1024)
   print(tokens)
   print(trax.data.detokenize(tokens[0], vocab_file=VOCAB_FILE, vocab_dir=VOCAB_DIR, n_reserved_ids=100))
