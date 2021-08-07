@@ -787,5 +787,17 @@ class BatchLeadingAxesTest(absltest.TestCase):
     self.assertEqual(ys.shape, (1, 2, 3, 4, 5))
 
 
+class BidirectionalTest(absltest.TestCase):
+
+  def test_dimensionality(self):
+    x = np.ones((2, 3, 8))
+    layer = tl.Bidirectional(tl.GRU(n_units=8))
+    input_signature = shapes.signature(x)
+    _, _ = layer.init(input_signature)
+    yhat = layer(x)
+
+    self.assertEqual(yhat.shape, (2, 3, 8 + 8))
+
+
 if __name__ == '__main__':
   absltest.main()
