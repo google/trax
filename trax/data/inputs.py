@@ -235,6 +235,27 @@ def Batch(batch_size):  # pylint: disable=invalid-name
 
 
 @gin.configurable(module='trax.data')
+def Dup():  # pylint: disable=invalid-name
+  """Duplicates (copies) the top element (inputs).
+
+  The generator stream is augmented in the following way:
+
+  - If the stream consists of a single element `(inputs, )`,
+    the inputs simply get copied to `(inputs, inputs)`.
+  - If the stream consists of multiple elements, for example
+    `(inputs, weights)`, the rest of elements get moved toward
+    the right side `(inputs, inputs, weights)`.
+
+  Returns:
+    the duplicating function.
+  """
+  def _copy(xs):
+    x, *rest = xs
+    return (x, x, *rest)
+  return lambda g: map(lambda x: _copy(x), g)  # pylint: disable=unnecessary-lambda
+
+
+@gin.configurable(module='trax.data')
 def FilterEmptyExamples(axes=None, debug=False):  # pylint: disable=invalid-name
   """Filters empty examples.
 
