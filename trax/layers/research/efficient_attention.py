@@ -1066,6 +1066,8 @@ class SelfAttention(base.Layer):
   def init_weights_and_state(self, input_signature):
     if not isinstance(input_signature, (tuple, list)):
       input_signature = (input_signature,)
+    else:
+      input_signature = (input_signature[0],)
     input_signature_unbatched = fastmath.nested_map(
         lambda x: type(x)(shape=x.shape[1:], dtype=x.dtype),
         input_signature)
