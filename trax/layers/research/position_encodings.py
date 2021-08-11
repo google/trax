@@ -381,7 +381,7 @@ class InfinitePositionalEncoding(layer_base.Layer):
       noise = threefry_2x32_prange(self._noise_rng, 0, new_length * depth)
       noise = noise.reshape((new_length, depth, 2))[:, :, 0]
       # Normalize to [-sqrt(3), sqrt(3)]:
-      noise = noise.astype(jnp.float32) / 2**31 - 1
+      noise = noise.astype(jnp.float32) / np.float32(2**31 - 1)
       noise = noise * 3**.5
       # TODO(tying): use multiscale noise for memory-efficient sampling
       noise = noise.cumsum(axis=0)
