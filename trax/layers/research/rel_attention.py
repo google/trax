@@ -283,32 +283,19 @@ def PositionalEmbeddings(d_feature, separate_cls, total_kv_pooling):
     """
 
   def PositionsVectors(queries, keys):
-    is_funnel_layer = queries.shape != keys.shape
-    keys_len, queries_len = keys.shape[1], queries.shape[1]
-    current_pooling_ratio = keys_len / queries_len
+    assert separate_cls is False
 
-    # Special case of upsampling
-    if is_funnel_layer and current_pooling_ratio < 1:
-      # We should not be doing standard upsampling when we use separate_cls
-      # Cls token is being used for classification
-      assert separate_cls is False
-      assert (total_kv_pooling * keys_len) % queries_len == 0
-      multiplier = ((total_kv_pooling * keys_len) // queries_len)
-      positions = jnp.arange(-queries_len + 1, queries_len, 1.0) * multiplier
+    keys_len, queries_len = keys.shape[-2], queries.shape[-2]
+    funnel_factor, is_upsampling = calc_funnel_ratio(keys_len, queries_len)
+
+    if funnel_factor == 1:
+        offset = keys_len - 1
+        positions = (jnp.arange(keys_len) - offset) * total_kv_pooling
     else:
-      positions = jnp.arange(-keys_len + 1, keys_len, 1.0) * total_kv_pooling
-
-    if is_funnel_layer and separate_cls:
-      # For pool_size 2 without separating cls we have got
-      # [0][1][2][3][4][5][6][7] -> [01][23][45][67]
-      # With separating cls we have got
-      # [0][1][2][3][4][5][6][7] -> [0][12][34][56]
-
-      # First group always will always consist of one token after pooling
-      # instead of (pool_size) tokens. We need to add proper offset so
-      # that our shift later on in calculating attention works properly
-      cls_offset = (current_pooling_ratio - 1) * total_kv_pooling
-      positions = positions + cls_offset
+        if is_upsampling:
+            positions = jnp.arange(-queries_len + 1, queries_len, 1.0)
+        else:
+            positions = jnp.arange(-keys_len + 1, keys_len, 1.0) * total_kv_pooling
 
     return positions
 
@@ -338,15 +325,16 @@ def calc_funnel_ratio(keys_len, queries_len):
   return funnel_factor, is_upsampling
 
 
-def _fast_matrix_shift(x, funnel_factor, is_upsampling=False):
-  """
-  Implements necessary shift for relative positional attention calculations.
-  Based on funnel_factor and information whether we perform upsampling
-  or downsampling it calculates necessary shift and interval at which
-  we pick correct values for attention.
-  """
-  #  shift: i-th row is shifted by i * shift elements to the left
-  #  k: after shift, we pick every kth element
+def _fast_matrix_shift(x, funnel_factor=1, is_upsampling=False):
+  if funnel_factor == 1 and not is_upsampling:
+    shift = 1
+    batch_size, n_head = x.shape[0], x.shape[1]
+    queries_len, keys_len = x.shape[2], x.shape[3]
+    zero_pad = jnp.zeros((batch_size, n_head, queries_len, shift))
+    x = jnp.concatenate([zero_pad, x], axis=3)
+    x = x.reshape(batch_size, n_head, keys_len + shift, queries_len)
+    x = x[:, :, shift:, :]
+    return x
 
   if is_upsampling is True:
     k = funnel_factor
