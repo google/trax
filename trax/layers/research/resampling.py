@@ -16,7 +16,15 @@ def LinearPooling(shorten_factor, d_model, *args, dropout=0.0, mode='train',
                   **kwargs):
   del args, kwargs
 
+  def _SequenceLengthDivisibilityCheck(x):
+      # x is of shape (bs, seq_len, d_model)
+      # We check if current seq_len is divisible by shorten_factor
+      assert x[1] % shorten_factor == 0
+      return x
+
   return cb.Serial(
+      core.Fn('seq_len divisibility check', _SequenceLengthDivisibilityCheck,
+              n_out=1),
       core.Fn(
           'Shorten',
           lambda x: jnp.reshape(
@@ -49,36 +57,12 @@ def _FeedForwardBlock(d_model,
                       dropout_shared_axes,
                       mode,
                       activation):
-  """Returns a list of layers that implements a feedforward block.
-
-  Args:
-    d_model: Last/innermost dimension of activation arrays at most points in
-        the model, including the initial embedding output.
-    d_ff: Last/innermost dimension of special (typically wider)
-        :py:class:`Dense` layer in the feedforward part of each block.
-    dropout: Stochastic rate (probability) for dropping an activation value
-        when applying dropout within a block.
-    dropout_shared_axes: Tensor axes on which to share a dropout mask.
-        Sharing along batch and sequence axes (``dropout_shared_axes=(0,1)``)
-        is a useful way to save memory and apply consistent masks to activation
-        vectors at different sequence positions.
-    mode: If ``'train'``, each block will include dropout; else, it will
-        pass all values through unaltered.
-    activation: Type of activation function at the end of each block; must
-        be an activation-type subclass of :py:class:`Layer`.
-
-  Returns:
-    A list of layers that maps vectors to vectors.
-  """
-
-  def _Dropout():
-    return core.Dropout(rate=dropout, shared_axes=dropout_shared_axes,
-                        mode=mode)
-
+  # We copy the ff block function because we cannot import it from models
   return [
       core.Dense(d_ff),
       activation(),
-      _Dropout(),
+      core.Dropout(rate=dropout, shared_axes=dropout_shared_axes,
+                   mode=mode),
       core.Dense(d_model),
   ]
 
@@ -87,33 +71,7 @@ def AttentionResampling(shorten_factor, d_model, is_upsampling, d_ff, n_heads,
                         dropout, dropout_shared_axes, mode, ff_activation,
                         context_bias_layer, location_bias_layer, total_pooling,
                         resampling_fn):
-  """Returns a list of layers that implements a Transformer decoder block.
 
-  The input is an activation tensor.
-
-  Args:
-    d_model: Final dimension of tensors at most points in the model, including
-        the initial embedding output.
-    d_ff: Size of special dense layer in the feed-forward part of each block.
-    n_heads: Number of attention heads.
-    dropout: Stochastic rate (probability) for dropping an activation value
-        when applying dropout within a block.
-    dropout_shared_axes: Tensor axes on which to share a dropout mask.
-        Sharing along batch and sequence axes (`dropout_shared_axes=(0,1)`) is
-        a useful way to save memory and apply consistent masks to activation
-        vectors at different sequence positions.
-    mode: If `'train'`, each block will include dropout; else, it will
-        pass all values through unaltered.
-    ff_activation: Type of activation function at the end of each block; must
-        be an activation-type subclass of `Layer`.
-    shorten_factor: by how much shorten/upsample at this funnel block.
-    resampling_fn: Type of function that performs funnel upsampling/downsampling
-        callable with signature: shorten_factor, d_model;  must return an
-         activation-type subclass of `Layer`.
-
-  Returns:
-    A list of layers that maps an activation tensor to an activation tensor.
-  """
   attention = RelativeAttentionLMLayer(
       d_model, context_bias_layer, location_bias_layer,
       total_pooling, n_heads=n_heads, dropout=dropout,
@@ -125,8 +83,8 @@ def AttentionResampling(shorten_factor, d_model, is_upsampling, d_ff, n_heads,
   resampling = resampling_fn(shorten_factor, d_model,
                              mode=mode)
 
-  def _Dropout(p=dropout):
-    return core.Dropout(rate=p, shared_axes=dropout_shared_axes, mode=mode)
+  def _Dropout():
+    return core.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
 
   return [
       LayerNorm(),            # h
