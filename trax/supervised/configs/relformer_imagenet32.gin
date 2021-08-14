@@ -40,7 +40,7 @@ data_streams.bare_preprocess_fn = \
 # 0.0442 ~= 512^-0.5 = d_model^-0.5
 multifactor.constant = 0.0442
 multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
-multifactor.warmup_steps = 16000
+multifactor.warmup_steps = 8000
 
 # Parameters for Adam:
 # ==============================================================================
@@ -53,7 +53,7 @@ Adam.eps = 1e-09
 # ==============================================================================
 train.eval_frequency = 500
 train.eval_steps = 256
-train.model = @trax.models.FunnelTransformerLM
+train.model = @trax.models.RelformerLM
 train.optimizer = @trax.optimizers.Adam
 train.steps = 400000
 train.checkpoints_at = \
@@ -62,14 +62,15 @@ train.checkpoints_at = \
 train.permanent_checkpoints_at = \
     [100000, 150000, 200000, 250000, 300000, 350000]
 
-# Parameters for FunnelTransformerLM:
+# Parameters for RelformerLM:
 # ==============================================================================
-FunnelTransformerLM.d_ff = 2048
-FunnelTransformerLM.d_model = 512
-FunnelTransformerLM.dropout = 0.01
-FunnelTransformerLM.n_funnel_blocks = (12,)
-FunnelTransformerLM.n_heads = 8
-FunnelTransformerLM.shorten_factors = (3,)
-FunnelTransformerLM.vanilla_layers = (1, 1)
-FunnelTransformerLM.vocab_size = 256
-FunnelTransformerLM.ff_activation = @trax.layers.FastGelu
+RelformerLM.d_ff = 2048
+RelformerLM.d_model = 512
+RelformerLM.dropout = 0.01
+RelformerLM.n_funnel_blocks = (24,)
+RelformerLM.n_heads = 8
+RelformerLM.shorten_factors = (3,)
+RelformerLM.vanilla_layers = (1, 1)
+RelformerLM.vocab_size = 256
+RelformerLM.attention_downsampling_fn = @LinearPooling
+RelformerLM.ff_activation = @trax.layers.FastGelu

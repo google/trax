@@ -26,10 +26,10 @@ from trax import layers as tl
 from trax.fastmath import numpy as jnp
 from trax.fastmath.ops import index_add
 from trax.layers.assert_shape import assert_shape
-from trax.layers.research.rel_attention import get_rel_att_inputs,\
+from trax.layers.research.rel_attention import get_rel_att_inputs, \
   RelativeAttentionWrapper
-from trax.layers.research.resampling import AttentionResampling, AveragePooling, \
-  LinearUpsampling, LinearPooling
+from trax.layers.research.resampling import AttentionResampling, \
+  AveragePooling, LinearUpsampling, LinearPooling
 from trax.models.reformer.reformer import DecoderBlock
 from trax.models.research.configurable_transformer import PositionalEncoder, \
   ApplyAttentionLayer
@@ -427,26 +427,26 @@ def _RelativeDecoderBlock(attention_type, d_model,
                           mode, ff_activation, context_bias_layer,
                           location_bias_layer, total_pooling):
   """Returns a list of layers that implements a Transformer encoder block.
+
   The input to the block is a pair, (activations, mask), where the mask was
   created from the original source tokens to prevent attending to the padding
   part of the input.
+
   Args:
     d_model: Final dimension of tensors at most points in the model, including
-        the initial embedding output.
+      the initial embedding output.
     d_ff: Size of special dense layer in the feed-forward part of each block.
     n_heads: Number of attention heads.
     dropout: Stochastic rate (probability) for dropping an activation value
-        when applying dropout within a block.
+      when applying dropout within a block.
     dropout_shared_axes: Tensor axes on which to share a dropout mask.
-        Sharing along batch and sequence axes (`dropout_shared_axes=(0,1)`) is
-        a useful way to save memory and apply consistent masks to activation
-        vectors at different sequence positions.
+      Sharing along batch and sequence axes (`dropout_shared_axes=(0,1)`) is
+      a useful way to save memory and apply consistent masks to activation
+      vectors at different sequence positions.
     mode: If `'train'`, each block will include dropout; else, it will
-        pass all values through unaltered.
+      pass all values through unaltered.
     ff_activation: Type of activation function at the end of each block; must
-        be an activation-type subclass of `Layer`.
-    context_bias_layer: Global context bias from Transformer XL's attention.
-    location_bias_layer: Global location bias from Transformer XL's attention.
+      be an activation-type subclass of `Layer`.
     total_pooling: The combined pool size of previously used funnel blocks.
   Returns:
     A list of layers that maps (activations, att_vecs, mask) to
@@ -497,23 +497,23 @@ def _RelativeDecoderBlock(attention_type, d_model,
   ]
 
 
-def FunnelTransformerLM(vocab_size,
-                        d_model=512,
-                        d_ff=2048,
-                        vanilla_layers=(0, 1),
-                        shorten_factors=(3,),
-                        n_funnel_blocks=(6,),
-                        n_heads=8,
-                        dropout=0.1,
-                        dropout_shared_axes=None,
-                        mode='train',
-                        ff_activation=tl.FastGelu,
-                        vanilla_attn_type=RelativeAttentionWrapper,
-                        middle_attn_type=RelativeAttentionWrapper,
-                        downsampling_fn=AttentionResampling,
-                        upsampling_fn=AttentionResampling,
-                        attention_downsampling_fn=AveragePooling,
-                        attention_upsampling_fn=LinearUpsampling):
+def RelformerLM(vocab_size,
+                d_model=512,
+                d_ff=2048,
+                vanilla_layers=(0, 1),
+                shorten_factors=(3,),
+                n_funnel_blocks=(6,),
+                n_heads=8,
+                dropout=0.1,
+                dropout_shared_axes=None,
+                mode='train',
+                ff_activation=tl.FastGelu,
+                vanilla_attn_type=RelativeAttentionWrapper,
+                middle_attn_type=RelativeAttentionWrapper,
+                downsampling_fn=AttentionResampling,
+                upsampling_fn=AttentionResampling,
+                attention_downsampling_fn=AveragePooling,
+                attention_upsampling_fn=LinearUpsampling):
   """Returns a Transformer language model.
 
   This model performs autoregressive language modeling:
@@ -553,11 +553,28 @@ def FunnelTransformerLM(vocab_size,
     mode: str: 'train' or 'eval'.
     ff_activation: Type of activation function at the end of each encoder
         block; must be an activation-type subclass of `Layer`.
+    vanilla_attn_type: class: attention class such as SelfAttention to use in
+        the layers before and after shortening (vanilla layers).
+    middle_attn_type: class: attention class to use in the middle layers
+        (these operating on the shortened sequence).
+    downsampling_fn: function that takes full token-level vectors of
+        length `l` and transforms them into `l` / `k` vectors, where `k`
+        denotes `shorten_factor` parameter.
+    upsampling_fn: function that takes shortened representations of a sequence,
+        consisting of `l` / `k` vectors and transforms them into full
+        token-level representations of length `l`.
+    attention_downsampling_fn: Downsampling function that transforms token-level
+        vectors into query vectors with reduced length. Necessary only when
+        AttentionResampling is used as `downsampling_fn`.
+    attention_upsampling_fn: Upsampling function for AttentionResampling.
+        Valid only when AttentionResampling is used as a `upsampling_fn`.
+
 
   Returns:
     A Transformer language model as a layer that maps from a tensor of tokens
     to activations over a vocab set.
   """
+  assert mode != 'predict'  # For now, 'predict' mode is unsupported.
   assert len(n_funnel_blocks) == len(shorten_factors)
 
   token_encoder = [
@@ -622,13 +639,13 @@ def FunnelTransformerLM(vocab_size,
       tl.ShiftRight(mode=mode),  # toks
       token_encoder,             # vecs
       pre_decoder_blocks,        # vecs
-      tl.Dup(), # vecs
-      tl.ShiftRight(n_positions=total_pooling_acc - 1), # shifted_vecs, vecs
-      funnel_blocks, # shifted_vecs, vecs
-      upsampling_layer, # shifted_downsampled_vecs, vecs
-      tl.LayerNorm(), # shifted_downsampled_vecs, vecs
-      tl.Add(), # shifted_downsampled_vecs, vecs
-      post_decoder_blocks, # vecs
+      tl.Dup(),                  # vecs
+      tl.ShiftRight(n_positions=total_pooling_acc - 1),  # shifted_vecs, vecs
+      funnel_blocks,             # shifted_vecs, vecs
+      upsampling_layer,          # vecs, vecs
+      tl.LayerNorm(),            # vecs, vecs
+      tl.Add(),                  # vecs
+      post_decoder_blocks,       # vecs
       tl.Dense(vocab_size),      # vecs
   )
 
@@ -747,23 +764,23 @@ def PickLastTokenInPredict(mode='train'):
   return tl.Fn('Pick last token in predict', last_token)
 
 
-def RelformerLM(vocab_size,
-                d_model=512,
-                d_ff=2048,
-                vanilla_layers=(1, 1),
-                shorten_factor=3,
-                n_rel_layers=6,
-                rel_chunk_len=None,
-                vanilla_chunk_len=None,
-                n_heads=8,
-                dropout=0.1,
-                dropout_shared_axes=None,
-                vanilla_attn_type=tl.LSHSelfAttention,
-                pos_type='fixed-base',
-                max_len=3072,
-                n_raw_tokens_generated=1,
-                mode='train',
-                ff_activation=tl.FastGelu):
+def RelformerChunkedLM(vocab_size,
+                       d_model=512,
+                       d_ff=2048,
+                       vanilla_layers=(1, 1),
+                       shorten_factor=3,
+                       n_rel_layers=6,
+                       rel_chunk_len=None,
+                       vanilla_chunk_len=None,
+                       n_heads=8,
+                       dropout=0.1,
+                       dropout_shared_axes=None,
+                       vanilla_attn_type=tl.LSHSelfAttention,
+                       pos_type='fixed-base',
+                       max_len=3072,
+                       n_raw_tokens_generated=1,
+                       mode='train',
+                       ff_activation=tl.FastGelu):
   """Returns a Transformer language model.
 
   This model performs autoregressive language modeling:

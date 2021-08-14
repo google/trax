@@ -18,41 +18,27 @@ import trax.models
 import trax.optimizers
 import trax.supervised.trainer_lib
 
-# Parameters that will vary between experiments:
-# ==============================================================================
-attn_type = @trax.layers.SelfAttention
-
-attn_kv = 16  # Use 128 if more memory is available
-n_layers = 12
-dropout = 0.2
-max_len = 131072
-
-# LSHSelfAttention: locality-sensitive hashing (LSH) attention
-LSHSelfAttention.chunk_len = 256
-LSHSelfAttention.n_buckets = 512
-LSHSelfAttention.n_chunks_before = 1
-LSHSelfAttention.n_hashes = 2
 
 # Parameters for batcher:
 # ==============================================================================
 batcher.data_streams = @data.data_streams
-batcher.batch_size_per_device = 1
-batcher.eval_batch_size = 8
-batcher.max_eval_length = 131072
-batcher.buckets = ([1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072], [128, 64,  32, 16, 8, 8, 8, 8])
+batcher.max_eval_length = 2048
+batcher.buckets = ([2048], [8])
+batcher.id_to_mask = 0
 
 # Parameters for data_streams:
 # ==============================================================================
 data_streams.data_dir = None
-data_streams.dataset_name = 't2t_enwik8_l65k'
+data_streams.dataset_name = 't2t_enwik8_l2k'
 data_streams.input_name = 'targets'
 
 # Parameters for multifactor:
 # ==============================================================================
 # 0.03125 ~= 1024^-0.5 = d_model^-0.5
-multifactor.constant = 0.03125
-multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
-multifactor.warmup_steps = 2000
+multifactor.constant = 4.1e-4
+multifactor.factors = 'constant * linear_warmup * cosine_decay'
+multifactor.warmup_steps = 4000
+multifactor.steps_per_cycle = 200000
 
 # Parameters for Adam:
 # ==============================================================================
@@ -63,39 +49,23 @@ Adam.eps = 1e-9
 
 # Parameters for train:
 # ==============================================================================
-train.eval_frequency = 500
-train.eval_steps = 8
+train.eval_frequency = 2000
+train.eval_steps = 305
 train.model = @trax.models.RelformerLM
 train.optimizer = @trax.optimizers.Adam
-train.steps = 100000
+train.steps = 400000
 train.save_graphs = False
-train.checkpoints_at = \
-    [1000, 5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000,
-     55000, 60000, 70000, 80000, 90000, 100000]
+train.checkpoints_at = [200000, 300000, 400000]
 
-
-# Parameters for SelfAttention:
-# ==============================================================================
-trax.layers.SelfAttention.chunk_len = 128
-trax.layers.SelfAttention.n_chunks_after = 0
-trax.layers.SelfAttention.n_chunks_before = 0
-trax.layers.SelfAttention.n_parallel_heads = 1
-trax.layers.SelfAttention.attention_dropout = 0.2
 
 # Parameters for RelformerLM:
 # ==============================================================================
-RelformerLM.vocab_size = 258 # Includes pad token and unused EOS token
-RelformerLM.d_model = 512
 RelformerLM.d_ff = 2048
-RelformerLM.vanilla_layers = (0, 0)
-RelformerLM.shorten_factor = 4
-RelformerLM.n_rel_layers = 6
-RelformerLM.rel_chunk_len = 128
+RelformerLM.d_model = 512
+RelformerLM.dropout = 0.15
+RelformerLM.vanilla_layers = (6,6)
+RelformerLM.n_funnel_blocks = (12,)
+RelformerLM.shorten_factors = (2,)
 RelformerLM.n_heads = 8
-RelformerLM.dropout = 0.1
-RelformerLM.vanilla_attn_type = @trax.layers.SelfAttention
-RelformerLM.pos_type = 'fixed-base'
-RelformerLM.max_len = 70000
-RelformerLM.n_raw_tokens_generated = 1
-RelformerLM.mode = 'train'
+RelformerLM.vocab_size = 256
 RelformerLM.ff_activation = @trax.layers.FastGelu

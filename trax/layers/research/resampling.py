@@ -16,15 +16,7 @@ def LinearPooling(shorten_factor, d_model, *args, dropout=0.0, mode='train',
                   **kwargs):
   del args, kwargs
 
-  def _SequenceLengthDivisibilityCheck(x):
-      # x is of shape (bs, seq_len, d_model)
-      # We check if current seq_len is divisible by shorten_factor
-      assert x[1] % shorten_factor == 0
-      return x
-
   return cb.Serial(
-      core.Fn('seq_len divisibility check', _SequenceLengthDivisibilityCheck,
-              n_out=1),
       core.Fn(
           'Shorten',
           lambda x: jnp.reshape(
@@ -45,7 +37,8 @@ def LinearUpsampling(shorten_factor, d_model, *args, dropout=0.0, mode='train',
       core.Dropout(rate=dropout, mode=mode),
       core.Fn(
           'ProlongBack',
-          lambda x: jnp.reshape(  # Prolong back.  # pylint: disable=g-long-lambda
+          lambda x: jnp.reshape(
+              # Prolong back.  # pylint: disable=g-long-lambda
               x, (x.shape[0], x.shape[1] * shorten_factor, -1)),
           n_out=1)
   )
@@ -71,7 +64,6 @@ def AttentionResampling(shorten_factor, d_model, is_upsampling, d_ff, n_heads,
                         dropout, dropout_shared_axes, mode, ff_activation,
                         context_bias_layer, location_bias_layer, total_pooling,
                         resampling_fn):
-
   attention = RelativeAttentionLMLayer(
       d_model, context_bias_layer, location_bias_layer,
       total_pooling, n_heads=n_heads, dropout=dropout,
@@ -84,10 +76,11 @@ def AttentionResampling(shorten_factor, d_model, is_upsampling, d_ff, n_heads,
                              mode=mode)
 
   def _Dropout():
-    return core.Dropout(rate=dropout, shared_axes=dropout_shared_axes, mode=mode)
+    return core.Dropout(rate=dropout, shared_axes=dropout_shared_axes,
+                        mode=mode)
 
   return [
-      LayerNorm(),            # h
+      LayerNorm(),               # h
       cb.Branch(cb.Serial(
           resampling,
           LayerNorm(),

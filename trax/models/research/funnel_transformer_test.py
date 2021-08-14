@@ -128,7 +128,7 @@ class FunnelTransformerTest(parameterized.TestCase):
   def test_funnel_transformer_lm_forward_shape(self):
     d_model = 16
     vocab_size = 7
-    model = ft.FunnelTransformerLM(
+    model = ft.RelformerLM(
         vocab_size,
         shorten_factors=(3,),
         n_funnel_blocks=(2,),
@@ -151,7 +151,7 @@ class FunnelTransformerTest(parameterized.TestCase):
                        tl.PureLSHSelfAttention)
     gin.bind_parameter('PureLSHSelfAttention.chunk_len', 2)
 
-    model = ft.FunnelTransformerLM(
+    model = ft.RelformerLM(
         vocab_size,
         shorten_factors=(3,),
         n_funnel_blocks=(2,),
@@ -201,7 +201,7 @@ class FunnelTransformerTest(parameterized.TestCase):
     d_model = 8
     vocab_size = 26
 
-    model = ft.FunnelTransformerLM(
+    model = ft.RelformerLM(
         vocab_size,
         shorten_factors=(3,),
         n_funnel_blocks=(2,),
@@ -220,7 +220,7 @@ class FunnelTransformerTest(parameterized.TestCase):
     vocab_size = 26
 
     gin.bind_parameter('trax.layers.SelfAttention.chunk_len', 2)
-    model = ft.FunnelTransformerLM(
+    model = ft.RelformerLM(
         vocab_size,
         shorten_factors=(3,),
         n_funnel_blocks=(2,),
@@ -253,7 +253,7 @@ class FunnelTransformerTest(parameterized.TestCase):
     x = np.ones((batch_size, 1)).astype(np.int32)
     gin.bind_parameter('trax.layers.SelfAttention.chunk_len', 20)
 
-    predict_funnel = ft.RelformerLM(
+    predict_funnel = ft.RelformerChunkedLM(
         vocab_size,
         shorten_factor=shorten_factor,
         n_rel_layers=n_rel_layers,
@@ -288,7 +288,7 @@ class FunnelTransformerTest(parameterized.TestCase):
       vanilla_layers = (1, 1)
       n_heads = 2
 
-      eval_funnel = ft.RelformerLM(
+      eval_funnel = ft.RelformerChunkedLM(
           vocab_size,
           shorten_factor=shorten_factor,
           n_rel_layers=n_rel_layers,
@@ -314,7 +314,7 @@ class FunnelTransformerTest(parameterized.TestCase):
       if attention_type == tl.SelfAttention:
         gin.bind_parameter('trax.layers.SelfAttention.chunk_len', n_len_eval)
 
-      predict_funnel = ft.RelformerLM(
+      predict_funnel = ft.RelformerChunkedLM(
           vocab_size,
           shorten_factor=shorten_factor,
           n_rel_layers=n_rel_layers,
@@ -347,7 +347,7 @@ class FunnelTransformerTest(parameterized.TestCase):
   def _test_autoregressive_sample_relformerlm(self):
     batch_size = 4
     max_length = 5
-    model = ft.RelformerLM(
+    model = ft.RelformerChunkedLM(
         10,
         d_model=8,
         d_ff=16,

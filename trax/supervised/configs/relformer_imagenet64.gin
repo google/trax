@@ -20,9 +20,7 @@ import trax.supervised.trainer_lib
 
 # Parameters that will vary between experiments:
 # ==============================================================================
-n_layers = 6
-rel_chunk_len = None # None enables global rel attention
-vanilla_chunk_len = 512 # None means using vanilla_attn_type instead of relative
+vanilla_attn_type = @PureLSHSelfAttentionWrapper # @trax.layers.SelfAttention
 
 # Parameters for batcher:
 # ==============================================================================
@@ -56,8 +54,8 @@ Adam.eps = 1e-9
 
 # Parameters for train:
 # ==============================================================================
-train.eval_frequency = 500
-train.eval_steps = 256
+train.eval_frequency = 1000
+train.eval_steps = 512
 train.model = @trax.models.RelformerLM
 train.optimizer = @trax.optimizers.Adam
 train.steps = 500000
@@ -65,6 +63,21 @@ train.save_graphs = False
 train.checkpoints_at = \
     [1000, 5000, 10000, 20000, 40000, 60000, 80000,
      100000, 200000, 300000, 400000, 500000]
+
+# Parameters for PureLSHSelfAttentionWrapper:
+# ==============================================================================
+PureLSHSelfAttentionWrapper.bias = True
+PureLSHSelfAttentionWrapper.num_weights = 2
+PureLSHSelfAttentionWrapper.pure_lsh_implementation = @PureLSHSelfAttention
+PureLSHSelfAttentionWrapper.weights_format = 'model'
+
+# Parameters for PureLSHSelfAttention:
+# ==============================================================================
+PureLSHSelfAttention.chunk_len = 256
+PureLSHSelfAttention.n_buckets = None
+PureLSHSelfAttention.n_chunks_after = 0
+PureLSHSelfAttention.n_chunks_before = 1
+PureLSHSelfAttention.n_hashes = 2
 
 # Parameters for SelfAttention:
 # ==============================================================================
@@ -78,14 +91,12 @@ RelformerLM.d_model = 1024
 RelformerLM.d_ff = 4096
 RelformerLM.dropout = 0.0
 RelformerLM.ff_activation = @trax.layers.FastGelu
-RelformerLM.max_len = 12288  # 64 * 64 * 3
 RelformerLM.mode = 'train'
-RelformerLM.n_heads = 16
-RelformerLM.n_rel_layers = %n_layers
-RelformerLM.rel_chunk_len = %rel_chunk_len
-RelformerLM.vanilla_chunk_len = %vanilla_chunk_len
+RelformerLM.n_heads = 8
+RelformerLM.n_funnel_blocks = (12,)
 RelformerLM.vanilla_layers = (3, 3)
-RelformerLM.shorten_factor = 3
+RelformerLM.shorten_factors = (3,)
 RelformerLM.vocab_size = 256
-RelformerLM.vanilla_attn_type = @trax.layers.SelfAttention
-RelformerLM.pos_type = 'fixed-base'
+RelformerLM.vanilla_attn_type = %vanilla_attn_type
+RelformerLM.downsampling_fn = @LinearPooling
+RelformerLM.upsampling_fn = @LinearUpsampling
