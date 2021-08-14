@@ -46,6 +46,7 @@ from trax.layers import combinators as cb
 from trax.layers import core
 from trax.layers import initializers as init
 from trax.layers import sparsity as sp
+from trax.layers.research.rotary_positional_embedding import Rotate
 
 
 ####################################################### Functions
@@ -3260,7 +3261,8 @@ class PureLSHSelfAttention(base.Layer):
 
 def _ProjectAndSplitHeads(d_model, n_heads, use_bias, num_weights=2,  # pylint: disable=invalid-name
                           sparsity=16, length_kernel_size=3,
-                          weights_format='sparse', mode='train'):
+                          weights_format='sparse', rotary_position_emb=False,
+                          mode='train'):
   """Creates the QK and V activations from input."""
   # There can be either two or three weights:
   # two - qk and v or three - q, k, v
@@ -3284,6 +3286,8 @@ def _ProjectAndSplitHeads(d_model, n_heads, use_bias, num_weights=2,  # pylint: 
         cb.Branch(core.Dense(d_model, use_bias=use_bias),
                   core.Dense(d_model, use_bias=use_bias),
                   core.Dense(d_model, use_bias=use_bias)),      # q, k, v
+        # Optionally, rotate Q and K vectors if rotary embeddings are used.
+        cb.Parallel(Rotate(), Rotate(), None) if rotary_position_emb else [],
         # Average Q and K into one single QK tensor.
         core.Fn('QKAvg', lambda x, y: (x + y) / 2.0, n_out=1),  # qk,   v
         # Split heads and combine with batch dimension to get two tensors of
@@ -3343,6 +3347,7 @@ def _ProjectAndSplitHeads(d_model, n_heads, use_bias, num_weights=2,  # pylint: 
   if weights_format == 'model' and num_weights == 2:
     return cb.Branch(
         [core.Dense(d_model, use_bias=use_bias),
+         Rotate() if rotary_position_emb else [],
          attention.SplitIntoHeads(n_heads)],
         [core.Dense(d_model, use_bias=use_bias),
          attention.SplitIntoHeads(n_heads)],
@@ -3483,12 +3488,15 @@ class PureLSHSelfAttentionWrapper(cb.Serial):
                num_weights=3,
                sparsity=16,
                weights_format='model',
+               rotary_position_emb=False,
                **pure_lsh_implementation_kwargs):
     d_model = d_qk * n_heads
     self._qkv = _ProjectAndSplitHeads(d_model, n_heads, bias,
                                       num_weights=num_weights,
                                       sparsity=sparsity,
-                                      weights_format=weights_format, mode=mode)
+                                      weights_format=weights_format,
+                                      rotary_position_emb=rotary_position_emb,
+                                      mode=mode)
     self._attn = pure_lsh_implementation(n_heads=n_heads,
                                          d_qk=d_qk,
                                          d_v=d_v,
