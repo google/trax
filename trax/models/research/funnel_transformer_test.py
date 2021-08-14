@@ -119,48 +119,58 @@ class FunnelTransformerTest(parameterized.TestCase):
 
     self.assertEqual(y.shape, (batch_size, n_tokens, vocab_size))
 
+  def _check_forward_shape(self, model, input_shape, output_vocab_size):
+    x = np.ones(input_shape).astype(np.int32)
+    model.init(shapes.signature(x))
+    y = model(x)
+    self.assertEqual(y.shape, (*input_shape, output_vocab_size))
+
   def test_funnel_transformer_lm_forward_shape(self):
     d_model = 16
     vocab_size = 7
-    length = 48
-    batch_size = 3
-    x = np.ones((batch_size, length)).astype(np.int32)
-
-    model_chunked = ft.RelformerLM(
+    model = ft.FunnelTransformerLM(
         vocab_size,
-        shorten_factor=3,
-        n_rel_layers=3,
+        shorten_factors=(3,),
+        n_funnel_blocks=(2,),
         vanilla_layers=(1, 1),
         d_model=d_model,
         d_ff=d_model,
         n_heads=2,
-        vanilla_attn_type=tl.SelfAttention,
-        rel_chunk_len=4,
-        vanilla_chunk_len=2,
-        max_len=48)
-    _, _ = model_chunked.init(shapes.signature(x))
-    y = model_chunked(x)
-    self.assertEqual(y.shape, (batch_size, length, vocab_size))
+    )
 
-    model_without_chunks = ft.RelformerLM(
+    batch_size, seq_len = 3, 12
+    self._check_forward_shape(model,
+                              input_shape=(batch_size, seq_len),
+                              output_vocab_size=vocab_size)
+
+  def test_lsh_attention_in_vanilla(self):
+    d_model = 16
+    vocab_size = 7
+
+    gin.bind_parameter('PureLSHSelfAttentionWrapper.pure_lsh_implementation',
+                       tl.PureLSHSelfAttention)
+    gin.bind_parameter('PureLSHSelfAttention.chunk_len', 2)
+
+    model = ft.FunnelTransformerLM(
         vocab_size,
-        shorten_factor=3,
-        n_rel_layers=3,
+        shorten_factors=(3,),
+        n_funnel_blocks=(2,),
         vanilla_layers=(1, 1),
         d_model=d_model,
         d_ff=d_model,
         n_heads=2,
-        vanilla_attn_type=tl.SelfAttention,
-        max_len=48)
+        vanilla_attn_type=tl.PureLSHSelfAttentionWrapper,
+        downsampling_fn=ft.LinearPooling,
+        upsampling_fn=ft.LinearUpsampling,
+    )
 
-    _, _ = model_without_chunks.init(shapes.signature(x))
-    y = model_without_chunks(x)
-    self.assertEqual(y.shape, (batch_size, length, vocab_size))
+    batch_size, seq_len = 3, 12
+    self._check_forward_shape(model,
+                              input_shape=(batch_size, seq_len),
+                              output_vocab_size=vocab_size)
 
-  def test_funnel_transformer_lm_autoregressive_property(self):
-    input_shape = (1, 12)
-    d_model = 8
-    vocab_size = 26
+  def _test_autoregressive_property(self, model, input_shape,
+                                    output_vocab_size):
     rng_1 = jax.random.PRNGKey(0)
     rng_2 = jax.random.PRNGKey(1)
 
@@ -171,12 +181,12 @@ class FunnelTransformerTest(parameterized.TestCase):
       output_logits, *_ = unitialized_eval_model(x, rng=rng_1)
       return output_logits
 
-    def test_autoregressive_property(model):
+    def check_autoregressive_property(model):
       with fastmath.use_backend(fastmath.Backend.JAX):
-        x_1 = jax.random.randint(rng_1, input_shape, 0, vocab_size)
+        x_1 = jax.random.randint(rng_1, input_shape, 0, output_vocab_size)
         y_1 = _get_output_logits(model, x_1)
 
-        x_2 = jax.random.randint(rng_2, input_shape, 0, vocab_size)
+        x_2 = jax.random.randint(rng_2, input_shape, 0, output_vocab_size)
 
         for i in range(input_shape[1]):
           masked_x_2 = np.concatenate((x_1[:, :i], x_2[:, i:]), axis=1)
@@ -185,35 +195,48 @@ class FunnelTransformerTest(parameterized.TestCase):
           self.assertEqual(y_2.shape[0], input_shape[1])
           np.testing.assert_array_almost_equal(y_1[:i + 1], y_2[:i + 1])
 
-    model_chunked = ft.RelformerLM(
+    check_autoregressive_property(model)
+
+  def test_funnel_transformer_lm_autoregressive_property(self):
+    d_model = 8
+    vocab_size = 26
+
+    model = ft.FunnelTransformerLM(
         vocab_size,
-        shorten_factor=3,
-        n_rel_layers=2,
+        shorten_factors=(3,),
+        n_funnel_blocks=(2,),
         vanilla_layers=(1, 1),
         d_model=d_model,
-        d_ff=4 * d_model,
+        d_ff=d_model,
         n_heads=2,
-        vanilla_attn_type=tl.SelfAttention,
-        rel_chunk_len=2,
-        vanilla_chunk_len=4,
     )
-    test_autoregressive_property(model_chunked)
 
-    model_without_chunks = ft.RelformerLM(
+    input_shape = (1, 12)
+    self._test_autoregressive_property(model, input_shape,
+                                       output_vocab_size=vocab_size)
+
+  def test_autoregressive_property_vanilla(self):
+    d_model = 8
+    vocab_size = 26
+
+    gin.bind_parameter('trax.layers.SelfAttention.chunk_len', 2)
+    model = ft.FunnelTransformerLM(
         vocab_size,
-        shorten_factor=3,
-        n_rel_layers=2,
+        shorten_factors=(3,),
+        n_funnel_blocks=(2,),
         vanilla_layers=(1, 1),
         d_model=d_model,
-        d_ff=4 * d_model,
+        d_ff=d_model,
         n_heads=2,
         vanilla_attn_type=tl.SelfAttention,
-        rel_chunk_len=None,
-        vanilla_chunk_len=None,
+        downsampling_fn=ft.LinearPooling,
+        upsampling_fn=ft.LinearUpsampling,
     )
-    test_autoregressive_property(model_without_chunks)
+    input_shape = (1, 12)
+    self._test_autoregressive_property(model, input_shape,
+                                       output_vocab_size=vocab_size)
 
-  def test_funnel_transformer_lm_forward_shape_predict(self):
+  def _test_funnel_transformer_lm_forward_shape_predict(self):
     d_model = 8
     vocab_size = 4
     batch_size = 1
@@ -251,7 +274,7 @@ class FunnelTransformerTest(parameterized.TestCase):
       self.assertEqual(y.shape, (batch_size, 1, vocab_size))
     gin.clear_config()
 
-  def test_funnel_transformer_lm_predict_eval_equal(self):
+  def _test_funnel_transformer_lm_predict_eval_equal(self):
 
     def _test_for_chunk_lens(rel_chunk_len, vanilla_chunk_len):
       d_model = 8
@@ -321,7 +344,7 @@ class FunnelTransformerTest(parameterized.TestCase):
     _test_for_chunk_lens(rel_chunk_len=None, vanilla_chunk_len=None)
     _test_for_chunk_lens(rel_chunk_len=2, vanilla_chunk_len=6)
 
-  def test_autoregressive_sample_relformerlm(self):
+  def _test_autoregressive_sample_relformerlm(self):
     batch_size = 4
     max_length = 5
     model = ft.RelformerLM(
