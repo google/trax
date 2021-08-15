@@ -66,9 +66,10 @@ train.checkpoints_at = \
 
 # Parameters for PureLSHSelfAttentionWrapper:
 # ==============================================================================
+PureLSHSelfAttentionWrapper.pure_lsh_implementation = @PureLSHSelfAttention
+PureLSHSelfAttentionWrapper.rotary_position_emb = True
 PureLSHSelfAttentionWrapper.bias = True
 PureLSHSelfAttentionWrapper.num_weights = 2
-PureLSHSelfAttentionWrapper.pure_lsh_implementation = @PureLSHSelfAttention
 PureLSHSelfAttentionWrapper.weights_format = 'model'
 
 # Parameters for PureLSHSelfAttention:
