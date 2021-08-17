@@ -68,4 +68,5 @@ RelformerLM.n_funnel_blocks = (12,)
 RelformerLM.shorten_factors = (2,)
 RelformerLM.n_heads = 8
 RelformerLM.vocab_size = 256
+RelformerLM.attention_upsampling_fn = @NoUpsampling
 RelformerLM.ff_activation = @trax.layers.FastGelu

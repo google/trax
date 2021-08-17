@@ -44,6 +44,13 @@ def LinearUpsampling(shorten_factor, d_model, *args, dropout=0.0, mode='train',
   )
 
 
+def NoUpsampling(shorten_factor, d_model, *args, **kwargs):
+  del d_model, args, kwargs
+
+  return core.Fn('ReturnZero', lambda x: jnp.zeros(
+      (x.shape[0], x.shape[1] * shorten_factor, x.shape[2]), dtype=x.dtype))
+
+
 def _FeedForwardBlock(d_model,
                       d_ff,
                       dropout,
