@@ -17,12 +17,12 @@
 sweep1:
   n_funnel_blocks: [16]
   shorten_factors: [4]
-  d_model: [512, 768]
+  d_model: [768]
   dropout: [0.15, 0.3]
   d_ff: [3072]
 
 sweep2:
-  n_funnel_blocks: [12]
+  n_funnel_blocks: [12, 16]
   shorten_factors: [2]
   d_model: [512, 768]
   dropout: [0.15, 0.3]
