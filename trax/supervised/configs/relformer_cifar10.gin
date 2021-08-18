@@ -72,8 +72,8 @@ train.checkpoints_at = []
 # ==============================================================================
 RelformerLM.d_model = 512
 RelformerLM.d_ff = 2048
-RelformerLM.vanilla_layers=(1, 1)
-RelformerLM.n_funnel_blocks=(12,)
+RelformerLM.vanilla_layers=(3, 3)
+RelformerLM.n_funnel_blocks=(24,)
 RelformerLM.shorten_factors=(3,)
 RelformerLM.dropout = 0.0
 RelformerLM.mode = 'train'
