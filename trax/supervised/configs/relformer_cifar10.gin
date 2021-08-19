@@ -63,10 +63,10 @@ Adafactor.epsilon2=1e-3
 train.eval_frequency = 2000
 train.eval_steps = 625
 
-train.model = @trax.models.RelformerLM
+train.model = @trax.models.RelformerLM # @trax.models.TransformerLM
 train.optimizer = @trax.optimizers.Adafactor
 train.steps = 200000
-train.checkpoints_at = []
+train.checkpoints_at = [50000, 100000, 200000]
 
 # Parameters for RelformerLM:
 # ==============================================================================

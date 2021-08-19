@@ -1,0 +1,126 @@
+# Copyright 2021 The Trax Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import trax.data
+import trax.models
+import trax.optimizers
+import trax.supervised.trainer_lib
+
+# Macros:
+# ==============================================================================
+train_batch = 128
+valid_batch = 128
+
+max_length = 2048
+vocab_size = 32000
+
+# Parameters for TFDS data pipeline:
+# ==============================================================================
+make_inputs.train_stream = [
+  @training/data.TFDS(),
+  @data.SentencePieceTokenize(),
+  @data.generate_sequential_chunks(),
+  @data.FilterEmptyExamples(),
+  @data.PadToLength(),
+  @data.ConcatenateToLMInput(),
+  @data.AddLossWeights(),
+  @data.Shuffle(),
+  @data.Batch(),
+]
+
+make_inputs.eval_stream = [
+  @validation/data.TFDS(),
+  @data.SentencePieceTokenize(),
+  @data.generate_sequential_chunks(),
+  @data.FilterEmptyExamples(),
+  @data.PadToLength(),
+  @data.ConcatenateToLMInput(),
+  @data.AddLossWeights(),
+  @validation/data.Batch(),
+]
+
+# Parameters for data.TFDS:
+# ==============================================================================
+data.TFDS.dataset_name = 'wiki40b/en'
+data.TFDS.keys = ('text',)
+data.TFDS.shuffle_train = False
+training/data.TFDS.train = True
+validation/data.TFDS.train = False
+
+# Parameters for data.generate_sequential_chunks:
+# ==============================================================================
+data.generate_sequential_chunks.max_length = %max_length
+
+# Parameters for data.AddLossWeights:
+# ==============================================================================
+data.AddLossWeights.id_to_mask = 0
+
+# Parameters for data.PadToLength:
+# ==============================================================================
+data.PadToLength.len_map = {0: %max_length}
+data.PadToLength.pad_value = {0: 0}
+
+# Parameters for data.Batch:
+# ==============================================================================
+data.Batch.batch_size = %train_batch
+validation/data.Batch.batch_size = %valid_batch
+
+# Parameters for train:
+# ==============================================================================
+train.eval_frequency = 2500
+train.eval_steps = 600
+train.model = @trax.models.TransformerLM  # @trax.models.RelformerLM
+train.steps = 125000
+train.optimizer = @trax.optimizers.Adam
+train.permanent_checkpoints_at = [50000, 100000, 125000]
+train.checkpoint_lowest = 'loss'
+train.inputs = @data.make_inputs
+
+# Parameters for Adam:
+# ==============================================================================
+Adam.b1 = 0.9
+Adam.b2 = 0.98
+Adam.eps = 1e-09
+Adam.weight_decay_rate = 0.0
+
+# Parameters for multifactor:
+# ==============================================================================
+multifactor.constant = 1e-3
+multifactor.factors = 'constant * linear_warmup * cosine_decay'
+multifactor.warmup_steps = 10000
+multifactor.steps_per_cycle = 125000
+
+# Parameters for TransformerLM:
+# ==============================================================================
+TransformerLM.d_model = 768
+TransformerLM.d_ff = 3072
+TransformerLM.dropout = 0.0
+TransformerLM.max_len = 2048
+TransformerLM.mode = 'train'
+TransformerLM.n_heads = 12
+TransformerLM.n_layers = 12
+TransformerLM.vocab_size = %vocab_size
+
+# Parameters for RelformerLM:
+# ==============================================================================
+RelformerLM.d_model = 768
+RelformerLM.d_ff = 3072
+RelformerLM.vanilla_layers=(4, 4)
+RelformerLM.n_funnel_blocks=(8,)
+RelformerLM.shorten_factors=(2,)
+RelformerLM.dropout = 0.0
+RelformerLM.mode = 'train'
+RelformerLM.n_heads = 12
+RelformerLM.vocab_size = %vocab_size
+RelformerLM.attention_upsampling_fn = @NoUpsampling
