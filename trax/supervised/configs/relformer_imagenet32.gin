@@ -51,8 +51,8 @@ Adam.eps = 1e-09
 
 # Parameters for train:
 # ==============================================================================
-train.eval_frequency = 500
-train.eval_steps = 256
+train.eval_frequency = 1000
+train.eval_steps = 512
 train.model = @trax.models.RelformerLM
 train.optimizer = @trax.optimizers.Adam
 train.steps = 400000

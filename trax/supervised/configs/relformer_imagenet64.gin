@@ -88,8 +88,8 @@ layers.SelfAttention.n_chunks_before = 1
 
 # Parameters for RelformerLM:
 # ==============================================================================
-RelformerLM.d_model = 1024
-RelformerLM.d_ff = 4096
+RelformerLM.d_model = 768
+RelformerLM.d_ff = 3072
 RelformerLM.dropout = 0.0
 RelformerLM.ff_activation = @trax.layers.FastGelu
 RelformerLM.mode = 'train'
