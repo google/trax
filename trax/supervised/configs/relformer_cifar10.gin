@@ -21,7 +21,7 @@ import trax.supervised.trainer_lib
 # Parameters for batcher:
 # ==============================================================================
 batcher.data_streams = @data.data_streams
-batcher.batch_size_per_device = 1
+batcher.batch_size_per_device = 4
 batcher.eval_batch_size = 8
 batcher.max_eval_length = 3072  # 32 * 32 * 3
 batcher.variable_shapes = False
@@ -29,7 +29,7 @@ batcher.variable_shapes = False
 # Parameters for data_streams:
 # ==============================================================================
 data_streams.data_dir = None
-data_streams.dataset_name = 'downsampled_imagenet/32x32'
+data_streams.dataset_name = 'cifar10'
 data_streams.input_name = 'image'
 data_streams.target_name = 'image'
 data_streams.bare_preprocess_fn = \
@@ -38,38 +38,55 @@ data_streams.bare_preprocess_fn = \
 # Parameters for multifactor:
 # ==============================================================================
 # 0.0442 ~= 512^-0.5 = d_model^-0.5
-multifactor.constant = 0.0442
-multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
-multifactor.warmup_steps = 16000
+multifactor.constant = 0.01
+multifactor.factors =  'constant * rsqrt_normalized_decay'
+multifactor.warmup_steps = 10000
 
-# Parameters for Adam:
+# Parameters for Adafactor:
 # ==============================================================================
-Adam.weight_decay_rate = 0.0
-Adam.b1 = 0.9
-Adam.b2 = 0.98
-Adam.eps = 1e-09
+Adafactor.learning_rate=0.1
+Adafactor.factored=True
+Adafactor.multiply_by_parameter_scale=True
+Adafactor.do_clipping=True
+Adafactor.do_momentum=True
+Adafactor.momentum_in_bfloat16=False
+Adafactor.beta1=0.9
+Adafactor.decay_rate=1.0
+Adafactor.clipping_threshold=1.0
+Adafactor.weight_decay_rate=0
+Adafactor.weight_decay_n_steps=0
+Adafactor.epsilon1=1e-16
+Adafactor.epsilon2=1e-3
 
 # Parameters for train:
 # ==============================================================================
-train.eval_frequency = 500
-train.eval_steps = 256
-train.model = @trax.models.FunnelTransformerLM
-train.optimizer = @trax.optimizers.Adam
-train.steps = 400000
-train.checkpoints_at = \
-    [1000, 5000, 10000, 20000, 40000, 60000, 80000,
-     100000, 200000, 300000, 400000, 500000]
-train.permanent_checkpoints_at = \
-    [100000, 150000, 200000, 250000, 300000, 350000]
+train.eval_frequency = 2000
+train.eval_steps = 625
 
-# Parameters for FunnelTransformerLM:
+train.model = @trax.models.RelformerLM # @trax.models.TransformerLM
+train.optimizer = @trax.optimizers.Adafactor
+train.steps = 200000
+train.checkpoints_at = [50000, 100000, 200000]
+
+# Parameters for RelformerLM:
 # ==============================================================================
-FunnelTransformerLM.d_ff = 2048
-FunnelTransformerLM.d_model = 512
-FunnelTransformerLM.dropout = 0.01
-FunnelTransformerLM.n_funnel_blocks = (12,)
-FunnelTransformerLM.n_heads = 8
-FunnelTransformerLM.shorten_factors = (3,)
-FunnelTransformerLM.vanilla_layers = (1, 1)
-FunnelTransformerLM.vocab_size = 256
-FunnelTransformerLM.ff_activation = @trax.layers.FastGelu
+RelformerLM.d_model = 512
+RelformerLM.d_ff = 2048
+RelformerLM.vanilla_layers=(3, 3)
+RelformerLM.n_funnel_blocks=(24,)
+RelformerLM.shorten_factors=(3,)
+RelformerLM.dropout = 0.0
+RelformerLM.mode = 'train'
+RelformerLM.n_heads = 8
+RelformerLM.vocab_size = 256
+
+# Parameters for TransformerLM:
+# ==============================================================================
+TransformerLM.d_model = 512
+TransformerLM.d_ff = 2048
+TransformerLM.dropout = 0.0
+TransformerLM.max_len = 3072
+TransformerLM.mode = 'train'
+TransformerLM.n_heads = 8
+TransformerLM.n_layers = 12
+TransformerLM.vocab_size = 256

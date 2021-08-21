@@ -18,55 +18,59 @@ import trax.models
 import trax.optimizers
 import trax.supervised.trainer_lib
 
-
 # Parameters for batcher:
 # ==============================================================================
 batcher.data_streams = @data.data_streams
-batcher.max_eval_length = 2048
-batcher.buckets = ([2048], [8])
-batcher.id_to_mask = 0
+batcher.batch_size_per_device = 1
+batcher.eval_batch_size = 8
+batcher.max_eval_length = 3072  # 32 * 32 * 3
+batcher.variable_shapes = False
 
 # Parameters for data_streams:
 # ==============================================================================
 data_streams.data_dir = None
-data_streams.dataset_name = 't2t_enwik8_l2k'
-data_streams.input_name = 'targets'
+data_streams.dataset_name = 'downsampled_imagenet/32x32'
+data_streams.input_name = 'image'
+data_streams.target_name = 'image'
+data_streams.bare_preprocess_fn = \
+    @data.downsampled_imagenet_flatten_bare_preprocess
 
 # Parameters for multifactor:
 # ==============================================================================
-# 0.03125 ~= 1024^-0.5 = d_model^-0.5
-multifactor.constant = 4.1e-4
-multifactor.factors = 'constant * linear_warmup * cosine_decay'
-multifactor.warmup_steps = 4000
-multifactor.steps_per_cycle = 200000
+# 0.0442 ~= 512^-0.5 = d_model^-0.5
+multifactor.constant = 0.0442
+multifactor.factors = 'constant * linear_warmup * rsqrt_decay'
+multifactor.warmup_steps = 8000
 
 # Parameters for Adam:
 # ==============================================================================
-Adam.weight_decay_rate=0.0
+Adam.weight_decay_rate = 0.0
 Adam.b1 = 0.9
 Adam.b2 = 0.98
-Adam.eps = 1e-9
+Adam.eps = 1e-09
 
 # Parameters for train:
 # ==============================================================================
-train.eval_frequency = 2000
-train.eval_steps = 305
+train.eval_frequency = 1000
+train.eval_steps = 512
 train.model = @trax.models.RelformerLM
 train.optimizer = @trax.optimizers.Adam
 train.steps = 400000
-train.save_graphs = False
-train.checkpoints_at = [200000, 300000, 400000]
-
+train.checkpoints_at = \
+    [1000, 5000, 10000, 20000, 40000, 60000, 80000,
+     100000, 200000, 300000, 400000, 500000]
+train.permanent_checkpoints_at = \
+    [100000, 150000, 200000, 250000, 300000, 350000]
 
 # Parameters for RelformerLM:
 # ==============================================================================
 RelformerLM.d_ff = 2048
 RelformerLM.d_model = 512
-RelformerLM.dropout = 0.15
-RelformerLM.vanilla_layers = (6,6)
-RelformerLM.n_funnel_blocks = (8,)
-RelformerLM.shorten_factors = (2,)
+RelformerLM.dropout = 0.01
+RelformerLM.n_funnel_blocks = (24,)
 RelformerLM.n_heads = 8
+RelformerLM.shorten_factors = (3,)
+RelformerLM.vanilla_layers = (3, 3)
 RelformerLM.vocab_size = 256
-RelformerLM.attention_upsampling_fn = @NoUpsampling
+RelformerLM.attention_downsampling_fn = @LinearPooling
 RelformerLM.ff_activation = @trax.layers.FastGelu

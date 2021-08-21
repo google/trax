@@ -12,10 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Sweep 1:
-rel_chunk_len: [null, 512, 1024]
-vanilla_chunk_len: [null, 128, 256, 512]
+# Recommended hyper-parameters sweep:
 
-# Sweep 2:
-n_layers: [12, 24]
-n_heads: [16, 8]
+sweep1:
+  n_funnel_blocks: [16]
+  shorten_factors: [4]
+  d_model: [768]
+  dropout: [0.15, 0.3]
+  d_ff: [3072]
+
+sweep2:
+  n_funnel_blocks: [12, 16]
+  shorten_factors: [2]
+  d_model: [512, 768]
+  dropout: [0.15, 0.3]
+  d_ff: [3072]
+

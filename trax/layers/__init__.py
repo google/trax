@@ -36,6 +36,7 @@ from trax.layers.pooling import *
 from trax.layers.research.efficient_attention import *
 from trax.layers.research.position_encodings import *
 from trax.layers.research.rel_attention import *
+from trax.layers.research.resampling import *
 from trax.layers.research.sparsity import *
 from trax.layers.reversible import *
 from trax.layers.rnn import *
@@ -114,3 +115,9 @@ MacroAveragedFScore = layer_configure(MacroAveragedFScore)
 WeightedFScore = layer_configure(WeightedFScore)
 RelativeAttentionLayer = layer_configure(RelativeAttentionLayer)
 RelativeAttentionLMLayer = layer_configure(RelativeAttentionLMLayer)
+RelativeAttentionWrapper = layer_configure(RelativeAttentionWrapper)
+AveragePooling = layer_configure(AveragePooling)
+LinearPooling = layer_configure(LinearPooling)
+LinearUpsampling = layer_configure(LinearUpsampling)
+NoUpsampling = layer_configure(NoUpsampling)
+AttentionResampling = layer_configure(AttentionResampling)
