@@ -36,7 +36,7 @@ flags.DEFINE_multi_string('config',
 # TPU Flags
 flags.DEFINE_bool('use_tpu', False, "Whether we're running on TPU.")
 flags.DEFINE_string('jax_xla_backend',
-                    'xla',
+                    '',
                     'Either "xla" for the XLA service directly, or "tpu_driver"'
                     'for a TPU Driver backend.')
 flags.DEFINE_string('jax_backend_target',
