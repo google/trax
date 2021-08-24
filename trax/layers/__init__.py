@@ -37,6 +37,7 @@ from trax.layers.research.efficient_attention import *
 from trax.layers.research.position_encodings import *
 from trax.layers.research.rel_attention import *
 from trax.layers.research.resampling import *
+from trax.layers.research.rotary_positional_embedding import *
 from trax.layers.research.sparsity import *
 from trax.layers.reversible import *
 from trax.layers.rnn import *
@@ -116,6 +117,7 @@ WeightedFScore = layer_configure(WeightedFScore)
 RelativeAttentionLayer = layer_configure(RelativeAttentionLayer)
 RelativeAttentionLMLayer = layer_configure(RelativeAttentionLMLayer)
 RelativeAttentionWrapper = layer_configure(RelativeAttentionWrapper)
+Rotate = layer_configure(Rotate)
 AveragePooling = layer_configure(AveragePooling)
 LinearPooling = layer_configure(LinearPooling)
 LinearUpsampling = layer_configure(LinearUpsampling)

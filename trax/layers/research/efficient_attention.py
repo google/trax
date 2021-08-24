@@ -46,6 +46,7 @@ from trax.layers import combinators as cb
 from trax.layers import core
 from trax.layers import initializers as init
 from trax.layers import sparsity as sp
+from trax.layers.research import rotary_positional_embedding as rotary_pe
 
 
 ####################################################### Functions
@@ -3258,9 +3259,16 @@ class PureLSHSelfAttention(base.Layer):
     return (o_all, s_all, i_ct_all)
 
 
-def _ProjectAndSplitHeads(d_model, n_heads, use_bias, num_weights=2,  # pylint: disable=invalid-name
-                          sparsity=16, length_kernel_size=3,
-                          weights_format='sparse', mode='train'):
+def _ProjectAndSplitHeads(  # pylint: disable=invalid-name
+    d_model,
+    n_heads,
+    use_bias,
+    num_weights=2,
+    sparsity=16,
+    length_kernel_size=3,
+    weights_format='sparse',
+    rotary_position_emb=False,
+    mode='train'):
   """Creates the QK and V activations from input."""
   # There can be either two or three weights:
   # two - qk and v or three - q, k, v
@@ -3281,15 +3289,20 @@ def _ProjectAndSplitHeads(d_model, n_heads, use_bias, num_weights=2,  # pylint: 
   if weights_format == 'model' and num_weights == 3:
     return cb.Serial(
         # Create the raw Q, K, V projections.
-        cb.Branch(core.Dense(d_model, use_bias=use_bias),
-                  core.Dense(d_model, use_bias=use_bias),
-                  core.Dense(d_model, use_bias=use_bias)),      # q, k, v
+        cb.Branch(
+            core.Dense(d_model, use_bias=use_bias),
+            core.Dense(d_model, use_bias=use_bias),
+            core.Dense(d_model, use_bias=use_bias)),  # q, k, v
+        # Optionally, rotate Q and K vectors if rotary embeddings are used.
+        cb.Parallel(rotary_pe.Rotate(), rotary_pe.Rotate(), None)
+        if rotary_position_emb else [],
         # Average Q and K into one single QK tensor.
         core.Fn('QKAvg', lambda x, y: (x + y) / 2.0, n_out=1),  # qk,   v
         # Split heads and combine with batch dimension to get two tensors of
         # (batch * n_heads, seq_len, d_head) shape.
-        cb.Parallel(attention.SplitIntoHeads(n_heads),
-                    attention.SplitIntoHeads(n_heads))          # qk,   v
+        cb.Parallel(
+            attention.SplitIntoHeads(n_heads),
+            attention.SplitIntoHeads(n_heads))  # qk,   v
     )
 
   if weights_format == 'sparse' and num_weights == 3:
@@ -3339,13 +3352,18 @@ def _ProjectAndSplitHeads(d_model, n_heads, use_bias, num_weights=2,  # pylint: 
         )
     )
 
-   # We want to train from scratch and have only two weights, w_qk and w_v.
+  # We want to train from scratch and have only two weights, w_qk and w_v.
   if weights_format == 'model' and num_weights == 2:
     return cb.Branch(
-        [core.Dense(d_model, use_bias=use_bias),
-         attention.SplitIntoHeads(n_heads)],
-        [core.Dense(d_model, use_bias=use_bias),
-         attention.SplitIntoHeads(n_heads)],
+        [
+            core.Dense(d_model, use_bias=use_bias),
+            rotary_pe.Rotate() if rotary_position_emb else [],
+            attention.SplitIntoHeads(n_heads)
+        ],
+        [
+            core.Dense(d_model, use_bias=use_bias),
+            attention.SplitIntoHeads(n_heads)
+        ],
     )
 
   assert weights_format == 'head'
@@ -3483,12 +3501,18 @@ class PureLSHSelfAttentionWrapper(cb.Serial):
                num_weights=3,
                sparsity=16,
                weights_format='model',
+               rotary_position_emb=False,
                **pure_lsh_implementation_kwargs):
     d_model = d_qk * n_heads
-    self._qkv = _ProjectAndSplitHeads(d_model, n_heads, bias,
-                                      num_weights=num_weights,
-                                      sparsity=sparsity,
-                                      weights_format=weights_format, mode=mode)
+    self._qkv = _ProjectAndSplitHeads(
+        d_model,
+        n_heads,
+        bias,
+        num_weights=num_weights,
+        sparsity=sparsity,
+        weights_format=weights_format,
+        rotary_position_emb=rotary_position_emb,
+        mode=mode)
     self._attn = pure_lsh_implementation(n_heads=n_heads,
                                          d_qk=d_qk,
                                          d_v=d_v,
