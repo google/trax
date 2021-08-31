@@ -47,13 +47,13 @@ setup(
         'psutil',
         'scipy',
         'six',
-        't5',
         'tensorflow-datasets',
         'tensorflow-text',
     ],
     extras_require={
         'tensorflow': ['tensorflow>=1.15.0'],
         'tensorflow_gpu': ['tensorflow-gpu>=1.15.0'],
+        't5': ['t5>=0.4.0'],
         'tests': [
             'attrs',
             'jupyter',
