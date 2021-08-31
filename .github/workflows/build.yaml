@@ -59,7 +59,7 @@ jobs:
         python -m pip install -q -U setuptools numpy
         python -m pip install flake8 pytest
         if [[ ${{matrix.tf-version}} == "tf-nightly" ]]; then python -m pip install tf-nightly; else python -m pip install -q "tensorflow=="${{matrix.tf-version}}; fi
-        pip install -e .[tests]
+        pip install -e .[tests,t5]
     # # Lint with flake8
     # - name: Lint with flake8
     #   run: |
