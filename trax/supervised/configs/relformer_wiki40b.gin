@@ -47,6 +47,7 @@ make_inputs.eval_stream = [
   @data.PadToLength(),
   @data.ConcatenateToLMInput(),
   @data.AddLossWeights(),
+  @data.Shuffle(),
   @validation/data.Batch(),
 ]
 
@@ -78,12 +79,15 @@ validation/data.Batch.batch_size = %valid_batch
 
 # Parameters for train:
 # ==============================================================================
-train.eval_frequency = 2500
-train.eval_steps = 600
+train.eval_frequency = 5000
+train.eval_steps = 1500
 train.model = @trax.models.TransformerLM  # @trax.models.RelformerLM
 train.steps = 125000
 train.optimizer = @trax.optimizers.Adam
-train.permanent_checkpoints_at = [50000, 100000, 125000]
+train.checkpoints_at = \
+    [1000, 5000, 10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000,
+     90000, 100000, 110000, 125000]
+train.permanent_checkpoints_at = [50000, 75000, 100000, 125000]
 train.checkpoint_lowest = 'loss'
 train.inputs = @data.make_inputs
 
@@ -118,9 +122,9 @@ RelformerLM.d_model = 768
 RelformerLM.d_ff = 3072
 RelformerLM.vanilla_layers=(4, 4)
 RelformerLM.n_funnel_blocks=(8,)
-RelformerLM.shorten_factors=(2,)
-RelformerLM.dropout = 0.0
+RelformerLM.shorten_factors=(4,)
+RelformerLM.dropout = 0.15
 RelformerLM.mode = 'train'
 RelformerLM.n_heads = 12
 RelformerLM.vocab_size = %vocab_size
-RelformerLM.attention_upsampling_fn = @NoUpsampling
+RelformerLM.attention_upsampling_fn = @LinearUpsampling
