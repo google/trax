@@ -20,7 +20,7 @@ import trax.supervised.trainer_lib
 # Macros:
 # ==============================================================================
 train_batch = 128
-valid_batch = 128
+valid_batch = 8
 
 max_length = 2048
 vocab_size = 32000
@@ -81,7 +81,7 @@ validation/data.Batch.batch_size = %valid_batch
 # ==============================================================================
 train.eval_frequency = 5000
 train.eval_steps = 1500
-train.model = @trax.models.TransformerLM  # @trax.models.RelformerLM
+train.model = @trax.models.RelformerLM
 train.steps = 125000
 train.optimizer = @trax.optimizers.Adam
 train.checkpoints_at = \
@@ -118,13 +118,13 @@ TransformerLM.vocab_size = %vocab_size
 
 # Parameters for RelformerLM:
 # ==============================================================================
-RelformerLM.d_model = 768
-RelformerLM.d_ff = 3072
+RelformerLM.d_model = 512
+RelformerLM.d_ff = 2048
 RelformerLM.vanilla_layers=(4, 4)
 RelformerLM.n_funnel_blocks=(8,)
 RelformerLM.shorten_factors=(4,)
 RelformerLM.dropout = 0.15
 RelformerLM.mode = 'train'
-RelformerLM.n_heads = 12
+RelformerLM.n_heads = 8
 RelformerLM.vocab_size = %vocab_size
 RelformerLM.attention_upsampling_fn = @LinearUpsampling
