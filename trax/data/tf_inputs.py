@@ -29,7 +29,6 @@ import gin
 import jax
 import numpy as np
 import scipy
-import t5.data
 import tensorflow as tf
 import tensorflow_datasets as tfds
 import tensorflow_text as tf_text
@@ -46,6 +45,15 @@ from trax.fastmath import numpy as jnp
 # TODO(lukaszkaiser): can we improve efficiency, should that be changed?
 _MAX_SKIP_EXAMPLES = 1e5
 
+def t5_data():
+  """Get the T5 data module if available."""
+  module = None
+  try:
+    module = t5.data
+  except AttributeError as e:
+    logging.error("pip install t5")
+    raise e
+  return module
 
 def no_preprocess(dataset, training):
   del training
@@ -589,8 +597,8 @@ def _get_vocab(vocab_type='subword', vocab_file=None, vocab_dir=None,
     return text_encoder.BertEncoder(path, do_lower_case=True)
 
   assert vocab_type == 'sentencepiece'
-  return t5.data.SentencePieceVocabulary(sentencepiece_model_file=path,
-                                         extra_ids=extra_ids)
+  return t5_data().SentencePieceVocabulary(sentencepiece_model_file=path,
+                                           extra_ids=extra_ids)
 
 
 # Makes the function accessible in gin configs, even with all args denylisted.
@@ -849,7 +857,7 @@ def bair_robot_pushing_preprocess(dataset, training):
 
 def sentencepiece_tokenize(stream, spm_path=None, extra_ids=0):
   """Sentencepiece tokenization."""
-  spm_path = spm_path or t5.data.DEFAULT_SPM_PATH
+  spm_path = spm_path or t5_data().DEFAULT_SPM_PATH
   vocab_file = os.path.basename(spm_path)
   vocab_dir = os.path.dirname(spm_path)
   vocab = _get_vocab(vocab_type='sentencepiece',
@@ -898,7 +906,7 @@ def c4_preprocess(dataset,
     return features, features['targets']
 
   if tokenization == 'spc':
-    spm_path = spm_path or t5.data.DEFAULT_SPM_PATH
+    spm_path = spm_path or t5_data().DEFAULT_SPM_PATH
     with tf.compat.v1.gfile.GFile(spm_path, 'rb') as f:
       spc_model = f.read()
     tokenizer = tf_text.SentencepieceTokenizer(model=spc_model)
@@ -923,7 +931,7 @@ def c4_bare_preprocess_fn(dataset,
                           sequence_length=None):
   """Returns a dataset that contains 'inputs' and 'targets' from C4."""
   # Set target key to be equal to the text content.
-  dataset = t5.data.preprocessors.rekey(
+  dataset = t5_data().preprocessors.rekey(
       dataset, key_map={
           'targets': 'text',
           'inputs': None
@@ -931,10 +939,10 @@ def c4_bare_preprocess_fn(dataset,
 
   # Vocabulary for tokenization.
   extra_ids = 0
-  vocab = t5.data.SentencePieceVocabulary(
-      sentencepiece_model_file=spm_path or t5.data.DEFAULT_SPM_PATH,
+  vocab = t5_data().SentencePieceVocabulary(
+      sentencepiece_model_file=spm_path or t5_data().DEFAULT_SPM_PATH,
       extra_ids=extra_ids)
-  feature = t5.data.Feature(vocab)
+  feature = t5_data().Feature(vocab)
   output_features = {'targets': feature, 'inputs': feature}
 
   # Tokenize the targets.
@@ -963,7 +971,7 @@ def c4_bare_preprocess_fn(dataset,
       num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
   # Preprocess the tokens - the exact preprocessors are set via gin.
-  dataset = t5.data.preprocessors.unsupervised(
+  dataset = t5_data().preprocessors.unsupervised(
       dataset, sequence_length=sequence_length, output_features=output_features)
 
   # Add EOS.
@@ -1140,14 +1148,14 @@ def generic_text_dataset_preprocess_fn(dataset,
 
   # Vocabulary for tokenization.
   extra_ids = 0
-  vocab = t5.data.SentencePieceVocabulary(
-      sentencepiece_model_file=spm_path or t5.data.DEFAULT_SPM_PATH,
+  vocab = t5_data().SentencePieceVocabulary(
+      sentencepiece_model_file=spm_path or t5_data().DEFAULT_SPM_PATH,
       extra_ids=extra_ids)
-  feature = t5.data.Feature(vocab)
+  feature = t5_data().Feature(vocab)
   output_features = {'targets': feature, 'inputs': feature}
 
   # Tokenize the inputs and targets.
-  dataset = t5.data.preprocessors.tokenize(
+  dataset = t5_data().preprocessors.tokenize(
       dataset, output_features, copy_pretokenized=copy_pretokenized)
 
   # Apply the token-preprocessors.
@@ -1196,7 +1204,7 @@ def get_t5_preprocessor_by_name(name=None, fn_kwargs=None):
   """
 
   assert name is not None
-  f = getattr(t5.data.preprocessors, name)
+  f = getattr(t5_data().preprocessors, name)
   if fn_kwargs is not None:
     f = functools.partial(f, **fn_kwargs)
   return lambda ds, unused_training: f(ds)
@@ -1383,7 +1391,7 @@ def BertNextSentencePredictionInputs(dataset_name,  # pylint: disable=invalid-na
       dataset_name,
       data_dir=data_dir,
       tfds_preprocess_fn=functools.partial(
-          t5.data.preprocessors.next_sentence_prediction,
+          t5_data().preprocessors.next_sentence_prediction,
           text_key=text_key,
           label_sentences=True,
           buffer_size=shuffle_size),
@@ -1409,7 +1417,7 @@ def CorpusToRandomChunks(dataset_name, num_tokens=512, train=True):  # pylint: d
   return TFDS(
       dataset_name,
       tfds_preprocess_fn=functools.partial(
-          t5.data.preprocessors.random_split_text,
+          t5_data().preprocessors.random_split_text,
           max_words_per_segment=num_tokens),
       train=train,
       keys=['text'])
@@ -1644,7 +1652,7 @@ def _t5_glue_data_split_no_token(benchmark_id):
   """Returns a GLUE data split prepared with the standard T5 preprocessor."""
   benchmark, split = _t5_glue_benchmark_and_split(benchmark_id)
   dataset = tfds.load(name=f'glue/{benchmark}', split=split)
-  processed_dataset = t5.data.preprocessors.glue(  # pylint: disable=g-long-lambda
+  processed_dataset = t5_data().preprocessors.glue(  # pylint: disable=g-long-lambda
       dataset,
       benchmark_name=benchmark,
       label_names=_GLUE_LABELS[benchmark])
@@ -1668,7 +1676,7 @@ def _t5_glue_data_split(benchmark_id):
   dataset = tfds.load(name=f'glue/{benchmark}', split=split)
   processed_dataset = generic_text_dataset_preprocess_fn(
       dataset,
-      spm_path=t5.data.DEFAULT_SPM_PATH,
+      spm_path=t5_data().DEFAULT_SPM_PATH,
       text_preprocess_fns=[
           lambda ds, training: t5.data.preprocessors.glue(  # pylint: disable=g-long-lambda
               ds,
