@@ -323,7 +323,7 @@ def TFDS(  # pylint: disable=invalid-name
   """
   data_dir = download_and_prepare(dataset_name, data_dir)
 
-  host_id = jax.host_id() if host_id is None else host_id
+  host_id = jax.process_index() if host_id is None else host_id
   n_hosts = n_hosts or jax.host_count()
   if n_hosts > 1:
     subsplit = (host_id / n_hosts, (host_id + 1) / n_hosts)

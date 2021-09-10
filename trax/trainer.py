@@ -23,11 +23,13 @@ from absl import logging
 
 import gin
 import jax
+from jax.lib import xla_extension as xc
 import tensorflow.compat.v2 as tf
 from trax import fastmath
 from trax import trainer_flags  # pylint: disable=unused-import
 from trax.supervised import trainer_lib
 from trax.tf_numpy import numpy as tf_np
+
 
 FLAGS = flags.FLAGS
 Backend = fastmath.Backend
@@ -95,7 +97,6 @@ def _output_dir_or_default():
 
 # TODO(afrozm): Share between trainer.py and rl_trainer.py
 def _jax_and_tf_configure_for_devices():  # pylint: disable=missing-function-docstring
-  jax.config.enable_omnistaging()
   if FLAGS.use_tpu:
     jax.config.update('jax_platform_name', 'tpu')
     jax.config.update('jax_xla_backend', FLAGS.jax_xla_backend)
@@ -143,6 +144,26 @@ def tf_init_tpu(worker='', protocol=None):
     return '/job:worker'
 
 
+def _make_jax_gpu_cluster(host_id, server_ip, n_hosts, server_port=5005):
+  addr = f'{server_ip}:{server_port}'
+  if host_id == 0:
+    logging.info('starting service on %s', addr)
+    service = xc.get_distributed_runtime_service(addr, n_hosts)
+    # We add an explicit call to shutdown the service via atexit as Python
+    # interpreter may not call the service destructor on process termination.
+    atexit.register(service.shutdown)
+ 
+  logging.info('connecting to service on %s', addr)
+  dist_client = xc.get_distributed_runtime_client(addr, host_id)
+  dist_client.connect()
+  atexit.register(dist_client.shutdown)
+ 
+  # register dist gpu backend
+  factory = functools.partial(jax.lib.xla_client.make_gpu_client,
+                              dist_client, host_id)
+  jax.lib.xla_bridge.register_backend_factory('gpu', factory, priority=300)
+
+
 def main(_):
   logging.set_verbosity(FLAGS.log_level)
 
@@ -150,6 +171,13 @@ def main(_):
   _gin_parse_configs()
   _jax_and_tf_configure_for_devices()
 
+  # Create a JAX GPU cluster if using JAX and given a chief IP.
+  if fastmath.is_backend(Backend.JAX) and FLAGS.gpu_cluster_chief_ip:
+    _make_jax_gpu_cluster(FLAGS.gpu_cluster_host_id,
+                          FLAGS.gpu_cluster_chief_ip,
+                          FLAGS.gpu_cluster_n_hosts,
+                          FLAGS.gpu_cluster_port)
+  
   if FLAGS.disable_jit:
     fastmath.disable_jit()
 

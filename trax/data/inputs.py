@@ -609,7 +609,7 @@ def UniformlySeek(name=None, host_id=None, n_hosts=None, dataset_size=None):  # 
     logging.error(
         'No dataset size given to Uniformly seek, assuming: %d', dataset_size)
   assert name
-  host_id = jax.host_id() if host_id is None else host_id
+  host_id = jax.process_index() if host_id is None else host_id
   n_hosts = n_hosts or jax.host_count()
   each_host = int(dataset_size / n_hosts)
   def _f(generator):
@@ -1095,7 +1095,7 @@ def count_and_skip(generator, name):
 def save_data_counters(output_dir, host_id=None):
   """Checkpoint data counters."""
   global data_counters
-  host_id = jax.host_id() if host_id is None else host_id
+  host_id = jax.process_index() if host_id is None else host_id
   fname = os.path.join(output_dir, 'data_counters%d.pkl' % host_id)
   with tf.io.gfile.GFile(fname, 'wb') as f:
     pickle.dump(data_counters, f)
@@ -1104,7 +1104,7 @@ def save_data_counters(output_dir, host_id=None):
 def load_data_counters(output_dir, host_id=None):
   """Checkpoint data counters."""
   global data_counters
-  host_id = jax.host_id() if host_id is None else host_id
+  host_id = jax.process_index() if host_id is None else host_id
   fname = os.path.join(output_dir, 'data_counters%d.pkl' % host_id)
   if not tf.io.gfile.exists(fname):
     logging.info('Did not load data counters as %s does not exist.', fname)

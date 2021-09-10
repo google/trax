@@ -1292,7 +1292,7 @@ def init_host_and_devices(n_devices=None, random_seed=None):
     random_seed: The passed in value of random_seed or a computed default.
   """
   if fastmath.is_backend(fastmath.Backend.JAX):
-    host_id = jax.host_id()
+    host_id = jax.process_index()
     host_count = jax.host_count()
   else:
     host_id = 0
