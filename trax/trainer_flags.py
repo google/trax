@@ -50,6 +50,13 @@ flags.DEFINE_string('model', None, 'Which model to train.')
 flags.DEFINE_string('data_dir', None, 'Path to the directory with data.')
 flags.DEFINE_integer('log_level', logging.INFO, 'Log level.')
 
+# JAX/XLA GPU cluster flags.
+flags.DEFINE_string('gpu_cluster_chief_ip', '', 'IP of GPU cluster chief.')
+flags.DEFINE_integer('gpu_cluster_n_hosts', 1,
+                     'Number of hosts in GPU cluster.')
+flags.DEFINE_integer('gpu_cluster_host_id', 0, 'Host id inside GPU cluster.')
+flags.DEFINE_integer('gpu_cluster_port', 5005, 'Port to use in GPU cluster.')
+
 # TensorFlow Flags
 flags.DEFINE_bool('enable_eager_execution',
                   True,
