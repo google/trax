@@ -26,7 +26,7 @@ from trax.models import transformer
 from trax.models.reformer import reformer
 from trax.models.research import bert
 from trax.models.research import configurable_transformer
-from trax.models.research import funnel_transformer
+from trax.models.research import hourglass
 from trax.models.research import layerdrop_transformer
 from trax.models.research import rezero
 from trax.models.research import rse
@@ -88,11 +88,5 @@ Quality = model_configure(rl.Quality)
 RNNLM = model_configure(rnn.RNNLM)
 GRULM = model_configure(rnn.GRULM)
 LSTMSeq2SeqAttn = model_configure(rnn.LSTMSeq2SeqAttn)
-FunnelTransformerEncoder = model_configure(
-    funnel_transformer.FunnelTransformerEncoder)
-FunnelTransformer = model_configure(
-    funnel_transformer.FunnelTransformer)
 ResidualShuffleExchange = model_configure(rse.ResidualShuffleExchange)
-RelformerLM = model_configure(
-    funnel_transformer.RelformerLM)
-RelformerChunkedLM = model_configure(funnel_transformer.RelformerChunkedLM)
+HourglassLM = model_configure(hourglass.HourglassLM)
