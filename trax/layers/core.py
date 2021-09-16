@@ -311,7 +311,12 @@ class Weights(base.Layer):
 def PrintShape(n_in=1, msg=''):
   """Prints the shapes of `n_in` inputs and returns then unchanged."""
   def Fwd(xs):
-    shapes_and_dtypes = ', '.join([str(x.shape) + f'[{x.dtype}]' for x in xs])
+    def format_shape(x):
+      return str(x.shape) + f'[{x.dtype}]'
+    if n_in > 1:
+      shapes_and_dtypes = ', '.join([format_shape(x) for x in xs])
+    else:
+      shapes_and_dtypes = format_shape(xs)
     info = f'PrintShape: {msg}: [{shapes_and_dtypes}]'
     print(info)
     logging.info(info)
