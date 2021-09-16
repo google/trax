@@ -22,8 +22,8 @@ import trax.supervised.trainer_lib
 # Parameters for batcher:
 # ==============================================================================
 batcher.data_streams = @data.data_streams
-batcher.max_eval_length = 2048
-batcher.buckets = ([2048], [8])
+batcher.max_eval_length = 2049
+batcher.buckets = ([2049], [8])
 batcher.id_to_mask = 0
 
 # Parameters for data_streams:
@@ -38,11 +38,11 @@ data_streams.input_name = 'targets'
 multifactor.constant = 4.1e-4
 multifactor.factors = 'constant * linear_warmup * cosine_decay'
 multifactor.warmup_steps = 4000
-multifactor.steps_per_cycle = 200000
+multifactor.steps_per_cycle = 350000
 
 # Parameters for Adam:
 # ==============================================================================
-Adam.weight_decay_rate=0.0
+Adam.weight_decay_rate = 0.0
 Adam.b1 = 0.9
 Adam.b2 = 0.98
 Adam.eps = 1e-9
@@ -51,22 +51,22 @@ Adam.eps = 1e-9
 # ==============================================================================
 train.eval_frequency = 2000
 train.eval_steps = 305
-train.model = @trax.models.RelformerLM
+train.model = @trax.models.HourglassLM
 train.optimizer = @trax.optimizers.Adam
-train.steps = 400000
+train.steps = 350000
 train.save_graphs = False
-train.checkpoints_at = [200000, 300000, 400000]
+train.checkpoints_at = [150000, 175000, 300000, 350000]
 
 
-# Parameters for RelformerLM:
+# Parameters for HourglassLM:
 # ==============================================================================
-RelformerLM.d_ff = 2048
-RelformerLM.d_model = 512
-RelformerLM.dropout = 0.15
-RelformerLM.vanilla_layers = (6,6)
-RelformerLM.n_funnel_blocks = (8,)
-RelformerLM.shorten_factors = (2,)
-RelformerLM.n_heads = 8
-RelformerLM.vocab_size = 256
-RelformerLM.attention_upsampling_fn = @NoUpsampling
-RelformerLM.ff_activation = @trax.layers.FastGelu
+HourglassLM.d_ff = 2048
+HourglassLM.d_model = 512
+HourglassLM.dropout = 0.2
+HourglassLM.vanilla_layers = (5,5)
+HourglassLM.hierarchy = '24@3'
+HourglassLM.n_heads = 8
+HourglassLM.vocab_size = 256
+HourglassLM.attention_upsampling_fn = @NaiveUpsampling
+HourglassLM.ff_activation = @trax.layers.FastGelu
+

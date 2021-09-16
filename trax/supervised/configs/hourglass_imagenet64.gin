@@ -56,7 +56,7 @@ Adam.eps = 1e-9
 # ==============================================================================
 train.eval_frequency = 1000
 train.eval_steps = 512
-train.model = @trax.models.RelformerLM
+train.model = @trax.models.HourglassLM
 train.optimizer = @trax.optimizers.Adam
 train.steps = 500000
 train.save_graphs = False
@@ -86,18 +86,17 @@ layers.SelfAttention.chunk_len = 512
 layers.SelfAttention.n_chunks_after = 0
 layers.SelfAttention.n_chunks_before = 1
 
-# Parameters for RelformerLM:
+# Parameters for HourglassLM:
 # ==============================================================================
-RelformerLM.d_model = 768
-RelformerLM.d_ff = 3072
-RelformerLM.dropout = 0.0
-RelformerLM.ff_activation = @trax.layers.FastGelu
-RelformerLM.mode = 'train'
-RelformerLM.n_heads = 8
-RelformerLM.n_funnel_blocks = (12,)
-RelformerLM.vanilla_layers = (3, 3)
-RelformerLM.shorten_factors = (3,)
-RelformerLM.vocab_size = 256
-RelformerLM.vanilla_attn_type = %vanilla_attn_type
-RelformerLM.downsampling_fn = @LinearPooling
-RelformerLM.upsampling_fn = @LinearUpsampling
+HourglassLM.d_model = 768
+HourglassLM.d_ff = 3072
+HourglassLM.dropout = 0.0
+HourglassLM.ff_activation = @trax.layers.FastGelu
+HourglassLM.mode = 'train'
+HourglassLM.n_heads = 8
+HourglassLM.vanilla_layers = (3, 3)
+HourglassLM.hierarchy = '12@3'
+HourglassLM.vocab_size = 256
+HourglassLM.vanilla_attn_type = %vanilla_attn_type
+HourglassLM.downsampling_fn = @LinearPooling
+HourglassLM.upsampling_fn = @LinearUpsampling

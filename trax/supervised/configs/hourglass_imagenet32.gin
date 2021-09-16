@@ -53,7 +53,7 @@ Adam.eps = 1e-09
 # ==============================================================================
 train.eval_frequency = 1000
 train.eval_steps = 512
-train.model = @trax.models.RelformerLM
+train.model = @trax.models.HourglassLM
 train.optimizer = @trax.optimizers.Adam
 train.steps = 400000
 train.checkpoints_at = \
@@ -62,15 +62,14 @@ train.checkpoints_at = \
 train.permanent_checkpoints_at = \
     [100000, 150000, 200000, 250000, 300000, 350000]
 
-# Parameters for RelformerLM:
+# Parameters for HourglassLM:
 # ==============================================================================
-RelformerLM.d_ff = 2048
-RelformerLM.d_model = 512
-RelformerLM.dropout = 0.01
-RelformerLM.n_funnel_blocks = (24,)
-RelformerLM.n_heads = 8
-RelformerLM.shorten_factors = (3,)
-RelformerLM.vanilla_layers = (3, 3)
-RelformerLM.vocab_size = 256
-RelformerLM.attention_downsampling_fn = @LinearPooling
-RelformerLM.ff_activation = @trax.layers.FastGelu
+HourglassLM.d_ff = 2048
+HourglassLM.d_model = 512
+HourglassLM.dropout = 0.01
+HourglassLM.n_heads = 8
+HourglassLM.vanilla_layers = (3, 3)
+HourglassLM.hierarchy = '24@3'
+HourglassLM.vocab_size = 256
+HourglassLM.attention_downsampling_fn = @LinearPooling
+HourglassLM.ff_activation = @trax.layers.FastGelu

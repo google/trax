@@ -20,7 +20,7 @@ import trax.supervised.trainer_lib
 # Macros:
 # ==============================================================================
 train_batch = 128
-valid_batch = 128
+valid_batch = 8
 
 max_length = 2048
 vocab_size = 32000
@@ -47,6 +47,7 @@ make_inputs.eval_stream = [
   @data.PadToLength(),
   @data.ConcatenateToLMInput(),
   @data.AddLossWeights(),
+  @data.Shuffle(),
   @validation/data.Batch(),
 ]
 
@@ -80,7 +81,7 @@ validation/data.Batch.batch_size = %valid_batch
 # ==============================================================================
 train.eval_frequency = 2500
 train.eval_steps = 600
-train.model = @trax.models.TransformerLM  # @trax.models.RelformerLM
+train.model = @trax.models.HourglassLM # @trax.models.TransformerLM
 train.steps = 125000
 train.optimizer = @trax.optimizers.Adam
 train.permanent_checkpoints_at = [50000, 100000, 125000]
@@ -112,15 +113,14 @@ TransformerLM.n_heads = 12
 TransformerLM.n_layers = 12
 TransformerLM.vocab_size = %vocab_size
 
-# Parameters for RelformerLM:
+# Parameters for HourglassLM:
 # ==============================================================================
-RelformerLM.d_model = 768
-RelformerLM.d_ff = 3072
-RelformerLM.vanilla_layers=(4, 4)
-RelformerLM.n_funnel_blocks=(8,)
-RelformerLM.shorten_factors=(2,)
-RelformerLM.dropout = 0.0
-RelformerLM.mode = 'train'
-RelformerLM.n_heads = 12
-RelformerLM.vocab_size = %vocab_size
-RelformerLM.attention_upsampling_fn = @NoUpsampling
+HourglassLM.d_model = 512
+HourglassLM.d_ff = 2048
+HourglassLM.vanilla_layers=(4, 4)
+HourglassLM.hierarchy = '8@4'
+HourglassLM.dropout = 0.0
+HourglassLM.mode = 'train'
+HourglassLM.n_heads = 8
+HourglassLM.vocab_size = %vocab_size
+HourglassLM.attention_upsampling_fn = @LinearUpsampling
