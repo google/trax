@@ -142,3 +142,52 @@ def Conv1d(filters, kernel_size, stride=1, padding='VALID',
               kernel_initializer=kernel_initializer,
               bias_initializer=bias_initializer,
               use_bias=use_bias)
+
+
+def _zero_pad(x, pad, axis):
+  """Helper for jnp.pad with 0s for single-axis case."""
+  pad_widths = [(0, 0)] * len(x.shape)
+  pad_widths[axis] = pad  # Padding on axis.
+  return jnp.pad(x, pad_widths, mode='constant')
+
+
+# @assert_shape('bld->bld')
+class CausalDepthwiseConv(base.Layer):
+  """A causal depthwise convolution layer."""
+
+  def __init__(self,
+               kernel_size=3,
+               kernel_initializer=init.GlorotUniformInitializer(),
+               use_bfloat16=False):
+    """Returns a causal depthwise convolution layer."""
+    super().__init__(n_in=1, n_out=1)
+    self._kernel_size = kernel_size
+    self._kernel_initializer = kernel_initializer
+    self._use_bfloat16 = use_bfloat16
+
+  def forward(self, x):
+    """Executes this layer as part of a forward pass through the model.
+
+    Args:
+      x: Tensor of same shape and dtype as the input signature used to
+          initialize this layer.
+
+    Returns:
+      Tensor of same shape and dtype as the input.
+    """
+    w = self.weights
+    res = x * w[0, :][None, None, :]
+    for i in range(1, self._kernel_size):
+      x = _zero_pad(x, (1, 0), 1)
+      x = x[:, :-1, :]
+      res += x * w[i, :][None, None, :]
+    return res
+
+  def init_weights_and_state(self, input_signature):
+    """Randomly initializes this layer's weights."""
+    shape_w = (self._kernel_size, input_signature.shape[-1])
+    rng_w, _ = fastmath.random.split(self.rng, 2)
+    w = self._kernel_initializer(shape_w, rng_w)
+    if self._use_bfloat16:
+      w = w.astype(jnp.bfloat16)
+    self.weights = w
