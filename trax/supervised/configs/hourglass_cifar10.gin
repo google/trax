@@ -18,10 +18,12 @@ import trax.models
 import trax.optimizers
 import trax.supervised.trainer_lib
 
+train_steps = 100000
+
 # Parameters for batcher:
 # ==============================================================================
 batcher.data_streams = @data.data_streams
-batcher.batch_size_per_device = 4
+batcher.batch_size_per_device = 1
 batcher.eval_batch_size = 8
 batcher.max_eval_length = 3072  # 32 * 32 * 3
 batcher.variable_shapes = False
@@ -35,58 +37,38 @@ data_streams.target_name = 'image'
 data_streams.bare_preprocess_fn = \
     @data.downsampled_imagenet_flatten_bare_preprocess
 
-# Parameters for multifactor:
-# ==============================================================================
-# 0.0442 ~= 512^-0.5 = d_model^-0.5
-multifactor.constant = 0.01
-multifactor.factors =  'constant * rsqrt_normalized_decay'
-multifactor.warmup_steps = 10000
+# Parameters for multifactor: # ================================================
+multifactor.constant = 1e-3
+multifactor.factors = 'constant * linear_warmup * cosine_decay'
+multifactor.warmup_steps = 5000
+multifactor.steps_per_cycle = %train_steps
 
-# Parameters for Adafactor:
+# Parameters for Adam:
 # ==============================================================================
-Adafactor.learning_rate=0.1
-Adafactor.factored=True
-Adafactor.multiply_by_parameter_scale=True
-Adafactor.do_clipping=True
-Adafactor.do_momentum=True
-Adafactor.momentum_in_bfloat16=False
-Adafactor.beta1=0.9
-Adafactor.decay_rate=1.0
-Adafactor.clipping_threshold=1.0
-Adafactor.weight_decay_rate=0
-Adafactor.weight_decay_n_steps=0
-Adafactor.epsilon1=1e-16
-Adafactor.epsilon2=1e-3
+Adam.weight_decay_rate=0.0
+Adam.b1 = 0.9
+Adam.b2 = 0.98
+Adam.eps = 1e-9
 
 # Parameters for train:
 # ==============================================================================
 train.eval_frequency = 2000
 train.eval_steps = 625
+train.checkpoints_at = [100000]
+train.model = @trax.models.HourglassLM
+train.optimizer = @trax.optimizers.Adam
+train.steps = %train_steps
 
-train.model = @trax.models.RelformerLM # @trax.models.TransformerLM
-train.optimizer = @trax.optimizers.Adafactor
-train.steps = 200000
-train.checkpoints_at = [50000, 100000, 200000]
 
-# Parameters for RelformerLM:
+# Parameters for HourglassLM:
 # ==============================================================================
-RelformerLM.d_model = 512
-RelformerLM.d_ff = 2048
-RelformerLM.vanilla_layers=(3, 3)
-RelformerLM.n_funnel_blocks=(24,)
-RelformerLM.shorten_factors=(3,)
-RelformerLM.dropout = 0.0
-RelformerLM.mode = 'train'
-RelformerLM.n_heads = 8
-RelformerLM.vocab_size = 256
-
-# Parameters for TransformerLM:
-# ==============================================================================
-TransformerLM.d_model = 512
-TransformerLM.d_ff = 2048
-TransformerLM.dropout = 0.0
-TransformerLM.max_len = 3072
-TransformerLM.mode = 'train'
-TransformerLM.n_heads = 8
-TransformerLM.n_layers = 12
-TransformerLM.vocab_size = 256
+HourglassLM.d_model = 512
+HourglassLM.d_ff = 2048
+HourglassLM.vanilla_layers = (1, 1)
+HourglassLM.hierarchy = '8@3'
+HourglassLM.dropout = 0.0
+HourglassLM.mode = 'train'
+HourglassLM.n_heads = 8
+HourglassLM.vocab_size = 256
+HourglassLM.attention_downsampling_fn = @LinearPooling
+HourglassLM.attention_upsampling_fn = @LinearUpsampling

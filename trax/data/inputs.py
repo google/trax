@@ -920,11 +920,12 @@ def generate_sequential_chunks(max_length=None):
       n_tokens = len(example)
       if n_tokens <= max_length:
         yield example
-      n_segments = int(math.ceil(float(n_tokens) / float(max_length)))
-      for i in range(n_segments):
-        start = max_length * i
-        end = min(start + max_length, n_tokens)
-        yield example[start:end]
+      else:
+        n_segments = int(math.ceil(float(n_tokens) / float(max_length)))
+        for i in range(n_segments):
+          start = max_length * i
+          end = min(start + max_length, n_tokens)
+          yield example[start:end]
   return _f
 
 
