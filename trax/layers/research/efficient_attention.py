@@ -572,7 +572,7 @@ class EfficientAttentionBase(base.Layer):
         assert new_vals.shape[1] == seqlen
         if seqlen == 1:
           return fastmath.index_update(
-              mem_element, jax.ops.index[:, mem_end], new_vals[:, 0, ...])
+              mem_element, jax.numpy.index_exp[:, mem_end], new_vals[:, 0, ...])
         else:
           return fastmath.dynamic_update_slice_in_dim(
               mem_element, new_vals, mem_end, axis=1)
@@ -729,12 +729,13 @@ class EfficientAttentionBase(base.Layer):
 
     def tree_update(tree, indices, new_values):
       return fastmath.nested_map_multiarg(
-          lambda x, y: fastmath.index_update(x, jax.ops.index[indices], y),
+          lambda x, y: fastmath.index_update(x, jax.numpy.index_exp[indices],
+                                             y),
           tree, new_values)
 
     def tree_add(tree, indices, new_values):
       return fastmath.nested_map_multiarg(
-          lambda x, y: fastmath.index_add(x, jax.ops.index[indices], y),
+          lambda x, y: fastmath.index_add(x, jax.numpy.index_exp[indices], y),
           tree, new_values)
 
     if compute_grad:
@@ -885,7 +886,8 @@ class EfficientAttentionBase(base.Layer):
           o_mex, s_mex = forward_fn(i_mex, weights)
 
         if compute_output:
-          o_all = fastmath.index_add(o_all, jax.ops.index[example_range], o_mex)
+          o_all = fastmath.index_add(o_all, jax.numpy.index_exp[example_range],
+                                     o_mex)
         if update_state:
           s_all = tree_update(s_all, state_range, s_mex)
         if compute_grad:
@@ -1363,7 +1365,7 @@ class SelfAttention(base.Layer):
         assert new_vals.shape[1] == seqlen
         if seqlen == 1:
           return fastmath.index_update(
-              mem_element, jax.ops.index[:, mem_end], new_vals[:, 0, ...])
+              mem_element, jax.numpy.index_exp[:, mem_end], new_vals[:, 0, ...])
         else:
           return fastmath.dynamic_update_slice_in_dim(
               mem_element, new_vals, mem_end, axis=1)
@@ -1520,12 +1522,13 @@ class SelfAttention(base.Layer):
 
     def tree_update(tree, indices, new_values):
       return fastmath.nested_map_multiarg(
-          lambda x, y: fastmath.index_update(x, jax.ops.index[indices], y),
+          lambda x, y: fastmath.index_update(x, jax.numpy.index_exp[indices],
+                                             y),
           tree, new_values)
 
     def tree_add(tree, indices, new_values):
       return fastmath.nested_map_multiarg(
-          lambda x, y: fastmath.index_add(x, jax.ops.index[indices], y),
+          lambda x, y: fastmath.index_add(x, jax.numpy.index_exp[indices], y),
           tree, new_values)
 
     if compute_grad:
@@ -1676,7 +1679,8 @@ class SelfAttention(base.Layer):
           o_mex, s_mex = forward_fn(i_mex, weights)
 
         if compute_output:
-          o_all = fastmath.index_add(o_all, jax.ops.index[example_range], o_mex)
+          o_all = fastmath.index_add(o_all, jax.numpy.index_exp[example_range],
+                                     o_mex)
         if update_state:
           s_all = tree_update(s_all, state_range, s_mex)
         if compute_grad:
@@ -2196,7 +2200,7 @@ class LSHSelfAttention(base.Layer):
         assert new_vals.shape[1] == seqlen
         if seqlen == 1:
           return fastmath.index_update(
-              mem_element, jax.ops.index[:, mem_end], new_vals[:, 0, ...])
+              mem_element, jax.numpy.index_exp[:, mem_end], new_vals[:, 0, ...])
         else:
           return fastmath.dynamic_update_slice_in_dim(
               mem_element, new_vals, mem_end, axis=1)
@@ -2353,12 +2357,13 @@ class LSHSelfAttention(base.Layer):
 
     def tree_update(tree, indices, new_values):
       return fastmath.nested_map_multiarg(
-          lambda x, y: fastmath.index_update(x, jax.ops.index[indices], y),
+          lambda x, y: fastmath.index_update(x, jax.numpy.index_exp[indices],
+                                             y),
           tree, new_values)
 
     def tree_add(tree, indices, new_values):
       return fastmath.nested_map_multiarg(
-          lambda x, y: fastmath.index_add(x, jax.ops.index[indices], y),
+          lambda x, y: fastmath.index_add(x, jax.numpy.index_exp[indices], y),
           tree, new_values)
 
     if compute_grad:
@@ -2509,7 +2514,8 @@ class LSHSelfAttention(base.Layer):
           o_mex, s_mex = forward_fn(i_mex, weights)
 
         if compute_output:
-          o_all = fastmath.index_add(o_all, jax.ops.index[example_range], o_mex)
+          o_all = fastmath.index_add(o_all, jax.numpy.index_exp[example_range],
+                                     o_mex)
         if update_state:
           s_all = tree_update(s_all, state_range, s_mex)
         if compute_grad:
@@ -2979,7 +2985,7 @@ class PureLSHSelfAttention(base.Layer):
         assert new_vals.shape[1] == seqlen
         if seqlen == 1:
           return fastmath.index_update(
-              mem_element, jax.ops.index[:, mem_end], new_vals[:, 0, ...])
+              mem_element, jax.numpy.index_exp[:, mem_end], new_vals[:, 0, ...])
         else:
           return fastmath.dynamic_update_slice_in_dim(
               mem_element, new_vals, mem_end, axis=1)
@@ -3148,12 +3154,13 @@ class PureLSHSelfAttention(base.Layer):
 
     def tree_update(tree, indices, new_values):
       return fastmath.nested_map_multiarg(
-          lambda x, y: fastmath.index_update(x, jax.ops.index[indices], y),
+          lambda x, y: fastmath.index_update(x, jax.numpy.index_exp[indices],
+                                             y),
           tree, new_values)
 
     def tree_add(tree, indices, addends):
       return fastmath.nested_map_multiarg(
-          lambda x, y: fastmath.index_add(x, jax.ops.index[indices], y),
+          lambda x, y: fastmath.index_add(x, jax.numpy.index_exp[indices], y),
           tree, addends)
 
     if compute_grad:
