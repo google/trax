@@ -51,6 +51,7 @@ from trax import fastmath
 from trax.fastmath import numpy as jnp
 from trax.layers import base
 from trax.layers import combinators as cb
+from trax.layers import convolution
 from trax.layers import core
 from trax.layers import initializers as init
 from trax.layers.assert_shape import assert_shape
@@ -432,8 +433,12 @@ def ConfigurableAttention(q_layer, k_layer, v_layer, final_layer,  # pylint: dis
 
 
 @assert_shape('bld->bld')
-def CausalAttention(d_feature, n_heads=1, dropout=0.0,
-                    max_inference_length=2048, mode='train'):
+def CausalAttention(d_feature,
+                    n_heads=1,
+                    dropout=0.0,
+                    max_inference_length=2048,
+                    use_dconv=False,
+                    mode='train'):
   """Returns a layer that maps activations to activations, with causal masking.
 
   Like :py:class:`Attention`, this layer type represents one pass of multi-head
@@ -453,6 +458,8 @@ def CausalAttention(d_feature, n_heads=1, dropout=0.0,
         created in ``'train'`` mode.
     max_inference_length: Maximum sequence length allowed in non-training
         modes.
+    use_dconv: if True, use depthwise convolutions on top of dense layers
+      for Q, K and V.
     mode: One of ``'train'``, ``'eval'``, or ``'predict'``.
   """
   if d_feature % n_heads != 0:
@@ -460,9 +467,19 @@ def CausalAttention(d_feature, n_heads=1, dropout=0.0,
         f'Dimensionality of feature embedding ({d_feature}) is not a multiple '
         f'of the requested number of attention heads ({n_heads}).')
 
+  def QKVLayer():
+    """Function returning the Q, K and V layer."""
+    if use_dconv:
+      return cb.Serial(core.Dense(d_feature), convolution.CausalDepthwiseConv())
+    else:
+      return core.Dense(d_feature)
+
   return ConfigurableAttention(
-      core.Dense(d_feature), core.Dense(d_feature), core.Dense(d_feature),
-      core.Dense(d_feature), n_heads=n_heads,
+      QKVLayer(),
+      QKVLayer(),
+      QKVLayer(),
+      core.Dense(d_feature),
+      n_heads=n_heads,
       qkv_attention_layer=DotProductCausalAttention(
           dropout=dropout, max_inference_length=max_inference_length,
           mode=mode))
