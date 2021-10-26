@@ -14,7 +14,6 @@
 # limitations under the License.
 
 # coding=utf-8
-# coding=utf-8
 """Install trax."""
 
 from setuptools import find_packages
@@ -22,7 +21,7 @@ from setuptools import setup
 
 setup(
     name='trax',
-    version='1.4.0',
+    version='1.4.1',
     description='Trax',
     long_description=(
         'Trax helps you understand deep learning. We start with basic maths and'

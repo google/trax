@@ -28,16 +28,16 @@ git clone https://github.com/google/trax.git
 cd trax
 git checkout $GIT_COMMIT_ID
 
-python -m pip install wheel twine pyopenssl
+python3 -m pip install wheel twine pyopenssl
 
 # Build the distribution
 echo "Building distribution"
-python setup.py sdist
-python setup.py bdist_wheel --universal
+python3 setup.py sdist
+python3 setup.py bdist_wheel --universal
 
 # Publish to PyPI
 echo "Publishing to PyPI"
-twine upload dist/*
+python3 -m twine upload dist/*
 
 # Cleanup
 rm -rf build/ dist/ trax.egg-info/
