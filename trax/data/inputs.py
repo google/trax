@@ -703,7 +703,9 @@ def batch(generator, batch_size):
       # buf is a list of tuples, e.g., [(in1, tgt1), (in2, tgt2), (in3, tgt3)]
       # batch is a tuple of arrays: ([in1, in2, in3], [tgt1, tgt2, tgt3])
       try:
-        batched_example = tuple(np.stack(x) for x in zip(*buf))
+        batched_example = tuple(
+            pad_to_max_dims([np.asarray(tensor) for tensor in x])
+            for x in zip(*buf))
       except ValueError as e:
         for j in range(len(buf)):
           logging.error('Batch[%d][%d] input shape: %r output shape: %r',
