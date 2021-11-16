@@ -927,7 +927,8 @@ class LaxBackedNumpyTests(jtu.TestCase):
     check_xla = not set((lhs_dtype, rhs_dtype)).intersection(
         (onp.int32, onp.int64))
 
-    tol = max(jtu.tolerance(lhs_dtype), jtu.tolerance(rhs_dtype))
+    tol = {onp.float64: 1e-14}
+    tol = max(jtu.tolerance(lhs_dtype, tol), jtu.tolerance(rhs_dtype, tol))
     self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True,
                           check_incomplete_shape=True,
                           check_experimental_compile=check_xla,
