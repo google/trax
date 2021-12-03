@@ -88,7 +88,8 @@ class InitializersTest(absltest.TestCase):
       np.save(f, params)
     f = tl.InitializerFromFile(filename)
     init_value = f(params.shape, rng())
-    self.assertEqual(tl.to_list(init_value), tl.to_list(params))
+    np.testing.assert_almost_equal(
+        tl.to_list(init_value), tl.to_list(params), decimal=4)
     # self.assertEqual('%s' % init_value, '%s' % params)
 
 
