@@ -148,7 +148,10 @@ def _add_blank_line(s):
 def _np_signature(f):
   """An enhanced funcsigs.signature that can handle numpy.ufunc."""
   if not isinstance(f, np.ufunc):
-    return funcsigs.signature(f)
+    try:
+      return funcsigs.signature(f)
+    except ValueError:
+      return None
   def names_from_num(prefix, n):
     if n <= 0:
       return []
@@ -207,11 +210,12 @@ def np_doc(np_fun):
   np_sig = _np_signature(np_fun)
   def decorator(f):
     """The decorator."""
-    sig = funcsigs.signature(f)
     unsupported_params = []
-    for name in np_sig.parameters:
-      if name not in sig.parameters:
-        unsupported_params.append(name)
+    if np_sig is not None:
+      sig = funcsigs.signature(f)
+      for name in np_sig.parameters:
+        if name not in sig.parameters:
+          unsupported_params.append(name)
     f.__doc__ = _np_doc_helper(f, np_fun, unsupported_params)
     return f
   return decorator
