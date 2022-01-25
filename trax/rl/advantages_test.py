@@ -98,7 +98,7 @@ class AdvantagesTest(parameterized.TestCase):
     (bias, _) = estimate_advantage_bias_and_variance(
         advantages.monte_carlo, margin=3
     )
-    np.testing.assert_allclose(bias, 0, atol=0.1)
+    np.testing.assert_allclose(bias, 0, atol=0.04)
 
   def test_td_k_variance_lower_than_monte_carlo(self):
     (_, var_td_3) = estimate_advantage_bias_and_variance(
