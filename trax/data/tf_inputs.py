@@ -30,6 +30,7 @@ import jax
 import numpy as np
 import scipy
 import tensorflow as tf
+from tensorflow import estimator as tf_estimator
 import tensorflow_datasets as tfds
 import tensorflow_text as tf_text
 from trax import data
@@ -380,13 +381,13 @@ def _train_and_eval_dataset_v1(problem_name, data_dir, train_shuffle_files,
       hparams = problem.get_hparams()
       bair_robot_pushing_hparams(hparams)
     train_dataset = problem.dataset(
-        tf.estimator.ModeKeys.TRAIN,
+        tf_estimator.ModeKeys.TRAIN,
         data_dir,
         shuffle_files=train_shuffle_files,
         hparams=hparams)
     train_dataset = train_dataset.map(_select_features)
     eval_dataset = problem.dataset(
-        tf.estimator.ModeKeys.EVAL,
+        tf_estimator.ModeKeys.EVAL,
         data_dir,
         shuffle_files=eval_shuffle_files,
         hparams=hparams)
