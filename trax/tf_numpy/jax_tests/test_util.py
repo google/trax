@@ -260,46 +260,6 @@ def check_vjp(f, f_vjp, args, atol=None, rtol=None, eps=EPS):
   check_close(ip, ip_expected, atol=atol, rtol=rtol)
 
 
-@contextmanager
-def count_primitive_compiles():
-  xla.xla_primitive_callable.cache_clear()
-
-  # We count how many times we call primitive_computation (which is called
-  # inside xla_primitive_callable) instead of xla_primitive_callable so we don't
-  # count cache hits.
-  primitive_computation = xla.primitive_computation
-  count = [0]
-
-  def primitive_computation_and_count(*args, **kwargs):
-    count[0] += 1
-    return primitive_computation(*args, **kwargs)
-
-  xla.primitive_computation = primitive_computation_and_count
-  try:
-    yield count
-  finally:
-    xla.primitive_computation = primitive_computation
-
-
-@contextmanager
-def count_jit_and_pmap_compiles():
-  # No need to clear any caches since we generally jit and pmap fresh callables
-  # in tests.
-
-  jaxpr_subcomp = xla.jaxpr_subcomp
-  count = [0]
-
-  def jaxpr_subcomp_and_count(*args, **kwargs):
-    count[0] += 1
-    return jaxpr_subcomp(*args, **kwargs)
-
-  xla.jaxpr_subcomp = jaxpr_subcomp_and_count
-  try:
-    yield count
-  finally:
-    xla.jaxpr_subcomp = jaxpr_subcomp
-
-
 def device_under_test():
   return FLAGS.test_dut
 
