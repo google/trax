@@ -20,7 +20,6 @@ import functools
 import os
 
 import gin
-from jax import test_util  # pylint: disable=unused-import
 from jax.config import config
 import numpy as np
 from tensorflow.compat.v2 import test

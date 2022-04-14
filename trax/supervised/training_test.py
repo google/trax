@@ -21,7 +21,6 @@ import os
 import time
 
 from absl.testing import absltest
-from jax import test_util  # pylint: disable=unused-import
 from jax.config import config
 import numpy as np
 

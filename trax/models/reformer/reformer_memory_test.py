@@ -26,7 +26,6 @@ from absl.testing import absltest
 
 import jax
 from jax import numpy as jnp
-from jax import test_util  # pylint: disable=unused-import
 from jax.config import config
 
 import numpy as np

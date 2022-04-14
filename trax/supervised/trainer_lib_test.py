@@ -21,7 +21,6 @@ import os
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
-from jax import test_util  # pylint: disable=unused-import
 from jax.config import config
 import tensorflow.compat.v2 as tf
 from trax import fastmath
