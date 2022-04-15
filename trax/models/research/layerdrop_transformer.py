@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 """Layer-Skipping Transformer Models.
 
 Like in https://arxiv.org/pdf/1909.11556.pdf

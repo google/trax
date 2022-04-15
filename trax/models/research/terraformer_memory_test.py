@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 """Test for memory usage in Terraformer models.
 
 This test is designed to run on TPUv3 hardware, processing 1 million tokens at a

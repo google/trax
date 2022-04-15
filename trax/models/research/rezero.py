@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 """ReZero Transformer Models.
 
 ReZero transformer (https://arxiv.org/abs/2003.04887) is based on a simple

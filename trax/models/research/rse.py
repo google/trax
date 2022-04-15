@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 """Residual Shuffle-Exchange Networks.
 
 https://arxiv.org/pdf/2004.04662.pdf
