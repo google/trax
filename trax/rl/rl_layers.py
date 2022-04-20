@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 """A number of RL functions intended to be later wrapped as Trax layers.
 
   Wrapping happens with help of the function tl.Fn.

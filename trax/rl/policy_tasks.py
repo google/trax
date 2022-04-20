@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 """Policy network training tasks.
 
 Policy tasks encapsulate the training process of a policy network into a simple,
