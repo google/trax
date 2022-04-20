@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 """Flags for trainer.py and rl_trainer.py.
 
 We keep these flags in sync across the trainer and the rl_trainer binaries.

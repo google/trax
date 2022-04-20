@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 """Prediction binary for the Drop task.
 
 Binary that loads a checkpoint and runs inference on selected problems

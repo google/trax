@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 """Trax accelerated math operations for fast computing on GPUs and TPUs.
 
 Import these operations directly from fastmath and import fastmath.numpy as np::
