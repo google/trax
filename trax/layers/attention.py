@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 r"""Attention-related layers, as used in Transformer(-like) models.
 
 Attention is a trainable mechanism for mapping between collections of vectors:

@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 """Implementations of common recurrent neural network cells (RNNs)."""
 
 from trax import fastmath

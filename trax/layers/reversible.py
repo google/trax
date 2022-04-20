@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 """Layers that can run in reverse to compute inputs from outputs.
 
 Reversible layers reduce the memory required for backpropagation-based
