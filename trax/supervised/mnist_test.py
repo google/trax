@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 """Test training an MNIST model 100 steps (saves time vs. 2000 steps)."""
 
 import io

@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 """data processing for BERT.
 
 For now, this file only supports fine-tuning bert-base-uncased on GLUE.

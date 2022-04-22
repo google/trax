@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 """Loop callbacks.
 
 Callbacks can be used to customize the behavior of `supervised.training.Loop`

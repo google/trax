@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 """Nesterov momentum optimizer (also known as Nesterov Accelerated Gradient)."""
 
 from trax.fastmath import numpy as jnp

@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 """Simplified API (under development) for supervised learning/training in Trax.
 
 This module will eventually replace :py:class:`trainer_lib.Trainer`.
