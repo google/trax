@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Lint as: python3
 """Transformer models: encoder, decoder, language model, and encoder-decoder.
 
 The "Transformer" name and network architecture were introduced in the paper
