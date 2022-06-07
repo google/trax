@@ -28,6 +28,7 @@ import gin
 import jax
 import numpy as np
 import scipy
+import scipy.special
 import tensorflow as tf
 from tensorflow import estimator as tf_estimator
 import tensorflow_datasets as tfds
@@ -1732,8 +1733,7 @@ def compute_single_result(op_name, num_args):
   elif op_name == 'circumface':
     return 2 * math.pi * num_args[0]
   elif op_name == 'choose':
-    # Older versions of scipy may require scipy.misc.comb.
-    return scipy.special.comb(num_args[0], num_args[1])  # pylint: disable=unreachable
+    return scipy.special.comb(num_args[0], num_args[1])
   elif op_name == 'cosine':
     return math.cos(num_args[0])
   elif op_name == 'cube_edge_by_volume':
@@ -1929,8 +1929,7 @@ def single_op_to_python_command(op_name, num_args):
   elif op_name == 'circumface':
     return '2 * math.pi * {}'.format(num_args[0])
   elif op_name == 'choose':
-    # Older versions of scipy may require scipy.misc.comb.
-    return 'scipy.special.comb({}, {})'.format(num_args[0], num_args[1])  # pylint: disable=unreachable
+    return 'scipy.special.comb({}, {})'.format(num_args[0], num_args[1])
   elif op_name == 'cosine':
     return 'math.cos({})'.format(num_args[0])
   elif op_name == 'cube_edge_by_volume':
