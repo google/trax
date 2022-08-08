@@ -209,7 +209,7 @@ class ndarray(object):  # pylint: disable=invalid-name
       ValueError: If the array does not have size 1.
     """
     # TODO(wangpeng): Handle graph mode
-    return np.asscalar(self.data.numpy())
+    return self.data.numpy().item()
 
   def tolist(self):
     return self.data.numpy().tolist()
