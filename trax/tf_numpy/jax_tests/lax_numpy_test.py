@@ -927,7 +927,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
     check_xla = not set((lhs_dtype, rhs_dtype)).intersection(
         (onp.int32, onp.int64))
 
-    tol = {onp.float64: 1e-14}
+    tol = {onp.float64: 1e-14, onp.float16: 0.04, onp.complex128: 6e-15}
     tol = max(jtu.tolerance(lhs_dtype, tol), jtu.tolerance(rhs_dtype, tol))
     self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True,
                           check_incomplete_shape=True,
@@ -1301,8 +1301,12 @@ class LaxBackedNumpyTests(jtu.TestCase):
                             tol=tol)
     # XLA lacks int64 Cumsum/Cumprod kernels (b/168841378).
     check_xla = out_dtype != onp.int64
+    rtol = None
+    if out_dtype == onp.float16:
+      rtol = 2e-3
     self._CompileAndCheck(
-        lnp_fun, args_maker, check_dtypes=True, check_incomplete_shape=True,
+        lnp_fun, args_maker, check_dtypes=True, rtol=rtol,
+        check_incomplete_shape=True,
         check_experimental_compile=check_xla,
         check_xla_forced_compile=check_xla)
 
