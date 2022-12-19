@@ -249,7 +249,7 @@ class EfficientAttentionTest(test.TestCase, parameterized.TestCase):
       hidden = 8
 
       x = np.random.uniform(size=(batch, max_len, hidden))
-      mask = np.ones((batch, max_len)).astype(np.bool)
+      mask = np.ones((batch, max_len)).astype(bool)
       rngs = jax.random.randint(
           jax.random.PRNGKey(0), (batch,), minval=1, maxval=max_len - 1)
 

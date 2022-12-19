@@ -61,7 +61,7 @@ def estimate_advantage_bias_and_variance(
   else:
     values = np.zeros_like(returns)
 
-  dones = np.zeros_like(returns, dtype=np.bool)
+  dones = np.zeros_like(returns, dtype=bool)
   adv = advantage_fn(rewards, returns, values, dones, discount_mask)
   if discount_true_return:
     mean_return = true_returns[0, 0]
@@ -219,8 +219,8 @@ class AdvantagesTest(parameterized.TestCase):
     # (... when gamma=0)
     rewards = np.array([[1, 2, 3, 4]], dtype=np.float32)
     values = np.array([[5, 6, 7, 8]], dtype=np.float32)
-    dones = np.zeros_like(rewards, dtype=np.bool)
-    discount_mask = np.array([[1, 0, 1, 0]], dtype=np.bool)
+    dones = np.zeros_like(rewards, dtype=bool)
+    discount_mask = np.array([[1, 0, 1, 0]], dtype=bool)
     gammas = advantages.mask_discount(0.0, discount_mask)
     returns = advantages.discounted_returns(rewards, gammas)
     adv = advantage_fn(gamma=0.0, margin=1)(

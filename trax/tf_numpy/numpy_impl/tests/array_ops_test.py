@@ -558,7 +558,7 @@ class ArrayMethodsTest(tf.test.TestCase):
           self.match(
               array_ops.compress(arg1, arg2, *args, **kwargs),
               np.compress(
-                  np.asarray(arg1).astype(np.bool), arg2, *args, **kwargs))
+                  np.asarray(arg1).astype(bool), arg2, *args, **kwargs))
 
     run_test([True], 5)
     run_test([False], 5)

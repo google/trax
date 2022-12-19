@@ -104,7 +104,7 @@ class TerraformerTest(parameterized.TestCase):
 
       if preembed:
         model_inputs = [np.ones((1, max_len, 3)).astype(np.float32),
-                        np.ones((1, max_len)).astype(np.bool)]
+                        np.ones((1, max_len)).astype(bool)]
       else:
         model_inputs = [np.ones((1, max_len)).astype(np.int32)]
       x = model_inputs + [np.ones((1, max_len)).astype(np.int32)]

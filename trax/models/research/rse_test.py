@@ -51,7 +51,7 @@ class RSETest(absltest.TestCase):
     x = _input_with_indice_as_values(seq_len, d_model)
     _, _ = shuffle_layer.init(shapes.signature(x))
     y = x
-    for _ in range(np.int(np.log2(seq_len))):
+    for _ in range(int(np.log2(seq_len))):
       y = shuffle_layer(y)
     self._assert_equal_tensors(x, y)
 
@@ -71,7 +71,7 @@ class RSETest(absltest.TestCase):
     x = _input_with_indice_as_values(seq_len, d_model)
     _, _ = reverse_shuffle_layer.init(shapes.signature(x))
     y = x
-    for _ in range(np.int(np.log2(seq_len))):
+    for _ in range(int(np.log2(seq_len))):
       y = reverse_shuffle_layer(y)
     self._assert_equal_tensors(x, y)
 
