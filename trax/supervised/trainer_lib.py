@@ -451,9 +451,9 @@ class Trainer:
     if self.n_devices > 1:
       batch = _reshape_by_device(batch, self.n_devices)
     weights = self._opt_state.weights[0]
-    forward_computation = jax.xla_computation(self._model_predict_eval)(
+    forward_computation = jax.jit(self._model_predict_eval).lower(
         batch, weights=weights, state=self._model_state[0],
-        rng=self._rngs[0])
+        rng=self._rngs[0]).compiler_ir(dialect='hlo')
     with tf.io.gfile.GFile(os.path.join(output_dir, 'forward.txt'), 'w') as f:
       f.write(forward_computation.as_hlo_text())
     with tf.io.gfile.GFile(os.path.join(output_dir, 'forward.dot'), 'w') as f:
