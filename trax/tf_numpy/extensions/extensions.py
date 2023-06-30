@@ -122,20 +122,11 @@ def _canonicalize_jit_arguments(inp):
 
 def _tf_to_np(inp):
     def f(x):
-        print("x: ", type(x))
-
         if type(x).__name__ == "ndarray":
-            print("x is a type of: tf.python.ops.numpy_ops.np_arrays.ndarray")
-            print(x)
             data = x._data
 
             if isinstance(data, tf.IndexedSlices):
-                print(
-                    "x is a type of: tf.python.framework.indexed_slices.IndexedSlices"
-                )
-                print("x_tmp: ", data)
                 data = tf.convert_to_tensor(data)
-                print("tf_np.asarray(x_tmp): ", tf_np.asarray(data))
                 return tf_np.asarray(data)
 
         if isinstance(x, tf.IndexedSlices):
@@ -264,8 +255,6 @@ def grad(f, has_aux=False):
     """
 
     def check_loss_shape(np_loss):
-        print("check_loss_shape: ", np_loss)
-        print("check_loss_shape: ", type(np_loss))
         if not isinstance(np_loss, tf_np.ndarray):
             raise ValueError(
                 "The result of the function to take gradient must be an ndarray."
@@ -281,21 +270,19 @@ def grad(f, has_aux=False):
     def _f(params, *args):
         """The gradient function to be returned."""
         with tf.GradientTape() as g:
-            print("params 1: ", params)
             g.watch(tf.nest.flatten(params))
             outputs = f(params, *args)
-            print("outputs: ", outputs)
+
             if has_aux:
                 np_loss, aux = outputs
             else:
                 np_loss = outputs
 
             check_loss_shape(np_loss)
-            print("np_loss: ", np_loss)
-            print("params 1: ", params)
+
             tf_grads = g.gradient(np_loss, params)
             tf_grads = _tf_to_np(tf_grads)
-            print("tf_grads: ", tf_grads)
+
             if has_aux:
                 res = (tf_grads, aux)
             else:

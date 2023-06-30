@@ -217,12 +217,11 @@ def _accelerate_update_fn(
         ):
             step = jnp.array(step, dtype=jnp.int32)  # Needed in TFNP backend.
             weights, slots = weights_and_slots
-            print("single_device_update_fn weights: ", weights)
-            print("single_device_update_fn slots: ", slots)
+
             (loss, state), gradients = forward_and_backward_fn(
                 batch, weights, state, rng
             )
-            print("single_device_update_fn gradients: ", gradients)
+
             weights, slots, stats = optimizer.tree_update(
                 step, gradients, weights, slots, opt_params, store_slots=False
             )
