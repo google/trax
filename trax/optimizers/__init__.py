@@ -17,6 +17,7 @@
 
 import gin
 
+from trax.optimizers import sgd
 from trax.optimizers import adafactor
 from trax.optimizers import adam
 from trax.optimizers import base
@@ -29,12 +30,13 @@ from trax.optimizers.trainer import Trainer
 
 
 def opt_configure(*args, **kwargs):
-  kwargs['module'] = 'trax.optimizers'
-  return gin.external_configurable(*args, **kwargs)
+    kwargs["module"] = "trax.optimizers"
+    return gin.external_configurable(*args, **kwargs)
+
 
 # Optimizers (using upper-case names).
 # pylint: disable=invalid-name
-SGD = opt_configure(base.SGD)
+SGD = opt_configure(sgd.SGD)
 Momentum = opt_configure(momentum.Momentum)
 RMSProp = opt_configure(rms_prop.RMSProp)
 Adam = opt_configure(adam.Adam)

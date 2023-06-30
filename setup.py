@@ -20,56 +20,58 @@ from setuptools import find_packages
 from setuptools import setup
 
 setup(
-    name='trax',
-    version='1.4.1',
-    description='Trax',
+    name="trax",
+    version="1.4.1",
+    description="Trax",
     long_description=(
-        'Trax helps you understand deep learning. We start with basic maths and'
-        ' go through layers, models, supervised and reinforcement learning. We '
-        'get to advanced deep learning results, including recent papers and '
-        'state-of-the-art models.'
+        "Trax helps you understand deep learning. We start with basic maths and"
+        " go through layers, models, supervised and reinforcement learning. We "
+        "get to advanced deep learning results, including recent papers and "
+        "state-of-the-art models."
     ),
-    author='Google Inc.',
-    author_email='no-reply@google.com',
-    url='http://github.com/google/trax',
-    license='Apache 2.0',
+    author="Google Inc.",
+    author_email="no-reply@google.com",
+    url="http://github.com/google/trax",
+    license="Apache 2.0",
     packages=find_packages(),
     install_requires=[
-        'absl-py',
-        'funcsigs',
-        'gin-config',
-        'gym',
-        'jax',
-        'jaxlib',
-        'matplotlib',
-        'numpy',
-        'psutil',
-        'scipy',
-        'six',
-        'tensorflow-datasets',
-        'tensorflow-text',
+        "absl-py",
+        "funcsigs",
+        "gin-config",
+        "gym",
+        "jax",
+        "jaxlib",
+        "matplotlib",
+        "numpy",
+        "psutil",
+        "scipy",
+        "six",
+        "tensorflow-datasets",
+        "tensorflow-text",
     ],
     extras_require={
-        'tensorflow': ['tensorflow>=1.15.0'],
-        'tensorflow_gpu': ['tensorflow-gpu>=1.15.0'],
-        't5': ['t5>=0.4.0'],
-        'tests': [
-            'attrs',
-            'jupyter',
-            'mock',
-            'parameterized',
-            'pylint',
-            'pytest',
-            'wrapt==1.11.*',
+        "tensorflow": ["tensorflow>=1.15.0"],
+        "tensorflow_gpu": ["tensorflow-gpu>=1.15.0"],
+        "t5": ["t5>=0.4.0"],
+        "tests": [
+            "attrs",
+            "jupyter",
+            "mock",
+            "parameterized",
+            "pylint",
+            "pytest",
+            "wrapt==1.11.*",
         ],
-        't2t': ['tensor2tensor',],
+        "t2t": [
+            "tensor2tensor",
+        ],
     },
     classifiers=[
-        'Development Status :: 4 - Beta',
-        'Intended Audience :: Developers',
-        'Intended Audience :: Science/Research',
-        'License :: OSI Approved :: Apache Software License',
-        'Topic :: Scientific/Engineering :: Artificial Intelligence',
+        "Development Status :: 4 - Beta",
+        "Intended Audience :: Developers",
+        "Intended Audience :: Science/Research",
+        "License :: OSI Approved :: Apache Software License",
+        "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
-    keywords='tensorflow machine learning jax',
+    keywords="tensorflow machine learning jax",
 )
