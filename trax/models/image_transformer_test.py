@@ -13,58 +13,59 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Resnet tests."""
+"""Tests for Transformer."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensor2tensor.data_generators import problem_hparams
-from tensor2tensor.layers import modalities
-from tensor2tensor.models import resnet
+from tensor2tensor.layers import common_image_attention
+from tensor2tensor.models import image_transformer
 
 import tensorflow.compat.v1 as tf
 from tensorflow.compat.v1 import estimator as tf_estimator
 
 
-def resnet_tiny_cpu():
-  hparams = resnet.resnet_base()
-  hparams.layer_sizes = [2, 2, 2, 2]
-  hparams.use_nchw = False
-  return hparams
+class ImagetransformerTest(parameterized.TestCase, tf.test.TestCase):
 
-
-class ResnetTest(tf.test.TestCase):
-
-  def _test_resnet(self, img_size, output_size):
-    vocab_size = 9
-    batch_size = 2
-    x = np.random.randint(
-        256, size=(batch_size, img_size, img_size, 3))
-    y = np.random.randint(
-        1, high=vocab_size, size=(batch_size, 1, 1, 1))
-    hparams = resnet_tiny_cpu()
+  @parameterized.named_parameters(
+      ("ImageTransformerCat",
+       image_transformer.Imagetransformer,
+       image_transformer.imagetransformer_tiny()),
+      ("ImageTransformerDmol",
+       image_transformer.Imagetransformer,
+       image_transformer.imagetransformerpp_tiny()),
+  )
+  def testImagetransformer(self, net, hparams):
+    batch_size = 3
+    size = 7
+    vocab_size = 256
     p_hparams = problem_hparams.test_problem_hparams(vocab_size,
                                                      vocab_size,
                                                      hparams)
-    p_hparams.modality["inputs"] = modalities.ModalityType.IMAGE
-    p_hparams.modality["targets"] = modalities.ModalityType.CLASS_LABEL
+    inputs = np.random.randint(
+        vocab_size, size=(batch_size, 1, 1, 1))
+    targets = np.random.randint(
+        vocab_size, size=(batch_size, size, size, 3))
     with self.test_session() as session:
       features = {
-          "inputs": tf.constant(x, dtype=tf.int32),
-          "targets": tf.constant(y, dtype=tf.int32),
+          "inputs": tf.constant(inputs, dtype=tf.int32),
+          "targets": tf.constant(targets, dtype=tf.int32),
+          "target_space_id": tf.constant(1, dtype=tf.int32),
       }
-      model = resnet.Resnet(hparams, tf_estimator.ModeKeys.TRAIN, p_hparams)
+      model = net(hparams, tf_estimator.ModeKeys.TRAIN, p_hparams)
       logits, _ = model(features)
       session.run(tf.global_variables_initializer())
       res = session.run(logits)
-    self.assertEqual(res.shape, (batch_size,) + output_size + (1, vocab_size))
-
-  def testResnetLarge(self):
-    self._test_resnet(img_size=224, output_size=(1, 1))
-
+    if hparams.likelihood == common_image_attention.DistributionType.CAT:
+      expected = (batch_size, size, size, 3, vocab_size)
+    else:
+      expected = (batch_size, size, size, hparams.num_mixtures * 10)
+    self.assertEqual(res.shape, expected)
 
 if __name__ == "__main__":
   tf.test.main()
