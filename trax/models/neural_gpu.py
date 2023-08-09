@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The Trax Authors.
+# Copyright 2023 The Tensor2Tensor Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,65 +13,109 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Implementation of the improved Neural GPU (NGPU)."""
+"""The Neural GPU model and its variants."""
 
-from trax import layers as tl
-from trax.fastmath import numpy as jnp
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from six.moves import range  # pylint: disable=redefined-builtin
 
+from tensor2tensor.layers import common_hparams
+from tensor2tensor.layers import common_layers
+from tensor2tensor.utils import registry
+from tensor2tensor.utils import t2t_model
 
-# TODO(ddohan): Combinator to add saturation costs to loss
-def SaturationCost(x, limit=0.9):
-  return jnp.minimum(0, jnp.abs(x) - limit)
-
-
-def DiagonalGate():
-  """Split channels in 3 parts. Shifts 1st and 3rd sections to left/right."""
-
-  def f(x):  # pylint: disable=invalid-name
-    # x : [batch, 1, length, depth]
-    x = jnp.pad(x, [(0, 0), (0, 0), (1, 1), (0, 0)],
-                mode='constant', constant_values=0.0)
-    depth = x.shape[-1] // 3
-    assert 3 * depth == x.shape[-1], ('Depth must be divisible by 3', depth,
-                                      x.shape)
-    xs = [
-        x[:, :, :-2, :depth], x[:, :, 1:-1, depth:2 * depth],
-        x[:, :, 2:, 2 * depth:3 * depth]
-    ]
-    return jnp.concatenate(xs, axis=3)
-  return tl.Fn('DiagonalGate', f)
+import tensorflow.compat.v1 as tf
 
 
-def ConvDiagonalGRU(units, kernel_size=(3, 3)):
-  """Build convolutional GRU with diagonal gating as in ImprovedNGPU."""
+def neural_gpu_body(inputs, hparams, name=None):
+  """The core Neural GPU."""
+  with tf.variable_scope(name, "neural_gpu"):
 
-  def BuildConv():
-    return tl.Conv(filters=units, kernel_size=kernel_size, padding='SAME')
+    def step(state, inp):  # pylint: disable=missing-docstring
+      x = tf.nn.dropout(state, 1.0 - hparams.dropout)
+      for layer in range(hparams.num_hidden_layers):
+        x = common_layers.conv_gru(
+            x, (hparams.kernel_height, hparams.kernel_width),
+            hparams.hidden_size,
+            name="cgru_%d" % layer)
+      # Padding input is zeroed-out in the modality, we check this by summing.
+      padding_inp = tf.less(tf.reduce_sum(tf.abs(inp), axis=[1, 2]), 0.00001)
+      new_state = tf.where(padding_inp, state, x)  # No-op where inp is padding.
+      return new_state
 
-  return tl.GeneralGRUCell(
-      candidate_transform=BuildConv,
-      memory_transform_fn=DiagonalGate,
-      gate_nonlinearity=tl.HardSigmoid,
-      candidate_nonlinearity=tl.HardTanh)
+    return tf.foldl(
+        step,
+        tf.transpose(inputs, [1, 0, 2, 3]),
+        initializer=inputs,
+        parallel_iterations=1,
+        swap_memory=True)
 
 
-def NeuralGPU(d_feature=96, steps=16, vocab_size=2, mode='train'):
-  """Implementation of Neural GPU: https://arxiv.org/abs/1702.08727.
+@registry.register_model
+class NeuralGPU(t2t_model.T2TModel):
 
-  Args:
-    d_feature: Number of memory channels (dimensionality of feature embedding).
-    steps: Number of times depthwise recurrence steps.
-    vocab_size: Vocabulary size.
-    mode: Whether we are training or evaluating or doing inference.
+  def body(self, features):
+    return neural_gpu_body(features["inputs"], self._hparams)
 
-  Returns:
-    A NeuralGPU Stax model.
-  """
-  del mode
 
-  core = ConvDiagonalGRU(units=d_feature)
-  return tl.Serial(
-      tl.Embedding(vocab_size=vocab_size, d_feature=d_feature),
-      [core] * steps,
-      tl.Dense(vocab_size),
-  )
+def diagonal_neural_gpu(inputs, hparams, name=None):
+  """Improved Neural GPU as in https://arxiv.org/abs/1702.08727."""
+  with tf.variable_scope(name, "diagonal_neural_gpu"):
+
+    def step(state_tup, inp):
+      """Single step of the improved Neural GPU."""
+      state, _ = state_tup
+      x = state
+      for layer in range(hparams.num_hidden_layers):
+        x, new_loss = common_layers.diagonal_conv_gru(
+            x, (hparams.kernel_height, hparams.kernel_width),
+            hparams.hidden_size,
+            dropout=hparams.dropout,
+            name="dcgru_%d" % layer)
+      # Padding input is zeroed-out in the modality, we check this by summing.
+      padding_inp = tf.less(tf.reduce_sum(tf.abs(inp), axis=[1, 2]), 0.00001)
+      new_state = tf.where(padding_inp, state, x)  # No-op where inp is padding.
+      return new_state, new_loss
+
+    final_state, losses = tf.scan(
+        step,
+        tf.transpose(inputs, [1, 0, 2, 3]),
+        initializer=(inputs, tf.constant(0.0)),
+        parallel_iterations=1,
+        swap_memory=True)
+    return final_state[0, :, :, :, :], 2.0 * tf.reduce_mean(losses)
+
+
+@registry.register_model
+class DiagonalNeuralGPU(t2t_model.T2TModel):
+
+  def body(self, features):
+    return diagonal_neural_gpu(features["inputs"], self._hparams)
+
+
+@registry.register_hparams
+def neural_gpu():
+  """Set of hyperparameters."""
+  hparams = common_hparams.basic_params1()
+  hparams.daisy_chain_variables = False
+  hparams.batch_size = 1024
+  hparams.num_hidden_layers = 1
+  hparams.hidden_size = 256
+  hparams.dropout = 0.1
+  hparams.label_smoothing = 0.0
+  hparams.clip_grad_norm = 10.0
+  hparams.num_hidden_layers = 1
+  hparams.kernel_height = 3
+  hparams.kernel_width = 1
+  hparams.learning_rate_decay_scheme = "exp"
+  hparams.learning_rate = 0.02
+  hparams.learning_rate_warmup_steps = 3000
+  hparams.initializer_gain = 1.0
+  hparams.weight_decay = 0.0
+  hparams.num_sampled_classes = 0
+  hparams.sampling_method = "argmax"
+  hparams.optimizer_adam_epsilon = 1e-6
+  hparams.optimizer_adam_beta1 = 0.85
+  hparams.optimizer_adam_beta2 = 0.997
+  return hparams

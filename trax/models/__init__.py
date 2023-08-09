@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The Trax Authors.
+# Copyright 2023 The Tensor2Tensor Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,80 +13,87 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Models defined in trax."""
-import gin
+"""Models defined in T2T. Imports here force registration."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
-from trax.models import atari_cnn
-from trax.models import mlp
-from trax.models import neural_gpu
-from trax.models import resnet
-from trax.models import rl
-from trax.models import rnn
-from trax.models import transformer
-from trax.models.reformer import reformer
-from trax.models.research import bert
-from trax.models.research import configurable_transformer
-from trax.models.research import hourglass
-from trax.models.research import layerdrop_transformer
-from trax.models.research import rezero
-from trax.models.research import rse
-from trax.models.research import terraformer
-from trax.models.research import transformer2
+import six
+
+# pylint: disable=unused-import
+
+from tensor2tensor.layers import modalities  # pylint: disable=g-import-not-at-top
+from tensor2tensor.models import basic
+from tensor2tensor.models import bytenet
+from tensor2tensor.models import distillation
+from tensor2tensor.models import evolved_transformer
+from tensor2tensor.models import image_transformer
+from tensor2tensor.models import image_transformer_2d
+from tensor2tensor.models import lstm
+from tensor2tensor.models import neural_assistant
+from tensor2tensor.models import neural_gpu
+from tensor2tensor.models import resnet
+from tensor2tensor.models import revnet
+from tensor2tensor.models import shake_shake
+from tensor2tensor.models import slicenet
+from tensor2tensor.models import text_cnn
+from tensor2tensor.models import transformer
+from tensor2tensor.models import vanilla_gan
+from tensor2tensor.models import xception
+from tensor2tensor.models.neural_architecture_search import nas_model
+from tensor2tensor.models.research import adafactor_experiments
+from tensor2tensor.models.research import aligned
+from tensor2tensor.models.research import autoencoders
+from tensor2tensor.models.research import cycle_gan
+from tensor2tensor.models.research import gene_expression
+from tensor2tensor.models.research import neural_stack
+from tensor2tensor.models.research import residual_shuffle_exchange
+from tensor2tensor.models.research import rl
+from tensor2tensor.models.research import shuffle_network
+from tensor2tensor.models.research import similarity_transformer
+from tensor2tensor.models.research import super_lm
+from tensor2tensor.models.research import transformer_moe
+from tensor2tensor.models.research import transformer_nat
+from tensor2tensor.models.research import transformer_parallel
+from tensor2tensor.models.research import transformer_revnet
+from tensor2tensor.models.research import transformer_seq2edits
+from tensor2tensor.models.research import transformer_sketch
+from tensor2tensor.models.research import transformer_symshard
+from tensor2tensor.models.research import transformer_vae
+from tensor2tensor.models.research import universal_transformer
+from tensor2tensor.models.video import basic_deterministic
+from tensor2tensor.models.video import basic_recurrent
+from tensor2tensor.models.video import basic_stochastic
+from tensor2tensor.models.video import emily
+from tensor2tensor.models.video import savp
+from tensor2tensor.models.video import sv2p
+from tensor2tensor.utils import contrib
+from tensor2tensor.utils import registry
+
+# The following models can't be imported under TF2
+if not contrib.is_tf2:
+  # pylint: disable=g-import-not-at-top
+  from tensor2tensor.models.research import attention_lm
+  from tensor2tensor.models.research import attention_lm_moe
+  from tensor2tensor.models.research import glow
+  from tensor2tensor.models.research import lm_experiments
+  from tensor2tensor.models.research import moe_experiments
+  from tensor2tensor.models.research import multiquery_paper
+  from tensor2tensor.models import mtf_image_transformer
+  from tensor2tensor.models import mtf_resnet
+  from tensor2tensor.models import mtf_transformer
+  from tensor2tensor.models import mtf_transformer2
+  from tensor2tensor.models.research import vqa_attention
+  from tensor2tensor.models.research import vqa_recurrent_self_attention
+  from tensor2tensor.models.research import vqa_self_attention
+  from tensor2tensor.models.video import epva
+  from tensor2tensor.models.video import next_frame_glow
+  # pylint: enable=g-import-not-at-top
+
+# pylint: disable=unused-import
+
+# pylint: enable=unused-import
 
 
-# Ginify
-def model_configure(*args, **kwargs):
-  kwargs['module'] = 'trax.models'
-  return gin.external_configurable(*args, **kwargs)
-
-
-# pylint: disable=invalid-name
-AtariCnn = model_configure(atari_cnn.AtariCnn)
-AtariCnnBody = model_configure(atari_cnn.AtariCnnBody)
-FrameStackMLP = model_configure(atari_cnn.FrameStackMLP)
-BERT = model_configure(bert.BERT)
-BERTClassifierHead = model_configure(bert.BERTClassifierHead)
-BERTRegressionHead = model_configure(bert.BERTRegressionHead)
-ConfigurableTerraformer = model_configure(terraformer.ConfigurableTerraformer)
-ConfigurableTransformer = model_configure(
-    configurable_transformer.ConfigurableTransformer)
-ConfigurableTransformerEncoder = model_configure(
-    configurable_transformer.ConfigurableTransformerEncoder)
-ConfigurableTransformerLM = model_configure(
-    configurable_transformer.ConfigurableTransformerLM)
-MLP = model_configure(mlp.MLP)
-NeuralGPU = model_configure(neural_gpu.NeuralGPU)
-Reformer = model_configure(reformer.Reformer)
-ReformerLM = model_configure(reformer.ReformerLM)
-ReformerShortenLM = model_configure(reformer.ReformerShortenLM)
-Resnet50 = model_configure(resnet.Resnet50)
-ReZeroTransformer = model_configure(
-    rezero.ReZeroTransformer)
-ReZeroTransformerDecoder = model_configure(
-    rezero.ReZeroTransformerDecoder)
-ReZeroTransformerEncoder = model_configure(
-    rezero.ReZeroTransformerEncoder)
-ReZeroTransformerLM = model_configure(
-    rezero.ReZeroTransformerLM)
-SkippingTransformerLM = model_configure(
-    layerdrop_transformer.SkippingTransformerLM)
-LayerDropTransformerLM = model_configure(
-    layerdrop_transformer.LayerDropTransformerLM)
-EveryOtherLayerDropTransformerLM = model_configure(
-    layerdrop_transformer.EveryOtherLayerDropTransformerLM)
-Transformer = model_configure(transformer.Transformer)
-TransformerDecoder = model_configure(transformer.TransformerDecoder)
-TransformerEncoder = model_configure(transformer.TransformerEncoder)
-TransformerLM = model_configure(transformer.TransformerLM)
-Transformer2 = model_configure(
-    transformer2.Transformer2)
-WideResnet = model_configure(resnet.WideResnet)
-Policy = model_configure(rl.Policy)
-PolicyAndValue = model_configure(rl.PolicyAndValue)
-Value = model_configure(rl.Value)
-Quality = model_configure(rl.Quality)
-RNNLM = model_configure(rnn.RNNLM)
-GRULM = model_configure(rnn.GRULM)
-LSTMSeq2SeqAttn = model_configure(rnn.LSTMSeq2SeqAttn)
-ResidualShuffleExchange = model_configure(rse.ResidualShuffleExchange)
-HourglassLM = model_configure(hourglass.HourglassLM)
+def model(name):
+  return registry.model(name)

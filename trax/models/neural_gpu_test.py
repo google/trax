@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The Trax Authors.
+# Copyright 2023 The Tensor2Tensor Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,24 +13,50 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for trax.models.neural_gpu."""
+"""Tests for Neural GPU."""
 
-from absl.testing import absltest
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 import numpy as np
 
-from trax import shapes
-from trax.models import neural_gpu
+from tensor2tensor.data_generators import problem_hparams
+from tensor2tensor.layers import common_hparams
+from tensor2tensor.models import neural_gpu
+
+import tensorflow.compat.v1 as tf
+from tensorflow.compat.v1 import estimator as tf_estimator
 
 
-class NeuralGPUTest(absltest.TestCase):
+class NeuralGPUTest(tf.test.TestCase):
 
-  def test_ngpu(self):
-    model = neural_gpu.NeuralGPU(d_feature=30, steps=4, vocab_size=22)
-    x = np.ones((3, 5, 7)).astype(np.int32)
-    _, _ = model.init(shapes.signature(x))
-    y = model(x)
-    self.assertEqual(y.shape, (3, 5, 7, 22))
+  def testNeuralGPU(self):
+    hparams = common_hparams.basic_params1()
+    batch_size = 3
+    input_length = 5
+    target_length = input_length
+    input_vocab_size = 9
+    target_vocab_size = 11
+    p_hparams = problem_hparams.test_problem_hparams(input_vocab_size,
+                                                     target_vocab_size,
+                                                     hparams)
+    inputs = np.random.randint(
+        input_vocab_size, size=(batch_size, input_length, 1, 1))
+    targets = np.random.randint(
+        target_vocab_size, size=(batch_size, target_length, 1, 1))
+    with self.test_session() as session:
+      features = {
+          "inputs": tf.constant(inputs, dtype=tf.int32),
+          "targets": tf.constant(targets, dtype=tf.int32)
+      }
+      model = neural_gpu.NeuralGPU(hparams, tf_estimator.ModeKeys.TRAIN,
+                                   p_hparams)
+      logits, _ = model(features)
+      session.run(tf.global_variables_initializer())
+      res = session.run(logits)
+    self.assertEqual(res.shape, (batch_size, target_length, 1, 1,
+                                 target_vocab_size))
 
 
-if __name__ == '__main__':
-  absltest.main()
+if __name__ == "__main__":
+  tf.test.main()
