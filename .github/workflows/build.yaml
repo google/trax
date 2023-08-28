@@ -41,7 +41,7 @@ jobs:
         # tf-nightly has some pip version conflicts, so can't be installed.
         # Use only numbered TF as of now.
         # tf-version: ["2.4.*", "tf-nightly"]
-        tf-version: ["2.4.*"]
+        tf-version: ["2.5.*"]
         # Which set of tests to run.
         trax-test: ["lib", "research"]
 
