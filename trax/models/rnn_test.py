@@ -33,7 +33,7 @@ class RNNTest(parameterized.TestCase):
   def test_rnnlm_forward_shape(self, backend):
     with fastmath.use_backend(backend):
       model = rnn.RNNLM(vocab_size=20, d_model=16)
-      x = np.ones((3, 28)).astype(np.int32)
+      x = (np.ones((3, 28)).astype(np.int32),)
       _, _ = model.init(shapes.signature(x))
       y = model(x)
       self.assertEqual(y.shape, (3, 28, 20))
