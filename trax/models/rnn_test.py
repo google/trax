@@ -17,9 +17,9 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
-import numpy as np
 
 from trax import fastmath
+from trax.fastmath import numpy as jnp
 from trax import shapes
 from trax.models import rnn
 
@@ -33,7 +33,7 @@ class RNNTest(parameterized.TestCase):
   def test_rnnlm_forward_shape(self, backend):
     with fastmath.use_backend(backend):
       model = rnn.RNNLM(vocab_size=20, d_model=16)
-      x = (np.ones((3, 28)).astype(np.int32),)
+      x = (jnp.ones((3, 28)).astype(jnp.int32),)
       _, _ = model.init(shapes.signature(x))
       y = model(x)
       self.assertEqual(y.shape, (3, 28, 20))
@@ -41,7 +41,7 @@ class RNNTest(parameterized.TestCase):
   def test_grulm_forward_shape(self, backend):
     with fastmath.use_backend(backend):
       model = rnn.GRULM(vocab_size=20, d_model=16)
-      x = np.ones((3, 28)).astype(np.int32)
+      x = jnp.ones((3, 28)).astype(jnp.int32)
       _, _ = model.init(shapes.signature(x))
       y = model(x)
       self.assertEqual(y.shape, (3, 28, 20))
@@ -50,7 +50,7 @@ class RNNTest(parameterized.TestCase):
     with fastmath.use_backend(backend):
       model = rnn.LSTMSeq2SeqAttn(
           input_vocab_size=20, target_vocab_size=20, d_model=16)
-      x = np.ones((3, 28)).astype(np.int32)
+      x = jnp.ones((3, 28)).astype(jnp.int32)
       _, _ = model.init([shapes.signature(x), shapes.signature(x)])
       ys = model([x, x])
       self.assertEqual([y.shape for y in ys], [(3, 28, 20), (3, 28)])
