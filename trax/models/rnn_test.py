@@ -30,7 +30,8 @@ BACKENDS = [fastmath.Backend.JAX]
     ('_' + b.value, b) for b in BACKENDS)
 class RNNTest(parameterized.TestCase):
 
-  def test_rnnlm_forward_shape(self, backend):
+  def test_rnnlm_forw
+    ard_shape(self, backend):
     with fastmath.use_backend(backend):
       model = rnn.RNNLM(vocab_size=20, d_model=16)
       x = np.ones((3, 28)).astype(np.int32)
