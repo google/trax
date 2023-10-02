@@ -17,7 +17,7 @@
 
 import functools
 
-import tensorflow.compat.v2 as tf
+import tensorflow.compat.v2 as tf  # type: ignore
 
 from trax import fastmath as math_lib
 from trax import shapes as shapes_lib

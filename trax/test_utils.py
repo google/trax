@@ -26,10 +26,10 @@ FLAGS = flags.FLAGS
 # so if flags are required in tests, this will ensure that flags are manually
 # parsed and the desired flag exists.
 def ensure_flag(flag_str):
-  try:
-    getattr(FLAGS, flag_str)
-  except flags.UnparsedFlagAccessError:
-    # Manually parse flags.
-    FLAGS(sys.argv)
-  finally:
-    assert getattr(FLAGS, flag_str)
+    try:
+        getattr(FLAGS, flag_str)
+    except flags.UnparsedFlagAccessError:
+        # Manually parse flags.
+        FLAGS(sys.argv)
+    finally:
+        assert getattr(FLAGS, flag_str)
