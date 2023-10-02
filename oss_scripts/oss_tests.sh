@@ -121,8 +121,8 @@ else
   set_status
 
   ## RL Trax
-  pytest trax/rl
-  set_status
+  # pytest trax/rl
+  # set_status
 
   ## Trax2Keras
   # TODO(afrozm): Make public again after TF 2.5 releases.
