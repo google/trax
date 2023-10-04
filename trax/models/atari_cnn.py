@@ -24,11 +24,11 @@ def _FrameStack(n_frames):
     # Output shape: (B, T, ..., C * n_frames).
     assert n_frames >= 1
     if n_frames == 1:
-        return []  # No-op; just let the data flow through.
+        return tl.Select([0])  # No-op; just let the data flow through.
     return [
         # Create copies of input sequence, shift right by [0, ..., n_frames - 1]
         # frames, and concatenate along the channel dimension.
-        tl.Branch(*map(_shift_right, range(n_frames))),
+        tl.Branch(*[tl.ShiftRight() for _ in range(n_frames)]),
         tl.Concatenate(n_items=n_frames, axis=-1),
     ]
 
@@ -114,7 +114,3 @@ def FrameStackMLP(n_frames=4, hidden_sizes=(64,), output_size=64, mode="train"):
         [[tl.Dense(d_hidden), tl.Relu()] for d_hidden in hidden_sizes],
         tl.Dense(output_size),
     )
-
-
-def _shift_right(n):  # pylint: disable=invalid-name
-    return [tl.ShiftRight()] * n

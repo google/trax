@@ -15,14 +15,13 @@
 
 """Tests for rnn layers."""
 
+import numpy as np
 from absl.testing import absltest
 from absl.testing import parameterized
-import numpy as np
 
+import trax.layers as tl
 from trax import fastmath
 from trax import shapes
-import trax.layers as tl
-
 
 BACKENDS = [fastmath.Backend.JAX]
 
@@ -56,7 +55,7 @@ class RnnTest(parameterized.TestCase):
     def test_sru(self, backend):
         with fastmath.use_backend(backend):
             layer = tl.SRU(7)
-            x = [np.ones((8, 9, 7), np.float32)]
+            x = np.ones((8, 9, 7), np.float32)
             _, _ = layer.init(shapes.signature(x))
             y = layer(x)
             self.assertEqual(y.shape, x.shape)

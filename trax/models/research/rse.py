@@ -27,31 +27,30 @@ from trax.layers.assert_shape import assert_shape
 
 # pylint: disable=invalid-name
 def _inverse_sigmoid(x):
-  return np.log(x / (1 - x))
+    return np.log(x / (1 - x))
 
 
-@assert_shape('...->...')
+@assert_shape("...->...")
 class _ClippedScaling(tl.Layer):
-  """Pointwise multiplies by sigmoid(S) with a learnable vector S."""
+    """Pointwise multiplies by sigmoid(S) with a learnable vector S."""
 
-  def __init__(self,
-               residual_weight):
-    super().__init__(n_in=1, n_out=1)
-    self._residual_weight = residual_weight
+    def __init__(self, residual_weight):
+        super().__init__(n_in=1, n_out=1)
+        self._residual_weight = residual_weight
 
-  def forward(self, x):
-    s = self.weights
-    return jnp.multiply(x, fastmath.expit(s))
+    def forward(self, x):
+        s = self.weights
+        return jnp.multiply(x, fastmath.expit(s))
 
-  def init_weights_and_state(self, input_signature):
-    self.weights = _inverse_sigmoid(self._residual_weight) * np.ones(
-        (input_signature.shape[-1])).astype('float32')
+    def init_weights_and_state(self, input_signature):
+        self.weights = _inverse_sigmoid(self._residual_weight) * np.ones(
+            (input_signature.shape[-1])
+        ).astype("float32")
 
 
-@assert_shape('bld->bld')
-def ResidualSwitchUnit(
-    d_model, dropout=0.1, mode='train', residual_weight=0.9):
-  r"""RSU (Residual Switch Unit) layer as in https://arxiv.org/pdf/2004.04662.pdf.
+@assert_shape("bld->bld")
+def ResidualSwitchUnit(d_model, dropout=0.1, mode="train", residual_weight=0.9):
+    r"""RSU (Residual Switch Unit) layer as in https://arxiv.org/pdf/2004.04662.pdf.
 
   As defined in the paper:
 
@@ -75,145 +74,152 @@ def ResidualSwitchUnit(
   Returns:
     The RSU layer.
   """
-  return tl.Serial(
-      tl.Fn(
-          'Reshape2Pairs',
-          lambda x: jnp.reshape(x, (x.shape[0], x.shape[1] // 2, -1)),
-          n_out=1),
-      tl.Residual(
-          tl.Dense(4 * d_model, use_bias=False),
-          tl.LayerNorm(),
-          tl.Gelu(),
-          tl.Dense(2 * d_model),
-          tl.Fn('Scaling',
+    return tl.Serial(
+        tl.Fn(
+            "Reshape2Pairs",
+            lambda x: jnp.reshape(x, (x.shape[0], x.shape[1] // 2, -1)),
+            n_out=1,
+        ),
+        tl.Residual(
+            tl.Dense(4 * d_model, use_bias=False),
+            tl.LayerNorm(),
+            tl.Gelu(),
+            tl.Dense(2 * d_model),
+            tl.Fn(
+                "Scaling",
                 lambda x: x * np.sqrt(1 - residual_weight**2) * 0.25,
-                n_out=1),
-          shortcut=_ClippedScaling(residual_weight)),
-      tl.Fn(
-          'UnPair',
-          lambda x: jnp.reshape(x, (x.shape[0], x.shape[1] * 2, -1)),
-          n_out=1),
-      tl.Dropout(rate=dropout, mode=mode)
-      )
+                n_out=1,
+            ),
+            shortcut=_ClippedScaling(residual_weight),
+        ),
+        tl.Fn(
+            "UnPair",
+            lambda x: jnp.reshape(x, (x.shape[0], x.shape[1] * 2, -1)),
+            n_out=1,
+        ),
+        tl.Dropout(rate=dropout, mode=mode),
+    )
 
 
 def _ror(x, n, p=1):
-  """Bitwise right rotation.
+    """Bitwise right rotation.
 
-  Args:
-    x: np.array
-    n: Bit count to represent each value of x
-    p: Bit positions to shift
+    Args:
+      x: np.array
+      n: Bit count to represent each value of x
+      p: Bit positions to shift
 
-  Returns:
-    np.array: x with all values shifted by p positions in n bits
-  """
-  a = np.right_shift(x, p)
-  b = np.left_shift(1, p) - 1
-  c = np.bitwise_and(x, b)
-  d = np.left_shift(c, n - p)
+    Returns:
+      np.array: x with all values shifted by p positions in n bits
+    """
+    a = np.right_shift(x, p)
+    b = np.left_shift(1, p) - 1
+    c = np.bitwise_and(x, b)
+    d = np.left_shift(c, n - p)
 
-  return a + d
+    return a + d
 
 
 def _rol(x, n, p=1):
-  """Bitwise left rotation.
+    """Bitwise left rotation.
 
-  Args:
-    x: np.array
-    n: Bit count to represent each value of x
-    p: Bit positions to shift
+    Args:
+      x: np.array
+      n: Bit count to represent each value of x
+      p: Bit positions to shift
 
-  Returns:
-    np.array: x with all values shifted by p positions in n bits
-  """
-  a = np.left_shift(x, p)
-  b = np.left_shift(1, n) - 1
-  c = np.bitwise_and(a, b)
-  d = np.right_shift(x, n - p)
+    Returns:
+      np.array: x with all values shifted by p positions in n bits
+    """
+    a = np.left_shift(x, p)
+    b = np.left_shift(1, n) - 1
+    c = np.bitwise_and(a, b)
+    d = np.right_shift(x, n - p)
 
-  return np.bitwise_or(c, d)
+    return np.bitwise_or(c, d)
 
 
 def _shuffle_layer(inputs, shuffle_fn):
-  """Shuffles the elements according to bitwise left or right rotation.
+    """Shuffles the elements according to bitwise left or right rotation.
 
-  Args:
-    inputs: Tensor input from previous layer
-    shuffle_fn: Shift function rol or ror
+    Args:
+      inputs: Tensor input from previous layer
+      shuffle_fn: Shift function rol or ror
 
-  Returns:
-    tf.Tensor: Inputs shifted according to shuffle_fn
-  """
-  seq_length = inputs.shape[1]
-  n_bits = np.int32(np.log(seq_length - 1) / np.log(2.0)) + 1
-
-  indices = np.arange(0, seq_length).astype('int32')
-  rev_indices = shuffle_fn(indices, n_bits)
-  return jnp.take(inputs, rev_indices, axis=1, mode='clip')
-
-
-@assert_shape('bld->bld')
-def ShuffleLayer():
-  return tl.Fn(
-      'ShuffleLayer', lambda x: _shuffle_layer(x, _rol), n_out=1)
-
-
-@assert_shape('bld->bld')
-def ReverseShuffleLayer():
-  return tl.Fn(
-      'ReverseShuffleLayer', lambda x: _shuffle_layer(x, _ror), n_out=1)
-
-
-@assert_shape('...,bld->...,bld')
-def _ForwardStep(d_model, dropout, mode):
-  """Takes (n_layer, state) and returns (n_layer, shuffle_layer(rsu(state)))."""
-  return tl.Parallel([], tl.Serial(
-      ResidualSwitchUnit(d_model, dropout, mode),
-      ShuffleLayer(),
-  ))
-
-
-@assert_shape('...,bld->...,bld')
-def _BackwardStep(d_model, dropout, mode):
-  """Takes (n_layer, state) and returns (n_layer, reverse_shuffle_layer(rsu(state)))."""
-  return tl.Parallel([], tl.Serial(
-      ResidualSwitchUnit(d_model, dropout, mode),
-      ReverseShuffleLayer(),
-  ))
-
-
-@assert_shape('bld->bld')
-def BenesBlock(d_model, dropout, mode):
-  def bit_sequence(inputs):
+    Returns:
+      tf.Tensor: Inputs shifted according to shuffle_fn
+    """
     seq_length = inputs.shape[1]
     n_bits = np.int32(np.log(seq_length - 1) / np.log(2.0)) + 1
-    return jnp.arange(0, n_bits)
-  return tl.Serial(
-      tl.Dup(),
-      tl.Fn('BitSeq', bit_sequence, n_out=1),
-      tl.Scan(_ForwardStep(d_model, dropout, mode)),
-      tl.Scan(_BackwardStep(d_model, dropout, mode)),
-      tl.Select([1]),
-  )
+
+    indices = np.arange(0, seq_length).astype("int32")
+    rev_indices = shuffle_fn(indices, n_bits)
+    return jnp.take(inputs, rev_indices, axis=1, mode="clip")
 
 
-@assert_shape('bl->blv')
-def ResidualShuffleExchange(vocab_size,
-                            d_model,
-                            input_dropout,
-                            dropout,
-                            mode='train',
-                            n_blocks=2):
-  """Returns a Residual Shuffle Exchange Network model."""
-  benes_blocks = [BenesBlock(d_model, dropout, mode) for _ in range(n_blocks)]
-  return tl.Serial(
-      tl.Embedding(vocab_size, d_model),
-      tl.Dropout(rate=input_dropout, mode=mode),
-      # Apply Benes Block n_blocks times.
-      *benes_blocks,
-      ResidualSwitchUnit(d_model, dropout, mode),
-      # Produce probabilities.
-      tl.Dense(vocab_size),
-      tl.LogSoftmax(),
-  )
+@assert_shape("bld->bld")
+def ShuffleLayer():
+    return tl.Fn("ShuffleLayer", lambda x: _shuffle_layer(x, _rol), n_out=1)
+
+
+@assert_shape("bld->bld")
+def ReverseShuffleLayer():
+    return tl.Fn("ReverseShuffleLayer", lambda x: _shuffle_layer(x, _ror), n_out=1)
+
+
+@assert_shape("...,bld->...,bld")
+def _ForwardStep(d_model, dropout, mode):
+    """Takes (n_layer, state) and returns (n_layer, shuffle_layer(rsu(state)))."""
+    return tl.Parallel(
+        tl.Select([0]),
+        tl.Serial(
+            ResidualSwitchUnit(d_model, dropout, mode),
+            ShuffleLayer(),
+        ),
+    )
+
+
+@assert_shape("...,bld->...,bld")
+def _BackwardStep(d_model, dropout, mode):
+    """Takes (n_layer, state) and returns (n_layer, reverse_shuffle_layer(rsu(state)))."""
+    return tl.Parallel(
+        tl.Select([0]),
+        tl.Serial(
+            ResidualSwitchUnit(d_model, dropout, mode),
+            ReverseShuffleLayer(),
+        ),
+    )
+
+
+@assert_shape("bld->bld")
+def BenesBlock(d_model, dropout, mode):
+    def bit_sequence(inputs):
+        seq_length = inputs.shape[1]
+        n_bits = np.int32(np.log(seq_length - 1) / np.log(2.0)) + 1
+        return jnp.arange(0, n_bits)
+
+    return tl.Serial(
+        tl.Dup(),
+        tl.Fn("BitSeq", bit_sequence, n_out=1),
+        tl.Scan(_ForwardStep(d_model, dropout, mode)),
+        tl.Scan(_BackwardStep(d_model, dropout, mode)),
+        tl.Select([1]),
+    )
+
+
+@assert_shape("bl->blv")
+def ResidualShuffleExchange(
+    vocab_size, d_model, input_dropout, dropout, mode="train", n_blocks=2
+):
+    """Returns a Residual Shuffle Exchange Network model."""
+    benes_blocks = [BenesBlock(d_model, dropout, mode) for _ in range(n_blocks)]
+    return tl.Serial(
+        tl.Embedding(vocab_size, d_model),
+        tl.Dropout(rate=input_dropout, mode=mode),
+        # Apply Benes Block n_blocks times.
+        *benes_blocks,
+        ResidualSwitchUnit(d_model, dropout, mode),
+        # Produce probabilities.
+        tl.Dense(vocab_size),
+        tl.LogSoftmax(),
+    )

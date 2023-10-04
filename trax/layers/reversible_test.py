@@ -27,15 +27,14 @@ BACKENDS = [fastmath.Backend.JAX]
 
 
 class ReversibleLayerTest(parameterized.TestCase):
+    @parameterized.named_parameters([("_" + b.value, b) for b in BACKENDS])
+    def test_reversible_swap(self, backend):
+        with fastmath.use_backend(backend):
+            layer = tl.ReversibleSwap()
+            xs = [np.array([1, 2]), np.array([10, 20])]
+            ys = layer(xs)
+            self.assertEqual(tl.to_list(ys), [[10, 20], [1, 2]])
 
-  @parameterized.named_parameters([('_' + b.value, b) for b in BACKENDS])
-  def test_reversible_swap(self, backend):
-    with fastmath.use_backend(backend):
-      layer = tl.ReversibleSwap()
-      xs = [np.array([1, 2]), np.array([10, 20])]
-      ys = layer(xs)
-      self.assertEqual(tl.to_list(ys), [[10, 20], [1, 2]])
 
-
-if __name__ == '__main__':
-  absltest.main()
+if __name__ == "__main__":
+    absltest.main()

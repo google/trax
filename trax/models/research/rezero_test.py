@@ -24,44 +24,46 @@ from trax.models.research import rezero
 
 
 class ResidualZeroTest(absltest.TestCase):
-
-  def test_residual_layer_forward(self):
-    """Tests that the forward pass runs and returns the expected shape."""
-    model = rezero.ResidualZero(tl.Dense(5))
-    x = [np.arange(5).astype(np.float32)]
-    _, _ = model.init(shapes.signature(x))
-    y = model(x)
-    self.assertEqual(y.tolist(), [0., 1., 2., 3., 4.])
+    def test_residual_layer_forward(self):
+        """Tests that the forward pass runs and returns the expected shape."""
+        model = rezero.ResidualZero(tl.Dense(5))
+        x = [np.arange(5).astype(np.float32)]
+        _, _ = model.init(shapes.signature(x))
+        y = model(x)
+        self.assertEqual(y.tolist(), [0.0, 1.0, 2.0, 3.0, 4.0])
 
 
 class ReZeroTransformerLMTest(absltest.TestCase):
-
-  def test_rezero_lm_forward_shape(self):
-    """Tests that the forward pass runs and returns the expected shape."""
-    vocab_size = 16
-    model = rezero.ReZeroTransformerLM(
-        vocab_size, d_model=32, d_ff=64, n_layers=2, n_heads=2, max_len=16)
-    xs = [np.ones((1, 8)).astype(np.int32),
-          np.ones((1, 8)).astype(np.int32)]
-    _, _ = model.init(shapes.signature(xs))
-    ys = model(xs)
-    self.assertEqual([y.shape for y in ys], [(1, 8, 16), (1, 8)])
+    def test_rezero_lm_forward_shape(self):
+        """Tests that the forward pass runs and returns the expected shape."""
+        vocab_size = 16
+        model = rezero.ReZeroTransformerLM(
+            vocab_size, d_model=32, d_ff=64, n_layers=2, n_heads=2, max_len=16
+        )
+        xs = [np.ones((1, 8)).astype(np.int32), np.ones((1, 8)).astype(np.int32)]
+        _, _ = model.init(shapes.signature(xs))
+        ys = model(xs)
+        self.assertEqual([y.shape for y in ys], [(1, 8, 16), (1, 8)])
 
 
 class ReZeroTransformerTest(absltest.TestCase):
+    def test_rezero_forward_shape(self):
+        """Tests that the forward pass runs and returns the expected shape."""
+        vocab_size = 16
+        model = rezero.ReZeroTransformer(
+            vocab_size,
+            d_model=32,
+            d_ff=64,
+            n_encoder_layers=2,
+            n_decoder_layers=2,
+            n_heads=2,
+            max_len=16,
+        )
+        xs = [np.ones((1, 8)).astype(np.int32), np.ones((1, 8)).astype(np.int32)]
+        _, _ = model.init(shapes.signature(xs))
+        ys = model(xs)
+        self.assertEqual([y.shape for y in ys], [(1, 8, 16), (1, 8)])
 
-  def test_rezero_forward_shape(self):
-    """Tests that the forward pass runs and returns the expected shape."""
-    vocab_size = 16
-    model = rezero.ReZeroTransformer(
-        vocab_size, d_model=32, d_ff=64, n_encoder_layers=2, n_decoder_layers=2,
-        n_heads=2, max_len=16)
-    xs = [np.ones((1, 8)).astype(np.int32),
-          np.ones((1, 8)).astype(np.int32)]
-    _, _ = model.init(shapes.signature(xs))
-    ys = model(xs)
-    self.assertEqual([y.shape for y in ys], [(1, 8, 16), (1, 8)])
 
-
-if __name__ == '__main__':
-  absltest.main()
+if __name__ == "__main__":
+    absltest.main()

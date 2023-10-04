@@ -24,27 +24,26 @@ from trax.optimizers import momentum
 
 
 class OptimizersTest(absltest.TestCase):
+    def test_slots(self):
+        weights_shape = (3, 5)
+        weight_tree = np.arange(15).reshape(weights_shape)
 
-  def test_slots(self):
-    weights_shape = (3, 5)
-    weight_tree = np.arange(15).reshape(weights_shape)
+        # SGD - an optimizer that doesn't use slots.
+        opt_1 = optimizers.SGD(0.01)
+        self.assertIsNone(opt_1.slots)
+        opt_1.tree_init(weight_tree)
+        self.assertIsInstance(opt_1.slots, tuple)
+        self.assertLen(opt_1.slots, 1)
+        self.assertIsNone(opt_1.slots[0])
 
-    # SGD - an optimizer that doesn't use slots.
-    opt_1 = optimizers.SGD(.01)
-    self.assertIsNone(opt_1.slots)
-    opt_1.tree_init(weight_tree)
-    self.assertIsInstance(opt_1.slots, tuple)
-    self.assertLen(opt_1.slots, 1)
-    self.assertIsNone(opt_1.slots[0])
-
-    # Momentum - an optimizer with slots
-    opt_2 = momentum.Momentum(.01)
-    self.assertIsNone(opt_2.slots)
-    opt_2.tree_init(weight_tree)
-    self.assertIsInstance(opt_2.slots, tuple)
-    self.assertLen(opt_2.slots, 1)
-    self.assertEqual(weights_shape, opt_2.slots[0].shape)
+        # Momentum - an optimizer with slots
+        opt_2 = momentum.Momentum(0.01)
+        self.assertIsNone(opt_2.slots)
+        opt_2.tree_init(weight_tree)
+        self.assertIsInstance(opt_2.slots, tuple)
+        self.assertLen(opt_2.slots, 1)
+        self.assertEqual(weights_shape, opt_2.slots[0].shape)
 
 
-if __name__ == '__main__':
-  absltest.main()
+if __name__ == "__main__":
+    absltest.main()

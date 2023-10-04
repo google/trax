@@ -24,77 +24,87 @@ from trax import fastmath
 import trax.layers.research.position_encodings as pe
 
 
-@parameterized.parameterized_class([
-    # {'Encoding': pe.FixedBasePositionalEncoding},
-    {'Encoding': pe.InfinitePositionalEncoding},
-    {'Encoding': functools.partial(
-        pe.InfinitePositionalEncoding, affine=False)},
-    {'Encoding': functools.partial(
-        pe.TimeBinPositionalEncoding, time_bin_length=5)},
-])
+@parameterized.parameterized_class(
+    [
+        # {'Encoding': pe.FixedBasePositionalEncoding},
+        {"Encoding": pe.InfinitePositionalEncoding},
+        {"Encoding": functools.partial(pe.InfinitePositionalEncoding, affine=False)},
+        {
+            "Encoding": functools.partial(
+                pe.TimeBinPositionalEncoding, time_bin_length=5
+            )
+        },
+    ]
+)
 class PositionEncodingsTest(unittest.TestCase):
-  """Position encodings conform to the position encodings protocol."""
+    """Position encodings conform to the position encodings protocol."""
 
-  @parameterized.parameterized.expand([
-      (1, 100, 8),  # typical
-      (1, 1, 8),  # short
-      (1, 100, 1),  # narrow
-      (2, 100, 8),  # batched
-  ])
-  def test_training(self, n, t, c):
-    encoding = self.Encoding()
-    input_ntc = np.random.randn(n, t, c)
-    encoding.init(input_ntc)
-    output_ntc = encoding(input_ntc)
-    self.assertEqual(output_ntc.shape, input_ntc.shape)
-    self.assertTrue(np.not_equal(output_ntc, input_ntc).any())
+    @parameterized.parameterized.expand(
+        [
+            (1, 100, 8),  # typical
+            (1, 1, 8),  # short
+            (1, 100, 1),  # narrow
+            (2, 100, 8),  # batched
+        ]
+    )
+    def test_training(self, n, t, c):
+        encoding = self.Encoding()
+        input_ntc = np.random.randn(n, t, c)
+        encoding.init(input_ntc)
+        output_ntc = encoding(input_ntc)
+        self.assertEqual(output_ntc.shape, input_ntc.shape)
+        self.assertTrue(np.not_equal(output_ntc, input_ntc).any())
 
-  @parameterized.parameterized.expand([
-      (1, 100, 8),  # typical
-      (1, 100, 1),  # narrow
-      (2, 100, 8),  # batched
-  ])
-  def test_inference(self, n, t, c):
-    # Get the eval mode outputs:
-    encoding = self.Encoding(mode='eval')
-    input_ntc = np.random.randn(n, t, c)
-    rng = fastmath.random.get_prng(1234)
-    encoding.init(input_ntc, rng=rng)
-    output_ntc = encoding(input_ntc)
+    @parameterized.parameterized.expand(
+        [
+            (1, 100, 8),  # typical
+            (1, 100, 1),  # narrow
+            (2, 100, 8),  # batched
+        ]
+    )
+    def test_inference(self, n, t, c):
+        # Get the eval mode outputs:
+        encoding = self.Encoding(mode="eval")
+        input_ntc = np.random.randn(n, t, c)
+        rng = fastmath.random.get_prng(1234)
+        encoding.init(input_ntc, rng=rng)
+        output_ntc = encoding(input_ntc)
 
-    is_random = self.Encoding == pe.InfinitePositionalEncoding
+        is_random = self.Encoding == pe.InfinitePositionalEncoding
 
-    # Get the predict mode outputs:
-    encoding_pred = self.Encoding(mode='predict')
-    encoding_pred.init(input_ntc[:, 0:1, :], rng=rng)
-    output_ntc0 = encoding_pred(input_ntc[:, 0:1, :])
-    if not is_random:
-      np.testing.assert_allclose(output_ntc0, output_ntc[:, 0:1, :], atol=1e-4)
+        # Get the predict mode outputs:
+        encoding_pred = self.Encoding(mode="predict")
+        encoding_pred.init(input_ntc[:, 0:1, :], rng=rng)
+        output_ntc0 = encoding_pred(input_ntc[:, 0:1, :])
+        if not is_random:
+            np.testing.assert_allclose(output_ntc0, output_ntc[:, 0:1, :], atol=1e-4)
 
-    output_ntc1 = encoding_pred(input_ntc[:, 1:2, :])
-    if not is_random:
-      np.testing.assert_allclose(output_ntc1, output_ntc[:, 1:2, :], atol=1e-4)
+        output_ntc1 = encoding_pred(input_ntc[:, 1:2, :])
+        if not is_random:
+            np.testing.assert_allclose(output_ntc1, output_ntc[:, 1:2, :], atol=1e-4)
 
-    output_ntc2 = encoding_pred(input_ntc[:, 2:3, :])
-    if not is_random:
-      np.testing.assert_allclose(output_ntc2, output_ntc[:, 2:3, :], atol=1e-4)
+        output_ntc2 = encoding_pred(input_ntc[:, 2:3, :])
+        if not is_random:
+            np.testing.assert_allclose(output_ntc2, output_ntc[:, 2:3, :], atol=1e-4)
 
 
 class SinCosEncodingsTest(unittest.TestCase):
-  """Position encodings conform to the position encodings protocol."""
+    """Position encodings conform to the position encodings protocol."""
 
-  @parameterized.parameterized.expand([
-      (1, 100, 8),  # typical
-      (1, 1, 8),  # short
-      (2, 100, 8),  # batched
-  ])
-  def test_training(self, n, t, c):
-    encoding = pe.SinCosPositionalEncoding()
-    input_ntc = np.random.randn(n, t, c)
-    encoding.init(input_ntc)
-    output_ntc = encoding(input_ntc)
-    self.assertEqual(output_ntc.shape, input_ntc.shape)
+    @parameterized.parameterized.expand(
+        [
+            (1, 100, 8),  # typical
+            (1, 1, 8),  # short
+            (2, 100, 8),  # batched
+        ]
+    )
+    def test_training(self, n, t, c):
+        encoding = pe.SinCosPositionalEncoding()
+        input_ntc = np.random.randn(n, t, c)
+        encoding.init(input_ntc)
+        output_ntc = encoding(input_ntc)
+        self.assertEqual(output_ntc.shape, input_ntc.shape)
 
 
-if __name__ == '__main__':
-  unittest.main()
+if __name__ == "__main__":
+    unittest.main()

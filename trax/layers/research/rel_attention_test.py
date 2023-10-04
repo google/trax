@@ -37,18 +37,37 @@ import trax.layers.research.rel_attention as ra
 
 
 class RelAttentionTest(absltest.TestCase):
+    def test_fast_shift_matrix(self):
+        layer = ra._fast_matrix_shift
+        x = np.array(
+            [
+                [
+                    [
+                        [-3.0, -2.0, -1.0, 0.0],
+                        [-3.0, -2.0, -1.0, 0.0],
+                        [-3.0, -2.0, -1.0, 0.0],
+                        [-3.0, -2.0, -1.0, 0.0],
+                    ]
+                ]
+            ]
+        ).astype(np.float32)
 
-  def test_fast_shift_matrix(self):
-    layer = ra._fast_matrix_shift
-    x = np.array([[[[-3., -2., -1., 0.], [-3., -2., -1.,
-                                          0.], [-3., -2., -1., 0.],
-                    [-3., -2., -1., 0.]]]]).astype(np.float32)
+        y = layer(x)
+        self.assertEqual(y.dtype, np.float32)
+        self.assertEqual(
+            tl.to_list(y),
+            [
+                [
+                    [
+                        [0.0, 0.0, -3.0, -2.0],
+                        [-1.0, 0.0, 0.0, -3.0],
+                        [-2.0, -1.0, 0.0, 0.0],
+                        [-3.0, -2.0, -1.0, 0.0],
+                    ]
+                ]
+            ],
+        )
 
-    y = layer(x)
-    self.assertEqual(y.dtype, np.float32)
-    self.assertEqual(
-        tl.to_list(y), [[[[0., 0., -3., -2.], [-1., 0., 0., -3.],
-                          [-2., -1., 0., 0.], [-3., -2., -1., 0.]]]])
 
-if __name__ == '__main__':
-  absltest.main()
+if __name__ == "__main__":
+    absltest.main()

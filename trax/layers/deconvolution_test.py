@@ -23,15 +23,14 @@ import trax.layers as tl
 
 
 class ConvTransposeTest(absltest.TestCase):
+    def test_call(self):
+        layer = tl.ConvTranspose(30, (3, 3))
+        x = np.ones((9, 5, 5, 20))
+        layer.init(shapes.signature(x))
 
-  def test_call(self):
-    layer = tl.ConvTranspose(30, (3, 3))
-    x = np.ones((9, 5, 5, 20))
-    layer.init(shapes.signature(x))
-
-    y = layer(x)
-    self.assertEqual(y.shape, (9, 7, 7, 30))
+        y = layer(x)
+        self.assertEqual(y.shape, (9, 7, 7, 30))
 
 
-if __name__ == '__main__':
-  absltest.main()
+if __name__ == "__main__":
+    absltest.main()

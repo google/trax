@@ -23,14 +23,10 @@ time while just barely fitting within the 16 GB memory budget.
 from absl.testing import absltest
 
 
-
 class TerraformerMemoryTest(absltest.TestCase):
+    def test_terraformer_memory(self):
+        pass  # TODO(jonni): Figure out an OSS-compatible memory test.
 
 
-  def test_terraformer_memory(self):
-    pass  # TODO(jonni): Figure out an OSS-compatible memory test.
-
-
-if __name__ == '__main__':
-  config.config_with_absl()
-  absltest.main()
+if __name__ == "__main__":
+    absltest.main()

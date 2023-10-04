@@ -15,31 +15,28 @@
 
 """Tests for Resnet models."""
 
-from absl.testing import absltest
 import numpy as np
+from absl.testing import absltest
 
-from trax import fastmath
 from trax import shapes
 from trax.models import resnet
 
 
 class ResnetTest(absltest.TestCase):
+    def test_resnet(self):
+        model = resnet.Resnet50(d_hidden=8, n_output_classes=10)
+        x = np.ones((3, 256, 256, 3)).astype(np.float32)
+        _, _ = model.init(shapes.signature(x))
+        y = model(x)
+        self.assertEqual(y.shape, (3, 10))
 
-  def test_resnet(self):
-    model = resnet.Resnet50(d_hidden=8, n_output_classes=10)
-    x = np.ones((3, 256, 256, 3)).astype(np.float32)
-    _, _ = model.init(shapes.signature(x))
-    y = model(x)
-    self.assertEqual(y.shape, (3, 10))
-
-  def test_wide_resnet(self):
-    model = resnet.WideResnet(n_blocks=1, n_output_classes=10)
-    x = np.ones((3, 32, 32, 3)).astype(np.float32)
-    _, _ = model.init(shapes.signature(x))
-    y = model(x)
-    self.assertEqual(y.shape, (3, 10))
-
+    def test_wide_resnet(self):
+        model = resnet.WideResnet(n_blocks=1, n_output_classes=10)
+        x = np.ones((3, 32, 32, 3)).astype(np.float32)
+        _, _ = model.init(shapes.signature(x))
+        y = model(x)
+        self.assertEqual(y.shape, (3, 10))
 
 
-if __name__ == '__main__':
-  absltest.main()
+if __name__ == "__main__":
+    absltest.main()

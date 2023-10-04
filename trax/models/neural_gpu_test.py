@@ -23,14 +23,13 @@ from trax.models import neural_gpu
 
 
 class NeuralGPUTest(absltest.TestCase):
+    def test_ngpu(self):
+        model = neural_gpu.NeuralGPU(d_feature=30, steps=4, vocab_size=22)
+        x = np.ones((3, 5, 7)).astype(np.int32)
+        _, _ = model.init(shapes.signature(x))
+        y = model(x)
+        self.assertEqual(y.shape, (3, 5, 7, 22))
 
-  def test_ngpu(self):
-    model = neural_gpu.NeuralGPU(d_feature=30, steps=4, vocab_size=22)
-    x = np.ones((3, 5, 7)).astype(np.int32)
-    _, _ = model.init(shapes.signature(x))
-    y = model(x)
-    self.assertEqual(y.shape, (3, 5, 7, 22))
 
-
-if __name__ == '__main__':
-  absltest.main()
+if __name__ == "__main__":
+    absltest.main()
