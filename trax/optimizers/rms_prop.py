@@ -20,30 +20,32 @@ from trax.optimizers import base as opt_base
 
 
 class RMSProp(opt_base.Optimizer):
-  """RMSProp optimizer.
+    """RMSProp optimizer.
 
-  Uses optimizer weights ("slots") to maintain a root-mean-square exponentially
-  decaying average of gradients from prior training batches.
-  """
+    Uses optimizer weights ("slots") to maintain a root-mean-square exponentially
+    decaying average of gradients from prior training batches.
+    """
 
-  def __init__(self, learning_rate=0.001, gamma=0.9,
-               eps=1e-8, clip_grad_norm=None):  # pylint: disable=useless-super-delegation
-    super().__init__(
-        learning_rate=learning_rate,
-        gamma=gamma,
-        eps=eps,
-        clip_grad_norm=clip_grad_norm
-    )
+    def __init__(
+        self, learning_rate=0.001, gamma=0.9, eps=1e-8, clip_grad_norm=None
+    ):  # pylint: disable=useless-super-delegation
+        super().__init__(
+            learning_rate=learning_rate,
+            gamma=gamma,
+            eps=eps,
+            clip_grad_norm=clip_grad_norm,
+        )
 
-  def init(self, weights):
-    return jnp.ones_like(weights)
+    def init(self, weights):
+        return jnp.ones_like(weights)
 
-  def update(self, step, grads, weights, avg_sq_grad, opt_params):
-    del step
-    lr = opt_params['learning_rate']
-    gamma = opt_params['gamma']
-    eps = opt_params['eps']
-    avg_sq_grad = avg_sq_grad * gamma + grads**2 * (1. - gamma)
-    weights = weights - (lr * grads /
-                         (jnp.sqrt(avg_sq_grad) + eps)).astype(weights.dtype)
-    return weights, avg_sq_grad
+    def update(self, step, grads, weights, avg_sq_grad, opt_params):
+        del step
+        lr = opt_params["learning_rate"]
+        gamma = opt_params["gamma"]
+        eps = opt_params["eps"]
+        avg_sq_grad = avg_sq_grad * gamma + grads**2 * (1.0 - gamma)
+        weights = weights - (lr * grads / (jnp.sqrt(avg_sq_grad) + eps)).astype(
+            weights.dtype
+        )
+        return weights, avg_sq_grad

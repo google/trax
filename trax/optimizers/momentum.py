@@ -21,7 +21,7 @@ from trax.optimizers import base
 
 # TODO(jonni): Consider renaming this class to NesterovMomentum.
 class Momentum(base.Optimizer):
-  r"""A momentum optimizer.
+    r"""A momentum optimizer.
 
   This class implements two variants of momentum stochastic gradient descent
   (SGD): with and without the Nesterov correction. The implementation of the
@@ -41,32 +41,32 @@ class Momentum(base.Optimizer):
   (:math:`\alpha`) on the parameters, independent of the Nesterov momentum.
   """
 
-  def __init__(
-      self, learning_rate=0.01, mass=0.9, weight_decay_rate=1e-5, nesterov=True
-  ):  # pylint: disable=useless-super-delegation
-    super().__init__(
-        learning_rate=learning_rate,
-        mass=mass,
-        weight_decay_rate=weight_decay_rate,
-    )
-    self._nesterov = nesterov
+    def __init__(
+        self, learning_rate=0.01, mass=0.9, weight_decay_rate=1e-5, nesterov=True
+    ):  # pylint: disable=useless-super-delegation
+        super().__init__(
+            learning_rate=learning_rate,
+            mass=mass,
+            weight_decay_rate=weight_decay_rate,
+        )
+        self._nesterov = nesterov
 
-  def init(self, weights):
-    return jnp.zeros_like(weights)
+    def init(self, weights):
+        return jnp.zeros_like(weights)
 
-  def update(self, step, grads, weights, velocity, opt_params):
-    del step
-    v = velocity
-    mu = opt_params['mass']
-    alpha = opt_params['weight_decay_rate']
-    epsilon = opt_params['learning_rate']
+    def update(self, step, grads, weights, velocity, opt_params):
+        del step
+        v = velocity
+        mu = opt_params["mass"]
+        alpha = opt_params["weight_decay_rate"]
+        epsilon = opt_params["learning_rate"]
 
-    new_v = mu * v + grads
-    if self._nesterov:
-      weight_update = mu * new_v + grads
-    else:
-      weight_update = new_v
-    new_weights = (1 - alpha) * weights - epsilon * weight_update
+        new_v = mu * v + grads
+        if self._nesterov:
+            weight_update = mu * new_v + grads
+        else:
+            weight_update = new_v
+        new_weights = (1 - alpha) * weights - epsilon * weight_update
 
-    new_weights = new_weights.astype(weights.dtype)
-    return (new_weights, new_v)
+        new_weights = new_weights.astype(weights.dtype)
+        return (new_weights, new_v)

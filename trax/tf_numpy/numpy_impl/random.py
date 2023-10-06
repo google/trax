@@ -24,30 +24,29 @@ DEFAULT_RANDN_DTYPE = np.float32
 
 
 def randn(*args):
-  """Returns samples from a normal distribution.
+    """Returns samples from a normal distribution.
 
-  Uses `tf.random_normal`.
+    Uses `tf.random_normal`.
 
-  Args:
-    *args: The shape of the output array.
+    Args:
+      *args: The shape of the output array.
 
-  Returns:
-    An ndarray with shape `args` and dtype `float64`.
-  """
-  # TODO(wangpeng): Use new stateful RNG
-  if utils.isscalar(args):
-    args = (args,)
-  return utils.tensor_to_ndarray(
-      tf.random.normal(args, dtype=DEFAULT_RANDN_DTYPE))
+    Returns:
+      An ndarray with shape `args` and dtype `float64`.
+    """
+    # TODO(wangpeng): Use new stateful RNG
+    if utils.isscalar(args):
+        args = (args,)
+    return utils.tensor_to_ndarray(tf.random.normal(args, dtype=DEFAULT_RANDN_DTYPE))
 
 
 def seed(s):
-  """Sets the seed for the random number generator.
+    """Sets the seed for the random number generator.
 
-  Uses `tf.set_random_seed`.
+    Uses `tf.set_random_seed`.
 
-  Args:
-    s: an integer.
-  """
-  # TODO(wangpeng): make the signature the same as numpy
-  tf.random.set_seed(s)
+    Args:
+      s: an integer.
+    """
+    # TODO(wangpeng): make the signature the same as numpy
+    tf.random.set_seed(s)

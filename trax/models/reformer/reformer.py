@@ -499,9 +499,7 @@ def EncoderBlock(
     attention = _Attn()
     if attention.n_out == 2:
         attention = tl.Serial(
-            tl.Parallel(tl.Select([0]), _InsertAxes12()),
-            attention,
-            tl.Select([0], n_in=2),
+            tl.Parallel([], _InsertAxes12()), attention, tl.Select([0], n_in=2)
         )
 
     def _attention_half_residual():
@@ -727,9 +725,7 @@ def Reformer(
         # Input: encoder_side_tokens, decoder_side_tokens
         # Copy decoder tokens for use in loss.
         tl.Select([0, 1, 1]),  # tok_e tok_d tok_d
-        tl.Branch(
-            tl.Select([0]), [tl.PaddingMask(), _RemoveAxes12()]
-        ),  # tok_e mask  tok_d .....
+        tl.Branch([], [tl.PaddingMask(), _RemoveAxes12()]),  # tok_e mask  tok_d .....
         # Encode.
         encoder,  # vec_e  mask tok_d .....
         # Decode.

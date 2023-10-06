@@ -101,4 +101,3 @@ from trax.data.tf_inputs import truncate_dataset_on_len
 from trax.data.tf_inputs import vocab_size
 from trax.data.tf_inputs import wmt_concat_preprocess
 from trax.data.tf_inputs import wmt_preprocess
-

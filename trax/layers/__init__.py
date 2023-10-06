@@ -16,6 +16,7 @@
 """Layers: trainable functions as neural network building blocks."""
 
 import gin
+
 # We create a flat layers.* namespace for uniform calling conventions as we
 # upstream changes.
 # pylint: disable=wildcard-import
@@ -44,8 +45,9 @@ from trax.layers.rnn import *
 
 # Ginify
 def layer_configure(*args, **kwargs):
-  kwargs['module'] = 'trax.layers'
-  return gin.external_configurable(*args, **kwargs)
+    kwargs["module"] = "trax.layers"
+    return gin.external_configurable(*args, **kwargs)
+
 
 # pylint: disable=used-before-assignment
 # pylint: disable=invalid-name
@@ -69,41 +71,44 @@ LayerNorm = layer_configure(LayerNorm)
 FilterResponseNorm = layer_configure(FilterResponseNorm)
 ThresholdedLinearUnit = layer_configure(ThresholdedLinearUnit)
 
-Attention = layer_configure(Attention, denylist=['mode'])
-CausalAttention = layer_configure(CausalAttention, denylist=['mode'])
-FavorAttention = layer_configure(FavorAttention, denylist=['mode'])
-Favor = layer_configure(Favor, denylist=['mode'])
-CausalFavor = layer_configure(CausalFavor, denylist=['mode'])
-CausalFavorAttention = layer_configure(CausalFavorAttention, denylist=['mode'])
+Attention = layer_configure(Attention, denylist=["mode"])
+CausalAttention = layer_configure(CausalAttention, denylist=["mode"])
+FavorAttention = layer_configure(FavorAttention, denylist=["mode"])
+Favor = layer_configure(Favor, denylist=["mode"])
+CausalFavor = layer_configure(CausalFavor, denylist=["mode"])
+CausalFavorAttention = layer_configure(CausalFavorAttention, denylist=["mode"])
 DotProductCausalAttention = layer_configure(
-    DotProductCausalAttention, denylist=['mode'])
-SelfAttention = layer_configure(SelfAttention, denylist=['mode'])
-ModularCausalAttention = layer_configure(ModularCausalAttention,
-                                         denylist=['mode'])
-LowRankCausalAttention = layer_configure(LowRankCausalAttention,
-                                         denylist=['mode'])
-MultiplicativeCausalAttention = layer_configure(MultiplicativeCausalAttention,
-                                                denylist=['mode'])
+    DotProductCausalAttention, denylist=["mode"]
+)
+SelfAttention = layer_configure(SelfAttention, denylist=["mode"])
+ModularCausalAttention = layer_configure(ModularCausalAttention, denylist=["mode"])
+LowRankCausalAttention = layer_configure(LowRankCausalAttention, denylist=["mode"])
+MultiplicativeCausalAttention = layer_configure(
+    MultiplicativeCausalAttention, denylist=["mode"]
+)
 MultiplicativeModularCausalAttention = layer_configure(
-    MultiplicativeModularCausalAttention, denylist=['mode'])
-ConvCausalAttention = layer_configure(ConvCausalAttention, denylist=['mode'])
+    MultiplicativeModularCausalAttention, denylist=["mode"]
+)
+ConvCausalAttention = layer_configure(ConvCausalAttention, denylist=["mode"])
 MultiplicativeConvCausalAttention = layer_configure(
-    MultiplicativeConvCausalAttention, denylist=['mode'])
+    MultiplicativeConvCausalAttention, denylist=["mode"]
+)
 ConvTranspose = layer_configure(ConvTranspose)
-LSHSelfAttention = layer_configure(LSHSelfAttention, denylist=['mode'])
-PureLSHSelfAttention = layer_configure(PureLSHSelfAttention, denylist=['mode'])
-MixedLSHSelfAttention = layer_configure(
-    MixedLSHSelfAttention, denylist=['mode'])
+LSHSelfAttention = layer_configure(LSHSelfAttention, denylist=["mode"])
+PureLSHSelfAttention = layer_configure(PureLSHSelfAttention, denylist=["mode"])
+MixedLSHSelfAttention = layer_configure(MixedLSHSelfAttention, denylist=["mode"])
 PureLSHSelfAttentionWrapper = layer_configure(
-    PureLSHSelfAttentionWrapper, denylist=['mode'])
-EncDecAttention = layer_configure(EncDecAttention, denylist=['mode'])
+    PureLSHSelfAttentionWrapper, denylist=["mode"]
+)
+EncDecAttention = layer_configure(EncDecAttention, denylist=["mode"])
 
-PositionalEncoding = layer_configure(
-    PositionalEncoding, denylist=['mode'])
+PositionalEncoding = layer_configure(PositionalEncoding, denylist=["mode"])
 InfinitePositionalEncoding = layer_configure(
-    InfinitePositionalEncoding, denylist=['mode'])
+    InfinitePositionalEncoding, denylist=["mode"]
+)
 TimeBinPositionalEncoding = layer_configure(
-    TimeBinPositionalEncoding, denylist=['mode'])
+    TimeBinPositionalEncoding, denylist=["mode"]
+)
 
 AtariConvInit = layer_configure(AtariConvInit)
 CrossEntropyLossWithLogSoftmax = layer_configure(CrossEntropyLossWithLogSoftmax)

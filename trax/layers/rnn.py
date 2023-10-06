@@ -118,14 +118,14 @@ def LSTM(n_units, mode="train", return_state=False, initial_state=False):
         )  # pylint: disable=no-value-for-parameter
         if return_state:
             return cb.Serial(
-                cb.Branch(cb.Select([0]), zero_state),
+                cb.Branch([], zero_state),
                 cb.Scan(LSTMCell(n_units=n_units), axis=1, mode=mode),
                 name=f"LSTM_{n_units}",
                 sublayers_to_print=[],
             )
         else:
             return cb.Serial(
-                cb.Branch(cb.Select([0]), zero_state),  # fill state RNN with zero.
+                cb.Branch([], zero_state),  # fill state RNN with zero.
                 cb.Scan(LSTMCell(n_units=n_units), axis=1, mode=mode),
                 cb.Select([0], n_in=2),  # Drop RNN state.
                 # Set the name to LSTM and don't print sublayers.
@@ -206,7 +206,7 @@ def GRU(n_units, mode="train"):
         depth_multiplier=1
     )  # pylint: disable=no-value-for-parameter
     return cb.Serial(
-        cb.Branch(cb.Select([0]), zero_state),
+        cb.Branch([], zero_state),
         cb.Scan(GRUCell(n_units=n_units), axis=1, mode=mode),
         cb.Select([0], n_in=2),  # Drop RNN state.
         # Set the name to GRU and don't print sublayers.
@@ -250,35 +250,35 @@ def GeneralGRUCell(
     sigmoid_bias=0.5,
 ):
     r"""Parametrized Gated Recurrent Unit (GRU) cell construction.
-  
-    GRU update equations for update gate, reset gate, candidate memory, and new
-    state:
-  
-    .. math::
-      u_t &= \sigma(U' \times s_{t-1} + B') \\
-      r_t &= \sigma(U'' \times s_{t-1} + B'') \\
-      c_t &= \tanh(U \times (r_t \odot s_{t-1}) + B) \\
-      s_t &= u_t \odot s_{t-1} + (1 - u_t) \odot c_t
-  
-    See `combinators.Gate` for details on the gating function.
-  
-  
-    Args:
-      candidate_transform: Transform to apply inside the Candidate branch. Applied
-        before nonlinearities.
-      memory_transform_fn: Optional transformation on the memory before gating.
-      gate_nonlinearity: Function to use as gate activation; allows trying
-        alternatives to `Sigmoid`, such as `HardSigmoid`.
-      candidate_nonlinearity: Nonlinearity to apply after candidate branch; allows
-        trying alternatives to traditional `Tanh`, such as `HardTanh`.
-      dropout_rate_c: Amount of dropout on the transform (c) gate. Dropout works
-        best in a GRU when applied exclusively to this branch.
-      sigmoid_bias: Constant to add before sigmoid gates. Generally want to start
-        off with a positive bias.
-  
-    Returns:
-      A model representing a GRU cell with specified transforms.
-    """
+
+  GRU update equations for update gate, reset gate, candidate memory, and new
+  state:
+
+  .. math::
+    u_t &= \sigma(U' \times s_{t-1} + B') \\
+    r_t &= \sigma(U'' \times s_{t-1} + B'') \\
+    c_t &= \tanh(U \times (r_t \odot s_{t-1}) + B) \\
+    s_t &= u_t \odot s_{t-1} + (1 - u_t) \odot c_t
+
+  See `combinators.Gate` for details on the gating function.
+
+
+  Args:
+    candidate_transform: Transform to apply inside the Candidate branch. Applied
+      before nonlinearities.
+    memory_transform_fn: Optional transformation on the memory before gating.
+    gate_nonlinearity: Function to use as gate activation; allows trying
+      alternatives to `Sigmoid`, such as `HardSigmoid`.
+    candidate_nonlinearity: Nonlinearity to apply after candidate branch; allows
+      trying alternatives to traditional `Tanh`, such as `HardTanh`.
+    dropout_rate_c: Amount of dropout on the transform (c) gate. Dropout works
+      best in a GRU when applied exclusively to this branch.
+    sigmoid_bias: Constant to add before sigmoid gates. Generally want to start
+      off with a positive bias.
+
+  Returns:
+    A model representing a GRU cell with specified transforms.
+  """
     gate_block = [  # u_t
         candidate_transform(),
         _AddSigmoidBias(sigmoid_bias),
@@ -358,39 +358,37 @@ def ScanSRUCell(mode, monkey_patched_mask=None):
 
 def SRU(n_units, activation=None, mode="train"):
     r"""SRU (Simple Recurrent Unit) layer as in https://arxiv.org/abs/1709.02755.
-  
-    As defined in the paper:
-  
-    .. math::
-      y_t &= W x_t + B \quad \hbox{(include $B$ optionally)} \\
-      f_t &= \sigma(Wf x_t + bf) \\
-      r_t &= \sigma(Wr x_t + br) \\
-      c_t &= f_t \times c_{t-1} + (1 - f_t) \times y_t \\
-      h_t &= r_t \times \hbox{activation}(c_t) + (1 - r_t) \times x_t
-  
-    We assume the input is of shape [batch, length, depth] and recurrence
-    happens on the length dimension. This returns a single layer. It's best
-    to use at least 2, they say in the paper, except inside a Transformer.
-  
-    Args:
-      n_units: output depth of the SRU layer.
-      activation: Optional activation function.
-      mode: if 'predict' then we save the previous state for one-by-one inference
-  
-    Returns:
-      The SRU layer.
-    """
+
+  As defined in the paper:
+
+  .. math::
+    y_t &= W x_t + B \quad \hbox{(include $B$ optionally)} \\
+    f_t &= \sigma(Wf x_t + bf) \\
+    r_t &= \sigma(Wr x_t + br) \\
+    c_t &= f_t \times c_{t-1} + (1 - f_t) \times y_t \\
+    h_t &= r_t \times \hbox{activation}(c_t) + (1 - r_t) \times x_t
+
+  We assume the input is of shape [batch, length, depth] and recurrence
+  happens on the length dimension. This returns a single layer. It's best
+  to use at least 2, they say in the paper, except inside a Transformer.
+
+  Args:
+    n_units: output depth of the SRU layer.
+    activation: Optional activation function.
+    mode: if 'predict' then we save the previous state for one-by-one inference
+
+  Returns:
+    The SRU layer.
+  """
     sigmoid_activation = activation_fns.Sigmoid()
     return cb.Serial(  # x
-        cb.Branch(core.Dense(3 * n_units), cb.Select([0])),  # r_f_y, x
+        cb.Branch(core.Dense(3 * n_units), []),  # r_f_y, x
         cb.Split(n_items=3),  # r, f, y, x
         cb.Parallel(sigmoid_activation, sigmoid_activation),  # r, f, y, x
         base.Fn(
             "", lambda r, f, y: (y * (1.0 - f), f, r), n_out=3  # y * (1 - f), f, r, x
         ),
-        cb.Parallel(
-            cb.Select([0]), cb.Select([0]), cb.Branch(MakeZeroState(), cb.Select([0]))
-        ),
+        cb.Parallel([], [], cb.Branch(MakeZeroState(), [])),
         ScanSRUCell(mode=mode),
         cb.Select([0], n_in=2),  # act(c), r, x
         activation if activation is not None else [],

@@ -21,21 +21,22 @@ from absl import logging
 import gin
 
 
-@gin.configurable(denylist=['f'])
-def debug_pipeline(f, debug=False, method='pow', log_prefix=None):
-  """Decorator for input pipeline generators that logs examples at intervals."""
-  if not debug:
-    return f
+@gin.configurable(denylist=["f"])
+def debug_pipeline(f, debug=False, method="pow", log_prefix=None):
+    """Decorator for input pipeline generators that logs examples at intervals."""
+    if not debug:
+        return f
 
-  assert method in ('pow', 'every')
-  @functools.wraps(f)
-  def wrapper(*args, **kwargs):
-    count = 0
-    prefix = log_prefix or f.__name__
-    for example in f(*args, **kwargs):
-      count += 1
-      if method == 'every' or (method == 'pow' and (count & count - 1 == 0)):
-        logging.info('%s example[%d] = %r', prefix, count, example)
-      yield example
+    assert method in ("pow", "every")
 
-  return wrapper
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        count = 0
+        prefix = log_prefix or f.__name__
+        for example in f(*args, **kwargs):
+            count += 1
+            if method == "every" or (method == "pow" and (count & count - 1 == 0)):
+                logging.info("%s example[%d] = %r", prefix, count, example)
+            yield example
+
+    return wrapper

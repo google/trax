@@ -24,6 +24,7 @@ import threading
 import numpy as np
 import six
 
+
 import tensorflow.compat.v2 as tf
 
 import trax.tf_numpy.numpy as tf_np

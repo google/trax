@@ -31,97 +31,95 @@ Sample invocation:
 
 import faulthandler
 
+import gin
+import jax
 from absl import app
 from absl import flags
 from absl import logging
-import gin
-import jax
 from jax.config import config
+
 from trax import fastmath
-from trax import rl  # pylint: disable=unused-import
-from trax import trainer_flags  # pylint: disable=unused-import
 from trax.rl import task as rl_task
 from trax.rl import training as light_trainers
 from trax.tf_numpy import numpy as tf_np
-
 
 FLAGS = flags.FLAGS
 
 
 # Not just 'train' to avoid a conflict with trax.train in GIN files.
-@gin.configurable(denylist=['output_dir'], module='trax')
+@gin.configurable(denylist=["output_dir"], module="trax")
 def train_rl(
     output_dir,
     n_epochs=10000,
     light_rl=True,
-    light_rl_trainer=light_trainers.PolicyGradient):
-  """Train the RL agent.
+    light_rl_trainer=light_trainers.PolicyGradient,
+):
+    """Train the RL agent.
 
-  Args:
-    output_dir: Output directory.
-    n_epochs: Number epochs to run the training for.
-    light_rl: deprecated, always True, left out for old gin configs.
-    light_rl_trainer: which light RL trainer to use (experimental).
-  """
-  del light_rl
-  tf_np.set_allow_float64(FLAGS.tf_allow_float64)
-  task = rl_task.RLTask()
-  env_name = task.env_name
+    Args:
+      output_dir: Output directory.
+      n_epochs: Number epochs to run the training for.
+      light_rl: deprecated, always True, left out for old gin configs.
+      light_rl_trainer: which light RL trainer to use (experimental).
+    """
+    del light_rl
+    tf_np.set_allow_float64(FLAGS.tf_allow_float64)
+    task = rl_task.RLTask()
+    env_name = task.env_name
 
+    if FLAGS.jax_debug_nans:
+        config.update("jax_debug_nans", True)
 
-  if FLAGS.jax_debug_nans:
-    config.update('jax_debug_nans', True)
+    if FLAGS.use_tpu:
+        config.update("jax_platform_name", "tpu")
+    else:
+        config.update("jax_platform_name", "")
 
-  if FLAGS.use_tpu:
-    config.update('jax_platform_name', 'tpu')
-  else:
-    config.update('jax_platform_name', '')
+    trainer = light_rl_trainer(task=task, output_dir=output_dir)
 
+    def light_training_loop():
+        """Run the trainer for n_epochs and call close on it."""
+        try:
+            logging.info("Starting RL training for %d epochs.", n_epochs)
+            trainer.run(n_epochs, n_epochs_is_total_epochs=True)
+            logging.info("Completed RL training for %d epochs.", n_epochs)
+            trainer.close()
+            logging.info("Trainer is now closed.")
+        except Exception as e:
+            raise e
+        finally:
+            logging.info("Encountered an exception, still calling trainer.close()")
+            trainer.close()
+            logging.info("Trainer is now closed.")
 
-  trainer = light_rl_trainer(task=task, output_dir=output_dir)
-  def light_training_loop():
-    """Run the trainer for n_epochs and call close on it."""
-    try:
-      logging.info('Starting RL training for %d epochs.', n_epochs)
-      trainer.run(n_epochs, n_epochs_is_total_epochs=True)
-      logging.info('Completed RL training for %d epochs.', n_epochs)
-      trainer.close()
-      logging.info('Trainer is now closed.')
-    except Exception as e:
-      raise e
-    finally:
-      logging.info('Encountered an exception, still calling trainer.close()')
-      trainer.close()
-      logging.info('Trainer is now closed.')
-
-  if FLAGS.jax_debug_nans or FLAGS.disable_jit:
-    fastmath.disable_jit()
-    with jax.disable_jit():
-      light_training_loop()
-  else:
-    light_training_loop()
+    if FLAGS.jax_debug_nans or FLAGS.disable_jit:
+        fastmath.disable_jit()
+        with jax.disable_jit():
+            light_training_loop()
+    else:
+        light_training_loop()
 
 
 def main(argv):
-  del argv
-  logging.info('Starting RL training.')
+    del argv
+    logging.info("Starting RL training.")
 
-  gin_configs = FLAGS.config if FLAGS.config is not None else []
-  gin.enter_interactive_mode()
-  gin.parse_config_files_and_bindings(FLAGS.config_file, gin_configs)
-  gin.exit_interactive_mode()
+    gin_configs = FLAGS.config if FLAGS.config is not None else []
+    gin.enter_interactive_mode()
+    gin.parse_config_files_and_bindings(FLAGS.config_file, gin_configs)
+    gin.exit_interactive_mode()
 
-  logging.info('Gin config:')
-  logging.info(gin_configs)
+    logging.info("Gin config:")
+    logging.info(gin_configs)
 
-  train_rl(output_dir=FLAGS.output_dir)
+    train_rl(output_dir=FLAGS.output_dir)
 
-  # TODO(afrozm): This is for debugging.
-  logging.info('Dumping stack traces of all stacks.')
-  faulthandler.dump_traceback(all_threads=True)
+    # TODO(afrozm): This is for debugging.
+    logging.info("Dumping stack traces of all stacks.")
+    faulthandler.dump_traceback(all_threads=True)
 
-  logging.info('Training is done, should exit.')
+    logging.info("Training is done, should exit.")
 
 
-if __name__ == '__main__':
-  app.run(main)
+if __name__ == "__main__":
+    app.run(main)

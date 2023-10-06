@@ -14,13 +14,3 @@
 # limitations under the License.
 
 """Trax top level import."""
-
-from trax import data
-from trax import fastmath
-from trax import layers
-from trax import models
-from trax import optimizers
-from trax import shapes
-from trax import supervised
-from trax.supervised import lr_schedules as lr
-from trax.trax2keras import AsKeras

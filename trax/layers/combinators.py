@@ -68,6 +68,9 @@ class Serial(base.Layer):
         if not isinstance(xs, (tuple, list)):
             xs = (xs,)
 
+        # The input should be a flat single tuple without nested tuples
+        xs = self.flatten_tuple(xs)
+
         self._validate_forward_inputs(xs)
 
         if not self.sublayers:  # No-op: outputs = inputs
@@ -232,6 +235,13 @@ class Parallel(base.Layer):
             new_state.append(sub_state)
         output = outputs[0] if self.n_out == 1 else tuple(outputs)
         self.state = tuple(new_state)
+
+        if not isinstance(output, (tuple, list)):
+            output = (output,)
+
+        # The input should be a flat single tuple without nested tuples
+        output = self.flatten_tuple(output)
+
         return output
 
     def init_weights_and_state(self, input_signature):
@@ -438,9 +448,13 @@ class Scan(base.Layer):
 
     def forward(self, inputs):
         """Executes this layer as part of a forward pass through the model."""
-        weights = self.weights[0]
         if isinstance(inputs, list):
             inputs = tuple(inputs)  # so that inputs structure matches outputs
+
+        # The input should be a flat single tuple without nested tuples
+        inputs = self.flatten_tuple(inputs)
+
+        weights = self.weights[0]
         n_carry = self._n_carry
 
         def scannable_fn(x, carry_and_state):  # pylint: disable=invalid-name
@@ -610,8 +624,13 @@ class Cond(base.Layer):
         Returns:
           Tensors resulting from running the chosen branch.
         """
+
         # TODO(jaszczur): modify; it's a copy from SkippingSerial
         self._validate_forward_inputs(xs)
+
+        # The input should be a flat single tuple without nested tuples
+        xs = self.flatten_tuple(xs)
+
         layers_state = self.state
         # Get 3 rngs, one for each layer.
         rngs = _split_rngs(self.rng, 3)

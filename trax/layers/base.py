@@ -390,6 +390,15 @@ class Layer:
         # Moving a file is much less error-prone than pickling large files.
         tf.io.gfile.rename(tmp_file_path, file_name, overwrite=True)
 
+    def flatten_tuple(self, inputs):
+        flat_tuple = ()
+        for _input in inputs:
+            if isinstance(_input, tuple):
+                flat_tuple += self.flatten_tuple(_input)
+            else:
+                flat_tuple += (_input,)
+        return flat_tuple
+
     # End of public callable methods.
     # Methods and properties below are reserved for internal use.
 
@@ -766,22 +775,13 @@ class PureLayer(Layer):
             inputs = (inputs,)
 
         # The input should be a flat single tuple without nested tuples
-        inputs = self._flatten_tuple(inputs)
+        inputs = self.flatten_tuple(inputs)
 
         _validate_forward_input(inputs, self.n_in)
 
         raw_output = self._forward_fn(inputs)
         output = () if _is_empty(raw_output) else raw_output
         return output
-
-    def _flatten_tuple(self, nested_tuple):
-        flat_tuple = ()
-        for item in nested_tuple:
-            if isinstance(item, tuple):
-                flat_tuple += self._flatten_tuple(item)
-            else:
-                flat_tuple += (item,)
-        return flat_tuple
 
 
 def Fn(name, f, n_out=1):  # pylint: disable=invalid-name

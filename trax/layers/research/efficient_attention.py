@@ -3828,7 +3828,7 @@ def _ProjectAndSplitHeads(  # pylint: disable=invalid-name
             ),
             attention.SplitIntoHeads(n_heads),
             cb.Parallel(
-                cb.Select([0]),
+                [],
                 [
                     cb.Select([0], n_in=2),
                     sp.LocallyConvDense(
@@ -3848,7 +3848,7 @@ def _ProjectAndSplitHeads(  # pylint: disable=invalid-name
         return cb.Branch(
             [
                 core.Dense(d_model, use_bias=use_bias),
-                rotary_pe.Rotate() if rotary_position_emb else cb.Select([0]),
+                rotary_pe.Rotate() if rotary_position_emb else [],
                 attention.SplitIntoHeads(n_heads),
             ],
             [core.Dense(d_model, use_bias=use_bias), attention.SplitIntoHeads(n_heads)],

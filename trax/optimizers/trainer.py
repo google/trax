@@ -15,15 +15,13 @@
 
 """Multi-device accelerated optimization."""
 
-from concurrent import futures
 import functools
 import os
-import time
 
-from absl import logging
 import jax
 import numpy as np
 import psutil
+from absl import logging
 
 from trax import fastmath
 from trax import layers as tl

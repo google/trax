@@ -857,8 +857,8 @@ def MultiplicativeConvCausalAttention(
             tl.SplitIntoHeads(n_heads),
             tl.Select([0, 0]),  # use for q and k
             tl.Parallel(
-                tl.Select([0]),
-                tl.Select([0]),
+                [],
+                [],
                 [
                     concat_layers,
                     LocallyConvDense(

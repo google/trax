@@ -21,40 +21,18 @@ import numpy as np
 # `if x.dtype.type is np.int64`.
 # pylint: disable=unused-import
 # pylint: disable=g-bad-import-order
-from numpy import bool_
-from numpy import int_
-from numpy import int16
-from numpy import int32
-from numpy import int64
-from numpy import int8
-from numpy import uint16
-from numpy import uint32
-from numpy import uint64
-from numpy import uint8
-from numpy import float_
-from numpy import float16
 from numpy import float32
 from numpy import float64
-from numpy import complex_
-from numpy import complex64
-from numpy import complex128
-
-from numpy import inexact
-
-from numpy import iinfo
-from numpy import issubdtype
-
-from numpy import inf
 
 # TODO(wangpeng): Make bfloat16 a numpy dtype instead of using TF's
-from tensorflow.compat.v2 import bfloat16
+
 # pylint: enable=g-bad-import-order
 # pylint: enable=unused-import
 
 
 _to_float32 = {
-    np.dtype('float64'): np.dtype('float32'),
-    np.dtype('complex128'): np.dtype('complex64'),
+    np.dtype("float64"): np.dtype("float32"),
+    np.dtype("complex128"): np.dtype("complex64"),
 }
 
 
@@ -62,33 +40,33 @@ _allow_float64 = True
 
 
 def is_allow_float64():
-  return _allow_float64
+    return _allow_float64
 
 
 def set_allow_float64(b):
-  global _allow_float64
-  _allow_float64 = b
+    global _allow_float64
+    _allow_float64 = b
 
 
 def canonicalize_dtype(dtype):
-  if not is_allow_float64():
-    return _to_float32.get(dtype, dtype)
-  else:
-    return dtype
+    if not is_allow_float64():
+        return _to_float32.get(dtype, dtype)
+    else:
+        return dtype
 
 
 def _result_type(*arrays_and_dtypes):
-  dtype = np.result_type(*arrays_and_dtypes)
-  return canonicalize_dtype(dtype)
+    dtype = np.result_type(*arrays_and_dtypes)
+    return canonicalize_dtype(dtype)
 
 
 def default_float_type():
-  """Gets the default float type.
+    """Gets the default float type.
 
-  Returns:
-    If `is_allow_float64()` is true, returns float64; otherwise returns float32.
-  """
-  if is_allow_float64():
-    return float64
-  else:
-    return float32
+    Returns:
+      If `is_allow_float64()` is true, returns float64; otherwise returns float32.
+    """
+    if is_allow_float64():
+        return float64
+    else:
+        return float32

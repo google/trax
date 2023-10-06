@@ -171,7 +171,7 @@ def ReverseShuffleLayer():
 def _ForwardStep(d_model, dropout, mode):
     """Takes (n_layer, state) and returns (n_layer, shuffle_layer(rsu(state)))."""
     return tl.Parallel(
-        tl.Select([0]),
+        [],
         tl.Serial(
             ResidualSwitchUnit(d_model, dropout, mode),
             ShuffleLayer(),
@@ -183,7 +183,7 @@ def _ForwardStep(d_model, dropout, mode):
 def _BackwardStep(d_model, dropout, mode):
     """Takes (n_layer, state) and returns (n_layer, reverse_shuffle_layer(rsu(state)))."""
     return tl.Parallel(
-        tl.Select([0]),
+        [],
         tl.Serial(
             ResidualSwitchUnit(d_model, dropout, mode),
             ReverseShuffleLayer(),
