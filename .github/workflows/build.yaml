@@ -41,18 +41,18 @@ jobs:
         # tf-nightly has some pip version conflicts, so can't be installed.
         # Use only numbered TF as of now.
         # tf-version: ["2.4.*", "tf-nightly"]
-        tf-version: [ "2.11.0" ]
+        tf-version: [ '2.11.0' ]
         # Which set of tests to run.
-        trax-test: [ "lib", "research" ]
+        trax-test: [ 'lib','research' ]
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python ${{matrix.python-version}}
         uses: actions/setup-python@v2
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: ${{matrix.python-version}}
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -81,12 +81,12 @@ jobs:
           status="${{ job.status }}"
           lowercase_status=$(echo $status | tr '[:upper:]' '[:lower:]')
           curl -sS --request POST \
-          --url https://api.github.com/repos/${{ github.repository }}/statuses/${{ github.sha }} \
+          --url https://api.github.com/repos/${{github.repository}}/statuses/${{github.sha}} \
           --header 'authorization: Bearer ${{ secrets.GITHUB_TOKEN }}' \
           --header 'content-type: application/json' \
           --data '{
               "state": "'$lowercase_status'",
-              "target_url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+              "target_url": "https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}",
               "description": "'$status'",
               "context": "github-actions/build"
               }'
