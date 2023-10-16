@@ -90,7 +90,9 @@ class TestTokenCounts(tf.test.TestCase):
             self.corpus_path, corpus_max_lines=0, split_on_newlines=False
         )
         print(token_counts)
-        self.assertDictContainsSubset({".\r\n\r\n": 2, "\r\n": 3}, token_counts)
+        token_counts.update({"\n\n": token_counts.pop(".\r\n\r\n")})
+        token_counts.update({"\n": token_counts.pop("\r\n")})
+        self.assertDictContainsSubset({"\n\n": 2, "\n": 3}, token_counts)
 
     def test_corpus_token_counts_split_with_max_lines(self):
         token_counts = tokenizer.corpus_token_counts(
