@@ -40,7 +40,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 
 from tests.tf_numpy.jax.config import config
-import tests.tf_numpy.jax.test_util as jtu
+import tests.tf_numpy.jax.utils as jtu
 
 import trax.tf_numpy.extensions as npe
 import trax.tf_numpy.numpy as jnp

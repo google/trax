@@ -35,7 +35,6 @@ import unittest
 import warnings
 import zlib
 from contextlib import contextmanager
-from distutils.util import strtobool
 from functools import partial
 from typing import Dict, Sequence, Union
 

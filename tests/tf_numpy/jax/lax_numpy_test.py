@@ -28,7 +28,7 @@ import tensorflow.compat.v2 as tf
 from absl.testing import absltest
 from absl.testing import parameterized
 
-import tests.tf_numpy.jax.test_util as jtu
+import tests.tf_numpy.jax.utils as jtu
 from tests.tf_numpy.jax.config import config, FLAGS
 
 import trax.tf_numpy.extensions as npe

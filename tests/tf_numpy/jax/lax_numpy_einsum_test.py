@@ -20,7 +20,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 
 from tests.tf_numpy.jax.config import config
-import tests.tf_numpy.jax.test_util as jtu
+import tests.tf_numpy.jax.utils as jtu
 
 import numpy as np
 import tensorflow.compat.v2 as tf

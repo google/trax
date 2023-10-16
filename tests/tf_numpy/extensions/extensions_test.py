@@ -17,16 +17,19 @@
 import functools
 import itertools
 
+from tests.tf_numpy.jax.config import flags
+
 import jax
 import numpy as np
 import tensorflow.compat.v2 as tf
 from absl.testing import parameterized
 
-import test_utils
 import trax.tf_numpy.numpy as tf_np
 from trax.tf_numpy import extensions
 
-REQUIRES_TPU = False
+FLAGS = flags.FLAGS
+
+flags.DEFINE_bool("requires_tpu", False, "Requires TPU.")
 
 
 def generate_params_inputs_targets(num_examples=1000):
@@ -871,7 +874,7 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
 
     def _get_two_devices(self, require_same_type=False):
         tpus = extensions.tpu_devices()
-        if REQUIRES_TPU:
+        if FLAGS.requires_tpu:
             if len(tpus) == 2:
                 res = tpus
             else:
