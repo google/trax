@@ -19,7 +19,6 @@ import sys
 
 from absl import flags
 
-
 # pytest doesn't run the test as a main, so it doesn't parse the flags
 # so if flags are required in tests, this will ensure that flags are manually
 # parsed and the desired flag exists.
