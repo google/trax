@@ -58,7 +58,14 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -q -U setuptools numpy
           python -m pip install flake8 pytest
-          python -m pip install  orbax-checkpoint orbax-export
+          python -m pip install orbax-checkpoint orbax-export
+          python -m pip install tensorflow_datasets==4.2.0
+          python -m pip install tensorflow_metadata==1.6.0
+          python -m pip install tfds-nightly==4.6.0.dev202210050045
+          python -m pip install transformers==4.33.3
+          python -m pip install mesh-tensorflow==0.1.21
+          python -m pip install torch==2.0.1
+          python -m pip install protobuf==3.19.6
           if [[ ${{matrix.tf-version}} == "tf-nightly" ]]; then python -m pip install tf-nightly; else python -m pip install -q "tensorflow=="${{matrix.tf-version}}; fi
           pip install -e .[tests,t5]
       # # Lint with flake8
