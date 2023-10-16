@@ -35,6 +35,7 @@ import unittest
 import warnings
 import zlib
 from contextlib import contextmanager
+from distutils.util import strtobool
 from functools import partial
 from typing import Dict, Sequence, Union
 
@@ -56,7 +57,7 @@ FLAGS = flags.FLAGS
 
 
 # TODO(wangpeng): Remove this flag after broken tests are fixed
-# flags.DEFINE_bool("enable_x64", strtobool("False"), "Enable 64-bit types to be used.")
+flags.DEFINE_bool("enable_x64", strtobool("False"), "Enable 64-bit types to be used.")
 
 
 flags.DEFINE_enum(
