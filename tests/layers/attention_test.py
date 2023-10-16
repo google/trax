@@ -21,7 +21,7 @@ import numpy as np
 
 from trax import shapes
 import trax.layers as tl
-from trax.layers import test_utils
+from tests.layers import test_utils
 
 
 class AttentionTest(absltest.TestCase):

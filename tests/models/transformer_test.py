@@ -22,7 +22,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 
 from trax import shapes
-from trax.layers import test_utils
+from layers import test_utils
 from trax.models import transformer
 
 

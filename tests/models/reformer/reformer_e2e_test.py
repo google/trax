@@ -24,8 +24,12 @@ from trax import test_utils
 from trax.supervised import trainer_lib
 
 pkg_dir, _ = os.path.split(__file__)
-_TESTDATA = os.path.join(pkg_dir, "testdata")
-_CONFIG_DIR = os.path.join(pkg_dir, "../../../resources/supervised/configs/")
+_TESTDATA = os.path.normpath(
+    os.path.join(pkg_dir, "../../../resources/models/reformer/testdata")
+)
+_CONFIG_DIR = os.path.normpath(
+    os.path.join(pkg_dir, "../../../resources/supervised/configs/")
+)
 
 
 class ReformerE2ETest(absltest.TestCase):

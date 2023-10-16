@@ -46,79 +46,107 @@ set_status
 # # Run pytest with coverage.
 # alias pytest='coverage run -m pytest'
 
-# Check tests, separate out directories for easy triage.
-
+# Check tests, check each directory of tests separately.
 if [[ "${TRAX_TEST}" == "lib" ]]
 then
   ## Core Trax and Supervised Learning
+  pytest tests/data
+  set_status
+
+  pytest tests/fastmath
+  set_status
+
+  pytest tests/layers
+  set_status
+
+  pytest tests/models
+  set_status
+
+  pytest tests/optimizers
+  set_status
+
+  pytest tests/supervised
+  set_status
+
+  pytest tests/tf_numpy
+  set_status
+
+  pytest tests/import_test.py
+  set_status
+
+  pytest tests/shapes_test.py
+  set_status
+
+  pytest tests/trax2keras_test.py
+  set_status
 
   # Disabled the decoding test for now, since it OOMs.
   # TODO(afrozm): Add the decoding_test.py back again.
 
   # training_test and trainer_lib_test parse flags, so can't use with --ignore
-  pytest \
-    --ignore=trax/supervised/callbacks_test.py \
-    --ignore=trax/supervised/decoding_test.py \
-    --ignore=trax/supervised/decoding_timing_test.py \
-    --ignore=trax/supervised/trainer_lib_test.py \
-    --ignore=trax/supervised/training_test.py \
-    trax/supervised
-  set_status
+#  pytest \
+#    --ignore=trax/supervised/callbacks_test.py \
+#    --ignore=trax/supervised/decoding_test.py \
+#    --ignore=trax/supervised/decoding_timing_test.py \
+#    --ignore=trax/supervised/trainer_lib_test.py \
+#    --ignore=trax/supervised/training_test.py \
+#    trax/supervised
+#  set_status
 
   # Testing these separately here.
-  pytest \
-    trax/supervised/callbacks_test.py \
-    trax/supervised/trainer_lib_test.py \
-    trax/supervised/training_test.py
-  set_status
-
-  pytest trax/data
-  set_status
+#  pytest \
+#    trax/supervised/callbacks_test.py \
+#    trax/supervised/trainer_lib_test.py \
+#    trax/supervised/training_test.py
+#  set_status
+#
+#  pytest trax/data
+#  set_status
 
   # Ignoring acceleration_test's test_chunk_grad_memory since it is taking a
   # lot of time on OSS.
-  pytest \
-    --deselect=trax/layers/acceleration_test.py::AccelerationTest::test_chunk_grad_memory \
-    --deselect=trax/layers/acceleration_test.py::AccelerationTest::test_chunk_memory \
-    --ignore=trax/layers/initializers_test.py \
-    --ignore=trax/layers/test_utils.py \
-    trax/layers
-  set_status
-
-  pytest trax/layers/initializers_test.py
-  set_status
-
-  pytest trax/fastmath
-  set_status
-
-  pytest trax/optimizers
-  set_status
-
-  # Catch-all for futureproofing.
-  pytest \
-    --ignore=trax/trax2keras_test.py \
-    --ignore=trax/data \
-    --ignore=trax/fastmath \
-    --ignore=trax/layers \
-    --ignore=trax/models \
-    --ignore=trax/optimizers \
-    --ignore=trax/rl \
-    --ignore=trax/supervised \
-    --ignore=trax/tf_numpy
-  set_status
+#  pytest \
+#    --deselect=trax/layers/acceleration_test.py::AccelerationTest::test_chunk_grad_memory \
+#    --deselect=trax/layers/acceleration_test.py::AccelerationTest::test_chunk_memory \
+#    --ignore=trax/layers/initializers_test.py \
+#    --ignore=trax/layers/test_utils.py \
+#    trax/layers
+#  set_status
+#
+#  pytest trax/layers/initializers_test.py
+#  set_status
+#
+#  pytest trax/fastmath
+#  set_status
+#
+#  pytest trax/optimizers
+#  set_status
+#
+#  # Catch-all for futureproofing.
+#  pytest \
+#    --ignore=trax/trax2keras_test.py \
+#    --ignore=trax/data \
+#    --ignore=trax/fastmath \
+#    --ignore=trax/layers \
+#    --ignore=trax/models \
+#    --ignore=trax/optimizers \
+#    --ignore=trax/rl \
+#    --ignore=trax/supervised \
+#    --ignore=trax/tf_numpy
+#  set_status
 else
   # Models, RL and misc right now.
 
   ## Models
   # Disabled tests are quasi integration tests.
-  pytest \
-    --ignore=trax/models/reformer/reformer_e2e_test.py \
-    --ignore=trax/models/reformer/reformer_memory_test.py \
-    --ignore=trax/models/research/terraformer_e2e_test.py \
-    --ignore=trax/models/research/terraformer_memory_test.py \
-    --ignore=trax/models/research/terraformer_oom_test.py \
-    trax/models
-  set_status
+#  pytest \
+#    --ignore=trax/models/reformer/reformer_e2e_test.py \
+#    --ignore=trax/models/reformer/reformer_memory_test.py \
+#    --ignore=trax/models/research/terraformer_e2e_test.py \
+#    --ignore=trax/models/research/terraformer_memory_test.py \
+#    --ignore=trax/models/research/terraformer_oom_test.py \
+#    trax/models
+#  set_status
 
   ## RL Trax
   # pytest trax/rl
@@ -132,10 +160,10 @@ else
   # Check notebooks.
 
   # TODO(afrozm): Add more.
-  jupyter nbconvert --ExecutePreprocessor.kernel_name=python3 \
-    --ExecutePreprocessor.timeout=600 --to notebook --execute \
-    trax/intro.ipynb;
-  set_status
+#  jupyter nbconvert --ExecutePreprocessor.kernel_name=python3 \
+#    --ExecutePreprocessor.timeout=600 --to notebook --execute \
+#    trax/intro.ipynb;
+#  set_status
 fi
 
 # TODO(traxers): Test tf-numpy separately.

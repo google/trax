@@ -37,56 +37,56 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ['3.10']
+        python-version: [ '3.10' ]
         # tf-nightly has some pip version conflicts, so can't be installed.
         # Use only numbered TF as of now.
         # tf-version: ["2.4.*", "tf-nightly"]
-        tf-version: ["2.11.*"]
+        tf-version: [ "2.11.0" ]
         # Which set of tests to run.
-        trax-test: ["lib", "research"]
+        trax-test: [ "lib", "research" ]
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-    # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-    - uses: actions/checkout@v2
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
-      with:
-        python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        python -m pip install -q -U setuptools numpy
-        python -m pip install flake8 pytest
-        python -m pip install  orbax-checkpoint orbax-export
-        if [[ ${{matrix.tf-version}} == "tf-nightly" ]]; then python -m pip install tf-nightly; else python -m pip install -q "tensorflow=="${{matrix.tf-version}}; fi
-        pip install -e .[tests,t5]
-    # # Lint with flake8
-    # - name: Lint with flake8
-    #   run: |
-    #     # stop the build if there are Python syntax errors or undefined names
-    #     flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-    #     # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-    #     flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-    # Test out right now with only testing one directory.
-    - name: Test with pytest
-      run: |
-        TRAX_TEST=" ${{matrix.trax-test}}" ./oss_scripts/oss_tests.sh
-    # The below step just reports the success or failure of tests as a "commit status".
-    # This is needed for copybara integration.
-    - name: Report success or failure as github status
-      if: always()
-      shell: bash
-      run: |
-        status="${{ job.status }}"
-        lowercase_status=$(echo $status | tr '[:upper:]' '[:lower:]')
-        curl -sS --request POST \
-        --url https://api.github.com/repos/${{ github.repository }}/statuses/${{ github.sha }} \
-        --header 'authorization: Bearer ${{ secrets.GITHUB_TOKEN }}' \
-        --header 'content-type: application/json' \
-        --data '{
-            "state": "'$lowercase_status'",
-            "target_url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-            "description": "'$status'",
-            "context": "github-actions/build"
-            }'
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -q -U setuptools numpy
+          python -m pip install flake8 pytest
+          python -m pip install  orbax-checkpoint orbax-export
+          if [[ ${{matrix.tf-version}} == "tf-nightly" ]]; then python -m pip install tf-nightly; else python -m pip install -q "tensorflow=="${{matrix.tf-version}}; fi
+          pip install -e .[tests,t5]
+      # # Lint with flake8
+      # - name: Lint with flake8
+      #   run: |
+      #     # stop the build if there are Python syntax errors or undefined names
+      #     flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+      #     # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+      #     flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      # Test out right now with only testing one directory.
+      - name: Test with pytest
+        run: |
+          TRAX_TEST=" ${{matrix.trax-test}}" ./oss_scripts/oss_tests.sh
+      # The below step just reports the success or failure of tests as a "commit status".
+      # This is needed for copybara integration.
+      - name: Report success or failure as github status
+        if: always()
+        shell: bash
+        run: |
+          status="${{ job.status }}"
+          lowercase_status=$(echo $status | tr '[:upper:]' '[:lower:]')
+          curl -sS --request POST \
+          --url https://api.github.com/repos/${{ github.repository }}/statuses/${{ github.sha }} \
+          --header 'authorization: Bearer ${{ secrets.GITHUB_TOKEN }}' \
+          --header 'content-type: application/json' \
+          --data '{
+              "state": "'$lowercase_status'",
+              "target_url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+              "description": "'$status'",
+              "context": "github-actions/build"
+              }'

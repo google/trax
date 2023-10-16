@@ -20,21 +20,25 @@ import os
 import gin
 from absl.testing import absltest
 
+
 from trax import test_utils
 from trax.supervised import trainer_lib
 
 pkg_dir, _ = os.path.split(__file__)
-_TESTDATA = os.path.join(pkg_dir, "testdata")
-_CONFIG_DIR = os.path.join(pkg_dir, "../../../resources/supervised/configs/")
+_TESTDATA = os.path.normpath(
+    os.path.join(pkg_dir, "../../../resources/models/reformer/testdata")
+)
+_CONFIG_DIR = os.path.normpath(
+    os.path.join(pkg_dir, "../../../resources/supervised/configs")
+)
 
 
 class TerraformerE2ETest(absltest.TestCase):
     def setUp(self):
         super().setUp()
-        print(_CONFIG_DIR)
+        test_utils.ensure_flag("test_tmpdir")
         gin.clear_config()
         gin.add_config_file_search_path(_CONFIG_DIR)
-        test_utils.ensure_flag("test_tmpdir")
 
     def test_terraformer_wmt_ende(self):
         batch_size_per_device = 2

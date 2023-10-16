@@ -65,13 +65,30 @@ def no_preprocess(dataset, training):
     return dataset
 
 
-def t2t_problems():
-    # Load t2t problems on request only, this should save some import time.
-    from tensor2tensor import (
-        problems_colab as t2tp,
-    )  # pylint: disable=g-import-not-at-top
+class t2t_problems:
+    """Tensor2Tensor has been discontinued. Furthermore, version 1.15.7 caused many problems during running,
+    such as problems with dynamically loading all datasets and creating module registries. Therefore, we simplified
+    it by creating our own simple registry of problems."""
 
-    return t2tp
+    import tensor2tensor.data_generators.translate_ende
+
+    _problems: dict = {
+        "translate_ende_wmt32k": tensor2tensor.data_generators.translate_ende.TranslateEndeWmt32k(),
+    }
+
+    def __init__(self):
+        pass
+
+    @staticmethod
+    def problem(name):
+        if name in t2t_problems._problems:
+            return t2t_problems._problems[name]
+
+        raise Exception(f"There is no registered problem {name}")
+
+    @staticmethod
+    def available():
+        return t2t_problems._problems
 
 
 # TODO(jonni): Rename function to better match its return values.
@@ -436,6 +453,7 @@ def _train_and_eval_dataset_v1(
         if problem_name == "video_bair_robot_pushing":
             hparams = problem.get_hparams()
             bair_robot_pushing_hparams(hparams)
+
         train_dataset = problem.dataset(
             tf_estimator.ModeKeys.TRAIN,
             data_dir,

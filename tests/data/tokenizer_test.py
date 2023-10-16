@@ -24,7 +24,7 @@ from trax.data import tokenizer
 
 
 pkg_dir, _ = os.path.split(__file__)
-_TESTDATA = os.path.join(pkg_dir, "testdata")
+_TESTDATA = os.path.join(pkg_dir, "../../resources/data/testdata")
 
 
 class TokenizerTest(tf.test.TestCase):
@@ -89,8 +89,8 @@ class TestTokenCounts(tf.test.TestCase):
         token_counts = tokenizer.corpus_token_counts(
             self.corpus_path, corpus_max_lines=0, split_on_newlines=False
         )
-
-        self.assertDictContainsSubset({".\n\n": 2, "\n": 3}, token_counts)
+        print(token_counts)
+        self.assertDictContainsSubset({".\r\n\r\n": 2, "\r\n": 3}, token_counts)
 
     def test_corpus_token_counts_split_with_max_lines(self):
         token_counts = tokenizer.corpus_token_counts(

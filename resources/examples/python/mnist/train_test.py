@@ -18,8 +18,7 @@ import mock
 import numpy as np
 import tensorflow.compat.v2 as tf
 
-from trax.tf_numpy.examples.mnist import dataset
-from trax.tf_numpy.examples.mnist import train
+from resources.examples.python.mnist import train, dataset
 
 
 class TFNumpyMnistExampleTest(tf.test.TestCase):

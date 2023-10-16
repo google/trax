@@ -5,10 +5,10 @@ git:
   depth: 3
   quiet: true
 python:
-  - "3.6"
+  - "3.10"
 env:
   global:
-    - TF_VERSION="2.4.*"
+    - TF_VERSION="2.11.0"
   matrix:
     - TRAX_TEST="lib"
     - TRAX_TEST="research"

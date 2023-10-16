@@ -258,6 +258,7 @@ class Dropout(base.Layer):
         if rate == 0.0:
             return x
         mask_shape = list(jnp.shape(x))
+
         for axis in self._shared_axes:
             mask_shape[axis] = 1
         keep_prob = 1.0 - rate

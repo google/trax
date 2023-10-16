@@ -27,7 +27,7 @@ import numpy as np
 from trax import models
 from trax import test_utils
 from trax.data import inputs
-from trax.layers import test_utils as tl_test_utils
+from tests.layers import test_utils as tl_test_utils
 from trax.rl import serialization_utils
 from trax.rl import space_serializer
 from trax.supervised import callbacks

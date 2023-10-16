@@ -448,13 +448,9 @@ class Scan(base.Layer):
 
     def forward(self, inputs):
         """Executes this layer as part of a forward pass through the model."""
+        weights = self.weights[0]
         if isinstance(inputs, list):
             inputs = tuple(inputs)  # so that inputs structure matches outputs
-
-        # The input should be a flat single tuple without nested tuples
-        inputs = self.flatten_tuple(inputs)
-
-        weights = self.weights[0]
         n_carry = self._n_carry
 
         def scannable_fn(x, carry_and_state):  # pylint: disable=invalid-name
@@ -627,6 +623,7 @@ class Cond(base.Layer):
 
         # TODO(jaszczur): modify; it's a copy from SkippingSerial
         self._validate_forward_inputs(xs)
+        xs = _make_tuple(xs)
 
         # The input should be a flat single tuple without nested tuples
         xs = self.flatten_tuple(xs)
@@ -637,6 +634,7 @@ class Cond(base.Layer):
 
         # Prepare the stack and do some safety checks as in the parent class.
         stack = _make_tuple(xs)
+        stack = self.flatten_tuple(stack)
         weights = self.weights
         if len(weights) != 3:
             raise ValueError(
@@ -652,6 +650,7 @@ class Cond(base.Layer):
                 t[0][0], t[1][0], t[2][0], t[3][0]
             )
             # t[2][1] is old_false_state which is not changing if true is executed.
+            outputs = _make_tuple(outputs)
             return outputs, (new_true_state, t[2][1])
 
         def false_func(t):
@@ -662,13 +661,16 @@ class Cond(base.Layer):
                 t[0][1], t[1][1], t[2][1], t[3][1]
             )
             # t[2][1] is old_true_state, which is not changing if false is executed.
+            outputs = _make_tuple(outputs)
             return outputs, (t[2][0], new_false_state)
 
         cond_inputs = inputs_from_stack(xs, self._cond.n_in)
+        cond_inputs = _make_tuple(cond_inputs)
         cond_output, s = self._cond.pure_fn(
             cond_inputs, self.weights[0], self.state[0], rngs[0], use_cache=True
         )
         stack = outputs_onto_stack([], stack, self._cond.n_in)
+        stack = _make_tuple(stack)
         self._cond.state = s
 
         outputs, both_states = fastmath.cond(

@@ -17,6 +17,7 @@
 
 import copy
 import functools
+from absl.testing import absltest
 
 import numpy as np
 
@@ -24,7 +25,11 @@ from trax import fastmath
 from trax import layers as tl
 from trax import shapes
 
+import pytest
 
+
+@absltest.skip
+@pytest.mark.skip(reason="This is helper method not direct test")
 def test_eval_is_deterministic(inp, model_fn, message=""):
     """Utility method for testing if eval mode is deterministic.
 
@@ -64,6 +69,8 @@ def test_eval_is_deterministic(inp, model_fn, message=""):
             )
 
 
+@absltest.skip
+@pytest.mark.skip(reason="This is helper method not direct test")
 def test_eval_equals_predict(
     inp, model_fn, seq_axis=1, seq_tensor=None, init_tokens=3, message=""
 ):
@@ -135,6 +142,8 @@ def test_eval_equals_predict(
                 )
 
 
+@absltest.skip
+@pytest.mark.skip(reason="This is helper method not direct test")
 def test_eval_equals_predict_configs(
     inp, model_fn, configs, seq_axis=1, seq_tensor=None, message=""
 ):
@@ -166,6 +175,8 @@ def test_eval_equals_predict_configs(
         )
 
 
+@absltest.skip
+@pytest.mark.skip(reason="This is helper method not direct test")
 def test_eval_equals_predict_discrete(model_fn, vocab_size=10, length=5, batch_size=3):
     """Tests the equivalence of eval and predict modes for discrete models."""
     with fastmath.use_backend(fastmath.Backend.JAX):

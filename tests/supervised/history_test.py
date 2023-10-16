@@ -21,36 +21,35 @@ from trax.supervised import history as trax_history
 
 
 class HistoryTest(absltest.TestCase):
+    def test_unknown_mode(self):
+        history = trax_history.History()
+        history.append("train", "metric1", 1, 0.1)
+        self.assertEqual(history.get("unknown_mode", "metric1"), [])
 
-  def test_unknown_mode(self):
-    history = trax_history.History()
-    history.append('train', 'metric1', 1, 0.1)
-    self.assertEqual(history.get('unknown_mode', 'metric1'), [])
+    def test_unknown_metric(self):
+        history = trax_history.History()
+        history.append("train", "metric1", 1, 0.1)
+        self.assertEqual(history.get("train", "unknown_metric"), [])
 
-  def test_unknown_metric(self):
-    history = trax_history.History()
-    history.append('train', 'metric1', 1, 0.1)
-    self.assertEqual(history.get('train', 'unknown_metric'), [])
+    def test_serializer_and_deserializer(self):
+        history = trax_history.History()
+        history.append("train", "metric1", 1, 0.1)
+        json_object = history.to_dict()
+        history2 = trax_history.History.from_dict(json_object)
+        self.assertEqual(history2.get("train", "metric1"), [(1, 0.1)])
 
-  def test_serializer_and_deserializer(self):
-    history = trax_history.History()
-    history.append('train', 'metric1', 1, 0.1)
-    json_object = history.to_dict()
-    history2 = trax_history.History.from_dict(json_object)
-    self.assertEqual(history2.get('train', 'metric1'), [(1, 0.1)])
+    def test_modes(self):
+        history = trax_history.History()
+        history.append("train", "metric1", 1, 0.1)
+        history.append("test", "metric2", 2, 0.2)
+        self.assertEqual(history.modes, ["test", "train"])
 
-  def test_modes(self):
-    history = trax_history.History()
-    history.append('train', 'metric1', 1, 0.1)
-    history.append('test', 'metric2', 2, 0.2)
-    self.assertEqual(history.modes, ['test', 'train'])
-
-  def test_metrics_for_mode(self):
-    history = trax_history.History()
-    history.append('train', 'metric1', 1, 0.1)
-    history.append('train', 'metric2', 2, 0.2)
-    self.assertEqual(history.metrics_for_mode('train'), ['metric1', 'metric2'])
+    def test_metrics_for_mode(self):
+        history = trax_history.History()
+        history.append("train", "metric1", 1, 0.1)
+        history.append("train", "metric2", 2, 0.2)
+        self.assertEqual(history.metrics_for_mode("train"), ["metric1", "metric2"])
 
 
-if __name__ == '__main__':
-  absltest.main()
+if __name__ == "__main__":
+    absltest.main()

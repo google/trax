@@ -19,7 +19,6 @@
   https://arxiv.org/pdf/2104.09864.pdf
 """
 
-# from trax import layers as tl
 from trax.fastmath import numpy as jnp
 from trax.layers import core
 

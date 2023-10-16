@@ -295,6 +295,7 @@ def EmbeddingAndPositionalEncodings(
     Returns:
       A tuple of (input encoder, output encoder, output vocab size used).
     """
+
     # tokens --> vectors
     def Embedder(vocab_size, embedding_mode):
         if vocab_size is not None:

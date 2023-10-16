@@ -20,9 +20,7 @@ from absl import flags
 from six.moves import range
 import tensorflow.compat.v2 as tf
 
-from trax.tf_numpy.examples.mnist import dataset
-from trax.tf_numpy.examples.mnist import model as model_lib
-
+from resources.examples.python.mnist import model as model_lib, dataset
 
 FLAGS = flags.FLAGS
 

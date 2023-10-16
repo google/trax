@@ -252,7 +252,7 @@ def ReformerLM(
         tl.Dup(),
         tl.ReversibleSerial(decoder_blocks),
         tl.Concatenate(),
-        # TODO(kitaev): Test whether dropout should go before or after the
+        # # TODO(kitaev): Test whether dropout should go before or after the
         # LayerNorm, and whether dropout broadcasting is needed here.
         tl.LayerNorm(),
         tl.Dropout(

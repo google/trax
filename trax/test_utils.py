@@ -19,17 +19,15 @@ import sys
 
 from absl import flags
 
-FLAGS = flags.FLAGS
-
 
 # pytest doesn't run the test as a main, so it doesn't parse the flags
 # so if flags are required in tests, this will ensure that flags are manually
 # parsed and the desired flag exists.
 def ensure_flag(flag_str):
     try:
-        getattr(FLAGS, flag_str)
+        getattr(flags.FLAGS, flag_str)
     except flags.UnparsedFlagAccessError:
         # Manually parse flags.
-        FLAGS(sys.argv)
+        flags.FLAGS(sys.argv)
     finally:
-        assert getattr(FLAGS, flag_str)
+        assert getattr(flags.FLAGS, flag_str)

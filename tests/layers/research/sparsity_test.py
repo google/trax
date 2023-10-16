@@ -24,7 +24,7 @@ from tensorflow import test
 from trax import fastmath
 from trax import shapes
 import trax.layers as tl
-from trax.layers import test_utils
+from tests.layers import test_utils
 from trax.layers.research import sparsity
 
 
