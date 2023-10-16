@@ -58,29 +58,29 @@ then
   pytest tests/fastmath
   set_status
 
-  #pytest tests/layers
-  #set_status
+  pytest tests/layers
+  set_status
 
-  #pytest tests/models
-  #set_status
+  pytest tests/models
+  set_status
 
-  #pytest tests/optimizers
-  #set_status
+  pytest tests/optimizers
+  set_status
 
-  #pytest tests/supervised
-  #set_status
+  pytest tests/supervised
+  set_status
 
-  #pytest tests/tf_numpy
-  #set_status
+  pytest tests/tf_numpy
+  set_status
 
-  #pytest tests/import_test.py
-  #set_status
+  pytest tests/import_test.py
+  set_status
 
-  #pytest tests/shapes_test.py
-  #set_status
+  pytest tests/shapes_test.py
+  set_status
 
-  #pytest tests/trax2keras_test.py
-  #set_status
+  pytest tests/trax2keras_test.py
+  set_status
 
   # Disabled the decoding test for now, since it OOMs.
   # TODO(afrozm): Add the decoding_test.py back again.

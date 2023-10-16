@@ -59,6 +59,8 @@ jobs:
           python -m pip install orbax-checkpoint orbax-export
           python -m pip install tensorflow_datasets==4.2.0
           python -m pip install tensorflow_metadata==1.6.0
+          python -m pip install tensorflow-text==2.11.0
+          python -m pip install mock==5.1.0
           python -m pip install tfds-nightly==4.6.0.dev202210050045
           python -m pip install transformers==4.33.3
           python -m pip install mesh-tensorflow==0.1.21
