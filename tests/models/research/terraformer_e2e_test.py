@@ -21,7 +21,7 @@ import gin
 from absl.testing import absltest
 
 
-from trax import test_utils
+from tests.layers import test_utils
 from trax.supervised import trainer_lib
 
 pkg_dir, _ = os.path.split(__file__)
