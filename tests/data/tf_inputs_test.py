@@ -30,7 +30,7 @@ from trax.data import tf_inputs
 
 
 pkg_dir, _ = os.path.split(__file__)
-_TESTDATA = os.path.join(pkg_dir, "../../resources/data/testdata")
+_TESTDATA = os.path.normpath(os.path.join(pkg_dir, "../../resources/data/testdata"))
 
 
 def _test_dataset_ints(inp_lengths, tgt_lengths):
