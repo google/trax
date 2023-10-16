@@ -71,7 +71,7 @@ jobs:
       # Test out right now with only testing one directory.
       - name: Test with pytest
         run: |
-          TRAX_TEST=" ${{matrix.trax-test}}" ./oss_scripts/oss_tests.sh
+          TRAX_TEST="${{matrix.trax-test}}" ./oss_scripts/oss_tests.sh
       # The below step just reports the success or failure of tests as a "commit status".
       # This is needed for copybara integration.
       - name: Report success or failure as github status
