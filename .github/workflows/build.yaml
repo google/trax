@@ -66,7 +66,7 @@ jobs:
           python -m pip install protobuf==3.19.6
           python -m pip install t5==0.9.2 --no-dependencies tensorflow
           python -m pip install seqio --no-deps tensorflow
-          python -m pip tensor2tensor==1.15.7
+          python -m pip install tensor2tensor==1.15.7
       # Test out right now with only testing one directory.
       - name: Test with pytest
         run: |
