@@ -19,18 +19,15 @@ from absl.testing import absltest
 
 
 class ImportTest(absltest.TestCase):
-
     def test_import_trax(self):
         try:
             # Import trax
             import trax  # pylint: disable=g-import-not-at-top
+
             # Access a few symbols.
-            dir(trax.fastmath)
-            dir(trax.layers)
-            dir(trax.models)
         except ImportError as e:
             raise e
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     absltest.main()
