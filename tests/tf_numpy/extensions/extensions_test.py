@@ -20,13 +20,14 @@ import itertools
 from absl import flags
 from absl.testing import parameterized
 
-from jax import lax
+import jax
+
+# from jax import lax
 import numpy as np
 import tensorflow.compat.v2 as tf
 
 from trax.tf_numpy import extensions
 import trax.tf_numpy.numpy as tf_np
-
 
 FLAGS = flags.FLAGS
 
@@ -460,7 +461,7 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
         },
     )
     def test_tf_dot_general(self, lhs_np, rhs_np, dims):
-        ans = lax.dot_general(lhs_np, rhs_np, dims)
+        ans = jax.lax.dot_general(lhs_np, rhs_np, dims)
         result = extensions.tf_dot_general(lhs_np, rhs_np, dims)
         self.assertAllClose(result, np.array(ans))
 
@@ -528,7 +529,7 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
         lhs = np.transpose(np.ones(lhs_shape), lhs_perm)
         rhs = np.transpose(np.ones(rhs_shape), rhs_perm)
 
-        jax_conv = lax.conv_general_dilated(
+        jax_conv = jax.lax.conv_general_dilated(
             lhs,
             rhs,
             strides,
@@ -875,7 +876,7 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
 
     def _get_two_devices(self, require_same_type=False):
         tpus = extensions.tpu_devices()
-        if FLAGS.requires_tpu:
+        if flags.requires_tpu:
             if len(tpus) == 2:
                 res = tpus
             else:
