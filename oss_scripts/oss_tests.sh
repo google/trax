@@ -49,6 +49,8 @@ set_status
 # Check tests, check each directory of tests separately.
 if [[ "${TRAX_TEST}" == "lib" ]]
 then
+  echo "Testing all framework packages..."
+
   ## Core Trax and Supervised Learning
   pytest tests/data
   set_status
@@ -135,6 +137,7 @@ then
 #    --ignore=trax/tf_numpy
 #  set_status
 else
+  echo "No testing ..."
   # Models, RL and misc right now.
 
   ## Models
