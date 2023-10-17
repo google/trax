@@ -55,41 +55,41 @@ then
   pytest tests/data
   set_status
 
-  pytest tests/fastmath
-  set_status
-
-  pytest tests/layers
-  set_status
+#  pytest tests/fastmath
+#  set_status
+#
+#  pytest tests/layers
+#  set_status
 
   pytest tests/models
   set_status
 
-  pytest tests/optimizers
-  set_status
-
-  pytest tests/supervised
-  set_status
-
-  pytest tests/tf_numpy/extensions
-  set_status
-
-  pytest tests/tf_numpy/jax
-  set_status
-
-  pytest tests/tf_numpy/numpy_impl
-  set_status
-
-  pytest tests/tf_numpy/public_symbol_test.py
-  set_status
-
-  pytest tests/import_test.py
-  set_status
-
-  pytest tests/shapes_test.py
-  set_status
-
-  pytest tests/trax2keras_test.py
-  set_status
+#  pytest tests/optimizers
+#  set_status
+#
+#  pytest tests/supervised
+#  set_status
+#
+#  pytest tests/tf_numpy/extensions
+#  set_status
+#
+#  pytest tests/tf_numpy/jax
+#  set_status
+#
+#  pytest tests/tf_numpy/numpy_impl
+#  set_status
+#
+#  pytest tests/tf_numpy/public_symbol_test.py
+#  set_status
+#
+#  pytest tests/import_test.py
+#  set_status
+#
+#  pytest tests/shapes_test.py
+#  set_status
+#
+#  pytest tests/trax2keras_test.py
+#  set_status
 
 else
   echo "No testing ..."

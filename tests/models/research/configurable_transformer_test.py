@@ -24,7 +24,7 @@ import numpy as np
 from trax import fastmath
 from trax import layers as tl
 from trax import shapes
-from layers import test_utils
+from tests.layers import test_utils
 from trax.models.research import configurable_transformer as ct
 
 
