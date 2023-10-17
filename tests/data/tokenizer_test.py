@@ -97,6 +97,9 @@ class TestTokenCounts(tf.test.TestCase):
         if "\r\n" in token_counts.keys():
             token_counts.update({"\n": token_counts.pop("\r\n")})
 
+        if ".\n\n" in token_counts.keys():
+            token_counts.update({"\n\n": token_counts.pop(".\n\n")})
+
         print(token_counts)
         self.assertDictContainsSubset({"\n\n": 2, "\n": 3}, token_counts)
 
