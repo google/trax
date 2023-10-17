@@ -153,7 +153,7 @@ def _make_jax_gpu_cluster(host_id, server_ip, n_hosts, server_port=5005):
     if host_id == 0:
         logging.info("starting service on %s", addr)
         service = xc.get_distributed_runtime_service(addr, n_hosts)
-        # We add an explicit call to shutdown the service via atexit as Python
+        # We add an explicit call to shut down the service via at exit as Python
         # interpreter may not call the service destructor on process termination.
         atexit.register(service.shutdown)
 
