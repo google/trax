@@ -22,7 +22,6 @@ from trax.shapes import ShapeDtype
 
 
 class ShapesTest(absltest.TestCase):
-
     def test_constructor_and_read_properties(self):
         sd = ShapeDtype((2, 3), np.int32)
         self.assertEqual(sd.shape, (2, 3))
@@ -34,18 +33,17 @@ class ShapesTest(absltest.TestCase):
         self.assertEqual(sd.dtype, np.float32)
 
     def test_signature_on_ndarray(self):
-        array = np.array([[2, 3, 5, 7],
-                          [11, 13, 17, 19]],
-                         dtype=np.int16)
+        array = np.array([[2, 3, 5, 7], [11, 13, 17, 19]], dtype=np.int16)
         sd = shapes.signature(array)
         self.assertEqual(sd.shape, (2, 4))
         self.assertEqual(sd.dtype, np.int16)
 
     def test_shape_dtype_repr(self):
         sd = ShapeDtype((2, 3))
-        repr_string = '{}'.format(sd)
-        self.assertEqual(repr_string,
-                         "ShapeDtype{shape:(2, 3), dtype:<class 'numpy.float32'>}")
+        repr_string = "{}".format(sd)
+        self.assertEqual(
+            repr_string, "ShapeDtype{shape:(2, 3), dtype:<class 'numpy.float32'>}"
+        )
 
     def test_splice_signatures(self):
         sd1 = ShapeDtype((1,))
@@ -82,5 +80,5 @@ class ShapesTest(absltest.TestCase):
         # pylint: enable=g-generic-assert
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     absltest.main()
