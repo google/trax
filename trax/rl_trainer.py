@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The Trax Authors.
+# Copyright 2023 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ from absl import flags
 from absl import logging
 import gin
 import jax
-from jax.config import config
+from jax import config
 from trax import fastmath
 from trax import rl  # pylint: disable=unused-import
 from trax import trainer_flags  # pylint: disable=unused-import

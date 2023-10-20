@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The Trax Authors.
+# Copyright 2023 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import os
 import time
 
 from absl.testing import absltest
-from jax.config import config
+from jax import config
 import numpy as np
 
 from trax import data
