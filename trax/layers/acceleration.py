@@ -208,7 +208,7 @@ def _combine_devices(x_tuple):
 def _accelerate(f, n_devices):
   """Returns an accelerated version of ``f`` running on ``n_devices``."""
   if n_devices == 0:  # no accelerators - run on CPU
-    return fastmath.jit(f, device=jax.devices('cpu')[0])
+    return fastmath.jit(f, device=jax.local_devices(backend='cpu')[0])
 
   if n_devices == 1:
     return fastmath.jit(f)
@@ -248,7 +248,7 @@ def for_n_devices(x, n_devices):
 def on_cpu(x):
   """Puts ``x`` in CPU memory in JAX."""
   if fastmath.is_backend(fastmath.Backend.JAX):
-    return jax.device_put(x, jax.devices('cpu')[0])
+    return jax.device_put(x, jax.local_devices(backend='cpu')[0])
   else:
     return x
 
