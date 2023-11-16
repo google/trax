@@ -23,8 +23,8 @@ try:
   # Note that this import will work in tf-nightly and TF versions 2.4 and
   # higher.
   from tensorflow.experimental.numpy import *
-  # TODO(agarwal): get rid of following imports.
-  from tensorflow.experimental.numpy import random
+  # # TODO(agarwal): get rid of following imports.
+  # from tensorflow.experimental.numpy import random
   from tensorflow import bfloat16
   import numpy as onp
   from tensorflow.python.ops.numpy_ops.np_dtypes import canonicalize_dtype
