@@ -15,18 +15,18 @@
 #!/bin/bash
 
 set -v  # print commands as they're executed
-set -e  # fail and exit on any command erroring
+set -e  # fail and exit on any command error
 
 GIT_COMMIT_ID=${1:-""}
 [[ -z $GIT_COMMIT_ID ]] && echo "Must provide a commit" && exit 1
 
 TMP_DIR=$(mktemp -d)
-pushd $TMP_DIR
+pushd "$TMP_DIR"
 
 echo "Cloning trax and checking out commit $GIT_COMMIT_ID"
 git clone https://github.com/google/trax.git
 cd trax
-git checkout $GIT_COMMIT_ID
+git checkout "$GIT_COMMIT_ID"
 
 python3 -m pip install wheel twine pyopenssl
 
@@ -42,4 +42,4 @@ python3 -m twine upload dist/*
 # Cleanup
 rm -rf build/ dist/ trax.egg-info/
 popd
-rm -rf $TMP_DIR
+rm -rf "$TMP_DIR"

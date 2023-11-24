@@ -39,7 +39,7 @@ setup(
         "funcsigs==1.0.2",
         "gin-config==0.5.0",
         "gym==0.26.2",
-        "jax==0.4.14",
+        "jax==0.4.20",
         "jaxlib==0.4.14",
         "matplotlib==3.8.0",
         "numpy==1.25.2",
@@ -50,8 +50,8 @@ setup(
         "tensorflow-text==2.11.0",
     ],
     extras_require={
-        "tensorflow": ["tensorflow==2.11.0"],
-        "tensorflow_gpu": ["tensorflow-gpu>=1.15.0"],
+        "tensorflow": ["tensorflow==2.14.0"],
+        "tensorflow_gpu": ["tensorflow-gpu>=2.14.0"],
         "t5": ["t5==0.9.2"],
         "tests": [
             "attrs==23.1.0",

@@ -15,7 +15,7 @@
 #!/bin/bash
 
 set -v  # print commands as they're executed
-set -e  # fail and exit on any command erroring
+set -e  # fail and exit on any command error
 
 : "${TF_VERSION:?}"
 
