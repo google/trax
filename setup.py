@@ -50,8 +50,8 @@ setup(
         "tensorflow-text==2.14.0",
     ],
     extras_require={
-        "tensorflow": ["tensorflow==2.14.0"],
-        "tensorflow_gpu": ["tensorflow-gpu>=2.14.0"],
+        "tensorflow": ["tensorflow==2.11.0"],
+        "tensorflow_gpu": ["tensorflow-gpu>=2.11.0"],
         "t5": ["t5==0.9.2"],
         "tests": [
             "attrs==23.1.0",
