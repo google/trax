@@ -39,7 +39,7 @@ jobs:
       matrix:
         python-version: [ '3.10' ]
         # Which tf-version run.
-        tf-version: [ '2.11.0' ]
+        tf-version: [ '2.13.0' ]
         # Which set of tests to run.
         trax-test: [ 'lib','research' ]
 
@@ -60,7 +60,7 @@ jobs:
           python -m pip install orbax-checkpoint orbax-export
           python -m pip install tensorflow_datasets==4.2.0
           python -m pip install tensorflow_metadata==1.6.0
-          python -m pip install tensorflow-text==2.11.0
+          python -m pip install tensorflow-text==2.13.0
           python -m pip install pandas==2.1.1
           python -m pip install matplotlib==3.8.0
           python -m pip install multimethod==1.10

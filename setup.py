@@ -47,11 +47,11 @@ setup(
         "scipy==1.11.3",
         "six==1.14.0",
         "tensorflow-datasets==4.2.0",
-        "tensorflow-text==2.11.0",
+        "tensorflow-text==2.13.0",
     ],
     extras_require={
-        "tensorflow": ["tensorflow==2.11.0"],
-        "tensorflow_gpu": ["tensorflow-gpu>=2.11.0"],
+        "tensorflow": ["tensorflow==2.13.0"],
+        "tensorflow_gpu": ["tensorflow-gpu>=2.13.0"],
         "t5": ["t5==0.9.2"],
         "tests": [
             "attrs==23.1.0",
