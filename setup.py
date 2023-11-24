@@ -40,7 +40,7 @@ setup(
         "gin-config==0.5.0",
         "gym==0.26.2",
         "jax==0.4.20",
-        "jaxlib==0.4.14",
+        "jaxlib==0.4.20",
         "matplotlib==3.8.0",
         "numpy==1.25.2",
         "psutil==5.9.5",
