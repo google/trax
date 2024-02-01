@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 The Trax Authors.
+# Copyright 2024 The Trax Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -2496,7 +2496,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
       y = onp.ones(10,).at[[2, 4, 5]].add(u)
       # The transpose rule for lax.tie_in returns a symbolic zero for its first
       # argument.
-      return lax.tie_in(y, 7.)
+      return 7.
 
     self.assertAllClose(onp.zeros(3,), api.grad(f)(onp.ones(3,)),
                         check_dtypes=True)
