@@ -94,14 +94,14 @@ class EfficientAttentionTest(test.TestCase, parameterized.TestCase):
       test_all = self._run_forward_and_backward(test_model, inp, weights, state)
       test_out, test_state, test_inp_grad, test_weights_grad = test_all
 
-      self.assertEqual(jax.tree_structure(ref_out),
-                       jax.tree_structure(test_out))
-      self.assertEqual(jax.tree_structure(ref_state),
-                       jax.tree_structure(test_state))
-      self.assertEqual(jax.tree_structure(ref_inp_grad),
-                       jax.tree_structure(test_inp_grad))
-      self.assertEqual(jax.tree_structure(ref_weights_grad),
-                       jax.tree_structure(test_weights_grad))
+      self.assertEqual(jax.tree.structure(ref_out),
+                       jax.tree.structure(test_out))
+      self.assertEqual(jax.tree.structure(ref_state),
+                       jax.tree.structure(test_state))
+      self.assertEqual(jax.tree.structure(ref_inp_grad),
+                       jax.tree.structure(test_inp_grad))
+      self.assertEqual(jax.tree.structure(ref_weights_grad),
+                       jax.tree.structure(test_weights_grad))
 
       check_close = lambda x, y: self.assertAllClose(x, y, rtol=2e-3, atol=2e-3)
       fastmath.nested_map_multiarg(check_close, ref_out, test_out)
@@ -168,7 +168,7 @@ class EfficientAttentionTest(test.TestCase, parameterized.TestCase):
                                    dtype=x.dtype)
         else:
           return x[:, i:i+1]
-      return jax.tree_map(get_slice_for_val, pytree)
+      return jax.tree.map(get_slice_for_val, pytree)
 
     seqlen = x[0].shape[1] if isinstance(x, (tuple, list)) else x.shape[1]
 
