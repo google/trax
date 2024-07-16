@@ -1766,7 +1766,7 @@ def compute_single_result(op_name, num_args):
   elif op_name == 'gain_percent':
     return 100 + num_args[0]
   elif op_name == 'gcd':
-    return scipy.gcd(int(num_args[0]), int(num_args[1]))
+    return np.gcd(int(num_args[0]), int(num_args[1]))
   elif op_name == 'inverse':
     if num_args[0] != 0:
       return 1 / num_args[0]
@@ -1961,7 +1961,7 @@ def single_op_to_python_command(op_name, num_args):
   elif op_name == 'gain_percent':
     return '100 + {}'.format(num_args[0])
   elif op_name == 'gcd':
-    return 'scipy.gcd(int({}), int({}))'.format(num_args[0], num_args[1])
+    return 'np.gcd(int({}), int({}))'.format(num_args[0], num_args[1])
   elif op_name == 'inverse':
     # safe inverse
     if num_args[0] != 0:
