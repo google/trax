@@ -261,7 +261,7 @@ class ArrayCreationTest(tf.test.TestCase):
         self.all_arrays, self.all_types, ndmins, [True, False]):
       self.match(
           array_ops.array(a, dtype=dtype, ndmin=ndmin, copy=copy),
-          np.array(a, dtype=dtype, ndmin=ndmin, copy=copy))
+          np.array(a, dtype=dtype, ndmin=ndmin))
 
     zeros_list = array_ops.zeros(5)
 
