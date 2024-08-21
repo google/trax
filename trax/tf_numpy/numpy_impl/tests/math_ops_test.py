@@ -15,6 +15,7 @@
 
 """Tests for tf numpy mathematical methods."""
 import itertools
+import unittest
 from absl.testing import parameterized
 import numpy as np
 from six.moves import range
@@ -262,6 +263,8 @@ class MathTest(tf.test.TestCase, parameterized.TestCase):
     run_test([[1, 2], [3, 4]], axis=-1)
     run_test([[1, 2], [3, 4]], axis=-2)
 
+  @unittest.skipIf(np.__version__ >= np.lib.NumpyVersion('2.0.0'),
+                   'tf numpy is implemented to be numpy 1.x compatible')
   def testLinSpace(self):
     array_transforms = [
         lambda x: x,  # Identity,
@@ -291,6 +294,8 @@ class MathTest(tf.test.TestCase, parameterized.TestCase):
     run_test(0, -1, num=10)
     run_test(0, -1, endpoint=False)
 
+  @unittest.skipIf(np.__version__ >= np.lib.NumpyVersion('2.0.0'),
+                   'tf numpy is implemented to be numpy 1.x compatible')
   def testLogSpace(self):
     array_transforms = [
         lambda x: x,  # Identity,
