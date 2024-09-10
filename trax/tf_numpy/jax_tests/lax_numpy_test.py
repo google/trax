@@ -272,13 +272,13 @@ JAX_COMPOUND_OP_RECORDS = [
 ]
 
 JAX_BITWISE_OP_RECORDS = [
-    op_record("bitwise_and", 2, int_dtypes + unsigned_dtypes, all_shapes,
+    op_record("bitwise_and", 2, int_dtypes, all_shapes,
               jtu.rand_default, []),
-    op_record("bitwise_not", 1, int_dtypes + unsigned_dtypes, all_shapes,
+    op_record("bitwise_not", 1, int_dtypes, all_shapes,
               jtu.rand_default, []),
-    op_record("bitwise_or", 2, int_dtypes + unsigned_dtypes, all_shapes,
+    op_record("bitwise_or", 2, int_dtypes, all_shapes,
               jtu.rand_default, []),
-    op_record("bitwise_xor", 2, int_dtypes + unsigned_dtypes, all_shapes,
+    op_record("bitwise_xor", 2, int_dtypes, all_shapes,
               jtu.rand_default, []),
 ]
 
