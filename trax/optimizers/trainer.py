@@ -440,8 +440,7 @@ class ReversibleSerialTrainer:
 
   def _free_accelerators(self, exceptions=(), keep_constants=True):
     """Deletes all live buffers from accelerator with no safety guarantees."""
-    backend = jax.lib.xla_bridge.get_backend()
-    live_buffers = backend.live_buffers()
+    live_buffers = jax.live_arrays()
     logging.info('Deleting %d live buffers.', len(live_buffers))
     exceptions_buffers = []
     for x in fastmath.tree_flatten(exceptions):
