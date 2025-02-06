@@ -52,6 +52,7 @@ from trax.data.inputs import generate_random_noise_mask
 from trax.data.inputs import generate_sequential_chunks
 from trax.data.inputs import Log
 from trax.data.inputs import MLM
+from trax.data.inputs import Pad
 from trax.data.inputs import PadToLength
 from trax.data.inputs import Parallel
 from trax.data.inputs import Prefetch
