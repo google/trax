@@ -28,7 +28,7 @@ from tensorflow.python.ops.numpy_ops import np_math_ops  # pylint: disable=g-dir
 class VmapTest(tf.test.TestCase, parameterized.TestCase):
 
   def test_vmap_in_axes_list(self):
-    # https://github.com/google/jax/issues/2367
+    # https://github.com/jax-ml/jax/issues/2367
     dictionary = {'a': 5., 'b': tf_np.ones(2)}
     x = tf_np.zeros(3)
     y = tf_np.arange(3.)
@@ -41,7 +41,7 @@ class VmapTest(tf.test.TestCase, parameterized.TestCase):
     self.assertAllClose(out1, out2)
 
   def test_vmap_in_axes_tree_prefix_error(self):
-    # https://github.com/google/jax/issues/795
+    # https://github.com/jax-ml/jax/issues/795
     self.assertRaisesRegex(
         ValueError,
         'vmap in_axes specification must be a tree prefix of the corresponding '
@@ -63,14 +63,14 @@ class VmapTest(tf.test.TestCase, parameterized.TestCase):
               tf_np.array([1., 2.]))
 
   def test_vmap_unbatched_object_passthrough_issue_183(self):
-    # https://github.com/google/jax/issues/183
+    # https://github.com/jax-ml/jax/issues/183
     fun = lambda f, x: f(x)
     vfun = extensions.vmap(fun, (None, 0))
     ans = vfun(lambda x: x + 1, tf_np.arange(3))
     self.assertAllClose(ans, np.arange(1, 4))
 
   def test_vmap_mismatched_axis_sizes_error_message_issue_705(self):
-    # https://github.com/google/jax/issues/705
+    # https://github.com/jax-ml/jax/issues/705
     with self.assertRaisesRegex(
         ValueError, 'vmap must have at least one non-None value in in_axes'):
       # If the output is mapped, there must be a non-None in_axes

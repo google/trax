@@ -2051,14 +2051,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
   # TODO(mattjj): test other ndarray-like method overrides
 
   def testOnpMean(self):
-    # from https://github.com/google/jax/issues/125
+    # from https://github.com/jax-ml/jax/issues/125
     x = lnp.add(lnp.eye(3, dtype=lnp.float_), 0.)
     ans = onp.mean(x)
     self.assertAllClose(ans, onp.array(1./3), check_dtypes=False)
 
   @jtu.disable
   def testArangeOnFloats(self):
-    # from https://github.com/google/jax/issues/145
+    # from https://github.com/jax-ml/jax/issues/145
     expected = onp.arange(0.0, 1.0, 0.1, dtype=lnp.float_)
     ans = lnp.arange(0.0, 1.0, 0.1)
     self.assertAllClose(expected, ans, check_dtypes=True)
@@ -2407,7 +2407,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
 
   @jtu.disable
   def testIssue347(self):
-    # https://github.com/google/jax/issues/347
+    # https://github.com/jax-ml/jax/issues/347
     def test_fail(x):
       x = lnp.sqrt(lnp.sum(x ** 2, axis=1))
       ones = lnp.ones_like(x)
@@ -2419,7 +2419,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
     assert not onp.any(onp.isnan(result))
 
   def testIssue453(self):
-    # https://github.com/google/jax/issues/453
+    # https://github.com/jax-ml/jax/issues/453
     a = onp.arange(6) + 1
     ans = lnp.reshape(a, (3, 2), order='F')
     expected = onp.reshape(a, (3, 2), order='F')
@@ -2432,7 +2432,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
                             (bool, lnp.bool_), (complex, lnp.complex_)]
       for op in ["atleast_1d", "atleast_2d", "atleast_3d"]))
   def testAtLeastNdLiterals(self, pytype, dtype, op):
-    # Fixes: https://github.com/google/jax/issues/634
+    # Fixes: https://github.com/jax-ml/jax/issues/634
     onp_fun = lambda arg: getattr(onp, op)(arg).astype(dtype)
     lnp_fun = lambda arg: getattr(lnp, op)(arg)
     args_maker = lambda: [pytype(2)]
@@ -2550,7 +2550,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
                           rtol=tol)
 
   def testIssue883(self):
-    # from https://github.com/google/jax/issues/883
+    # from https://github.com/jax-ml/jax/issues/883
 
     @partial(npe.jit, static_argnums=(1,))
     def f(x, v):
@@ -2907,7 +2907,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
       FLAGS.jax_numpy_rank_promotion = prev_flag
 
   def testStackArrayArgument(self):
-    # tests https://github.com/google/jax/issues/1271
+    # tests https://github.com/jax-ml/jax/issues/1271
     @npe.jit
     def foo(x):
       return lnp.stack(x)
@@ -3120,7 +3120,7 @@ class NumpyGradTests(jtu.TestCase):
 
   @jtu.disable
   def testTakeAlongAxisIssue1521(self):
-    # https://github.com/google/jax/issues/1521
+    # https://github.com/jax-ml/jax/issues/1521
     idx = lnp.repeat(lnp.arange(3), 10).reshape((30, 1))
 
     def f(x):
