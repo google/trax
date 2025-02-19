@@ -720,7 +720,7 @@ class IndexingTest(jtu.TestCase):
     with self.assertRaisesRegex(IndexError, error_regex):
       npe.jit(lambda idx: jnp.zeros((2, 2))[idx])((0, 0.))
 
-  def testIndexOutOfBounds(self):  # https://github.com/google/jax/issues/2245
+  def testIndexOutOfBounds(self):  # https://github.com/jax-ml/jax/issues/2245
     array = jnp.ones(5)
     self.assertAllClose(array, array[:10], check_dtypes=True)
 
