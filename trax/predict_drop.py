@@ -220,7 +220,7 @@ def main(argv):
     processing_file = os.path.join(FLAGS.output_dir, 'processing_')
     data_id = str(example_count + FLAGS.starting_example)
     with tf.io.gfile.GFile(processing_file + data_id, 'w') as w:
-      w.write('Procesing started.')
+      w.write('Processing started.')
     for repetition_id, example in multiply_examples(e):
       question = example[0]
       question_text = question[question.find(':') + 2:]
@@ -315,7 +315,7 @@ def main(argv):
       with tf.io.gfile.GFile(json_to_write + data_id, 'w') as w:
         w.write(json.dumps(json_record) + '\n')
     with tf.io.gfile.GFile(processing_file + data_id, 'w') as w:
-      w.write('Procesing finished.')
+      w.write('Processing finished.')
 
   with tf.io.gfile.GFile(json_to_write + '_' + str(FLAGS.starting_example),
                          'w') as w:
