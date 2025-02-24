@@ -109,7 +109,6 @@ jobs:
           python -m pip install wrapt==1.15.0
           python -m pip install tensor2tensor==1.15.7
           python -m pip install orbax-checkpoint==0.4.4
-          python -m pip install orbax-export
           python -m pip install clu==0.0.10
           python -m pip install flax==0.7.5
       # Test out right now with only testing one directory.
