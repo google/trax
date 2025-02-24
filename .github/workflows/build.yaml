@@ -47,7 +47,6 @@ jobs:
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v3
-      - working-directory: .
       - name: Set up Python ${{matrix.python-version}}
         uses: actions/setup-python@v3
         with:
@@ -113,7 +112,11 @@ jobs:
           python -m pip install tensor2tensor==1.15.7
           python -m pip install clu==0.0.10
       # Test out right now with only testing one directory.
+      - name: Install trax package
+        run: |
+          python -m pip install -e .
       - name: Test with pytest
+        working-directory: .
         run: |
           TRAX_TEST="${{matrix.trax-test}}" ./oss_scripts/oss_tests.sh
       # The below step just reports the success or failure of tests as a "commit status".
