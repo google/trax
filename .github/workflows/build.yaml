@@ -58,7 +58,7 @@ jobs:
           python -m pip install setuptools==69.0.2 
           python -m pip install numpy==1.23.5          
           python -m pip install pytest==7.4.2
-          python -m pip install orbax-checkpoint=0.4.4
+          python -m pip install orbax-checkpoint==0.4.4
           python -m pip install orbax-export
           python -m pip install tensorflow_datasets==4.2.0
           python -m pip install tensorflow_metadata==1.6.0
