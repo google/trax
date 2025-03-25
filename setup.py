@@ -47,7 +47,7 @@ setup(
         "scipy==1.11.3",
         "six==1.14.0",
         "tensorflow-datasets==4.2.0",
-        "tensorflow-text==2.14.0",
+        "tensorflow-text==2.13.0",
     ],
     extras_require={
         "tensorflow": ["tensorflow==2.13.0"],
