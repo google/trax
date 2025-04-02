@@ -19,21 +19,20 @@ import itertools
 import operator
 import unittest
 import warnings
+
 from functools import partial
 from unittest import SkipTest
 
+import fastmath.jax.utils as jtu
 import numpy as onp
 import six
 import tensorflow.compat.v2 as tf
-from absl.testing import absltest
-from absl.testing import parameterized
 
-import tests.tf_numpy.jax.utils as jtu
-from tests.tf_numpy.jax.config import config, FLAGS
+from absl.testing import absltest, parameterized
+from fastmath.jax.config import FLAGS, config
 
-import trax.tf_numpy.extensions as npe
-import trax.tf_numpy.numpy as lnp
-
+import trax.tf.extensions as npe
+import trax.tf.numpy as lnp
 
 config.parse_flags_with_absl()
 
@@ -3287,7 +3286,6 @@ class LaxBackedNumpyTests(jtu.TestCase):
 
     def testSortManually(self):
         def _test(*args, **kwargs):
-
             raw_ans = lnp.sort(*args, **kwargs)
             fn_ans = npe.jit(lnp.sort, static_argnums=(1,))(*args, **kwargs)
             expected = onp.sort(*args, **kwargs)
@@ -3304,7 +3302,6 @@ class LaxBackedNumpyTests(jtu.TestCase):
 
     def testArgsortManually(self):
         def _test(*args, **kwargs):
-
             raw_ans = lnp.argsort(*args, **kwargs)
             fn_ans = npe.jit(lnp.argsort, static_argnums=(1,))(*args, **kwargs)
             expected = onp.argsort(*args, **kwargs)
@@ -4545,7 +4542,6 @@ class LaxBackedNumpyTests(jtu.TestCase):
 
     @jtu.disable
     def testPrecision(self):
-
         ones_1d = onp.ones((2,))
         ones_2d = onp.ones((2, 2))
         ones_3d = onp.ones((2, 2, 2))

@@ -213,7 +213,7 @@ autodoc_mock_imports = [
     "tensorflow",
     "tensorflow_datasets",
     "funcsigs",
-    "trax.tf_numpy",
+    "trax.tf",
     "absl",
     "gym",
     "tensor2tensor",

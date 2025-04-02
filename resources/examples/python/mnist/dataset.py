@@ -18,7 +18,8 @@ import gzip
 import os
 import pickle
 import random
-import urllib
+import urllib.request
+
 import numpy as np
 
 
@@ -42,15 +43,17 @@ def load():
     """
     filepath = _maybe_download()
     with gzip.open(os.path.join(filepath), "rb") as f:
-        training_data, validation_data, test_data = pickle.load(f)
+        training_data, validation_data, test_data = pickle.load(f, encoding="bytes")
     training_data = (training_data[0], [to_one_hot(x) for x in training_data[1]])
     validation_data = (validation_data[0], [to_one_hot(x) for x in validation_data[1]])
     test_data = (test_data[0], [to_one_hot(x) for x in test_data[1]])
 
     def shuffle(data):
-        zipped = zip(*data)
+        zipped = list(zip(*data))
         random.shuffle(zipped)
-        return zip(*zipped)
+        shuffled = zip(*zipped)
+        # Convert the zip object to a tuple of lists to make it subscriptable
+        return tuple(list(x) for x in shuffled)
 
     return (shuffle(training_data), validation_data, test_data)
 
@@ -74,7 +77,7 @@ def _maybe_download():
                 % (filename, float(count * block_size) / float(total_size) * 100.0)
             )
 
-        filepath, _ = urllib.urlretrieve(data_url, filepath, _progress)
+        filepath, _ = urllib.request.urlretrieve(data_url, filepath, _progress)
         statinfo = os.stat(filepath)
         print("Successfully downloaded %s %d bytes." % (filename, statinfo.st_size))
     else:

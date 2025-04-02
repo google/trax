@@ -18,7 +18,6 @@ from absl import app
 from absl import flags
 
 from six.moves import range
-import tensorflow.compat.v2 as tf
 
 from resources.examples.python.mnist import model as model_lib, dataset
 
@@ -56,9 +55,10 @@ def train(batch_size, learning_rate, num_training_iters, validation_steps):
                     index = 0
                 else:
                     return
-            yield data[0][index : index + batch_size], data[1][
-                index : index + batch_size
-            ]
+            yield (
+                data[0][index : index + batch_size],
+                data[1][index : index + batch_size],
+            )
             index += batch_size
 
     train_iter = build_iterator(training_data)
@@ -89,5 +89,4 @@ def main(unused_argv):
 
 
 if __name__ == "__main__":
-    tf.compat.v1.enable_eager_execution()
     app.run(main)

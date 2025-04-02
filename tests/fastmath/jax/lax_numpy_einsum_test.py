@@ -13,19 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections import defaultdict  # pylint: disable=g-importing-member
 import itertools
 
-from absl.testing import absltest
-from absl.testing import parameterized
+from collections import defaultdict  # pylint: disable=g-importing-member
 
-from tests.tf_numpy.jax.config import config
-import tests.tf_numpy.jax.utils as jtu
-
+import fastmath.jax.utils as jtu
 import numpy as np
 import tensorflow.compat.v2 as tf
-import trax.tf_numpy.numpy as jnp
 
+from absl.testing import absltest, parameterized
+from fastmath.jax.config import config
+
+import trax.tf.numpy as jnp
 
 config.parse_flags_with_absl()
 
@@ -219,9 +218,7 @@ class EinsumTest(jtu.TestCase):
     # these tests are based on https://github.com/dask/dask/pull/3412/files
     @parameterized.named_parameters(
         {
-            "testcase_name": "_{}_dtype={}".format(
-                einstr, dtype.__name__
-            ),  # pylint: disable=g-complex-comprehension
+            "testcase_name": "_{}_dtype={}".format(einstr, dtype.__name__),  # pylint: disable=g-complex-comprehension
             "einstr": einstr,
             "dtype": dtype,
         }

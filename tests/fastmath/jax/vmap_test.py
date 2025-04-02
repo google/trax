@@ -14,17 +14,18 @@
 # limitations under the License.
 
 import collections
-from absl.testing import parameterized
 
 import numpy as np
 import tensorflow.compat.v2 as tf
 
-from trax.tf_numpy import extensions
-import trax.tf_numpy.numpy as tf_np
-
+from absl.testing import parameterized
 from tensorflow.python.ops.numpy_ops import (
     np_math_ops,
-)  # pylint: disable=g-direct-tensorflow-import
+)
+
+import trax.tf.numpy as tf_np
+
+from trax.tf import extensions
 
 
 class VmapTest(tf.test.TestCase, parameterized.TestCase):

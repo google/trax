@@ -51,7 +51,7 @@ setup(
     ],
     extras_require={
         "tensorflow": ["tensorflow==2.17.0"],
-        "tensorflow_gpu": ["tensorflow-gpu>=2.17.0"],
+        "tensorflow_cuda": ["tensorflow[and-cuda]==2.17.0"],
         "t5": ["t5==0.9.4"],
         "tests": [
             "attrs==25.3.0",

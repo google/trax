@@ -22,14 +22,13 @@ import os
 import gin
 import jax
 import tensorflow.compat.v2 as tf
-from absl import app
-from absl import flags
-from absl import logging
+
+from absl import app, flags, logging
 from jax.lib import xla_extension as xc
 
 from trax import fastmath
 from trax.supervised import trainer_lib
-from trax.tf_numpy import numpy as tf_np
+from trax.tf import numpy as tf_np
 
 FLAGS = flags.FLAGS
 Backend = fastmath.Backend

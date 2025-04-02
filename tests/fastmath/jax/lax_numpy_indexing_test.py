@@ -31,20 +31,18 @@
 import collections
 import enum
 import itertools
+
 from functools import partial
 
+import fastmath.jax.utils as jtu
 import numpy as onp
 import tensorflow.compat.v2 as tf
 
-from absl.testing import absltest
-from absl.testing import parameterized
+from absl.testing import absltest, parameterized
+from fastmath.jax.config import config
 
-from tests.tf_numpy.jax.config import config
-import tests.tf_numpy.jax.utils as jtu
-
-import trax.tf_numpy.extensions as npe
-import trax.tf_numpy.numpy as jnp
-
+import trax.tf.extensions as npe
+import trax.tf.numpy as jnp
 
 config.parse_flags_with_absl()
 

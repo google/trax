@@ -14,12 +14,11 @@
 # limitations under the License.
 
 """Model for training on MNIST data."""
-from numpy import float32
-from numpy import int32
+import tensorflow as tf
 
-import tensorflow.compat.v2 as tf
+from numpy import float32, int32
 
-from trax.tf_numpy import numpy as np
+from trax.tf import numpy as np
 
 
 class Model(object):
@@ -58,8 +57,6 @@ class Model(object):
         self.weights = []
         self.biases = []
         for i in range(len(hidden_layers) - 1):
-            # TODO(srbs): This is manually cast to float32 to avoid the cast in
-            # np.dot since backprop fails for tf.cast op.
             self.weights.append(
                 np.array(
                     np.random.randn(hidden_layers[i + 1], hidden_layers[i]),

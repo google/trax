@@ -33,15 +33,14 @@ import faulthandler
 
 import gin
 import jax
-from absl import app
-from absl import flags
-from absl import logging
+
+from absl import app, flags, logging
 from jax.config import config
 
 from trax import fastmath
 from trax.rl import task as rl_task
 from trax.rl import training as light_trainers
-from trax.tf_numpy import numpy as tf_np
+from trax.tf import numpy as tf_np
 
 FLAGS = flags.FLAGS
 

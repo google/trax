@@ -13,4 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""NumPy API. Deprecated."""
+"""JAX-like function transformations and extensions for TF-numpy."""
+
+# pylint: disable=wildcard-import
+from trax.tf.extensions.extensions import *
+# pylint: enable=wildcard-import

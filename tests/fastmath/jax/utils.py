@@ -34,6 +34,7 @@ import sys
 import unittest
 import warnings
 import zlib
+
 from contextlib import contextmanager
 from distutils.util import strtobool
 from functools import partial
@@ -43,11 +44,12 @@ import numpy as onp
 import numpy.random as npr
 import scipy
 import tensorflow.compat.v2 as tf
-from absl.testing import parameterized
 
-import trax.tf_numpy.extensions as npe
-import trax.tf_numpy.numpy as tf_np
-from tests.tf_numpy.jax.config import flags
+from absl.testing import parameterized
+from fastmath.jax.config import flags
+
+import trax.tf.extensions as npe
+import trax.tf.numpy as tf_np
 
 tree_map = tf.nest.map_structure
 tree_multimap = tf.nest.map_structure

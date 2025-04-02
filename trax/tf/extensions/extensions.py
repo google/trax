@@ -21,13 +21,12 @@ import functools
 import string
 import sys
 import threading
+
 import numpy as np
 import six
+import tensorflow as tf
 
-
-import tensorflow.compat.v2 as tf
-
-import trax.tf_numpy.numpy as tf_np
+import trax.tf.numpy as tf_np
 
 _int_dtype_lower_bounds = [
     -(2**63),
@@ -101,7 +100,7 @@ def _canonicalize_jit_arg(x):
         #   and tf.function.
         dtype = most_precise_int_dtype(x)
         if dtype is None and isinstance(x, float):
-            dtype = tf_np.default_float_type()
+            dtype = tf_np.float32
         return tf.convert_to_tensor(value=x, dtype=dtype)
     except (TypeError, ValueError):
         return x
@@ -1182,9 +1181,7 @@ def scan(f, init, xs, length=None, reverse=False):
         raise ValueError("Can't determine length. Please set the `length` argument.")
     xs_ta = tf.nest.map_structure(
         lambda t: (
-            tf.TensorArray(
-                t.dtype, size=length, dynamic_size=False
-            ).unstack(  # pylint: disable=g-long-lambda
+            tf.TensorArray(t.dtype, size=length, dynamic_size=False).unstack(  # pylint: disable=g-long-lambda
                 t
             )
             if t is not None
@@ -1514,7 +1511,7 @@ def split(state, num):
     state = _key2seed(state)
     try:
         states = tf.random.experimental.stateless_split(state, num)
-    except AttributeError as e:  # pylint: disable=unused-variable
+    except AttributeError:  # pylint: disable=unused-variable
         # TODO(afrozm): For TF < 2.3 we need to do this. Delete once 2.3 launches.
         states = stateless_split(state, num)
     states = tf.unstack(states, num)
@@ -1522,7 +1519,7 @@ def split(state, num):
     return states
 
 
-def uniform(key, shape, dtype=tf_np.random.DEFAULT_RANDN_DTYPE, minval=0.0, maxval=1.0):
+def uniform(key, shape, dtype=tf_np.float32, minval=0.0, maxval=1.0):
     """Sample uniform random values in range [`minval`, `maxval`).
 
     Args:
@@ -1684,9 +1681,7 @@ class ShardedNdArray(object):
 
     @property
     def shape(self):
-        return (self.n_devices,) + self.tensors[
-            0
-        ]._shape_tuple()  # pylint: disable=protected-access
+        return (self.n_devices,) + self.tensors[0]._shape_tuple()  # pylint: disable=protected-access
 
     @property
     def dtype(self):

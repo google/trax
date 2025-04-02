@@ -32,8 +32,8 @@ from trax import shapes as trax_shapes
 from trax.fastmath import numpy as jnp
 from trax.supervised import lr_schedules as lr
 from trax.supervised import trainer_lib
-from trax.tf_numpy import extensions as npe
-from trax.tf_numpy import numpy as tf_np
+from trax.tf import extensions as npe
+from trax.tf import numpy as tf_np
 
 
 def _test_inputs(n_classes, with_weights=False, input_shape=(6, 6, 3)):
@@ -167,6 +167,7 @@ class TraxTest(parameterized.TestCase):
 
             if model_name == "Simple":
                 n_classes = 4
+
                 # Adds Dropout and BatchNorm to test state handling.
                 def model_fn(mode="train"):
                     return tl.Serial(
@@ -206,7 +207,7 @@ class TraxTest(parameterized.TestCase):
                 steps=steps,
                 eval_steps=eval_steps,
                 eval_frequency=1,  # eval at every step.
-                **kwargs
+                **kwargs,
             )
 
             # Assert total train steps

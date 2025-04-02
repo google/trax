@@ -16,9 +16,9 @@
 """Test that the example training script works on fake data."""
 import mock
 import numpy as np
-import tensorflow.compat.v2 as tf
+import tensorflow as tf
 
-from resources.examples.python.mnist import train, dataset
+from resources.examples.python.mnist import dataset, train
 
 
 class TFNumpyMnistExampleTest(tf.test.TestCase):

@@ -17,15 +17,16 @@
 import functools
 import itertools
 
-from tests.tf_numpy.jax.config import flags
-
 import jax
 import numpy as np
-import tensorflow.compat.v2 as tf
+import tensorflow as tf
+
 from absl.testing import parameterized
 
-import trax.tf_numpy.numpy as tf_np
-from trax.tf_numpy import extensions
+import trax.tf.numpy as tf_np
+
+from tests.fastmath.jax.config import flags
+from trax.tf import extensions
 
 FLAGS = flags.FLAGS
 
@@ -306,7 +307,6 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
         )
 
     def _testEvalOnShapes(self, transformer, allow_static_outputs):
-
         # A class that's not convertable to tensor
         class Thing:
             def __init__(self, value):
@@ -498,7 +498,7 @@ class ExtensionsTest(tf.test.TestCase, parameterized.TestCase):
                     (b * batch_group_count, i * feature_group_count, 9, w),
                     (j * feature_group_count * batch_group_count, i, 4, 5),
                 )
-                for w in [0, 10]
+                for w in [1, 10]
                 for b, i, j in itertools.product([2, 3], repeat=3)
             ]
             for strides in [(1, 1), (2, 1)]

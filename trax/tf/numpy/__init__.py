@@ -13,8 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""JAX-like function transformations and extensions for TF-numpy."""
+"""NumPy like wrapper for Tensorflow."""
 
-# pylint: disable=wildcard-import
-from trax.tf_numpy.extensions.extensions import *
-# pylint: enable=wildcard-import
+
+# Enable NumPy behavior globally
+from tensorflow.python.ops.numpy_ops import np_config
+
+np_config.enable_numpy_behavior()
+
+# Make everything from tensorflow.experimental.numpy available
+from tensorflow.experimental.numpy import *  # pylint: disable=wildcard-import
