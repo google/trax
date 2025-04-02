@@ -18,18 +18,17 @@
 import functools
 import os
 
-from absl.testing import absltest
-from absl.testing import parameterized
 import jax
-from jax.config import config
 import tensorflow.compat.v2 as tf
-from trax import fastmath
+
+from absl.testing import absltest, parameterized
+from data.preprocessing import inputs as inputs_lib
+from jax.config import config
+
+from trax import fastmath, models, test_utils
 from trax import layers as tl
-from trax import models
 from trax import optimizers as trax_opt
 from trax import shapes as trax_shapes
-from trax import test_utils
-from trax.data import inputs as inputs_lib
 from trax.fastmath import numpy as jnp
 from trax.supervised import lr_schedules as lr
 from trax.supervised import trainer_lib

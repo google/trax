@@ -77,16 +77,16 @@ import pickle
 import random
 import time
 
-from absl import logging
 import gin
 import jax
 import numpy as np
 import tensorflow as tf
 
-from trax import fastmath
-from trax import shapes
-from trax.data import debug_data_pipeline
+from absl import logging
+
+from trax import fastmath, shapes
 from trax.fastmath import numpy as jnp
+from trax.data.debugger import data_pipeline as debug_data_pipeline
 
 
 def Serial(*fns):  # pylint: disable=invalid-name
@@ -635,9 +635,7 @@ def UnBatch():  # pylint: disable=invalid-name
             assert len(batch_sizes) == 1
             # Now unbatch examples.
             for example_idx in range(batch_sizes[0]):
-                yield tuple(
-                    map(lambda x: x[example_idx], batched_example)
-                )  # pylint: disable=cell-var-from-loop
+                yield tuple(map(lambda x: x[example_idx], batched_example))  # pylint: disable=cell-var-from-loop
 
     return _unbatch
 
@@ -660,9 +658,7 @@ def Prefetch(n_prefetch=2):  # pylint: disable=invalid-name
 
 
 @gin.configurable(module="trax.data")
-def UniformlySeek(
-    name=None, host_id=None, n_hosts=None, dataset_size=None
-):  # pylint: disable=invalid-name
+def UniformlySeek(name=None, host_id=None, n_hosts=None, dataset_size=None):  # pylint: disable=invalid-name
     """Sets each host at (dataset_size/n_hosts)-th of the dataset."""
     if not dataset_size:
         dataset_size = 2**18  # 512 * 512
@@ -800,7 +796,131 @@ def batch(generator, batch_size):
             buf = []
 
 
-def pad_to_max_dims(tensors, boundary=None, strict_pad_on_len=False):
+def pad_tf_tensors(tensors, boundary=None, strict_pad_on_len=False):
+    """
+    Pad RaggedTensors to a consistent size with advanced padding options.
+
+    Args:
+      tensors: A list of TensorFlow RaggedTensors to pad
+      boundary: Optional boundary for padding
+      strict_pad_on_len: If True, pad strictly to boundary multiples
+
+    Returns:
+      A padded batch of tensors
+    """
+    # Ensure inputs are RaggedTensors or Tensor
+    if not all(
+        isinstance(t, tf.RaggedTensor) or isinstance(t, tf.Tensor) for t in tensors
+    ):
+        raise ValueError("All input tensors must be RaggedTensors or Tensor")
+
+    # Get the number of dimensions
+    dim = tensors[0].shape.rank
+
+    # Handle boundary input
+    if boundary is not None:
+        if not isinstance(boundary, (list, tuple)):
+            boundary = [boundary] * dim
+
+        if len(boundary) != dim:
+            raise ValueError(
+                f"Length of boundary ({len(boundary)}) must match tensor dimensions ({dim})"
+            )
+    else:
+        boundary = [None] * dim
+
+    # Extract lengths for each dimension
+    def get_tensor_lengths(tensors, dim_index):
+        """Safely extract lengths for a given dimension."""
+        lengths = []
+        for t in tensors:
+            # For the first dimension (row lengths)
+            if dim_index == 0:
+                lengths.append(t.nrows())
+            # For subsequent dimensions, get the row lengths
+            else:
+                # Flatten and get max length of inner dimension
+                flat_values = t.flat_values
+                # Handle multi-dimensional ragged tensors
+                if dim_index < flat_values.shape.ndims:
+                    flat_length = flat_values.shape[dim_index - 1]
+                    lengths.append(flat_length)
+                else:
+                    lengths.append(0)
+        return lengths
+
+    # Compute padding lengths
+    max_len_to_pad = []
+    padding_needed = False
+
+    for i in range(dim):
+        lengths = get_tensor_lengths(tensors, i)
+
+        # Determine max length
+        max_len = max(lengths)
+        min_len = min(lengths)
+
+        # Handle boundary and strict padding
+        cur_boundary = boundary[i]
+
+        if cur_boundary is None:
+            # No boundary specified, use max length
+            max_len_pad = max_len
+        elif strict_pad_on_len:
+            # Strictly pad to boundary multiples
+            max_len_pad = math.ceil(max_len / cur_boundary) * cur_boundary
+        else:
+            # Use boundary with intelligent power-of-2 adjustment
+            if max_len <= 0:
+                max_len_pad = 0
+            else:
+                cur_boundary = max(max_len, cur_boundary)
+                if 2 * max_len < cur_boundary:
+                    max_len_pad = 2 ** int(np.ceil(np.log2(max_len)))
+                else:
+                    max_len_pad = cur_boundary
+
+        max_len_to_pad.append(max_len_pad)
+
+        # Check if padding is needed
+        if max_len_pad != max_len:
+            padding_needed = True
+
+    # If no padding is needed, stack the tensors
+    if not padding_needed:
+        return tf.stack(tensors)
+
+    # Pad each tensor
+    padded_tensors = []
+    for t in tensors:
+        # Determine padding for each dimension
+        padding_spec = []
+        for i, max_pad in enumerate(max_len_to_pad):
+            if i == 0:
+                # Pad rows
+                row_padding = max_pad - t.nrows()
+                padding_spec.append([0, row_padding])
+            else:
+                # Pad inner dimensions
+                try:
+                    flat_values = t.flat_values
+                    if i < flat_values.shape.ndims:
+                        dim_len = flat_values.shape[i - 1]
+                        padding_to_add = max_pad - dim_len
+                        padding_spec.append([0, padding_to_add])
+                    else:
+                        padding_spec.append([0, 0])
+                except Exception:
+                    padding_spec.append([0, 0])
+
+        # Apply padding
+        padded_t = tf.pad_to_max_length(t, max_len_to_pad[0], constant_values=0)
+        padded_tensors.append(padded_t)
+
+    return tf.stack(padded_tensors)
+
+
+def pad_np_tensors(tensors, boundary=None, strict_pad_on_len=False):
     """Pad a tuple of tensors to a joint dimension and return their batch.
 
     For example, a pair of tensors of shape (2, 10) and (3, 9) will be padded
@@ -890,6 +1010,29 @@ def pad_to_max_dims(tensors, boundary=None, strict_pad_on_len=False):
         )
         padded_tensors.append(padded_t)
     return np.stack(padded_tensors)
+
+
+def pad_to_max_dims(tensors, boundary=None, strict_pad_on_len=False):
+    """
+    Unified padding function. Depending on the type of input tensors, it either applies
+    dense padding (using NumPy) or uses TensorFlow operations for RaggedTensors.
+
+    Args:
+      tensors: A list or tuple of tensors to pad. They must be either all np.ndarray or all tf.RaggedTensor.
+      boundary: Optional boundary for padding.
+      strict_pad_on_len: If True, pad strictly to boundary multiples.
+
+    Returns:
+      A batched tensor with consistent dimensions.
+    """
+    if all(isinstance(t, tf.RaggedTensor) or isinstance(t, tf.Tensor) for t in tensors):
+        return pad_tf_tensors(tensors, boundary, strict_pad_on_len)
+    elif all(isinstance(t, np.ndarray) for t in tensors):
+        return pad_np_tensors(tensors, boundary, strict_pad_on_len)
+    else:
+        raise ValueError(
+            "Mixed tensor types not supported. All tensors must be either tf.RaggedTensor, tf.Tensor or np.ndarray."
+        )
 
 
 def bucket_by_length(
@@ -1366,6 +1509,7 @@ class Inputs:
 
         # Peek into the train stream to get an example shape.
         example_train_batch = next(train_stream(1))
+
         self._input_shape = tuple(example_train_batch[0].shape)[1:]
         self._input_dtype = example_train_batch[0].dtype
         self._target_shape = tuple(example_train_batch[-1].shape)[1:]
@@ -1805,3 +1949,52 @@ def _pad_to_multiple_of(x, y, axis):
     pad_widths = [(0, 0)] * len(x.shape)
     pad_widths[axis] = (0, int(pad_len - x.shape[axis]))
     return np.pad(x, pad_widths, mode="constant", constant_values=x.dtype.type(0))
+
+
+
+
+
+@gin.configurable(module="trax.data")
+def ConvertToUnicode(keys=None):  # pylint: disable=invalid-name
+    """Converts to Unicode UTF-8 elements of an example.
+
+    Useful for when TFDS outputs byte arrays. All of the errors of the conversion
+    are ignored.
+
+    Args:
+      keys: tuple/list of example dimensions to convert.
+
+    Returns:
+      Function converting chosen elements of an example to UTF-8.
+    """
+
+    @debug_data_pipeline.debug_pipeline
+    def _convert_to_unicode_str(stream):
+        for example in stream:
+            if isinstance(example, (list, tuple)):
+                new_example = []
+                for i, x in enumerate(example):
+                    if keys is None or i in keys:
+                        new_example.append(_to_unicode(x))
+                    else:
+                        new_example.append(x)
+                output = tuple(new_example)
+                yield output
+            elif isinstance(example, dict):
+                new_example = {}
+                for k in example:
+                    if keys is None or k in keys:
+                        new_example[k] = _to_unicode(example[k])
+                    else:
+                        new_example[k] = example[k]
+                yield new_example
+            else:
+                output = _to_unicode(example)
+                yield output
+
+    return _convert_to_unicode_str
+
+def _to_unicode(s):
+    # Errors of the casting are ignored (e.g. sequences not allowed by UTF-8),
+    # in order not to stay with incomplete examples (with empty values).
+    return str(s, encoding="utf-8", errors="ignore")

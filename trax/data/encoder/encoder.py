@@ -29,11 +29,16 @@ import tempfile
 import time
 import unicodedata
 
-from absl import logging
 import numpy as np
 import six
 import tensorflow as tf
-from trax.data import tokenizer
+import tensorflow_text as tft
+
+from absl import logging
+
+from trax.data.preprocessing.tokenizer import tokenizer
+from trax.data.preprocessing.tokenizer.tokenizer import BertWordpieceTokenizer
+from trax.data.utils.text_utils import native_to_unicode, strip_ids, whitespace_tokenize
 
 # Reserved tokens for things like padding and EOS symbols.
 PAD = "<pad>"
@@ -52,43 +57,96 @@ _UNESCAPE_REGEX = re.compile(r"\\u|\\\\|\\([0-9]+);")
 _ESCAPE_CHARS = set("\\_u;0123456789")
 
 
-# Unicode utility functions that work with Python 2 and 3
-def native_to_unicode(s):
-    if is_unicode(s):
-        return s
-    try:
-        return to_unicode(s)
-    except UnicodeDecodeError:
-        res = to_unicode(s, ignore_errors=True)
-        logging.info("Ignoring Unicode error, outputting: %s", res)
-        return res
+def _escape_token(token, alphabet):
+    """Escape away underscores and OOV characters and append '_'.
+
+    This allows the token to be expressed as the concatenation of a list
+    of subtokens from the vocabulary. The underscore acts as a sentinel
+    which allows us to invertibly concatenate multiple such lists.
+
+    Args:
+      token: A unicode string to be escaped.
+      alphabet: A set of all characters in the vocabulary's alphabet.
+
+    Returns:
+      escaped_token: An escaped unicode string.
+
+    Raises:
+      ValueError: If the provided token is not unicode.
+    """
+    if not isinstance(token, six.text_type):
+        raise ValueError("Expected string type for token, got %s" % type(token))
+
+    token = token.replace("\\", "\\\\").replace("_", "\\u")
+    ret = [c if c in alphabet and c != "\n" else r"\%d;" % ord(c) for c in token]
+    return "".join(ret) + "_"
 
 
-def is_unicode(s):
-    return isinstance(s, six.text_type)
+def _unescape_token(escaped_token):
+    """Inverse of _escape_token().
+
+    Args:
+      escaped_token: a unicode string
+
+    Returns:
+      token: a unicode string
+    """
+
+    def match(m):
+        if m.group(1) is None:
+            return "_" if m.group(0) == "\\u" else "\\"
+
+        try:
+            return six.unichr(int(m.group(1)))
+        except (ValueError, OverflowError) as _:
+            return "\u3013"  # Unicode for undefined character.
+
+    trimmed = escaped_token[:-1] if escaped_token.endswith("_") else escaped_token
+    return _UNESCAPE_REGEX.sub(match, trimmed)
 
 
-def to_unicode(s, ignore_errors=False):
-    if is_unicode(s):
-        return s
-    error_mode = "ignore" if ignore_errors else "strict"
-    return s.decode("utf-8", errors=error_mode)
+def _bert_is_whitespace(char):
+    """Checks whether `chars` is a whitespace character."""
+    # \t, \n, and \r are technically contorl characters but we treat them
+    # as whitespace since they are generally considered as such.
+    if char == " " or char == "\t" or char == "\n" or char == "\r":
+        return True
+    cat = unicodedata.category(char)
+    if cat == "Zs":
+        return True
+    return False
 
 
-def to_unicode_ignore_errors(s):
-    return to_unicode(s, ignore_errors=True)
+def _bert_is_control(char):
+    """Checks whether `chars` is a control character."""
+    # These are technically control characters but we count them as whitespace
+    # characters.
+    if char == "\t" or char == "\n" or char == "\r":
+        return False
+    cat = unicodedata.category(char)
+    if cat in ("Cc", "Cf"):
+        return True
+    return False
 
 
-def to_unicode_utf8(s):
-    return s.decode("utf-8")
-
-
-def strip_ids(ids, ids_to_strip):
-    """Strip ids_to_strip from the end IDs."""
-    ids = list(ids)
-    while ids and ids[-1] in ids_to_strip:
-        ids.pop()
-    return ids
+def _bert_is_punctuation(char):
+    """Checks whether `chars` is a punctuation character."""
+    cp = ord(char)
+    # We treat all non-letter/number ASCII as punctuation.
+    # Characters such as "^", "$", and "`" are not in the Unicode
+    # Punctuation class but we treat them as punctuation anyways, for
+    # consistency.
+    if (
+        (cp >= 33 and cp <= 47)
+        or (cp >= 58 and cp <= 64)
+        or (cp >= 91 and cp <= 96)
+        or (cp >= 123 and cp <= 126)
+    ):
+        return True
+    cat = unicodedata.category(char)
+    if cat.startswith("P"):
+        return True
+    return False
 
 
 class TextEncoder:
@@ -237,9 +295,7 @@ class ClassLabelEncoder(TextEncoder):
 class OneHotClassLabelEncoder(ClassLabelEncoder):
     """One-hot encoder for class labels."""
 
-    def encode(
-        self, label_str, on_value=1, off_value=0
-    ):  # pylint: disable=arguments-differ
+    def encode(self, label_str, on_value=1, off_value=0):  # pylint: disable=arguments-differ
         e = np.full(self.vocab_size, off_value, dtype=np.int32)
         e[self._class_labels.index(label_str)] = on_value
         return e.tolist()
@@ -384,54 +440,6 @@ class TokenTextEncoder(TextEncoder):
                 f.write(self._id_to_token[i] + "\n")
 
 
-def _escape_token(token, alphabet):
-    """Escape away underscores and OOV characters and append '_'.
-
-    This allows the token to be expressed as the concatenation of a list
-    of subtokens from the vocabulary. The underscore acts as a sentinel
-    which allows us to invertibly concatenate multiple such lists.
-
-    Args:
-      token: A unicode string to be escaped.
-      alphabet: A set of all characters in the vocabulary's alphabet.
-
-    Returns:
-      escaped_token: An escaped unicode string.
-
-    Raises:
-      ValueError: If the provided token is not unicode.
-    """
-    if not isinstance(token, six.text_type):
-        raise ValueError("Expected string type for token, got %s" % type(token))
-
-    token = token.replace("\\", "\\\\").replace("_", "\\u")
-    ret = [c if c in alphabet and c != "\n" else r"\%d;" % ord(c) for c in token]
-    return "".join(ret) + "_"
-
-
-def _unescape_token(escaped_token):
-    """Inverse of _escape_token().
-
-    Args:
-      escaped_token: a unicode string
-
-    Returns:
-      token: a unicode string
-    """
-
-    def match(m):
-        if m.group(1) is None:
-            return "_" if m.group(0) == "\\u" else "\\"
-
-        try:
-            return six.unichr(int(m.group(1)))
-        except (ValueError, OverflowError) as _:
-            return "\u3013"  # Unicode for undefined character.
-
-    trimmed = escaped_token[:-1] if escaped_token.endswith("_") else escaped_token
-    return _UNESCAPE_REGEX.sub(match, trimmed)
-
-
 class SubwordTextEncoder(TextEncoder):
     """Class for invertibly encoding text using a limited vocabulary.
 
@@ -439,7 +447,7 @@ class SubwordTextEncoder(TextEncoder):
     vocabulary.
 
     A SubwordTextEncoder is built from a corpus (so it is tailored to the text in
-    the corpus), and stored to a file. See text_encoder_build_subword.py.
+    the corpus), and stored to a file. See subword.py.
 
     It can then be loaded and used to encode/decode any text.
 
@@ -924,9 +932,7 @@ class SubwordTextEncoder(TextEncoder):
         """Initialize alphabet from an iterable of token or subtoken strings."""
         # Include all characters from all tokens in the alphabet to guarantee that
         # any token can be encoded. Additionally, include all escaping characters.
-        self._alphabet = {
-            c for token in tokens for c in token
-        }  # pylint: disable=g-complex-comprehension
+        self._alphabet = {c for token in tokens for c in token}  # pylint: disable=g-complex-comprehension
         self._alphabet |= _ESCAPE_CHARS
 
     def _load_from_file_object(self, f):
@@ -1260,114 +1266,30 @@ class BertBasicEncoder:
         return "".join(output)
 
 
-class BertWordpieceTokenizer:
-    """Runs WordPiece tokenziation."""
+class SentencePieceEncoder:
+    """SentencePiece tokenizer with support for extra_ids like in T5."""
 
-    def __init__(self, vocab, unk_token="[UNK]", max_input_chars_per_word=200):
-        self.vocab = vocab
-        self.unk_token = unk_token
-        self.max_input_chars_per_word = max_input_chars_per_word
+    def __init__(self, spm_path, extra_ids=0):
+        with tf.io.gfile.GFile(spm_path, "rb") as f:
+            sp_model = f.read()
+        self.tokenizer = tft.SentencepieceTokenizer(model=sp_model)
+        self.extra_ids = extra_ids
+        # Note: We assume vocab size includes EOS, PAD, etc.
+        self.vocab_size = self.tokenizer.vocab_size().numpy()
+        self.total_vocab_size = self.vocab_size + self.extra_ids
 
-    def tokenize(self, text):
-        """Tokenizes a piece of text into its word pieces.
+    def encode(self, text):
+        # Tokenize the text into base SentencePiece IDs
+        tokens = self.tokenizer.tokenize([text])
+        # Back to numpy from tf
+        print(text)
+        return tokens.flat_values
 
-        This uses a greedy longest-match-first algorithm to perform tokenization
-        using the given vocabulary.
-        For example:
-          input = "unaffable"
-          output = ["un", "##aff", "##able"]
-        Args:
-          text: A single token or whitespace separated tokens. This should have
-            already been passed through `BasicTokenizer.
-
-        Returns:
-          A list of wordpiece tokens.
-        """
-
-        text = native_to_unicode(text)
-
-        output_tokens = []
-        for token in whitespace_tokenize(text):
-            chars = list(token)
-            if len(chars) > self.max_input_chars_per_word:
-                output_tokens.append(self.unk_token)
-                continue
-
-            is_bad = False
-            start = 0
-            sub_tokens = []
-            while start < len(chars):
-                end = len(chars)
-                cur_substr = None
-                while start < end:
-                    substr = "".join(chars[start:end])
-                    if start > 0:
-                        substr = "##" + substr
-                    if substr in self.vocab:
-                        cur_substr = substr
-                        break
-                    end -= 1
-                if cur_substr is None:
-                    is_bad = True
-                    break
-                sub_tokens.append(cur_substr)
-                start = end
-
-            if is_bad:
-                output_tokens.append(self.unk_token)
-            else:
-                output_tokens.extend(sub_tokens)
-        return output_tokens
-
-
-def _bert_is_whitespace(char):
-    """Checks whether `chars` is a whitespace character."""
-    # \t, \n, and \r are technically contorl characters but we treat them
-    # as whitespace since they are generally considered as such.
-    if char == " " or char == "\t" or char == "\n" or char == "\r":
-        return True
-    cat = unicodedata.category(char)
-    if cat == "Zs":
-        return True
-    return False
-
-
-def _bert_is_control(char):
-    """Checks whether `chars` is a control character."""
-    # These are technically control characters but we count them as whitespace
-    # characters.
-    if char == "\t" or char == "\n" or char == "\r":
-        return False
-    cat = unicodedata.category(char)
-    if cat in ("Cc", "Cf"):
-        return True
-    return False
-
-
-def _bert_is_punctuation(char):
-    """Checks whether `chars` is a punctuation character."""
-    cp = ord(char)
-    # We treat all non-letter/number ASCII as punctuation.
-    # Characters such as "^", "$", and "`" are not in the Unicode
-    # Punctuation class but we treat them as punctuation anyways, for
-    # consistency.
-    if (
-        (cp >= 33 and cp <= 47)
-        or (cp >= 58 and cp <= 64)
-        or (cp >= 91 and cp <= 96)
-        or (cp >= 123 and cp <= 126)
-    ):
-        return True
-    cat = unicodedata.category(char)
-    if cat.startswith("P"):
-        return True
-    return False
-
-
-def whitespace_tokenize(text):
-    """Runs basic whitespace cleaning and splitting on a piece of text."""
-    text = text.strip()
-    if not text:
-        return []
-    tokens = text.split()
-    return tokens
+    def decode(self, ids):
+        # Convert IDs back to text, handling extra_ids if needed
+        ids = [i for i in ids if i < self.vocab_size]
+        ids_tensor = tf.constant([ids], dtype=tf.int32)
+        text = self.tokenizer.detokenize(ids_tensor)
+        # Back to numpy from tf
+        print(text)
+        return text.numpy()[0].decode("utf-8")

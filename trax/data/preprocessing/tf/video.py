@@ -13,28 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Functions and classes for obtaining and preprocesing data.
+"""TensorFlow data sources and associated prepocessing functions."""
 
-The ``trax.data`` module presents a flattened (no subpackages) public API.
-(Many of the functions and class initilizers in the API are also accessible for
-gin configuration.) To use as a client, import ``trax.data`` and access
-functions using ``data.foo`` qualified names; for example::
-
-   from trax import data
-   ...
-   training_inputs = data.Serial(
-     ...
-     data.Tokenize(),
-     data.Shuffle(),
-     ...
-  )
-
-"""
+import gin
 
 
-
-
-
-
-
+@gin.configurable(module="trax.data", denylist=["hparams"])
+def bair_robot_pushing_hparams(
+    hparams=None, video_num_input_frames=1, video_num_target_frames=15
+):
+    if hparams is not None:
+        hparams.video_num_input_frames = video_num_input_frames
+        hparams.video_num_target_frames = video_num_target_frames
+    else:
+        return video_num_input_frames, video_num_target_frames
 

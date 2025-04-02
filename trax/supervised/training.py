@@ -55,7 +55,7 @@ from trax import jaxboard
 from trax import layers as tl
 from trax import optimizers
 from trax import shapes
-from trax.data import inputs
+from data.preprocessing import inputs
 from trax.fastmath import numpy as jnp
 from trax.fastmath import random as jax_random
 from trax.layers import base
@@ -270,7 +270,7 @@ class Loop:
                 [self._model]
             )
             all_layers = []
-            for (std_layer, rev_layers) in blocks:
+            for std_layer, rev_layers in blocks:
                 all_layers.append(tl.Serial(std_layer))
                 all_layers.extend(rev_layers)
             all_layers.append(last_layer)
@@ -989,7 +989,7 @@ class Loop:
                     path + f".opt_slots{i}.npy.gz", compresslevel=compresslevel
                 )
                 d["slots_per_task"].append(slots)
-        for (trainer, slots) in zip(self._trainer_per_task, d["slots_per_task"]):
+        for trainer, slots in zip(self._trainer_per_task, d["slots_per_task"]):
             matched_flat_slots = _match_by_shape(
                 self._to_bits(_flatten_and_remove_empty(trainer.slots)),
                 _flatten_and_remove_empty(slots),

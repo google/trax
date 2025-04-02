@@ -26,17 +26,16 @@ import os
 import sys
 import time
 
-from absl import logging
-
 import gin
-
 import jax
 import tensorflow.compat.v2 as tf
-from trax import fastmath
-from trax import jaxboard
+
+from absl import logging
+from data.preprocessing import inputs as trax_inputs
+
+from trax import fastmath, jaxboard
 from trax import layers as tl
 from trax import optimizers as trax_opt
-from trax.data import inputs as trax_inputs
 from trax.fastmath import numpy as np
 from trax.fastmath import random as jax_random
 from trax.layers import base
@@ -44,7 +43,6 @@ from trax.shapes import ShapeDtype
 from trax.supervised import history as trax_history
 from trax.supervised import lr_schedules as lr
 from trax.supervised import training
-
 
 # TODO(afrozm): Maybe flatten everything from OptState into TrainerState.
 TrainerState = collections.namedtuple(

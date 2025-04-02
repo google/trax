@@ -18,10 +18,12 @@
 import itertools
 import os
 
-from absl.testing import absltest
-from absl.testing import parameterized
 import numpy as np
-from trax import data
+
+from absl.testing import absltest, parameterized
+
+from trax.data.preprocessing import inputs as data
+from trax.data.preprocessing.inputs import ConvertToUnicode
 
 pkg_dir, _ = os.path.split(__file__)
 _TESTDATA = os.path.normpath(os.path.join(pkg_dir, "../../resources/data/testdata"))
@@ -32,6 +34,29 @@ def _spm_path():
 
 
 class InputsTest(parameterized.TestCase):
+    def test_convert_to_unicode(self):
+        def dataset1():
+            yield (b"Audentes fortuna iuvat.", b"Fortune favors the bold.")
+
+        def dataset2():
+            yield (b"\x81aabb", b"Value")
+
+        convert_function1 = ConvertToUnicode(keys=[0])
+        convert_output1 = next(convert_function1(dataset1()))
+        self.assertEqual(convert_output1[0], "Audentes fortuna iuvat.")
+        self.assertEqual(convert_output1[1], b"Fortune favors the bold.")
+        self.assertIsInstance(convert_output1[0], str)
+        self.assertIsInstance(convert_output1[1], bytes)
+
+        # Contains an invalid bytes array from the point of view of UTF-8.
+        try:
+            convert_function2 = ConvertToUnicode(keys=[0])
+            convert_output2 = next(convert_function2(dataset2()))
+        except UnicodeDecodeError:
+            self.fail("ConvertToUnicode threw UnicodeDecodeError.")
+        self.assertEqual(convert_output2[0], "aabb")
+        self.assertIsInstance(convert_output2[0], str)
+
     @parameterized.named_parameters(
         ("zero", 0),
         ("negative", -5),
@@ -116,17 +141,17 @@ class InputsTest(parameterized.TestCase):
         ex_generator = examples()
         ex1 = next(ex_generator)
         self.assertEqual(ex1, (0, 1))
-        self.assertEqual(data.inputs.data_counters["toy_data"], 1)
+        self.assertEqual(data.data_counters["toy_data"], 1)
         ex2 = next(ex_generator)
         self.assertEqual(ex2, (1, 2))
-        self.assertEqual(data.inputs.data_counters["toy_data"], 2)
+        self.assertEqual(data.data_counters["toy_data"], 2)
         ex3 = next(examples())  # new generator, will skip
         self.assertEqual(ex3, (2, 3))
-        self.assertEqual(data.inputs.data_counters["toy_data"], 3)
-        data.inputs.data_counters["toy_data"] = 0  # reset
+        self.assertEqual(data.data_counters["toy_data"], 3)
+        data.data_counters["toy_data"] = 0  # reset
         ex4 = next(examples())  # new generator, was reset
         self.assertEqual(ex4, (0, 1))
-        self.assertEqual(data.inputs.data_counters["toy_data"], 1)
+        self.assertEqual(data.data_counters["toy_data"], 1)
 
     def test_parallel(self):
         """Basic test of the parallel ccmbinator."""
@@ -361,21 +386,21 @@ class InputsTest(parameterized.TestCase):
 
     def test_pad_to_max_dims(self):
         tensors1 = [np.zeros((3, 10)), np.ones((3, 10))]
-        padded1 = data.inputs.pad_to_max_dims(tensors1)
+        padded1 = data.pad_to_max_dims(tensors1)
         self.assertEqual(padded1.shape, (2, 3, 10))
         tensors2 = [np.zeros((2, 10)), np.ones((3, 9))]
-        padded2 = data.inputs.pad_to_max_dims(tensors2)
+        padded2 = data.pad_to_max_dims(tensors2)
         self.assertEqual(padded2.shape, (2, 3, 10))
         tensors3 = [np.zeros((8, 10)), np.ones((8, 9))]
-        padded3 = data.inputs.pad_to_max_dims(tensors3, 12)
+        padded3 = data.pad_to_max_dims(tensors3, 12)
         self.assertEqual(padded3.shape, (2, 12, 12))
         tensors4 = [np.zeros((2, 10)), np.ones((3, 9))]
-        padded4 = data.inputs.pad_to_max_dims(tensors4, 12)
+        padded4 = data.pad_to_max_dims(tensors4, 12)
         self.assertEqual(padded4.shape, (2, 4, 12))
 
     def test_pad_to_length(self):
         tensors1 = [(np.zeros((5)), np.ones((3)))]
-        pad_to_length_function1 = data.inputs.PadToLength(
+        pad_to_length_function1 = data.PadToLength(
             len_map={0: 10, 1: 11}, pad_value={0: 0, 1: 1}
         )
         padded1 = next(pad_to_length_function1(tensors1))
@@ -383,7 +408,7 @@ class InputsTest(parameterized.TestCase):
         self.assertEqual(padded1[1].shape, (11,))
 
         tensors2 = [(np.zeros((15)), np.ones((20)))]
-        pad_to_length_function2 = data.inputs.PadToLength(
+        pad_to_length_function2 = data.PadToLength(
             len_map={0: 10, 1: 10}, pad_value={0: 0, 1: 1}, multiple=True
         )
         padded2 = next(pad_to_length_function2(tensors2))
@@ -393,7 +418,7 @@ class InputsTest(parameterized.TestCase):
     def test_concatenate_lm_input(self):
         tensors1 = [(np.zeros((5)), np.ones((3)))]
 
-        lm_input_function1 = data.inputs.ConcatenateToLMInput(pad_to_length=10)
+        lm_input_function1 = data.ConcatenateToLMInput(pad_to_length=10)
         lm_input_1 = next(lm_input_function1(tensors1))
         self.assertEqual(lm_input_1[0].shape, (10,))
         self.assertEqual(lm_input_1[1].shape, (10,))
@@ -404,7 +429,7 @@ class InputsTest(parameterized.TestCase):
         )
 
         tensors2 = [(np.zeros((5)), np.ones((3)))]
-        lm_input_function2 = data.inputs.ConcatenateToLMInput()
+        lm_input_function2 = data.ConcatenateToLMInput()
         lm_input_2 = next(lm_input_function2(tensors2))
         self.assertEqual(lm_input_2[0].shape, (8,))
         self.assertEqual(lm_input_2[1].shape, (8,))
@@ -421,7 +446,7 @@ class InputsTest(parameterized.TestCase):
             while True:
                 yield (np.zeros((1, 5)), np.ones((1, 5)))
 
-        stream_fn = data.inputs.TruncateToLength()
+        stream_fn = data.TruncateToLength()
         y0, y1 = next(stream_fn(data_stream()))
         self.assertEqual(y0.shape, (1, 5))
         self.assertEqual(y1.shape, (1, 5))
@@ -438,7 +463,7 @@ class InputsTest(parameterized.TestCase):
             while True:
                 yield (np.zeros((1, 5)), np.ones((1, 5)))
 
-        stream_fn = data.inputs.TruncateToLength(len_map=len_map)
+        stream_fn = data.TruncateToLength(len_map=len_map)
         y0, y1 = next(stream_fn(data_stream()))
         self.assertEqual(y0.shape, out_shapes[0])
         self.assertEqual(y1.shape, out_shapes[1])
@@ -460,7 +485,7 @@ class InputsTest(parameterized.TestCase):
             while True:
                 yield x
 
-        stream_fn = data.inputs.TruncateToLength(len_map={0: (1, 4, 6)})
+        stream_fn = data.TruncateToLength(len_map={0: (1, 4, 6)})
         (y,) = next(stream_fn(data_stream()))
         self.assertEqual(y.shape, (1, 4, 6))
         self.assertEqual(y[0, 3, 1], 19)
@@ -475,12 +500,12 @@ class InputsTest(parameterized.TestCase):
             (np.zeros((1, 5)), np.ones((1, 5))),
         ]
 
-        filter_empty_examples_function1 = data.inputs.FilterEmptyExamples()
+        filter_empty_examples_function1 = data.FilterEmptyExamples()
         filtered1 = next(filter_empty_examples_function1(tensors1))
         self.assertEqual(filtered1[0].shape, (1, 5))
         self.assertEqual(filtered1[1].shape, (1, 5))
 
-        filter_empty_examples_function2 = data.inputs.FilterEmptyExamples(axes=[1])
+        filter_empty_examples_function2 = data.FilterEmptyExamples(axes=[1])
         filtered2 = next(filter_empty_examples_function2(tensors1))
         self.assertEqual(filtered2[0].shape, (0,))
         self.assertEqual(filtered2[1].shape, (1, 5))
@@ -488,12 +513,12 @@ class InputsTest(parameterized.TestCase):
     def test_append_value(self):
         tensors1 = [(np.zeros((1, 5)), np.ones((1, 5)))]
 
-        append_value_function1 = data.inputs.AppendValue()
+        append_value_function1 = data.AppendValue()
         unmodified = next(append_value_function1(tensors1))
         self.assertEqual(unmodified[0].shape, (1, 5))
         self.assertEqual(unmodified[1].shape, (1, 5))
 
-        append_value_function2 = data.inputs.AppendValue({0: [[5]], 1: [[4]]})
+        append_value_function2 = data.AppendValue({0: [[5]], 1: [[4]]})
         appended = next(append_value_function2(tensors1))
         self.assertEqual(appended[0].shape, (1, 6))
         self.assertEqual(
@@ -506,7 +531,7 @@ class InputsTest(parameterized.TestCase):
 
     def test_pad_to_max_dims_boundary_list(self):
         tensors = [np.zeros((1, 15, 31)), np.ones((2, 10, 35)), np.ones((4, 2, 3))]
-        padded_tensors = data.inputs.pad_to_max_dims(tensors, boundary=(None, 15, 20))
+        padded_tensors = data.pad_to_max_dims(tensors, boundary=(None, 15, 20))
         # no boundary, only max in the first dim, 15 is already the max len in
         # second dim, last dim padded to multiple of 20.
         # The outer dim is the batch here.
@@ -514,7 +539,7 @@ class InputsTest(parameterized.TestCase):
 
     def test_pad_to_max_dims_strict_pad_on_len(self):
         tensors = [np.ones((15,)), np.ones((12,)), np.ones((14,))]
-        padded_tensors = data.inputs.pad_to_max_dims(
+        padded_tensors = data.pad_to_max_dims(
             tensors, boundary=10, strict_pad_on_len=True
         )
         self.assertEqual(padded_tensors.shape, (3, 20))
@@ -550,7 +575,7 @@ class InputsTest(parameterized.TestCase):
         seq_length = 64
         # Check if max/min lengths are validated for train stream
         with self.assertRaises(ValueError):
-            inputs = data.inputs.addition_inputs(
+            inputs = data.addition_inputs(
                 vocab_size=vocab_size,
                 batch_size=batch_size,
                 train_length=2,
@@ -565,7 +590,7 @@ class InputsTest(parameterized.TestCase):
 
         # Check if max/min lengths are validated for eval stream
         with self.assertRaises(ValueError):
-            inputs = data.inputs.addition_inputs(
+            inputs = data.addition_inputs(
                 vocab_size=vocab_size,
                 batch_size=batch_size,
                 train_length=seq_length,
@@ -582,7 +607,7 @@ class InputsTest(parameterized.TestCase):
         vocab_size = 5
         batch_size = 256
         seq_length = 64
-        inputs = data.inputs.addition_inputs(
+        inputs = data.addition_inputs(
             vocab_size=vocab_size,
             batch_size=batch_size,
             train_length=seq_length,
@@ -898,7 +923,7 @@ class InputsTest(parameterized.TestCase):
                     0,
                     0,
                 ],
-            ]
+            ],
             # pylint: enable=bad-continuation,bad-whitespace
         )
 
@@ -970,7 +995,7 @@ class InputsTest(parameterized.TestCase):
                     0,
                     0,
                 ],
-            ]
+            ],
             # pylint: enable=bad-continuation,bad-whitespace
         )
 
@@ -1042,7 +1067,7 @@ class InputsTest(parameterized.TestCase):
                     0.0,
                     0.0,
                 ],
-            ]
+            ],
             # pylint: enable=bad-continuation,bad-whitespace
         )
 

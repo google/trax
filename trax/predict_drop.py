@@ -25,19 +25,20 @@ import os
 import re
 import time
 
-from absl import app as absl_app
-from absl import flags
 import gin
 import jax
 import numpy as np
+import tensorflow as tf
+
+from absl import app as absl_app
+from absl import flags
 from seqio import vocabularies as t5_spc_vocab
 from t5 import data
-import tensorflow as tf
+
 from trax import data as trax_data
 from trax import layers as tl
 from trax import shapes
 from trax.supervised import decoding
-
 
 FLAGS = flags.FLAGS
 
@@ -48,7 +49,7 @@ flags.DEFINE_integer("num_examples", 1, "Number of examples to infer.")
 flags.DEFINE_integer("n_hashes", None, "n_hashes parameter to override in attentions.")
 flags.DEFINE_integer("example_repetitions", 1, "How many times to infer an example.")
 flags.DEFINE_bool(
-    "use_eval_mode", False, "If True, use the slower but easier to debug eval mode."
+    "use_eval_mode", False, "If True, use the slower but easier to debugger eval mode."
 )
 flags.DEFINE_bool("use_eval_set", False, "If True, use eval set for evaluation.")
 flags.DEFINE_bool(

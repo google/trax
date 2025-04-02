@@ -18,9 +18,7 @@
 We keep these flags in sync across the trainer and the rl_trainer binaries.
 """
 
-from absl import flags
-from absl import logging
-
+from absl import flags, logging
 
 # Common flags.
 flags.DEFINE_string(
@@ -76,7 +74,7 @@ flags.DEFINE_bool("tf_allow_float64", False, "Whether to allow float64 for TF.")
 
 # rl_trainer.py flags.
 flags.DEFINE_boolean(
-    "jax_debug_nans", False, "Setting to true will help to debug nans and disable jit."
+    "jax_debug_nans", False, "Setting to true will help to debugger nans and disable jit."
 )
 flags.DEFINE_boolean("disable_jit", False, "Setting to true will disable jit.")
 flags.DEFINE_string("envs_output_dir", "", "Output dir for the envs.")

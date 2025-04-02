@@ -23,9 +23,11 @@ import shutil
 import string
 
 import mock
-from six.moves import range  # pylint: disable=redefined-builtin
 import tensorflow.compat.v1 as tf
-from trax.data import text_encoder
+
+from six.moves import range  # pylint: disable=redefined-builtin
+
+from trax.data.encoder import encoder as text_encoder
 
 
 class NativeToUnicodeTest(tf.test.TestCase):

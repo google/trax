@@ -21,7 +21,7 @@ of the size you want.
 
 Example usage:
 
-python trax/data/text_encoder_build_subword.py \
+python trax/data/subword.py \
     --corpus_filepattern=$DATA_DIR/my_problem-train-* \
     --corpus_max_lines=12345 \
     --output_filename=$DATA_DIR/my_problem.subword_text_encoder \
@@ -29,12 +29,10 @@ python trax/data/text_encoder_build_subword.py \
 
 """
 
-from absl import app
-from absl import flags
+from absl import app, flags
+from data.preprocessing.tokenizer import tokenizer
 
-from trax.data import text_encoder
-from trax.data import tokenizer
-
+from trax.data.encoder import encoder as text_encoder
 
 flags.DEFINE_string(
     "output_filename",

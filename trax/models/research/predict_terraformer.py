@@ -46,13 +46,10 @@ import numpy as np
 import tensorflow_datasets as tfds
 
 import trax
-from trax import fastmath
+
 from trax import layers as tl
 from trax import models
-from trax import shapes
-from trax.data import tf_inputs
 from trax.fastmath import numpy as numpy_math
-from trax.layers.assert_shape import assert_shape
 from trax.supervised import decoding
 
 # from colabtools import adhoc_import

@@ -16,8 +16,7 @@
 # coding=utf-8
 """Install trax."""
 
-from setuptools import find_packages
-from setuptools import setup
+from setuptools import find_packages, setup
 
 setup(
     name="trax",
@@ -35,35 +34,33 @@ setup(
     license="Apache 2.0",
     packages=find_packages(),
     install_requires=[
-        "absl-py==1.4.0",
-        "funcsigs==1.0.2",
+        "absl-py==2.2.0",
+        "funcsigs",
         "gin-config==0.5.0",
-        "gym==0.26.2",
-        "jax==0.4.20",
-        "jaxlib==0.4.20",
-        "matplotlib==3.8.0",
-        "numpy==1.23.5",
-        "psutil==5.9.5",
-        "scipy==1.11.3",
+        "gym",
+        "jax==0.5.3",
+        "jaxlib==0.5.3",
+        "matplotlib",
+        "numpy==2.0.2",
+        "psutil==7.0.0",
+        "scipy==1.15.2",
         "six==1.14.0",
-        "tensorflow-datasets==4.2.0",
-        "tensorflow-text==2.13.0",
+        "tensorflow-datasets==4.9.8",
+        "tensorflow-text==2.17.0",
+        "tensorflow-estimator==2.15.0",
     ],
     extras_require={
-        "tensorflow": ["tensorflow==2.13.0"],
-        "tensorflow_gpu": ["tensorflow-gpu>=2.13.0"],
-        "t5": ["t5==0.9.2"],
+        "tensorflow": ["tensorflow==2.17.0"],
+        "tensorflow_gpu": ["tensorflow-gpu>=2.17.0"],
+        "t5": ["t5==0.9.4"],
         "tests": [
-            "attrs==23.1.0",
+            "attrs==25.3.0",
             "jupyter",
             "mock==5.1.0",
             "parameterized==0.9.0",
-            "pylint==2.17.7",
-            "pytest==7.4.2",
-            "wrapt==1.15.0",
-        ],
-        "t2t": [
-            "tensor2tensor==1.15.7",
+            "pylint==3.3.6",
+            "pytest==8.3.5",
+            "wrapt==1.17.2",
         ],
     },
     classifiers=[

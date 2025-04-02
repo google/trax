@@ -17,23 +17,19 @@
 
 import functools
 import io
+
 from unittest import mock
 
-from absl.testing import absltest
-from absl.testing import parameterized
 import gym
 import numpy as np
 
-from trax import models
-from trax import test_utils
-from trax.data import inputs
+from absl.testing import absltest, parameterized
+from data.preprocessing import inputs
+
 from tests.layers import test_utils as tl_test_utils
-from trax.rl import serialization_utils
-from trax.rl import space_serializer
-from trax.supervised import callbacks
-from trax.supervised import lr_schedules
-from trax.supervised import trainer_lib
-from trax.supervised import training
+from trax import models, test_utils
+from trax.rl import serialization_utils, space_serializer
+from trax.supervised import callbacks, lr_schedules, trainer_lib, training
 
 
 def random_inputs(seq_len, batch_size):
