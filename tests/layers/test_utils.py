@@ -17,19 +17,16 @@
 
 import copy
 import functools
-from absl.testing import absltest
 
 import numpy as np
-
-from trax import fastmath
-from trax import layers as tl
-from trax import shapes
-
 import pytest
 
+from absl.testing import absltest
 
-@absltest.skip
-@pytest.mark.skip(reason="This is helper method not direct test")
+from trax import fastmath, shapes
+from trax import layers as tl
+
+
 def test_eval_is_deterministic(inp, model_fn, message=""):
     """Utility method for testing if eval mode is deterministic.
 

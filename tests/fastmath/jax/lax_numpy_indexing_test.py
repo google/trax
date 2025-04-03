@@ -34,15 +34,16 @@ import itertools
 
 from functools import partial
 
-import fastmath.jax.utils as jtu
 import numpy as onp
 import tensorflow.compat.v2 as tf
 
 from absl.testing import absltest, parameterized
-from fastmath.jax.config import config
 
+import tests.fastmath.jax.utils as jtu
 import trax.tf.extensions as npe
 import trax.tf.numpy as jnp
+
+from tests.fastmath.jax.config import config
 
 config.parse_flags_with_absl()
 

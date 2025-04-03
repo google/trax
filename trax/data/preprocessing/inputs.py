@@ -85,8 +85,8 @@ import tensorflow as tf
 from absl import logging
 
 from trax import fastmath, shapes
-from trax.fastmath import numpy as jnp
 from trax.data.debugger import data_pipeline as debug_data_pipeline
+from trax.fastmath import numpy as jnp
 
 
 def Serial(*fns):  # pylint: disable=invalid-name

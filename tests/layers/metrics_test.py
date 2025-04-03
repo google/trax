@@ -15,8 +15,10 @@
 
 """Tests for metrics layers."""
 
-from absl.testing import absltest
 import numpy as np
+
+from absl.testing import absltest
+
 import trax.layers as tl
 
 

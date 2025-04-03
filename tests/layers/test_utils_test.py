@@ -17,8 +17,9 @@
 
 import functools
 
-from absl.testing import absltest
 import numpy as np
+
+from absl.testing import absltest
 
 from tests.layers import test_utils
 from trax.supervised import decoding

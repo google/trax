@@ -17,6 +17,7 @@
 
 import jax
 import numpy as np
+
 from trax import fastmath
 from trax.fastmath import numpy as jnp
 from trax.layers import base
@@ -151,8 +152,7 @@ class Accelerate(base.Layer):
         self.sublayer.state = self._unreplicate(state)
 
 
-# TODO(jonni): Rename, since implementation does not use pmean.
-def mean_or_pmean(n_devices, x, axis=None):
+def mean(n_devices, x, axis=None):
     """Computes the mean of a distributed value ``x``.
 
     Args:

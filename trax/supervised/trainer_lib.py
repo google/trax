@@ -31,11 +31,11 @@ import jax
 import tensorflow.compat.v2 as tf
 
 from absl import logging
-from data.preprocessing import inputs as trax_inputs
 
 from trax import fastmath, jaxboard
 from trax import layers as tl
 from trax import optimizers as trax_opt
+from trax.data.preprocessing import inputs as trax_inputs
 from trax.fastmath import numpy as np
 from trax.fastmath import random as jax_random
 from trax.layers import base

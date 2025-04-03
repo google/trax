@@ -22,4 +22,22 @@ from tensorflow.python.ops.numpy_ops import np_config
 np_config.enable_numpy_behavior()
 
 # Make everything from tensorflow.experimental.numpy available
+# Import all from tensorflow.experimental.numpy
+from tensorflow import bfloat16
+from tensorflow.experimental.numpy import random
 from tensorflow.experimental.numpy import *  # pylint: disable=wildcard-import
+from tensorflow.python.ops.numpy_ops.np_dtypes import (
+    canonicalize_dtype,
+    default_float_type,
+    is_allow_float64,
+    set_allow_float64,
+)
+
+# Define what should be accessible when someone imports from this module
+__all__ = [
+    'bfloat16',
+    'canonicalize_dtype',
+    'default_float_type',
+    'is_allow_float64',
+    'set_allow_float64',
+]

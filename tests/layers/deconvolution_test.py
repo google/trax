@@ -15,11 +15,13 @@
 
 """Tests for Deconvolution layers."""
 
-from absl.testing import absltest
 import numpy as np
 
-from trax import shapes
+from absl.testing import absltest
+
 import trax.layers as tl
+
+from trax import shapes
 
 
 class ConvTransposeTest(absltest.TestCase):

@@ -15,9 +15,10 @@
 
 """Core layer types and key functions used by various layers."""
 
-from absl import logging
 import numpy as np
 import tensorflow as tf
+
+from absl import logging
 
 from trax import fastmath
 from trax.fastmath import numpy as jnp
@@ -818,9 +819,7 @@ def Negate():
 @assert_shape("...->...")  # The output and input shapes are the same.
 def StopGradient():
     """Returns an identity layer with a stop gradient."""
-    return Fn(
-        "StopGradient", lambda x: fastmath.stop_gradient(x)
-    )  # pylint: disable=unnecessary-lambda
+    return Fn("StopGradient", lambda x: fastmath.stop_gradient(x))  # pylint: disable=unnecessary-lambda
 
 
 def one_hot(x, n_categories, dtype=jnp.float32):  # pylint: disable=invalid-name
@@ -857,7 +856,8 @@ def log_gaussian_pdf(x, mu, sigma):  # pylint: disable=invalid-name
     """
     a = mu.shape[-1] * jnp.log(2 * jnp.pi)
     _, b = jnp.linalg.slogdet(sigma)
-    y = jnp.linalg.solve(sigma, x - mu)
+    y = jnp.linalg.solve(sigma, jnp.expand_dims(x - mu, axis=-1))
+    y = y.squeeze(-1)
     y = jnp.expand_dims(y, axis=-1)
     xm = jnp.expand_dims(x - mu, axis=-2)
     c = jnp.matmul(xm, y)

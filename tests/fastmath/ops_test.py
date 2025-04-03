@@ -16,14 +16,15 @@
 """Tests for trax.fastmath.ops."""
 
 import collections
-from absl.testing import parameterized
 
 import gin
 import jax.numpy as jnp
 import numpy as onp
-from tensorflow import test
-from trax import fastmath
 
+from absl.testing import parameterized
+from tensorflow import test
+
+from trax import fastmath
 
 _TestNamedtuple = collections.namedtuple("_TestNamedtuple", ["x"])
 

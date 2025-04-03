@@ -16,14 +16,16 @@
 """Trax fast math: JAX backend."""
 
 import functools
+
 import jax
-from jax import lax
-from jax import random as jax_random
 import jax.numpy as jnp
 import jax.scipy.special as jax_special
 import numpy as np
 import tensorflow as tf
 import tensorflow_datasets as tfds
+
+from jax import lax
+from jax import random as jax_random
 
 from trax.fastmath import numpy as tnp
 from trax.shapes import signature

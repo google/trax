@@ -16,12 +16,12 @@
 """Tests for rnn layers."""
 
 import numpy as np
-from absl.testing import absltest
-from absl.testing import parameterized
+
+from absl.testing import absltest, parameterized
 
 import trax.layers as tl
-from trax import fastmath
-from trax import shapes
+
+from trax import fastmath, shapes
 
 BACKENDS = [fastmath.Backend.JAX]
 

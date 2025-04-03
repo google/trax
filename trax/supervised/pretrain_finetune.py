@@ -23,9 +23,9 @@ import functools
 
 import gin
 import numpy as onp
-
 import tensorflow_datasets as tfds
-from data.preprocessing.inputs import Inputs
+
+from trax.data.preprocessing.inputs import Inputs
 
 
 def _tfds_stream(
@@ -113,7 +113,9 @@ def bert_tokenizer(vocab_path=None):
     # listed as a dependency in trax.
     # TODO(piotrekp1): using SubwordTextEncoder instead after fixing the
     # differences
-    from bert.tokenization.bert_tokenization import FullTokenizer  # pylint: disable=g-import-not-at-top
+    from bert.tokenization.bert_tokenization import (
+        FullTokenizer,  # pylint: disable=g-import-not-at-top
+    )
 
     if vocab_path is None:
         raise ValueError("vocab_path is required to construct the BERT tokenizer.")

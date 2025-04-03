@@ -15,13 +15,13 @@
 
 """Tests for reversible layers."""
 
-from absl.testing import absltest
-from absl.testing import parameterized
 import numpy as np
 
-from trax import fastmath
+from absl.testing import absltest, parameterized
+
 import trax.layers as tl
 
+from trax import fastmath
 
 BACKENDS = [fastmath.Backend.JAX]
 

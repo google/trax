@@ -21,9 +21,9 @@ import itertools
 from unittest import mock
 
 from absl.testing import absltest
-from data.preprocessing import inputs
 
 from trax import layers as tl
+from trax.data.preprocessing import inputs
 from trax.optimizers import adam
 from trax.supervised import training
 

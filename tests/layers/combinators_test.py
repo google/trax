@@ -15,14 +15,13 @@
 
 """Tests for combinator layers."""
 
-from absl.testing import absltest
-from absl.testing import parameterized
-
 import numpy as np
 
-from trax import fastmath
-from trax import shapes
+from absl.testing import absltest, parameterized
+
 import trax.layers as tl
+
+from trax import fastmath, shapes
 
 
 def DivideBy(val):  # pylint: disable=invalid-name

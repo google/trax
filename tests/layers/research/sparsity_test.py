@@ -16,15 +16,17 @@
 """Tests for trax.layers.research.efficient_attention."""
 
 import functools
-from absl.testing import parameterized
+
 import jax
 import numpy as np
+
+from absl.testing import parameterized
 from tensorflow import test
 
-from trax import fastmath
-from trax import shapes
 import trax.layers as tl
+
 from tests.layers import test_utils
+from trax import fastmath, shapes
 from trax.layers.research import sparsity
 
 

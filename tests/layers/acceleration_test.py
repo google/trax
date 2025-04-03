@@ -15,14 +15,13 @@
 
 """Tests for acceleration."""
 
-from absl.testing import absltest
-
-from jax.config import config
 import numpy as np
 
-from trax import fastmath
+from absl.testing import absltest
+
+from tests.fastmath.jax import config
+from trax import fastmath, shapes
 from trax import layers as tl
-from trax import shapes
 
 
 class AccelerationTest(absltest.TestCase):

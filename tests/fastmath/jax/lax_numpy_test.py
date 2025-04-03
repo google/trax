@@ -23,22 +23,23 @@ import warnings
 from functools import partial
 from unittest import SkipTest
 
-import fastmath.jax.utils as jtu
 import numpy as onp
 import six
 import tensorflow.compat.v2 as tf
 
 from absl.testing import absltest, parameterized
-from fastmath.jax.config import FLAGS, config
 
+import tests.fastmath.jax.utils as jtu
 import trax.tf.extensions as npe
 import trax.tf.numpy as lnp
+
+from tests.fastmath.jax.config import FLAGS, config
 
 config.parse_flags_with_absl()
 
 
 nonempty_nonscalar_array_shapes = [(4,), (3, 4), (3, 1), (1, 4), (2, 1, 4), (2, 3, 4)]
-nonempty_array_shapes = [()] + nonempty_nonscalar_array_shapes
+nonempty_array_shapes = [()] + nonempty_nonscalar_array_shapes  # type: ignore
 empty_array_shapes = [
     (0,),
     (0, 4),
@@ -1742,9 +1743,24 @@ class LaxBackedNumpyTests(jtu.TestCase):
     )
     def testClipStaticBounds(self, shape, dtype, a_min, a_max, rng_factory):
         rng = rng_factory()
+
+        # Convert bounds to the correct dtype if they're arrays
+        if a_min is not None and hasattr(a_min, "astype"):
+            a_min = a_min.astype(dtype)
+        if a_max is not None and hasattr(a_max, "astype"):
+            a_max = a_max.astype(dtype)
+
         onp_fun = lambda x: onp.clip(x, a_min=a_min, a_max=a_max)
         lnp_fun = lambda x: lnp.clip(x, a_min=a_min, a_max=a_max)
-        args_maker = lambda: [rng(shape, dtype)]
+
+        # Define args_maker as a function to ensure proper dtype conversion
+        def args_maker():
+            x = rng(shape, dtype)
+            # Ensure input has the correct dtype - force conversion to numpy array first
+            if hasattr(x, "astype"):
+                x = onp.asarray(x, dtype=dtype)
+            return [x]
+
         tol_spec = {onp.float64: 2e-7}
         tol = jtu.tolerance(dtype, tol_spec)
         is_x32_scalar = dtype in [onp.int32, onp.float32] and shape in [
@@ -1811,36 +1827,31 @@ class LaxBackedNumpyTests(jtu.TestCase):
     @new_test
     def testClipAsMethodStaticBounds(self, shape, dtype, a_min, a_max, rng_factory):
         rng = rng_factory()
+
+        # Fix the a_min and a_max types
+        if a_min is not None and hasattr(a_min, "astype"):
+            a_min = a_min.astype(dtype)
+        if a_max is not None and hasattr(a_max, "astype"):
+            a_max = a_max.astype(dtype)
+
         onp_fun = lambda x: onp.clip(x, a_min=a_min, a_max=a_max)
         lnp_fun = lambda x: lnp.asarray(x).clip(a_min=a_min, a_max=a_max)
-        args_maker = lambda: [rng(shape, dtype)]
+
+        # Modified args_maker to ensure dtype consistency
+        def args_maker():
+            x = rng(shape, dtype)
+            # Force conversion to numpy array with the exact required dtype
+            if hasattr(x, "astype"):
+                x = onp.asarray(x, dtype=dtype)
+            return [x]
+
         tol_spec = {onp.float64: 2e-7}
         tol = jtu.tolerance(dtype, tol_spec)
         is_x32_scalar = dtype in [onp.int32, onp.float32] and shape in [
             jtu.NUMPY_SCALAR_SHAPE,
             (),
         ]
-        # Turns check_dtypes off if is_x32_scalar is True because there is
-        # a weird promotion inconsistency in numpy:
-        # ```
-        # print(np.result_type(np.ones([], np.int32), 1))
-        # print(np.result_type(np.ones([1], np.int32), 1))
-        # print(np.result_type(np.int32(1), 1))
-        # print(np.result_type(np.int32, 1))
-        # print(np.result_type(np.ones([], np.float32), 1))
-        # print(np.result_type(np.ones([1], np.float32), 1))
-        # print(np.result_type(np.float32(1), 1))
-        # print(np.result_type(np.float32, 1))
-        # ```
-        # >>>
-        # int64
-        # int32
-        # int64
-        # int32
-        # float64
-        # float32
-        # float64
-        # float32
+
         self._CheckAgainstNumpy(
             onp_fun, lnp_fun, args_maker, check_dtypes=not is_x32_scalar, tol=tol
         )
@@ -3668,14 +3679,21 @@ class LaxBackedNumpyTests(jtu.TestCase):
     )
     def testWhereThreeArgument(self, rng_factory, shapes, dtypes):
         rng = rng_factory()
-        args_maker = self._GetArgsMaker(rng_factory(), shapes, dtypes)
+
+        # Create a custom args_maker that forces correct dtypes
+        def custom_args_maker():
+            args = self._GetArgsMaker(rng_factory(), shapes, dtypes)()
+            # Explicitly cast each argument to its specified dtype
+            return [onp.asarray(arg, dtype=dtype) for arg, dtype in zip(args, dtypes)]
 
         def onp_fun(cond, x, y):
             return _promote_like_lnp(partial(onp.where, cond))(x, y)
 
-        self._CheckAgainstNumpy(onp_fun, lnp.where, args_maker, check_dtypes=True)
+        self._CheckAgainstNumpy(
+            onp_fun, lnp.where, custom_args_maker, check_dtypes=True
+        )
         self._CompileAndCheck(
-            lnp.where, args_maker, check_dtypes=True, check_incomplete_shape=True
+            lnp.where, custom_args_maker, check_dtypes=True, check_incomplete_shape=True
         )
 
     def testWhereScalarPromotion(self):

@@ -16,12 +16,14 @@
 """Tests for trax.layers.research.position_encodings."""
 
 import functools
+
 import absl.testing.absltest as unittest
 import numpy as np
 import parameterized
 
-from trax import fastmath
 import trax.layers.research.position_encodings as pe
+
+from trax import fastmath
 
 
 @parameterized.parameterized_class(

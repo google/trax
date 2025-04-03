@@ -15,8 +15,10 @@
 
 """Tests for trax.layers.research.rotary_positional_embedding."""
 
-from absl.testing import absltest
 import numpy as np
+
+from absl.testing import absltest
+
 from trax.layers.research import rotary_positional_embedding as rotary_pe
 
 

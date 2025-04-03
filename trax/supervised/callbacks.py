@@ -32,9 +32,8 @@ import os
 import gin
 import numpy as np
 
-from trax import jaxboard
+from trax import jaxboard, shapes
 from trax import layers as tl
-from trax import shapes
 from trax.rl import serialization_utils
 from trax.supervised import decoding
 
@@ -172,7 +171,7 @@ class SerializedModelEvaluation(TrainingStepCallback):
         for _ in range(self._n_steps):
             batch = self._eval_task.next_batch()
             step_metrics = self._evaluate_batch(batch)
-            for (key, value) in step_metrics.items():
+            for key, value in step_metrics.items():
                 metrics[key].append(value)
 
         metrics = {k: np.array(v) for (k, v) in metrics.items()}

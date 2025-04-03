@@ -46,10 +46,11 @@ import scipy
 import tensorflow.compat.v2 as tf
 
 from absl.testing import parameterized
-from fastmath.jax.config import flags
 
 import trax.tf.extensions as npe
 import trax.tf.numpy as tf_np
+
+from tests.fastmath.jax.config import flags
 
 tree_map = tf.nest.map_structure
 tree_multimap = tf.nest.map_structure

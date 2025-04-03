@@ -15,15 +15,14 @@
 
 """Tests for Trax base layer classes and generic layer-creating functions."""
 
-from absl.testing import absltest
-from absl.testing import parameterized
-
 import numpy as np
 
-from trax import fastmath
-from trax import shapes
-from trax.fastmath import numpy as jnp
+from absl.testing import absltest, parameterized
+
 import trax.layers as tl
+
+from trax import fastmath, shapes
+from trax.fastmath import numpy as jnp
 
 BACKENDS = [fastmath.Backend.JAX, fastmath.Backend.TFNP]
 CUSTOM_GRAD_BACKENDS = [fastmath.Backend.JAX]  # TODO(afrozm): del after TF 2.3

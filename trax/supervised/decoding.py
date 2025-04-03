@@ -16,6 +16,7 @@
 """Decoding with Trax models."""
 
 import numpy as np
+
 from trax import fastmath
 from trax import layers as tl
 
@@ -289,7 +290,7 @@ def beam_search(
         cur_values.sort(key=lambda x: -x[0][0])  # x[0][0] as batch_size=1
         # Collect top beams to the new states and results.
         new_results, new_states, new_beams = [], [], []
-        for (value, beam_id, symbol) in cur_values[:n_beams]:
+        for value, beam_id, symbol in cur_values[:n_beams]:
             new_results.append((results[beam_id][0] + [symbol], value))
             new_states.append(states[beam_id])  # copy?
             new_beams.append(symbol[:, None])

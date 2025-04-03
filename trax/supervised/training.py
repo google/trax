@@ -43,24 +43,21 @@ import random
 import sys
 import time
 
-from absl import logging
 import gin
 import jax
 import numpy as np
 import psutil
 import tensorflow as tf
 
-from trax import fastmath
-from trax import jaxboard
+from absl import logging
+
+from trax import fastmath, jaxboard, optimizers, shapes
 from trax import layers as tl
-from trax import optimizers
-from trax import shapes
-from data.preprocessing import inputs
+from trax.data.preprocessing import inputs
 from trax.fastmath import numpy as jnp
 from trax.fastmath import random as jax_random
 from trax.layers import base
 from trax.supervised import history as trax_history
-
 
 _Evaluator = collections.namedtuple("_Evaluator", ["weights", "state", "metrics_fn"])
 
@@ -476,7 +473,7 @@ class Loop:
                 # implies the loss here is averaged from this hosts' devices and not
                 # across all hosts.
                 optimizer_metrics, loss = fastmath.nested_map(
-                    functools.partial(tl.mean_or_pmean, self._n_devices),
+                    functools.partial(tl.mean, self._n_devices),
                     (optimizer_metrics, loss),
                 )
 
@@ -1478,5 +1475,5 @@ def _match_by_shape(full, partial):
 def _flatten_and_remove_empty(x):
     flat = fastmath.tree_flatten(x)
     return [
-        f for f in flat if f is not None and f is not ()
+        f for f in flat if f is not None and f != ()
     ]  # pylint: disable=literal-comparison

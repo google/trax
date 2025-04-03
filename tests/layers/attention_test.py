@@ -16,12 +16,15 @@
 """Tests for trax.layers.attention."""
 
 import functools
-from absl.testing import absltest
+
 import numpy as np
 
-from trax import shapes
+from absl.testing import absltest
+
 import trax.layers as tl
+
 from tests.layers import test_utils
+from trax import shapes
 
 
 class AttentionTest(absltest.TestCase):

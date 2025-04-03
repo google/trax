@@ -15,13 +15,13 @@
 
 """Tests for initializers."""
 
-from absl.testing import absltest
 import numpy as np
 
-from trax import fastmath
-from trax import test_utils
+from absl.testing import absltest
+
 import trax.layers as tl
 
+from trax import fastmath, test_utils
 
 INPUT_SHAPE = (5, 7, 20)
 

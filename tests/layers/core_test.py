@@ -15,13 +15,15 @@
 
 """Tests for core layers."""
 
-from absl.testing import absltest
 import numpy as np
+
+from absl.testing import absltest
+
+import trax.layers as tl
+import trax.layers.initializers as init
 
 from trax import shapes
 from trax.fastmath import numpy as jnp
-import trax.layers as tl
-import trax.layers.initializers as init
 
 
 class DenseTest(absltest.TestCase):
