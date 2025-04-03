@@ -32,6 +32,7 @@ import contextlib
 import enum
 
 import gin
+
 from trax.fastmath.jax import JAX_BACKEND
 from trax.fastmath.numpy import NUMPY_BACKEND
 from trax.fastmath.tf import TF_BACKEND

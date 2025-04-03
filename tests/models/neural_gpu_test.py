@@ -15,8 +15,9 @@
 
 """Tests for trax.models.neural_gpu."""
 
-from absl.testing import absltest
 import numpy as np
+
+from absl.testing import absltest
 
 from trax import shapes
 from trax.models import neural_gpu

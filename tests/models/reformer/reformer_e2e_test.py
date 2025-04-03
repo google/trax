@@ -18,6 +18,7 @@
 import os
 
 import gin
+
 from absl.testing import absltest
 
 from trax import test_utils

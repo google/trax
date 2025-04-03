@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import trax.data
+import trax.data.loader.tf.base
+import trax.data.preprocessing.inputs
 import trax.models
 import trax.optimizers
 import trax.supervised.trainer_lib
@@ -99,8 +100,8 @@ TransformerLM.vocab_size = %vocab_size
 
 # Parameters for train:
 # ==============================================================================
-train.inputs = @trax.data.sequence_copy_inputs
-# train.inputs = @trax.data.addition_inputs
+train.inputs = @sequence_copy_inputs
+# train.inputs = @addition_inputs
 train.eval_frequency = 100
 train.eval_steps = 10
 train.optimizer = @trax.optimizers.Adam

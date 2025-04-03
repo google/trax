@@ -15,12 +15,10 @@
 
 """Tests for RNNs."""
 
-from absl.testing import absltest
-from absl.testing import parameterized
+from absl.testing import absltest, parameterized
 
-from trax import fastmath
+from trax import fastmath, shapes
 from trax.fastmath import numpy as jnp
-from trax import shapes
 from trax.models import rnn
 
 BACKENDS = [fastmath.Backend.JAX]

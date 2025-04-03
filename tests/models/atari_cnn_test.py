@@ -19,6 +19,7 @@ import functools
 import operator as op
 
 import numpy as np
+
 from tensorflow import test
 
 from trax.models import atari_cnn

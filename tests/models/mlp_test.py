@@ -16,6 +16,7 @@
 """Tests for MLP."""
 
 import numpy as np
+
 from absl.testing import absltest
 
 from trax import shapes

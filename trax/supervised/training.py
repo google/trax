@@ -1473,7 +1473,14 @@ def _match_by_shape(full, partial):
 
 
 def _flatten_and_remove_empty(x):
-    flat = fastmath.tree_flatten(x)
-    return [
-        f for f in flat if f is not None and f != ()
-    ]  # pylint: disable=literal-comparison
+    try:
+        flat = fastmath.tree_flatten(x)[0]
+        # First try with the safer type check approach
+        return [
+            f for f in flat if f is not None and not (isinstance(f, tuple) and len(f) == 0)
+        ]
+    except (TypeError, AttributeError):
+        flat = fastmath.tree_flatten(x)
+        return [
+            f for f in flat if f is not None and f != ()
+        ]  # pylint: disable=literal-comparison

@@ -16,7 +16,9 @@
 """Trax fast math: pure numpy backend."""
 
 import numpy as np
+
 from scipy.special import logsumexp
+
 from trax.shapes import signature
 
 

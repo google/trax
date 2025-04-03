@@ -16,8 +16,10 @@
 """Tests for RL."""
 
 from unittest import mock
-from absl.testing import absltest
+
 import numpy as np
+
+from absl.testing import absltest
 
 from trax import shapes
 from trax.models import rl

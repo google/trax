@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import trax.data
+import trax.data.loader.tf.base
+import trax.data.preprocessing.tf.c4
 import trax.models
 import trax.optimizers
 import trax.supervised.trainer_lib
@@ -25,7 +26,7 @@ n_layers = 9
 
 # Parameters for batcher:
 # ==============================================================================
-batcher.data_streams = @data.data_streams
+batcher.data_streams = @data_streams
 batcher.batch_size_per_device = 1
 batcher.eval_batch_size = 8
 batcher.max_eval_length = 12288  # 64 * 64 * 3
@@ -34,7 +35,7 @@ batcher.max_eval_length = 12288  # 64 * 64 * 3
 # ==============================================================================
 data_streams.data_dir = None
 data_streams.dataset_name = 'cifar10'
-data_streams.preprocess_fn = @data.cifar10_augmentation_flatten_preprocess
+data_streams.preprocess_fn = @cifar10_augmentation_flatten_preprocess
 
 # Parameters for multifactor:
 # ==============================================================================

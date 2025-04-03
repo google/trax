@@ -18,11 +18,11 @@
 import functools
 
 import numpy as np
-from absl.testing import absltest
-from absl.testing import parameterized
 
-from trax import shapes
+from absl.testing import absltest, parameterized
+
 from tests.layers import test_utils
+from trax import shapes
 from trax.models import transformer
 
 

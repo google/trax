@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import trax.data
+import trax.data.loader.tf.base
 import trax.layers
 import trax.models
 import trax.optimizers
@@ -28,7 +28,7 @@ dropout = 0.0
 
 # Parameters for batcher:
 # ==============================================================================
-batcher.data_streams = @data.data_streams
+batcher.data_streams = @data_streams
 batcher.batch_size_per_device = 1
 batcher.eval_batch_size = 8
 batcher.max_eval_length = 24576

@@ -17,16 +17,14 @@
 
 import functools
 
-from absl.testing import absltest
-from absl.testing import parameterized
 import gin
 import numpy as np
 
-from trax import fastmath
-from trax import layers as tl
-from trax import shapes
-from trax.models.reformer import reformer
+from absl.testing import absltest, parameterized
 
+from trax import fastmath, shapes
+from trax import layers as tl
+from trax.models.reformer import reformer
 
 BACKENDS = [fastmath.Backend.JAX]
 
