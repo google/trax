@@ -33,8 +33,8 @@ def main():
 
     # Load data
     X, y = load_dataset(Dataset.MNIST.value)
-    batch_gen = create_batch_generator(X, y, batch_size=DEFAULT_BATCH_SIZE, seed=42)
-    example_batch = next(batch_gen)
+    batch_generator = create_batch_generator(X, y, batch_size=DEFAULT_BATCH_SIZE, seed=42)
+    example_batch = next(batch_generator)
 
     # Build and initialize model
     model_with_loss = build_model()
@@ -47,7 +47,7 @@ def main():
     base_rng = fastmath.random.get_prng(0)
 
     # Run training on CPU and/or GPU
-    train_model(trainer, batch_gen, STEPS_NUMBER, base_rng, device_type=DeviceType.GPU.value)
+    train_model(trainer, batch_generator, STEPS_NUMBER, base_rng, device_type=DeviceType.GPU.value)
 
     # Load test data
     test_data, test_labels = load_dataset(

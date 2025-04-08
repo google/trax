@@ -33,8 +33,8 @@ def main():
 
     # Load data
     X, y = load_dataset(Dataset.DIGITS.value)
-    batch_gen = create_batch_generator(X, y, batch_size=DEFAULT_BATCH_SIZE, seed=42)
-    example_batch = next(batch_gen)
+    batch_generator = create_batch_generator(X, y, batch_size=DEFAULT_BATCH_SIZE, seed=42)
+    example_batch = next(batch_generator)
 
     # Build and initialize model
     model_with_loss = build_model()
@@ -48,7 +48,7 @@ def main():
 
     # Run training on CPU and/or GPU
     train_model(
-        trainer, batch_gen, STEPS_NUMBER, base_rng, device_type=DeviceType.GPU.value
+        trainer, batch_generator, STEPS_NUMBER, base_rng, device_type=DeviceType.GPU.value
     )
 
     # Load test data

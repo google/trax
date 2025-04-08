@@ -3,15 +3,15 @@ import trax.fastmath as fastmath
 from resources.examples.python.base import (
     Dataset,
     DeviceType,
-    compute_accuracy,
+    Splits,
     create_batch_generator,
+    evaluate_model,
     initialize_model,
     load_dataset,
     train_model,
 )
 from trax import layers as tl
 from trax import optimizers
-from trax.fastmath import numpy as jnp
 from trax.trainers import jax as trainers
 
 
@@ -26,11 +26,16 @@ def build_model():
     return model_with_loss
 
 
+
 def main():
+    # Default setup
+    DEFAULT_BATCH_SIZE = 8
+    STEPS_NUMBER = 20_000
+
     # Load data
     X, y = load_dataset(Dataset.IRIS.value)
-    batch_gen = create_batch_generator(X, y, batch_size=50, seed=42)
-    example_batch = next(batch_gen)
+    batch_generator = create_batch_generator(X, y, batch_size=DEFAULT_BATCH_SIZE, seed=42)
+    example_batch = next(batch_generator)
 
     # Build and initialize model
     model_with_loss = build_model()
@@ -41,26 +46,30 @@ def main():
     trainer = trainers.Trainer(model_with_loss, optimizer)
 
     base_rng = fastmath.random.get_prng(0)
-    num_steps = 5000
+
     # Run training on CPU and/or GPU
-    losses = train_model(trainer, batch_gen, num_steps, base_rng, device_type=DeviceType.GPU.value)
+    train_model(
+        trainer, batch_generator, STEPS_NUMBER, base_rng, device_type=DeviceType.GPU.value
+    )
 
-    with fastmath.jax.jax.default_device(DeviceType.CPU.value):
-        dummy_rng = fastmath.random.get_prng(10)
+    # Load test data
+    test_data, test_labels = load_dataset(
+        dataset_name=Dataset.IRIS.value, split=Splits.TEST.value
+    )
 
-        predictions = trainer.model_with_loss.sublayers[0](
-            example_batch,
-            weights=trainer.model_with_loss.sublayers[0].weights,
-            state=trainer.model_with_loss.sublayers[0].state,
-            rng=dummy_rng,
-        )
+    # Evaluate model on test set
+    test_results = evaluate_model(
+        trainer=trainer,
+        test_data=test_data,
+        test_labels=test_labels,
+        device_type=DeviceType.CPU.value,
+        batch_size=DEFAULT_BATCH_SIZE,
+        num_batches=100,
+    )
 
-        predicted = jnp.argmax(predictions[0], axis=1)
-        labels = predictions[1]
-        print(f"Accuracy: {compute_accuracy(predicted, labels)}")
+    print(f"Final test accuracy: {test_results['accuracy']:.4f}")
 
-        mean_loss = jnp.mean(jnp.array(losses))
-        print(f"Mean loss: {mean_loss}")
+
 
 
 if __name__ == "__main__":
