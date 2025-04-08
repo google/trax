@@ -14,6 +14,8 @@ from trax.data.loader.tf import base as ds
 
 pkg_dir, _ = os.path.split(__file__)
 _TESTDATA = os.path.normpath(os.path.join(pkg_dir, "../../resources/data/testdata"))
+_CONFIG_DIR = os.path.normpath(os.path.join(pkg_dir, "../../resources/supervised/configs/"))
+_SUPERVISED_TESTDATA = os.path.normpath(os.path.join(pkg_dir, "../../resources/supervised/testdata"))
 
 # _ProxyTest is required because py2 does not allow instantiating
 # absltest.TestCase directly.

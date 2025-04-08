@@ -21,16 +21,34 @@ import gzip
 import inspect
 import pickle
 import random
+import sys
 import traceback
 
 import jax
 import numpy as np
 import tensorflow as tf
 
+import trax.learning.supervised.history
+import trax.utils.shapes
+
 from trax import fastmath
 from trax.fastmath import nested_map
 from trax.fastmath import numpy as jnp
 from trax.utils.shapes import ShapeDtype, signature
+
+sys.modules[
+    "trax.shapes"
+] = trax.utils.shapes  # Load older pickle object, backward compatibility to test
+sys.modules[
+    "trax.supervised.history"
+] = (
+    trax.learning.supervised.history
+)  # Load older pickle object, backward compatibility to test
+sys.modules[
+    "trax.supervised.history"
+] = (
+    trax.learning.supervised.history
+)  # Load older pickle object, backward compatibility to test
 
 # TODO(lukaszkaiser): should we use special objects for these for clarity?
 EMPTY_WEIGHTS = ()  # Used for layers that have no trainable weights.

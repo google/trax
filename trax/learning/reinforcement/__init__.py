@@ -17,7 +17,7 @@
 
 import gin
 
-from learning.rl import (
+from learning.reinforcement import (
     actor_critic,
     actor_critic_joint,
     serialization_utils,
@@ -29,6 +29,15 @@ def configure_rl(*args, **kwargs):
     kwargs["module"] = "trax.reinforcement"
     kwargs["denylist"] = ["task", "output_dir"]
     return gin.external_configurable(*args, **kwargs)
+
+
+gin.enter_interactive_mode()
+
+
+@gin.configurable(module="trax.reinforcement")
+def every(n_steps):
+    """Returns True every n_steps, for use as *_at functions in various places."""
+    return lambda step: step % n_steps == 0
 
 
 A2C = configure_rl(actor_critic.A2C)

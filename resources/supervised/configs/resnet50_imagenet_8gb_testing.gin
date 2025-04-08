@@ -16,7 +16,7 @@ import trax.data
 import trax.supervised.lr_schedules
 import trax.models
 import trax.optimizers
-import trax.supervised.trainer_lib
+import trax.learning.supervised.trainer_lib
 
 # Parameters for batcher:
 # ==============================================================================

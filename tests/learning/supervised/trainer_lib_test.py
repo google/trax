@@ -22,12 +22,12 @@ import jax
 import tensorflow.compat.v2 as tf
 
 from absl.testing import absltest, parameterized
-from data.preprocessing import inputs as inputs_lib
 
 from tests.fastmath.jax.config import config
 from trax import fastmath, models
 from trax import layers as tl
 from trax import optimizers as trax_opt
+from trax.data.preprocessing import inputs as inputs_lib
 from trax.fastmath import numpy as jnp
 from trax.learning.supervised import lr_schedules as lr
 from trax.learning.supervised import trainer_lib

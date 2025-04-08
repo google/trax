@@ -16,7 +16,7 @@ import trax.data.loader.tf.base
 import trax.data.preprocessing.tf.c4
 import trax.models
 import trax.optimizers
-import trax.supervised.trainer_lib
+import trax.learning.supervised.trainer_lib
 
 # Parameters that will vary between experiments:
 # ==============================================================================

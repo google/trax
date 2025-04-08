@@ -61,6 +61,9 @@ then
   pytest tests/layers
   set_status
 
+  pytest tests/learning
+  set_status
+
   pytest tests/models
   set_status
 

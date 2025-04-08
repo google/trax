@@ -24,10 +24,10 @@ import gym
 import numpy as np
 
 from absl.testing import absltest, parameterized
-from data.preprocessing import inputs
 
 from tests.layers import test_utils as tl_test_utils
 from trax import models
+from trax.data.preprocessing import inputs
 from trax.learning.reinforcement import serialization_utils, space_serializer
 from trax.learning.supervised import callbacks, lr_schedules, trainer_lib, training
 from trax.utils import test_utils

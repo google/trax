@@ -26,7 +26,7 @@ from trax.fastmath import numpy as jnp
 from trax.utils import shapes
 
 BACKENDS = [fastmath.Backend.JAX, fastmath.Backend.TFNP]
-CUSTOM_GRAD_BACKENDS = [fastmath.Backend.JAX]  # TODO(afrozm): del after TF 2.3
+CUSTOM_GRAD_BACKENDS = [fastmath.Backend.JAX]
 
 
 class BaseLayerTest(parameterized.TestCase):

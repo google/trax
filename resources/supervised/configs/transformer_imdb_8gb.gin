@@ -15,8 +15,8 @@
 import trax.data
 import trax.models
 import trax.optimizers
-import trax.supervised.lr_schedules
-import trax.supervised.trainer_lib
+import trax.learning.supervised.lr_schedules
+import trax.learning.supervised.trainer_lib
 
 # Parameters for the inputs pipeline:
 # ==============================================================================

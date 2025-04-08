@@ -18,7 +18,6 @@
 import functools
 import os
 
-import gin
 import gym
 import numpy as np
 import tensorflow as tf
@@ -622,13 +621,6 @@ class AdvantageBasedActorCriticAgent(ActorCriticAgent):
                 tl.Fn("AdvantageStd", lambda x: jnp.std(x)),  # pylint: disable=unnecessary-lambda
             ]
         )
-
-
-# TODO(pkozakowski): Move to a better place.
-@gin.configurable(module="trax.reinforcement")
-def every(n_steps):
-    """Returns True every n_steps, for use as *_at functions in various places."""
-    return lambda step: step % n_steps == 0
 
 
 # TODO(pkozakowski): Rewrite all interleaved actor-critic algos to subclass

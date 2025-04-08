@@ -15,7 +15,7 @@
 import trax.data
 import trax.models
 import trax.optimizers
-import trax.supervised.trainer_lib
+import trax.learning.supervised.trainer_lib
 
 import t5.data.preprocessors
 
