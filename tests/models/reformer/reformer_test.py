@@ -22,9 +22,10 @@ import numpy as np
 
 from absl.testing import absltest, parameterized
 
-from trax import fastmath, shapes
+from trax import fastmath
 from trax import layers as tl
 from trax.models.reformer import reformer
+from trax.utils import shapes
 
 BACKENDS = [fastmath.Backend.JAX]
 

@@ -84,9 +84,10 @@ import tensorflow as tf
 
 from absl import logging
 
-from trax import fastmath, shapes
+from trax import fastmath
 from trax.data.debugger import data_pipeline as debug_data_pipeline
 from trax.fastmath import numpy as jnp
+from trax.utils import shapes
 
 
 def Serial(*fns):  # pylint: disable=invalid-name
@@ -1951,9 +1952,6 @@ def _pad_to_multiple_of(x, y, axis):
     return np.pad(x, pad_widths, mode="constant", constant_values=x.dtype.type(0))
 
 
-
-
-
 @gin.configurable(module="trax.data")
 def ConvertToUnicode(keys=None):  # pylint: disable=invalid-name
     """Converts to Unicode UTF-8 elements of an example.
@@ -1998,3 +1996,42 @@ def _to_unicode(s):
     # Errors of the casting are ignored (e.g. sequences not allowed by UTF-8),
     # in order not to stay with incomplete examples (with empty values).
     return str(s, encoding="utf-8", errors="ignore")
+
+
+@gin.configurable(module="trax.data")
+def ClassificationVector(vocab_size=8192):  # pylint: disable=invalid-name
+    """Returns a function to convert token sequences to one-hot vectors."""
+    return lambda g: classification_vector(g, vocab_size=vocab_size)
+
+
+@debug_data_pipeline.debug_pipeline
+def classification_vector(generator, vocab_size=8192):
+    """Convert token sequences to classification vectors.
+
+    The generator stream is transformed by replacing token sequences with
+    vectors where each position contains the token ID if that token appears
+    in the text, otherwise 0.
+
+    Args:
+      generator: Stream of tuples where the first element is a token sequence.
+      vocab_size: Size of the vocabulary (defines length of the vector).
+
+    Yields:
+      Examples with token sequences converted to classification vectors.
+    """
+    for example in generator:
+        tokens = example[0]
+
+        # Create a zero vector of vocab_size length
+        class_vector = np.zeros(vocab_size, dtype=np.int32)
+
+        # Set token ID at positions corresponding to tokens
+        for token_id in tokens:
+            if 0 <= token_id < vocab_size:  # Ensure token_id is in valid range
+                class_vector[token_id] = token_id
+
+        # Create output tuple with the classification vector replacing tokens
+        output = (class_vector,) + example[1:]
+        yield output
+
+

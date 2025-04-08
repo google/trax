@@ -15,10 +15,11 @@
 
 """Trax initializers."""
 
-from absl import logging
-
 import numpy as np
 import tensorflow.compat.v2 as tf
+
+from absl import logging
+
 from trax.fastmath import numpy as jnp
 from trax.fastmath import random
 

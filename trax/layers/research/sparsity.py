@@ -18,18 +18,16 @@
 import functools
 import math
 import random as pyrandom
+
 import numpy as np
 
 from trax import fastmath
 from trax import layers as tl
 from trax.fastmath import numpy as jnp
 from trax.fastmath import random
-from trax.layers import base
-from trax.layers import core
+from trax.layers import base, core, reversible
 from trax.layers import initializers as init
-from trax.layers import reversible
 from trax.layers.assert_shape import assert_shape
-
 
 # We use mixed CamelCase and snake_case names in this file.
 # pylint: disable=invalid-name
@@ -261,9 +259,7 @@ class _RememberPad(base.Layer):
         super().__init__(name="_RememberPad")
         self._n_items_to_remember = n_items_to_remember
         self._mode = mode
-        self._portal_mask = (
-            self.monkey_patched_mask()
-        )  # pylint: disable=assignment-from-none
+        self._portal_mask = self.monkey_patched_mask()  # pylint: disable=assignment-from-none
 
     def monkey_patched_mask(self):
         # This is necessary for Terraformer model. See comments there.

@@ -21,7 +21,7 @@ from trax import fastmath
 from trax.fastmath import numpy as jnp
 from trax.layers import base
 from trax.layers.base import Fn
-from trax.shapes import ShapeDtype
+from trax.utils.shapes import ShapeDtype
 
 
 class Serial(base.Layer):
@@ -30,9 +30,9 @@ class Serial(base.Layer):
     This combinator is commonly used to construct deep networks, e.g., like this::
 
         mlp = tl.Serial(
-          tl.Dense(128),
-          tl.Relu(),
-          tl.Dense(10),
+            tl.Dense(128),
+            tl.Relu(),
+            tl.Dense(10),
         )
 
     A Serial combinator uses stack semantics to manage data for its sublayers.
@@ -468,9 +468,7 @@ class Scan(base.Layer):
         if n_carry > 0:
             xs = inputs[:-n_carry]  # Split input stack into inputs and carry.
             xs_carry = inputs[-n_carry:]
-            if (
-                self._mode == "predict" and self._state[1] is not ()
-            ):  # pylint: disable=literal-comparison
+            if self._mode == "predict" and self._state[1] is not ():  # pylint: disable=literal-comparison
                 xs_carry = self._state[1]
             init = (xs_carry, self.state[0], jnp.array(0, dtype=jnp.int32))
         else:
@@ -862,8 +860,8 @@ def SerialWithSideOutputs(layers, n_side_outputs=1):
 
       side_outputs = []
       for i in range(len(layers)):
-        x, side_output = layers[i](x)
-        side_outputs.append(side_output)
+          x, side_output = layers[i](x)
+          side_outputs.append(side_output)
       return [x] + side_outputs
 
     In the general case of layers with variable n_in and n_out and
@@ -871,9 +869,9 @@ def SerialWithSideOutputs(layers, n_side_outputs=1):
 
       side_outputs = []
       for i in range(N):
-        res = layer[i](cur_stack)  # remove n_in from stack
-        cur_stack.append(res[:n_side_outputs[i]])  # put back some on stack
-        side_outputs.extend(res[n_side_outputs:])
+          res = layer[i](cur_stack)  # remove n_in from stack
+          cur_stack.append(res[: n_side_outputs[i]])  # put back some on stack
+          side_outputs.extend(res[n_side_outputs:])
       return cur_stack + side_outputs
 
     Args:

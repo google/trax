@@ -19,13 +19,13 @@
 import gin
 import tensorflow_datasets as tfds
 
-from data.preprocessing.tokenizer import tokenizer as tokenizer
-
-from trax import data, supervised
+from trax import data
 from trax import layers as tl
+from trax.data.encoder import encoder as tokenizer
 from trax.data.loader.tf.base import TFDS, generic_text_dataset_preprocess_fn, t5_data
 from trax.data.preprocessing.tf import bert as bert
 from trax.fastmath import numpy as jnp
+from trax.learning import supervised
 
 _GLUE_KEYS = {
     "cola": ("sentence",),

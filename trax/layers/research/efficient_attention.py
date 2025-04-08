@@ -37,16 +37,14 @@ import functools
 import math
 
 import jax
+
 from trax import fastmath
 from trax.fastmath import numpy as np
-from trax.layers import attention
-from trax.layers import base
+from trax.layers import attention, base, core
 from trax.layers import combinators as cb
-from trax.layers import core
 from trax.layers import initializers as init
 from trax.layers import sparsity as sp
 from trax.layers.research import rotary_positional_embedding as rotary_pe
-
 
 ####################################################### Functions
 
@@ -642,9 +640,7 @@ class EfficientAttentionBase(base.Layer):
                 if seqlen == self._predict_mem_len:
                     new_mem_val = inp
                 elif seqlen > self._predict_mem_len:
-                    new_mem_val = inp[
-                        :, -self._predict_mem_len :
-                    ]  # pylint: disable=invalid-unary-operand-type
+                    new_mem_val = inp[:, -self._predict_mem_len :]  # pylint: disable=invalid-unary-operand-type
                 else:
                     new_mem_val = np.concatenate(
                         [
@@ -1553,9 +1549,7 @@ class SelfAttention(base.Layer):
                 if seqlen == self._predict_mem_len:
                     new_mem_val = inp
                 elif seqlen > self._predict_mem_len:
-                    new_mem_val = inp[
-                        :, -self._predict_mem_len :
-                    ]  # pylint: disable=invalid-unary-operand-type
+                    new_mem_val = inp[:, -self._predict_mem_len :]  # pylint: disable=invalid-unary-operand-type
                 else:
                     new_mem_val = np.concatenate(
                         [
@@ -2279,9 +2273,7 @@ class LSHSelfAttention(base.Layer):
             buckets = np.reshape(buckets, (self._n_hashes, -1))
             buckets_update = np.reshape(buckets_update, (self._n_hashes, -1))[:, :q_len]
             if q_len > self._predict_mem_len:
-                buckets_update = buckets_update[
-                    :, -self._predict_mem_len :
-                ]  # pylint: disable=invalid-unary-operand-type
+                buckets_update = buckets_update[:, -self._predict_mem_len :]  # pylint: disable=invalid-unary-operand-type
             buckets = fastmath.dynamic_update_slice_in_dim(
                 buckets, buckets_update, q_start, axis=1
             )
@@ -2514,9 +2506,7 @@ class LSHSelfAttention(base.Layer):
                 if seqlen == self._predict_mem_len:
                     new_mem_val = inp
                 elif seqlen > self._predict_mem_len:
-                    new_mem_val = inp[
-                        :, -self._predict_mem_len :
-                    ]  # pylint: disable=invalid-unary-operand-type
+                    new_mem_val = inp[:, -self._predict_mem_len :]  # pylint: disable=invalid-unary-operand-type
                 else:
                     new_mem_val = np.concatenate(
                         [
@@ -3108,9 +3098,7 @@ class PureLSHSelfAttention(base.Layer):
         return buckets
 
     def forward_unbatched(self, qk, v, mask=None, *, state, rng, update_state):
-        attend_rng, output_rng = fastmath.random.split(
-            rng
-        )  # pylint: disable=unused-variable
+        attend_rng, output_rng = fastmath.random.split(rng)  # pylint: disable=unused-variable
 
         # Since these are unbatched:
         # q, v are shaped (seqlen, d_head)
@@ -3238,9 +3226,7 @@ class PureLSHSelfAttention(base.Layer):
             buckets = np.reshape(buckets, (self._n_hashes, -1))
             buckets_update = np.reshape(buckets_update, (self._n_hashes, -1))[:, :q_len]
             if q_len > self._predict_mem_len:
-                buckets_update = buckets_update[
-                    :, -self._predict_mem_len :
-                ]  # pylint: disable=invalid-unary-operand-type
+                buckets_update = buckets_update[:, -self._predict_mem_len :]  # pylint: disable=invalid-unary-operand-type
             buckets = fastmath.dynamic_update_slice_in_dim(
                 buckets, buckets_update, q_start, axis=1
             )
@@ -3420,9 +3406,7 @@ class PureLSHSelfAttention(base.Layer):
                 if seqlen == self._predict_mem_len:
                     new_mem_val = inp
                 elif seqlen > self._predict_mem_len:
-                    new_mem_val = inp[
-                        :, -self._predict_mem_len :
-                    ]  # pylint: disable=invalid-unary-operand-type
+                    new_mem_val = inp[:, -self._predict_mem_len :]  # pylint: disable=invalid-unary-operand-type
                 else:
                     new_mem_val = np.concatenate(
                         [
@@ -4234,9 +4218,7 @@ class EncDecAttention(EfficientAttentionBase):
             # mask is a boolean array (True means "is valid token")
             assert mask is not None
             q_info = None
-            kv_info = (~mask).astype(
-                np.int32
-            )  # pylint: disable=invalid-unary-operand-type
+            kv_info = (~mask).astype(np.int32)  # pylint: disable=invalid-unary-operand-type
 
             def mask_fn(dots, q_info, kv_info):
                 del q_info

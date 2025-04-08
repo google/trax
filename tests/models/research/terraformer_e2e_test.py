@@ -18,11 +18,11 @@
 import os
 
 import gin
+
 from absl.testing import absltest
 
-
-from trax import test_utils
-from trax.supervised import trainer_lib
+from trax.learning.supervised import trainer_lib
+from trax.utils import test_utils
 
 pkg_dir, _ = os.path.split(__file__)
 _TESTDATA = os.path.normpath(

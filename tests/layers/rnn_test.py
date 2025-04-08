@@ -21,7 +21,8 @@ from absl.testing import absltest, parameterized
 
 import trax.layers as tl
 
-from trax import fastmath, shapes
+from trax import fastmath
+from trax.utils import shapes
 
 BACKENDS = [fastmath.Backend.JAX]
 

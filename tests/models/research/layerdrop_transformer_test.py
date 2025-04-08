@@ -15,11 +15,12 @@
 
 """Tests for Reformer models."""
 
-from absl.testing import absltest
 import numpy as np
 
-from trax import shapes
+from absl.testing import absltest
+
 from trax.models.research import layerdrop_transformer
+from trax.utils import shapes
 
 
 class SkippingTransformerTest(absltest.TestCase):

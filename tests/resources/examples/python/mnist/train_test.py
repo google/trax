@@ -18,7 +18,7 @@ import mock
 import numpy as np
 import tensorflow as tf
 
-from resources.examples.python.mnist import dataset, train
+from resources.examples.python.mnist.from_scratch import dataset, train
 
 
 class TFNumpyMnistExampleTest(tf.test.TestCase):

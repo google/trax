@@ -18,9 +18,10 @@
 import functools
 import inspect
 import string
+
 from absl import logging
-from trax.layers import base
-from trax.layers import combinators
+
+from trax.layers import base, combinators
 
 
 def assert_shape(specification):

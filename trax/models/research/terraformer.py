@@ -19,6 +19,7 @@ Implements the Terraformer model, introduced in the paper ...
 """
 
 import functools
+
 from trax import layers as tl
 from trax.fastmath import numpy as jnp
 from trax.models.reformer import reformer
@@ -334,9 +335,7 @@ def ConfigurableTerraformer(
         # After initializing the decoder we can revert to original state of
         # previously monkey-patched classes/functions.
         tl.attention.DotProductCausalAttention.monkey_patched_mask = lambda x: None
-        tl.research.sparsity._RememberPad.monkey_patched_mask = (
-            lambda x: None
-        )  # pylint: disable=protected-access
+        tl.research.sparsity._RememberPad.monkey_patched_mask = lambda x: None  # pylint: disable=protected-access
         tl.rnn.ScanSRUCell = originalScanSRUCell
 
     def _Loss():

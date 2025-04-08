@@ -21,7 +21,6 @@ The "Transformer" name and network architecture were introduced in the paper
 
 from trax import layers as tl
 
-
 # Defaults used across Transformer variants.
 MODE = "train"
 D_MODEL = 512

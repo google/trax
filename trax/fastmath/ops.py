@@ -382,6 +382,11 @@ def global_device_count(*args, **kwargs):
     return backend()["global_device_count"](*args, **kwargs)
 
 
+def devices(*args, **kwargs):
+    """Return the number of accelerators (GPUs or TPUs) in all hosts."""
+    return backend()["devices"](*args, **kwargs)
+
+
 def local_device_count(*args, **kwargs):
     """Return the number of accelerators (GPUs or TPUs) available on this host."""
     return backend()["local_device_count"](*args, **kwargs)

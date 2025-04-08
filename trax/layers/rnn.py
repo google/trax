@@ -17,12 +17,8 @@
 
 from trax import fastmath
 from trax.fastmath import numpy as jnp
-from trax.layers import activation_fns
-from trax.layers import base
+from trax.layers import activation_fns, base, convolution, core, initializers
 from trax.layers import combinators as cb
-from trax.layers import convolution
-from trax.layers import core
-from trax.layers import initializers
 
 
 class LSTMCell(base.Layer):
@@ -113,9 +109,7 @@ def LSTM(n_units, mode="train", return_state=False, initial_state=False):
     """
 
     if not initial_state:
-        zero_state = MakeZeroState(
-            depth_multiplier=2
-        )  # pylint: disable=no-value-for-parameter
+        zero_state = MakeZeroState(depth_multiplier=2)  # pylint: disable=no-value-for-parameter
         if return_state:
             return cb.Serial(
                 cb.Branch([], zero_state),
@@ -202,9 +196,7 @@ class GRUCell(base.Layer):
 
 def GRU(n_units, mode="train"):
     """GRU running on axis 1."""
-    zero_state = MakeZeroState(
-        depth_multiplier=1
-    )  # pylint: disable=no-value-for-parameter
+    zero_state = MakeZeroState(depth_multiplier=1)  # pylint: disable=no-value-for-parameter
     return cb.Serial(
         cb.Branch([], zero_state),
         cb.Scan(GRUCell(n_units=n_units), axis=1, mode=mode),
@@ -386,7 +378,9 @@ def SRU(n_units, activation=None, mode="train"):
         cb.Split(n_items=3),  # r, f, y, x
         cb.Parallel(sigmoid_activation, sigmoid_activation),  # r, f, y, x
         base.Fn(
-            "", lambda r, f, y: (y * (1.0 - f), f, r), n_out=3  # y * (1 - f), f, r, x
+            "",
+            lambda r, f, y: (y * (1.0 - f), f, r),
+            n_out=3,  # y * (1 - f), f, r, x
         ),
         cb.Parallel([], [], cb.Branch(MakeZeroState(), [])),
         ScanSRUCell(mode=mode),

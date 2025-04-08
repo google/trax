@@ -45,11 +45,10 @@ weighted-average. For example:
 """
 
 from trax import fastmath
-from trax import shapes
 from trax.fastmath import numpy as jnp
-from trax.layers import base
+from trax.layers import base, core
 from trax.layers import combinators as cb
-from trax.layers import core
+from trax.utils import shapes
 
 
 def CategoryAccuracy():
@@ -602,10 +601,10 @@ def _CrossEntropy():
     """Returns a layer that computes prediction-target cross entropies."""
 
     def f(model_output, target_category):  # pylint: disable=invalid-name
-        # TODO(pkozakowski): This assertion breaks some tests. Fix and uncomment.
-        # shapes.assert_shape_equals(target_category, model_output.shape[:-1])
         target_distribution = core.one_hot(target_category, model_output.shape[-1])
-        return -1.0 * jnp.sum(model_output * target_distribution, axis=-1)
+        return jnp.negative(
+            jnp.sum(jnp.multiply(model_output, target_distribution), axis=-1)
+        )
 
     return base.Fn("_CrossEntropy", f)
 
@@ -648,7 +647,9 @@ def _WeightedMean():
     """Returns a layer that computes a weighted mean of the given values."""
 
     def f(values, weights):  # pylint: disable=invalid-name
-        return jnp.sum(values * weights) / _n_weights_per_core(weights)
+        return jnp.divide(
+            jnp.sum(jnp.multiply(values, weights)), _n_weights_per_core(weights)
+        )
 
     return base.Fn("_WeightedMean", f)
 

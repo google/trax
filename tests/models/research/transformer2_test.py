@@ -15,11 +15,12 @@
 
 """Tests for Transformer models."""
 
-from absl.testing import absltest
 import numpy as np
 
-from trax import shapes
+from absl.testing import absltest
+
 from trax.models.research import transformer2
+from trax.utils import shapes
 
 
 class Transformer2Test(absltest.TestCase):

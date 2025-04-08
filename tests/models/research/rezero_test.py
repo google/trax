@@ -15,12 +15,13 @@
 
 """Tests for ReZero models."""
 
-from absl.testing import absltest
 import numpy as np
 
+from absl.testing import absltest
+
 from trax import layers as tl
-from trax import shapes
 from trax.models.research import rezero
+from trax.utils import shapes
 
 
 class ResidualZeroTest(absltest.TestCase):

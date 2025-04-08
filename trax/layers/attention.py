@@ -48,15 +48,12 @@ import numpy as np
 
 from trax import fastmath
 from trax.fastmath import numpy as jnp
-from trax.layers import base
+from trax.layers import base, convolution, core
 from trax.layers import combinators as cb
-from trax.layers import convolution
-from trax.layers import core
 from trax.layers import initializers as init
 from trax.layers.assert_shape import assert_shape
 from trax.layers.base import Fn
 from trax.layers.research import sparsity
-
 
 # Layers are always CamelCase, but functions in general are snake_case
 # pylint: disable=invalid-name
@@ -545,9 +542,7 @@ class DotProductCausalAttention(base.Layer):
         self._dropout = dropout
         self._mode = mode
         self._max_len = max_inference_length
-        self._portal_mask = (
-            self.monkey_patched_mask()
-        )  # pylint: disable=assignment-from-none
+        self._portal_mask = self.monkey_patched_mask()  # pylint: disable=assignment-from-none
 
     def monkey_patched_mask(self):
         # This is necessary for Terraformer model. See comments there.
@@ -614,6 +609,7 @@ def ShiftRight(n_positions=1, mode="train"):
           only if layer is created in a non-``'eval'`` mode.
       mode: One of ``'train'``, ``'eval'``, or ``'predict'``.
     """
+
     # TODO(jonni): Include pad arg, like PaddingMask, to allow non-default pads?
     def f(x):
         if mode == "predict":

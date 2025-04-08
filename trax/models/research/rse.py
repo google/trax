@@ -19,6 +19,7 @@ https://arxiv.org/pdf/2004.04662.pdf
 """
 
 import numpy as np
+
 from trax import fastmath
 from trax import layers as tl
 from trax.fastmath import numpy as jnp

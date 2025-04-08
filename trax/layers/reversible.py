@@ -25,12 +25,13 @@ Activations](https://arxiv.org/abs/1707.04585) and [Reformer: The Efficient
 Transformer](https://arxiv.org/abs/2001.04451).
 """
 
-from absl import logging
 import jax
+
+from absl import logging
+
 from trax import fastmath
 from trax.layers import base
 from trax.layers import combinators as cb
-
 
 _split_rngs = cb._split_rngs  # pylint: disable=protected-access
 

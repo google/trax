@@ -15,11 +15,12 @@
 
 """Tests for Residual Shuffle-Exchange Networks."""
 
-from absl.testing import absltest
 import numpy as np
 
-from trax import shapes
+from absl.testing import absltest
+
 from trax.models.research import rse
+from trax.utils import shapes
 
 
 class RSETest(absltest.TestCase):

@@ -48,6 +48,7 @@ setup(
         "tensorflow-datasets==4.9.8",
         "tensorflow-text==2.17.0",
         "tensorflow-estimator==2.15.0",
+        "datasets==3.5.0",
     ],
     extras_require={
         "tensorflow": ["tensorflow==2.17.0"],

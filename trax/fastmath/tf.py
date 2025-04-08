@@ -18,9 +18,9 @@
 import numpy as np
 import tensorflow.compat.v2 as tf
 
-from trax.shapes import ShapeDtype
 from trax.tf import extensions as tf_np_extensions
 from trax.tf import numpy as tf_np
+from trax.utils.shapes import ShapeDtype
 
 
 def tf_abstract_eval(f):

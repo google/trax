@@ -20,8 +20,9 @@ import numpy as np
 from absl.testing import absltest
 
 from tests.fastmath.jax import config
-from trax import fastmath, shapes
+from trax import fastmath
 from trax import layers as tl
+from trax.utils import shapes
 
 
 class AccelerationTest(absltest.TestCase):

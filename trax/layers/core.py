@@ -825,7 +825,8 @@ def StopGradient():
 def one_hot(x, n_categories, dtype=jnp.float32):  # pylint: disable=invalid-name
     """Makes a one-hot array (n+1 dims) from an int-categorical array (n dims)."""
     indices_less_than_n = jnp.arange(n_categories)
-    return jnp.array(x[..., jnp.newaxis] == indices_less_than_n, dtype)
+    mask = jnp.equal(x[..., jnp.newaxis], indices_less_than_n)
+    return jnp.array(mask, dtype)
 
 
 def log_softmax(x, axis=-1):  # pylint: disable=invalid-name

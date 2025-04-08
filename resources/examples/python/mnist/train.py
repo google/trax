@@ -1,92 +1,71 @@
-# coding=utf-8
-# Copyright 2022 The Trax Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+import trax.fastmath as fastmath
 
-"""Perform training."""
-from absl import app
-from absl import flags
-
-from six.moves import range
-
-from resources.examples.python.mnist import model as model_lib, dataset
-
-FLAGS = flags.FLAGS
-
-flags.DEFINE_integer("batch_size", 50, "Batch size.")
-flags.DEFINE_integer("num_training_iters", 10000, "Number of iterations to train for.")
-flags.DEFINE_integer(
-    "validation_steps", 100, "Validation is performed every these many training steps."
+from resources.examples.python.base import (
+    Dataset,
+    DeviceType,
+    Splits,
+    create_batch_generator,
+    evaluate_model,
+    initialize_model,
+    load_dataset,
+    train_model,
 )
-flags.DEFINE_float("learning_rate", 5.0, "Learning rate.")
+from trax import layers as tl
+from trax import optimizers
+from trax.trainers import jax as trainers
 
 
-def train(batch_size, learning_rate, num_training_iters, validation_steps):
-    """Runs the training."""
-    print("Loading data")
-    training_data, validation_data, test_data = dataset.load()
-    print(
-        "Loaded dataset with {} training, {} validation and {} test examples.".format(
-            len(training_data[0]), len(validation_data[0]), len(test_data[0])
-        )
+def build_model():
+    # Build your model with loss function
+    model = tl.Serial(
+        tl.Dense(128, use_bias=True),
+        tl.Relu(),
+        tl.Dense(10, use_bias=False)
+    )
+    model_with_loss = tl.Serial(model, tl.CrossEntropyLossWithLogSoftmax())
+    return model_with_loss
+
+
+def main():
+    # Default setup
+    DEFAULT_BATCH_SIZE = 8
+    STEPS_NUMBER = 20_000
+
+    # Load data
+    X, y = load_dataset(Dataset.MNIST.value)
+    batch_gen = create_batch_generator(X, y, batch_size=DEFAULT_BATCH_SIZE, seed=42)
+    example_batch = next(batch_gen)
+
+    # Build and initialize model
+    model_with_loss = build_model()
+    initialize_model(model_with_loss, example_batch)
+
+    # Setup optimizer and trainers
+    optimizer = optimizers.Adam(0.001)
+    trainer = trainers.Trainer(model_with_loss, optimizer)
+
+    base_rng = fastmath.random.get_prng(0)
+
+    # Run training on CPU and/or GPU
+    train_model(trainer, batch_gen, STEPS_NUMBER, base_rng, device_type=DeviceType.GPU.value)
+
+    # Load test data
+    test_data, test_labels = load_dataset(
+        dataset_name=Dataset.MNIST.value, split=Splits.TEST.value
     )
 
-    assert len(training_data[0]) % batch_size == 0
-    assert len(validation_data[0]) % batch_size == 0
-    assert len(test_data[0]) % batch_size == 0
-
-    def build_iterator(data, infinite=True):
-        """Build the iterator for inputs."""
-        index = 0
-        size = len(data[0])
-        while True:
-            if index + batch_size > size:
-                if infinite:
-                    index = 0
-                else:
-                    return
-            yield (
-                data[0][index : index + batch_size],
-                data[1][index : index + batch_size],
-            )
-            index += batch_size
-
-    train_iter = build_iterator(training_data)
-    model = model_lib.Model([30])
-
-    for i in range(num_training_iters):
-        train_x, train_y = next(train_iter)
-        model.train(train_x, train_y, learning_rate)
-        if (i + 1) % validation_steps == 0:
-            validation_iter = build_iterator(validation_data, infinite=False)
-            correct_predictions = 0
-            for valid_x, valid_y in validation_iter:
-                correct_predictions += model.evaluate(valid_x, valid_y)
-            print(
-                "{}/{} correct validation predictions.".format(
-                    correct_predictions, len(validation_data[0])
-                )
-            )
-
-
-def main(unused_argv):
-    train(
-        FLAGS.batch_size,
-        FLAGS.learning_rate,
-        FLAGS.num_training_iters,
-        FLAGS.validation_steps,
+    # Evaluate model on test set
+    test_results = evaluate_model(
+        trainer=trainer,
+        test_data=test_data,
+        test_labels=test_labels,
+        device_type=DeviceType.CPU.value,
+        batch_size=DEFAULT_BATCH_SIZE,
+        num_batches=100,
     )
+
+    print(f"Final test accuracy: {test_results['accuracy']:.4f}")
 
 
 if __name__ == "__main__":
-    app.run(main)
+    main()

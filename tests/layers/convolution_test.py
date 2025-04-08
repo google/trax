@@ -21,7 +21,7 @@ from absl.testing import absltest
 
 import trax.layers as tl
 
-from trax import shapes
+from trax.utils import shapes
 
 
 class ConvolutionTest(absltest.TestCase):

@@ -23,7 +23,7 @@ import numpy as np
 from tensorflow import test
 
 from trax.models import atari_cnn
-from trax.shapes import ShapeDtype
+from trax.utils.shapes import ShapeDtype
 
 
 class AtariCnnTest(test.TestCase):

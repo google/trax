@@ -15,9 +15,9 @@
 
 """Tests for supervised training optimizers."""
 
-from absl.testing import absltest
-
 import numpy as np
+
+from absl.testing import absltest
 
 from trax import optimizers
 from trax.optimizers import momentum

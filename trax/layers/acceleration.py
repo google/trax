@@ -192,7 +192,7 @@ def jit_forward(forward, n_devices, do_mean=True):
         res = _combine_devices(res)
         if do_mean:
             return (
-                fastmath.nested_map(lambda y: mean_or_pmean(n_devices, y, axis=0), res),
+                fastmath.nested_map(lambda y: mean(n_devices, y, axis=0), res),
                 state,
             )
         else:

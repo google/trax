@@ -19,7 +19,7 @@ import numpy as np
 
 from scipy.special import logsumexp
 
-from trax.shapes import signature
+from trax.utils.shapes import signature
 
 
 def get_prng(seed):

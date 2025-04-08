@@ -22,8 +22,8 @@ from absl.testing import absltest
 import trax.layers as tl
 import trax.layers.initializers as init
 
-from trax import shapes
 from trax.fastmath import numpy as jnp
+from trax.utils import shapes
 
 
 class DenseTest(absltest.TestCase):

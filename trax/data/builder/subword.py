@@ -30,9 +30,9 @@ python trax/data/subword.py \
 """
 
 from absl import app, flags
-from data.preprocessing.tokenizer import tokenizer
 
 from trax.data.encoder import encoder as text_encoder
+from trax.data.encoder import encoder as tokenizer
 
 flags.DEFINE_string(
     "output_filename",

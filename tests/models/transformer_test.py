@@ -22,8 +22,8 @@ import numpy as np
 from absl.testing import absltest, parameterized
 
 from tests.layers import test_utils
-from trax import shapes
 from trax.models import transformer
+from trax.utils import shapes
 
 
 class TransformerTest(parameterized.TestCase):

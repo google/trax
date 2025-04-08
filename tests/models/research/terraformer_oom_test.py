@@ -18,14 +18,15 @@
 import functools
 import operator
 
-from absl.testing import absltest
 import gin
 import numpy as np
 
+from absl.testing import absltest
+
 from trax import fastmath
 from trax import layers as tl
-from trax import shapes
 from trax.models.research import terraformer
+from trax.utils import shapes
 
 
 class TerraformerOOMTest(absltest.TestCase):

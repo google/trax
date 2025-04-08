@@ -17,16 +17,7 @@
 
 import gin
 
-from trax.optimizers import sgd
-from trax.optimizers import adafactor
-from trax.optimizers import adam
-from trax.optimizers import base
-from trax.optimizers import momentum
-from trax.optimizers import rms_prop
-from trax.optimizers import sm3
-from trax.optimizers import trainer
-from trax.optimizers.trainer import ReversibleSerialTrainer
-from trax.optimizers.trainer import Trainer
+from trax.optimizers import adafactor, adam, momentum, rms_prop, sgd, sm3
 
 
 def opt_configure(*args, **kwargs):

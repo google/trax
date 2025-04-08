@@ -17,9 +17,10 @@
 
 from absl.testing import absltest, parameterized
 
-from trax import fastmath, shapes
+from trax import fastmath
 from trax.fastmath import numpy as jnp
 from trax.models import rnn
+from trax.utils import shapes
 
 BACKENDS = [fastmath.Backend.JAX]
 

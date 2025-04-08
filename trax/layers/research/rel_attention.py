@@ -25,14 +25,11 @@ Funnel Transformer model from:
 
 from trax import fastmath
 from trax.fastmath import numpy as jnp
-from trax.layers import base
+from trax.layers import base, core
 from trax.layers import combinators as cb
-from trax.layers import core
 from trax.layers import initializers as init
 from trax.layers.assert_shape import assert_shape
-from trax.layers.attention import MergeHeads
-from trax.layers.attention import SplitIntoHeads
-
+from trax.layers.attention import MergeHeads, SplitIntoHeads
 
 # Layers are always CamelCase, but functions in general are snake_case
 # pylint: disable=invalid-name

@@ -15,11 +15,10 @@
 
 """Tests different ways to use the public tf-numpy module."""
 import numpy as onp
-
 import tensorflow as tf
 import tensorflow.experimental.numpy as np1
-from tensorflow.experimental import numpy as np2  # pylint: disable=reimported
 
+from tensorflow.experimental import numpy as np2  # pylint: disable=reimported
 
 np3 = tf.experimental.numpy
 

@@ -17,8 +17,9 @@
 
 import functools
 
-from absl import logging
 import gin
+
+from absl import logging
 
 
 @gin.configurable(denylist=["f"])

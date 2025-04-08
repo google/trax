@@ -20,6 +20,7 @@ import itertools
 import operator
 
 from jax import lax
+
 from trax import fastmath
 from trax.fastmath import numpy as jnp
 from trax.layers import base

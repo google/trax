@@ -16,10 +16,13 @@
 """Experimenting with position encodings."""
 
 import logging
+
 import jax
 import jax.extend as jex
 import numpy as np
+
 import trax
+
 from trax import fastmath
 from trax.fastmath import numpy as jnp
 from trax.layers import base as layer_base

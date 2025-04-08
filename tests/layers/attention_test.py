@@ -24,7 +24,7 @@ from absl.testing import absltest
 import trax.layers as tl
 
 from tests.layers import test_utils
-from trax import shapes
+from trax.utils import shapes
 
 
 class AttentionTest(absltest.TestCase):

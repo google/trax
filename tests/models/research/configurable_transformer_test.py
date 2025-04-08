@@ -17,15 +17,15 @@
 
 import functools
 
-from absl.testing import absltest
-from absl.testing import parameterized
 import numpy as np
 
+from absl.testing import absltest, parameterized
+
+from tests.layers import test_utils
 from trax import fastmath
 from trax import layers as tl
-from trax import shapes
-from tests.layers import test_utils
 from trax.models.research import configurable_transformer as ct
+from trax.utils import shapes
 
 
 class ConfigurableTransformerTest(parameterized.TestCase):

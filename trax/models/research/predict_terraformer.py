@@ -50,7 +50,7 @@ import trax
 from trax import layers as tl
 from trax import models
 from trax.fastmath import numpy as numpy_math
-from trax.supervised import decoding
+from trax.learning.supervised import decoding
 
 # from colabtools import adhoc_import
 # from colabtools import adhoc_import

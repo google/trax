@@ -28,7 +28,7 @@ from jax import lax
 from jax import random as jax_random
 
 from trax.fastmath import numpy as tnp
-from trax.shapes import signature
+from trax.utils.shapes import signature
 
 
 def jax_conv(
@@ -247,4 +247,5 @@ JAX_BACKEND = {
     "top_k": lax.top_k,
     "vjp": jax.vjp,
     "vmap": jax.vmap,
+    "devices": jax.devices,
 }

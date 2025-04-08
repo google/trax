@@ -23,8 +23,9 @@ import pytest
 
 from absl.testing import absltest
 
-from trax import fastmath, shapes
+from trax import fastmath
 from trax import layers as tl
+from trax.utils import shapes
 
 
 def test_eval_is_deterministic(inp, model_fn, message=""):

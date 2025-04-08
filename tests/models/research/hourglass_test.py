@@ -15,16 +15,18 @@
 
 """Tests for Hourglass model."""
 
-from absl.testing import absltest
-from absl.testing import parameterized
 import gin
 import jax
 import numpy as np
-from trax import fastmath
-from trax import layers as tl
-from trax import shapes
+
+from absl.testing import absltest, parameterized
+
 import trax.layers.research.resampling as resampling
 import trax.models.research.hourglass as hourglass
+
+from trax import fastmath
+from trax import layers as tl
+from trax.utils import shapes
 
 
 class HourglassTest(parameterized.TestCase):

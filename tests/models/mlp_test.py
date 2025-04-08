@@ -19,8 +19,8 @@ import numpy as np
 
 from absl.testing import absltest
 
-from trax import shapes
 from trax.models import mlp
+from trax.utils import shapes
 
 
 class MLPTest(absltest.TestCase):

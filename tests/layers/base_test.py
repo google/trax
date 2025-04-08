@@ -21,8 +21,9 @@ from absl.testing import absltest, parameterized
 
 import trax.layers as tl
 
-from trax import fastmath, shapes
+from trax import fastmath
 from trax.fastmath import numpy as jnp
+from trax.utils import shapes
 
 BACKENDS = [fastmath.Backend.JAX, fastmath.Backend.TFNP]
 CUSTOM_GRAD_BACKENDS = [fastmath.Backend.JAX]  # TODO(afrozm): del after TF 2.3

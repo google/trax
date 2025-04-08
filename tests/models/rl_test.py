@@ -21,8 +21,8 @@ import numpy as np
 
 from absl.testing import absltest
 
-from trax import shapes
 from trax.models import rl
+from trax.utils import shapes
 
 
 class RLTest(absltest.TestCase):

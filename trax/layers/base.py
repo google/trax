@@ -30,9 +30,7 @@ import tensorflow as tf
 from trax import fastmath
 from trax.fastmath import nested_map
 from trax.fastmath import numpy as jnp
-from trax.shapes import ShapeDtype
-from trax.shapes import signature
-
+from trax.utils.shapes import ShapeDtype, signature
 
 # TODO(lukaszkaiser): should we use special objects for these for clarity?
 EMPTY_WEIGHTS = ()  # Used for layers that have no trainable weights.
@@ -713,9 +711,9 @@ class Layer:
 
         In Trax layers, we only allow to set the following public attributes::
 
-          - weights
-          - state
-          - rng
+          -weights
+          -state
+          -rng
 
         This function prevents from setting other public attributes to avoid typos,
         for example, this is not possible and would be without this function::
@@ -956,9 +954,7 @@ def _validate_forward_input(x, n_in):
 def _is_empty(container):
     if container is None:
         raise ValueError('Argument "container" is None.')
-    return (
-        isinstance(container, (list, tuple)) and len(container) == 0
-    )  # pylint: disable=g-explicit-length-test
+    return isinstance(container, (list, tuple)) and len(container) == 0  # pylint: disable=g-explicit-length-test
 
 
 def _find_frame(frame):
@@ -999,9 +995,7 @@ def _short_traceback(skip=3):
     counter, res = 0, []
     # Skipping 3 lines by default: the top (useless) and self-call.
     # In python 3, we need to set chain to False (it doesn't exist in python 2).
-    lines = traceback.format_exc(chain=False).splitlines()[
-        skip:
-    ]  # pylint: disable=unexpected-keyword-arg
+    lines = traceback.format_exc(chain=False).splitlines()[skip:]  # pylint: disable=unexpected-keyword-arg
     for l in lines:
         if l.startswith("trax.layers.base.LayerError"):
             l = l[len("trax.layers.base.") :]  # Remove the trax.layers.base prefix.
