@@ -21,9 +21,10 @@ import numpy as np
 from absl.testing import parameterized
 from tensorflow import test
 
-from trax import fastmath, shapes
+from trax import fastmath
 from trax.fastmath import numpy as jnp
 from trax.layers.research import efficient_attention
+from trax.utils import shapes
 
 
 class EfficientAttentionTest(test.TestCase, parameterized.TestCase):

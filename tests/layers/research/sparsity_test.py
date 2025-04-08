@@ -26,8 +26,9 @@ from tensorflow import test
 import trax.layers as tl
 
 from tests.layers import test_utils
-from trax import fastmath, shapes
+from trax import fastmath
 from trax.layers.research import sparsity
+from trax.utils import shapes
 
 
 class EfficientFeedForwardTest(test.TestCase, parameterized.TestCase):
