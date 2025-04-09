@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import trax.data
+import trax.data.loader.tf.base
 import trax.models
 import trax.optimizers
 import trax.learning.supervised.trainer_lib
+import trax.data.preprocessing.tf.wmt
 
 MAX_EVAL_LENGTH = 512 # Get back to 65536
 BUCKETS = ([513], [64, 1])
@@ -34,7 +35,7 @@ batcher.id_to_mask = 0
 # Parameters for data_streams:
 # ==============================================================================
 data_streams.data_dir = None
-data_streams.dataset_name = 't2t_translate_ende_wmt32k'
+data_streams.dataset_name = 't2t_wmt14_translate/de-en'
 data_streams.preprocess_fn = @data.wmt_preprocess
 
 # Parameters for multifactor:

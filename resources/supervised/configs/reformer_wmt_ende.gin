@@ -31,7 +31,7 @@ batcher.id_to_mask = 0
 # Parameters for data_streams:
 # ==============================================================================
 data_streams.data_dir = None
-data_streams.dataset_name = 'wmt14_translate/de-en'
+data_streams.dataset_name = 't2t_wmt14_translate/de-en'
 data_streams.preprocess_fn = @wmt_preprocess
 
 # Parameters for multifactor:

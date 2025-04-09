@@ -231,7 +231,18 @@ def dataset_to_stream(dataset, input_name):
     # All input-pipeline processing should be on CPU.
     for example in fastmath.dataset_as_numpy(dataset):
         features = example[0]
-        inp, out = features[input_name], example[1]
+
+        if not isinstance(features[input_name], np.ndarray):
+            input = np.array(features[input_name]).reshape(1, -1)
+        else:
+            input = features[input_name]
+
+        if not isinstance(example[1], np.ndarray):
+            output = np.array(example[1]).reshape(1, -1)
+        else:
+            output = example[1]
+
+        inp, out = input, output
         mask = features["mask"] if "mask" in features else None
         # Some accelerators don't handle uint8 well, cast to int.
         if isinstance(inp, np.uint8):
@@ -337,6 +348,7 @@ def load_translation_dataset(
     ).map(_map_example)
 
     supervised_keys = (["inputs"], ["targets"])
+
     return train_ds, eval_ds, supervised_keys
 
 

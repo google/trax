@@ -21,13 +21,12 @@ import gin
 
 from absl.testing import absltest
 
+from trax.data.encoder import encoder as encoder
 from trax.learning.supervised import trainer_lib
 from trax.utils import test_utils
 
 pkg_dir, _ = os.path.split(__file__)
-_TESTDATA = os.path.normpath(
-    os.path.join(pkg_dir, "../../../resources/models/reformer/testdata")
-)
+_TESTDATA = os.path.normpath(os.path.join(pkg_dir, "../../../resources/data/testdata"))
 _CONFIG_DIR = os.path.normpath(
     os.path.join(pkg_dir, "../../../resources/supervised/configs")
 )
@@ -46,9 +45,18 @@ class TerraformerE2ETest(absltest.TestCase):
         n_layers = 2
         d_ff = 32
 
+        tokenizer = encoder.SubwordTextEncoder(
+            filename=os.path.join(
+                _TESTDATA, "vocab.translate_ende_wmt32k.32768.subwords"
+            )
+        )
+
         gin.parse_config_file("terraformer_wmt_ende.gin")
 
         gin.bind_parameter("data_streams.data_dir", _TESTDATA)
+        gin.bind_parameter("wmt_preprocess.tokenizer", tokenizer)
+        gin.bind_parameter("wmt_preprocess.max_length", 20)
+        gin.bind_parameter("wmt_preprocess.max_eval_length", 25)
         gin.bind_parameter("batcher.batch_size_per_device", batch_size_per_device)
         gin.bind_parameter(
             "batcher.buckets", ([512], [batch_size_per_device, batch_size_per_device])

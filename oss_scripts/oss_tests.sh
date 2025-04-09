@@ -70,28 +70,13 @@ then
   pytest tests/optimizers
   set_status
 
-  pytest tests/supervised
+  pytest tests/tf
   set_status
 
-  pytest tests/tf_numpy/extensions
+  pytest tests/trainers
   set_status
 
-  pytest tests/tf_numpy/jax
-  set_status
-
-  pytest tests/tf_numpy/numpy_impl
-  set_status
-
-  pytest tests/tf_numpy/public_symbol_test.py
-  set_status
-
-  pytest tests/import_test.py
-  set_status
-
-  pytest tests/shapes_test.py
-  set_status
-
-  pytest tests/trax2keras_test.py
+  pytest tests/utils
   set_status
 
 else

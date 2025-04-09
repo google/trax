@@ -15,22 +15,16 @@
 
 """End to end test for Reformer."""
 
-import os
-
 import gin
 
 from absl.testing import absltest
 
+from tests.data.utils import (  # relative import
+    _CONFIG_DIR,
+    _TESTDATA,
+)
 from trax.learning.supervised import trainer_lib
 from trax.utils import test_utils
-
-pkg_dir, _ = os.path.split(__file__)
-_TESTDATA = os.path.normpath(
-    os.path.join(pkg_dir, "../../../resources/models/reformer/testdata")
-)
-_CONFIG_DIR = os.path.normpath(
-    os.path.join(pkg_dir, "../../../resources/supervised/configs/")
-)
 
 
 class ReformerE2ETest(absltest.TestCase):

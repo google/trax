@@ -265,9 +265,7 @@ class Loop:
             logging.info("Syncing weights/state across %d hosts.", self._n_hosts)
             # Do self._sync_weights_and_state_across_hosts() but layer-by-layer
             # to save memory.
-            blocks, last_layer = trainer.extract_reversible_blocks(
-                [self._model]
-            )
+            blocks, last_layer = trainer.extract_reversible_blocks([self._model])
             all_layers = []
             for std_layer, rev_layers in blocks:
                 all_layers.append(tl.Serial(std_layer))
@@ -1481,7 +1479,7 @@ def _flatten_and_remove_empty(x):
         return [
             f for f in flat if f is not None and not (isinstance(f, tuple) and len(f) == 0)
         ]
-    except (TypeError, AttributeError):
+    except (TypeError, AttributeError, IndexError):
         flat = fastmath.tree_flatten(x)
         return [
             f for f in flat if f is not None and f != ()
