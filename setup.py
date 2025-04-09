@@ -20,7 +20,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="trax",
-    version="1.5.1",
+    version="2.0.0",
     description="Trax",
     long_description=(
         "Trax helps you understand deep learning. We start with basic maths and"
