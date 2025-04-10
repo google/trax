@@ -71,7 +71,7 @@ jobs:
           python -m pip install editdistance==0.8.1
           python -m pip install pyglove==0.4.4
           python -m pip install sentencepiece==0.2.0
-          python -m pip install babel== 2.17.0
+          python -m pip install babel==2.17.0
           python -m pip install rouge-score==0.1.2
           python -m pip install sacrebleu==2.5.1
           python -m pip install transformers==4.50.1
