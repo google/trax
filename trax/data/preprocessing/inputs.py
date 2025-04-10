@@ -77,6 +77,8 @@ import pickle
 import random
 import time
 
+from typing import Optional, Sequence, Union
+
 import gin
 import jax
 import numpy as np
@@ -810,9 +812,7 @@ def pad_tf_tensors(tensors, boundary=None, strict_pad_on_len=False):
       A padded batch of tensors
     """
     # Ensure inputs are RaggedTensors or Tensor
-    if not all(
-        isinstance(t, tf.RaggedTensor) or isinstance(t, tf.Tensor) for t in tensors
-    ):
+    if not all(isinstance(a, (tf.RaggedTensor, tf.Tensor)) for a in tensors):
         raise ValueError("All input tensors must be RaggedTensors or Tensor")
 
     # Get the number of dimensions
@@ -948,6 +948,9 @@ def pad_np_tensors(tensors, boundary=None, strict_pad_on_len=False):
       a tensor, the tensors padded together
     """
     # TODO(afrozm): Unify this later.
+    if not all(isinstance(a, np.ndarray) for a in tensors):
+        raise ValueError("All input tensors must be numpuy array")
+
     if (boundary is not None) and (
         strict_pad_on_len or isinstance(boundary, (list, tuple))
     ):
@@ -1013,6 +1016,115 @@ def pad_np_tensors(tensors, boundary=None, strict_pad_on_len=False):
     return np.stack(padded_tensors)
 
 
+def pad_jax_arrays(
+    arrays: Sequence[jax.Array],
+    boundary: Optional[Union[int, Sequence[int]]] = None,
+    strict_pad_on_len: bool = False,
+) -> jax.Array:
+    """Pad a sequence of JAX Arrays to a joint dimension and return their batch.
+
+    For example, a pair of arrays of shape (2, 10) and (3, 9) will be padded
+    to (3, 10) both and the returned array will have shape (2, 3, 10).
+
+    When boundary is specified, we try to pad all unknown dimensions to boundary
+    if possible, which can help reduce the number of different shapes occurring
+    in the arrays and speed up XLA compilation. So, for example, a pair of
+    arrays of shapes (8, 10), (8, 9) with boundary=12 will be padded to (8, 12).
+
+    One special case occurs when boundary is much higher than the padding length
+    that we'd use without boundary. For example, arrays (2, 10) and (3, 9) with
+    boundary=12 could end up padded to (12, 12), but this is very wasteful in
+    the first dimension. In that case, we will use the closest power-of-2 instead
+    of the boundary, so we will end up padding to (4, 12) instead of (12, 12).
+
+    Args:
+      arrays: a sequence of JAX Arrays to pad
+      boundary: int or None; if given, expand the padded dimensions to this size
+        or can be a sequence matching the number of dimensions
+      strict_pad_on_len: bool; if true we pad on the length dimension, dim[0]
+        strictly as a multiple of boundary.
+
+    Returns:
+      a JAX Array, the arrays padded together
+    """
+    # Ensure inputs are JAX Arrays
+    if not all(isinstance(a, jax.Array) for a in arrays):
+        raise ValueError("All inputs must be JAX Arrays")
+
+    # Handle case with list/tuple boundary or strict padding
+    if (boundary is not None) and (
+        strict_pad_on_len or isinstance(boundary, (list, tuple))
+    ):
+        ndim = arrays[0].ndim
+        if not isinstance(boundary, (list, tuple)):
+            boundary = [boundary] * ndim
+
+        if ndim != len(boundary):
+            raise ValueError(
+                f"ndim != len(boundary) - "
+                f"ndim({ndim}) vs boundary({boundary}) "
+                f"len(boundary) = {len(boundary)}."
+            )
+
+        # Find maximum length per dimension
+        max_len_per_dim = [0] * ndim
+        for array in arrays:
+            max_len_per_dim = [max(e, s) for e, s in zip(array.shape, max_len_per_dim)]
+
+        # Round everything up to a multiple of boundary in the respective dimension
+        len_per_dim = [
+            max_len_per_dim[i] if not b else b * math.ceil(max_len_per_dim[i] / b)
+            for i, b in enumerate(boundary)
+        ]
+
+        # Pad each array to the target dimensions
+        padded_arrays = [
+            jnp.pad(
+                a,
+                [(0, len_per_dim[i] - a.shape[i]) for i in range(ndim)],
+                mode="constant",
+                constant_values=a.dtype.type(0),
+            )
+            for a in arrays
+        ]
+
+        return jnp.stack(padded_arrays)
+
+    # Handle the simpler case (similar to pad_np_tensors second part)
+    max_len_to_pad = []
+    padding_needed = False
+    dim = arrays[0].ndim
+
+    for i in range(dim):
+        max_len = max([a.shape[i] for a in arrays])
+        min_len = min([a.shape[i] for a in arrays])
+
+        if max_len == min_len and max_len == boundary:  # No padding needed
+            max_len_to_pad.append(max_len)
+        elif boundary is None:
+            max_len_to_pad.append(max_len)
+            padding_needed = True
+        else:
+            padding_needed = True
+            cur_boundary = max(max_len, boundary)
+            if 2 * max_len < cur_boundary:
+                cur_boundary = 2 ** int(jnp.ceil(jnp.log2(max_len)))
+            max_len_to_pad.append(cur_boundary)
+
+    if not padding_needed:
+        return jnp.stack(arrays)
+
+    padded_arrays = []
+    for a in arrays:
+        pad_widths = [(0, max_len_to_pad[i] - a.shape[i]) for i in range(dim)]
+        padded_a = jnp.pad(
+            a, pad_widths, mode="constant", constant_values=a.dtype.type(0)
+        )
+        padded_arrays.append(padded_a)
+
+    return jnp.stack(padded_arrays)
+
+
 def pad_to_max_dims(tensors, boundary=None, strict_pad_on_len=False):
     """
     Unified padding function. Depending on the type of input tensors, it either applies
@@ -1030,9 +1142,11 @@ def pad_to_max_dims(tensors, boundary=None, strict_pad_on_len=False):
         return pad_tf_tensors(tensors, boundary, strict_pad_on_len)
     elif all(isinstance(t, np.ndarray) for t in tensors):
         return pad_np_tensors(tensors, boundary, strict_pad_on_len)
+    elif all(isinstance(t, jax.Array) for t in tensors):
+        return pad_jax_arrays(tensors, boundary, strict_pad_on_len)
     else:
         raise ValueError(
-            "Mixed tensor types not supported. All tensors must be either tf.RaggedTensor, tf.Tensor or np.ndarray."
+            "Mixed tensor types not supported. All tensors must be either tf.RaggedTensor, tf.Tensor, jax Array or np.ndarray."
         )
 
 

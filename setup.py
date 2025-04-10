@@ -34,6 +34,7 @@ setup(
     license="Apache 2.0",
     packages=find_packages(),
     install_requires=[
+        "seqio==0.0.18",
         "absl-py==2.2.0",
         "gin-config==0.5.0",
         "gym==0.26.2",
