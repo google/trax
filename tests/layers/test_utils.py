@@ -28,6 +28,8 @@ from trax import layers as tl
 from trax.utils import shapes
 
 
+@absltest.skip
+@pytest.mark.skip(reason="This is helper method not direct test")
 def test_eval_is_deterministic(inp, model_fn, message=""):
     """Utility method for testing if eval mode is deterministic.
 

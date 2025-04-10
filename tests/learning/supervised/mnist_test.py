@@ -16,15 +16,14 @@
 """Test training an MNIST model 100 steps (saves time vs. 2000 steps)."""
 
 import io
-import itertools
 
 from unittest import mock
 
 from absl.testing import absltest
 
 from trax import layers as tl
-from trax.data.loader.tf import base as tf_inputs
-from trax.data.preprocessing import inputs
+from trax.data.loader.tf import base as dataset
+from trax.data.preprocessing import inputs as preprocessing
 from trax.learning.supervised import training
 from trax.optimizers import adam
 
@@ -54,14 +53,15 @@ class MnistTest(absltest.TestCase):
         mnist_model = _build_model(two_heads=True)
         # MNIST classification task.
         (cls_task, cls_eval_task) = _mnist_tasks(head=tl.Select([0], n_in=2))
+        (train_batches_stream, eval_batches_stream) = _mnist_brightness_dataset()
         # Auxiliary brightness prediction task.
         reg_task = training.TrainTask(
-            itertools.cycle(_mnist_brightness_dataset().train_stream(1)),
+            train_batches_stream,
             tl.Serial(tl.Select([1]), tl.L2Loss()),
             adam.Adam(0.001),
         )
         reg_eval_task = training.EvalTask(
-            itertools.cycle(_mnist_brightness_dataset().eval_stream(1)),
+            eval_batches_stream,
             [tl.Serial(tl.Select([1]), tl.L2Loss())],
             n_eval_batches=1,
             metric_names=["L2"],
@@ -74,8 +74,8 @@ class MnistTest(absltest.TestCase):
             which_task=lambda step_n: step_n % 2,
         )
 
-        training_session.run(n_steps=100)
-        self.assertEqual(training_session.step, 100)
+        training_session.run(n_steps=1_000)
+        self.assertEqual(training_session.step, 1_000)
 
         # Assert that we reach at least 80% eval accuracy on MNIST.
         self.assertGreater(_read_metric("WeightedCategoryAccuracy", mock_stdout), 0.8)
@@ -101,28 +101,30 @@ def _build_model(two_heads):
     )
 
 
-def _mnist_dataset():
-    """Loads (and caches) the standard MNIST data set."""
-    streams = tf_inputs.data_streams("mnist")
-    return inputs.batcher(
-        streams, variable_shapes=False, batch_size_per_device=256, eval_batch_size=256
-    )
-
-
 def _mnist_brightness_dataset():
     """Loads (and caches) a MNIST mean brightness data set."""
+    train_stream = dataset.TFDS("mnist", keys=("image", "label"), train=True)()
+    eval_stream = dataset.TFDS("mnist", keys=("image", "label"), train=False)()
 
-    def preprocess_stream(stream):
-        def new_stream():
-            for image, _ in stream():
-                yield (image, (image / 255).mean()[None])
-
-        return new_stream
-
-    streams = tuple(map(preprocess_stream, tf_inputs.data_streams("mnist")))
-    return inputs.batcher(
-        streams, variable_shapes=False, batch_size_per_device=256, eval_batch_size=256
+    train_data_pipeline = preprocessing.Serial(
+        lambda g: map(
+            lambda item: (lambda x, y: (x, (x / 255).mean().flatten()))(*item), g
+        ),
+        preprocessing.Batch(8),
+        preprocessing.AddLossWeights(),
     )
+    train_batches_stream = train_data_pipeline(train_stream)
+
+    eval_data_pipeline = preprocessing.Serial(
+        lambda g: map(
+            lambda item: (lambda x, y: (x, (x / 255).mean().flatten()))(*item), g
+        ),
+        preprocessing.Batch(8),
+        preprocessing.AddLossWeights(),
+    )
+    eval_batches_stream = eval_data_pipeline(eval_stream)
+
+    return train_batches_stream, eval_batches_stream
 
 
 def _mnist_tasks(head=None):
@@ -135,18 +137,33 @@ def _mnist_tasks(head=None):
       A pair (train_task, eval_task) consisting of the MNIST training task and the
       MNIST evaluation task using cross-entropy as loss and accuracy as metric.
     """
+    train_stream = dataset.TFDS("mnist", keys=("image", "label"), train=True)()
+    eval_stream = dataset.TFDS("mnist", keys=("image", "label"), train=False)()
+
+    train_data_pipeline = preprocessing.Serial(
+        preprocessing.Batch(8),
+        preprocessing.AddLossWeights(),
+    )
+    train_batches_stream = train_data_pipeline(train_stream)
+
+    eval_data_pipeline = preprocessing.Serial(
+        preprocessing.Batch(8),
+        preprocessing.AddLossWeights(),
+    )
+    eval_batches_stream = eval_data_pipeline(eval_stream)
+
     loss = tl.WeightedCategoryCrossEntropy()
     accuracy = tl.WeightedCategoryAccuracy()
     if head is not None:
         loss = tl.Serial(head, loss)
         accuracy = tl.Serial(head, accuracy)
     task = training.TrainTask(
-        itertools.cycle(_mnist_dataset().train_stream(1)),
+        train_batches_stream,
         loss,
         adam.Adam(0.001),
     )
     eval_task = training.EvalTask(
-        itertools.cycle(_mnist_dataset().eval_stream(1)),
+        eval_batches_stream,
         [loss, accuracy],
         n_eval_batches=10,
         metric_names=["CrossEntropy", "WeightedCategoryAccuracy"],
