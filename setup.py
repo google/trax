@@ -40,7 +40,7 @@ setup(
         "jax==0.5.3",
         "jaxlib==0.5.3",
         "matplotlib==3.10.1",
-        "numpy==2.0.2",
+        "numpy==1.26.4",
         "psutil==7.0.0",
         "scipy==1.15.2",
         "six==1.14.0",
