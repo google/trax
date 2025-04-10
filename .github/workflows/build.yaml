@@ -51,6 +51,9 @@ jobs:
         uses: actions/setup-python@v3
         with:
           python-version: ${{matrix.python-version}}
+      - name: Install system dependencies for matplotlib
+        run: |
+          sudo apt-get install -y libfreetype6-dev libpng-dev
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -61,7 +64,7 @@ jobs:
           python -m pip install tensorflow_datasets==4.9.8
           python -m pip install tensorflow-text==2.17.0
           python -m pip install pandas==2.2.3
-          python -m pip install matplotlib==3.10.1
+          python -m pip install matplotlib==3.7.5 --no-build-isolation
           python -m pip install nltk==3.9.1
           python -m pip install scikit-learn==1.6.1
           python -m pip install IPython==8.34.0
