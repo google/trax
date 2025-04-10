@@ -25,6 +25,8 @@ from trax import shapes
 from trax.fastmath import numpy as jnp
 from trax.layers.research import efficient_attention
 
+jax.config.update('jax_threefry_partitionable', False)
+
 
 class EfficientAttentionTest(test.TestCase, parameterized.TestCase):
 
