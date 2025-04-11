@@ -17,30 +17,116 @@
 
 import gin
 
-# We create a flat layers.* namespace for uniform calling conventions as we
-# upstream changes.
-# pylint: disable=wildcard-import
-from trax.layers.acceleration import *
-from trax.layers.activation_fns import *
-from trax.layers.assert_shape import *
-from trax.layers.attention import *
-from trax.layers.base import *
-from trax.layers.combinators import *
-from trax.layers.convolution import *
-from trax.layers.core import *
-from trax.layers.deconvolution import *
-from trax.layers.initializers import *
-from trax.layers.metrics import *
-from trax.layers.normalization import *
-from trax.layers.pooling import *
-from trax.layers.research.efficient_attention import *
-from trax.layers.research.position_encodings import *
-from trax.layers.research.rel_attention import *
-from trax.layers.research.resampling import *
-from trax.layers.research.rotary_positional_embedding import *
-from trax.layers.research.sparsity import *
-from trax.layers.reversible import *
-from trax.layers.rnn import *
+# Still make other modules available in the namespace
+from trax.layers.acceleration import *  # noqa: F403, F401
+
+# Import explicitly instead of using star imports
+# Activation functions
+from trax.layers.activation_fns import (
+    Exp,
+    FastGelu,
+    Gelu,
+    HardSigmoid,
+    HardTanh,
+    Relu,
+    Sigmoid,
+    Softplus,
+    Tanh,
+    ThresholdedLinearUnit,
+)
+from trax.layers.assert_shape import *  # noqa: F403, F401
+
+# Attention mechanisms
+from trax.layers.attention import (
+    Attention,
+    CausalAttention,
+    DotProductCausalAttention,
+    PositionalEncoding,
+)
+
+# Base layers
+from trax.layers.combinators import *  # noqa: F403, F401
+from trax.layers.convolution import *  # noqa: F403, F401
+from trax.layers.core import *  # noqa: F403, F401
+from trax.layers.core import (
+    LogSoftmax,
+    Softmax,
+)
+
+# Convolution and related
+from trax.layers.deconvolution import ConvTranspose
+
+# Initializers
+from trax.layers.initializers import AtariConvInit
+
+# Metrics
+from trax.layers.metrics import (
+    CategoryCrossEntropy,
+    CrossEntropyLossWithLogSoftmax,
+    L2Loss,
+    MacroAveragedFScore,
+    SequenceAccuracy,
+    WeightedCategoryAccuracy,
+    WeightedCategoryCrossEntropy,
+    WeightedFScore,
+)
+
+# Normalization layers
+from trax.layers.normalization import (
+    BatchNorm,
+    FilterResponseNorm,
+    LayerNorm,
+)
+from trax.layers.research.efficient_attention import *  # noqa: F403, F401
+from trax.layers.research.efficient_attention import (
+    EncDecAttention,
+    LSHSelfAttention,
+    MixedLSHSelfAttention,
+    PureLSHSelfAttention,
+    PureLSHSelfAttentionWrapper,
+    SelfAttention,
+)
+
+# Position encodings
+from trax.layers.research.position_encodings import (
+    InfinitePositionalEncoding,
+    TimeBinPositionalEncoding,
+)
+
+# Relative attention
+from trax.layers.research.rel_attention import (
+    RelativeAttentionLayer,
+    RelativeAttentionLMLayer,
+    RelativeAttentionWrapper,
+)
+from trax.layers.research.resampling import (
+    AttentionResampling,
+    AveragePooling,
+    LinearPooling,
+    LinearUpsampling,
+    NaiveUpsampling,
+    NoUpsampling,
+)
+
+# Positional embedding and resampling
+from trax.layers.research.rotary_positional_embedding import Rotate
+from trax.layers.research.sparsity import *  # noqa: F403, F401
+from trax.layers.research.sparsity import (
+    CausalFavor,
+    CausalFavorAttention,
+    ConvCausalAttention,
+    Favor,
+    FavorAttention,
+    LowRankCausalAttention,
+    ModularCausalAttention,
+    MultiplicativeCausalAttention,
+    MultiplicativeConvCausalAttention,
+    MultiplicativeModularCausalAttention,
+)
+from trax.layers.reversible import *  # noqa: F403, F401
+
+# RNN cells
+from trax.layers.rnn import GRUCell, LSTMCell
 
 
 # Ginify
@@ -49,8 +135,7 @@ def layer_configure(*args, **kwargs):
     return gin.external_configurable(*args, **kwargs)
 
 
-# pylint: disable=used-before-assignment
-# pylint: disable=invalid-name
+# Configure all the imported functions with gin
 Relu = layer_configure(Relu)
 Gelu = layer_configure(Gelu)
 FastGelu = layer_configure(FastGelu)
@@ -128,3 +213,4 @@ LinearUpsampling = layer_configure(LinearUpsampling)
 NoUpsampling = layer_configure(NoUpsampling)
 NaiveUpsampling = layer_configure(NaiveUpsampling)
 AttentionResampling = layer_configure(AttentionResampling)
+
