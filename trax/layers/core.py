@@ -37,12 +37,12 @@ class Dense(base.Layer):
   with trainable weights. Each node in a dense layer computes a weighted sum of
   all node values from the preceding layer and adds to that sum a node-specific
   bias term. The full layer computation is expressed compactly in linear
-  algebra as an affine map `y = Wx + b`, where `W` is a matrix and `y`, `x`,
+  algebra as an affine map `y = xW + b`, where `W` is a matrix and `y`, `x`,
   and `b` are vectors. The layer is trained, or "learns", by updating the
   values in `W` and `b`.
 
   Less commonly, a dense layer can omit the bias term and be a pure linear map:
-  `y = Wx`.
+  `y = xW`.
   """
 
   def __init__(self,
@@ -64,8 +64,8 @@ class Dense(base.Layer):
           connection weights `W` for the layer.
       bias_initializer: Function that creates a vector of (random) initial
           bias weights `b` for the layer.
-      use_bias: If `True`, compute an affine map `y = Wx + b`; else compute
-          a linear map `y = Wx`.
+      use_bias: If `True`, compute an affine map `y = xW + b`; else compute
+          a linear map `y = xW`.
       use_bfloat16: If `True`, use bfloat16 weights instead of the default
         float32; this can save memory but may (rarely) lead to numerical issues.
     """
