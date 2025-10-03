@@ -316,7 +316,7 @@ def skip_on_flag(flag_name, skip_value):
     return test_method_wrapper
   return skip
 
-# TODO(phawkins): workaround for bug https://github.com/google/jax/issues/432
+# TODO(phawkins): workaround for bug https://github.com/jax-ml/jax/issues/432
 # Delete this code after the minimum jaxlib version is 0.1.46 or greater.
 skip_on_mac_linalg_bug = partial(
   unittest.skipIf,
